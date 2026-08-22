@@ -162,6 +162,8 @@ pub enum VitalsError {
     TreeFull = 7,
     /// The record names a different player than the signer.
     NotYourRun = 8,
+    /// The account is at the right address but is not ours.
+    WrongOwner = 9,
 }
 
 impl From<VitalsError> for ProgramError {
@@ -210,8 +212,15 @@ fn anchor_replay(program_id: &Pubkey, accounts: &[AccountInfo], tree_id: u64, wi
     }
 
     let record = wire.decode()?;
+    // Anchoring is not open to bystanders. Without this anyone could fill somebody else's tree
+    // with leaves naming other players — they could never claim them, but a full tree is a tree
+    // that has to be rolled, and that is a denial of service somebody else pays for.
+    if record.player != payer.key.to_bytes() {
+        return Err(VitalsError::NotYourRun.into());
+    }
     let leaf = record.leaf();
 
+    owned_by(tree_ai, program_id)?;
     let mut tree = read::<TreeAccount>(tree_ai)?.to_tree();
     let index = tree.append(leaf).ok_or(VitalsError::TreeFull)?;
     write(tree_ai, &TreeAccount::from_tree(tree))?;
@@ -251,6 +260,7 @@ fn prove_attempt(
     if tree_pda != *tree_ai.key {
         return Err(VitalsError::WrongPda.into());
     }
+    owned_by(tree_ai, program_id)?;
     let tree = read::<TreeAccount>(tree_ai)?;
 
     let leaf = record.leaf();
@@ -273,6 +283,7 @@ fn prove_attempt(
         write(claim_ai, &ClaimAccount { player: player.key.to_bytes(), count: 0, attempts: Vec::new() })?;
     }
 
+    owned_by(claim_ai, program_id)?;
     let mut claim = read::<ClaimAccount>(claim_ai)?;
     if claim.attempts.iter().any(|a| a.leaf == leaf) {
         return Err(VitalsError::DuplicateAttempt.into());
@@ -322,6 +333,7 @@ fn claim_progress(
     if claim_pda != *claim_ai.key || claim_ai.data_is_empty() {
         return Err(VitalsError::NoAttempts.into());
     }
+    owned_by(claim_ai, program_id)?;
     let claim = read::<ClaimAccount>(claim_ai)?;
     if claim.attempts.is_empty() {
         return Err(VitalsError::NoAttempts.into());
@@ -404,6 +416,18 @@ fn create_pda<'a>(
 /// Not `try_from_slice`: that insists the whole buffer is consumed, and an account sized for a
 /// full claim buffer is mostly trailing zeros while it fills up. Reading a prefix is what we
 /// actually mean.
+/// Refuse to read an account this program does not own.
+///
+/// A derived PDA can only have been created by us, so in the current flow this is belt and
+/// braces — but "the address is right" and "the data is ours" are different facts, and the second
+/// one is the one deserialisation depends on. Every account read goes through here.
+fn owned_by(ai: &AccountInfo, program_id: &Pubkey) -> ProgramResult {
+    if ai.owner != program_id {
+        return Err(VitalsError::WrongOwner.into());
+    }
+    Ok(())
+}
+
 fn read<T: BorshDeserialize>(ai: &AccountInfo) -> Result<T, ProgramError> {
     let data = ai.data.borrow();
     let mut slice: &[u8] = &data;

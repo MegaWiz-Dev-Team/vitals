@@ -415,6 +415,14 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
 
 <script>
 const $=s=>document.querySelector(s);
+/* Injected by the server when it is running with a token. Empty on a loopback demo. */
+const TOKEN='__VITALS_TOKEN__';
+const _fetch=window.fetch;
+window.fetch=(u,o={})=>{
+  if(TOKEN && typeof u==='string' && u.startsWith('/api/'))
+    o={...o, headers:{...(o.headers||{}), Authorization:'Bearer '+TOKEN}};
+  return _fetch(u,o);
+};
 
 /* ─── the season ───────────────────────────────────────────────────────────── */
 const SEASON=[

@@ -132,9 +132,24 @@ pub fn xp_for(a: &Attempt) -> i64 {
 }
 
 /// Cumulative XP → level. Upstream is already integer-only, so this is a transcription.
+/// Highest level the curve is defined for.
+///
+/// The loop below is bounded because this is a public library: reachable inputs are small
+/// (a claim carries at most sixteen attempts) but a caller elsewhere can pass anything, and an
+/// unbounded loop over `i64::MAX` is a hang off chain and a compute exhaustion on it. The
+/// multiply is checked for the same reason — `25 * (lvl+1) * (lvl+2)` overflows i64 well before
+/// the loop would otherwise stop.
+pub const MAX_LEVEL: i64 = 4096;
+
 pub fn level_for(xp: i64) -> i64 {
     let mut lvl = 1i64;
-    while 25 * (lvl + 1) * (lvl + 2) <= xp {
+    while lvl < MAX_LEVEL {
+        let Some(need) = (lvl + 1).checked_mul(lvl + 2).and_then(|v| v.checked_mul(25)) else {
+            break;
+        };
+        if need > xp {
+            break;
+        }
         lvl += 1;
     }
     lvl
@@ -325,5 +340,33 @@ mod tests {
             Verdict::Rejected { claimed: Dreyfus::Proficient, computed: Dreyfus::Competent }
         );
         assert_eq!(adjudicate(Dreyfus::Competent, &run), Verdict::Granted(Dreyfus::Competent));
+    }
+}
+
+#[cfg(test)]
+mod bounds {
+    use super::*;
+
+    #[test]
+    fn level_for_terminates_and_never_overflows() {
+        // The loop used to run until 25*(l+1)*(l+2) exceeded xp, which for a large xp is a
+        // billion iterations and an overflow on the way. Reachable inputs are tiny; a public
+        // library still has to survive the unreachable ones.
+        assert_eq!(level_for(i64::MAX), MAX_LEVEL);
+        assert_eq!(level_for(i64::MIN), 1);
+        assert_eq!(level_for(-1), 1);
+        // and the curve is unchanged where it matters
+        assert_eq!(level_for(0), 1);
+        assert_eq!(level_for(149), 1);
+        assert_eq!(level_for(150), 2);
+        assert_eq!(level_for(300), 3);
+    }
+
+    #[test]
+    fn summarize_survives_saturated_scores() {
+        let a = [Attempt { case: [1; 32], score: u32::MAX, max: 1, difficulty: Difficulty::Resident, exam_mode: true }; 8];
+        let s = summarize(&a);
+        assert_eq!(s.avg_bps, 10_000, "norm is clamped, so the average cannot exceed full marks");
+        assert!(s.xp > 0 && s.level >= 1);
     }
 }

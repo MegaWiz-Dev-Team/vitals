@@ -12,6 +12,7 @@ mod patient;
 
 use serde::Serialize;
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex};
 use tiny_http::{Header, Method, Response, Server};
 use vitals_progress::record::AttemptRecord;
@@ -278,8 +279,35 @@ fn percent_decode(s: &str) -> String {
     out
 }
 
+/// Endpoints that spend something — the server's signature, or the GPU.
+///
+/// Playing is open because a kiosk should just work. Signing a transaction on request is not,
+/// and "whoever can reach the port" is not an authorisation model.
+fn guarded(path: &str) -> bool {
+    matches!(path, "/api/anchor" | "/api/claim" | "/api/say")
+}
+
+fn bearer_ok(req: &tiny_http::Request, token: &Option<String>) -> bool {
+    let Some(want) = token else { return true };
+    req.headers()
+        .iter()
+        .find(|h| h.field.equiv("authorization"))
+        .map(|h| h.value.as_str().trim())
+        .map(|v| v.strip_prefix("Bearer ").unwrap_or(v) == want)
+        .unwrap_or(false)
+}
+
 fn main() {
     let addr = std::env::var("VITALS_WEB_BIND").unwrap_or_else(|_| "127.0.0.1:8090".into());
+    let token = std::env::var("VITALS_TOKEN").ok().filter(|s| !s.is_empty());
+    let loopback = addr.starts_with("127.") || addr.starts_with("localhost");
+    if !loopback && token.is_none() {
+        // Refusing to start is the only honest option. Bound to a public interface with no token,
+        // anyone who finds the port can make this process sign transactions with its key.
+        eprintln!("refusing to bind {addr} without VITALS_TOKEN — anyone reaching it could make \
+                   this server sign with its key. Set VITALS_TOKEN, or bind to 127.0.0.1.");
+        std::process::exit(2);
+    }
     let server = Server::http(&addr).expect("bind");
     let sessions: Arc<Mutex<HashMap<String, Session>>> = Arc::new(Mutex::new(HashMap::new()));
     let mut next_id = 0u64;
@@ -303,16 +331,49 @@ fn main() {
         None => println!("chain      not connected — set VITALS_PROGRAM_ID and start a validator to anchor"),
     }
 
+    match (&token, loopback) {
+        (Some(_), _) => println!("auth       bearer token required on anchor · claim · say"),
+        (None, true) => println!("auth       none — loopback only, so the blast radius is this machine"),
+        (None, false) => unreachable!("refused to start above"),
+    }
     println!("Vitals — play at http://{addr}");
+
+    // One slow local model, and /api/say holds a worker for as long as it takes. Without a
+    // ceiling a single caller can occupy the GPU indefinitely.
+    let mut said: Vec<Instant> = Vec::new();
+    const SAY_PER_MIN: usize = 20;
 
     for req in server.incoming_requests() {
         let url = req.url().to_string();
         let path = url.split('?').next().unwrap_or("/").to_string();
 
+        if guarded(&path) && !bearer_ok(&req, &token) {
+            let _ = req.respond(
+                Response::from_string(r#"{"error":"unauthorised"}"#)
+                    .with_status_code(401)
+                    .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap()),
+            );
+            continue;
+        }
+        if path == "/api/say" {
+            said.retain(|t| t.elapsed() < Duration::from_secs(60));
+            if said.len() >= SAY_PER_MIN {
+                let _ = req.respond(json(serde_json::json!({ "error": "too many questions — give her a moment" })));
+                continue;
+            }
+            said.push(Instant::now());
+        }
+
         let resp = match (req.method(), path.as_str()) {
             (Method::Get, "/") => {
+                // The page is served by the same process that holds the token, so handing it over
+                // does not widen anything: reaching the page and reaching the API are one boundary.
+                let page = match &token {
+                    Some(tk) => PAGE.replace("__VITALS_TOKEN__", tk),
+                    None => PAGE.replace("__VITALS_TOKEN__", ""),
+                };
                 let _ = req.respond(
-                    Response::from_string(PAGE).with_header(
+                    Response::from_string(page).with_header(
                         Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
                             .unwrap(),
                     ),
