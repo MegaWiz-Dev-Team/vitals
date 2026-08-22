@@ -240,9 +240,18 @@ impl SceState {
     // "attach" is a device reporting its state, not a new device.
 
     /// Put equipment on the patient (or update its setting). Returns true if this is new.
+    ///
+    /// Turning the flowmeter up is a clinical act and belongs in the chart, so a changed setting
+    /// records a line of its own. Re-reporting the same number does not — a device restating its
+    /// state should not fill the record with noise.
     pub fn attach(&mut self, id: &str, setting: Option<f64>) -> bool {
         if let Some(e) = self.equipment.iter_mut().find(|e| e.id == id) {
+            let before = e.setting;
             e.setting = setting.or(e.setting);
+            let after = e.setting;
+            if let (Some(v), true) = (after, before != after) {
+                self.record("equipment", format!("{id} set to {v:.0}"));
+            }
             return false;
         }
         let since = self.t_elapsed;

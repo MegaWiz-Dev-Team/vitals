@@ -442,6 +442,19 @@ fn main() {
                         if off {
                             s.state.detach(&dev);
                             s.tape.push(Step::Do(format!("remove {dev}")));
+                        } else if s.state.has_equipment(&dev)
+                            && (set.is_none() || s.state.equipment_setting(&dev) == set)
+                        {
+                            // Already on, at that number. Re-picking it is not a second dose —
+                            // and re-running the intervention would re-attach at the scenario's
+                            // canonical setting, so the chart would log a change that never
+                            // happened, then log changing it back.
+                        } else if s.state.has_equipment(&dev) {
+                            // On already, different number: turn the dial, do not re-dose.
+                            if let Some(v) = set {
+                                s.state.attach(&dev, Some(v));
+                                s.tape.push(Step::Do(format!("{dev} set to {v}")));
+                            }
                         } else if let Some(phrase) = kit_phrase(&dev, set) {
                             // Go through the matcher, so the physiology moves exactly as it would
                             // for someone who typed it. The picker is a convenience, not a bypass.
