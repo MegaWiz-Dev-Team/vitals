@@ -30,6 +30,18 @@ const MONITOR: &str = include_str!("../static/device/monitor.html");
 const VENT: &str = include_str!("../static/device/vent.html");
 const PUMP: &str = include_str!("../static/device/pump.html");
 
+/// Where the rendered EP1 clips live.
+///
+/// Served from disk rather than baked into the binary: 20 clips is 43MB, and the point of
+/// reusing already-rendered film is that it does not need to be moved around again.
+fn clips_dir() -> std::path::PathBuf {
+    std::env::var("VITALS_CLIPS")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| {
+            std::path::PathBuf::from("/Users/mimir/Developer/Embla/app-swift/Resources/cutscenes/ep1")
+        })
+}
+
 /// The patient, keyed by the clinical status the automaton is reporting.
 ///
 /// This is the Director's job in the real Story Mode, reduced to its smallest useful form: the
@@ -306,6 +318,27 @@ fn main() {
                     ),
                 );
                 continue;
+            }
+            // ── film ────────────────────────────────────────────────────────────
+            // Story Mode does not show a still and call it a patient: it loops a per-state clip
+            // and cuts to a full-frame cutscene on a beat. Both are already rendered.
+            (Method::Get, p) if p.starts_with("/clip/") => {
+                let name = p.trim_start_matches("/clip/");
+                // Nothing but a bare clip name — no traversal into the rest of the disk.
+                let safe = name
+                    .strip_suffix(".mp4")
+                    .filter(|n| n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
+                match safe.and_then(|n| std::fs::read(clips_dir().join(format!("{n}.mp4"))).ok()) {
+                    Some(bytes) => {
+                        let _ = req.respond(
+                            Response::from_data(bytes)
+                                .with_header(Header::from_bytes(&b"Content-Type"[..], &b"video/mp4"[..]).unwrap())
+                                .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=86400"[..]).unwrap()),
+                        );
+                        continue;
+                    }
+                    None => Response::from_string("no such clip").with_status_code(404),
+                }
             }
             (Method::Get, p) if p.starts_with("/img/") => {
                 let key = p.trim_start_matches("/img/").trim_end_matches(".jpg");
