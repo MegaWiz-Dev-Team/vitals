@@ -27,6 +27,8 @@ const PAGE: &str = include_str!("../static/index.html");
 /// knows VF from asystole from PEA. A hand-rolled trace reads as fake to a clinician instantly —
 /// which is exactly what the first version of this app did.
 const MONITOR: &str = include_str!("../static/device/monitor.html");
+const VENT: &str = include_str!("../static/device/vent.html");
+const PUMP: &str = include_str!("../static/device/pump.html");
 
 /// The patient, keyed by the clinical status the automaton is reporting.
 ///
@@ -81,6 +83,34 @@ struct View {
     /// Only once the run is over — a run in progress has nothing to anchor yet.
     leaf: Option<String>,
     sce_hash: String,
+    /// What is on the patient right now, in the order it went on.
+    equipment: Vec<Kit>,
+    /// Everything that happened, stamped with the scenario clock — the chart.
+    chart: Vec<Note>,
+    /// 0..100. Derived from the vitals against adult normal ranges, not a field the engine
+    /// keeps: the automaton models a patient, not a health bar. Shown because a bar is
+    /// legible at a glance and the numbers underneath it are the truth.
+    stability: u32,
+}
+
+#[derive(Serialize, Clone)]
+struct Kit {
+    id: String,
+    setting: Option<f64>,
+    since: f64,
+}
+
+#[derive(Serialize, Clone)]
+struct Note {
+    t: f64,
+    kind: String,
+    text: String,
+}
+
+/// How far a value sits inside its normal band, 0 (way out) to 1 (fine).
+fn band(v: f64, lo: f64, hi: f64, span: f64) -> f64 {
+    let d = if v < lo { lo - v } else if v > hi { v - hi } else { 0.0 };
+    (1.0 - (d / span)).clamp(0.0, 1.0)
 }
 
 impl Session {
@@ -105,6 +135,15 @@ impl Session {
             };
             hex(&leaf(&sce_hash(&self.sce_json), &self.tape, &r))
         });
+        let v2 = self.state.vitals;
+        // Oxygenation and perfusion carry the most weight because they are what kills first.
+        let stability = (band(v2.spo2, 94.0, 100.0, 14.0) * 0.34
+            + band(v2.sbp, 100.0, 140.0, 45.0) * 0.28
+            + band(v2.hr, 60.0, 100.0, 60.0) * 0.16
+            + band(v2.rr, 12.0, 20.0, 18.0) * 0.12
+            + band(v2.gcs as f64, 15.0, 15.0, 7.0) * 0.10)
+            * 100.0;
+
         View {
             scenario: self.scenario.clone(),
             hr: v.hr.round(),
@@ -121,6 +160,19 @@ impl Session {
             elapsed,
             leaf: leaf_hex,
             sce_hash: hex(&sce_hash(&self.sce_json)),
+            equipment: self
+                .state
+                .equipment()
+                .iter()
+                .map(|e| Kit { id: e.id.clone(), setting: e.setting, since: e.since_sec })
+                .collect(),
+            chart: self
+                .state
+                .events()
+                .iter()
+                .map(|e| Note { t: e.t_sec, kind: e.kind.clone(), text: e.text.clone() })
+                .collect(),
+            stability: if self.state.outcome().is_some() && stability < 3.0 { 0 } else { stability.round() as u32 },
         }
     }
 }
@@ -269,8 +321,13 @@ fn main() {
                     None => Response::from_string("no such still").with_status_code(404),
                 }
             }
-            (Method::Get, "/device/monitor") => {
-                let _ = req.respond(Response::from_string(MONITOR).with_header(
+            (Method::Get, p @ ("/device/monitor" | "/device/vent" | "/device/pump")) => {
+                let page = match p {
+                    "/device/vent" => VENT,
+                    "/device/pump" => PUMP,
+                    _ => MONITOR,
+                };
+                let _ = req.respond(Response::from_string(page).with_header(
                     Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..]).unwrap(),
                 ));
                 continue;

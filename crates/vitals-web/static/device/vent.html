@@ -1,0 +1,317 @@
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vitals — Ventilator</title>
+<style>
+  /* Ventilators are not monitors. The convention is a lighter graphite shell with the two pressure
+     waveforms in a paler palette — Paw yellow-white, flow cyan — and the SET values visually
+     separated from the MEASURED ones, because confusing what you asked for with what the patient
+     is actually doing is the mistake the layout exists to prevent. */
+  :root{
+    --paw:#f2e9c9; --flow:#59c4d8; --vol:#b58ce0;
+    --alarm:#ff4b4b; --warn:#ffb02e; --ok:#4fd07a;
+    --ink:#e9eef2; --dim:#7f8b96; --set:#8fd0ff; --panel:#0d151c;
+  }
+  *{box-sizing:border-box} html,body{margin:0;height:100%}
+  body{background:#060a0e;color:var(--ink);font-family:"Helvetica Neue",Arial,sans-serif;
+       display:flex;flex-direction:column;overflow:hidden;-webkit-font-smoothing:antialiased}
+
+  header{display:flex;align-items:center;gap:14px;padding:6px 14px;background:#101a23;
+         border-bottom:1px solid #1d2a36;font-size:13px;flex:none}
+  header .brand{font-weight:700;letter-spacing:.5px}
+  header .mode{background:#1d2a36;padding:3px 9px;border-radius:4px;font-size:11px;letter-spacing:.6px}
+  header .sp{flex:1}
+  .alarmbar{padding:3px 10px;border-radius:4px;font-weight:700;font-size:12px;letter-spacing:.4px;
+            background:#1d2a36;color:var(--dim)}
+  .alarmbar.on{background:var(--alarm);color:#fff;animation:flash 1s steps(2,end) infinite}
+  .alarmbar.warn{background:var(--warn);color:#231a00}
+  @keyframes flash{50%{opacity:.45}}
+
+  main{flex:1;display:grid;grid-template-columns:1fr 250px;min-height:0}
+  .traces{display:grid;grid-template-rows:1fr 1fr;min-height:0;border-right:1px solid #1d2a36}
+  .lane{position:relative;min-height:0;border-bottom:1px solid #131e28}
+  .lane:last-child{border-bottom:0}
+  .lane canvas{width:100%;height:100%;display:block}
+  .lane .tag{position:absolute;left:10px;top:6px;font-size:11px;font-weight:700;letter-spacing:.6px}
+  .lane .note{position:absolute;right:10px;top:6px;font-size:10px;color:var(--dim)}
+  .lane .note.bad{color:var(--warn)}
+
+  /* Scrolls rather than clips. What fell off the bottom was the SET block and the sentence saying
+     what the peak-to-plateau gap MEANS — the one reading on this panel a learner cannot work out
+     from the number alone. */
+  .nums{display:flex;flex-direction:column;min-height:0;overflow-y:auto;overflow-x:hidden}
+  .grp{padding:4px 12px 6px;border-bottom:1px solid #131e28}
+  .grp h4{margin:0 0 4px;font-size:10px;letter-spacing:1.2px;color:var(--dim);font-weight:700}
+  .row{display:flex;justify-content:space-between;align-items:baseline;padding:0;
+       font-variant-numeric:tabular-nums;font-size:clamp(10px,1.9vh,13px)}
+  .row .k{color:var(--dim);font-size:11px}
+  .row .u{color:var(--dim);font-size:10px;margin-left:3px}
+  .big{font-size:clamp(20px,5.5vh,34px);line-height:1.05;font-weight:700;font-variant-numeric:tabular-nums}
+  .set .row .v{color:var(--set)}
+  .meas .row .v{color:var(--ink)}
+  .row.alarm .v{color:var(--alarm);animation:flash .8s steps(2,end) infinite}
+  .hint{padding:7px 12px;font-size:11px;line-height:1.45;color:var(--dim)}
+  .hint b{color:var(--warn);font-weight:600}
+  .standby{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+           justify-content:center;gap:8px;background:rgba(6,10,14,.93);text-align:center;padding:20px}
+  .standby h3{margin:0;font-size:15px;letter-spacing:.5px}
+  .standby p{margin:0;font-size:12px;color:var(--dim);max-width:340px;line-height:1.5}
+  footer{flex:none;padding:4px 14px;background:#101a23;border-top:1px solid #1d2a36;
+         font-size:11px;color:var(--dim);display:flex;gap:16px}
+</style>
+
+<header>
+  <span class="brand">EMBLA VENT</span>
+  <span class="mode" id="mode">A/C — VOLUME CONTROL</span>
+  <span class="sp"></span>
+  <span class="alarmbar" id="alarm">STANDBY</span>
+</header>
+
+<main>
+  <div class="traces">
+    <div class="lane">
+      <span class="tag" style="color:var(--paw)">Paw <span style="font-weight:400;color:var(--dim)">cmH₂O</span></span>
+      <span class="note" id="pnote"></span>
+      <canvas id="c-paw"></canvas>
+    </div>
+    <div class="lane">
+      <span class="tag" style="color:var(--flow)">Flow <span style="font-weight:400;color:var(--dim)">L/min</span></span>
+      <span class="note" id="fnote"></span>
+      <canvas id="c-flow"></canvas>
+    </div>
+    <div class="standby" id="standby">
+      <h3>Not connected to the patient</h3>
+      <p>The ventilator starts once an airway is secured (ETT) —
+         for now she is breathing on her own.</p>
+    </div>
+  </div>
+
+  <div class="nums">
+    <div class="grp meas">
+      <h4>PRESSURE</h4>
+      <div class="row" id="r-ppeak"><span class="k">Ppeak</span><span><span class="v big">--</span><span class="u">cmH₂O</span></span></div>
+      <div class="row" id="r-pplat"><span class="k">Pplat</span><span><span class="v">--</span><span class="u">cmH₂O</span></span></div>
+      <div class="row" id="r-gap"><span class="k">Ppeak − Pplat</span><span><span class="v">--</span><span class="u">cmH₂O</span></span></div>
+      <div class="row" id="r-peepi"><span class="k">PEEPi (auto)</span><span><span class="v">--</span><span class="u">cmH₂O</span></span></div>
+    </div>
+    <div class="grp meas">
+      <h4>MEASURED</h4>
+      <div class="row" id="r-vte"><span class="k">Vte</span><span><span class="v">--</span><span class="u">mL</span></span></div>
+      <div class="row" id="r-mv"><span class="k">MV</span><span><span class="v">--</span><span class="u">L/min</span></span></div>
+      <div class="row" id="r-rrtot"><span class="k">RR total</span><span><span class="v">--</span><span class="u">/min</span></span></div>
+      <div class="row" id="r-spo2"><span class="k">SpO₂</span><span><span class="v">--</span><span class="u">%</span></span></div>
+    </div>
+    <div class="grp set">
+      <h4>SET</h4>
+      <div class="row"><span class="k">Vt</span><span><span class="v" id="s-vt">400</span><span class="u">mL</span></span></div>
+      <div class="row"><span class="k">RR</span><span><span class="v" id="s-rr">14</span><span class="u">/min</span></span></div>
+      <div class="row"><span class="k">PEEP</span><span><span class="v" id="s-peep">5</span><span class="u">cmH₂O</span></span></div>
+      <div class="row"><span class="k">FiO₂</span><span><span class="v" id="s-fio2">100</span><span class="u">%</span></span></div>
+      <div class="row"><span class="k">Flow</span><span><span class="v" id="s-flow">60</span><span class="u">L/min</span></span></div>
+      <div class="row"><span class="k">Ti · I:E</span><span><span class="v" id="s-ie">--</span></span></div>
+    </div>
+    <div class="hint" id="hint"></div>
+  </div>
+</main>
+
+<footer><span id="src">—</span><span id="net"></span></footer>
+
+<script type="module">
+// A device, like monitor.html: it polls /device/vitals and knows nothing about the case.
+//
+// What makes this panel worth building rather than decorating: Ppeak is driven by the SAME
+// airway_patency the engine uses to decide whether she is wheezing and whether she is heading for
+// arrest. Tight bronchi, high peak pressure. Adrenaline works, the pressure falls. If the panel
+// invented its own numbers it would be a screensaver.
+const $ = s => document.querySelector(s);
+const P = new URLSearchParams(location.search);
+const BASE = P.get('base') || '';
+const SID  = P.get('sid')  || 'default';
+
+// Settings live on the ventilator, as they do at the bedside — the engine is not asked what the
+// vent is set to. Lung-protective start for a 19-year-old female: 6 mL/kg of ~65 kg IBW.
+//
+// FLOW is a set control in volume control, not something derived from I:E, and it is set HIGH here
+// on purpose. That is the obstructive strategy: deliver the breath fast so the rest of the cycle is
+// available for the patient to get it back out. I:E is the CONSEQUENCE, which is why it is
+// displayed and not set — and why the panel shows something like 1:9 rather than a tidy 1:3.
+const SET = { vt: 400, rr: 14, peep: 5, fio2: 100, flow: 60 };
+
+let V = null, connected = false, live = false;
+
+// ── the physiology this panel displays ─────────────────────────────────────────
+//
+// Ppeak = Pplat + (flow × airway resistance). Pplat = PEEP + Vt/compliance.
+//
+// In bronchospasm compliance is normal and resistance is enormous, so the PLATEAU barely moves and
+// the PEAK goes through the roof. The gap between them is the single most useful number on a
+// ventilator: a wide gap says airway, a narrow gap with a high plateau says lung or chest wall.
+// Drawing a high Ppeak without also holding Pplat down would teach the wrong differential.
+const COMPLIANCE = 50;          // mL/cmH₂O — normal young lung
+const R_MIN = 5, R_MAX = 50;    // cmH₂O/L/s — normal ETT+airway → severe bronchospasm
+
+const airway = () => {
+  const a = V && typeof V.airway === 'number' ? V.airway : 1;
+  return Math.max(0, Math.min(1, a));
+};
+const resistance = () => R_MIN + (R_MAX - R_MIN) * (1 - airway());
+const flowLps    = () => SET.flow / 60;
+// Constant-flow VC: the breath takes exactly as long as it takes to push the volume in.
+const inspTime   = () => (SET.vt / 1000) / flowLps();
+const pplat      = () => SET.peep + SET.vt / COMPLIANCE;
+// The resistive term is flow × resistance. Both matter: the same tight airway produces a modest
+// peak at a lazy flow and a frightening one at 60 L/min, which is why flow is a set control.
+const ppeak      = () => pplat() + resistance() * flowLps();
+
+// Air trapping: when expiration cannot finish before the next breath is delivered, pressure is left
+// behind in the chest. Only appears once the airway is genuinely tight, which is when it is real.
+const peepi = () => {
+  const need = 3 * resistance() * (COMPLIANCE / 1000);   // ~3 time constants, seconds
+  const have = (60 / SET.rr) - inspTime();
+  return Math.max(0, Math.min(14, (need - have) * 4));
+};
+// Trapped gas is gas that did not come back out.
+const vte = () => Math.round(SET.vt * (1 - Math.min(0.25, peepi() / 40)));
+
+// ── waveforms ─────────────────────────────────────────────────────────────────
+class Sweep {
+  constructor(canvas, colour){
+    this.c = canvas; this.ctx = canvas.getContext('2d'); this.colour = colour;
+    this.x = 0; this.pen = null; this.zero = 0.5;
+    this.resize(); addEventListener('resize', () => this.resize());
+  }
+  resize(){
+    const r = this.c.getBoundingClientRect(), d = devicePixelRatio || 1;
+    this.c.width = Math.max(1, r.width * d); this.c.height = Math.max(1, r.height * d);
+    this.ctx.setTransform(d,0,0,d,0,0);
+    this.w = r.width; this.h = r.height; this.x = 0; this.pen = null;
+    this.ctx.fillStyle = '#060a0e'; this.ctx.fillRect(0,0,this.w,this.h);
+  }
+  // `sample(t)` → −1..+1, with `zero` placing the baseline in the lane.
+  step(dt, secondsAcross, sample, t0){
+    const adv = (this.w / secondsAcross) * dt;
+    const g = this.ctx;
+    g.fillStyle = '#060a0e'; g.fillRect(this.x, 0, adv + this.w*0.02, this.h);
+    // baseline
+    g.strokeStyle = '#16222c'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(this.x, this.h*this.zero); g.lineTo(this.x+adv, this.h*this.zero); g.stroke();
+
+    g.strokeStyle = this.colour; g.lineWidth = 1.7; g.lineJoin = 'round';
+    g.beginPath();
+    const steps = Math.max(1, Math.ceil(adv));
+    if (this.pen) g.moveTo(this.pen[0], this.pen[1]);
+    for (let i = 0; i <= steps; i++){
+      const x = this.x + (adv * i / steps);
+      const t = t0 + (dt * i / steps);
+      const y = this.h*this.zero - sample(t) * (this.h * (this.zero > 0.6 ? 0.80 : 0.42));
+      if (!this.pen && i === 0) g.moveTo(x, y); else g.lineTo(x, y);
+      this.pen = [x, y];
+    }
+    g.stroke();
+    this.x += adv;
+    if (this.x >= this.w){ this.x = 0; this.pen = null; }
+  }
+}
+
+const cs = getComputedStyle(document.documentElement);
+const paw  = new Sweep($('#c-paw'),  cs.getPropertyValue('--paw').trim());
+const flow = new Sweep($('#c-flow'), cs.getPropertyValue('--flow').trim());
+paw.zero = 0.88;        // pressure is positive-only; the baseline sits low in the lane
+flow.zero = 0.5;        // flow swings both ways around zero
+
+// One breath, in seconds since its start.
+function pawAt(t){
+  const cyc = 60 / SET.rr, ti = inspTime();
+  const u = t % cyc, pk = ppeak(), base = SET.peep + peepi(), plat = pplat() + peepi();
+  const scale = 1 / 70;                                   // lane spans ~70 cmH₂O — a severe peak must fit
+  if (u < ti * 0.85)  return (base + (pk - base) * (u / (ti*0.85))) * scale;    // ramp to peak
+  if (u < ti)         return plat * scale;                                      // brief plateau
+  // Passive expiration: exponential decay with the patient's own time constant. In obstruction the
+  // decay is slow, which is exactly why the next breath arrives before it is finished.
+  const tc = Math.max(0.25, resistance() * COMPLIANCE / 1000);
+  return (base + (plat - base) * Math.exp(-(u - ti) / tc)) * scale;
+}
+function flowAt(t){
+  const cyc = 60 / SET.rr, ti = inspTime();
+  const u = t % cyc, insp = flowLps() * 60, scale = 1 / 90;                      // lane spans ±90 L/min
+  if (u < ti) return insp * scale;                                              // square wave in VC
+  const tc = Math.max(0.25, resistance() * COMPLIANCE / 1000);
+  return -(insp * 0.9) * Math.exp(-(u - ti) / tc) * scale;
+}
+
+let last = performance.now(), t = 0;
+function frame(now){
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (connected && live && !(V && V.paused)){
+    paw.step(dt, 8, pawAt, t);
+    flow.step(dt, 8, flowAt, t);
+    t += dt;
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ── numbers + alarms ──────────────────────────────────────────────────────────
+const PPEAK_ALARM = 35;         // the standard high-pressure limit
+function paint(){
+  $('#standby').style.display = connected ? 'none' : 'flex';
+  $('#s-vt').textContent = SET.vt; $('#s-rr').textContent = SET.rr;
+  $('#s-peep').textContent = SET.peep; $('#s-fio2').textContent = SET.fio2;
+  $('#s-flow').textContent = SET.flow;
+  const ti = inspTime(), te = (60 / SET.rr) - ti;
+  $('#s-ie').textContent = `${ti.toFixed(1)}s · 1:${Math.round(te / ti)}`;
+
+  const set = (id, txt, alarm) => {
+    const el = $(id); el.querySelector('.v').textContent = txt;
+    el.classList.toggle('alarm', !!alarm);
+  };
+  if (!connected){
+    ['#r-ppeak','#r-pplat','#r-gap','#r-peepi','#r-vte','#r-mv','#r-rrtot','#r-spo2']
+      .forEach(id => set(id, '--', false));
+    $('#alarm').className = 'alarmbar'; $('#alarm').textContent = 'STANDBY';
+    $('#pnote').textContent = ''; $('#fnote').textContent = ''; $('#fnote').className = 'note';
+    $('#hint').textContent = '';
+    return;
+  }
+  const pk = ppeak(), pl = pplat(), gap = pk - pl, pi = peepi(), ve = vte();
+  set('#r-ppeak', Math.round(pk), pk > PPEAK_ALARM);
+  set('#r-pplat', Math.round(pl), pl > 30);
+  set('#r-gap',   Math.round(gap), gap > 15);
+  set('#r-peepi', pi.toFixed(1), pi > 5);
+  set('#r-vte',   ve, ve < SET.vt * 0.85);
+  set('#r-mv',    (ve * SET.rr / 1000).toFixed(1), false);
+  set('#r-rrtot', SET.rr, false);
+  set('#r-spo2',  V && V.spo2 ? Math.round(V.spo2) : '--', V && V.spo2 < 94);
+
+  const bar = $('#alarm');
+  if (pk > PPEAK_ALARM){ bar.className = 'alarmbar on'; bar.textContent = '⚠ HIGH AIRWAY PRESSURE'; }
+  else if (pi > 5){ bar.className = 'alarmbar warn'; bar.textContent = '⚠ AIR TRAPPING'; }
+  else { bar.className = 'alarmbar'; bar.textContent = 'VENTILATING'; }
+
+  $('#pnote').textContent = `Raw ≈ ${Math.round(resistance())} cmH₂O/L/s`;
+  const trapping = pi > 1;
+  $('#fnote').textContent = trapping ? 'expiratory flow has not returned to zero' : '';
+  $('#fnote').className = 'note' + (trapping ? ' bad' : '');
+
+  // The panel says what the gap MEANS. A number a learner cannot interpret is decoration, and this
+  // is the one reading that separates a tight airway from a stiff lung.
+  $('#hint').innerHTML = gap > 15
+    ? 'Ppeak high but <b>Pplat normal</b> → airway resistance, not stiff lungs — think bronchospasm or a blocked tube'
+    : 'Ppeak and Pplat are close — airway resistance is not the problem';
+}
+
+// ── feed ──────────────────────────────────────────────────────────────────────
+async function poll(){
+  try{
+    const r = await fetch(`${BASE}/device/vitals`, { headers: { 'x-embla-session': SID } });
+    const d = await r.json();
+    if (d && d.hr != null){
+      V = d; live = true;
+      // A ventilator is connected when there is a tube. Not when someone opened this page.
+      connected = Array.isArray(d.equipment) && d.equipment.some(e => e.id === 'ett');
+      $('#src').textContent = `feed: ${BASE || location.origin}/device/vitals · sid=${SID}`;
+      $('#net').textContent = '';
+    } else { live = false; connected = false; $('#net').textContent = 'no case in play'; }
+  } catch(e){ live = false; connected = false; $('#net').textContent = 'engine unreachable — ' + e.message; }
+  paint();
+}
+poll(); setInterval(poll, 500);
+</script>
