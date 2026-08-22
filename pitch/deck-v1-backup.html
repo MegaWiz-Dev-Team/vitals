@@ -1,0 +1,384 @@
+<title>Vitals</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --ground:#F5F8F8; --surface:#FFFFFF; --surface-2:#EDF2F2;
+  --ink:#0F1719; --ink-2:#48585C; --ink-3:#7E8F93;
+  --rule:#D9E2E2; --rule-soft:#E8EEEE;
+  --proven:#0B6E58; --proven-soft:#E2F0EB;
+  --attested:#A24714; --attested-soft:#F6E9E1;
+  --shadow:0 1px 2px rgba(15,23,25,.05), 0 8px 24px -12px rgba(15,23,25,.18);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0B1113; --surface:#121B1D; --surface-2:#182325;
+    --ink:#E9F0F0; --ink-2:#9CAEB1; --ink-3:#68797D;
+    --rule:#223033; --rule-soft:#1A2528;
+    --proven:#42D2A7; --proven-soft:#0F2A24;
+    --attested:#E5924F; --attested-soft:#2A1C12;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0B1113; --surface:#121B1D; --surface-2:#182325;
+  --ink:#E9F0F0; --ink-2:#9CAEB1; --ink-3:#68797D;
+  --rule:#223033; --rule-soft:#1A2528;
+  --proven:#42D2A7; --proven-soft:#0F2A24;
+  --attested:#E5924F; --attested-soft:#2A1C12;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;
+  font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased;
+  scroll-snap-type:y proximity;
+}
+h1,h2,h3{font-family:Archivo,"Helvetica Neue",Arial,sans-serif; text-wrap:balance; margin:0}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+
+/* ---------- slide frame ---------- */
+.slide{
+  min-height:100svh; scroll-snap-align:start;
+  display:flex; flex-direction:column; justify-content:center;
+  padding:5.5rem clamp(1.25rem,5vw,4rem) 4.5rem;
+  position:relative; border-bottom:1px solid var(--rule-soft);
+}
+.inner{width:100%; max-width:64rem; margin:0 auto; display:flex; flex-direction:column; gap:1.75rem}
+
+/* the chain rail — prev_hash, made structural */
+.rail{
+  position:absolute; top:1.6rem; left:clamp(1.25rem,5vw,4rem); right:clamp(1.25rem,5vw,4rem);
+  display:flex; align-items:baseline; gap:.9rem;
+  font-family:"IBM Plex Mono",monospace; font-size:.66rem; letter-spacing:.06em;
+  color:var(--ink-3); border-bottom:1px solid var(--rule-soft); padding-bottom:.55rem;
+  overflow:hidden; white-space:nowrap;
+}
+.rail .no{color:var(--ink-2); font-weight:600; font-variant-numeric:tabular-nums}
+.rail .hash{opacity:.55; overflow:hidden; text-overflow:ellipsis}
+.rail .tag{margin-left:auto; color:var(--ink-3); text-transform:uppercase; letter-spacing:.14em; flex:none}
+
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace; font-size:.7rem; text-transform:uppercase;
+  letter-spacing:.18em; color:var(--proven); font-weight:500;
+}
+.lede{font-size:clamp(1.05rem,1.9vw,1.3rem); color:var(--ink-2); max-width:38em; text-wrap:pretty}
+p{margin:0; max-width:40em; text-wrap:pretty}
+
+h2{font-size:clamp(1.85rem,4.4vw,3rem); font-weight:800; letter-spacing:-.025em; line-height:1.08}
+h3{font-size:1rem; font-weight:700; letter-spacing:-.005em}
+
+/* ---------- title slide ---------- */
+.title h1{font-size:clamp(3rem,10vw,7.5rem); font-weight:800; letter-spacing:-.045em; line-height:.92}
+.title .sub{font-size:clamp(1.1rem,2.4vw,1.6rem); color:var(--ink-2); max-width:30em; text-wrap:pretty}
+.meta{
+  display:flex; flex-wrap:wrap; gap:.5rem 1.5rem; font-family:"IBM Plex Mono",monospace;
+  font-size:.75rem; color:var(--ink-3); letter-spacing:.04em;
+  border-top:1px solid var(--rule); padding-top:1rem;
+}
+
+/* ---------- pieces ---------- */
+.grid{display:grid; gap:1rem}
+.g2{grid-template-columns:repeat(auto-fit,minmax(17rem,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(13.5rem,1fr))}
+
+.card{
+  background:var(--surface); border:1px solid var(--rule); border-radius:3px;
+  padding:1.15rem 1.25rem; display:flex; flex-direction:column; gap:.5rem; box-shadow:var(--shadow);
+}
+.card .k{font-family:"IBM Plex Mono",monospace; font-size:.68rem; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--ink-3)}
+.card p{font-size:.925rem; color:var(--ink-2)}
+
+.stat{display:flex; flex-direction:column; gap:.15rem}
+.stat .n{font-family:Archivo,sans-serif; font-weight:800; font-size:clamp(1.9rem,4.5vw,2.9rem);
+  letter-spacing:-.03em; line-height:1; font-variant-numeric:tabular-nums}
+.stat .l{font-size:.83rem; color:var(--ink-2)}
+
+.tally{border-left:2px solid var(--proven); padding-left:1rem}
+.tally.warn{border-left-color:var(--attested)}
+
+.chip{
+  display:inline-flex; align-items:center; gap:.45rem; align-self:flex-start;
+  font-family:"IBM Plex Mono",monospace; font-size:.68rem; letter-spacing:.1em;
+  text-transform:uppercase; padding:.25rem .6rem; border-radius:2px; font-weight:500;
+}
+.chip.ok{background:var(--proven-soft); color:var(--proven)}
+.chip.no{background:var(--attested-soft); color:var(--attested)}
+
+table{border-collapse:collapse; width:100%; font-size:.9rem}
+.scroller{overflow-x:auto; border:1px solid var(--rule); border-radius:3px; background:var(--surface)}
+th,td{text-align:left; padding:.6rem .85rem; border-bottom:1px solid var(--rule-soft); vertical-align:top}
+th{font-family:"IBM Plex Mono",monospace; font-size:.66rem; text-transform:uppercase;
+  letter-spacing:.12em; color:var(--ink-3); font-weight:500; white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.num{text-align:right; font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums}
+td strong{color:var(--ink)}
+
+pre{
+  margin:0; background:var(--surface); border:1px solid var(--rule); border-radius:3px;
+  padding:1rem 1.15rem; overflow-x:auto; font-family:"IBM Plex Mono",monospace;
+  font-size:.8rem; line-height:1.65; color:var(--ink-2);
+}
+pre b{color:var(--proven); font-weight:600}
+pre i{color:var(--attested); font-style:normal}
+
+ul{margin:0; padding-left:1.1rem; display:flex; flex-direction:column; gap:.5rem; max-width:42em}
+li{color:var(--ink-2)}
+li strong,p strong{color:var(--ink); font-weight:600}
+
+.flow{display:flex; flex-direction:column; gap:.5rem; font-family:"IBM Plex Mono",monospace; font-size:.78rem}
+.step{display:grid; grid-template-columns:auto 1fr; gap:.9rem; align-items:start;
+  background:var(--surface); border:1px solid var(--rule); border-radius:3px; padding:.7rem .9rem}
+.step .t{color:var(--proven); font-weight:600; white-space:nowrap}
+.step .d{color:var(--ink-2); font-family:"IBM Plex Sans",sans-serif; font-size:.9rem}
+
+.split{display:grid; gap:1rem; grid-template-columns:repeat(auto-fit,minmax(18rem,1fr))}
+.kill{background:var(--surface-2); border:1px dashed var(--rule); border-radius:3px; padding:1rem 1.15rem}
+.kill h3{margin-bottom:.35rem}
+.kill p{font-size:.9rem; color:var(--ink-2)}
+
+.q{border-top:1px solid var(--rule); padding-top:.9rem; display:flex; flex-direction:column; gap:.3rem}
+.q .ask{font-weight:600; color:var(--ink)}
+.q .ans{font-size:.92rem; color:var(--ink-2)}
+
+@media (prefers-reduced-motion:no-preference){
+  .slide{scroll-behavior:smooth}
+}
+@media (max-width:640px){
+  .slide{min-height:auto; padding:4.5rem 1.25rem 3rem}
+}
+</style>
+
+<!-- 01 -->
+<section class="slide title">
+  <div class="rail"><span class="no">01</span><span class="hash">prev_hash = GENESIS</span><span class="tag">Vitals</span></div>
+  <div class="inner">
+    <span class="eyebrow">Colosseum · Solana</span>
+    <h1>Vitals</h1>
+    <p class="sub">A patient is dying on a clock and you decide what happens next.<br>Anyone can play. Nobody can fake the replay.</p>
+    <div class="meta">
+      <span>VERIFIABLE CLINICAL REPLAY</span><span>v0.1.0 · DRAFT</span><span>AGPL-3.0 + COMMERCIAL</span>
+    </div>
+  </div>
+</section>
+
+<!-- 02 -->
+<section class="slide">
+  <div class="rail"><span class="no">02</span><span class="hash">the problem</span><span class="tag">Vitals</span></div>
+  <div class="inner">
+    <span class="eyebrow">The problem</span>
+    <h2>A doctor's competence stops at the border.</h2>
+    <p class="lede">Since 2024, ECFMG certification — the gate to US residency — requires graduating from a school accredited by a WFME-recognised agency. Accreditation is granted to <em>institutions</em>, country by country, and most countries do not have it.</p>
+    <div class="grid g3">
+      <div class="card stat"><span class="n">4,350+</span><span class="l">medical schools in the World Directory</span></div>
+      <div class="card stat"><span class="n">~23</span><span class="l">countries with a WFME-recognised accrediting agency</span></div>
+      <div class="card stat"><span class="n">130–147</span><span class="l">countries whose graduates apply for ECFMG certification</span></div>
+    </div>
+    <p>For most of the world's medical graduates there is no mechanism to prove competence abroad. Their school's paperwork is the only artifact, and nobody downstream recognises it. Meanwhile every one of them ran hundreds of scored clinical encounters that would have proved it — and all of that was thrown away.</p>
+  </div>
+</section>
+
+<!-- 03 -->
+<section class="slide">
+  <div class="rail"><span class="no">03</span><span class="hash">what already ships</span><span class="tag">Vitals</span></div>
+  <div class="inner">
+    <span class="eyebrow">The head start</span>
+    <h2>We are not building the hard part. It shipped a year ago.</h2>
+    <p class="lede"><strong>Embla Cloud v1.55.2</strong> — an AI virtual-patient OSCE simulator, in production with real students, a real case library, and a deterministic rubric behind it.</p>
+    <div class="grid g3">
+      <div class="card stat"><span class="n">424</span><span class="l">authored OSCE cases, 12 specialties — the demo ships 3</span></div>
+      <div class="card stat"><span class="n">1★–3★</span><span class="l">stars, tracks, stage unlocks, leaderboards — gamification already live</span></div>
+      <div class="card stat"><span class="n">EPA 1·2·3·4·10</span><span class="l">rubric already maps to AAMC Core EPAs</span></div>
+    </div>
+    <p>That last one matters more than it looks. The credential is denominated in <strong>EPAs — the global common language of medical competency</strong> — not in a scale we invented. A residency director in any country already knows what EPA 10 means.</p>
+    <p>Most hackathon teams spend four weeks building the thing that produces the signal. We have it, with a hash-chained audit log and a competency model on top. The sprint is spent making that signal <strong>verifiable</strong>.</p>
+  </div>
+</section>
+
+<!-- 04 -->
+<section class="slide">
+  <div class="rail"><span class="no">04</span><span class="hash">the insight</span><span class="tag">Vitals</span></div>
+  <div class="inner">
+    <span class="eyebrow">The insight</span>
+    <h2>Our progression system is already a pure function.</h2>
+    <p class="lede">No database lookup. No server opinion. No randomness. Just arithmetic over the attempt history — already unit-tested, already in Rust.</p>
+    <pre><code>// engine/src/competency.rs — verbatim, shipping today
+pub fn <b>level_for</b>(xp: i64) -> i64 {
+    let mut lvl = 1;
+    while 25 * (lvl + 1) * (lvl + 2) &lt;= xp { lvl += 1; }
+    lvl
+}
+
+pub fn <b>dreyfus</b>(avg: f64, distinct: usize, hard: usize, variance: f64) -> &amp;'static str { … }</code></pre>
+    <p>A function this small runs <strong>inside an Anchor program</strong>. Which means the chain does not have to take our word for a student's level — it can recompute it.</p>
+  </div>
+</section>
+
+<!-- 05 -->
+<section class="slide">
+  <div class="rail"><span class="no">05</span><span class="hash">one record, three resolutions</span><span class="tag">Vitals</span></div>
+  <div class="inner">
+    <span class="eyebrow">The shape</span>
+    <h2>One anchored record, read at three resolutions.</h2>
+    <p class="lede">Not three products. If a feature can't be introduced as a consequence of this sentence, it doesn't belong in the pitch.</p>
+    <div class="scroller"><table>
+      <thead><tr><th>Resolution</th><th>What it is</th><th>Stakes</th><th>Who can mint</th><th>Solana primitive</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Attempt</strong></td><td>the anchored leaf</td><td>raw evidence</td><td>verifier</td><td>state compression</td></tr>
+        <tr><td><strong>Progression</strong></td><td>level, skill tree, badge</td><td>low, continuous</td><td><strong>anyone — the program checks the maths</strong></td><td>Token-2022 · cNFT</td></tr>
+        <tr><td><strong>Credential</strong></td><td>competency attestation</td><td>high, institutional</td><td>accredited issuer</td><td>Attestation Service</td></tr>
+      </tbody>
+    </table></div>
+    <p>The case library itself never goes onchain. The chain holds the commitment, not the payload.</p>
+  </div>
+</section>
+
+<!-- 06 -->
+<section class="slide">
+  <div class="rail"><span class="no">06</span><span class="hash">commit → encounter → reveal</span><span class="tag">Vitals</span></div>
+  <div class="inner">
+    <span class="eyebrow">The mechanism</span>
+    <h2>Commit before, replay after.</h2>
+    <div class="flow">
+      <div class="step"><span class="t">t0 · commit</span><span class="d">Before the encounter starts: <code>hash(case ‖ student ‖ nonce)</code> lands onchain. You cannot practise five times and anchor only the good run — the chain already knows how many you started.</span></div>
+      <div class="step"><span class="t">t1 · encounter</span><span class="d">The student interviews the virtual patient. Inference runs on our existing backend; nothing clinical is sent anywhere new.</span></div>
+      <div class="step"><span class="t">t2 · score</span><span class="d">The verifier — not the player's device — replays the action trace against the simulation and holds the signing key. A player cannot sign their own outcome.</span></div>
+      <div class="step"><span class="t">t3 · reveal</span><span class="d">A compressed leaf over the action trace and what it did to the patient. Pinning the simulation hash is what makes the run re-derivable — by anyone, forever, without us.</span></div>
+    </div>
+    <p><strong>The demo:</strong> two machines, no shared database, same tape, same patient, same outcome. A certificate cannot do that.</p>
+  </div>
+</section>
+
+<!-- 07 -->
+<section class="slide">
+  <div class="rail"><span class="no">07</span><span class="hash">the world model</span><span class="tag">Vitals</span></div>
+  <div class="inner">
+    <span class="eyebrow">What we actually prove</span>
+    <h2>Don't anchor the grade. Anchor the world.</h2>
+    <p class="lede">The patient runs on a deterministic physiology automaton — continuous vital dynamics, triggers, state transitions, harm events, a terminal outcome. It already ships, loaded from JSON, with golden tests that drive it from a replay tape.</p>
+    <div class="split">
+      <div class="card">
+        <span class="chip no">outside the proof</span>
+        <h3>The conversation</h3>
+        <p>An LLM plays the patient. It is what makes the encounter worth playing — and it is non-deterministic, so it stays out of the evidence entirely. The transcript never has to be revealed.</p>
+      </div>
+      <div class="card">
+        <span class="chip ok">inside the proof</span>
+        <h3>The world model</h3>
+        <p>What you did, when you did it, whether the patient was harmed, whether they survived. A verifier replays the same tape against the same simulation and must reach the same outcome.</p>
+      </div>
+    </div>
+    <pre><code>leaf = hash(sce_id ‖ sce_hash ‖ <b>action_trace</b> ‖ <b>outcome</b> ‖ <b>harm_events</b>)</code></pre>
+    <p><strong>No model anywhere in the verification path.</strong> This is verifiable replay — what chess engines and speedrun leaderboards have done for decades — applied to a patient who is dying on a clock.</p>
+  </div>
+</section>
+
+<!-- 08 -->
+<section class="slide">
+  <div class="rail"><span class="no">08</span><span class="hash">progression, recomputed</span><span class="tag">Vitals</span></div>
+  <div class="inner">
+    <span class="eyebrow">The differentiator</span>
+    <h2>Every other achievement token is minted because a server said so.</h2>
+    <p class="lede">Ours is minted because the chain recomputed the predicate and agreed. <code>claim_progress</code> takes merkle proofs for anchored attempts, runs its own integer copy of <code>level_for</code> and <code>dreyfus</code>, and mints only if the arithmetic holds.</p>
+    <pre><code>claim_progress(proofs[]) →
+    program recomputes xp, level, distinct_cases, variance
+    <i>claim: Expert   ·  computed: Proficient   → REJECTED</i>
+    <b>claim: Proficient · computed: Proficient → skill tree advances</b></code></pre>
+    <p><strong>Show the rejection first.</strong> A protocol that refuses its own user's claim is the fastest way to prove there is no trusted issuer in the loop.</p>
+  </div>
+</section>
+
+<!-- 09 -->
+<section class="slide">
+  <div class="rail"><span class="no">09</span><span class="hash">soulbound by construction</span><span class="tag">Vitals</span></div>
+  <div class="inner">
+    <span class="eyebrow">A deliberate refusal</span>
+    <h2>None of it is tradeable. That's the point.</h2>
+    <div class="split">
+      <div class="card"><span class="k">The design</span><p>Token-2022 <strong>NonTransferable</strong> on every progression token. One evolving skill tree per specialty — advancing Novice → Competent → Proficient → Expert — instead of hundreds of badges cluttering a wallet.</p></div>
+      <div class="card"><span class="k">The reason</span><p>A tradeable "Expert in Cardiology" is credential fraud with extra steps. A secondary market for it would make the entire system worthless on day one.</p></div>
+    </div>
+    <p>We give up the secondary-market volume on purpose. Every pitch reaches for tradability because it makes the tokenomics slide easier; refusing it is what shows we understand the domain.</p>
+  </div>
+</section>
+
+<!-- 10 -->
+<section class="slide">
+  <div class="rail"><span class="no">10</span><span class="hash">escrow · the money</span><span class="tag">Vitals</span></div>
+  <div class="inner">
+    <span class="eyebrow">Where real money enters</span>
+    <h2>Scholarships that pay out on proof, not paperwork.</h2>
+    <p class="lede">A sponsor — a global health NGO, a hospital network recruiting abroad, a specialty college, a diaspora fund — posts a bounty:</p>
+    <div class="card tally">
+      <p style="font-size:1.05rem"><strong>"First 100 graduates anywhere to reach EPA 10 · Proficient this year: $150 each."</strong></p>
+      <p>The escrow releases on a provably attained level. No committee, no application form, no country list, no trusted distributor — and the sponsor verifies every payout without seeing a single student's transcript. A student in a country with no recognised accrediting agency is eligible on exactly the same terms as one in Boston.</p>
+    </div>
+    <div class="grid g3">
+      <div class="card"><span class="k">Gating</span><p><code>required_badge</code> lives in the registry, not our client — so a competing front-end inherits it for free.</p></div>
+      <div class="card"><span class="k">Author royalties</span><p>1–5¢ per attempt to whoever wrote the case, paid across borders. Card rails eat that whole amount in fees, and most of the world's clinical educators cannot get an acquiring relationship at all.</p></div>
+      <div class="card"><span class="k">Institutions</span><p>Schools stay on ordinary invoices in local currency. No university is going to hold USDC, and a design that needs them to is dead on arrival.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 11 -->
+<section class="slide">
+  <div class="rail"><span class="no">11</span><span class="hash">why solana</span><span class="tag">Vitals</span></div>
+  <div class="inner">
+    <span class="eyebrow">Why Solana</span>
+    <h2>The numbers only close on this chain.</h2>
+    <div class="scroller"><table>
+      <thead><tr><th>Constraint</th><th>The requirement</th><th class="num">Solana</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Volume</strong></td><td>One cohort year across the World Directory is hundreds of millions of encounters</td><td class="num">~$110 / 1M</td></tr>
+        <tr><td><strong>Micropayments</strong></td><td>Cross-border author royalty per attempt, in cents</td><td class="num">1–5¢</td></tr>
+        <tr><td><strong>Latency</strong></td><td>The skill tree advances in the same screen as the score, or it reads as paperwork</td><td class="num">sub-second</td></tr>
+        <tr><td><strong>Onboarding</strong></td><td>A medical student must never see a seed phrase</td><td class="num">fee-payer relay</td></tr>
+        <tr><td><strong>Composability</strong></td><td>Don't invent standards that exist — onchain or clinical</td><td class="num">SAS · Bubblegum · Token-2022 · AAMC EPA</td></tr>
+      </tbody>
+    </table></div>
+    <p>Anchoring only the exams would be the cheap-chain compromise — and it would destroy the continuous-competency thesis. At $0.0001 per anchor we can anchor <strong>every practice attempt</strong>.</p>
+  </div>
+</section>
+
+<!-- 12 -->
+<section class="slide">
+  <div class="rail"><span class="no">12</span><span class="hash">the smallest demo that proves it</span><span class="tag">Vitals</span></div>
+  <div class="inner">
+    <span class="eyebrow">The demo</span>
+    <h2>Three patients. No model in the proof path. Nothing staged.</h2>
+    <p class="lede">One cardiology skill tree, three tiers, three emergencies anyone can follow on a monitor. Scoring comes from the replay, not the rubric — so every number in the demo is re-derivable by the audience on their own machine.</p>
+    <div class="grid g3">
+      <div class="card"><span class="k">Student</span><p><strong>Stable angina</strong><br>the baseline encounter</p></div>
+      <div class="card"><span class="k">Intern</span><p><strong>Anterior STEMI</strong><br>the one everyone recognises</p></div>
+      <div class="card"><span class="k">Resident</span><p><strong>Aortic dissection</strong><br>the one where waiting is fatal</p></div>
+    </div>
+    <div class="card tally warn">
+      <span class="k">The moment</span>
+      <p>Three distinct cases clears <code>distinct &gt;= 3</code>, so the chain computes <strong>Competent</strong>. Proficient needs <code>distinct &gt;= 5</code>. Claim Proficient and the program <strong>rejects its own user</strong> — not because we scripted a failure, but because the real threshold in shipping code says no. Then claim Competent, and the skill tree advances on-screen.</p>
+    </div>
+    <p>Everything else waits: no leaderboard, no email, no cloud model, no institutional credential, no wallet the student has to understand.</p>
+    <div class="card">
+      <span class="k">One language, three targets</span>
+      <p>Rust end to end. The same scoring code compiles into the web app, into the verifier that re-derives a score, and into wasm on the public verify page — with an integer twin inside the Anchor program. The claim "anyone can reproduce this number" is cheap to make and expensive to honour; sharing one implementation is how we honour it.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 13 -->
+<section class="slide">
+  <div class="rail"><span class="no">13</span><span class="hash">open questions</span><span class="tag">Vitals</span></div>
+  <div class="inner">
+    <span class="eyebrow">Before a line of code</span>
+    <h2>Three decisions that outrank the build.</h2>
+    <div class="q"><span class="ask">1 · Which deadline are we aiming at?</span><span class="ans">The Eternal countdown showed ~15 days, and a four-week sprint does not fit inside it. Entry deadline or submission deadline? The site doesn't disambiguate — confirm with Colosseum before starting the timer.</span></div>
+    <div class="q"><span class="ask">2 · Does anything here need to be filed first?</span><span class="ans">Colosseum submissions are public and explicitly non-confidential. If any of the scoring or competency work is patent-track, filing has to happen before submission. One-way door.</span></div>
+    <div class="q"><span class="ask">3 · What pins the judged 60 points?</span><span class="ans">The live product judges on a hosted model whose version can move under us. Either pin a version we control, or state plainly that <code>judged_score</code> is attestation and never proof — and keep escrow predicates on <code>det_score</code>.</span></div>
+    <div class="q"><span class="ask">And the question every judge asks</span><span class="ans"><strong>"Why does this need a blockchain?"</strong> — because the verifier must not be the same party as the scorer, and the relying party is in another country. Take the chain away and you are back to trusting one company's database, which is exactly why digital credentials are worthless today.</span></div>
+  </div>
+</section>

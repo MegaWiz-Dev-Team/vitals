@@ -154,7 +154,42 @@ li strong,p strong{color:var(--ink); font-weight:600}
 }
 </style>
 
-<!-- 01 -->
+
+<style>
+/* ── additions for the blockchain / tokenomics build ── */
+.flowrow{display:grid; gap:.6rem; grid-template-columns:repeat(auto-fit,minmax(11rem,1fr))}
+.node{background:var(--surface); border:1px solid var(--rule); border-radius:3px; padding:.85rem .95rem;
+  display:flex; flex-direction:column; gap:.3rem}
+.node .h{font-family:"IBM Plex Mono",monospace; font-size:.64rem; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--proven)}
+.node .b{font-size:.85rem; color:var(--ink-2)}
+.node.warn .h{color:var(--attested)}
+
+.ledger{display:grid; gap:0; border:1px solid var(--rule); border-radius:3px; overflow:hidden;
+  background:var(--surface); font-family:"IBM Plex Mono",monospace; font-size:.78rem}
+.ledger .row{display:grid; grid-template-columns:auto 1fr auto; gap:1rem; padding:.55rem .9rem;
+  border-bottom:1px solid var(--rule-soft); align-items:baseline}
+.ledger .row:last-child{border-bottom:0}
+.ledger .row .k{color:var(--ink-3); white-space:nowrap}
+.ledger .row .v{color:var(--ink-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.ledger .row .r{color:var(--proven); font-weight:600; white-space:nowrap}
+.ledger .row.no .r{color:var(--attested)}
+
+.refuse{border:1px solid var(--attested); background:var(--attested-soft); border-radius:3px;
+  padding:1rem 1.15rem; display:flex; flex-direction:column; gap:.45rem}
+.refuse .h{font-family:"IBM Plex Mono",monospace; font-size:.66rem; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--attested)}
+.refuse code{font-size:.8rem; color:var(--ink-2); display:block}
+
+.two{display:grid; gap:1.5rem; grid-template-columns:repeat(auto-fit,minmax(19rem,1fr)); align-items:start}
+.sub-h{font-family:"IBM Plex Mono",monospace; font-size:.66rem; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--ink-3); margin-bottom:.5rem}
+.never{border-left:2px solid var(--attested); padding-left:1rem}
+.never li{color:var(--ink-2)}
+.small{font-size:.85rem; color:var(--ink-3)}
+</style>
+
+<!-- 01 ───────────────────────────────────────────────── -->
 <section class="slide title">
   <div class="rail"><span class="no">01</span><span class="hash">prev_hash = GENESIS</span><span class="tag">Vitals</span></div>
   <div class="inner">
@@ -162,223 +197,192 @@ li strong,p strong{color:var(--ink); font-weight:600}
     <h1>Vitals</h1>
     <p class="sub">A patient is dying on a clock and you decide what happens next.<br>Anyone can play. Nobody can fake the replay.</p>
     <div class="meta">
-      <span>VERIFIABLE CLINICAL REPLAY</span><span>v0.1.0 · DRAFT</span><span>AGPL-3.0 + COMMERCIAL</span>
+      <span>VERIFIABLE CLINICAL REPLAY</span><span>RUST · SOLANA</span><span>AGPL-3.0 + COMMERCIAL</span>
     </div>
   </div>
 </section>
 
-<!-- 02 -->
+<!-- 02 ───────────────────────────────────────────────── -->
 <section class="slide">
   <div class="rail"><span class="no">02</span><span class="hash">the problem</span><span class="tag">Vitals</span></div>
   <div class="inner">
     <span class="eyebrow">The problem</span>
-    <h2>A doctor's competence stops at the border.</h2>
+    <h2>Skill has no passport.</h2>
     <p class="lede">Since 2024, ECFMG certification — the gate to US residency — requires graduating from a school accredited by a WFME-recognised agency. Accreditation is granted to <em>institutions</em>, country by country, and most countries do not have it.</p>
     <div class="grid g3">
       <div class="card stat"><span class="n">4,350+</span><span class="l">medical schools in the World Directory</span></div>
-      <div class="card stat"><span class="n">~23</span><span class="l">countries with a WFME-recognised accrediting agency</span></div>
-      <div class="card stat"><span class="n">130–147</span><span class="l">countries whose graduates apply for ECFMG certification</span></div>
+      <div class="card stat"><span class="n">~23</span><span class="l">countries with a WFME-recognised agency</span></div>
+      <div class="card stat"><span class="n">130–147</span><span class="l">countries whose graduates apply</span></div>
     </div>
-    <p>For most of the world's medical graduates there is no mechanism to prove competence abroad. Their school's paperwork is the only artifact, and nobody downstream recognises it. Meanwhile every one of them ran hundreds of scored clinical encounters that would have proved it — and all of that was thrown away.</p>
+    <p>Every one of those graduates ran hundreds of scored clinical encounters that would have proved what they can do. All of it sits in one institution's database, unverifiable by anyone outside it, and is thrown away at the border. <strong>The evidence exists. The trust layer does not.</strong></p>
   </div>
 </section>
 
-<!-- 03 -->
+<!-- 03 ───────────────────────────────────────────────── -->
 <section class="slide">
-  <div class="rail"><span class="no">03</span><span class="hash">what already ships</span><span class="tag">Vitals</span></div>
+  <div class="rail"><span class="no">03</span><span class="hash">running today</span><span class="tag">Vitals</span></div>
   <div class="inner">
-    <span class="eyebrow">The head start</span>
-    <h2>We are not building the hard part. It shipped a year ago.</h2>
-    <p class="lede"><strong>Embla Cloud v1.55.2</strong> — an AI virtual-patient OSCE simulator, in production with real students, a real case library, and a deterministic rubric behind it.</p>
-    <div class="grid g3">
-      <div class="card stat"><span class="n">424</span><span class="l">authored OSCE cases, 12 specialties — the demo ships 3</span></div>
-      <div class="card stat"><span class="n">1★–3★</span><span class="l">stars, tracks, stage unlocks, leaderboards — gamification already live</span></div>
-      <div class="card stat"><span class="n">EPA 1·2·3·4·10</span><span class="l">rubric already maps to AAMC Core EPAs</span></div>
+    <span class="eyebrow">Not a mockup</span>
+    <h2>This runs. Here is the output.</h2>
+    <p class="lede">One scenario — anaphylaxis, a 19-year-old, ten minutes from the first bite. Three players, three tapes, replayed against the shipped physiology automaton.</p>
+    <div class="ledger">
+      <div class="row"><span class="k">treated</span><span class="v">adrenaline IM · O₂ · supine · fluids · admit</span><span class="r">WinDischarge</span></div>
+      <div class="row no"><span class="k">stood up</span><span class="v">adrenaline IM · <b>stood the patient up</b> · O₂ · fluids · admit</span><span class="r">WinDischarge · harm</span></div>
+      <div class="row no"><span class="k">no adrenaline</span><span class="v">antihistamine · steroid · wait</span><span class="r">DeathArrest</span></div>
     </div>
-    <p>That last one matters more than it looks. The credential is denominated in <strong>EPAs — the global common language of medical competency</strong> — not in a scale we invented. A residency director in any country already knows what EPA 10 means.</p>
-    <p>Most hackathon teams spend four weeks building the thing that produces the signal. We have it, with a hash-chained audit log and a competency model on top. The sprint is spent making that signal <strong>verifiable</strong>.</p>
+    <p>The middle row is the one that matters. <strong>Same outcome as the first, different leaf</strong>, because the harm is on the record. The anchor captures how you got there, not just whether you won. And nobody scripted the third — antihistamines are what people reach for when they haven't recognised what they're looking at, and the simulation kills her for it.</p>
+    <pre><code>sce_hash  4d5ee49cc13dd5af1badf4d601010b03e70ded6d2e0ebaf339a26e7d1616a703
+treated   <b>65c56e52d9f718aef60cb4e7f712443fe779b10ffb3c3ac2e301464ebd275398</b>
+stood up  <b>a6bec396869e7d889686bc42111f4a2b090aa16c4d93213262d24c858637f8ca</b></code></pre>
   </div>
 </section>
 
-<!-- 04 -->
+<!-- 04 ───────────────────────────────────────────────── -->
 <section class="slide">
-  <div class="rail"><span class="no">04</span><span class="hash">the insight</span><span class="tag">Vitals</span></div>
-  <div class="inner">
-    <span class="eyebrow">The insight</span>
-    <h2>Our progression system is already a pure function.</h2>
-    <p class="lede">No database lookup. No server opinion. No randomness. Just arithmetic over the attempt history — already unit-tested, already in Rust.</p>
-    <pre><code>// engine/src/competency.rs — verbatim, shipping today
-pub fn <b>level_for</b>(xp: i64) -> i64 {
-    let mut lvl = 1;
-    while 25 * (lvl + 1) * (lvl + 2) &lt;= xp { lvl += 1; }
-    lvl
-}
-
-pub fn <b>dreyfus</b>(avg: f64, distinct: usize, hard: usize, variance: f64) -> &amp;'static str { … }</code></pre>
-    <p>A function this small runs <strong>inside an Anchor program</strong>. Which means the chain does not have to take our word for a student's level — it can recompute it.</p>
-  </div>
-</section>
-
-<!-- 05 -->
-<section class="slide">
-  <div class="rail"><span class="no">05</span><span class="hash">one record, three resolutions</span><span class="tag">Vitals</span></div>
-  <div class="inner">
-    <span class="eyebrow">The shape</span>
-    <h2>One anchored record, read at three resolutions.</h2>
-    <p class="lede">Not three products. If a feature can't be introduced as a consequence of this sentence, it doesn't belong in the pitch.</p>
-    <div class="scroller"><table>
-      <thead><tr><th>Resolution</th><th>What it is</th><th>Stakes</th><th>Who can mint</th><th>Solana primitive</th></tr></thead>
-      <tbody>
-        <tr><td><strong>Attempt</strong></td><td>the anchored leaf</td><td>raw evidence</td><td>verifier</td><td>state compression</td></tr>
-        <tr><td><strong>Progression</strong></td><td>level, skill tree, badge</td><td>low, continuous</td><td><strong>anyone — the program checks the maths</strong></td><td>Token-2022 · cNFT</td></tr>
-        <tr><td><strong>Credential</strong></td><td>competency attestation</td><td>high, institutional</td><td>accredited issuer</td><td>Attestation Service</td></tr>
-      </tbody>
-    </table></div>
-    <p>The case library itself never goes onchain. The chain holds the commitment, not the payload.</p>
-  </div>
-</section>
-
-<!-- 06 -->
-<section class="slide">
-  <div class="rail"><span class="no">06</span><span class="hash">commit → encounter → reveal</span><span class="tag">Vitals</span></div>
+  <div class="rail"><span class="no">04</span><span class="hash">commit · replay · anchor</span><span class="tag">Vitals</span></div>
   <div class="inner">
     <span class="eyebrow">The mechanism</span>
-    <h2>Commit before, replay after.</h2>
-    <div class="flow">
-      <div class="step"><span class="t">t0 · commit</span><span class="d">Before the encounter starts: <code>hash(case ‖ student ‖ nonce)</code> lands onchain. You cannot practise five times and anchor only the good run — the chain already knows how many you started.</span></div>
-      <div class="step"><span class="t">t1 · encounter</span><span class="d">The student interviews the virtual patient. Inference runs on our existing backend; nothing clinical is sent anywhere new.</span></div>
-      <div class="step"><span class="t">t2 · score</span><span class="d">The verifier — not the player's device — replays the action trace against the simulation and holds the signing key. A player cannot sign their own outcome.</span></div>
-      <div class="step"><span class="t">t3 · reveal</span><span class="d">A compressed leaf over the action trace and what it did to the patient. Pinning the simulation hash is what makes the run re-derivable — by anyone, forever, without us.</span></div>
+    <h2>Every run reduces to one hash.</h2>
+    <div class="flowrow">
+      <div class="node"><span class="h">1 · commit</span><span class="b">Before play: <code>hash(scenario ‖ player ‖ nonce)</code> onchain. The chain knows how many attempts were <em>started</em>, so grinding for a good run is visible.</span></div>
+      <div class="node"><span class="h">2 · play</span><span class="b">A deterministic automaton — vital dynamics, triggers, transitions, harm, terminal outcome. The tape is what you did and when.</span></div>
+      <div class="node"><span class="h">3 · reduce</span><span class="b">Discrete facts only: ordered beats, harm events, outcome. No float trajectory enters the hash, so nothing drifts across machines.</span></div>
+      <div class="node"><span class="h">4 · anchor</span><span class="b">One compressed leaf. Anyone holding the tape and the scenario recomputes it — forever, without us.</span></div>
     </div>
-    <p><strong>The demo:</strong> two machines, no shared database, same tape, same patient, same outcome. A certificate cannot do that.</p>
+    <pre><code>leaf = sha256( sce_hash ‖ tape ‖ <b>beats</b> ‖ <b>harm_events</b> ‖ <b>outcome</b> )</code></pre>
+    <p><strong>There is no model anywhere in that path.</strong> An LLM plays the patient's dialogue in other modes and never touches the evidence. This is verifiable replay — what chess engines and speedrun leaderboards have done for decades — applied to a patient who is dying on a clock.</p>
   </div>
 </section>
 
-<!-- 07 -->
+<!-- 05 ───────────────────────────────────────────────── -->
 <section class="slide">
-  <div class="rail"><span class="no">07</span><span class="hash">the world model</span><span class="tag">Vitals</span></div>
+  <div class="rail"><span class="no">05</span><span class="hash">why a chain</span><span class="tag">Vitals</span></div>
   <div class="inner">
-    <span class="eyebrow">What we actually prove</span>
-    <h2>Don't anchor the grade. Anchor the world.</h2>
-    <p class="lede">The patient runs on a deterministic physiology automaton — continuous vital dynamics, triggers, state transitions, harm events, a terminal outcome. It already ships, loaded from JSON, with golden tests that drive it from a replay tape.</p>
-    <div class="split">
-      <div class="card">
-        <span class="chip no">outside the proof</span>
-        <h3>The conversation</h3>
-        <p>An LLM plays the patient. It is what makes the encounter worth playing — and it is non-deterministic, so it stays out of the evidence entirely. The transcript never has to be revealed.</p>
-      </div>
-      <div class="card">
-        <span class="chip ok">inside the proof</span>
-        <h3>The world model</h3>
-        <p>What you did, when you did it, whether the patient was harmed, whether they survived. A verifier replays the same tape against the same simulation and must reach the same outcome.</p>
-      </div>
+    <span class="eyebrow">Why this needs a chain</span>
+    <h2>Watch the program refuse its own user.</h2>
+    <p class="lede">Progression is not granted by a server. The program is handed the attempts, <strong>recomputes the level itself</strong>, and writes only what its own arithmetic agrees with. Live on a validator, today:</p>
+    <div class="refuse">
+      <span class="h">claim: Proficient</span>
+      <code>REJECTED — claim rejected: claimed Proficient, computed Competent</code>
+      <code>from 3 attempts (3 distinct, avg 7333bps)</code>
     </div>
-    <pre><code>leaf = hash(sce_id ‖ sce_hash ‖ <b>action_trace</b> ‖ <b>outcome</b> ‖ <b>harm_events</b>)</code></pre>
-    <p><strong>No model anywhere in the verification path.</strong> This is verifiable replay — what chess engines and speedrun leaderboards have done for decades — applied to a patient who is dying on a clock.</p>
-  </div>
-</section>
-
-<!-- 08 -->
-<section class="slide">
-  <div class="rail"><span class="no">08</span><span class="hash">progression, recomputed</span><span class="tag">Vitals</span></div>
-  <div class="inner">
-    <span class="eyebrow">The differentiator</span>
-    <h2>Every other achievement token is minted because a server said so.</h2>
-    <p class="lede">Ours is minted because the chain recomputed the predicate and agreed. <code>claim_progress</code> takes merkle proofs for anchored attempts, runs its own integer copy of <code>level_for</code> and <code>dreyfus</code>, and mints only if the arithmetic holds.</p>
-    <pre><code>claim_progress(proofs[]) →
-    program recomputes xp, level, distinct_cases, variance
-    <i>claim: Expert   ·  computed: Proficient   → REJECTED</i>
-    <b>claim: Proficient · computed: Proficient → skill tree advances</b></code></pre>
-    <p><strong>Show the rejection first.</strong> A protocol that refuses its own user's claim is the fastest way to prove there is no trusted issuer in the loop.</p>
-  </div>
-</section>
-
-<!-- 09 -->
-<section class="slide">
-  <div class="rail"><span class="no">09</span><span class="hash">soulbound by construction</span><span class="tag">Vitals</span></div>
-  <div class="inner">
-    <span class="eyebrow">A deliberate refusal</span>
-    <h2>None of it is tradeable. That's the point.</h2>
-    <div class="split">
-      <div class="card"><span class="k">The design</span><p>Token-2022 <strong>NonTransferable</strong> on every progression token. One evolving skill tree per specialty — advancing Novice → Competent → Proficient → Expert — instead of hundreds of badges cluttering a wallet.</p></div>
-      <div class="card"><span class="k">The reason</span><p>A tradeable "Expert in Cardiology" is credential fraud with extra steps. A secondary market for it would make the entire system worthless on day one.</p></div>
-    </div>
-    <p>We give up the secondary-market volume on purpose. Every pitch reaches for tradability because it makes the tokenomics slide easier; refusing it is what shows we understand the domain.</p>
-  </div>
-</section>
-
-<!-- 10 -->
-<section class="slide">
-  <div class="rail"><span class="no">10</span><span class="hash">escrow · the money</span><span class="tag">Vitals</span></div>
-  <div class="inner">
-    <span class="eyebrow">Where real money enters</span>
-    <h2>Scholarships that pay out on proof, not paperwork.</h2>
-    <p class="lede">A sponsor — a global health NGO, a hospital network recruiting abroad, a specialty college, a diaspora fund — posts a bounty:</p>
     <div class="card tally">
-      <p style="font-size:1.05rem"><strong>"First 100 graduates anywhere to reach EPA 10 · Proficient this year: $150 each."</strong></p>
-      <p>The escrow releases on a provably attained level. No committee, no application form, no country list, no trusted distributor — and the sponsor verifies every payout without seeing a single student's transcript. A student in a country with no recognised accrediting agency is eligible on exactly the same terms as one in Boston.</p>
+      <span class="k">claim: Competent</span>
+      <p><strong>GRANTED</strong> — stored level Competent, distinct 3, xp 35. The level on chain is the one the program computed, never the one that was claimed.</p>
     </div>
-    <div class="grid g3">
-      <div class="card"><span class="k">Gating</span><p><code>required_badge</code> lives in the registry, not our client — so a competing front-end inherits it for free.</p></div>
-      <div class="card"><span class="k">Author royalties</span><p>1–5¢ per attempt to whoever wrote the case, paid across borders. Card rails eat that whole amount in fees, and most of the world's clinical educators cannot get an acquiring relationship at all.</p></div>
-      <div class="card"><span class="k">Institutions</span><p>Schools stay on ordinary invoices in local currency. No university is going to hold USDC, and a design that needs them to is dead on arrival.</p></div>
-    </div>
+    <p>No issuer key. No oracle. No authority that could be leaned on, bought, or subpoenaed. Take the chain away and you are back to trusting one company's database — which is precisely why digital credentials are worthless today.</p>
   </div>
 </section>
 
-<!-- 11 -->
+<!-- 06 ───────────────────────────────────────────────── -->
 <section class="slide">
-  <div class="rail"><span class="no">11</span><span class="hash">why solana</span><span class="tag">Vitals</span></div>
+  <div class="rail"><span class="no">06</span><span class="hash">onchain architecture</span><span class="tag">Vitals</span></div>
   <div class="inner">
-    <span class="eyebrow">Why Solana</span>
-    <h2>The numbers only close on this chain.</h2>
+    <span class="eyebrow">Onchain architecture</span>
+    <h2>Four primitives, none of them invented here.</h2>
     <div class="scroller"><table>
-      <thead><tr><th>Constraint</th><th>The requirement</th><th class="num">Solana</th></tr></thead>
+      <thead><tr><th>Layer</th><th>What it does</th><th>Solana primitive</th></tr></thead>
       <tbody>
-        <tr><td><strong>Volume</strong></td><td>One cohort year across the World Directory is hundreds of millions of encounters</td><td class="num">~$110 / 1M</td></tr>
-        <tr><td><strong>Micropayments</strong></td><td>Cross-border author royalty per attempt, in cents</td><td class="num">1–5¢</td></tr>
-        <tr><td><strong>Latency</strong></td><td>The skill tree advances in the same screen as the score, or it reads as paperwork</td><td class="num">sub-second</td></tr>
-        <tr><td><strong>Onboarding</strong></td><td>A medical student must never see a seed phrase</td><td class="num">fee-payer relay</td></tr>
-        <tr><td><strong>Composability</strong></td><td>Don't invent standards that exist — onchain or clinical</td><td class="num">SAS · Bubblegum · Token-2022 · AAMC EPA</td></tr>
+        <tr><td><strong>Scenario registry</strong></td><td>Authors publish; content stays off-chain, only hash + price + royalty split onchain</td><td>Anchor program · Token-2022</td></tr>
+        <tr><td><strong>Replay anchor</strong></td><td>One compressed leaf per run — the high-volume write</td><td>Bubblegum state compression</td></tr>
+        <tr><td><strong>Progression</strong></td><td>Levels, skill trees, badges — minted permissionlessly, predicate recomputed onchain</td><td>Token-2022 <em>NonTransferable</em></td></tr>
+        <tr><td><strong>Credential</strong></td><td>Accredited issuer attests an EPA competency to the player's wallet</td><td>Attestation Service</td></tr>
       </tbody>
     </table></div>
-    <p>Anchoring only the exams would be the cheap-chain compromise — and it would destroy the continuous-competency thesis. At $0.0001 per anchor we can anchor <strong>every practice attempt</strong>.</p>
-  </div>
-</section>
-
-<!-- 12 -->
-<section class="slide">
-  <div class="rail"><span class="no">12</span><span class="hash">the smallest demo that proves it</span><span class="tag">Vitals</span></div>
-  <div class="inner">
-    <span class="eyebrow">The demo</span>
-    <h2>Three patients. No model in the proof path. Nothing staged.</h2>
-    <p class="lede">One cardiology skill tree, three tiers, three emergencies anyone can follow on a monitor. Scoring comes from the replay, not the rubric — so every number in the demo is re-derivable by the audience on their own machine.</p>
     <div class="grid g3">
-      <div class="card"><span class="k">Student</span><p><strong>Stable angina</strong><br>the baseline encounter</p></div>
-      <div class="card"><span class="k">Intern</span><p><strong>Anterior STEMI</strong><br>the one everyone recognises</p></div>
-      <div class="card"><span class="k">Resident</span><p><strong>Aortic dissection</strong><br>the one where waiting is fatal</p></div>
-    </div>
-    <div class="card tally warn">
-      <span class="k">The moment</span>
-      <p>Three distinct cases clears <code>distinct &gt;= 3</code>, so the chain computes <strong>Competent</strong>. Proficient needs <code>distinct &gt;= 5</code>. Claim Proficient and the program <strong>rejects its own user</strong> — not because we scripted a failure, but because the real threshold in shipping code says no. Then claim Competent, and the skill tree advances on-screen.</p>
-    </div>
-    <p>Everything else waits: no leaderboard, no email, no cloud model, no institutional credential, no wallet the student has to understand.</p>
-    <div class="card">
-      <span class="k">One language, three targets</span>
-      <p>Rust end to end. The same scoring code compiles into the web app, into the verifier that re-derives a score, and into wasm on the public verify page — with an integer twin inside the Anchor program. The claim "anyone can reproduce this number" is cheap to make and expensive to honour; sharing one implementation is how we honour it.</p>
+      <div class="card"><span class="k">Volume</span><p>A single cohort year across the World Directory is hundreds of millions of runs. Compression puts that at <strong>~$110 per million</strong>. Anchoring only the exams would be the cheap-chain compromise and would kill the thesis.</p></div>
+      <div class="card"><span class="k">Latency</span><p>The skill tree advances in the same screen as the outcome. On a slow chain that becomes a pending spinner and stops feeling like a result.</p></div>
+      <div class="card"><span class="k">Onboarding</span><p>Fee-payer relay. A player never sees a seed phrase, never holds SOL, never learns any of this is happening.</p></div>
     </div>
   </div>
 </section>
 
-<!-- 13 -->
+<!-- 07 ───────────────────────────────────────────────── -->
 <section class="slide">
-  <div class="rail"><span class="no">13</span><span class="hash">open questions</span><span class="tag">Vitals</span></div>
+  <div class="rail"><span class="no">07</span><span class="hash">$VITAL · the verification market</span><span class="tag">Vitals</span></div>
   <div class="inner">
-    <span class="eyebrow">Before a line of code</span>
-    <h2>Three decisions that outrank the build.</h2>
-    <div class="q"><span class="ask">1 · Which deadline are we aiming at?</span><span class="ans">The Eternal countdown showed ~15 days, and a four-week sprint does not fit inside it. Entry deadline or submission deadline? The site doesn't disambiguate — confirm with Colosseum before starting the timer.</span></div>
-    <div class="q"><span class="ask">2 · Does anything here need to be filed first?</span><span class="ans">Colosseum submissions are public and explicitly non-confidential. If any of the scoring or competency work is patent-track, filing has to happen before submission. One-way door.</span></div>
-    <div class="q"><span class="ask">3 · What pins the judged 60 points?</span><span class="ans">The live product judges on a hosted model whose version can move under us. Either pin a version we control, or state plainly that <code>judged_score</code> is attestation and never proof — and keep escrow predicates on <code>det_score</code>.</span></div>
-    <div class="q"><span class="ask">And the question every judge asks</span><span class="ans"><strong>"Why does this need a blockchain?"</strong> — because the verifier must not be the same party as the scorer, and the relying party is in another country. Take the chain away and you are back to trusting one company's database, which is exactly why digital credentials are worthless today.</span></div>
+    <span class="eyebrow">Tokenomics</span>
+    <h2>The token secures verification. It never represents competence.</h2>
+    <p class="lede">Someone has to replay the tape and attest the outcome. Make that one party and you have rebuilt the database we are trying to escape. <strong>$VITAL is what makes verification permissionless and expensive to lie in.</strong></p>
+    <div class="two">
+      <div>
+        <div class="sub-h">The loop</div>
+        <div class="flowrow" style="grid-template-columns:1fr">
+          <div class="node"><span class="h">stake</span><span class="b">Operators bond $VITAL to accept replay work. Bond size sets how much throughput they can take.</span></div>
+          <div class="node"><span class="h">verify</span><span class="b">Replay is deterministic, so <strong>two honest verifiers must agree</strong>. Fees are paid by institutions and sponsors — in USDC, never by players.</span></div>
+          <div class="node warn"><span class="h">dispute → slash</span><span class="b">Disagreement is provable: anyone posts a bond and re-runs the tape. The wrong verifier is slashed, the challenger is paid from it. Fraud proofs work here because the computation is exact.</span></div>
+        </div>
+      </div>
+      <div>
+        <div class="sub-h">Sinks · sources</div>
+        <div class="ledger">
+          <div class="row"><span class="k">sink</span><span class="v">verifier bond (locked while active)</span><span class="r">supply out</span></div>
+          <div class="row"><span class="k">sink</span><span class="v">scenario listing + dispute bonds</span><span class="r">supply out</span></div>
+          <div class="row"><span class="k">sink</span><span class="v">slashing — burn share</span><span class="r">burned</span></div>
+          <div class="row"><span class="k">source</span><span class="v">verification fees → operators</span><span class="r">earned</span></div>
+          <div class="row"><span class="k">source</span><span class="v">replay royalties → scenario authors</span><span class="r">earned</span></div>
+        </div>
+        <div class="never" style="margin-top:1.25rem">
+          <div class="sub-h" style="color:var(--attested)">Never tokenized</div>
+          <ul>
+            <li><strong>Credentials, badges, skill trees.</strong> Token-2022 NonTransferable, no exceptions — a tradeable "Expert in Cardiology" is credential fraud with extra steps.</li>
+            <li><strong>Access to play.</strong> No token gates a student out of practice. Ever.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <p class="small">Allocation is a proposal, not a commitment, and no token ships inside the hackathon window: the verification market only has to exist once verification is worth attacking. Distribution weighted to operators and scenario authors — the two parties whose work the network actually consumes.</p>
+  </div>
+</section>
+
+<!-- 08 ───────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="rail"><span class="no">08</span><span class="hash">market · precedent</span><span class="tag">Vitals</span></div>
+  <div class="inner">
+    <span class="eyebrow">Market and precedent</span>
+    <h2>This shape already won this hackathon once.</h2>
+    <div class="card tally">
+      <span class="k">Frontier 2026 · Grand Champion</span>
+      <p><strong>CrowdBrain</strong> — "a vertically-integrated robotics DePIN built to <strong>train users in simulation, qualify them through QA, and route the best operators to real robots</strong>."</p>
+    </div>
+    <p>Train in simulation → verify competence → route the qualified to real work. That is Vitals, for robot operators instead of clinicians. We think the pattern generalises; the largest crypto hackathon ever run agreed three months ago, out of 2,857 submissions from 150 countries.</p>
+    <div class="grid g3">
+      <div class="card"><span class="k">Why medicine first</span><p>The hardest instance: highest stakes, heaviest regulation, most protective of data. Solve it here and it generalises downward to every other skill credential.</p></div>
+      <div class="card"><span class="k">Who pays</span><p>Institutions on ordinary invoices, sponsors funding outcome-linked scholarships, and platform fees on the scenario market. Players pay nothing and hold nothing.</p></div>
+      <div class="card"><span class="k">Head start</span><p>An OSCE simulator already in production — 424 authored scenarios, deterministic scoring, a hash-chained audit log, EPA mapping, real students.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 09 ───────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="rail"><span class="no">09</span><span class="hash">four weeks</span><span class="tag">Vitals</span></div>
+  <div class="inner">
+    <span class="eyebrow">Where it stands, and what's next</span>
+    <h2>Two halves built. One week to join them.</h2>
+    <div class="two">
+      <div>
+        <div class="sub-h">Working now</div>
+        <ul>
+          <li><strong>Replay → leaf.</strong> EP1 runs against the shipped automaton; three tapes, three distinct leaves, reproducible across runs.</li>
+          <li><strong>Program → refusal.</strong> Native Solana program live on a validator, recomputing levels and rejecting claims that don't survive its own arithmetic.</li>
+          <li><strong>Rust end to end</strong> — one scoring implementation compiled into the game, the verifier, and the program.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="sub-h">The remaining four weeks</div>
+        <ul>
+          <li><strong>W1</strong> — join the halves: <code>claim_progress</code> takes merkle proofs against anchored leaves instead of attempts handed to it.</li>
+          <li><strong>W2</strong> — compressed anchors, scenario registry, public verify page.</li>
+          <li><strong>W3</strong> — soulbound progression, badge-gated scenarios, sponsor escrow paying out on a provable level.</li>
+          <li><strong>W4</strong> — mainnet-beta, demo video, open-source release.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="kill">
+      <h3>Cut on purpose</h3>
+      <p>ZK selective disclosure · verifier DePIN with live staking · token launch · mobile · new clinical content. Each is a real v2 line and none survives four weeks. The credential layer stays a stub until an accrediting institution is standing next to it — progression doesn't need one, which is why progression is the demo.</p>
+    </div>
+    <p><strong>The 60-second version:</strong> you play a patient who is dying, the chain keeps a replay of what you did, and anyone can re-derive it without asking us.</p>
   </div>
 </section>
