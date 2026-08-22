@@ -1,0 +1,69 @@
+<title>Vitals Terminals</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  @page{ size:330mm 186mm; margin:0 }
+  *{box-sizing:border-box}
+  body{margin:0; background:#0B1113; color:#9CAEB1; font-family:"IBM Plex Mono",monospace}
+  .card{height:186mm; padding:16mm 18mm; display:flex; flex-direction:column; gap:7mm;
+        break-after:page; background:#0B1113}
+  .card:last-child{break-after:auto}
+  h2{margin:0; font-family:Archivo,sans-serif; font-size:19pt; font-weight:800; color:#E9F0F0;
+     letter-spacing:-.02em}
+  .sub{font-size:8.5pt; letter-spacing:.16em; text-transform:uppercase; color:#68797D}
+  pre{margin:0; font-size:10.5pt; line-height:1.62; white-space:pre; color:#9CAEB1}
+  b{color:#42D2A7; font-weight:600}
+  i{color:#E5924F; font-style:normal; font-weight:600}
+  u{color:#E9F0F0; text-decoration:none}
+  .dim{color:#4E5D61}
+  .foot{margin-top:auto; font-size:9pt; color:#68797D}
+  .foot em{font-style:normal; color:#42D2A7}
+</style>
+
+<section class="card">
+  <div class="sub">$ vitals-replay</div>
+  <h2>One scenario. Three players. Three hashes.</h2>
+<pre>scenario  ep1-anaphylaxis
+sce_hash  <u>4d5ee49cc13dd5af1badf4d601010b03e70ded6d2e0ebaf339a26e7d1616a703</u>
+
+<span class="dim">──</span> treated <span class="dim">────────────────────────────────────────────</span>
+   beats    status:Recovered → threshold:biphasic → terminal:WinDischarge
+   harm     none
+   outcome  <b>WinDischarge</b>
+   leaf     <b>65c56e52d9f718aef60cb4e7f712443fe779b10ffb3c3ac2e301464ebd275398</b>
+
+<span class="dim">──</span> stood up <span class="dim">───────────────────────────────────────────</span>
+   beats    status:Recovered → <i>harm:stand/walk collapse</i> → terminal:WinDischarge
+   harm     <i>stand/walk collapse</i>
+   outcome  <b>WinDischarge</b>
+   leaf     <i>a6bec396869e7d889686bc42111f4a2b090aa16c4d93213262d24c858637f8ca</i>
+
+<span class="dim">──</span> adrenaline never given <span class="dim">─────────────────────────────</span>
+   outcome  <i>DeathArrest</i>
+   leaf     74e9aa0415d936c59299bbccb5a5e7baa318e77c2a6ffa6270eeb3f5ea4e2be7</pre>
+  <div class="foot">Same outcome as the first run. <em>Completely different leaf</em> — because the harm is on the record.</div>
+</section>
+
+<section class="card">
+  <div class="sub">$ vitals-cli — localnet</div>
+  <h2>Watch the program refuse its own user.</h2>
+<pre><span class="dim">──</span> 1 · play the season, anchor every run <span class="dim">──────────────</span>
+  EP1 · The Last Bite             WinDischarge  harm 0  score 100
+  EP1 · replayed, stood up        WinDischarge  harm <i>1</i>  score  <i>85</i>
+  EP2 · Time Is Muscle            WinDischarge  harm 0  score 100
+  EP3 · Don't Make Him Cry        WinDischarge  harm 0  score 100
+  EP4 · The Masquerader           WinDischarge  harm 0  score 100
+  EP5 · The Night the Stars Fell  WinDischarge  harm 0  score 100
+
+  tree root <u>1eb9d3ad3abfa0f5067cfc57</u>   leaves 6
+
+<span class="dim">──</span> 2 · prove every run belongs to this player <span class="dim">──────────</span>
+  index 0 … 5   <b>proven</b>
+  forged        <i>rejected — not in the tree</i>
+
+<span class="dim">──</span> 3 · claim a level <span class="dim">──────────────────────────────────</span>
+  claim <u>Expert</u>       <i>REJECTED</i>  <span class="dim">— computed Proficient, 5 distinct, avg 9750bps</span>
+  claim <u>Proficient</u>   <b>GRANTED</b>
+
+  onchain: level <b>Proficient</b> · 6 attempts · 5 distinct · xp 99</pre>
+  <div class="foot">No issuer key. No oracle. <em>The level stored is the one the program computed</em> — never the one claimed.</div>
+</section>
