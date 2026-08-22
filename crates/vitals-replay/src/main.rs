@@ -7,14 +7,12 @@
 use std::path::PathBuf;
 use vitals_replay::{hex, leaf, replay, sce_hash, Replay, Step};
 
-fn embla_root() -> PathBuf {
-    std::env::var("EMBLA_ROOT")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/Users/mimir/Developer/Embla"))
+fn scenario_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../conformance/sce-anaphylaxis-ep1.json")
 }
 
 fn main() {
-    let sce_path = embla_root().join("schemas/examples/sce-anaphylaxis-ep1.json");
+    let sce_path = scenario_path();
     let sce_json = std::fs::read_to_string(&sce_path)
         .unwrap_or_else(|e| panic!("read {}: {e}", sce_path.display()));
     let h = sce_hash(&sce_json);
