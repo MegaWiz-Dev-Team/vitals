@@ -6,6 +6,59 @@
 <title>Vitals — the resus bay</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
+/* ─── scene select — Embla's language: mint over navy, chunky buttons, locked tiles ─── */
+:root{ --mint:#26c0a5; --mint-d:#1f9d86; --navy:#0f2d3a; --lb-bg:#eef4f4;
+       --gold:#ffc83d; --lock:#9aa7ad; --border:#e2e8e8 }
+.hide{display:none !important}
+#lobby{min-height:100vh;background:radial-gradient(1200px 520px at 50% -12%, #d6f3ec 0%, var(--lb-bg) 58%) fixed}
+.lb-bar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:.7rem;
+  background:linear-gradient(100deg,var(--navy),var(--mint-d));color:#fff;padding:.65rem 1rem;
+  box-shadow:0 2px 14px rgba(15,45,58,.25)}
+.lb-bar b{font-size:1.15rem;letter-spacing:.14em;font-family:Archivo,sans-serif}
+.lb-sub{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;opacity:.75}
+.lb-bar .sp{margin-left:auto}
+.coin{background:rgba(255,255,255,.18);padding:.25rem .65rem;border-radius:999px;
+  font-family:"IBM Plex Mono",monospace;font-size:.72rem;font-weight:600}
+.lb-wrap{max-width:66rem;margin:0 auto;padding:2rem 1.1rem 4rem}
+.lb-hero{text-align:center;margin-bottom:1.8rem}
+.lb-eyebrow{font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--mint-d);font-weight:600}
+.lb-hero h1{font-family:Archivo,sans-serif;font-size:clamp(1.7rem,4.4vw,2.9rem);font-weight:800;
+  letter-spacing:-.03em;line-height:1.1;margin:.5rem 0 .6rem;color:#12262c;text-wrap:balance}
+.lb-hero p{max-width:38em;margin:0 auto;color:#5b6b70;font-size:.98rem}
+.lb-grid{display:grid;gap:.9rem;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr))}
+.tile{background:#fff;border:1px solid var(--border);border-radius:16px;overflow:hidden;
+  box-shadow:0 6px 20px rgba(15,45,58,.07);cursor:pointer;text-align:left;padding:0;
+  display:flex;flex-direction:column;transition:transform .08s,box-shadow .12s}
+.tile:hover:not(.lock){transform:translateY(-2px);box-shadow:0 12px 26px rgba(15,45,58,.13)}
+.tile:focus-visible{outline:3px solid var(--mint);outline-offset:2px}
+.tile .art{aspect-ratio:16/10;position:relative;background:linear-gradient(150deg,var(--navy),var(--mint-d))}
+.tile .art img{width:100%;height:100%;object-fit:cover;display:block}
+.tile .no{position:absolute;top:.55rem;left:.6rem;font-family:"IBM Plex Mono",monospace;
+  font-size:.64rem;letter-spacing:.14em;color:#fff;background:rgba(6,20,24,.55);
+  padding:.15rem .5rem;border-radius:999px;backdrop-filter:blur(4px)}
+.tile .tier{position:absolute;bottom:.55rem;right:.6rem;font-family:"IBM Plex Mono",monospace;
+  font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:#0f2d3a;background:rgba(255,255,255,.86);
+  padding:.15rem .5rem;border-radius:999px}
+.tile .body{padding:.85rem .9rem 1rem;display:flex;flex-direction:column;gap:.3rem;flex:1}
+.tile h3{font-family:Archivo,sans-serif;font-size:1.02rem;font-weight:700;margin:0;color:#12262c}
+.tile p{margin:0;font-size:.84rem;color:#5b6b70;flex:1}
+.tile .go{margin-top:.6rem;align-self:flex-start;border:0;border-radius:12px;padding:.5rem .9rem;
+  font-weight:700;font-size:.82rem;color:#fff;background:linear-gradient(180deg,#2ed3b4,#1fa78f);
+  box-shadow:0 4px 0 #178b76;transition:transform .06s,box-shadow .06s}
+.tile:active .go{transform:translateY(3px);box-shadow:0 1px 0 #178b76}
+.tile.lock{cursor:not-allowed}
+.tile.lock .art{filter:grayscale(.92);opacity:.62}
+.tile.lock .art::after{content:'🔒';position:absolute;inset:0;display:grid;place-items:center;
+  font-size:1.9rem;filter:none}
+.tile.lock h3,.tile.lock p{color:var(--lock)}
+.tile.lock .go{background:#fff;color:var(--lock);border:1px solid var(--border);box-shadow:0 3px 0 #cfdcdc}
+.art-ph{position:absolute;inset:0;display:grid;place-items:center;color:rgba(255,255,255,.5);
+  font-family:"IBM Plex Mono",monospace;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase}
+.lb-foot{margin-top:1.6rem;text-align:center;font-size:.82rem;color:#6b7d82;max-width:44em;
+  margin-left:auto;margin-right:auto}
+.backbtn{font-family:"IBM Plex Mono",monospace;font-size:.7rem}
+
 /* ─────────────────────────────────────────────────────────────
    The room is lit. The monitor is the one dark object in it.
    That contrast is how a resus bay actually looks, and it is why
@@ -133,7 +186,33 @@ input:focus{outline:2px solid var(--act);outline-offset:1px;background:#fff}
 </style>
 </head>
 <body>
-<div class="app">
+
+<!-- ─── scene select ─────────────────────────────────────────────────────── -->
+<div id="lobby">
+  <div class="lb-bar">
+    <b>VITALS</b>
+    <span class="lb-sub">the resus bay</span>
+    <span class="sp"></span>
+    <span class="coin" id="coin" title="what a sponsor has funded for this bay">◎ <b id="coin-n">0</b></span>
+    <span class="coin" id="lb-chain">—</span>
+  </div>
+
+  <div class="lb-wrap">
+    <div class="lb-hero">
+      <div class="lb-eyebrow">5 episodes · one season · every run anchored</div>
+      <h1>A patient is dying on a clock<br>and you decide what happens next</h1>
+      <p>Talk to her, treat her, and watch the monitor tell you whether you were right.
+         Anyone can play. Nobody can fake the replay.</p>
+    </div>
+
+    <div class="lb-grid" id="eps"></div>
+
+    <p class="lb-foot">Episodes open as you clear the one before — skill unlocks the story.
+       A sponsor can open one for the whole bay; nothing you pay ever changes your standing.</p>
+  </div>
+</div>
+
+<div class="app hide" id="game">
 
   <div class="bar">
     <span class="brand">Vital<span>s</span></span>
@@ -145,7 +224,8 @@ input:focus{outline:2px solid var(--act);outline-offset:1px;background:#fff}
       <option value="ep4">EP4 · The Masquerader</option>
       <option value="ep5">EP5 · The Night the Stars Fell</option>
     </select>
-    <button class="btn go" id="start">start the shift</button>
+    <button class="btn" id="back">← episodes</button>
+    <button class="btn go" id="start">restart</button>
     <button class="btn" id="pause" disabled>hold</button>
     <span class="spacer ep" id="chainstate">—</span>
   </div>
@@ -274,6 +354,8 @@ function paint(v){
     $('#cmd').disabled=true; $('#go').disabled=true; $('#pause').disabled=true;
     $('#q').disabled=true; $('#ask').disabled=true;
     chainState();
+    if(win){ const c=cleared(); const ep=$('#ep').value;
+      if(!c.includes(ep)){ c.push(ep); localStorage.setItem('vitals.cleared',JSON.stringify(c)); } }
     $('#result').scrollIntoView({behavior:'smooth',block:'nearest'});
   }
 }
@@ -358,10 +440,51 @@ $('#copy').onclick=async()=>{
   await navigator.clipboard.writeText(JSON.stringify(t,null,1));
   $('#copy').textContent='tape copied';
 };
+
+/* ─── the season ────────────────────────────────────────────────────────────
+   EP1 has film. EP2–EP5 are authored automata with no art yet, and the tiles say
+   so rather than borrowing a still from another episode and implying otherwise.
+   Locking is by progression: clear one, the next opens. Nothing here is for sale. */
+const SEASON=[
+ {id:'ep1',n:'EP1',t:'The Last Bite',tier:'student',
+  d:'A nineteen-year-old, ten minutes after the wrong salad. Her throat is closing.',art:'/img/stable.jpg'},
+ {id:'ep2',n:'EP2',t:'Time Is Muscle',tier:'intern',
+  d:'A taxi driver, chest pain to the jaw. The ECG tells the truth in ten minutes.'},
+ {id:'ep3',n:'EP3',t:"Don't Make Him Cry",tier:'resident',
+  d:'A five-year-old sitting very still. His stillness is the frightening part.'},
+ {id:'ep4',n:'EP4',t:'The Masquerader',tier:'resident',
+  d:'Everything looks normal. The oxygen is quietly low and the heart is too fast.'},
+ {id:'ep5',n:'EP5',t:'The Night the Stars Fell',tier:'resident',
+  d:'Everyone you have met, in one room, on the worst night of the year.'},
+];
+const cleared=()=>JSON.parse(localStorage.getItem('vitals.cleared')||'[]');
+function open_(i){ return i===0 || cleared().includes(SEASON[i-1].id); }
+function renderSeason(){
+  $('#eps').innerHTML=SEASON.map((e,i)=>{
+    const un=open_(i), done=cleared().includes(e.id);
+    const art=e.art?`<img src="${e.art}" alt="">`:`<div class="art-ph">art in production</div>`;
+    return `<button class="tile ${un?'':'lock'}" data-ep="${e.id}" ${un?'':'disabled'}>
+      <div class="art">${art}<span class="no">${e.n}${done?' · cleared':''}</span><span class="tier">${e.tier}</span></div>
+      <div class="body"><h3>${e.t}</h3><p>${e.d}</p>
+      <span class="go">${un?'enter the bay':'clear '+SEASON[i-1].n+' to open'}</span></div></button>`;
+  }).join('');
+  $('#eps').querySelectorAll('.tile:not(.lock)').forEach(b=>b.onclick=()=>enter(b.dataset.ep));
+  $('#coin-n').textContent=cleared().length;
+}
+function enter(ep){
+  $('#ep').value=ep; $('#lobby').classList.add('hide'); $('#game').classList.remove('hide');
+  $('#start').click();
+}
+$('#back').onclick=()=>{ stop(); $('#game').classList.add('hide'); $('#lobby').classList.remove('hide'); renderSeason(); };
+renderSeason();
+(async()=>{ const c=await (await fetch('/api/chain')).json();
+  $('#lb-chain').textContent = c.connected ? `localnet · tree #${c.tree_id}` : 'no chain'; })();
+
 show('Stable'); chainState();
 /* #play — start the shift on load. For demos, kiosks, and screenshots that need a live
    monitor rather than an empty bay. */
 if(location.hash.startsWith('#play')){
+  $('#lobby').classList.add('hide'); $('#game').classList.remove('hide');
   const ep=location.hash.split('=')[1]; if(ep)$('#ep').value=ep;
   window.addEventListener('load',()=>$('#start').click());
 }
