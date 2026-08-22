@@ -20,6 +20,20 @@ use vitals_sce::{render_beat, Sce, SceState};
 
 const PAGE: &str = include_str!("../static/index.html");
 
+/// The patient, keyed by the clinical status the automaton is reporting.
+///
+/// This is the Director's job in the real Story Mode, reduced to its smallest useful form: the
+/// engine says how she is, and the screen shows it. The stills are EP1's, already rendered.
+const STILLS: &[(&str, &[u8])] = &[
+    ("stable", include_bytes!("../static/img/stable.jpg")),
+    ("deteriorating", include_bytes!("../static/img/deteriorating.jpg")),
+    ("critical", include_bytes!("../static/img/critical.jpg")),
+    ("arrest", include_bytes!("../static/img/arrest.jpg")),
+    ("improving", include_bytes!("../static/img/improving.jpg")),
+    ("recovered", include_bytes!("../static/img/recovered.jpg")),
+    ("dead", include_bytes!("../static/img/dead.jpg")),
+];
+
 struct Session {
     state: SceState,
     tape: Vec<Step>,
@@ -221,6 +235,20 @@ fn main() {
                     ),
                 );
                 continue;
+            }
+            (Method::Get, p) if p.starts_with("/img/") => {
+                let key = p.trim_start_matches("/img/").trim_end_matches(".jpg");
+                match STILLS.iter().find(|(k, _)| *k == key) {
+                    Some((_, bytes)) => {
+                        let _ = req.respond(
+                            Response::from_data(*bytes)
+                                .with_header(Header::from_bytes(&b"Content-Type"[..], &b"image/jpeg"[..]).unwrap())
+                                .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=86400"[..]).unwrap()),
+                        );
+                        continue;
+                    }
+                    None => Response::from_string("no such still").with_status_code(404),
+                }
             }
             (Method::Get, "/api/new") => {
                 let ep = param(&url, "ep").unwrap_or_else(|| "ep1".into());
