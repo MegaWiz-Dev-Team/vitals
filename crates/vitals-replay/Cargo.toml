@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 vitals-sce = { path = "../vitals-sce" }
+vitals-progress = { path = "../vitals-progress" }
 sha2 = "0.10"
 
 [[bin]]

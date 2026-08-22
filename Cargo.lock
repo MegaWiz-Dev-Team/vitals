@@ -5583,6 +5583,7 @@ dependencies = [
  "solana-sdk",
  "vitals-program",
  "vitals-progress",
+ "vitals-replay",
 ]
 
 [[package]]
@@ -5597,12 +5598,17 @@ dependencies = [
 [[package]]
 name = "vitals-progress"
 version = "0.1.0"
+dependencies = [
+ "sha2 0.10.9",
+ "solana-program",
+]
 
 [[package]]
 name = "vitals-replay"
 version = "0.1.0"
 dependencies = [
  "sha2 0.10.9",
+ "vitals-progress",
  "vitals-sce",
 ]
 

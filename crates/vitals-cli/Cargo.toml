@@ -11,3 +11,4 @@ solana-sdk = "2"
 borsh = { version = "1", features = ["derive"] }
 vitals-program = { path = "../vitals-program" }
 vitals-progress = { path = "../vitals-progress" }
+vitals-replay = { path = "../vitals-replay" }

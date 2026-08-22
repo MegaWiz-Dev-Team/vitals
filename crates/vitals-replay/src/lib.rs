@@ -104,3 +104,34 @@ pub fn leaf(sce_hash: &[u8; 32], tape: &[Step], r: &Replay) -> [u8; 32] {
 pub fn hex(b: &[u8; 32]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
+
+/// Reduce a replay to the record that gets anchored.
+///
+/// `case` is the scenario hash by default: three runs of one patient are one case, and the
+/// competency model is entitled to know that. A host that authors many cases against one
+/// scenario passes its own case id instead.
+pub fn record_for(
+    player: [u8; 32],
+    sce_hash: [u8; 32],
+    case: [u8; 32],
+    difficulty: vitals_progress::Difficulty,
+    exam_mode: bool,
+    tape: &[Step],
+    r: &Replay,
+) -> Result<vitals_progress::record::AttemptRecord, String> {
+    let outcome = match r.outcome.as_deref() {
+        None => vitals_progress::record::Outcome::NoTerminal,
+        Some(s) => vitals_progress::record::Outcome::parse(s)
+            .ok_or_else(|| format!("unknown outcome {s:?} — this build cannot score it"))?,
+    };
+    Ok(vitals_progress::record::AttemptRecord {
+        player,
+        sce_hash,
+        case,
+        run_hash: leaf(&sce_hash, tape, r),
+        difficulty,
+        exam_mode,
+        outcome,
+        harm_count: r.harm_events.len() as u16,
+    })
+}
