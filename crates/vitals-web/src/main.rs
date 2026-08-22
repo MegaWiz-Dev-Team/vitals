@@ -134,7 +134,7 @@ impl Session {
             .iter()
             .map(|s| match s {
                 Step::Tick(dt) => *dt,
-                Step::Do(_) | Step::Ask(_) => 0.0,
+                Step::Do(_) | Step::Ask(_) | Step::Set(..) | Step::Off(_) => 0.0,
             })
             .sum();
         let outcome = self.state.outcome().map(|o| format!("{o:?}"));
@@ -502,7 +502,7 @@ fn main() {
                     Some(s) => {
                         if off {
                             s.state.detach(&dev);
-                            s.tape.push(Step::Do(format!("remove {dev}")));
+                            s.tape.push(Step::Off(dev.clone()));
                         } else if s.state.has_equipment(&dev)
                             && (set.is_none() || s.state.equipment_setting(&dev) == set)
                         {
@@ -514,7 +514,7 @@ fn main() {
                             // On already, different number: turn the dial, do not re-dose.
                             if let Some(v) = set {
                                 s.state.attach(&dev, Some(v));
-                                s.tape.push(Step::Do(format!("{dev} set to {v}")));
+                                s.tape.push(Step::Set(dev.clone(), v));
                             }
                         } else if let Some(phrase) = kit_phrase(&dev, set) {
                             // Go through the matcher, so the physiology moves exactly as it would
@@ -528,6 +528,10 @@ fn main() {
                             if let Some(v) = set {
                                 if s.state.has_equipment(&dev) && s.state.equipment_setting(&dev) != Some(v) {
                                     s.state.attach(&dev, Some(v));
+                                    // On the tape too. Without this the correction lived only in
+                                    // this process: the player saw 6 L/min, the tape replayed to
+                                    // the scenario's 10, and the leaf certified the wrong run.
+                                    s.tape.push(Step::Set(dev.clone(), v));
                                 }
                             }
                         }
@@ -549,6 +553,8 @@ fn main() {
                             Step::Tick(dt) => serde_json::json!({"tick": dt}),
                             Step::Do(t) => serde_json::json!({"do": t}),
                             Step::Ask(t) => serde_json::json!({"ask": t}),
+                            Step::Set(id, v) => serde_json::json!({"set": id, "to": v}),
+                            Step::Off(id) => serde_json::json!({"off": id}),
                         }).collect::<Vec<_>>()
                     })),
                 }
