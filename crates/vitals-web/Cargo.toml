@@ -1,0 +1,22 @@
+[package]
+name = "vitals-web"
+description = "Play EP1 in a browser — the automaton, the monitor, and the leaf at the end"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tiny_http = "0.12"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+vitals-sce = { path = "../vitals-sce" }
+vitals-replay = { path = "../vitals-replay" }
+vitals-progress = { path = "../vitals-progress" }
+vitals-program = { path = "../vitals-program" }
+solana-client = "2"
+solana-sdk = "2"
+borsh = { version = "1", features = ["derive"] }
+
+[[bin]]
+name = "vitals-web"
+path = "src/main.rs"

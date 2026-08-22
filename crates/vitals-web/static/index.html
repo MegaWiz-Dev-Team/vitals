@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vitals — play</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#0B1113; --surface:#121B1D; --surface-2:#182325;
+  --ink:#E9F0F0; --ink-2:#9CAEB1; --ink-3:#68797D;
+  --rule:#223033; --ok:#42D2A7; --bad:#E5924F; --crit:#E5544F;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,sans-serif;line-height:1.55}
+.wrap{max-width:74rem;margin:0 auto;padding:1.5rem 1.25rem 4rem;
+  display:grid;gap:1rem;grid-template-columns:1fr}
+@media(min-width:60rem){.wrap{grid-template-columns:1.15fr .85fr;align-items:start}}
+header{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.75rem 1.25rem;align-items:baseline;
+  border-bottom:1px solid var(--rule);padding-bottom:.9rem;margin-bottom:.25rem}
+h1{margin:0;font-family:Archivo,sans-serif;font-size:1.5rem;font-weight:800;letter-spacing:-.02em}
+.tag{font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ink-3)}
+select,button{font-family:"IBM Plex Mono",monospace;font-size:.75rem;background:var(--surface-2);
+  color:var(--ink);border:1px solid var(--rule);border-radius:3px;padding:.4rem .6rem;cursor:pointer}
+button:hover{border-color:var(--ok)}
+button:disabled{opacity:.4;cursor:not-allowed}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:1rem}
+.k{font-family:"IBM Plex Mono",monospace;font-size:.62rem;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ink-3);margin-bottom:.6rem}
+
+/* monitor */
+.mon{display:grid;grid-template-columns:repeat(auto-fit,minmax(5.4rem,1fr));gap:.5rem}
+.v{background:var(--surface-2);border:1px solid var(--rule);border-radius:3px;padding:.55rem .65rem}
+.v .l{font-family:"IBM Plex Mono",monospace;font-size:.58rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-3)}
+.v .n{font-family:"IBM Plex Mono",monospace;font-size:1.45rem;font-weight:600;
+  font-variant-numeric:tabular-nums;line-height:1.2}
+.v.ok .n{color:var(--ok)} .v.warn .n{color:var(--bad)} .v.crit .n{color:var(--crit)}
+.status{display:flex;gap:.6rem;align-items:baseline;margin-top:.75rem;
+  font-family:"IBM Plex Mono",monospace;font-size:.72rem}
+.status .s{padding:.15rem .5rem;border-radius:2px;background:var(--surface-2);color:var(--ink-2)}
+.status .s.Deteriorating,.status .s.Critical{background:#2A1C12;color:var(--bad)}
+.status .s.Arrest{background:#2A1414;color:var(--crit)}
+.status .s.Improving,.status .s.Recovered{background:#0F2A24;color:var(--ok)}
+.clock{margin-left:auto;color:var(--ink-3);font-variant-numeric:tabular-nums}
+
+/* actions */
+.acts{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.7rem}
+.acts button{font-size:.72rem}
+form{display:flex;gap:.5rem}
+input{flex:1;font-family:"IBM Plex Mono",monospace;font-size:.8rem;background:var(--surface-2);
+  color:var(--ink);border:1px solid var(--rule);border-radius:3px;padding:.5rem .65rem}
+input:focus{outline:2px solid var(--ok);outline-offset:1px}
+
+/* log */
+.log{font-family:"IBM Plex Mono",monospace;font-size:.74rem;display:flex;flex-direction:column;
+  gap:.28rem;max-height:16rem;overflow:auto}
+.log .e{color:var(--ink-2)}
+.log .b{color:var(--ok)}
+.log .h{color:var(--bad)}
+.log .t{color:var(--ink-3)}
+.log .x{color:var(--crit)}
+
+/* outcome */
+.out{margin-top:1rem;border:1px solid var(--rule);border-radius:4px;padding:1rem;display:none}
+.out.win{border-color:var(--ok)} .out.lose{border-color:var(--crit)}
+.out h2{margin:0 0 .4rem;font-family:Archivo,sans-serif;font-size:1.2rem;font-weight:800}
+.out.win h2{color:var(--ok)} .out.lose h2{color:var(--crit)}
+.leaf{font-family:"IBM Plex Mono",monospace;font-size:.68rem;color:var(--ink-2);
+  word-break:break-all;background:var(--surface-2);padding:.55rem .65rem;border-radius:3px;margin-top:.5rem}
+.hint{font-size:.8rem;color:var(--ink-3);margin-top:.55rem}
+.chain{border-top:1px solid var(--rule);margin-top:1rem;padding-top:.2rem}
+.verdict{margin-top:.6rem;font-family:"IBM Plex Mono",monospace;font-size:.74rem;
+  display:flex;flex-direction:column;gap:.3rem}
+.verdict .g{color:var(--ok)} .verdict .r{color:var(--bad)} .verdict .n{color:var(--ink-3)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="title">Vitals</h1>
+    <span class="tag" id="sce">—</span>
+    <select id="ep">
+      <option value="ep1">EP1 · The Last Bite</option>
+      <option value="ep2">EP2 · Time Is Muscle</option>
+      <option value="ep3">EP3 · Don't Make Him Cry</option>
+      <option value="ep4">EP4 · The Masquerader</option>
+      <option value="ep5">EP5 · The Night the Stars Fell</option>
+    </select>
+    <button id="start">start</button>
+    <button id="pause" disabled>pause</button>
+  </header>
+
+  <main class="card">
+    <div class="k">monitor</div>
+    <div class="mon" id="mon"></div>
+    <div class="status">
+      <span class="s" id="status">—</span>
+      <span class="clock" id="clock">0:00</span>
+    </div>
+
+    <div style="margin-top:1.25rem" class="k">what do you do</div>
+    <div class="acts" id="quick"></div>
+    <form id="f" autocomplete="off">
+      <input id="cmd" placeholder="type an order — adrenaline im, oxygen, supine, admit…" disabled>
+      <button type="submit" id="go" disabled>do it</button>
+    </form>
+
+    <div class="out" id="out">
+      <h2 id="outcome"></h2>
+      <div id="outnote" style="color:var(--ink-2);font-size:.9rem"></div>
+      <div class="leaf" id="leaf"></div>
+      <div class="hint">Hand the tape and the scenario to anyone and they recompute this —
+        <code id="copy" style="cursor:pointer;color:var(--ok)">copy the tape</code></div>
+
+      <div class="chain" id="chain">
+        <div class="k" style="margin-top:1rem">on chain</div>
+        <div id="chainstate" class="hint" style="margin-top:0">—</div>
+        <div class="acts" style="margin-top:.6rem">
+          <button id="anchor">anchor this run</button>
+          <button id="c4" disabled>claim Expert</button>
+          <button id="c3" disabled>claim Proficient</button>
+          <button id="c2" disabled>claim Competent</button>
+          <button id="c1" disabled>claim Advanced beginner</button>
+        </div>
+        <div id="verdict" class="verdict"></div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="card">
+    <div class="k">what happened</div>
+    <div class="log" id="log"><span class="t">press start</span></div>
+  </aside>
+</div>
+
+<script>
+const QUICK = {
+  ep1:["adrenaline im","oxygen","supine","normal saline bolus","admit for observation","let her stand up","chlorpheniramine","discharge home"],
+  ep2:["ecg","aspirin","activate the cath lab","nitrate","defibrillate","heparin","wait for the troponin"],
+  ep3:["keep him calm","blow-by oxygen","call ent and anaesthesia","secure the airway","ceftriaxone","look in the throat","iv access"],
+  ep4:["wells score","d-dimer","ctpa","heparin","thrombolysis","oxygen","reassure and discharge"],
+  ep5:["triage","tourniquet","needle decompression","transfuse","damage control","two litres of saline"]
+};
+let id=null, timer=null, over=false;
+const $=s=>document.querySelector(s);
+const log=(cls,txt)=>{const d=document.createElement('span');d.className=cls;d.textContent=txt;
+  $('#log').appendChild(d);$('#log').scrollTop=1e6;};
+
+function band(k,v){
+  const crit={spo2:v<88,sbp:v<80,hr:v>150||v<45,rr:v>34,gcs:v<12};
+  const warn={spo2:v<93,sbp:v<95,hr:v>120,rr:v>26,gcs:v<15};
+  if(crit[k])return'crit'; if(warn[k])return'warn'; return'ok';
+}
+function paint(v){
+  $('#sce').textContent=v.scenario+' · '+v.sce_hash.slice(0,12);
+  const rows=[['hr',v.hr,'bpm'],['sbp',v.sbp,'sys'],['dbp',v.dbp,'dia'],
+              ['spo2',v.spo2,'%'],['rr',v.rr,'/min'],['temp',v.temp,'°c'],['gcs',v.gcs,'']];
+  $('#mon').innerHTML=rows.map(([k,n,u])=>
+    `<div class="v ${band(k,n)}"><div class="l">${k}${u?' · '+u:''}</div><div class="n">${n}</div></div>`).join('');
+  $('#status').textContent=v.status; $('#status').className='s '+v.status;
+  const m=Math.floor(v.elapsed/60), s=Math.round(v.elapsed%60);
+  $('#clock').textContent=`${m}:${String(s).padStart(2,'0')}`;
+  if(v.outcome&&!over){
+    over=true; stop();
+    const win=v.outcome.startsWith('Win');
+    $('#out').className='out '+(win?'win':'lose'); $('#out').style.display='block';
+    $('#outcome').textContent=v.outcome;
+    $('#outnote').textContent = v.harm.length
+      ? 'Harm on the record: '+v.harm.join(', ')
+      : 'No harm recorded.';
+    $('#leaf').textContent=v.leaf;
+    $('#verdict').innerHTML='';
+    $('#anchor').textContent='anchor this run'; chainState();
+    $('#cmd').disabled=true; $('#go').disabled=true; $('#pause').disabled=true;
+    log(win?'b':'x','── '+v.outcome+' ──');
+  }
+}
+function seen(v){
+  const n=v.beats.length; if(n>seen.n){for(let i=seen.n;i<n;i++){
+    const b=v.beats[i];
+    log(b.startsWith('harm')?'h':b.startsWith('terminal')?'x':'b','· '+b);
+  } seen.n=n;} 
+}
+seen.n=0;
+
+async function step(q){
+  if(!id)return;
+  const v=await (await fetch('/api/step?id='+id+q)).json();
+  if(v.error)return log('x',v.error);
+  seen(v); paint(v);
+}
+function run(){ timer=setInterval(()=>step('&tick=2'),700); }
+function stop(){ clearInterval(timer); timer=null; }
+
+$('#start').onclick=async()=>{
+  stop(); over=false; seen.n=0; $('#log').innerHTML=''; $('#out').style.display='none';
+  const ep=$('#ep').value;
+  const r=await (await fetch('/api/new?ep='+ep)).json();
+  if(r.error)return log('x',r.error);
+  id=r.id; paint(r.view);
+  $('#quick').innerHTML=QUICK[ep].map(a=>`<button data-a="${a}">${a}</button>`).join('');
+  $('#quick').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    log('e','> '+b.dataset.a); step('&do='+encodeURIComponent(b.dataset.a));});
+  $('#cmd').disabled=false; $('#go').disabled=false; $('#pause').disabled=false;
+  $('#pause').textContent='pause'; $('#cmd').focus();
+  log('t','the clock is the patient — she does not wait');
+  run();
+};
+$('#pause').onclick=()=>{ if(timer){stop();$('#pause').textContent='resume';}
+  else{run();$('#pause').textContent='pause';} };
+$('#f').onsubmit=e=>{ e.preventDefault(); const a=$('#cmd').value.trim(); if(!a)return;
+  log('e','> '+a); $('#cmd').value=''; step('&do='+encodeURIComponent(a)); };
+async function chainState(){
+  const c=await (await fetch('/api/chain')).json();
+  $('#chainstate').innerHTML = c.connected
+    ? `localnet · tree #${c.tree_id} · ${c.anchored} run(s) anchored this sitting`
+    : `<span style="color:var(--bad)">no validator connected — play works, anchoring does not</span>`;
+  $('#anchor').disabled = !c.connected;
+  return c;
+}
+$('#anchor').onclick=async()=>{
+  $('#anchor').disabled=true; $('#anchor').textContent='anchoring…';
+  const r=await (await fetch('/api/anchor?id='+id)).json();
+  const v=$('#verdict');
+  if(r.error){ v.innerHTML+=`<span class="r">${r.error}</span>`; $('#anchor').textContent='anchor this run'; $('#anchor').disabled=false; return; }
+  v.innerHTML+=`<span class="g">anchored at index ${r.index} · score ${r.score} · ${r.proven?'proven':'PROOF FAILED'}</span>`;
+  v.innerHTML+=`<span class="n">tree root ${r.root.slice(0,24)}… · ${r.leaves} leaves · ${r.counted} counted toward a claim</span>`;
+  $('#anchor').textContent='anchored';
+  ['#c1','#c2','#c3','#c4'].forEach(s=>$(s).disabled=false);
+  chainState();
+};
+[['#c4',4],['#c3',3],['#c2',2],['#c1',1]].forEach(([sel,lv])=>{
+  $(sel).onclick=async()=>{
+    const r=await (await fetch('/api/claim?level='+lv)).json();
+    const v=$('#verdict');
+    v.innerHTML+= r.granted
+      ? `<span class="g">✓ ${r.message}</span>`
+      : `<span class="r">✗ ${r.message}</span>`;
+  };
+});
+$('#copy').onclick=async()=>{
+  const t=await (await fetch('/api/tape?id='+id)).json();
+  await navigator.clipboard.writeText(JSON.stringify(t,null,1));
+  $('#copy').textContent='tape copied';
+};
+</script>
+</body>
+</html>

@@ -1,0 +1,376 @@
+//! Play EP1 in a browser.
+//!
+//! One process: the same `vitals-sce` automaton the verifier runs, a session per player, and a
+//! tape that is recorded as you play. Reach a terminal state and the tape reduces to a leaf —
+//! the same bytes `vitals-replay` would produce from the same tape, because it is the same code.
+//!
+//! Deliberately small. No framework, no database, no build step: tiny_http, a single HTML page,
+//! and sessions in a map. The point is to make the automaton playable, not to ship a platform.
+
+mod chain;
+
+use serde::Serialize;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use tiny_http::{Header, Method, Response, Server};
+use vitals_progress::record::AttemptRecord;
+use vitals_progress::Difficulty;
+use vitals_replay::{hex, leaf, record_for, replay, sce_hash, Replay, Step};
+use vitals_sce::{render_beat, Sce, SceState};
+
+const PAGE: &str = include_str!("../static/index.html");
+
+struct Session {
+    state: SceState,
+    tape: Vec<Step>,
+    beats: Vec<String>,
+    sce_json: String,
+    scenario: String,
+    difficulty: Difficulty,
+    anchored: bool,
+}
+
+/// Everything one sitting has played. A fresh tree per sitting, so the indices below are real
+/// and a demo never inherits whatever the last one left behind.
+#[derive(Default)]
+struct Player {
+    tree_id: u64,
+    leaves: Vec<[u8; 32]>,
+}
+
+#[derive(Serialize)]
+struct View {
+    scenario: String,
+    hr: f64,
+    sbp: f64,
+    dbp: f64,
+    spo2: f64,
+    rr: f64,
+    temp: f64,
+    gcs: u8,
+    status: String,
+    beats: Vec<String>,
+    harm: Vec<String>,
+    outcome: Option<String>,
+    elapsed: f64,
+    /// Only once the run is over — a run in progress has nothing to anchor yet.
+    leaf: Option<String>,
+    sce_hash: String,
+}
+
+impl Session {
+    fn view(&self) -> View {
+        let v = self.state.vitals;
+        let elapsed: f64 = self
+            .tape
+            .iter()
+            .map(|s| match s {
+                Step::Tick(dt) => *dt,
+                Step::Do(_) => 0.0,
+            })
+            .sum();
+        let outcome = self.state.outcome().map(|o| format!("{o:?}"));
+        let leaf_hex = outcome.as_ref().map(|_| {
+            let r = Replay {
+                beats: self.beats.clone(),
+                harm_events: self.state.harm_events.clone(),
+                outcome: outcome.clone(),
+                steps: self.tape.len(),
+                sim_seconds: elapsed,
+            };
+            hex(&leaf(&sce_hash(&self.sce_json), &self.tape, &r))
+        });
+        View {
+            scenario: self.scenario.clone(),
+            hr: v.hr.round(),
+            sbp: v.sbp.round(),
+            dbp: v.dbp.round(),
+            spo2: v.spo2.round(),
+            rr: v.rr.round(),
+            temp: (v.temp * 10.0).round() / 10.0,
+            gcs: v.gcs,
+            status: format!("{:?}", self.state.status),
+            beats: self.beats.clone(),
+            harm: self.state.harm_events.clone(),
+            outcome,
+            elapsed,
+            leaf: leaf_hex,
+            sce_hash: hex(&sce_hash(&self.sce_json)),
+        }
+    }
+}
+
+fn scenario_path(id: &str) -> std::path::PathBuf {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    match id {
+        "ep2" => root.join("demo/scenarios/ep2-stemi.json"),
+        "ep3" => root.join("demo/scenarios/ep3-epiglottitis.json"),
+        "ep4" => root.join("demo/scenarios/ep4-pulmonary-embolism.json"),
+        "ep5" => root.join("demo/scenarios/ep5-the-night-the-stars-fell.json"),
+        _ => root.join("conformance/sce-anaphylaxis-ep1.json"),
+    }
+}
+
+fn title(id: &str) -> &'static str {
+    match id {
+        "ep2" => "EP2 · Time Is Muscle",
+        "ep3" => "EP3 · Don't Make Him Cry",
+        "ep4" => "EP4 · The Masquerader",
+        "ep5" => "EP5 · The Night the Stars Fell",
+        _ => "EP1 · The Last Bite",
+    }
+}
+
+fn difficulty(ep: &str) -> Difficulty {
+    match ep {
+        "ep2" => Difficulty::Intern,
+        "ep3" | "ep4" | "ep5" => Difficulty::Resident,
+        _ => Difficulty::Student,
+    }
+}
+
+fn new_session(ep: &str) -> Result<Session, String> {
+    let sce_json = std::fs::read_to_string(scenario_path(ep)).map_err(|e| e.to_string())?;
+    let sce = Sce::from_json(&sce_json).map_err(|e| e.to_string())?;
+    Ok(Session {
+        state: SceState::new(sce),
+        tape: Vec::new(),
+        beats: Vec::new(),
+        sce_json,
+        scenario: title(ep).to_string(),
+        difficulty: difficulty(ep),
+        anchored: false,
+    })
+}
+
+fn json(v: impl Serialize) -> Response<std::io::Cursor<Vec<u8>>> {
+    let body = serde_json::to_string(&v).unwrap_or_else(|_| "{}".into());
+    Response::from_string(body)
+        .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap())
+}
+
+fn param(url: &str, key: &str) -> Option<String> {
+    url.split_once('?')?.1.split('&').find_map(|kv| {
+        let (k, v) = kv.split_once('=')?;
+        (k == key).then(|| percent_decode(v))
+    })
+}
+
+/// Enough percent-decoding for a typed clinical order. No dependency for this.
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = String::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'+' => {
+                out.push(' ');
+                i += 1;
+            }
+            b'%' if i + 2 < b.len() => {
+                match u8::from_str_radix(std::str::from_utf8(&b[i + 1..i + 3]).unwrap_or("zz"), 16) {
+                    Ok(c) => {
+                        out.push(c as char);
+                        i += 3;
+                    }
+                    Err(_) => {
+                        out.push('%');
+                        i += 1;
+                    }
+                }
+            }
+            c => {
+                out.push(c as char);
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
+fn main() {
+    let addr = std::env::var("VITALS_WEB_BIND").unwrap_or_else(|_| "127.0.0.1:8090".into());
+    let server = Server::http(&addr).expect("bind");
+    let sessions: Arc<Mutex<HashMap<String, Session>>> = Arc::new(Mutex::new(HashMap::new()));
+    let mut next_id = 0u64;
+
+    let chain = chain::Chain::connect();
+    let player = Arc::new(Mutex::new(Player::default()));
+    match &chain {
+        Some(c) => {
+            let mut p = player.lock().unwrap();
+            p.tree_id = c.slot();
+            println!("chain      connected · slot {} · tree #{}", c.slot(), p.tree_id);
+            println!("player     {}", c.player());
+        }
+        None => println!("chain      not connected — set VITALS_PROGRAM_ID and start a validator to anchor"),
+    }
+
+    println!("Vitals — play at http://{addr}");
+
+    for req in server.incoming_requests() {
+        let url = req.url().to_string();
+        let path = url.split('?').next().unwrap_or("/").to_string();
+
+        let resp = match (req.method(), path.as_str()) {
+            (Method::Get, "/") => {
+                let _ = req.respond(
+                    Response::from_string(PAGE).with_header(
+                        Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
+                            .unwrap(),
+                    ),
+                );
+                continue;
+            }
+            (Method::Get, "/api/new") => {
+                let ep = param(&url, "ep").unwrap_or_else(|| "ep1".into());
+                match new_session(&ep) {
+                    Ok(s) => {
+                        next_id += 1;
+                        let id = format!("s{next_id}");
+                        let view = s.view();
+                        sessions.lock().unwrap().insert(id.clone(), s);
+                        json(serde_json::json!({ "id": id, "view": view }))
+                    }
+                    Err(e) => json(serde_json::json!({ "error": e })),
+                }
+            }
+            (Method::Get, "/api/step") => {
+                let id = param(&url, "id").unwrap_or_default();
+                let mut map = sessions.lock().unwrap();
+                match map.get_mut(&id) {
+                    None => json(serde_json::json!({ "error": "no such session" })),
+                    Some(s) => {
+                        if let Some(act) = param(&url, "do") {
+                            let emitted = s.state.apply(&act);
+                            s.beats.extend(emitted.iter().map(render_beat));
+                            s.tape.push(Step::Do(act));
+                        }
+                        if let Some(dt) = param(&url, "tick").and_then(|v| v.parse::<f64>().ok()) {
+                            let emitted = s.state.tick(dt);
+                            s.beats.extend(emitted.iter().map(render_beat));
+                            s.tape.push(Step::Tick(dt));
+                        }
+                        json(s.view())
+                    }
+                }
+            }
+            (Method::Get, "/api/tape") => {
+                let id = param(&url, "id").unwrap_or_default();
+                let map = sessions.lock().unwrap();
+                match map.get(&id) {
+                    None => json(serde_json::json!({ "error": "no such session" })),
+                    // The tape in the same shape vitals-replay takes, so a player can hand it to
+                    // someone else and have the leaf re-derived off this machine entirely.
+                    Some(s) => json(serde_json::json!({
+                        "scenario": s.scenario,
+                        "sce_hash": hex(&sce_hash(&s.sce_json)),
+                        "tape": s.tape.iter().map(|st| match st {
+                            Step::Tick(dt) => serde_json::json!({"tick": dt}),
+                            Step::Do(t) => serde_json::json!({"do": t}),
+                        }).collect::<Vec<_>>()
+                    })),
+                }
+            }
+            (Method::Get, "/api/chain") => {
+                let p = player.lock().unwrap();
+                json(serde_json::json!({
+                    "connected": chain.is_some(),
+                    "tree_id": p.tree_id,
+                    "anchored": p.leaves.len(),
+                    "player": chain.as_ref().map(|c| c.player()),
+                }))
+            }
+            (Method::Get, "/api/anchor") => {
+                let id = param(&url, "id").unwrap_or_default();
+                let Some(c) = chain.as_ref() else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    continue;
+                };
+                let mut map = sessions.lock().unwrap();
+                let Some(s) = map.get_mut(&id) else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no such session" })));
+                    continue;
+                };
+                if s.state.outcome().is_none() {
+                    let _ = req.respond(json(serde_json::json!({ "error": "the run has not finished" })));
+                    continue;
+                }
+                if s.anchored {
+                    let _ = req.respond(json(serde_json::json!({ "error": "already anchored" })));
+                    continue;
+                }
+                // Rebuild the run from the tape through the shared reducer rather than from the
+                // live session, so what gets anchored is exactly what a verifier would recompute.
+                let r = match replay(&s.sce_json, &s.tape) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        let _ = req.respond(json(serde_json::json!({ "error": e })));
+                        continue;
+                    }
+                };
+                let sce = sce_hash(&s.sce_json);
+                let pk = match bs58_to_32(&c.player()) {
+                    Some(k) => k,
+                    None => [0u8; 32],
+                };
+                let rec: AttemptRecord = match record_for(pk, sce, sce, s.difficulty, false, &s.tape, &r) {
+                    Ok(rec) => rec,
+                    Err(e) => {
+                        let _ = req.respond(json(serde_json::json!({ "error": e })));
+                        continue;
+                    }
+                };
+                let mut p = player.lock().unwrap();
+                p.leaves.push(rec.leaf());
+                let tree_id = p.tree_id;
+                let leaves = p.leaves.clone();
+                drop(p);
+                match c.anchor(tree_id, &rec, &leaves) {
+                    Ok(a) => {
+                        s.anchored = true;
+                        json(serde_json::json!({
+                            "index": a.index, "root": a.root, "leaves": a.leaves,
+                            "proven": a.proven, "score": rec.score(),
+                            "counted": c.proven_count(tree_id),
+                        }))
+                    }
+                    Err(e) => json(serde_json::json!({ "error": e })),
+                }
+            }
+            (Method::Get, "/api/claim") => {
+                let level: u8 = param(&url, "level").and_then(|v| v.parse().ok()).unwrap_or(2);
+                let Some(c) = chain.as_ref() else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    continue;
+                };
+                let tree_id = player.lock().unwrap().tree_id;
+                match c.claim(tree_id, level) {
+                    Ok(msg) => json(serde_json::json!({ "granted": true, "message": msg })),
+                    Err(msg) => json(serde_json::json!({ "granted": false, "message": msg })),
+                }
+            }
+            _ => Response::from_string("not found").with_status_code(404),
+        };
+        let _ = req.respond(resp);
+    }
+}
+
+/// Decode a base58 pubkey into raw bytes. The record binds a run to a player, and the player here
+/// is the relay's key — in production this is the student's silently-created wallet.
+fn bs58_to_32(s: &str) -> Option<[u8; 32]> {
+    const A: &[u8] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    let mut out = vec![0u8; 32];
+    for ch in s.bytes() {
+        let mut carry = A.iter().position(|&c| c == ch)?;
+        for b in out.iter_mut().rev() {
+            carry += 58 * (*b as usize);
+            *b = (carry & 0xff) as u8;
+            carry >>= 8;
+        }
+        if carry != 0 {
+            return None;
+        }
+    }
+    out.try_into().ok()
+}
