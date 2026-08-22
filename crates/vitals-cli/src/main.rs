@@ -26,6 +26,10 @@ use vitals_program::{
 };
 use vitals_replay::{hex, record_for, replay, sce_hash, Replay, Step};
 
+fn repo() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
 const SPECIALTY_CARDIO: u8 = 1;
 
 fn tick(s: f64) -> Step { Step::Tick(s) }
@@ -41,11 +45,34 @@ fn main() {
     }))
     .expect("keypair");
 
-    let sce_json = std::fs::read_to_string(
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../conformance/sce-anaphylaxis-ep1.json"),
-    )
-    .expect("scenario");
-    let sce = sce_hash(&sce_json);
+    // The season, as far as it is authored: EP1 is the reference scenario the conformance
+    // vectors were frozen against; EP2–EP5 are mocks from the series bible.
+    let episodes: Vec<(&str, &str, Difficulty, Vec<Step>)> = vec![
+        ("EP1 · The Last Bite", "conformance/sce-anaphylaxis-ep1.json", Difficulty::Student, vec![
+            tick(30.0), act("adrenaline im"), act("oxygen"), act("supine"),
+            tick(60.0), act("normal saline bolus"), tick(300.0), act("admit for observation"), tick(600.0)]),
+        // The same patient again, played worse. It should not buy any breadth.
+        ("EP1 · replayed, stood up", "conformance/sce-anaphylaxis-ep1.json", Difficulty::Student, vec![
+            tick(30.0), act("adrenaline im"), tick(30.0), act("let her stand up"), act("oxygen"),
+            act("normal saline bolus"), tick(300.0), act("admit for observation"), tick(600.0)]),
+        ("EP2 · Time Is Muscle", "demo/scenarios/ep2-stemi.json", Difficulty::Intern, vec![
+            tick(20.0), act("ecg"), act("aspirin"), tick(30.0), act("activate the cath lab"),
+            tick(300.0), tick(300.0)]),
+        ("EP3 · Don't Make Him Cry", "demo/scenarios/ep3-epiglottitis.json", Difficulty::Resident, vec![
+            tick(15.0), act("keep him calm"), act("blow-by oxygen"), tick(20.0),
+            act("call ent and anaesthesia"), tick(30.0), act("secure the airway"), act("ceftriaxone"),
+            tick(300.0), tick(300.0)]),
+        ("EP4 · The Masquerader", "demo/scenarios/ep4-pulmonary-embolism.json", Difficulty::Resident, vec![
+            tick(20.0), act("wells score"), tick(30.0), act("ctpa"), tick(30.0), act("heparin"),
+            tick(300.0), tick(300.0)]),
+        ("EP5 · The Night the Stars Fell", "demo/scenarios/ep5-the-night-the-stars-fell.json", Difficulty::Resident, vec![
+            tick(10.0), act("triage"), act("tourniquet"), act("needle decompression"),
+            tick(20.0), act("transfuse"), tick(30.0), act("damage control"), tick(300.0), tick(300.0)]),
+    ];
+
+    println!("cluster   {url}");
+    println!("program   {program_id}");
+    println!("player    {}", player.pubkey());
 
     // A fresh tree per run of this demo. A deployment rolls trees when one fills; the demo rolls
     // one every time so each run starts from an empty root and the indices below are the real
@@ -54,38 +81,26 @@ fn main() {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or_else(|| rpc.get_slot().expect("slot"));
-
-    println!("cluster   {url}");
-    println!("program   {program_id}");
-    println!("player    {}", player.pubkey());
-    println!("scenario  ep1-anaphylaxis  {}", &hex(&sce)[..16]);
     println!("tree      #{tree_id}\n");
 
-    let runs: Vec<(&str, Difficulty, Vec<Step>)> = vec![
-        ("treated", Difficulty::Student, vec![
-            tick(30.0), act("adrenaline im"), act("oxygen"), act("supine"),
-            tick(60.0), act("normal saline bolus"), tick(300.0), act("admit for observation"), tick(600.0)]),
-        ("stood up", Difficulty::Student, vec![
-            tick(30.0), act("adrenaline im"), tick(30.0), act("let her stand up"),
-            act("oxygen"), act("normal saline bolus"), tick(300.0), act("admit for observation"), tick(600.0)]),
-        ("no adrenaline", Difficulty::Student, vec![
-            tick(60.0), act("chlorpheniramine"), tick(120.0), act("hydrocortisone"), tick(300.0), tick(600.0)]),
-    ];
-
     // ── 1. play and anchor ──────────────────────────────────────────────────
-    println!("── 1 · play, then anchor each run ──────────────────────");
+    println!("── 1 · play the season, anchor every run ──────────────");
     let mut records = Vec::new();
     let mut leaves = Vec::new();
-    for (name, difficulty, tape) in &runs {
-        let r: Replay = replay(&sce_json, tape).expect("replay");
+    for (title, file, difficulty, tape) in &episodes {
+        let json = std::fs::read_to_string(repo().join(file)).expect("scenario");
+        let sce = sce_hash(&json);
+        let r: Replay = replay(&json, tape).expect("replay");
+        // The scenario hash is the case identity: replaying one episode is one case, however
+        // many times you do it.
         let rec = record_for(player.pubkey().to_bytes(), sce, sce, *difficulty, false, tape, &r)
             .expect("record");
         println!(
-            "  {name:<14} outcome {:<14} harm {}  → score {:>3}   leaf {}",
+            "  {title:<30} {:<14} harm {}  score {:>3}   leaf {}",
             r.outcome.clone().unwrap_or_else(|| "—".into()),
             r.harm_events.len(),
             rec.score(),
-            &hex(&rec.leaf())[..16]
+            &hex(&rec.leaf())[..12]
         );
         send(&rpc, &player, &program_id, Instruction::AnchorReplay { tree_id, record: wire(&rec) },
              vec![tree_pda(&program_id, tree_id).0], true);
@@ -97,7 +112,7 @@ fn main() {
     println!("\n  tree root {}   leaves {}\n", &hex(&tree.root)[..24], tree.next_index);
 
     // ── 2. prove ────────────────────────────────────────────────────────────
-    println!("── 2 · prove each run belongs to this player ───────────");
+    println!("── 2 · prove every run belongs to this player ─────────");
     for (i, rec) in records.iter().enumerate() {
         let path = merkle::prove(&leaves, i as u64).expect("path");
         let ok = send(&rpc, &player, &program_id,
@@ -107,31 +122,32 @@ fn main() {
     }
 
     // A leaf that was never anchored must not prove, or none of this means anything.
-    let forged = AttemptRecord { harm_count: 0, outcome: vitals_progress::record::Outcome::WinDischarge, ..records[2] };
-    let path = merkle::prove(&leaves, 2).expect("path");
+    let forged = AttemptRecord { harm_count: 0, outcome: vitals_progress::record::Outcome::WinDischarge, ..records[1] };
+    let path = merkle::prove(&leaves, 1).expect("path");
     let ok = send(&rpc, &player, &program_id,
-        Instruction::ProveAttempt { tree_id, record: wire(&forged), index: 2, path: path.to_vec() },
+        Instruction::ProveAttempt { tree_id, record: wire(&forged), index: 1, path: path.to_vec() },
         vec![tree_pda(&program_id, tree_id).0, claim_pda(&program_id, &player.pubkey(), tree_id).0], false);
-    println!("  forged   {}", if ok { "ACCEPTED — the tree is broken" } else { "rejected — not in the tree" });
+    println!("  forged   {}   (the stood-up run, with its harm scrubbed)",
+        if ok { "ACCEPTED — the tree is broken" } else { "rejected" });
 
     let claim: ClaimAccount = fetch(&rpc, &claim_pda(&program_id, &player.pubkey(), tree_id).0).expect("claim");
     println!("\n  {} attempts proven and counted\n", claim.attempts.len());
 
     // ── 3. claim ────────────────────────────────────────────────────────────
     println!("── 3 · claim a level ───────────────────────────────────");
-    for claimed in [Dreyfus::Competent, Dreyfus::AdvancedBeginner] {
+    for claimed in [Dreyfus::Expert, Dreyfus::Proficient] {
         let ok = send(&rpc, &player, &program_id,
             Instruction::ClaimProgress { tree_id, specialty: SPECIALTY_CARDIO, claimed: claimed as u8 },
             vec![claim_pda(&program_id, &player.pubkey(), tree_id).0,
-                 progress_pda(&program_id, &player.pubkey(), SPECIALTY_CARDIO).0], claimed == Dreyfus::AdvancedBeginner);
+                 progress_pda(&program_id, &player.pubkey(), SPECIALTY_CARDIO).0], claimed == Dreyfus::Proficient);
         println!("  claim {:<18} {}", claimed.as_str(), if ok { "GRANTED" } else { "REJECTED" });
     }
 
     if let Some(p) = fetch::<Progress>(&rpc, &progress_pda(&program_id, &player.pubkey(), SPECIALTY_CARDIO).0) {
         println!("\n  onchain: level {}  ·  {} attempts  ·  {} distinct case(s)  ·  xp {}",
             level_name(p.level), p.attempts_counted, p.distinct_cases, p.xp);
-        println!("\n  three runs of one patient is one case, and the chain knows it.");
-        println!("  breadth is what Competent needs, and no amount of replaying buys it.");
+        println!("\n  six runs, five episodes — EP1 was played twice and counted once.");
+        println!("  Expert wants eight distinct cases. The season is only five long.");
     }
 }
 
