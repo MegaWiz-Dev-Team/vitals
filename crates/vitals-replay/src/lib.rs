@@ -29,6 +29,19 @@ pub enum Step {
     /// take your adrenaline?" would administer adrenaline. And only the question is kept: the
     /// patient's reply comes from a language model, which is why it is nowhere near the hash.
     Ask(String),
+    /// Turn a device that is already on to the number the player dialled.
+    ///
+    /// Not a `Do`. Device text goes through the intervention matcher, and the matcher keys on the
+    /// device's own name — so `"o2 set to 6"` re-runs the *oxygen order* and re-attaches at the
+    /// scenario's canonical setting. The number the player actually chose has to reach the state
+    /// without passing the matcher, or the tape replays to a different machine than the one the
+    /// player was looking at.
+    Set(String, f64),
+    /// Take a device off.
+    ///
+    /// Same reason, and worse: `"remove o2"` matches the oxygen intervention's own keyword and
+    /// puts the mask back on. A tape that says the opposite of what happened is not a record.
+    Off(String),
 }
 
 /// The reduction of a run: everything discrete, nothing continuous.
@@ -42,6 +55,12 @@ pub struct Replay {
     pub steps: usize,
     /// Sim seconds elapsed across the tape.
     pub sim_seconds: f64,
+    /// What is still on the patient at the end, and at what number.
+    ///
+    /// Not hashed into the leaf — it is display state, and the leaf commits to outcomes. It is
+    /// here because a reducer that cannot report the kit cannot be checked against the machine
+    /// the player was looking at, and that gap is exactly where the tape drifted from the run.
+    pub equipment: Vec<(String, Option<f64>)>,
 }
 
 /// Run a tape and reduce it.
@@ -61,6 +80,16 @@ pub fn replay(sce_json: &str, tape: &[Step]) -> Result<Replay, String> {
             // Deliberately inert. Asking costs time — which the surrounding Tick steps carry —
             // and reveals information, but it changes nothing about the patient.
             Step::Ask(_) => Vec::new(),
+            // Straight at the state, never at the matcher. Neither emits a narrative beat — the
+            // equipment timeline records them, and beats come only from orders and from time.
+            Step::Set(id, v) => {
+                st.attach(id, Some(*v));
+                Vec::new()
+            }
+            Step::Off(id) => {
+                st.detach(id);
+                Vec::new()
+            }
         };
         for b in emitted {
             beats.push(render_beat(&b));
@@ -73,6 +102,7 @@ pub fn replay(sce_json: &str, tape: &[Step]) -> Result<Replay, String> {
         outcome: st.outcome().map(|o| format!("{o:?}")),
         steps: tape.len(),
         sim_seconds,
+        equipment: st.equipment().iter().map(|e| (e.id.clone(), e.setting)).collect(),
     })
 }
 
@@ -99,6 +129,10 @@ pub fn leaf(sce_hash: &[u8; 32], tape: &[Step], r: &Replay) -> [u8; 32] {
             // A tape with no questions hashes exactly as it did before questions existed, so
             // every leaf anchored under the older encoding still verifies.
             Step::Ask(text) => h.update(format!("a{text}\n")),
+            // Same bargain the questions struck: a tape that never touches a dial hashes exactly
+            // as it did before dials were on the tape, so leaves anchored earlier still verify.
+            Step::Set(id, v) => h.update(format!("s{id}={}\n", (v * 1000.0).round() as i64)),
+            Step::Off(id) => h.update(format!("x{id}\n")),
         }
     }
 
