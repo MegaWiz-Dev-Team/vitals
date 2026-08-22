@@ -10,3 +10,4 @@ test-ledger/
 dist/
 keys/
 *.json.key
+.test-ledger/

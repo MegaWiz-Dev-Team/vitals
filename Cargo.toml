@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/vitals-progress"]
+members = ["crates/vitals-progress", "crates/vitals-program", "crates/vitals-cli"]
 
 [workspace.package]
 version = "0.1.0"
