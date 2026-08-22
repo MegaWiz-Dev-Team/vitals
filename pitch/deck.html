@@ -386,3 +386,53 @@ stood up  <b>a6bec396869e7d889686bc42111f4a2b090aa16c4d93213262d24c858637f8ca</b
     <p><strong>The 60-second version:</strong> you play a patient who is dying, the chain keeps a replay of what you did, and anyone can re-derive it without asking us.</p>
   </div>
 </section>
+
+<style>
+@media print{
+  @page{ size:330mm 186mm; margin:0; }
+  :root{
+    --ground:#fff; --surface:#fff; --surface-2:#F2F6F6;
+    --ink:#0F1719; --ink-2:#3E4E52; --ink-3:#6E8084;
+    --rule:#C9D6D6; --rule-soft:#E2EAEA;
+    --proven:#0A5E4B; --proven-soft:#E6F1ED;
+    --attested:#8E3D11; --attested-soft:#F7EBE3;
+    --shadow:none;
+  }
+  html,body{background:#fff; font-size:11pt}
+  body{scroll-snap-type:none}
+  .slide{
+    height:186mm; min-height:0; break-after:page; break-inside:avoid;
+    padding:22mm 20mm 16mm; border-bottom:0; overflow:hidden;
+  }
+  .slide:last-of-type{break-after:auto}
+  .inner{max-width:none; gap:1.1rem}
+  .rail{top:9mm; left:20mm; right:20mm; font-size:7.5pt; padding-bottom:3mm}
+  .eyebrow{font-size:8pt}
+  h2{font-size:26pt; line-height:1.06}
+  .lede{font-size:12.5pt; max-width:46em}
+  p{font-size:10.5pt; max-width:52em}
+  .title h1{font-size:76pt}
+  .title .sub{font-size:17pt}
+  .meta{font-size:8.5pt}
+  .card,.node,.step{box-shadow:none; padding:.75rem .85rem}
+  .card p,.node .b,.step .d{font-size:9.5pt}
+  .card .k,.node .h{font-size:7.5pt}
+  .stat .n{font-size:26pt}
+  .stat .l{font-size:9pt}
+  table{font-size:9.5pt}
+  th{font-size:7.5pt}
+  th,td{padding:.4rem .6rem}
+  pre{font-size:8pt; padding:.7rem .8rem; line-height:1.5}
+  .ledger{font-size:8.5pt}
+  .ledger .row{padding:.38rem .7rem}
+  ul{gap:.35rem}
+  li{font-size:9.5pt}
+  .kill{padding:.7rem .85rem}
+  .kill p{font-size:9pt}
+  .refuse{padding:.7rem .85rem}
+  .refuse code{font-size:8.5pt}
+  .small{font-size:8.5pt}
+  .sub-h{font-size:7.5pt}
+  .two{gap:1.1rem}
+}
+</style>
