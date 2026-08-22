@@ -188,6 +188,33 @@ li strong,p strong{color:var(--ink); font-weight:600}
 .never li{color:var(--ink-2)}
 .small{font-size:.85rem; color:var(--ink-3)}
 
+.season{display:grid;gap:.45rem;grid-template-columns:repeat(5,1fr)}
+.ep-chip{background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:.5rem .6rem;
+  display:flex;flex-direction:column;gap:.12rem}
+.ep-chip .n{font-family:"IBM Plex Mono",monospace;font-size:.56rem;letter-spacing:.12em;color:var(--ink-3)}
+.ep-chip .t{font-family:Archivo,sans-serif;font-weight:700;font-size:.8rem;line-height:1.12}
+.ep-chip .w{font-size:.68rem;color:var(--ink-3)}
+.ep-chip.film{border-color:var(--proven)} .ep-chip.film .n{color:var(--proven)}
+.paths{display:grid;gap:.6rem;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr))}
+.path{border:1px solid var(--rule);border-top:3px solid var(--proven);border-radius:4px;
+  padding:.6rem .7rem;background:var(--surface);display:flex;flex-direction:column;gap:.25rem}
+.path.paid{border-top-color:var(--attested)}
+.path .h{font-family:"IBM Plex Mono",monospace;font-size:.58rem;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--proven)}
+.path.paid .h{color:var(--attested)}
+.path p{font-size:.8rem;color:var(--ink-2)}
+.vault{margin-top:.55rem;border:1px dashed var(--attested);background:var(--attested-soft);
+  border-radius:4px;padding:.5rem .7rem;font-size:.82rem;color:var(--attested)}
+.vault b{color:var(--ink)}
+.whorow{display:grid;gap:.45rem;grid-template-columns:repeat(auto-fit,minmax(10.5rem,1fr))}
+.who-c{border:1px solid var(--rule);border-radius:4px;padding:.55rem .65rem;background:var(--surface)}
+.who-c.key{border-color:var(--proven);background:var(--proven-soft)}
+.who-c .r{font-family:"IBM Plex Mono",monospace;font-size:.56rem;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:.2rem}
+.who-c.key .r{color:var(--proven)}
+.who-c p{font-size:.78rem;color:var(--ink-2)}
+
+
 /* ── hero band: she arrives on slide 01, she goes home on slide 12 ── */
 .hero{position:relative; border-radius:3px; overflow:hidden; border:1px solid var(--rule)}
 .hero img{display:block; width:100%; height:auto; aspect-ratio:21/8; object-fit:cover}
@@ -317,6 +344,9 @@ li strong,p strong{color:var(--ink); font-weight:600}
       <div class="row no"><span class="k">no adrenaline</span><span class="v">antihistamine · steroid · wait</span><span class="r">DeathArrest · fatal</span></div>
     </div>
     <p class="small" style="font-size:.75rem"><strong>Deterministic execution:</strong> Three players, three tapes, replayed against the shipped physiology automaton. Same outcome as the first, different leaf — because harm is on the record.</p>
+  
+    <div class="sub-h" style="margin-top:.5rem">one season · EP1 is filmed, the rest are authored automata</div>
+    <div class="season"><div class="ep-chip film"><span class="n">EP1</span><span class="t">The Last Bite</span><span class="w">anaphylaxis · she has minutes</span></div><div class="ep-chip "><span class="n">EP2</span><span class="t">Time Is Muscle</span><span class="w">STEMI · the clock is muscle</span></div><div class="ep-chip "><span class="n">EP3</span><span class="t">Don't Make Him Cry</span><span class="w">epiglottitis · doing nothing is the treatment</span></div><div class="ep-chip "><span class="n">EP4</span><span class="t">The Masquerader</span><span class="w">PE · everything looks normal</span></div><div class="ep-chip "><span class="n">EP5</span><span class="t">The Night the Stars Fell</span><span class="w">mass casualty · the queue is the cost</span></div></div>
   </div>
 </section>
 
@@ -372,7 +402,7 @@ li strong,p strong{color:var(--ink); font-weight:600}
       </div>
     </div>
     <div class="grid g3">
-      <div class="card"><span class="k">the agent</span><p>Plays patient dialogue. In experience, never in evidence.</p></div>
+      <div class="card"><span class="k">the agent</span><p>A <strong>local model</strong> plays her dialogue. The tape records <strong>the question you asked, never her answer</strong> — so history-taking is on the record and the model is nowhere near the hash.</p></div>
       <div class="card"><span class="k">the automaton</span><p>Decides transitions and endings. Exact and replayable.</p></div>
       <div class="card"><span class="k">the proof</span><p>No model in proof path. Settles by arithmetic via $VIGIL.</p></div>
     </div>
@@ -537,8 +567,42 @@ li strong,p strong{color:var(--ink); font-weight:600}
   </div>
 </section>
 
+<!-- MARKET ────────────────────────────────────────────────── -->
 <section class="slide">
-  <div class="rail"><span class="no">08</span><span class="hash">market · precedent</span><span class="tag">Vitals</span></div>
+  <div class="rail"><span class="no">08</span><span class="hash">who checks it · what money opens</span><span class="tag">Vitals</span></div>
+  <div class="inner">
+    <span class="eyebrow">The market around the record</span>
+    <h2>Everyone can check it. Nobody can buy it.</h2>
+    <p class="lede">Two questions the rest of the deck leaves hanging: who would actually run a verifier, and what happens when somebody just wants to pay their way in.</p>
+
+    <div class="sub-h" style="margin-top:.2rem">who checks it — and what checking even means</div>
+    <div class="whorow">
+      <div class="who-c key"><span class="r">the one who relies on it</span>
+        <p>A residency programme about to trust the record <strong>does not want us to be the only ones checking it</strong>.</p></div>
+      <div class="who-c"><span class="r">the school that sent them</span>
+        <p>Wants its graduates' records to hold when someone else looks.</p></div>
+      <div class="who-c"><span class="r">the sponsor</span>
+        <p>Pays against a level, so would rather check it than take it on faith.</p></div>
+      <div class="who-c"><span class="r">an operator, for the fee</span>
+        <p>Arrives last. A laptop is the machine.</p></div>
+    </div>
+    <p class="small" style="margin-top:.5rem">A verifier loads the same scenario, replays the same tape, compares beats, harm and outcome. <strong>It judges nothing</strong> — which is why two honest verifiers cannot disagree. <strong>On day one there is one node and it is ours</strong>; an open set matters once verification is worth attacking.</p>
+  
+    <div class="sub-h" style="margin-top:.6rem">what money can open — and what it cannot</div>
+    <div class="paths">
+      <div class="path"><span class="h">skill · always free</span>
+        <p>Clear one, the next opens. No money, no wallet, no sponsor needed for the whole season.</p></div>
+      <div class="path"><span class="h">a sponsor</span>
+        <p>Opens an episode for a cohort. The author is paid per replay; the player transacts nothing.</p></div>
+      <div class="path paid"><span class="h">impulse · consumer only</span>
+        <p>Skip the grind. Harmless, because of what it does not buy.</p></div>
+    </div>
+    <div class="vault">🔒 <b>None of them buys standing.</b> Your level is recomputed from anchored runs, and the program neither knows nor cares how a scenario came to be unlocked. <b>You cannot buy a leaf — only the chance to make one.</b></div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="rail"><span class="no">09</span><span class="hash">market · precedent</span><span class="tag">Vitals</span></div>
   <div class="inner">
     <span class="eyebrow">Market and precedent</span>
     <h2>This shape already won this hackathon once.</h2>
@@ -561,7 +625,7 @@ li strong,p strong{color:var(--ink); font-weight:600}
 </section>
 
 <section class="slide">
-  <div class="rail"><span class="no">09</span><span class="hash">four weeks</span><span class="tag">Vitals</span></div>
+  <div class="rail"><span class="no">10</span><span class="hash">four weeks</span><span class="tag">Vitals</span></div>
   <div class="inner">
     <span class="eyebrow">Where it stands, and what's next</span>
     <h2>Two halves built. One week to join them.</h2>
