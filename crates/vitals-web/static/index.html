@@ -223,6 +223,44 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
 .clock2{font-family:"IBM Plex Mono",monospace;font-size:.78rem;font-variant-numeric:tabular-nums;
   color:var(--ink-2)}
 
+/* ── the device picker ────────────────────────────────────────────────────────
+   Two steps, the way the reference does it: choose the device, then set it. Grouped
+   A / B / C because that is the order a resuscitation is taught, and a picker that
+   sorts alphabetically quietly teaches against it. */
+.veil{position:fixed;inset:0;background:rgba(10,22,24,.45);backdrop-filter:blur(3px);
+  display:grid;place-items:center;z-index:50;padding:1rem}
+.veil[hidden]{display:none}
+.sheet{background:var(--card);border:1px solid var(--line);border-radius:14px;width:min(23rem,100%);
+  max-height:min(34rem,86vh);display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 24px 60px -20px rgba(10,22,24,.5)}
+.sheet-h{display:flex;align-items:center;gap:.6rem;padding:.85rem 1rem;border-bottom:1px solid var(--line)}
+.sheet-h b{font-family:Archivo,sans-serif;font-size:.98rem;font-weight:700}
+.sheet-h .sp{margin-left:auto}
+.sheet-b{padding:.9rem 1rem;overflow:auto;display:flex;flex-direction:column;gap:1rem}
+.grp-h{font-family:"IBM Plex Mono",monospace;font-size:.6rem;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--ink-3);margin-bottom:.4rem}
+.dev-row{width:100%;display:flex;align-items:center;gap:.7rem;text-align:left;background:var(--card-2);
+  border:1px solid var(--line);border-radius:9px;padding:.6rem .75rem;cursor:pointer;margin-bottom:.35rem;
+  font:inherit;color:inherit}
+.dev-row:hover{border-color:var(--act);background:var(--act-soft)}
+.dev-row .n{font-size:.9rem;font-weight:500;display:block}
+.dev-row .d{font-size:.72rem;color:var(--ink-3);display:block}
+.dev-row .on{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:.65rem;color:var(--act);
+  white-space:nowrap}
+.art{width:5.5rem;height:6.2rem;flex:none;background:var(--card-2);border:1px solid var(--line);
+  border-radius:9px;display:grid;place-items:center}
+.art svg{width:100%;height:100%}
+.set-top{display:flex;gap:.85rem;align-items:flex-start}
+.set-top .meta .n{font-family:Archivo,sans-serif;font-weight:700;font-size:1rem}
+.set-top .meta .d{font-size:.78rem;color:var(--ink-3)}
+.set-top .meta .since{font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--act);margin-top:.3rem}
+.presets{display:flex;flex-wrap:wrap;gap:.35rem}
+.presets .btn{font-size:.78rem;padding:.45rem .75rem}
+.sheet-f{display:flex;gap:.5rem;padding:.8rem 1rem;border-top:1px solid var(--line)}
+.sheet-f .sp{margin-left:auto}
+.btn.danger{color:var(--alarm);border-color:#EFD3D0}
+.btn.danger:hover{background:var(--alarm-soft);border-color:var(--alarm)}
+
 /* ── outcome ── */
 .result{grid-column:1/-1;display:none;background:var(--card);border:1px solid var(--line);
   border-left:4px solid var(--act);border-radius:11px;padding:1rem 1.1rem}
@@ -335,7 +373,7 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
       <div class="k">treatment · kit</div>
       <div id="nudge" class="nudge"></div>
       <div class="kit" id="kit"><span class="muted">nothing attached</span></div>
-      <div class="tray" id="tray"></div>
+      <button class="btn" id="addkit" style="width:100%">+ attach a device</button>
       <div class="posrow">
         <label><input type="checkbox" id="p-admit"> admit</label>
         <button class="btn" id="sound" title="the clips carry their own room tone">🔇 sound off</button>
@@ -354,7 +392,11 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
     </div>
   </aside>
 
-<section class="result" id="result">
+<div class="veil" id="veil" hidden>
+    <div class="sheet" id="sheet"></div>
+  </div>
+
+  <section class="result" id="result">
     <h2 id="outcome"></h2>
     <div class="sub" id="outnote"></div>
     <div class="leaf" id="leaf"></div>
@@ -503,30 +545,98 @@ const KIT=[
 const KITLBL=Object.fromEntries(KIT.map(k=>[k.id,k]));
 let picking=null;
 
-function renderTray(kitOn){
-  const on=new Set((kitOn||[]).map(k=>k.id));
-  let html='';
-  for(const g of ['airway','breathing','circulation']){
-    const items=KIT.filter(k=>k.group===g);
-    if(!items.length)continue;
-    html+=`<span class="grp">${g}</span>`;
-    html+=items.map(k=>`<button class="btn" data-kit="${k.id}" ${on.has(k.id)&&k.detach?'disabled':''}
-      title="${k.detail}">${k.label}</button>`).join('');
-  }
-  $('#tray').innerHTML=html;
-  $('#tray').querySelectorAll('[data-kit]').forEach(b=>b.onclick=()=>pick(b.dataset.kit));
+/* Simple line art, drawn rather than photographed: a learner should recognise the thing on
+   the trolley, and a stock photo of a mask teaches nothing about the flowmeter. */
+const ART={
+ o2:`<svg viewBox="0 0 90 104" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round">
+   <path d="M22 30h46a6 6 0 0 1 6 6v22a22 22 0 0 1-22 22H38a22 22 0 0 1-22-22V36a6 6 0 0 1 6-6z" fill="#EAF3F1"/>
+   <path d="M30 30V22a15 15 0 0 1 30 0v8"/><path d="M45 80v14"/>
+   <path d="M45 94c-10 0-16 4-16 8h32c0-4-6-8-16-8z" fill="#DCEDE7"/>
+   <circle cx="45" cy="54" r="7" fill="#2A9D7E" stroke="none" opacity=".8"/></svg>`,
+ iv:`<svg viewBox="0 0 90 104" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round">
+   <path d="M45 6v10"/><path d="M30 16h30l-3 40a12 12 0 0 1-24 0z" fill="#E7F1F6"/>
+   <path d="M45 68v10"/><path d="M39 78h12v10H39z" fill="#EAF3F1"/>
+   <path d="M45 88c0 8-14 6-14 16"/></svg>`,
+ ett:`<svg viewBox="0 0 90 104" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round">
+   <path d="M20 20c26 0 40 20 40 40s-8 30-22 34" />
+   <ellipse cx="58" cy="62" rx="11" ry="7" fill="#EAF3F1"/>
+   <path d="M20 14v12"/><circle cx="20" cy="20" r="6" fill="#DCEDE7"/></svg>`,
+ supine:`<svg viewBox="0 0 90 104" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round">
+   <path d="M8 66h60l14-16" /><circle cx="20" cy="58" r="7" fill="#EAF3F1"/>
+   <path d="M8 66v10M68 66v10"/></svg>`,
+ defib:`<svg viewBox="0 0 90 104" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round">
+   <rect x="14" y="26" width="28" height="22" rx="4" fill="#FBE8E6"/>
+   <rect x="48" y="56" width="28" height="22" rx="4" fill="#FBE8E6"/>
+   <path d="M42 37h10M38 67h10"/><path d="M46 20l-8 14h10l-8 14"/></svg>`,
+};
+
+/* The catalogue, grouped the way a resuscitation is taught. */
+const GROUPS=[['A · airway','airway'],['B · breathing','breathing'],['C · circulation','circulation']];
+
+function closeSheet(){ $('#veil').hidden=true; $('#sheet').innerHTML=''; }
+$('#veil').addEventListener('click',e=>{ if(e.target===$('#veil')) closeSheet(); });
+addEventListener('keydown',e=>{ if(e.key==='Escape'&&!$('#veil').hidden) closeSheet(); });
+
+let kitNow=[];
+function renderTray(kitOn){ kitNow=kitOn||[]; }
+
+/* step 1 — which device */
+function openPicker(){
+  const on=new Set(kitNow.map(k=>k.id));
+  $('#sheet').innerHTML=`
+    <div class="sheet-h"><b>Choose a device</b><span class="sp"></span>
+      <button class="btn" data-close>close</button></div>
+    <div class="sheet-b">`+GROUPS.map(([title,g])=>{
+      const rows=KIT.filter(k=>k.group===g); if(!rows.length)return '';
+      return `<div><div class="grp-h">${title}</div>`+rows.map(k=>`
+        <button class="dev-row" data-dev="${k.id}">
+          <span><span class="n">${k.label}</span><span class="d">${k.detail}</span></span>
+          ${on.has(k.id)?'<span class="on">✓ on</span>':''}
+        </button>`).join('')+`</div>`;
+    }).join('')+`</div>`;
+  $('#veil').hidden=false;
+  $('#sheet').querySelector('[data-close]').onclick=closeSheet;
+  // Already-on is shown, not hidden — hiding it makes a learner hunt for something they did.
+  $('#sheet').querySelectorAll('[data-dev]').forEach(b=>b.onclick=()=>openSetting(b.dataset.dev));
 }
-function pick(devId){
+
+/* step 2 — set it, or take it off */
+function openSetting(devId){
   const k=KITLBL[devId];
-  if(!k.presets.length) return commit(k, null);
-  picking=devId;
-  const row=document.createElement('div'); row.className='setrow';
-  row.innerHTML=`<span class="muted" style="width:100%">${k.label} — ${k.unit}</span>`+
-    k.presets.map(v=>`<button class="btn${v===k.def?' on':''}" data-v="${v}">${v}${v===999?' (wide open)':''}</button>`).join('');
-  $('#tray').after(row);
-  row.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{ row.remove(); commit(k, +b.dataset.v); });
+  const cur=kitNow.find(x=>x.id===devId);
+  const mins=cur?Math.max(0,Math.floor((clockNow-cur.since)/60)):null;
+  const val=cur&&cur.setting!=null?cur.setting:k.def;
+  $('#sheet').innerHTML=`
+    <div class="sheet-h"><b>${k.label}</b><span class="sp"></span>
+      <button class="btn" data-back>← back</button></div>
+    <div class="sheet-b">
+      <div class="set-top">
+        ${ART[devId]?`<div class="art">${ART[devId]}</div>`:''}
+        <div class="meta"><div class="n">${k.label}</div><div class="d">${k.detail}</div>
+          ${cur?`<div class="since">on for ${mins} min${cur.setting!=null?` · ${cur.setting} ${k.unit}`:''}</div>`:''}
+        </div>
+      </div>
+      ${k.presets.length?`<div><div class="grp-h">${k.unit}</div><div class="presets">`+
+        k.presets.map(v=>`<button class="btn${v===val?' on':''}" data-v="${v}">${v}${v===999?' · wide open':''}</button>`).join('')+
+        `</div></div>`:''}
+    </div>
+    <div class="sheet-f">
+      ${cur&&k.detach?`<button class="btn danger" data-off>take it off</button>`:''}
+      <span class="sp"></span>
+      <button class="btn go" data-apply>${cur?'apply':'attach'}</button>
+    </div>`;
+  let chosen=val;
+  const S=$('#sheet');
+  S.querySelector('[data-back]').onclick=openPicker;
+  S.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{
+    chosen=+b.dataset.v; S.querySelectorAll('[data-v]').forEach(x=>x.classList.toggle('on',x===b)); });
+  const off=S.querySelector('[data-off]'); if(off) off.onclick=()=>{ closeSheet(); detach(devId); };
+  S.querySelector('[data-apply]').onclick=()=>{ closeSheet(); commit(k, k.presets.length?chosen:null); };
 }
+
 async function commit(k, value){
+  // Support that can only ever be added teaches that nothing you attach can be got wrong, so the
+  // two that cannot be undone ask first.
   if(k.confirm && !confirm(k.confirm)) return;
   const v=await (await fetch(`/api/kit?id=${id}&dev=${k.id}`+(value!=null?`&set=${value}`:''))).json();
   if(v.error) return ev('note','—',v.error);
@@ -719,6 +829,7 @@ document.querySelectorAll('.dev').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.dev').forEach(x=>x.classList.toggle('on',x===b));
   if(id)$('#device').src='/device/'+b.dataset.dev+'?sid='+encodeURIComponent(id);
 });
+$('#addkit').onclick=openPicker;
 $('#p-admit').onchange=e=>{ if(e.target.checked) doOrder('admit'); };
 /* Autoplay only survives while muted, so the loop stays silent and the cutscenes get the
    sound — which is where the room tone actually is. Off by default: a bay that starts
@@ -771,6 +882,7 @@ if(location.hash.startsWith('#play')){
   const e=(location.hash.split('=')[1]||'').split('&')[0]; if(e)$('#ep').value=e;
   /* &script runs a canned opening — for a kiosk left playing, and for checking that the log
      actually renders what the code says it does. */
+  if(location.hash.includes('&kit')) setTimeout(()=>openPicker(),3000);
   if(location.hash.includes('&script')) setTimeout(async()=>{
     await new Promise(r=>setTimeout(r,1200));
     await askHer('What happened to you?');
