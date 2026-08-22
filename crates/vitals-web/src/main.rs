@@ -426,6 +426,41 @@ fn main() {
                     }
                 }
             }
+            // ── the kit ─────────────────────────────────────────────────────────
+            // Attaching a device is not a free-text order. It is a pick from a catalogue with a
+            // setting, and the flowmeter has to read what the learner actually chose — the same
+            // shape Embla's device tray uses, so the chart and a debrief can quote the number.
+            (Method::Get, "/api/kit") => {
+                let id = param(&url, "id").unwrap_or_default();
+                let dev = param(&url, "dev").unwrap_or_default();
+                let set = param(&url, "set").and_then(|v| v.parse::<f64>().ok());
+                let off = param(&url, "off").is_some();
+                let mut map = sessions.lock().unwrap();
+                match map.get_mut(&id) {
+                    None => json(serde_json::json!({ "error": "no such session" })),
+                    Some(s) => {
+                        if off {
+                            s.state.detach(&dev);
+                            s.tape.push(Step::Do(format!("remove {dev}")));
+                        } else if let Some(phrase) = kit_phrase(&dev, set) {
+                            // Go through the matcher, so the physiology moves exactly as it would
+                            // for someone who typed it. The picker is a convenience, not a bypass.
+                            let emitted = s.state.apply(&phrase);
+                            s.beats.extend(emitted.iter().map(render_beat));
+                            s.tape.push(Step::Do(phrase));
+                            // Then correct the reading to what was actually dialled in. attach()
+                            // records it too, so the chart quotes the learner's number rather
+                            // than the scenario's canonical dose.
+                            if let Some(v) = set {
+                                if s.state.has_equipment(&dev) && s.state.equipment_setting(&dev) != Some(v) {
+                                    s.state.attach(&dev, Some(v));
+                                }
+                            }
+                        }
+                        json(s.view())
+                    }
+                }
+            }
             (Method::Get, "/api/tape") => {
                 let id = param(&url, "id").unwrap_or_default();
                 let map = sessions.lock().unwrap();
@@ -577,4 +612,19 @@ fn bs58_to_32(s: &str) -> Option<[u8; 32]> {
         }
     }
     out.try_into().ok()
+}
+
+/// The phrase a device pick sends through the intervention matcher.
+///
+/// One catalogue, and it carries the number: a learner who sets the flowmeter to 15 should see
+/// 15 in the chart, not the scenario's canonical dose.
+fn kit_phrase(dev: &str, set: Option<f64>) -> Option<String> {
+    Some(match dev {
+        "o2" => format!("oxygen face mask {} lpm", set.unwrap_or(10.0) as i64),
+        "iv" => format!("iv access normal saline {} ml/hr", set.unwrap_or(999.0) as i64),
+        "ett" => "intubate, secure the airway".to_string(),
+        "supine" => "lay her flat, legs up".to_string(),
+        "defib" => format!("defibrillate {} j", set.unwrap_or(200.0) as i64),
+        _ => return None,
+    })
 }

@@ -171,7 +171,15 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
 .nudge:empty{display:none}
 .kit{display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.5rem}
 .kit .k-i{font-family:"IBM Plex Mono",monospace;font-size:.68rem;background:var(--act-soft);
-  color:#0a4c3e;border-radius:999px;padding:.2rem .55rem}
+  color:#0a4c3e;border-radius:999px;padding:.2rem .55rem;display:inline-flex;gap:.3rem;align-items:center}
+.kit .k-i b{font-weight:600}
+.kit .k-i .x{cursor:pointer;opacity:.5} .kit .k-i .x:hover{opacity:1;color:var(--alarm)}
+.tray{display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.5rem}
+.tray .btn{font-size:.68rem}
+.tray .grp{font-family:"IBM Plex Mono",monospace;font-size:.56rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-3);width:100%;margin-top:.25rem}
+.setrow{display:flex;flex-wrap:wrap;gap:.25rem;margin:.35rem 0 .5rem}
+.setrow .btn{font-size:.66rem;padding:.25rem .5rem}
 .posrow{display:flex;gap:.9rem;font-size:.8rem;color:var(--ink-2)}
 .posrow input{accent-color:var(--act)}
 
@@ -300,9 +308,10 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
       <div class="k">treatment · kit</div>
       <div id="nudge" class="nudge"></div>
       <div class="kit" id="kit"><span class="muted">nothing attached</span></div>
+      <div class="tray" id="tray"></div>
       <div class="posrow">
-        <label><input type="checkbox" id="p-supine"> lay flat</label>
         <label><input type="checkbox" id="p-admit"> admit</label>
+        <button class="btn" id="sound" title="the clips carry their own room tone">🔇 sound off</button>
       </div>
     </div>
 
@@ -427,6 +436,61 @@ function turn(cls,who,text,raw){
   d.querySelector('.say').textContent=text; if(raw)d.title=raw;
   $('#chat').appendChild(d); $('#chat').scrollTop=1e6;
 }
+/* ─── the kit ────────────────────────────────────────────────────────────────
+   Embla's device tray, not a row of buttons: every item carries what it actually is,
+   what the flowmeter reads, whether it can come off again, and whether it should ask
+   first. 999 mL/hr is not a bug — it is an IV run wide open, and it is one of the
+   presets a learner picks from. */
+const KIT=[
+ {id:'o2',  label:'O₂ face mask', detail:'high-flow', unit:'L/min', presets:[6,10,15], def:10,
+  detach:true,  group:'breathing'},
+ {id:'iv',  label:'IV + fluid',   detail:'0.9% NaCl', unit:'mL/hr', presets:[80,125,500,999], def:999,
+  detach:true,  group:'circulation'},
+ {id:'ett', label:'Intubate',     detail:'ETT 7.0 · cuffed', unit:null, presets:[], def:null,
+  detach:true,  group:'airway',      confirm:'Intubate now?'},
+ {id:'supine', label:'Lay flat, legs up', detail:'once, not a device', unit:null, presets:[], def:null,
+  detach:false, group:'circulation'},
+ {id:'defib', label:'Defibrillate', detail:'VF / pulseless VT only', unit:'J', presets:[120,150,200,360], def:200,
+  detach:false, group:'circulation', confirm:'Deliver the shock?'},
+];
+const KITLBL=Object.fromEntries(KIT.map(k=>[k.id,k]));
+let picking=null;
+
+function renderTray(kitOn){
+  const on=new Set((kitOn||[]).map(k=>k.id));
+  let html='';
+  for(const g of ['airway','breathing','circulation']){
+    const items=KIT.filter(k=>k.group===g);
+    if(!items.length)continue;
+    html+=`<span class="grp">${g}</span>`;
+    html+=items.map(k=>`<button class="btn" data-kit="${k.id}" ${on.has(k.id)&&k.detach?'disabled':''}
+      title="${k.detail}">${k.label}</button>`).join('');
+  }
+  $('#tray').innerHTML=html;
+  $('#tray').querySelectorAll('[data-kit]').forEach(b=>b.onclick=()=>pick(b.dataset.kit));
+}
+function pick(devId){
+  const k=KITLBL[devId];
+  if(!k.presets.length) return commit(k, null);
+  picking=devId;
+  const row=document.createElement('div'); row.className='setrow';
+  row.innerHTML=`<span class="muted" style="width:100%">${k.label} — ${k.unit}</span>`+
+    k.presets.map(v=>`<button class="btn${v===k.def?' on':''}" data-v="${v}">${v}${v===999?' (wide open)':''}</button>`).join('');
+  $('#tray').after(row);
+  row.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{ row.remove(); commit(k, +b.dataset.v); });
+}
+async function commit(k, value){
+  if(k.confirm && !confirm(k.confirm)) return;
+  const v=await (await fetch(`/api/kit?id=${id}&dev=${k.id}`+(value!=null?`&set=${value}`:''))).json();
+  if(v.error) return turn('sys note','',v.error);
+  turn('you','you','▸ '+k.label+(value!=null?` · ${value} ${k.unit}`:''));
+  paint(v);
+}
+async function detach(devId){
+  const v=await (await fetch(`/api/kit?id=${id}&dev=${devId}&off=1`)).json();
+  if(v.error) return; turn('you','you','▸ remove '+KITLBL[devId].label); paint(v);
+}
+
 /* ─── film ──────────────────────────────────────────────────────────────────
    Story Mode does two things with video and I had done neither: it loops a clip per
    clinical state — and the loop changes again when equipment goes on, so the mask is
@@ -463,7 +527,7 @@ function playCut(key){
   const asset=CUT[key]; if(!asset||ep().id!=='ep1'||cutting)return;
   cutting=true;
   const c=$('#cut'); c.src='/clip/'+asset+'.mp4';
-  c.currentTime=0; c.classList.add('on'); $('#cut-tag').classList.add('on');
+  c.muted=!sound; c.currentTime=0; c.classList.add('on'); $('#cut-tag').classList.add('on');
   c.play().catch(()=>{ c.classList.remove('on'); $('#cut-tag').classList.remove('on'); cutting=false; });
   c.onended=()=>{ c.classList.remove('on'); $('#cut-tag').classList.remove('on'); cutting=false; };
 }
@@ -506,8 +570,13 @@ function paint(v){
   $('#stab').style.background = st>65?'var(--act)' : st>35?'#E0A33C' : 'var(--alarm)';
 
   $('#kit').innerHTML = v.equipment.length
-    ? v.equipment.map(k=>`<span class="k-i">${k.id}${k.setting!=null?' '+k.setting:''}</span>`).join('')
+    ? v.equipment.map(k=>{ const d=KITLBL[k.id];
+        const val=k.setting!=null?`<b>${k.setting}</b>${d&&d.unit?' '+d.unit:''}`:'';
+        const x=(!d||d.detach)?`<span class="x" data-off="${k.id}" title="take it off">✕</span>`:'';
+        return `<span class="k-i">${d?d.label:k.id} ${val}${x}</span>`; }).join('')
     : '<span class="muted">nothing attached</span>';
+  $('#kit').querySelectorAll('[data-off]').forEach(x=>x.onclick=()=>detach(x.dataset.off));
+  renderTray(v.equipment);
 
   const given = v.chart.some(c=>c.kind==='action' && c.text.toLowerCase().includes(E.key.match));
   $('#nudge').textContent = (given||over) ? '' : '⚠ no '+E.key.drug+' yet';
@@ -600,8 +669,18 @@ document.querySelectorAll('.dev').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.dev').forEach(x=>x.classList.toggle('on',x===b));
   if(id)$('#device').src='/device/'+b.dataset.dev+'?sid='+encodeURIComponent(id);
 });
-$('#p-supine').onchange=e=>{ if(e.target.checked) doOrder(ep().id==='ep1'?'lay her flat':'lay flat'); };
 $('#p-admit').onchange=e=>{ if(e.target.checked) doOrder('admit'); };
+/* Autoplay only survives while muted, so the loop stays silent and the cutscenes get the
+   sound — which is where the room tone actually is. Off by default: a bay that starts
+   making noise on load is a bay somebody closes. */
+let sound=false;
+$('#sound').onclick=()=>{
+  sound=!sound;
+  $('#sound').textContent = sound ? '🔊 sound on' : '🔇 sound off';
+  $('#sound').classList.toggle('on',sound);
+  $('#cut').muted=!sound;
+  $('#loop').muted=true;
+};
 
 $('#anchor').onclick=async()=>{
   $('#anchor').disabled=true; $('#anchor').textContent='anchoring…';
