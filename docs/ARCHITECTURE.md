@@ -1,4 +1,4 @@
-# embla-proof — Architecture
+# vitals — Architecture
 
 ## 1. Trust model (start here)
 
@@ -90,7 +90,7 @@ are rent-reclaimed on reveal so the steady-state cost per attempt is the leaf, n
 Issued by an accredited issuer, not by us:
 
 ```
-credential : "embla-proof competency"
+credential : "vitals competency"
 schema     : { domain: string, level: u8, blueprint_ver: string,
                attempts_counted: u16, window_end: i64 }
 attestation: issued to student pubkey, signed by issuer authority
@@ -138,7 +138,7 @@ batch continues from the stored cursor.
 | `proof-program` | case registry + commit/reveal | Rust / Anchor | **new** |
 | `proof-sdk` | TS client: wallet, gasless relay, read registry | TypeScript | **new** |
 | `proof-check` | public web page: paste transcript → verify against chain | TS + Rust wasm | **new** |
-| `proof-progress` | integer twin of `xp_for`/`level_for`/`dreyfus`, shared by program + engine | Rust (no_std) | **new** |
+| `vitals-progress` | integer twin of `xp_for`/`level_for`/`dreyfus`, shared by program + engine | Rust (no_std) | **new** |
 | Heimdall | local LLM gateway (inference never leaves the box) | — | reused |
 
 Rust across the engine, the verifier and the Anchor program is not an aesthetic choice —

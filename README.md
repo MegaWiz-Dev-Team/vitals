@@ -1,10 +1,23 @@
-# embla-proof
+# Vitals
 
-**Proof of Competence — verifiable clinical-skill credentials on Solana.**
+**A patient is dying on a clock and you decide what happens next.
+Anyone can play. Nobody can fake the replay.**
 
-> Status: design / kickoff 2026-08-22 · v0.1.0 (reserved) · Not yet implemented.
-> Spin-off of [Embla](../Embla) for the Colosseum / Solana hackathon track.
-> License: **AGPL-3.0 + Commercial** (Asgard policy).
+> v0.1.0 · kickoff 2026-08-22 · Rust throughout · License **AGPL-3.0 + Commercial**
+> Built on the encounter engine and physiology automaton from [Embla](../Embla) /
+> [Embla Cloud](../embla-cloud), which ship today. Targeting the Colosseum / Solana track.
+
+Vitals is two things that turn out to be the same thing:
+
+- **A game.** A real-time clinical emergency, driven by a deterministic physiology
+  simulation — vitals move, the patient deteriorates, and the clock is the patient
+  rather than an arbitrary timer. No medical vocabulary required to feel the stakes.
+- **A protocol.** Every run is anchored on Solana as a replayable action trace, so the
+  outcome can be re-derived by anyone, forever, without us. Progression is minted because
+  the chain recomputed the predicate — not because a server said so.
+
+The same replay serves a curious teenager on a leaderboard and a medical graduate who
+needs to prove competence to a residency programme in another country.
 
 ---
 
@@ -28,7 +41,7 @@ Digital credentials have been tried. They fail for two reasons:
    the educators who author cases a few satang per attempt, is impossible on card rails
    and impossible on most chains.
 
-## What embla-proof is
+## What vitals is
 
 An open protocol that turns clinical-skill practice into **portable, tamper-evident,
 independently re-scorable competency records** — and pays case authors per attempt.
@@ -113,7 +126,7 @@ Not decoration — the numbers only close on this chain:
 
 ## What already exists (the head start)
 
-`embla-proof` is a new repo, but it is not starting from zero. Reused from Embla:
+`vitals` is a new repo, but it is not starting from zero. Reused from Embla:
 
 - **`embla-engine`** (Rust) — virtual-patient encounter state machine, deterministic rubric
   scoring (`sop_score.rs`, `meq_grade.rs`, `examiner.rs`), competency derivation with Dreyfus
