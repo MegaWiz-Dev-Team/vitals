@@ -1,9 +1,9 @@
 //! Replay an encounter tape against Embla's physiology automaton, and reduce the run to the
 //! handful of facts worth anchoring.
 //!
-//! The engine is not reimplemented here — `embla-engine`'s `sce_runtime` is the same code the
-//! game runs. That is the point: a verifier that re-derives an outcome with a *different*
-//! implementation proves nothing about the game. One implementation, three call sites.
+//! Built on `vitals-sce`, this repo's own interpreter — which is held to Embla's reference
+//! engine by `conformance/ep1-vectors.json` rather than by a shared build. A verifier nobody
+//! can build from a fresh clone is a verifier nobody can audit.
 //!
 //! **What is anchored, and what is not.** The vital trajectories are `f64` and the engine's own
 //! golden tests compare them with a `1e-6` tolerance, so bit-identical replay across machines is
@@ -11,9 +11,7 @@
 //! ordered beat list — and a 1e-6 wobble in diastolic pressure cannot flip any of it. The
 //! trajectory is simulated; the outcome is proven.
 
-use embla_engine::encounter::Action;
-use embla_engine::sce::Sce;
-use embla_engine::sce_runtime::{NarrativeBeat, SceState};
+use vitals_sce::{render_beat, Sce, SceState};
 use sha2::{Digest, Sha256};
 
 /// One entry on the tape. Mirrors the engine's own golden-test driver, which is where this
@@ -52,10 +50,10 @@ pub fn replay(sce_json: &str, tape: &[Step]) -> Result<Replay, String> {
                 sim_seconds += dt;
                 st.tick(*dt)
             }
-            Step::Do(text) => st.apply(&Action::Prescribe(text.clone())),
+            Step::Do(text) => st.apply(text),
         };
         for b in emitted {
-            beats.push(render(&b));
+            beats.push(render_beat(&b));
         }
     }
 
@@ -66,17 +64,6 @@ pub fn replay(sce_json: &str, tape: &[Step]) -> Result<Replay, String> {
         steps: tape.len(),
         sim_seconds,
     })
-}
-
-/// Canonical string for a beat. Stable across versions is a promise we are making here, so the
-/// rendering is explicit rather than derived from `Debug` on the whole enum.
-fn render(b: &NarrativeBeat) -> String {
-    match b {
-        NarrativeBeat::StatusChanged(s) => format!("status:{s:?}"),
-        NarrativeBeat::Threshold(t) => format!("threshold:{t}"),
-        NarrativeBeat::Harm(h) => format!("harm:{h}"),
-        NarrativeBeat::Terminal(o) => format!("terminal:{o:?}"),
-    }
 }
 
 /// sha256 of the scenario definition. Pinning this is what stops a rewritten scenario from

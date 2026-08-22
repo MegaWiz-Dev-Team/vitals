@@ -110,8 +110,9 @@ from the start.
 ## 6. Consequences for the sprint
 
 - The demo scores from the **action trace**, not the rubric. Simpler, and fully re-derivable.
-- `proof-replay` joins `vitals-progress` as a shared Rust crate: load SCE, replay tape, emit the
-  discrete facts. Compiles into the app, the verifier, the wasm verify page.
+- `vitals-sce` is this repo's own interpreter — an independent implementation, serde-only, held
+  to Embla's reference engine by `conformance/ep1-vectors.json`. `vitals-replay` reduces a run
+  to its anchorable facts on top of it.
 - The three demo cases need **SCE definitions**, not just rubrics — the resident-tier dissection
   is the one that earns it, because it is the case where waiting is fatal.
 - `docs/RISKS.md` §3 is downgraded from "the thing most likely to sink the pitch" to a footnote

@@ -1,0 +1,63 @@
+{
+  "_note": "Frozen from embla-engine's sce_runtime, the reference implementation. Any implementation claiming to replay Vitals scenarios must reproduce every field below exactly. Regenerate only when the scenario or the specification changes deliberately — never to make a failing implementation pass.",
+  "scenario": "ep1-anaphylaxis",
+  "sce_hash": "4d5ee49cc13dd5af1badf4d601010b03e70ded6d2e0ebaf339a26e7d1616a703",
+  "vectors": [
+    {
+      "name": "treated",
+      "tape": [{"tick": 30}, {"do": "adrenaline im"}, {"do": "oxygen"}, {"do": "supine"}, {"tick": 60}, {"do": "normal saline bolus"}, {"tick": 300}, {"do": "admit for observation"}, {"tick": 600}],
+      "beats": ["status:Recovered", "threshold:biphasic", "terminal:WinDischarge"],
+      "harm_events": [],
+      "outcome": "WinDischarge"
+    },
+    {
+      "name": "stood_up",
+      "tape": [{"tick": 30}, {"do": "adrenaline im"}, {"tick": 30}, {"do": "let her stand up"}, {"do": "oxygen"}, {"do": "normal saline bolus"}, {"tick": 300}, {"do": "admit for observation"}, {"tick": 600}],
+      "beats": ["status:Recovered", "harm:stand/walk collapse", "threshold:biphasic", "terminal:WinDischarge"],
+      "harm_events": ["stand/walk collapse"],
+      "outcome": "WinDischarge"
+    },
+    {
+      "name": "no_adrenaline",
+      "tape": [{"tick": 60}, {"do": "chlorpheniramine"}, {"tick": 120}, {"do": "hydrocortisone"}, {"tick": 300}, {"tick": 600}],
+      "beats": ["status:Arrest", "terminal:DeathArrest"],
+      "harm_events": [],
+      "outcome": "DeathArrest"
+    },
+    {
+      "name": "iv_push_harm",
+      "tape": [{"tick": 20}, {"do": "adrenaline iv push"}, {"tick": 120}, {"tick": 300}],
+      "beats": ["harm:arrhythmia (IV push 1:1000)", "status:Critical", "status:Arrest"],
+      "harm_events": ["arrhythmia (IV push 1:1000)"],
+      "outcome": null
+    },
+    {
+      "name": "intubate_then_admit",
+      "tape": [{"tick": 30}, {"do": "adrenaline im"}, {"do": "oxygen"}, {"tick": 30}, {"do": "intubate, secure the airway"}, {"tick": 300}, {"do": "admit"}, {"tick": 600}],
+      "beats": ["status:Recovered", "threshold:biphasic", "terminal:WinDischarge"],
+      "harm_events": [],
+      "outcome": "WinDischarge"
+    },
+    {
+      "name": "discharged_early",
+      "tape": [{"tick": 30}, {"do": "adrenaline im"}, {"do": "oxygen"}, {"tick": 60}, {"do": "discharge home"}, {"tick": 900}, {"tick": 900}],
+      "beats": ["status:Recovered", "threshold:biphasic", "terminal:DeathBiphasic"],
+      "harm_events": [],
+      "outcome": "DeathBiphasic"
+    },
+    {
+      "name": "nothing_at_all",
+      "tape": [{"tick": 300}, {"tick": 600}],
+      "beats": ["status:Critical", "status:Arrest"],
+      "harm_events": [],
+      "outcome": null
+    },
+    {
+      "name": "fine_grained_ticks",
+      "tape": [{"tick": 1}, {"tick": 1}, {"tick": 1}, {"do": "adrenaline im"}, {"tick": 1}, {"tick": 1}, {"tick": 600}],
+      "beats": ["status:Recovered", "threshold:biphasic"],
+      "harm_events": [],
+      "outcome": null
+    }
+  ]
+}
