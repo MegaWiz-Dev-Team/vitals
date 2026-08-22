@@ -424,6 +424,68 @@ window.fetch=(u,o={})=>{
   return _fetch(u,o);
 };
 
+/* ─── who you are ──────────────────────────────────────────────────────────────
+   An Ed25519 key, generated here, kept here. The server pays the network fee and
+   never sees this key — that is what makes the record on chain yours rather than
+   the server's. Before this, the server signed as itself for everyone, so every
+   player on a box shared one identity and therefore one level.
+
+   No wallet to install and no SOL to buy, which is the whole point: someone who
+   has never touched crypto should be able to finish a case and own the result. */
+const B58='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+const b58=b=>{
+  let d=[0];
+  for(const x of b){ let c=x;
+    for(let i=0;i<d.length;i++){ c+=d[i]<<8; d[i]=c%58; c=(c/58)|0; }
+    while(c){ d.push(c%58); c=(c/58)|0; } }
+  let out=''; for(const x of b){ if(x)break; out+='1'; }
+  return out + d.reverse().map(i=>B58[i]).join('');
+};
+const hexOf=b=>[...b].map(x=>x.toString(16).padStart(2,'0')).join('');
+const unhex=h=>new Uint8Array(h.match(/../g).map(x=>parseInt(x,16)));
+const b64=b=>btoa(String.fromCharCode(...b));
+const unb64=s=>new Uint8Array([...atob(s)].map(c=>c.charCodeAt(0)));
+
+let ME=null;   /* {pub: base58, key: CryptoKey} — null when the browser cannot do Ed25519 */
+async function identity(){
+  if(ME)return ME;
+  try{
+    const stored=localStorage.getItem('vitals.key');
+    let priv,pub;
+    if(stored){
+      const j=JSON.parse(stored);
+      priv=await crypto.subtle.importKey('pkcs8',unb64(j.k),{name:'Ed25519'},true,['sign']);
+      pub=unb64(j.p);
+    }else{
+      const kp=await crypto.subtle.generateKey({name:'Ed25519'},true,['sign','verify']);
+      priv=kp.privateKey;
+      pub=new Uint8Array(await crypto.subtle.exportKey('raw',kp.publicKey));
+      const pk=new Uint8Array(await crypto.subtle.exportKey('pkcs8',priv));
+      localStorage.setItem('vitals.key',JSON.stringify({k:b64(pk),p:b64(pub)}));
+    }
+    ME={pub:b58(pub),key:priv};
+  }catch(e){
+    /* Ed25519 in WebCrypto is not everywhere yet. Say so instead of quietly falling
+       back to letting the server hold the key — that would be the exact thing this
+       replaced, wearing the same UI. */
+    ME=null;
+  }
+  return ME;
+}
+async function sign(hex){
+  const me=await identity(); if(!me)throw new Error('this browser cannot sign');
+  return hexOf(new Uint8Array(await crypto.subtle.sign({name:'Ed25519'},me.key,unhex(hex))));
+}
+/* prepare on the server → sign here → submit. The server cannot do the middle step. */
+async function chainDo(url){
+  const me=await identity();
+  if(!me)return {error:'this browser has no Ed25519 — try Chrome, Safari 17+ or Firefox 129+'};
+  const r=await (await fetch(url+'&player='+me.pub)).json();
+  if(r.error||!r.sign)return r;
+  const sig=await sign(r.sign);
+  return await (await fetch('/api/submit?player='+me.pub+'&sig='+sig)).json();
+}
+
 /* ─── the season ───────────────────────────────────────────────────────────── */
 const SEASON=[
  {id:'ep1',n:'EP1',t:'The Last Bite',tier:'student',art:'/img/stable.jpg',
@@ -798,9 +860,11 @@ const run =()=>timer=setInterval(()=>step('&tick='+(hard?3:2)),700);
 const stop=()=>{clearInterval(timer);timer=null};
 
 async function chainState(){
-  const c=await (await fetch('/api/chain')).json();
+  const me=await identity();
+  const c=await (await fetch('/api/chain'+(me?'?player='+me.pub:''))).json();
   $('#chainstate').textContent = c.connected
-    ? `localnet · tree #${c.tree_id} · ${c.anchored} anchored` : 'no validator';
+    ? `localnet · tree #${c.tree_id} · ${c.anchored} anchored`+(c.proven!=null?` · ${c.proven} yours`:'')
+    : 'no validator';
   $('#anchor').disabled = !c.connected || !over;
   return c;
 }
@@ -853,14 +917,14 @@ $('#sound').onclick=()=>{
 
 $('#anchor').onclick=async()=>{
   $('#anchor').disabled=true; $('#anchor').textContent='anchoring…';
-  const r=await (await fetch('/api/anchor?id='+id)).json(); const v=$('#verdict');
+  const r=await chainDo('/api/anchor?id='+id); const v=$('#verdict');
   if(r.error){v.innerHTML+=`<span class="r">${r.error}</span>`;$('#anchor').textContent='anchor this run on chain';$('#anchor').disabled=false;return;}
   v.innerHTML+=`<span class="g">anchored at index ${r.index} · score ${r.score} · ${r.proven?'proven':'PROOF FAILED'}</span>`;
   v.innerHTML+=`<span class="n">root ${r.root.slice(0,24)}… · ${r.leaves} leaves · ${r.counted} counted</span>`;
   $('#anchor').textContent='anchored'; ['#c1','#c2','#c3','#c4'].forEach(s=>$(s).disabled=false); chainState();
 };
 [['#c4',4],['#c3',3],['#c2',2],['#c1',1]].forEach(([sel,lv])=>{
-  $(sel).onclick=async()=>{ const r=await (await fetch('/api/claim?level='+lv)).json();
+  $(sel).onclick=async()=>{ const r=await chainDo('/api/claim?level='+lv);
     $('#verdict').innerHTML += r.granted?`<span class="g">✓ ${r.message}</span>`:`<span class="r">✗ ${r.message}</span>`; };
 });
 $('#copy').onclick=async()=>{ const t=await (await fetch('/api/tape?id='+id)).json();
@@ -884,8 +948,11 @@ function renderSeason(){
   $('#coin-n').textContent=cleared().length;
 }
 renderSeason(); renderModes();
-(async()=>{ const c=await (await fetch('/api/chain')).json();
-  $('#lb-chain').textContent=c.connected?`localnet · tree #${c.tree_id}`:'no chain'; })();
+(async()=>{ const me=await identity();
+  const c=await (await fetch('/api/chain'+(me?'?player='+me.pub:''))).json();
+  $('#lb-chain').textContent=c.connected
+    ? `localnet · tree #${c.tree_id}`+(me?` · ${me.pub.slice(0,4)}…${me.pub.slice(-4)}`:' · no key')
+    : 'no chain'; })();
 if(location.hash.startsWith('#play')){
   const e=(location.hash.split('=')[1]||'').split('&')[0]; if(e)$('#ep').value=e;
   /* &script runs a canned opening — for a kiosk left playing, and for checking that the log

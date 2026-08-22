@@ -192,11 +192,15 @@ pub fn process_instruction(program_id: &Pubkey, accounts: &[AccountInfo], data: 
 
 fn anchor_replay(program_id: &Pubkey, accounts: &[AccountInfo], tree_id: u64, wire: RecordWire) -> ProgramResult {
     let it = &mut accounts.iter();
-    let payer = next_account_info(it)?;
+    let funder = next_account_info(it)?;
+    let player = next_account_info(it)?;
     let tree_ai = next_account_info(it)?;
     let system = next_account_info(it)?;
 
-    if !payer.is_signer {
+    // Two signers with different jobs. `funder` has the lamports and pays rent; `player` is who
+    // the run belongs to and needs no balance at all. Collapsing them into one account is what
+    // made every player on a server share the server's identity — and therefore its progress.
+    if !funder.is_signer || !player.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
 
@@ -207,7 +211,7 @@ fn anchor_replay(program_id: &Pubkey, accounts: &[AccountInfo], tree_id: u64, wi
     }
 
     if tree_ai.data_is_empty() {
-        create_pda(payer, tree_ai, system, program_id, TREE_LEN, &[SEED_TREE, &id, &[bump]])?;
+        create_pda(funder, tree_ai, system, program_id, TREE_LEN, &[SEED_TREE, &id, &[bump]])?;
         write(tree_ai, &TreeAccount::empty())?;
     }
 
@@ -215,7 +219,7 @@ fn anchor_replay(program_id: &Pubkey, accounts: &[AccountInfo], tree_id: u64, wi
     // Anchoring is not open to bystanders. Without this anyone could fill somebody else's tree
     // with leaves naming other players — they could never claim them, but a full tree is a tree
     // that has to be rolled, and that is a denial of service somebody else pays for.
-    if record.player != payer.key.to_bytes() {
+    if record.player != player.key.to_bytes() {
         return Err(VitalsError::NotYourRun.into());
     }
     let leaf = record.leaf();
@@ -240,12 +244,13 @@ fn prove_attempt(
     path: Vec<[u8; 32]>,
 ) -> ProgramResult {
     let it = &mut accounts.iter();
+    let funder = next_account_info(it)?;
     let player = next_account_info(it)?;
     let tree_ai = next_account_info(it)?;
     let claim_ai = next_account_info(it)?;
     let system = next_account_info(it)?;
 
-    if !player.is_signer {
+    if !funder.is_signer || !player.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
 
@@ -278,7 +283,7 @@ fn prove_attempt(
         return Err(VitalsError::WrongPda.into());
     }
     if claim_ai.data_is_empty() {
-        create_pda(player, claim_ai, system, program_id, CLAIM_LEN,
+        create_pda(funder, claim_ai, system, program_id, CLAIM_LEN,
             &[SEED_CLAIM, player.key.as_ref(), &id, &[bump]])?;
         write(claim_ai, &ClaimAccount { player: player.key.to_bytes(), count: 0, attempts: Vec::new() })?;
     }
@@ -317,12 +322,13 @@ fn claim_progress(
     claimed: u8,
 ) -> ProgramResult {
     let it = &mut accounts.iter();
+    let funder = next_account_info(it)?;
     let player = next_account_info(it)?;
     let claim_ai = next_account_info(it)?;
     let progress_ai = next_account_info(it)?;
     let system = next_account_info(it)?;
 
-    if !player.is_signer {
+    if !funder.is_signer || !player.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
     let claimed = dreyfus_from_u8(claimed)?;
@@ -378,7 +384,7 @@ fn claim_progress(
                 return Err(VitalsError::WrongPda.into());
             }
             if progress_ai.data_is_empty() {
-                create_pda(player, progress_ai, system, program_id, PROGRESS_LEN,
+                create_pda(funder, progress_ai, system, program_id, PROGRESS_LEN,
                     &[SEED_PROGRESS, player.key.as_ref(), &[specialty], &[bump]])?;
             }
             write(progress_ai, &Progress {

@@ -146,13 +146,22 @@ fn persist(store: &store::Store, id: &str, s: &mut Session, urgent: bool) {
     s.saved_at = Some(std::time::Instant::now());
 }
 
-/// Everything one sitting has played. A fresh tree per sitting, so the indices below are real
-/// and a demo never inherits whatever the last one left behind.
-#[derive(Default)]
-struct Player {
+/// The anchoring tree this server is filling.
+///
+/// Shared by every player on the box, which is what the on-chain seeds say: the tree is keyed by
+/// its id alone, and a Merkle proof needs every leaf in it. What is *not* shared is who a run
+/// belongs to — the claim and progress accounts are seeded on the player, so two people on one
+/// server have two separate records.
+///
+/// It has to outlive the process. The leaves are on chain either way, but the proof is built from
+/// this list, so a server that forgets them can no longer prove anything it anchored.
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+struct Tree {
     tree_id: u64,
     leaves: Vec<[u8; 32]>,
 }
+
+const TREE: &str = "tree";
 
 #[derive(Serialize)]
 struct View {
@@ -444,16 +453,25 @@ fn main() {
     }
 
     let chain = chain::Chain::connect();
-    let player = Arc::new(Mutex::new(Player::default()));
+    // Resume the tree this server was filling. Starting a new one every boot would strand every
+    // leaf already anchored, because the proof is built from the leaf list and the old list is
+    // what those leaves were anchored into.
+    let tree = Arc::new(Mutex::new(store.get::<Tree>(TREE, "current").unwrap_or_default()));
     match &chain {
         Some(c) => {
-            let mut p = player.lock().unwrap();
-            p.tree_id = c.slot();
-            println!("chain      connected · slot {} · tree #{}", c.slot(), p.tree_id);
-            println!("player     {}", c.player());
+            let mut t = tree.lock().unwrap();
+            if t.tree_id == 0 {
+                t.tree_id = c.slot();
+            }
+            println!("chain      connected · slot {} · tree #{} · {} leaf/leaves",
+                     c.slot(), t.tree_id, t.leaves.len());
+            println!("relay      {} — pays fees, holds no player key", c.relay_pubkey());
         }
         None => println!("chain      not connected — set VITALS_PROGRAM_ID and start a validator to anchor"),
     }
+    // Signed halves waiting on the browser, keyed by player. Never persisted: a blockhash goes
+    // stale in about a minute, so a pending transaction that outlives the process is worthless.
+    let pendings: Arc<Mutex<HashMap<String, PendingWork>>> = Arc::new(Mutex::new(HashMap::new()));
 
     match (&token, loopback) {
         (Some(_), _) => println!("auth       bearer token required on anchor · claim · say"),
@@ -724,13 +742,20 @@ fn main() {
                 }
             }
             (Method::Get, "/api/chain") => {
-                let p = player.lock().unwrap();
+                let t = tree.lock().unwrap();
+                let who = param(&url, "player").and_then(|p| pubkey(&p));
                 json(serde_json::json!({
                     "connected": chain.is_some(),
                     "voice": patient.is_some(),
-                    "tree_id": p.tree_id,
-                    "anchored": p.leaves.len(),
-                    "player": chain.as_ref().map(|c| c.player()),
+                    "tree_id": t.tree_id,
+                    "anchored": t.leaves.len(),
+                    "relay": chain.as_ref().map(|c| c.relay_pubkey()),
+                    // How many of the tree's leaves are *this* player's. Before the relay split
+                    // there was one number here because there was one identity.
+                    "proven": match (chain.as_ref(), who) {
+                        (Some(c), Some(k)) => Some(c.proven_count(&k, t.tree_id)),
+                        _ => None,
+                    },
                 }))
             }
             (Method::Get, "/api/anchor") => {
@@ -761,37 +786,43 @@ fn main() {
                         continue;
                     }
                 };
+                // Whose run this is. It arrives from the browser and it is the key the browser
+                // will sign with — the server has no way to produce that signature, which is what
+                // makes the credential the player's rather than the server's.
+                let Some(who) = param(&url, "player").and_then(|p| pubkey(&p)) else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no player key" })));
+                    continue;
+                };
                 let sce = sce_hash(&s.sce_json);
-                let pk = match bs58_to_32(&c.player()) {
-                    Some(k) => k,
-                    None => [0u8; 32],
-                };
-                let rec: AttemptRecord = match record_for(pk, sce, sce, s.difficulty, false, &s.tape, &r) {
-                    Ok(rec) => rec,
+                let rec: AttemptRecord =
+                    match record_for(who.to_bytes(), sce, sce, s.difficulty, false, &s.tape, &r) {
+                        Ok(rec) => rec,
+                        Err(e) => {
+                            let _ = req.respond(json(serde_json::json!({ "error": e })));
+                            continue;
+                        }
+                    };
+                let mut t = tree.lock().unwrap();
+                t.leaves.push(rec.leaf());
+                let tree_id = t.tree_id;
+                let leaves = t.leaves.clone();
+                let index = leaves.len() as u64 - 1;
+                drop(t);
+                match c.prepare_anchor(&who, tree_id, &rec, &leaves) {
+                    Ok(p) => {
+                        let msg = hex_bytes(&p.message());
+                        pendings.lock().unwrap().insert(
+                            who.to_string(),
+                            PendingWork { pending: p, session: id.clone(), index, score: rec.score(), level: None },
+                        );
+                        json(serde_json::json!({ "sign": msg }))
+                    }
                     Err(e) => {
-                        let _ = req.respond(json(serde_json::json!({ "error": e })));
-                        continue;
+                        // Building it failed, so the leaf was never anchored. Take it back off the
+                        // list or every later proof is built against a tree that does not exist.
+                        tree.lock().unwrap().leaves.pop();
+                        json(serde_json::json!({ "error": e }))
                     }
-                };
-                let mut p = player.lock().unwrap();
-                p.leaves.push(rec.leaf());
-                let tree_id = p.tree_id;
-                let leaves = p.leaves.clone();
-                drop(p);
-                match c.anchor(tree_id, &rec, &leaves) {
-                    Ok(a) => {
-                        s.anchored = true;
-                        // Written before the response goes out. If this process dies between the
-                        // chain confirming and the reply landing, the run must not come back
-                        // looking unanchored and get anchored a second time.
-                        persist(&store, &id, s, true);
-                        json(serde_json::json!({
-                            "index": a.index, "root": a.root, "leaves": a.leaves,
-                            "proven": a.proven, "score": rec.score(),
-                            "counted": c.proven_count(tree_id),
-                        }))
-                    }
-                    Err(e) => json(serde_json::json!({ "error": e })),
                 }
             }
             (Method::Get, "/api/claim") => {
@@ -800,10 +831,88 @@ fn main() {
                     let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
                     continue;
                 };
-                let tree_id = player.lock().unwrap().tree_id;
-                match c.claim(tree_id, level) {
-                    Ok(msg) => json(serde_json::json!({ "granted": true, "message": msg })),
-                    Err(msg) => json(serde_json::json!({ "granted": false, "message": msg })),
+                let Some(who) = param(&url, "player").and_then(|p| pubkey(&p)) else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no player key" })));
+                    continue;
+                };
+                let tree_id = tree.lock().unwrap().tree_id;
+                match c.prepare_claim(&who, tree_id, level) {
+                    Ok(p) => {
+                        let msg = hex_bytes(&p.message());
+                        pendings.lock().unwrap().insert(
+                            who.to_string(),
+                            PendingWork { pending: p, session: String::new(), index: 0, score: 0, level: Some(level) },
+                        );
+                        json(serde_json::json!({ "sign": msg }))
+                    }
+                    Err(e) => json(serde_json::json!({ "error": e })),
+                }
+            }
+            // The other half. The browser signed the bytes we handed it; we drop the signature
+            // into its slot and send. If it does not verify, nothing is sent.
+            (Method::Get, "/api/submit") => {
+                let Some(c) = chain.as_ref() else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    continue;
+                };
+                let Some(who) = param(&url, "player").and_then(|p| pubkey(&p)) else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no player key" })));
+                    continue;
+                };
+                let Some(sig) = param(&url, "sig").and_then(|h| sig64(&h)) else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no signature" })));
+                    continue;
+                };
+                let Some(work) = pendings.lock().unwrap().remove(&who.to_string()) else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "nothing waiting to be signed" })));
+                    continue;
+                };
+                let tx = match work.pending.signed(&sig) {
+                    Ok(tx) => tx,
+                    Err(e) => {
+                        if work.level.is_none() {
+                            tree.lock().unwrap().leaves.pop();
+                        }
+                        let _ = req.respond(json(serde_json::json!({ "error": e })));
+                        continue;
+                    }
+                };
+                match (c.submit(&tx), work.level) {
+                    (Ok(()), Some(_)) => match c.claimed(&who) {
+                        Ok(m) => json(serde_json::json!({ "granted": true, "message": m })),
+                        Err(m) => json(serde_json::json!({ "granted": false, "message": m })),
+                    },
+                    (Ok(()), None) => {
+                        // The tree really changed, so write it before anything else can fail.
+                        let t = tree.lock().unwrap();
+                        let _ = store.put(TREE, "current", &*t);
+                        drop(t);
+                        let mut map = sessions.lock().unwrap();
+                        if let Some(s) = map.get_mut(&work.session) {
+                            s.anchored = true;
+                            persist(&store, &work.session, s, true);
+                        }
+                        drop(map);
+                        // Read the id out and let go of the lock. A `tree.lock()` written inside
+                        // the match scrutinee stays alive for the whole match, so taking it again
+                        // in an arm deadlocks the one thread this server has — which is not a slow
+                        // request, it is every request from then on.
+                        let tree_id = tree.lock().unwrap().tree_id;
+                        match c.anchored(&who, tree_id, work.index) {
+                            Ok(a) => json(serde_json::json!({
+                                "index": a.index, "root": a.root, "leaves": a.leaves,
+                                "proven": a.proven, "score": work.score,
+                                "counted": c.proven_count(&who, tree_id),
+                            })),
+                            Err(e) => json(serde_json::json!({ "error": e })),
+                        }
+                    }
+                    (Err(e), Some(_)) => json(serde_json::json!({ "granted": false, "message": e })),
+                    (Err(e), None) => {
+                        // Nothing landed on chain, so the leaf is not in the tree.
+                        tree.lock().unwrap().leaves.pop();
+                        json(serde_json::json!({ "error": e }))
+                    }
                 }
             }
             _ => Response::from_string("not found").with_status_code(404),
@@ -812,8 +921,42 @@ fn main() {
     }
 }
 
-/// Decode a base58 pubkey into raw bytes. The record binds a run to a player, and the player here
-/// is the relay's key — in production this is the student's silently-created wallet.
+/// What the browser is waiting to sign, and what to do once it has.
+struct PendingWork {
+    pending: chain::Pending,
+    /// Which run this anchors. Empty for a claim.
+    session: String,
+    index: u64,
+    score: u32,
+    /// Set for a claim, `None` for an anchor.
+    level: Option<u8>,
+}
+
+/// A player key as the browser sends it: base58, and it has to be a real curve point or the
+/// transaction it is put into can never be signed.
+fn pubkey(s: &str) -> Option<solana_sdk::pubkey::Pubkey> {
+    let raw = bs58_to_32(s)?;
+    let k = solana_sdk::pubkey::Pubkey::new_from_array(raw);
+    (k.to_string() == s).then_some(k)
+}
+
+fn hex_bytes(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+/// A 64-byte signature as hex.
+fn sig64(h: &str) -> Option<[u8; 64]> {
+    if h.len() != 128 {
+        return None;
+    }
+    let mut out = [0u8; 64];
+    for (i, b) in out.iter_mut().enumerate() {
+        *b = u8::from_str_radix(h.get(i * 2..i * 2 + 2)?, 16).ok()?;
+    }
+    Some(out)
+}
+
+/// Decode a base58 pubkey into raw bytes.
 fn bs58_to_32(s: &str) -> Option<[u8; 32]> {
     const A: &[u8] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
     let mut out = vec![0u8; 32];
