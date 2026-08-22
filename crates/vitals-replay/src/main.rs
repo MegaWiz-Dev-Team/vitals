@@ -81,6 +81,7 @@ fn show(label: &str, sce_json: &str, h: &[u8; 32], tape: &[Step]) -> [u8; 32] {
     for s in tape {
         match s {
             Step::Tick(dt) => println!("   ·  +{dt:.0}s"),
+            Step::Ask(q) => println!("   ?  {q}"),
             Step::Do(t) => println!("   >  {t}"),
         }
     }
