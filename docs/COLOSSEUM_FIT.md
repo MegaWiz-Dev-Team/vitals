@@ -1,4 +1,4 @@
-# embla-proof — Fit against Colosseum's judging criteria
+# vitals — Fit against Colosseum's judging criteria
 
 The six criteria are quoted from the Solana Cypherpunk Hackathon Official Rules §8.
 Written as an honest self-assessment, including where we are weak.

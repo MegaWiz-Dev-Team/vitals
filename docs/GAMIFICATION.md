@@ -1,4 +1,4 @@
-# embla-proof — Gamification as onchain progression
+# vitals — Gamification as onchain progression
 
 > One anchored record, three resolutions. This is the line that keeps the project coherent:
 > we are not shipping "credentials **and also** NFTs". We are shipping one verifiable attempt

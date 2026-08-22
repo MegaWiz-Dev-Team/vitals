@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/proof-progress"]
+members = ["crates/vitals-progress"]
 
 [workspace.package]
 version = "0.1.0"

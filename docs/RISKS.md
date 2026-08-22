@@ -1,4 +1,4 @@
-# embla-proof — Risks
+# vitals — Risks
 
 Ordered by what actually kills the project, not by likelihood.
 
@@ -18,7 +18,7 @@ Colosseum's rules state entrants should not assume any confidentiality in their 
 submissions are public. If any part of the Embla scoring/competency work is patent-track, filing
 must happen **before** submission — the same sequencing already established for trial registration.
 
-**Action:** audit what in `embla-proof` and the reused Embla engine is patent-intended. File first,
+**Action:** audit what in `vitals` and the reused Embla engine is patent-intended. File first,
 or consciously accept it as disclosed. This is a one-way door.
 
 ## 3. The determinism boundary — worse than assumed, and now measured
@@ -84,7 +84,7 @@ system to leak in the first place. This is a defensible position, but only if st
   Open-sourcing the program and SDK does not mean open-sourcing the case library or the KB.
 - **License is AGPL-3.0 + Commercial**, never MIT/Apache. This satisfies the open-source criterion
   without giving the commercial position away.
-- **Naming.** `embla-proof` extends an existing component rather than claiming a new Norse name.
+- **Naming.** `vitals` extends an existing component rather than claiming a new Norse name.
 
 ## 7. Institutions will not transact in crypto
 

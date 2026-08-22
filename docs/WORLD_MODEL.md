@@ -73,7 +73,7 @@ So anchor the **discrete** facts, which are robust to that noise:
 Those are what the score should depend on anyway — *did the patient survive, were they harmed,
 what did you do and when*. A 1e-6 wobble in diastolic pressure cannot flip any of them. If a
 future version wants bit-exact trajectories, the interpreter moves to fixed-point, the same way
-`proof-progress` did for the competency arithmetic.
+`vitals-progress` did for the competency arithmetic.
 
 State this the way we state everything else: the trajectory is simulated, the **outcome** is proven.
 
@@ -110,7 +110,7 @@ from the start.
 ## 6. Consequences for the sprint
 
 - The demo scores from the **action trace**, not the rubric. Simpler, and fully re-derivable.
-- `proof-replay` joins `proof-progress` as a shared Rust crate: load SCE, replay tape, emit the
+- `proof-replay` joins `vitals-progress` as a shared Rust crate: load SCE, replay tape, emit the
   discrete facts. Compiles into the app, the verifier, the wasm verify page.
 - The three demo cases need **SCE definitions**, not just rubrics — the resident-tier dissection
   is the one that earns it, because it is the case where waiting is fatal.

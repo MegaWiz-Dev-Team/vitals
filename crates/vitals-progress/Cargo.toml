@@ -1,5 +1,5 @@
 [package]
-name = "proof-progress"
+name = "vitals-progress"
 description = "Integer twin of Embla's competency arithmetic — the copy that runs onchain"
 version.workspace = true
 edition.workspace = true

@@ -1,4 +1,4 @@
-# embla-proof — 4-Week Sprint Plan
+# vitals — 4-Week Sprint Plan
 
 Target: a Colosseum Eternal submission (4-week timed sprint, weekly 1-minute video update),
 or the next scheduled hackathon if the Eternal window closes first — see RISKS §1.
@@ -31,7 +31,7 @@ Exit: run an encounter end-to-end, the score lands as a compressed attestation.
 The progression layer is the best three minutes of video in the project: permissionless, recomputed
 onchain, and visually obvious. It gets the whole week.
 
-- [ ] `proof-progress` — integer twin of `xp_for` / `level_for` / `dreyfus`, `no_std`, shared crate
+- [ ] `vitals-progress` — integer twin of `xp_for` / `level_for` / `dreyfus`, `no_std`, shared crate
 - [ ] Shared test vectors proving the twin matches `competency.rs` on **every threshold boundary**
 - [ ] `claim_progress` instruction: merkle proofs in → program recomputes → mint/advance or fail
 - [ ] Soulbound mints: Token-2022 NonTransferable — skill-tree per specialty, profile, badges (cNFT)

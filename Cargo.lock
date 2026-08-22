@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "proof-progress"
+name = "vitals-progress"
 version = "0.1.0"
