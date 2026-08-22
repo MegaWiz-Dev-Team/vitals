@@ -50,7 +50,7 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacin
 
 /* ── the bed ── */
 .bed{position:relative;border-radius:12px;overflow:hidden;background:#0b1312;
-  border:1px solid var(--line);aspect-ratio:16/10}
+  border:1px solid var(--line);aspect-ratio:16/9}
 .bed img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
   opacity:0;transition:opacity .55s ease}
 .bed img.on{opacity:1}
@@ -77,23 +77,15 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacin
   padding:.3rem .6rem;border-radius:7px}
 
 /* ── the monitor, sitting on the bed rail ── */
-.monitor{position:absolute;left:.75rem;right:.75rem;bottom:.75rem;
-  background:var(--mon-bg);border:1px solid #1E2E2A;border-radius:9px;overflow:hidden;
-  box-shadow:0 12px 30px -12px rgba(0,0,0,.75)}
-.trace{display:block;width:100%;height:52px;background:var(--mon-bg)}
-.chans{display:grid;grid-template-columns:repeat(auto-fit,minmax(4.6rem,1fr));
-  border-top:1px solid var(--mon-line)}
-.ch{padding:.4rem .55rem;border-right:1px solid var(--mon-line)}
+/* The real device page, embedded on the bed rail. It polls its own feed at 2 Hz and draws its
+   own waveforms — this app only tells it which bed to watch. */
+.monitor{display:block;width:100%;height:17rem;margin-top:.75rem;border:1px solid #1E2E2A;
+  border-radius:10px;overflow:hidden;background:#04070a;
+  box-shadow:0 10px 26px -14px rgba(0,0,0,.55)}
+@media(max-width:64rem){.monitor{height:15rem}}
 .ch:last-child{border-right:0}
-.ch .l{font-family:"IBM Plex Mono",monospace;font-size:.54rem;letter-spacing:.16em;
-  text-transform:uppercase;color:#5C716C}
-.ch .n{font-family:"IBM Plex Mono",monospace;font-weight:700;font-size:1.35rem;line-height:1.15;
-  font-variant-numeric:tabular-nums}
 .ch.hr .n{color:var(--hr)} .ch.spo2 .n{color:var(--spo2)} .ch.bp .n{color:var(--bp)}
 .ch.rr .n{color:var(--rr)} .ch.tmp .n{color:var(--tmp)} .ch.gcs .n{color:var(--tmp)}
-.ch.alarm{background:rgba(198,54,46,.16)}
-.ch.alarm .n{color:#FCA5A5}
-@media(prefers-reduced-motion:no-preference){ .ch.alarm .n{animation:pulse 1.1s infinite} }
 
 /* ── orders ── */
 .panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.9rem}
@@ -104,6 +96,14 @@ form{display:flex;gap:.45rem}
 input{flex:1;min-width:0;font-family:"IBM Plex Mono",monospace;font-size:.78rem;
   background:var(--card-2);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:.5rem .65rem}
 input:focus{outline:2px solid var(--act);outline-offset:1px;background:#fff}
+
+/* ── conversation ── */
+.chat{display:flex;flex-direction:column;gap:.4rem;max-height:11rem;overflow:auto;margin-bottom:.6rem}
+.line{font-size:.86rem;padding:.4rem .6rem;border-radius:9px;max-width:92%}
+.line.you{align-self:flex-end;background:var(--act-soft);color:#0a4c3e}
+.line.her{align-self:flex-start;background:var(--card-2);border:1px solid var(--line);color:var(--ink)}
+.line.note{color:var(--ink-3);font-style:italic;font-size:.78rem;padding:.1rem .2rem}
+.line.her.think{color:var(--ink-3);font-style:italic}
 
 /* ── the feed ── */
 .feed{display:flex;flex-direction:column;gap:.3rem;max-height:19rem;overflow:auto;
@@ -163,14 +163,20 @@ input:focus{outline:2px solid var(--act);outline-offset:1px;background:#fff}
       <div class="ribbon" id="ribbon"><span class="dot"></span><span id="status">waiting</span></div>
       <div class="clock" id="clock">0:00</div>
 
-      <div class="monitor">
-        <canvas class="trace" id="trace" width="900" height="52"></canvas>
-        <div class="chans" id="chans"></div>
-      </div>
     </div>
+    <iframe class="monitor" id="monitor" title="patient monitor" src="about:blank"></iframe>
   </main>
 
   <aside style="display:flex;flex-direction:column;gap:1rem">
+    <div class="panel">
+      <div class="k">talk to her <span id="voicetag" style="text-transform:none;letter-spacing:0"></span></div>
+      <div class="chat" id="chat"><div class="line note">ask her anything — she answers, and only your question goes on the tape</div></div>
+      <form id="qf" autocomplete="off">
+        <input id="q" placeholder="what happened? · any allergies? · can you breathe?" disabled>
+        <button class="btn" id="ask" type="submit" disabled>ask</button>
+      </form>
+    </div>
+
     <div class="panel">
       <div class="k">your orders</div>
       <div class="orders" id="orders"></div>
@@ -242,40 +248,9 @@ function show(status){
   ($('#ph-'+key)||$('#ph-stable')).classList.add('on');
 }
 
-/* A trace that speeds up with the heart. Cheap, and it is what makes the bay feel alive. */
-const cv=$('#trace'), cx=cv.getContext('2d');
-function beat(x,w){ // one PQRST-ish cycle across width w, returns y offset
-  const p=(x%w)/w, m=cv.height/2;
-  if(p<0.10) return m-Math.sin(p/0.10*Math.PI)*3;
-  if(p<0.16) return m+4;
-  if(p<0.20) return m-20;
-  if(p<0.24) return m+9;
-  if(p<0.42) return m-Math.sin((p-0.24)/0.18*Math.PI)*5;
-  return m;
-}
-function draw(){
-  cx.fillStyle=getComputedStyle(document.body).getPropertyValue('--mon-bg')||'#070F0E';
-  cx.fillRect(0,0,cv.width,cv.height);
-  const w=Math.max(60, 5400/Math.max(hr,30));
-  cx.strokeStyle='#4ADE80'; cx.lineWidth=1.6; cx.beginPath();
-  for(let x=0;x<cv.width;x++){ const y=beat(x+phase,w); x?cx.lineTo(x,y):cx.moveTo(x,y); }
-  cx.stroke();
-  cx.fillStyle='#070F0E'; cx.fillRect((phase*-1)%cv.width,0,0,0);
-  phase+=hr/22;
-  requestAnimationFrame(draw);
-}
-if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches) draw();
 
 function paint(v){
-  hr=v.hr;
   $('#ep-name').textContent=v.scenario+' · '+v.sce_hash.slice(0,10);
-  const ch=[['hr',v.hr,'bpm'],['spo2',v.spo2,'%'],['bp',`${v.sbp}/${v.dbp}`,'mmHg'],
-            ['rr',v.rr,'/min'],['tmp',v.temp,'°c'],['gcs',v.gcs,'']];
-  $('#chans').innerHTML=ch.map(([k,n,u])=>{
-    const key=k==='bp'?'sbp':k==='tmp'?'temp':k;
-    const a=alarm(key, k==='bp'?v.sbp:n)?' alarm':'';
-    return `<div class="ch ${k}${a}"><div class="l">${k==='tmp'?'temp':k}${u?' '+u:''}</div><div class="n">${n}</div></div>`;
-  }).join('');
   $('#status').textContent=v.status; $('#ribbon').className='ribbon '+v.status;
   $('#clock').textContent=fmt(v.elapsed);
   show(v.status);
@@ -297,6 +272,7 @@ function paint(v){
     $('#verdict').innerHTML=''; $('#anchor').textContent='anchor this run on chain'; $('#anchor').disabled=false;
     ['#c1','#c2','#c3','#c4'].forEach(s=>$(s).disabled=true);
     $('#cmd').disabled=true; $('#go').disabled=true; $('#pause').disabled=true;
+    $('#q').disabled=true; $('#ask').disabled=true;
     chainState();
     $('#result').scrollIntoView({behavior:'smooth',block:'nearest'});
   }
@@ -329,13 +305,34 @@ $('#start').onclick=async()=>{
   $('#orders').innerHTML=ORDERS[ep].map(a=>`<button class="btn" data-a="${a}">${a}</button>`).join('');
   $('#orders').querySelectorAll('button').forEach(b=>b.onclick=()=>{
     feed('you','▸ '+b.dataset.a); step('&do='+encodeURIComponent(b.dataset.a));});
+  $('#chat').innerHTML='';
   $('#cmd').disabled=false; $('#go').disabled=false; $('#pause').disabled=false;
+  const voice=(await (await fetch('/api/chain')).json()).voice;
+  $('#q').disabled=!voice; $('#ask').disabled=!voice;
+  $('#voicetag').textContent = voice ? '· local model' : '· no gateway';
   $('#pause').textContent='hold'; $('#cmd').focus();
+  $('#monitor').src='/device/monitor?sid='+encodeURIComponent(id);
   feed('note','the clock is the patient — she does not wait');
   run(); chainState();
 };
 $('#pause').onclick=()=>{ if(timer){stop();$('#pause').textContent='resume';}
   else{run();$('#pause').textContent='hold';} };
+let asking=false;
+$('#qf').onsubmit=async e=>{
+  e.preventDefault();
+  const q=$('#q').value.trim(); if(!q||asking||!id)return;
+  asking=true; $('#q').value=''; $('#ask').disabled=true;
+  const mine=document.createElement('div'); mine.className='line you'; mine.textContent=q;
+  $('#chat').appendChild(mine);
+  const wait=document.createElement('div'); wait.className='line her think'; wait.textContent='…';
+  $('#chat').appendChild(wait); $('#chat').scrollTop=1e6;
+  // asking costs time — she is still deteriorating while you talk
+  step('&tick=5');
+  const r=await (await fetch('/api/say?id='+id+'&q='+encodeURIComponent(q))).json();
+  wait.className='line her'; wait.textContent = r.reply || ('— '+(r.error||'no answer'));
+  $('#chat').scrollTop=1e6; asking=false; $('#ask').disabled=false; $('#q').focus();
+};
+
 $('#f').onsubmit=e=>{e.preventDefault();const a=$('#cmd').value.trim();if(!a)return;
   feed('you','▸ '+a);$('#cmd').value='';step('&do='+encodeURIComponent(a));};
 
@@ -362,6 +359,12 @@ $('#copy').onclick=async()=>{
   $('#copy').textContent='tape copied';
 };
 show('Stable'); chainState();
+/* #play — start the shift on load. For demos, kiosks, and screenshots that need a live
+   monitor rather than an empty bay. */
+if(location.hash.startsWith('#play')){
+  const ep=location.hash.split('=')[1]; if(ep)$('#ep').value=ep;
+  window.addEventListener('load',()=>$('#start').click());
+}
 </script>
 </body>
 </html>
