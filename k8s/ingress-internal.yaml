@@ -1,0 +1,33 @@
+# TLS on an internal name only.
+#
+# vitals.internal resolves nowhere outside this machine, and the certificate is signed by the
+# cluster's own CA — so this is HTTPS without being publication. The public Ingress is a separate
+# decision that comes after the patent filing, not a flag flipped here.
+#
+# Applied separately from vitals.yaml so that deploying never quietly exposes anything:
+#   kubectl apply -f k8s/ingress-internal.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vitals-internal
+  namespace: vitals
+  annotations:
+    cert-manager.io/cluster-issuer: "asgard-ca-issuer"
+    # The page is one document and the API is chatty; neither needs a large body.
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["vitals.internal"]
+      secretName: vitals-tls
+  rules:
+    - host: vitals.internal
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: vitals-web
+                port: {number: 8474}

@@ -273,7 +273,12 @@ impl Session {
 }
 
 fn scenario_path(id: &str) -> std::path::PathBuf {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    // CARGO_MANIFEST_DIR is baked in at build time and points at the machine that compiled this.
+    // In a container that path does not exist, so the scenarios have to be findable at runtime.
+    let root = match std::env::var("VITALS_SCENARIOS") {
+        Ok(d) => std::path::PathBuf::from(d),
+        Err(_) => std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."),
+    };
     match id {
         "ep2" => root.join("demo/scenarios/ep2-stemi.json"),
         "ep3" => root.join("demo/scenarios/ep3-epiglottitis.json"),

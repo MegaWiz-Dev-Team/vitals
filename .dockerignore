@@ -1,0 +1,7 @@
+target/
+.git/
+state/
+pitch/
+docs/
+demo/clips/
+**/*.mp4

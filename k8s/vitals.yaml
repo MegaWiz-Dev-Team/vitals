@@ -1,0 +1,107 @@
+# Vitals in the local cluster.
+#
+# Deliberately NOT in here:
+#
+#   the validator  solana-test-validator is a development tool whose value is being disposable.
+#                  VITALS_RPC points at one on the host now, and at devnet or mainnet later.
+#   Heimdall       needs the GPU, so it runs native under launchd and the cluster reaches it at
+#                  host.orb.internal. Same exception as everywhere else in Asgard.
+#   an Ingress     Vitals is patent-gated. A publicly reachable demo IS public disclosure, and
+#                  the filing has to come first. Port-forward until that clears.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vitals
+---
+# Runs in progress. ReadWriteOnce, which is the honest match for a single replica — see the
+# Deployment's strategy below.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vitals-state
+  namespace: vitals
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vitals-web
+  namespace: vitals
+spec:
+  replicas: 1
+  # Recreate, not RollingUpdate. Two replicas would each hold their own copy of the anchoring
+  # tree in memory and both write the same file, and the second one to save would erase the
+  # first one's leaves — which are the leaves its own proofs are built from. Scaling past one
+  # needs the tree moved out of the process first.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {app: vitals-web}
+  template:
+    metadata:
+      labels: {app: vitals-web}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: vitals-web
+          image: vitals-web:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {containerPort: 8474, name: http}
+          env:
+            - {name: VITALS_WEB_BIND,  value: "0.0.0.0:8474"}
+            - {name: VITALS_STATE_DIR, value: "/state"}
+            - {name: VITALS_SCENARIOS, value: "/app"}
+            - {name: VITALS_RPC,       value: "http://host.orb.internal:8899"}
+            - {name: HEIMDALL_URL,     value: "http://host.orb.internal:8080"}
+            - name: VITALS_PROGRAM_ID
+              valueFrom: {configMapKeyRef: {name: vitals-config, key: program-id}}
+            # Without this the server refuses to start on 0.0.0.0 — it would otherwise sign for
+            # anyone who can reach the port.
+            - name: VITALS_TOKEN
+              valueFrom: {secretKeyRef: {name: vitals-secrets, key: token}}
+            - name: HEIMDALL_API_KEY
+              valueFrom: {secretKeyRef: {name: vitals-secrets, key: heimdall-key, optional: true}}
+            - {name: VITALS_KEYPAIR, value: "/relay/id.json"}
+          volumeMounts:
+            - {name: state, mountPath: /state}
+            - {name: relay, mountPath: /relay, readOnly: true}
+          readinessProbe:
+            httpGet: {path: /api/chain, port: http}
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /api/chain, port: http}
+            # The one thread this server has can be lost to a deadlock, and a wedged process still
+            # holds its port. Liveness has to be a request that comes back, not a port that opens.
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits:   {cpu: "2",  memory: 1Gi}
+      volumes:
+        - name: state
+          persistentVolumeClaim: {claimName: vitals-state}
+        - name: relay
+          secret:
+            secretName: vitals-relay
+            defaultMode: 0400
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vitals-web
+  namespace: vitals
+spec:
+  selector: {app: vitals-web}
+  ports:
+    - {port: 8474, targetPort: http, name: http}
