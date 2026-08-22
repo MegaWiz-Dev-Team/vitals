@@ -1,0 +1,160 @@
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vitals — Infusion Pump</title>
+<style>
+  /* Pumps look nothing like monitors: a small bright LCD, high-contrast, channel-coloured, with the
+     RATE as the biggest thing on the screen because that is the number a nurse checks from the door.
+     Two channels stacked, each independently idle or running. */
+  :root{
+    --a:#4fd07a; --b:#8fd0ff;
+    --alarm:#ff4b4b; --warn:#ffb02e;
+    --ink:#0d1418; --dim:#5b6b74; --lcd:#c8dfd0; --shell:#111a20;
+  }
+  *{box-sizing:border-box} html,body{margin:0;height:100%}
+  body{background:#070b0e;color:#e6edf3;font-family:"Helvetica Neue",Arial,sans-serif;
+       display:flex;flex-direction:column;overflow:hidden;-webkit-font-smoothing:antialiased}
+
+  header{display:flex;align-items:center;gap:12px;padding:6px 14px;background:var(--shell);
+         border-bottom:1px solid #1d2a33;font-size:13px;flex:none}
+  header .brand{font-weight:700;letter-spacing:.5px}
+  header .sp{flex:1}
+  .alarmbar{padding:3px 10px;border-radius:4px;font-weight:700;font-size:12px;letter-spacing:.4px;
+            background:#1d2a33;color:var(--dim)}
+  .alarmbar.on{background:var(--alarm);color:#fff;animation:flash 1s steps(2,end) infinite}
+  .alarmbar.done{background:var(--warn);color:#231a00}
+  @keyframes flash{50%{opacity:.45}}
+
+  /* A pump is a small box on a pole, not a wall display. Constraining it to a device-sized frame
+     is what stops the LCD from stretching into an empty field on a 27" screen. */
+  main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+       min-height:0;padding:10px;gap:8px;overflow:hidden}
+  .ch{width:100%;max-width:560px;display:grid;grid-template-columns:8px 1fr 180px;
+      background:#0b1116;border:1px solid #1d2a33;border-radius:6px;overflow:hidden}
+  .ch .stripe{background:#1d2a33}
+  .ch.run.a .stripe{background:var(--a)} .ch.run.b .stripe{background:var(--b)}
+  .ch .lcd{background:#0f1a14;padding:10px 14px;min-height:0;overflow:hidden;display:flex;flex-direction:column;justify-content:center;gap:2px}
+  .ch.b .lcd{background:#0d1620}
+  .ch .drug{font-size:12px;letter-spacing:.4px;color:#9fb3a8}
+  .ch.b .drug{color:#9fb0c4}
+  .ch .rate{font-size:clamp(24px,13vh,52px);line-height:1;font-weight:700;font-variant-numeric:tabular-nums;color:var(--lcd)}
+  .ch.b .rate{color:#cfe4f7}
+  .ch .rate small{font-size:15px;font-weight:400;margin-left:6px;color:var(--dim)}
+  .ch .state{font-size:11px;letter-spacing:1px;font-weight:700}
+  .ch.run .state{color:var(--a)} .ch.b.run .state{color:var(--b)}
+  .ch.idle .state{color:var(--dim)}
+  .ch .side{border-left:1px solid #1d2a33;padding:10px 12px;display:flex;flex-direction:column;
+            justify-content:center;gap:5px;font-variant-numeric:tabular-nums}
+  .side .r{display:flex;justify-content:space-between;align-items:baseline;font-size:13px}
+  .side .r .k{color:var(--dim);font-size:11px}
+  .side .u{color:var(--dim);font-size:10px;margin-left:3px}
+  .bar{height:5px;border-radius:3px;background:#1d2a33;overflow:hidden;margin-top:4px}
+  .bar i{display:block;height:100%;background:var(--a);transition:width .4s linear}
+  .ch.b .bar i{background:var(--b)}
+  .empty{grid-column:2/4;display:flex;align-items:center;justify-content:center;color:var(--dim);
+         font-size:12px;letter-spacing:.4px;min-height:0;padding:14px 0}
+  footer{flex:none;padding:4px 14px;background:var(--shell);border-top:1px solid #1d2a33;
+         font-size:11px;color:var(--dim);display:flex;gap:16px}
+</style>
+
+<header>
+  <span class="brand">EMBLA PUMP · 2 CH</span>
+  <span class="sp"></span>
+  <span class="alarmbar" id="alarm">IDLE</span>
+</header>
+
+<main>
+  <section class="ch idle a" id="ch-a">
+    <div class="stripe"></div>
+    <div class="lcd">
+      <div class="drug" id="a-drug">CHANNEL A</div>
+      <div class="rate"><span id="a-rate">--</span><small>mL/hr</small></div>
+      <div class="state" id="a-state">IDLE</div>
+    </div>
+    <div class="side">
+      <div class="r"><span class="k">Infused</span><span><span id="a-inf">--</span><span class="u">mL</span></span></div>
+      <div class="r"><span class="k">VTBI</span><span><span id="a-vtbi">--</span><span class="u">mL</span></span></div>
+      <div class="r"><span class="k">Time left</span><span id="a-left">--</span></div>
+      <div class="bar"><i id="a-bar" style="width:0"></i></div>
+    </div>
+  </section>
+
+  <section class="ch idle b" id="ch-b">
+    <div class="stripe"></div>
+    <div class="empty" id="b-empty">CHANNEL B — empty</div>
+  </section>
+</main>
+
+<footer><span id="src">—</span><span id="net"></span></footer>
+
+<script type="module">
+// A device, like monitor.html and vent.html.
+//
+// Everything on this screen is derived from ONE fact the engine holds: the IV line is attached, at
+// this rate, since this second on the scenario clock. Volume infused is rate × elapsed. Nothing is
+// simulated locally, so a pump that says 340 mL has genuinely run for that long in the case, and a
+// debrief can hold the learner to it.
+const $ = s => document.querySelector(s);
+const P = new URLSearchParams(location.search);
+const BASE = P.get('base') || '';
+const SID  = P.get('sid')  || 'default';
+
+const DEFAULT_RATE = 999;       // a fluid bolus runs wide open, not at a maintenance rate
+const VTBI = 1000;              // one litre bag
+
+let V = null, live = false;
+
+const hhmm = mins => {
+  if (!isFinite(mins) || mins <= 0) return '--';
+  const h = Math.floor(mins / 60), m = Math.round(mins % 60);
+  return h ? `${h}:${String(m).padStart(2,'0')}` : `${m} min`;
+};
+
+function paint(){
+  const eq = (V && Array.isArray(V.equipment)) ? V.equipment : [];
+  const iv = eq.find(e => e.id === 'iv');
+  const chA = $('#ch-a'), bar = $('#alarm');
+
+  if (!live || !iv){
+    chA.className = 'ch idle a';
+    $('#a-drug').textContent = 'CHANNEL A';
+    $('#a-rate').textContent = '--'; $('#a-state').textContent = live ? 'IDLE' : 'NO SIGNAL';
+    $('#a-inf').textContent = '--'; $('#a-vtbi').textContent = '--';
+    $('#a-left').textContent = '--'; $('#a-bar').style.width = '0';
+    bar.className = 'alarmbar'; bar.textContent = live ? 'IDLE' : 'NO SIGNAL';
+    return;
+  }
+
+  const rate = iv.setting || DEFAULT_RATE;
+  // The pump's clock is the scenario's clock, not the browser's. Pause the case and the volume
+  // stops climbing, which is what a paused case ought to mean.
+  const elapsedH = Math.max(0, ((V.t_sec || 0) - (iv.since_sec || 0))) / 3600;
+  const infused = Math.min(VTBI, rate * elapsedH);
+  const left = VTBI - infused;
+  const done = left <= 0.5;
+
+  chA.className = 'ch a ' + (done ? 'idle' : 'run');
+  $('#a-drug').textContent = '0.9% NaCl · peripheral';
+  $('#a-rate').textContent = done ? 0 : Math.round(rate);
+  $('#a-state').textContent = done ? 'VTBI COMPLETE — KVO' : 'INFUSING';
+  $('#a-inf').textContent = Math.round(infused);
+  $('#a-vtbi').textContent = Math.round(left);
+  $('#a-left').textContent = done ? '--' : hhmm(left / rate * 60);
+  $('#a-bar').style.width = `${Math.min(100, infused / VTBI * 100)}%`;
+
+  if (done){ bar.className = 'alarmbar done'; bar.textContent = '⚠ CH A — INFUSION COMPLETE'; }
+  else { bar.className = 'alarmbar'; bar.textContent = 'CH A INFUSING'; }
+}
+
+async function poll(){
+  try{
+    const r = await fetch(`${BASE}/device/vitals`, { headers: { 'x-embla-session': SID } });
+    const d = await r.json();
+    if (d && d.hr != null){
+      V = d; live = true;
+      $('#src').textContent = `feed: ${BASE || location.origin}/device/vitals · sid=${SID}`;
+      $('#net').textContent = '';
+    } else { live = false; $('#net').textContent = 'no case in play'; }
+  } catch(e){ live = false; $('#net').textContent = 'engine unreachable — ' + e.message; }
+  paint();
+}
+poll(); setInterval(poll, 500);
+</script>

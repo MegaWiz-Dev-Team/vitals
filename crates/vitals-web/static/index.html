@@ -60,129 +60,141 @@
 .backbtn{font-family:"IBM Plex Mono",monospace;font-size:.7rem}
 
 /* ─────────────────────────────────────────────────────────────
-   The room is lit. The monitor is the one dark object in it.
-   That contrast is how a resus bay actually looks, and it is why
-   this reads as a bedside rather than a terminal.
+   The bay: patient card and conversation on the left, the devices
+   and the record on the right. The room is lit; the devices are the
+   dark objects in it.
    ───────────────────────────────────────────────────────────── */
 :root{
   --room:#EFF3F2; --card:#FFFFFF; --card-2:#F6F9F8;
-  --ink:#0E1719; --ink-2:#4A5B5E; --ink-3:#8496 98;
-  --ink-3:#849698; --line:#DDE5E4;
+  --ink:#0E1719; --ink-2:#4A5B5E; --ink-3:#849698; --line:#DDE5E4;
   --act:#0B6E58; --act-soft:#E3F0EC;
   --warn:#B4590F; --warn-soft:#FBEDE1;
   --alarm:#C6362E; --alarm-soft:#FBE8E6;
-  /* monitor — real patient-monitor channel colours */
-  --mon-bg:#070F0E; --mon-line:#16241F;
-  --hr:#4ADE80; --spo2:#38BDF8; --bp:#F87171; --rr:#FBBF24; --tmp:#E6EFEE;
 }
 *{box-sizing:border-box}
-html,body{height:100%}
 body{margin:0;background:var(--room);color:var(--ink);
   font-family:"IBM Plex Sans",system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+.app{max-width:96rem;margin:0 auto;padding:.9rem 1rem 3rem;display:grid;gap:.9rem;
+  grid-template-columns:1fr}
+@media(min-width:72rem){.app{grid-template-columns:minmax(0,1.55fr) minmax(20rem,.82fr);align-items:start}}
 
-.app{max-width:88rem;margin:0 auto;padding:1rem 1.1rem 3rem;
-  display:grid;gap:1rem;grid-template-columns:1fr}
-@media(min-width:64rem){.app{grid-template-columns:1.6fr .9fr;align-items:start}}
-
-/* ── top bar ── */
-.bar{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.6rem .9rem;align-items:center;
-  background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.65rem .9rem}
-.brand{font-family:Archivo,sans-serif;font-weight:800;font-size:1.05rem;letter-spacing:-.02em}
+.bar{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.5rem .7rem;align-items:center;
+  background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.55rem .8rem}
+.brand{font-family:Archivo,sans-serif;font-weight:800;font-size:1.02rem;letter-spacing:-.02em}
 .brand span{color:var(--act)}
-.ep{font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.12em;
+.ep{font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.12em;
   text-transform:uppercase;color:var(--ink-3)}
-select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.04em;
-  background:var(--card-2);color:var(--ink);border:1px solid var(--line);border-radius:7px;
-  padding:.45rem .7rem;cursor:pointer;transition:border-color .12s,background .12s,transform .06s}
+.spacer{margin-left:auto}
+select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:var(--card-2);
+  color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:.4rem .65rem;cursor:pointer;
+  transition:border-color .12s,background .12s,transform .06s}
 .btn:hover:not(:disabled){border-color:var(--act);background:var(--act-soft)}
 .btn:active:not(:disabled){transform:translateY(1px)}
 .btn:disabled{opacity:.38;cursor:not-allowed}
 .btn.go{background:var(--act);color:#fff;border-color:var(--act);font-weight:600}
-.btn.go:hover:not(:disabled){background:#0a5e4b}
-.spacer{margin-left:auto}
+.btn.on{background:var(--act);color:#fff;border-color:var(--act)}
 
-/* ── the bed ── */
-.bed{position:relative;border-radius:12px;overflow:hidden;background:#0b1312;
-  border:1px solid var(--line);aspect-ratio:16/9}
-.bed img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
-  opacity:0;transition:opacity .55s ease}
-.bed img.on{opacity:1}
-.bed .veil{position:absolute;inset:0;
-  background:linear-gradient(180deg,rgba(4,10,10,.42) 0%,rgba(4,10,10,0) 26%,rgba(4,10,10,.10) 55%,rgba(4,10,10,.80) 100%)}
+/* ── stage ── */
+.stage{display:flex;flex-direction:column;gap:.75rem;min-width:0}
+.pt{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;
+  text-align:center;padding-bottom:.7rem}
+.pt-art{position:relative;aspect-ratio:16/9;background:#0b1312}
+.pt-art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;
+  transition:opacity .5s ease}
+.pt-art img.on{opacity:1}
+.place{position:absolute;left:.55rem;bottom:.55rem;font-family:"IBM Plex Mono",monospace;
+  font-size:.6rem;letter-spacing:.06em;color:#E7EFEE;background:rgba(6,14,14,.6);
+  padding:.2rem .5rem;border-radius:6px;backdrop-filter:blur(5px)}
+.pt-name{font-family:Archivo,sans-serif;font-weight:700;font-size:1.02rem;margin-top:.6rem}
+.pt-status{font-family:"IBM Plex Mono",monospace;font-size:.76rem;font-weight:600;letter-spacing:.06em}
+.pt-status.Deteriorating,.pt-status.Critical{color:var(--warn)}
+.pt-status.Arrest,.pt-status.Dead{color:var(--alarm)}
+.pt-status.Improving,.pt-status.Recovered{color:var(--act)}
+.pt-line{font-size:.83rem;color:var(--ink-3)}
 
-.ribbon{position:absolute;top:.75rem;left:.75rem;display:flex;gap:.45rem;align-items:center;
-  font-family:"IBM Plex Mono",monospace;font-size:.67rem;letter-spacing:.16em;text-transform:uppercase;
-  background:rgba(6,14,14,.62);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.14);
-  color:#E7EFEE;padding:.35rem .6rem;border-radius:999px}
-.ribbon .dot{width:.45rem;height:.45rem;border-radius:50%;background:#8CA0A2}
-.ribbon.Deteriorating .dot,.ribbon.Critical .dot{background:#FBBF24}
-.ribbon.Arrest .dot,.ribbon.Dead .dot{background:#F87171}
-.ribbon.Improving .dot,.ribbon.Recovered .dot{background:#4ADE80}
-.ribbon.Critical,.ribbon.Arrest{border-color:rgba(248,113,113,.5)}
-@media(prefers-reduced-motion:no-preference){
-  .ribbon.Critical .dot,.ribbon.Arrest .dot{animation:pulse 1s infinite}
-}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.chat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:.85rem;
+  min-height:14rem;max-height:26rem;overflow:auto;display:flex;flex-direction:column;gap:.55rem}
+.turn{max-width:82%;display:flex;flex-direction:column;gap:.15rem}
+.turn .who{font-size:.66rem;color:var(--ink-3)}
+.turn .say{padding:.5rem .7rem;border-radius:11px;font-size:.9rem}
+.turn.her{align-self:flex-start} .turn.her .say{background:#EEF1F2;border-bottom-left-radius:4px}
+.turn.you{align-self:flex-end;align-items:flex-end} .turn.you .say{background:var(--act-soft);
+  color:#0a4c3e;border-bottom-right-radius:4px}
+.turn.sys{align-self:stretch;max-width:100%}
+.turn.sys .say{background:#F3F7F6;border:1px solid var(--line);color:var(--ink-2);font-size:.84rem}
+.turn.sys.harm .say{background:var(--warn-soft);border-color:#EBD6C4;color:var(--warn)}
+.turn.sys.end .say{background:var(--alarm-soft);border-color:#F0CFCB;color:var(--alarm);font-weight:600}
+.turn.sys.note .say{background:none;border:0;color:var(--ink-3);font-style:italic;padding:.1rem .2rem}
 
-.clock{position:absolute;top:.75rem;right:.75rem;font-family:"IBM Plex Mono",monospace;
-  font-size:.85rem;font-weight:600;font-variant-numeric:tabular-nums;color:#E7EFEE;
-  background:rgba(6,14,14,.62);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.14);
-  padding:.3rem .6rem;border-radius:7px}
+.acts{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:.7rem .8rem;
+  display:flex;flex-direction:column;gap:.55rem}
+.modes{display:flex;flex-wrap:wrap;gap:.35rem}
+.chips{display:flex;flex-wrap:wrap;gap:.35rem;min-height:1.9rem}
+.chips .btn{font-size:.72rem}
+#cmdf{display:flex;gap:.45rem}
+#cmd{flex:1;min-width:0;font-family:"IBM Plex Mono",monospace;font-size:.8rem;background:var(--card-2);
+  color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:.55rem .7rem}
+#cmd:focus{outline:2px solid var(--act);outline-offset:1px;background:#fff}
+.mic{padding:.4rem .6rem}
 
-/* ── the monitor, sitting on the bed rail ── */
-/* The real device page, embedded on the bed rail. It polls its own feed at 2 Hz and draws its
-   own waveforms — this app only tells it which bed to watch. */
-.monitor{display:block;width:100%;height:17rem;margin-top:.75rem;border:1px solid #1E2E2A;
-  border-radius:10px;overflow:hidden;background:#04070a;
-  box-shadow:0 10px 26px -14px rgba(0,0,0,.55)}
-@media(max-width:64rem){.monitor{height:15rem}}
-.ch:last-child{border-right:0}
-.ch.hr .n{color:var(--hr)} .ch.spo2 .n{color:var(--spo2)} .ch.bp .n{color:var(--bp)}
-.ch.rr .n{color:var(--rr)} .ch.tmp .n{color:var(--tmp)} .ch.gcs .n{color:var(--tmp)}
+/* ── rail ── */
+.rail{display:flex;flex-direction:column;gap:.7rem;min-width:0}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:.75rem .8rem}
+.k{font-family:"IBM Plex Mono",monospace;font-size:.6rem;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ink-3);margin-bottom:.5rem}
+.muted{color:var(--ink-3);font-size:.8rem}
 
-/* ── orders ── */
-.panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.9rem}
-.k{font-family:"IBM Plex Mono",monospace;font-size:.6rem;letter-spacing:.17em;
-  text-transform:uppercase;color:var(--ink-3);margin-bottom:.6rem}
-.orders{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.7rem}
-form{display:flex;gap:.45rem}
-input{flex:1;min-width:0;font-family:"IBM Plex Mono",monospace;font-size:.78rem;
-  background:var(--card-2);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:.5rem .65rem}
-input:focus{outline:2px solid var(--act);outline-offset:1px;background:#fff}
+.mini{background:#070F0E;border:1px solid #1E2E2A;border-radius:11px;padding:.6rem .7rem;color:#E6EFEE}
+.mini-h{display:flex;justify-content:space-between;font-family:"IBM Plex Mono",monospace;
+  font-size:.6rem;letter-spacing:.16em;color:#5C716C;margin-bottom:.35rem}
+.mini-h span:last-child{color:#FBBF24}
+.mini-g{display:grid;grid-template-columns:1fr 1fr;gap:.35rem .6rem}
+.mini-g i{font-style:normal;font-family:"IBM Plex Mono",monospace;font-size:.58rem;color:#5C716C;display:block}
+.mini-g b{font-family:"IBM Plex Mono",monospace;font-size:1.15rem;font-variant-numeric:tabular-nums}
+.mini-g div:nth-child(1) b{color:#4ADE80} .mini-g div:nth-child(2) b{color:#38BDF8}
+.mini-g div:nth-child(3) b{color:#F87171} .mini-g div:nth-child(4) b{color:#FBBF24}
 
-/* ── conversation ── */
-.chat{display:flex;flex-direction:column;gap:.4rem;max-height:11rem;overflow:auto;margin-bottom:.6rem}
-.line{font-size:.86rem;padding:.4rem .6rem;border-radius:9px;max-width:92%}
-.line.you{align-self:flex-end;background:var(--act-soft);color:#0a4c3e}
-.line.her{align-self:flex-start;background:var(--card-2);border:1px solid var(--line);color:var(--ink)}
-.line.note{color:var(--ink-3);font-style:italic;font-size:.78rem;padding:.1rem .2rem}
-.line.her.think{color:var(--ink-3);font-style:italic}
+.devtabs{display:flex;gap:.35rem}
+.devtabs .btn{flex:1;text-align:center}
+.device{display:block;width:100%;height:15rem;border:1px solid #1E2E2A;border-radius:11px;
+  overflow:hidden;background:#04070a}
 
-/* ── the feed ── */
-.feed{display:flex;flex-direction:column;gap:.3rem;max-height:19rem;overflow:auto;
-  font-size:.85rem}
-.feed .row{display:flex;gap:.5rem;align-items:baseline;padding:.28rem .45rem;border-radius:5px}
-.feed .row .t{font-family:"IBM Plex Mono",monospace;font-size:.62rem;color:var(--ink-3);
-  font-variant-numeric:tabular-nums;flex:none;width:2.7rem}
-.feed .you{background:var(--card-2)}
-.feed .beat{color:var(--act)} .feed .beat.harm{color:var(--warn);background:var(--warn-soft)}
-.feed .beat.end{color:var(--alarm);background:var(--alarm-soft);font-weight:600}
-.feed .note{color:var(--ink-3);font-style:italic}
+.nudge{font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--alarm);margin-bottom:.45rem;
+  min-height:1rem}
+.nudge:empty{display:none}
+.kit{display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.5rem}
+.kit .k-i{font-family:"IBM Plex Mono",monospace;font-size:.68rem;background:var(--act-soft);
+  color:#0a4c3e;border-radius:999px;padding:.2rem .55rem}
+.posrow{display:flex;gap:.9rem;font-size:.8rem;color:var(--ink-2)}
+.posrow input{accent-color:var(--act)}
 
-/* ── outcome + chain ── */
+.chart{display:flex;flex-direction:column;gap:.22rem;max-height:11rem;overflow:auto;
+  font-family:"IBM Plex Mono",monospace;font-size:.68rem}
+.chart .c{display:flex;gap:.45rem}
+.chart .c .t{color:var(--ink-3);flex:none;width:2.6rem;font-variant-numeric:tabular-nums}
+.chart .c.harm{color:var(--warn)} .chart .c.outcome{color:var(--alarm)}
+.chart .c.beat{color:var(--act)} .chart .c.equipment{color:var(--ink-2)}
+
+.stab{display:flex;align-items:center;gap:.6rem}
+.bar-s{flex:1;height:.5rem;background:#E4EBEA;border-radius:999px;overflow:hidden}
+.bar-s i{display:block;height:100%;width:0;border-radius:999px;transition:width .5s,background .5s}
+.clock2{font-family:"IBM Plex Mono",monospace;font-size:.78rem;font-variant-numeric:tabular-nums;
+  color:var(--ink-2)}
+
+/* ── outcome ── */
 .result{grid-column:1/-1;display:none;background:var(--card);border:1px solid var(--line);
-  border-left:4px solid var(--act);border-radius:10px;padding:1rem 1.1rem}
+  border-left:4px solid var(--act);border-radius:11px;padding:1rem 1.1rem}
 .result.lose{border-left-color:var(--alarm)}
-.result h2{margin:0 0 .15rem;font-family:Archivo,sans-serif;font-size:1.35rem;font-weight:800;letter-spacing:-.02em}
+.result h2{margin:0 0 .15rem;font-family:Archivo,sans-serif;font-size:1.3rem;font-weight:800}
 .result.win h2{color:var(--act)} .result.lose h2{color:var(--alarm)}
-.result .sub{color:var(--ink-2);font-size:.9rem}
-.leaf{font-family:"IBM Plex Mono",monospace;font-size:.66rem;color:var(--ink-2);word-break:break-all;
+.result .sub{color:var(--ink-2);font-size:.88rem}
+.leaf{font-family:"IBM Plex Mono",monospace;font-size:.65rem;color:var(--ink-2);word-break:break-all;
   background:var(--card-2);border:1px solid var(--line);padding:.5rem .6rem;border-radius:6px;margin:.6rem 0}
 .chainrow{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center}
-.verdict{margin-top:.6rem;display:flex;flex-direction:column;gap:.28rem;
-  font-family:"IBM Plex Mono",monospace;font-size:.72rem}
+.verdict{margin-top:.55rem;display:flex;flex-direction:column;gap:.25rem;
+  font-family:"IBM Plex Mono",monospace;font-size:.71rem}
 .verdict .g{color:var(--act)} .verdict .r{color:var(--warn)} .verdict .n{color:var(--ink-3)}
-.hint{font-size:.78rem;color:var(--ink-3)}
+.hint{font-size:.77rem;color:var(--ink-3)}
 </style>
 </head>
 <body>
@@ -217,61 +229,92 @@ input:focus{outline:2px solid var(--act);outline-offset:1px;background:#fff}
   <div class="bar">
     <span class="brand">Vital<span>s</span></span>
     <span class="ep" id="ep-name">the resus bay</span>
-    <select id="ep">
-      <option value="ep1">EP1 · The Last Bite</option>
-      <option value="ep2">EP2 · Time Is Muscle</option>
-      <option value="ep3">EP3 · Don't Make Him Cry</option>
-      <option value="ep4">EP4 · The Masquerader</option>
-      <option value="ep5">EP5 · The Night the Stars Fell</option>
+    <select id="ep" class="hide">
+      <option value="ep1">EP1</option><option value="ep2">EP2</option>
+      <option value="ep3">EP3</option><option value="ep4">EP4</option><option value="ep5">EP5</option>
     </select>
     <button class="btn" id="back">← episodes</button>
     <button class="btn go" id="start">restart</button>
     <button class="btn" id="pause" disabled>hold</button>
-    <span class="spacer ep" id="chainstate">—</span>
+    <span class="spacer"></span>
+    <button class="btn" id="diff" data-d="easy">easy</button>
+    <span class="ep" id="chainstate">—</span>
   </div>
 
-  <main>
-    <div class="bed">
-      <img id="ph-stable" src="/img/stable.jpg" alt="the patient">
-      <img id="ph-deteriorating" src="/img/deteriorating.jpg" alt="">
-      <img id="ph-critical" src="/img/critical.jpg" alt="">
-      <img id="ph-arrest" src="/img/arrest.jpg" alt="">
-      <img id="ph-improving" src="/img/improving.jpg" alt="">
-      <img id="ph-recovered" src="/img/recovered.jpg" alt="">
-      <img id="ph-dead" src="/img/dead.jpg" alt="">
-      <div class="veil"></div>
-      <div class="ribbon" id="ribbon"><span class="dot"></span><span id="status">waiting</span></div>
-      <div class="clock" id="clock">0:00</div>
-
+  <main class="stage">
+    <!-- patient card -->
+    <div class="pt">
+      <div class="pt-art">
+        <img id="ph-stable" src="/img/stable.jpg" alt="the patient">
+        <img id="ph-deteriorating" src="/img/deteriorating.jpg" alt="">
+        <img id="ph-critical" src="/img/critical.jpg" alt="">
+        <img id="ph-arrest" src="/img/arrest.jpg" alt="">
+        <img id="ph-improving" src="/img/improving.jpg" alt="">
+        <img id="ph-recovered" src="/img/recovered.jpg" alt="">
+        <img id="ph-dead" src="/img/dead.jpg" alt="">
+        <span class="place" id="place">📷 Emergency department · night</span>
+      </div>
+      <div class="pt-name" id="pt-name">Ing · F 19</div>
+      <div class="pt-status" id="pt-status">—</div>
+      <div class="pt-line" id="pt-line">breathless, urticaria all over, lips swelling</div>
     </div>
-    <iframe class="monitor" id="monitor" title="patient monitor" src="about:blank"></iframe>
+
+    <!-- conversation -->
+    <div class="chat" id="chat"></div>
+
+    <!-- action bar -->
+    <div class="acts">
+      <div class="modes" id="modes"></div>
+      <div class="chips" id="chips"></div>
+      <form id="cmdf" autocomplete="off">
+        <button class="mic btn" type="button" id="mic" title="voice">🎤</button>
+        <input id="cmd" placeholder="or type it yourself…" disabled>
+        <button class="btn go" id="send" type="submit" disabled>➤</button>
+      </form>
+    </div>
   </main>
 
-  <aside style="display:flex;flex-direction:column;gap:1rem">
+  <!-- right rail -->
+  <aside class="rail">
+    <div class="mini" id="mini">
+      <div class="mini-h"><span>MONITOR</span><span id="mini-status">—</span></div>
+      <div class="mini-g">
+        <div><i>HR</i><b id="m-hr">—</b></div>
+        <div><i>SpO₂</i><b id="m-spo2">—</b></div>
+        <div><i>BP</i><b id="m-bp">—</b></div>
+        <div><i>RR</i><b id="m-rr">—</b></div>
+      </div>
+    </div>
+    <div class="devtabs">
+      <button class="btn dev on" data-dev="monitor">Monitor</button>
+      <button class="btn dev" data-dev="vent">Vent</button>
+      <button class="btn dev" data-dev="pump">Pump</button>
+    </div>
+    <iframe class="device" id="device" title="bedside device" src="about:blank"></iframe>
+
     <div class="panel">
-      <div class="k">talk to her <span id="voicetag" style="text-transform:none;letter-spacing:0"></span></div>
-      <div class="chat" id="chat"><div class="line note">ask her anything — she answers, and only your question goes on the tape</div></div>
-      <form id="qf" autocomplete="off">
-        <input id="q" placeholder="what happened? · any allergies? · can you breathe?" disabled>
-        <button class="btn" id="ask" type="submit" disabled>ask</button>
-      </form>
+      <div class="k">treatment · kit</div>
+      <div id="nudge" class="nudge"></div>
+      <div class="kit" id="kit"><span class="muted">nothing attached</span></div>
+      <div class="posrow">
+        <label><input type="checkbox" id="p-supine"> lay flat</label>
+        <label><input type="checkbox" id="p-admit"> admit</label>
+      </div>
     </div>
 
     <div class="panel">
-      <div class="k">your orders</div>
-      <div class="orders" id="orders"></div>
-      <form id="f" autocomplete="off">
-        <input id="cmd" placeholder="or type one — adrenaline im, oxygen, supine…" disabled>
-        <button class="btn go" id="go" type="submit" disabled>do it</button>
-      </form>
+      <div class="k">chart</div>
+      <div class="chart" id="chart"><span class="muted">nothing recorded yet</span></div>
     </div>
-    <div class="panel">
-      <div class="k">what happened</div>
-      <div class="feed" id="feed"><div class="row"><span class="t">—</span><span class="note">press start the shift</span></div></div>
+
+    <div class="panel stab">
+      <div class="k" style="margin:0">stability</div>
+      <div class="bar-s"><i id="stab"></i></div>
+      <span class="clock2" id="clock">0:00</span>
     </div>
   </aside>
 
-  <section class="result" id="result">
+<section class="result" id="result">
     <h2 id="outcome"></h2>
     <div class="sub" id="outnote"></div>
     <div class="leaf" id="leaf"></div>
@@ -290,54 +333,143 @@ input:focus{outline:2px solid var(--act);outline-offset:1px;background:#fff}
 
 <script>
 const $=s=>document.querySelector(s);
-const ORDERS={
- ep1:["adrenaline im","oxygen","lay her flat","normal saline bolus","admit for observation","let her stand up","chlorpheniramine","discharge home"],
- ep2:["ecg","aspirin","activate the cath lab","heparin","nitrate","defibrillate","wait for the troponin"],
- ep3:["keep him calm","blow-by oxygen","call ent and anaesthesia","secure the airway","ceftriaxone","look in the throat","iv access"],
- ep4:["wells score","d-dimer","ctpa","heparin","thrombolysis","oxygen","reassure and discharge"],
- ep5:["triage","tourniquet","needle decompression","transfuse","damage control","two litres of saline"]
+
+/* ─── the season ───────────────────────────────────────────────────────────── */
+const SEASON=[
+ {id:'ep1',n:'EP1',t:'The Last Bite',tier:'student',art:'/img/stable.jpg',
+  who:'Ing · F 19', line:'breathless, urticaria all over, lips swelling',
+  place:'Emergency department · night', key:{drug:'Adrenaline',match:'adren'},
+  d:'A nineteen-year-old, ten minutes after the wrong salad. Her throat is closing.'},
+ {id:'ep2',n:'EP2',t:'Time Is Muscle',tier:'intern',
+  who:'Prasit · M 58', line:'crushing chest pain to the jaw, sweating',
+  place:'Emergency department · evening', key:{drug:'reperfusion',match:'cath'},
+  d:'A taxi driver, chest pain to the jaw. The ECG tells the truth in ten minutes.'},
+ {id:'ep3',n:'EP3',t:"Don't Make Him Cry",tier:'resident',
+  who:'Khaopun · M 5', line:'tripod, drooling, muffled voice, will not lie down',
+  place:'Paediatric bay · evening', key:{drug:'the airway team',match:'ent'},
+  d:'A five-year-old sitting very still. His stillness is the frightening part.'},
+ {id:'ep4',n:'EP4',t:'The Masquerader',tier:'resident',
+  who:'Mali · F 34', line:'breathless, pleuritic pain, looks anxious',
+  place:'Emergency department · afternoon', key:{drug:'anticoagulation',match:'hepar'},
+  d:'Everything looks normal. The oxygen is quietly low and the heart is too fast.'},
+ {id:'ep5',n:'EP5',t:'The Night the Stars Fell',tier:'resident',
+  who:'blast casualty · M 40s', line:'bleeding, chest not moving well, six more waiting',
+  place:'Resus · mass casualty', key:{drug:'haemostasis',match:'tourniquet'},
+  d:'Everyone you have met, in one room, on the worst night of the year.'},
+];
+const ep=()=>SEASON.find(e=>e.id===$('#ep').value)||SEASON[0];
+
+/* ─── what you can do, by mode ─────────────────────────────────────────────── */
+const MODES=[
+ {id:'ask',  label:'ask',       icon:'💬'},
+ {id:'exam', label:'examine',   icon:'🩺'},
+ {id:'lab',  label:'lab',       icon:'🧪'},
+ {id:'drug', label:'drugs',     icon:'💉'},
+ {id:'proc', label:'procedure', icon:'🛠'},
+ {id:'dx',   label:'diagnosis', icon:'🎯'},
+];
+const CHIPS={
+ ep1:{ask:['what happened?','any allergies?','can you breathe?','when did it start?','do you have an epipen?','any medicines?'],
+      exam:['look at the airway','listen to the chest','check the skin','check perfusion'],
+      lab:['tryptase','blood gas','full blood count'],
+      drug:['adrenaline im','oxygen','normal saline bolus','chlorpheniramine','hydrocortisone'],
+      proc:['lay her flat','intubate, secure the airway','let her stand up'],
+      dx:['anaphylaxis','admit for observation','discharge home']},
+ ep2:{ask:['where is the pain?','does it go anywhere?','how long?','do you smoke?'],
+      exam:['listen to the chest','check both arms','look at the neck veins'],
+      lab:['ecg','troponin','chest x-ray'],
+      drug:['aspirin','oxygen','heparin','nitrate'],
+      proc:['activate the cath lab','defibrillate','thrombolysis'],
+      dx:['anterior stemi','admit']},
+ ep3:{ask:['how long has he been like this?','is he drinking?','any fever?','immunisations?'],
+      exam:['look at him from the door','count the breathing','check the saturations'],
+      lab:['blood gas','blood culture'],
+      drug:['ceftriaxone','blow-by oxygen'],
+      proc:['keep him calm','call ent and anaesthesia','secure the airway','look in the throat','iv access'],
+      dx:['epiglottitis','admit to picu']},
+ ep4:{ask:['when did it start?','any long flights?','are you on the pill?','any leg swelling?'],
+      exam:['listen to the chest','check the calves','check the saturations'],
+      lab:['d-dimer','ecg','chest x-ray','ctpa'],
+      drug:['oxygen','heparin'],
+      proc:['wells score','thrombolysis'],
+      dx:['pulmonary embolism','admit','reassure and discharge']},
+ ep5:{ask:['what happened?','where does it hurt?','can you feel your legs?'],
+      exam:['primary survey','check the chest','check for bleeding'],
+      lab:['blood gas','crossmatch'],
+      drug:['transfuse','two litres of saline'],
+      proc:['triage','tourniquet','needle decompression','intubate','damage control'],
+      dx:['haemorrhagic shock','to theatre']},
 };
-/* The engine speaks in beats; a person hears a story. The raw beat stays in the title
-   attribute so nothing is hidden — this only makes it readable. */
+
+/* ─── the engine speaks in beats; a person hears a story ────────────────────── */
 const SAY={
  "status:Stable":"she is holding","status:Deteriorating":"she is getting worse",
  "status:Critical":"she is crashing","status:Improving":"she is turning around",
  "status:Recovered":"she settles","status:Arrest":"she arrests","status:Dead":"she is gone",
  "threshold:biphasic":"the reaction comes back","threshold:going_quiet":"he goes quiet — that is worse",
  "threshold:stemi_recognised":"the ECG tells the truth","threshold:collapse":"she collapses",
+ "threshold:code_blue":"the monitor alarms — code blue","threshold:rosc":"a rhythm comes back",
  "terminal:WinDischarge":"she goes home","terminal:WinIcu":"she lives — ICU",
  "terminal:DeathArrest":"she dies","terminal:DeathBiphasic":"she dies at home"
 };
 const say=b=>SAY[b] || (b.startsWith("harm:") ? "harm — "+b.slice(5) : b.replace(/^[a-z]+:/,""));
 
-let id=null,timer=null,over=false,seen=0,hr=90,phase=0;
+let id=null,timer=null,over=false,seen=0,mode='ask',asking=false,hard=false;
+const fmt=s=>`${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,'0')}`;
 
-function fmt(s){const m=Math.floor(s/60);return `${m}:${String(Math.round(s%60)).padStart(2,'0')}`}
-function feed(cls,txt,raw,at){
-  const r=document.createElement('div'); r.className='row '+cls;
-  r.innerHTML=`<span class="t">${at!==undefined?fmt(at):''}</span><span>${txt}</span>`;
-  if(raw)r.title=raw;
-  $('#feed').appendChild(r); $('#feed').scrollTop=1e6;
-}
-function alarm(k,v){
-  return ({spo2:v<90,sbp:v<85,hr:v>150||v<45,rr:v>34,gcs:v<12})[k]||false;
+function turn(cls,who,text,raw){
+  const d=document.createElement('div'); d.className='turn '+cls;
+  d.innerHTML=(who?`<span class="who">${who}</span>`:'')+`<span class="say"></span>`;
+  d.querySelector('.say').textContent=text; if(raw)d.title=raw;
+  $('#chat').appendChild(d); $('#chat').scrollTop=1e6;
 }
 function show(status){
   const key=(status||'Stable').toLowerCase();
-  document.querySelectorAll('.bed img').forEach(i=>i.classList.remove('on'));
+  document.querySelectorAll('.pt-art img').forEach(i=>i.classList.remove('on'));
   ($('#ph-'+key)||$('#ph-stable')).classList.add('on');
 }
-
+function renderModes(){
+  $('#modes').innerHTML=MODES.map(m=>`<button class="btn${m.id===mode?' on':''}" data-m="${m.id}">${m.icon} ${m.label}</button>`).join('');
+  $('#modes').querySelectorAll('button').forEach(b=>b.onclick=()=>{mode=b.dataset.m;renderModes();renderChips();});
+}
+function renderChips(){
+  const c=(CHIPS[ep().id]||{})[mode]||[];
+  $('#chips').innerHTML=c.map(x=>`<button class="btn" data-x="${x}">${x}</button>`).join('');
+  $('#chips').querySelectorAll('button').forEach(b=>b.onclick=()=>fire(b.dataset.x));
+  $('#cmd').placeholder = mode==='ask' ? 'ask her anything…' : 'or type the order yourself…';
+}
+function fire(text){ mode==='ask' ? askHer(text) : doOrder(text); }
 
 function paint(v){
-  $('#ep-name').textContent=v.scenario+' · '+v.sce_hash.slice(0,10);
-  $('#status').textContent=v.status; $('#ribbon').className='ribbon '+v.status;
-  $('#clock').textContent=fmt(v.elapsed);
+  const E=ep();
+  $('#ep-name').textContent=E.n+' · '+E.t+' · '+v.sce_hash.slice(0,10);
+  $('#pt-name').textContent=E.who; $('#pt-line').textContent=E.line; $('#place').textContent='📷 '+E.place;
+  $('#pt-status').textContent=v.status; $('#pt-status').className='pt-status '+v.status;
   show(v.status);
+  $('#m-hr').textContent=v.hr; $('#m-spo2').textContent=v.spo2+'%';
+  $('#m-bp').textContent=v.sbp+'/'+v.dbp; $('#m-rr').textContent=v.rr;
+  $('#mini-status').textContent=v.status;
+  $('#clock').textContent=fmt(v.elapsed);
+
+  const st=v.stability;
+  $('#stab').style.width=st+'%';
+  $('#stab').style.background = st>65?'var(--act)' : st>35?'#E0A33C' : 'var(--alarm)';
+
+  $('#kit').innerHTML = v.equipment.length
+    ? v.equipment.map(k=>`<span class="k-i">${k.id}${k.setting!=null?' '+k.setting:''}</span>`).join('')
+    : '<span class="muted">nothing attached</span>';
+
+  const given = v.chart.some(c=>c.kind==='action' && c.text.toLowerCase().includes(E.key.match));
+  $('#nudge').textContent = (given||over) ? '' : '⚠ no '+E.key.drug+' yet';
+
+  $('#chart').innerHTML = v.chart.length
+    ? v.chart.slice(-40).map(c=>`<div class="c ${c.kind}"><span class="t">${fmt(c.t)}</span><span>${c.text}</span></div>`).join('')
+    : '<span class="muted">nothing recorded yet</span>';
+  $('#chart').scrollTop=1e6;
 
   for(let i=seen;i<v.beats.length;i++){
     const b=v.beats[i];
-    feed('beat'+(b.startsWith('harm')?' harm':b.startsWith('terminal')?' end':''), say(b), b, v.elapsed);
+    turn('sys '+(b.startsWith('harm')?'harm':b.startsWith('terminal')?'end':''),'',say(b),b);
   }
   seen=v.beats.length;
 
@@ -346,119 +478,97 @@ function paint(v){
     const win=v.outcome.startsWith('Win');
     $('#result').className='result '+(win?'win':'lose'); $('#result').style.display='block';
     $('#outcome').textContent=say('terminal:'+v.outcome);
-    $('#outnote').textContent=(v.harm.length?'Harm on the record: '+v.harm.join(', '):'No harm recorded.')
-      +'  ·  '+v.outcome;
+    $('#outnote').textContent=(v.harm.length?'Harm on the record: '+v.harm.join(', '):'No harm recorded.')+'  ·  '+v.outcome;
     $('#leaf').textContent=v.leaf;
     $('#verdict').innerHTML=''; $('#anchor').textContent='anchor this run on chain'; $('#anchor').disabled=false;
     ['#c1','#c2','#c3','#c4'].forEach(s=>$(s).disabled=true);
-    $('#cmd').disabled=true; $('#go').disabled=true; $('#pause').disabled=true;
-    $('#q').disabled=true; $('#ask').disabled=true;
-    chainState();
-    if(win){ const c=cleared(); const ep=$('#ep').value;
-      if(!c.includes(ep)){ c.push(ep); localStorage.setItem('vitals.cleared',JSON.stringify(c)); } }
-    $('#result').scrollIntoView({behavior:'smooth',block:'nearest'});
+    $('#cmd').disabled=true; $('#send').disabled=true; $('#pause').disabled=true;
+    if(win){ const c=cleared(), e=$('#ep').value;
+      if(!c.includes(e)){c.push(e);localStorage.setItem('vitals.cleared',JSON.stringify(c));} }
+    chainState(); $('#result').scrollIntoView({behavior:'smooth',block:'nearest'});
   }
 }
 
 async function step(q){
   if(!id)return;
   const v=await (await fetch('/api/step?id='+id+q)).json();
-  if(v.error)return feed('note',v.error);
+  if(v.error)return turn('sys note','',v.error);
   paint(v);
 }
-const run =()=>timer=setInterval(()=>step('&tick=2'),700);
+function doOrder(text){ turn('you','you','▸ '+text); step('&do='+encodeURIComponent(text)); }
+async function askHer(q){
+  if(asking||!id)return; asking=true; $('#send').disabled=true;
+  turn('you','you',q);
+  const d=document.createElement('div'); d.className='turn her';
+  d.innerHTML='<span class="who">'+ep().who.split(' · ')[0]+'</span><span class="say">…</span>';
+  $('#chat').appendChild(d); $('#chat').scrollTop=1e6;
+  step('&tick=5');                                   // talking costs time
+  const r=await (await fetch('/api/say?id='+id+'&q='+encodeURIComponent(q))).json();
+  d.querySelector('.say').textContent = r.reply || ('— '+(r.error||'no answer'));
+  $('#chat').scrollTop=1e6; asking=false; $('#send').disabled=false; $('#cmd').focus();
+}
+const run =()=>timer=setInterval(()=>step('&tick='+(hard?3:2)),700);
 const stop=()=>{clearInterval(timer);timer=null};
 
 async function chainState(){
   const c=await (await fetch('/api/chain')).json();
   $('#chainstate').textContent = c.connected
-    ? `localnet · tree #${c.tree_id} · ${c.anchored} anchored`
-    : 'no validator — play works, anchoring does not';
+    ? `localnet · tree #${c.tree_id} · ${c.anchored} anchored` : 'no validator';
   $('#anchor').disabled = !c.connected || !over;
   return c;
 }
 
 $('#start').onclick=async()=>{
-  stop(); over=false; seen=0; $('#feed').innerHTML=''; $('#result').style.display='none';
-  const ep=$('#ep').value;
-  const r=await (await fetch('/api/new?ep='+ep)).json();
-  if(r.error)return feed('note',r.error);
-  id=r.id; paint(r.view);
-  $('#orders').innerHTML=ORDERS[ep].map(a=>`<button class="btn" data-a="${a}">${a}</button>`).join('');
-  $('#orders').querySelectorAll('button').forEach(b=>b.onclick=()=>{
-    feed('you','▸ '+b.dataset.a); step('&do='+encodeURIComponent(b.dataset.a));});
-  $('#chat').innerHTML='';
-  $('#cmd').disabled=false; $('#go').disabled=false; $('#pause').disabled=false;
-  const voice=(await (await fetch('/api/chain')).json()).voice;
-  $('#q').disabled=!voice; $('#ask').disabled=!voice;
-  $('#voicetag').textContent = voice ? '· local model' : '· no gateway';
+  stop(); over=false; seen=0; $('#chat').innerHTML=''; $('#result').style.display='none';
+  const e=$('#ep').value;
+  const r=await (await fetch('/api/new?ep='+e)).json();
+  if(r.error)return turn('sys note','',r.error);
+  id=r.id; mode='ask'; renderModes(); renderChips(); paint(r.view);
+  $('#device').src='/device/monitor?sid='+encodeURIComponent(id);
+  document.querySelectorAll('.dev').forEach(b=>b.classList.toggle('on',b.dataset.dev==='monitor'));
+  $('#cmd').disabled=false; $('#send').disabled=false; $('#pause').disabled=false;
   $('#pause').textContent='hold'; $('#cmd').focus();
-  $('#monitor').src='/device/monitor?sid='+encodeURIComponent(id);
-  feed('note','the clock is the patient — she does not wait');
+  const voice=(await (await fetch('/api/chain')).json()).voice;
+  turn('sys note','', voice ? 'she can hear you — the clock is the patient, and she does not wait'
+                            : 'no gateway, so she cannot answer — orders still work');
   run(); chainState();
 };
-$('#pause').onclick=()=>{ if(timer){stop();$('#pause').textContent='resume';}
-  else{run();$('#pause').textContent='hold';} };
-let asking=false;
-$('#qf').onsubmit=async e=>{
-  e.preventDefault();
-  const q=$('#q').value.trim(); if(!q||asking||!id)return;
-  asking=true; $('#q').value=''; $('#ask').disabled=true;
-  const mine=document.createElement('div'); mine.className='line you'; mine.textContent=q;
-  $('#chat').appendChild(mine);
-  const wait=document.createElement('div'); wait.className='line her think'; wait.textContent='…';
-  $('#chat').appendChild(wait); $('#chat').scrollTop=1e6;
-  // asking costs time — she is still deteriorating while you talk
-  step('&tick=5');
-  const r=await (await fetch('/api/say?id='+id+'&q='+encodeURIComponent(q))).json();
-  wait.className='line her'; wait.textContent = r.reply || ('— '+(r.error||'no answer'));
-  $('#chat').scrollTop=1e6; asking=false; $('#ask').disabled=false; $('#q').focus();
+$('#back').onclick=()=>{ stop(); $('#game').classList.add('hide'); $('#lobby').classList.remove('hide'); renderSeason(); };
+$('#pause').onclick=()=>{ if(timer){stop();$('#pause').textContent='resume';} else{run();$('#pause').textContent='hold';} };
+$('#diff').onclick=()=>{ hard=!hard; $('#diff').textContent=hard?'hard':'easy'; $('#diff').classList.toggle('on',hard);
+  if(timer){stop();run();} };
+$('#cmdf').onsubmit=e=>{ e.preventDefault(); const x=$('#cmd').value.trim(); if(!x)return;
+  $('#cmd').value=''; fire(x); };
+$('#mic').onclick=()=>{
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR)return turn('sys note','','this browser has no speech recognition');
+  const r=new SR(); r.lang='en-GB'; r.onresult=ev=>{ $('#cmd').value=ev.results[0][0].transcript; }; r.start();
 };
-
-$('#f').onsubmit=e=>{e.preventDefault();const a=$('#cmd').value.trim();if(!a)return;
-  feed('you','▸ '+a);$('#cmd').value='';step('&do='+encodeURIComponent(a));};
+document.querySelectorAll('.dev').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.dev').forEach(x=>x.classList.toggle('on',x===b));
+  if(id)$('#device').src='/device/'+b.dataset.dev+'?sid='+encodeURIComponent(id);
+});
+$('#p-supine').onchange=e=>{ if(e.target.checked) doOrder(ep().id==='ep1'?'lay her flat':'lay flat'); };
+$('#p-admit').onchange=e=>{ if(e.target.checked) doOrder('admit'); };
 
 $('#anchor').onclick=async()=>{
   $('#anchor').disabled=true; $('#anchor').textContent='anchoring…';
-  const r=await (await fetch('/api/anchor?id='+id)).json();
-  const v=$('#verdict');
+  const r=await (await fetch('/api/anchor?id='+id)).json(); const v=$('#verdict');
   if(r.error){v.innerHTML+=`<span class="r">${r.error}</span>`;$('#anchor').textContent='anchor this run on chain';$('#anchor').disabled=false;return;}
   v.innerHTML+=`<span class="g">anchored at index ${r.index} · score ${r.score} · ${r.proven?'proven':'PROOF FAILED'}</span>`;
-  v.innerHTML+=`<span class="n">root ${r.root.slice(0,24)}… · ${r.leaves} leaves · ${r.counted} counted toward a claim</span>`;
-  $('#anchor').textContent='anchored'; ['#c1','#c2','#c3','#c4'].forEach(s=>$(s).disabled=false);
-  chainState();
+  v.innerHTML+=`<span class="n">root ${r.root.slice(0,24)}… · ${r.leaves} leaves · ${r.counted} counted</span>`;
+  $('#anchor').textContent='anchored'; ['#c1','#c2','#c3','#c4'].forEach(s=>$(s).disabled=false); chainState();
 };
 [['#c4',4],['#c3',3],['#c2',2],['#c1',1]].forEach(([sel,lv])=>{
-  $(sel).onclick=async()=>{
-    const r=await (await fetch('/api/claim?level='+lv)).json();
-    $('#verdict').innerHTML += r.granted
-      ? `<span class="g">✓ ${r.message}</span>` : `<span class="r">✗ ${r.message}</span>`;
-  };
+  $(sel).onclick=async()=>{ const r=await (await fetch('/api/claim?level='+lv)).json();
+    $('#verdict').innerHTML += r.granted?`<span class="g">✓ ${r.message}</span>`:`<span class="r">✗ ${r.message}</span>`; };
 });
-$('#copy').onclick=async()=>{
-  const t=await (await fetch('/api/tape?id='+id)).json();
-  await navigator.clipboard.writeText(JSON.stringify(t,null,1));
-  $('#copy').textContent='tape copied';
-};
+$('#copy').onclick=async()=>{ const t=await (await fetch('/api/tape?id='+id)).json();
+  await navigator.clipboard.writeText(JSON.stringify(t,null,1)); $('#copy').textContent='tape copied'; };
 
-/* ─── the season ────────────────────────────────────────────────────────────
-   EP1 has film. EP2–EP5 are authored automata with no art yet, and the tiles say
-   so rather than borrowing a still from another episode and implying otherwise.
-   Locking is by progression: clear one, the next opens. Nothing here is for sale. */
-const SEASON=[
- {id:'ep1',n:'EP1',t:'The Last Bite',tier:'student',
-  d:'A nineteen-year-old, ten minutes after the wrong salad. Her throat is closing.',art:'/img/stable.jpg'},
- {id:'ep2',n:'EP2',t:'Time Is Muscle',tier:'intern',
-  d:'A taxi driver, chest pain to the jaw. The ECG tells the truth in ten minutes.'},
- {id:'ep3',n:'EP3',t:"Don't Make Him Cry",tier:'resident',
-  d:'A five-year-old sitting very still. His stillness is the frightening part.'},
- {id:'ep4',n:'EP4',t:'The Masquerader',tier:'resident',
-  d:'Everything looks normal. The oxygen is quietly low and the heart is too fast.'},
- {id:'ep5',n:'EP5',t:'The Night the Stars Fell',tier:'resident',
-  d:'Everyone you have met, in one room, on the worst night of the year.'},
-];
+/* ─── lobby ────────────────────────────────────────────────────────────────── */
 const cleared=()=>JSON.parse(localStorage.getItem('vitals.cleared')||'[]');
-function open_(i){ return i===0 || cleared().includes(SEASON[i-1].id); }
+const open_=i=>i===0||cleared().includes(SEASON[i-1].id);
 function renderSeason(){
   $('#eps').innerHTML=SEASON.map((e,i)=>{
     const un=open_(i), done=cleared().includes(e.id);
@@ -468,25 +578,18 @@ function renderSeason(){
       <div class="body"><h3>${e.t}</h3><p>${e.d}</p>
       <span class="go">${un?'enter the bay':'clear '+SEASON[i-1].n+' to open'}</span></div></button>`;
   }).join('');
-  $('#eps').querySelectorAll('.tile:not(.lock)').forEach(b=>b.onclick=()=>enter(b.dataset.ep));
+  $('#eps').querySelectorAll('.tile:not(.lock)').forEach(b=>b.onclick=()=>{
+    $('#ep').value=b.dataset.ep; $('#lobby').classList.add('hide');
+    $('#game').classList.remove('hide'); $('#start').click(); });
   $('#coin-n').textContent=cleared().length;
 }
-function enter(ep){
-  $('#ep').value=ep; $('#lobby').classList.add('hide'); $('#game').classList.remove('hide');
-  $('#start').click();
-}
-$('#back').onclick=()=>{ stop(); $('#game').classList.add('hide'); $('#lobby').classList.remove('hide'); renderSeason(); };
-renderSeason();
+renderSeason(); renderModes();
 (async()=>{ const c=await (await fetch('/api/chain')).json();
-  $('#lb-chain').textContent = c.connected ? `localnet · tree #${c.tree_id}` : 'no chain'; })();
-
-show('Stable'); chainState();
-/* #play — start the shift on load. For demos, kiosks, and screenshots that need a live
-   monitor rather than an empty bay. */
+  $('#lb-chain').textContent=c.connected?`localnet · tree #${c.tree_id}`:'no chain'; })();
 if(location.hash.startsWith('#play')){
+  const e=location.hash.split('=')[1]; if(e)$('#ep').value=e;
   $('#lobby').classList.add('hide'); $('#game').classList.remove('hide');
-  const ep=location.hash.split('=')[1]; if(ep)$('#ep').value=ep;
-  window.addEventListener('load',()=>$('#start').click());
+  addEventListener('load',()=>$('#start').click());
 }
 </script>
 </body>
