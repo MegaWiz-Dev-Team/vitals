@@ -373,7 +373,11 @@ fn bearer_ok(req: &tiny_http::Request, token: &Option<String>) -> bool {
 }
 
 fn main() {
-    let addr = std::env::var("VITALS_WEB_BIND").unwrap_or_else(|_| "127.0.0.1:8090".into());
+    // Not 8090. On the machine this is developed on that port is already three things — a
+    // syn-sentry web app, an eir-fhir container publishing on the host, and the service port the
+    // hermodr fleet uses inside the cluster. A default that collides with the neighbours is a
+    // default that fails on the one day nobody is watching.
+    let addr = std::env::var("VITALS_WEB_BIND").unwrap_or_else(|_| "127.0.0.1:8474".into());
     let token = std::env::var("VITALS_TOKEN").ok().filter(|s| !s.is_empty());
     let loopback = addr.starts_with("127.") || addr.starts_with("localhost");
     if !loopback && token.is_none() {
@@ -383,7 +387,17 @@ fn main() {
                    this server sign with its key. Set VITALS_TOKEN, or bind to 127.0.0.1.");
         std::process::exit(2);
     }
-    let server = Server::http(&addr).expect("bind");
+    let server = match Server::http(&addr) {
+        Ok(s) => s,
+        // The raw panic said "Address already in use" and nothing about who has it.
+        Err(e) => {
+            eprintln!("cannot bind {addr}: {e}\n\
+                       something else is on that port — try `lsof -nP -iTCP:{port} -sTCP:LISTEN`, \
+                       or set VITALS_WEB_BIND to a free one.",
+                      port = addr.rsplit(':').next().unwrap_or("?"));
+            std::process::exit(2);
+        }
+    };
 
     let state_dir = std::env::var("VITALS_STATE_DIR").unwrap_or_else(|_| "state".into());
     let store = store::Store::open(std::path::PathBuf::from(&state_dir))
