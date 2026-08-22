@@ -15,6 +15,9 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+pub mod merkle;
+pub mod record;
+
 /// Case difficulty tier. Weights mirror `xp_for`: resident 1.6×, intern 1.2×, otherwise 1.0×.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Difficulty {

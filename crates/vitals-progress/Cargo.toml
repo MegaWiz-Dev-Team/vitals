@@ -7,6 +7,10 @@ license.workspace = true
 
 [features]
 default = ["std"]
-std = []
+std = ["sha2/std"]
+# On-chain builds: use the sha256 syscall instead of the pure-Rust crate.
+solana = ["dep:solana-program"]
 
 [dependencies]
+sha2 = { version = "0.10", default-features = false }
+solana-program = { version = "2", optional = true }

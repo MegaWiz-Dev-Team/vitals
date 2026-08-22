@@ -11,4 +11,4 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 solana-program = "2"
 borsh = { version = "1", features = ["derive"] }
-vitals-progress = { path = "../vitals-progress", default-features = false }
+vitals-progress = { path = "../vitals-progress", default-features = false, features = ["solana"] }

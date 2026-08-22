@@ -1,16 +1,12 @@
-//! The Vitals demo, end to end, against a local validator.
+//! The whole loop, end to end, against a local validator.
 //!
-//! Three cardiology cases across three tiers — the whole run a player could have. Then two
-//! claims against the same evidence:
+//! Play three runs of EP1 → anchor each into the tree → prove each with a Merkle path →
+//! claim a level and watch the program recompute it.
 //!
-//!   1. Proficient — which the shipping thresholds do not allow on three distinct cases
-//!   2. Competent  — which they do
-//!
-//! The first transaction fails. That failure is the demonstration: no authority refused it, the
-//! program recomputed the level and disagreed with the player. Run it twice, from two machines,
-//! against two validators — same evidence, same verdict, every time.
+//! Nothing between the replay and the chain is trusted. The program never sees a tape; it sees
+//! a leaf that must prove against a root it built itself.
 
-use borsh::BorshDeserialize;
+use borsh::{BorshDeserialize, BorshSerialize};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
@@ -21,159 +17,204 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use std::str::FromStr;
-use vitals_program::{AttemptWire, Instruction, Progress, SEED_PROGRESS};
-use vitals_progress::Dreyfus;
+use vitals_progress::merkle;
+use vitals_progress::record::AttemptRecord;
+use vitals_progress::{Difficulty, Dreyfus};
+use vitals_program::{
+    ClaimAccount, Instruction, Progress, RecordWire, TreeAccount, SEED_CLAIM, SEED_PROGRESS,
+    SEED_TREE,
+};
+use vitals_replay::{hex, record_for, replay, sce_hash, Replay, Step};
 
 const SPECIALTY_CARDIO: u8 = 1;
 
-fn case_id(name: &str) -> [u8; 32] {
-    // Stand-in for the anchored case hash. The real leaf hashes the case content; here we only
-    // need distinct, stable identities so `distinct_cases` counts what a player actually played.
-    let mut out = [0u8; 32];
-    let b = name.as_bytes();
-    out[..b.len().min(32)].copy_from_slice(&b[..b.len().min(32)]);
-    out
-}
+fn tick(s: f64) -> Step { Step::Tick(s) }
+fn act(s: &str) -> Step { Step::Do(s.into()) }
 
 fn main() {
     let url = std::env::var("VITALS_RPC").unwrap_or_else(|_| "http://127.0.0.1:8899".into());
-    let program_id = Pubkey::from_str(
-        &std::env::var("VITALS_PROGRAM_ID").expect("set VITALS_PROGRAM_ID"),
-    )
-    .expect("bad program id");
-
+    let program_id = Pubkey::from_str(&std::env::var("VITALS_PROGRAM_ID").expect("set VITALS_PROGRAM_ID"))
+        .expect("bad program id");
     let rpc = RpcClient::new_with_commitment(url.clone(), CommitmentConfig::confirmed());
-    let payer: Keypair = read_keypair_file(
-        std::env::var("VITALS_KEYPAIR")
-            .unwrap_or_else(|_| format!("{}/.config/solana/id.json", std::env::var("HOME").unwrap())),
-    )
+    let player: Keypair = read_keypair_file(std::env::var("VITALS_KEYPAIR").unwrap_or_else(|_| {
+        format!("{}/.config/solana/id.json", std::env::var("HOME").unwrap())
+    }))
     .expect("keypair");
+
+    let sce_json = std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../conformance/sce-anaphylaxis-ep1.json"),
+    )
+    .expect("scenario");
+    let sce = sce_hash(&sce_json);
+
+    // A fresh tree per run of this demo. A deployment rolls trees when one fills; the demo rolls
+    // one every time so each run starts from an empty root and the indices below are the real
+    // ones rather than whatever a previous run left behind.
+    let tree_id = std::env::var("VITALS_TREE_ID")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| rpc.get_slot().expect("slot"));
 
     println!("cluster   {url}");
     println!("program   {program_id}");
-    println!("player    {}\n", payer.pubkey());
+    println!("player    {}", player.pubkey());
+    println!("scenario  ep1-anaphylaxis  {}", &hex(&sce)[..16]);
+    println!("tree      #{tree_id}\n");
 
-    // The run: three distinct cardiology cases, one per tier.
-    let attempts = vec![
-        AttemptWire {
-            case: case_id("stable-angina"),
-            score: 72,
-            max: 100,
-            difficulty: 0, // student
-            exam_mode: false,
-        },
-        AttemptWire {
-            case: case_id("anterior-stemi"),
-            score: 78,
-            max: 100,
-            difficulty: 1, // intern
-            exam_mode: false,
-        },
-        AttemptWire {
-            case: case_id("aortic-dissection"),
-            score: 70,
-            max: 100,
-            difficulty: 2, // resident
-            exam_mode: false,
-        },
+    let runs: Vec<(&str, Difficulty, Vec<Step>)> = vec![
+        ("treated", Difficulty::Student, vec![
+            tick(30.0), act("adrenaline im"), act("oxygen"), act("supine"),
+            tick(60.0), act("normal saline bolus"), tick(300.0), act("admit for observation"), tick(600.0)]),
+        ("stood up", Difficulty::Student, vec![
+            tick(30.0), act("adrenaline im"), tick(30.0), act("let her stand up"),
+            act("oxygen"), act("normal saline bolus"), tick(300.0), act("admit for observation"), tick(600.0)]),
+        ("no adrenaline", Difficulty::Student, vec![
+            tick(60.0), act("chlorpheniramine"), tick(120.0), act("hydrocortisone"), tick(300.0), tick(600.0)]),
     ];
 
-    let (progress_pda, _) = Pubkey::find_program_address(
-        &[SEED_PROGRESS, payer.pubkey().as_ref(), &[SPECIALTY_CARDIO]],
-        &program_id,
-    );
-    println!("progress  {progress_pda}\n");
+    // ── 1. play and anchor ──────────────────────────────────────────────────
+    println!("── 1 · play, then anchor each run ──────────────────────");
+    let mut records = Vec::new();
+    let mut leaves = Vec::new();
+    for (name, difficulty, tape) in &runs {
+        let r: Replay = replay(&sce_json, tape).expect("replay");
+        let rec = record_for(player.pubkey().to_bytes(), sce, sce, *difficulty, false, tape, &r)
+            .expect("record");
+        println!(
+            "  {name:<14} outcome {:<14} harm {}  → score {:>3}   leaf {}",
+            r.outcome.clone().unwrap_or_else(|| "—".into()),
+            r.harm_events.len(),
+            rec.score(),
+            &hex(&rec.leaf())[..16]
+        );
+        send(&rpc, &player, &program_id, Instruction::AnchorReplay { tree_id, record: wire(&rec) },
+             vec![tree_pda(&program_id, tree_id).0], true);
+        leaves.push(rec.leaf());
+        records.push(rec);
+    }
 
-    submit(&rpc, &payer, &program_id, progress_pda, Dreyfus::Proficient, &attempts);
-    submit(&rpc, &payer, &program_id, progress_pda, Dreyfus::Competent, &attempts);
+    let tree: TreeAccount = fetch(&rpc, &tree_pda(&program_id, tree_id).0).expect("tree");
+    println!("\n  tree root {}   leaves {}\n", &hex(&tree.root)[..24], tree.next_index);
 
-    match rpc.get_account_data(&progress_pda) {
-        Ok(data) => {
-            let p = Progress::try_from_slice(&data).expect("decode");
-            println!("\nonchain progress account");
-            println!("  specialty       {}", p.specialty);
-            println!("  level           {}", level_name(p.level));
-            println!("  distinct cases  {}", p.distinct_cases);
-            println!("  xp              {}", p.xp);
-            println!("\nthe level stored is the one the program computed, never the one claimed.");
-        }
-        Err(e) => println!("\nno progress account: {e}"),
+    // ── 2. prove ────────────────────────────────────────────────────────────
+    println!("── 2 · prove each run belongs to this player ───────────");
+    for (i, rec) in records.iter().enumerate() {
+        let path = merkle::prove(&leaves, i as u64).expect("path");
+        let ok = send(&rpc, &player, &program_id,
+            Instruction::ProveAttempt { tree_id, record: wire(rec), index: i as u64, path: path.to_vec() },
+            vec![tree_pda(&program_id, tree_id).0, claim_pda(&program_id, &player.pubkey(), tree_id).0], true);
+        println!("  index {i}  {}", if ok { "proven" } else { "REJECTED" });
+    }
+
+    // A leaf that was never anchored must not prove, or none of this means anything.
+    let forged = AttemptRecord { harm_count: 0, outcome: vitals_progress::record::Outcome::WinDischarge, ..records[2] };
+    let path = merkle::prove(&leaves, 2).expect("path");
+    let ok = send(&rpc, &player, &program_id,
+        Instruction::ProveAttempt { tree_id, record: wire(&forged), index: 2, path: path.to_vec() },
+        vec![tree_pda(&program_id, tree_id).0, claim_pda(&program_id, &player.pubkey(), tree_id).0], false);
+    println!("  forged   {}", if ok { "ACCEPTED — the tree is broken" } else { "rejected — not in the tree" });
+
+    let claim: ClaimAccount = fetch(&rpc, &claim_pda(&program_id, &player.pubkey(), tree_id).0).expect("claim");
+    println!("\n  {} attempts proven and counted\n", claim.attempts.len());
+
+    // ── 3. claim ────────────────────────────────────────────────────────────
+    println!("── 3 · claim a level ───────────────────────────────────");
+    for claimed in [Dreyfus::Competent, Dreyfus::AdvancedBeginner] {
+        let ok = send(&rpc, &player, &program_id,
+            Instruction::ClaimProgress { tree_id, specialty: SPECIALTY_CARDIO, claimed: claimed as u8 },
+            vec![claim_pda(&program_id, &player.pubkey(), tree_id).0,
+                 progress_pda(&program_id, &player.pubkey(), SPECIALTY_CARDIO).0], claimed == Dreyfus::AdvancedBeginner);
+        println!("  claim {:<18} {}", claimed.as_str(), if ok { "GRANTED" } else { "REJECTED" });
+    }
+
+    if let Some(p) = fetch::<Progress>(&rpc, &progress_pda(&program_id, &player.pubkey(), SPECIALTY_CARDIO).0) {
+        println!("\n  onchain: level {}  ·  {} attempts  ·  {} distinct case(s)  ·  xp {}",
+            level_name(p.level), p.attempts_counted, p.distinct_cases, p.xp);
+        println!("\n  three runs of one patient is one case, and the chain knows it.");
+        println!("  breadth is what Competent needs, and no amount of replaying buys it.");
     }
 }
 
-fn submit(
+// ── plumbing ────────────────────────────────────────────────────────────────
+
+fn wire(r: &AttemptRecord) -> RecordWire {
+    RecordWire {
+        player: r.player,
+        sce_hash: r.sce_hash,
+        case: r.case,
+        run_hash: r.run_hash,
+        difficulty: match r.difficulty {
+            Difficulty::Student => 0,
+            Difficulty::Intern => 1,
+            Difficulty::Resident => 2,
+        },
+        exam_mode: r.exam_mode,
+        outcome: r.outcome as u8,
+        harm_count: r.harm_count,
+    }
+}
+
+fn tree_pda(program_id: &Pubkey, tree_id: u64) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[SEED_TREE, &tree_id.to_le_bytes()], program_id)
+}
+fn claim_pda(program_id: &Pubkey, player: &Pubkey, tree_id: u64) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[SEED_CLAIM, player.as_ref(), &tree_id.to_le_bytes()], program_id)
+}
+fn progress_pda(program_id: &Pubkey, player: &Pubkey, specialty: u8) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[SEED_PROGRESS, player.as_ref(), &[specialty]], program_id)
+}
+
+/// Returns whether the transaction succeeded. `expect_ok` only controls how loudly a surprise is
+/// reported — a rejection we predicted is not a failure of the demo, it is the demo.
+fn send(
     rpc: &RpcClient,
-    payer: &Keypair,
+    player: &Keypair,
     program_id: &Pubkey,
-    progress_pda: Pubkey,
-    claimed: Dreyfus,
-    attempts: &[AttemptWire],
-) {
-    println!("── claim: {} ────────────────────────────────", claimed.as_str());
+    ix: Instruction,
+    extra: Vec<Pubkey>,
+    expect_ok: bool,
+) -> bool {
+    let mut metas = vec![AccountMeta::new(player.pubkey(), true)];
+    metas.extend(extra.into_iter().map(|k| AccountMeta::new(k, false)));
+    metas.push(AccountMeta::new_readonly(system_program::id(), false));
 
-    let ix_data = borsh::to_vec(&Instruction::ClaimProgress {
-        specialty: SPECIALTY_CARDIO,
-        claimed: claimed as u8,
-        attempts: attempts.to_vec(),
-    })
-    .expect("serialize");
-
-    let ix = SolInstruction {
-        program_id: *program_id,
-        accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
-            AccountMeta::new(progress_pda, false),
-            AccountMeta::new_readonly(system_program::id(), false),
-        ],
-        data: ix_data,
-    };
-
+    let ix = SolInstruction { program_id: *program_id, accounts: metas, data: borsh::to_vec(&ix).expect("ser") };
     let blockhash = rpc.get_latest_blockhash().expect("blockhash");
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&payer.pubkey()),
-        &[payer],
-        blockhash,
-    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&player.pubkey()), &[player], blockhash);
 
     match rpc.send_and_confirm_transaction(&tx) {
-        Ok(sig) => println!("  GRANTED   {sig}"),
+        Ok(_) => true,
         Err(e) => {
-            let s = e.to_string();
-            if s.contains("custom program error: 0x0") {
-                println!("  REJECTED  the program recomputed the level and disagreed");
-            } else {
-                println!("  FAILED    {s}");
+            if expect_ok {
+                println!("      unexpected failure:");
+                for l in e.to_string().lines().take(24) { println!("        {}", l.trim()); }
+            } else if let Some(l) = program_log_line(&e.to_string()) {
+                println!("      {l}");
             }
-            if let Some(logs) = program_logs(&s) {
-                for l in logs {
-                    println!("            {l}");
-                }
-            }
+            false
         }
     }
-    println!();
 }
 
-/// Pull the `msg!` lines out of the RpcError text so the verdict speaks for itself.
-fn program_logs(err: &str) -> Option<Vec<String>> {
-    let mut out = Vec::new();
-    for line in err.lines() {
-        let t = line.trim();
-        if t.starts_with("Program log:") {
-            out.push(t.trim_start_matches("Program log:").trim().to_string());
-        }
-    }
-    (!out.is_empty()).then_some(out)
+fn fetch<T: BorshDeserialize>(rpc: &RpcClient, key: &Pubkey) -> Option<T> {
+    // Prefix decode, for the same reason the program does: a claim buffer is mostly zeros.
+    rpc.get_account_data(key).ok().and_then(|d| T::deserialize(&mut &d[..]).ok())
+}
+
+fn program_log_line(err: &str) -> Option<String> {
+    err.lines()
+        .map(str::trim)
+        .find(|l| l.starts_with("Program log:") && !l.contains("instruction"))
+        .map(|l| l.trim_start_matches("Program log:").trim().to_string())
+}
+
+fn first_program_log(err: &str) -> String {
+    program_log_line(err).unwrap_or_else(|| err.lines().next().unwrap_or("").to_string())
 }
 
 fn level_name(v: u8) -> &'static str {
     match v {
-        0 => "Novice",
-        1 => "Advanced beginner",
-        2 => "Competent",
-        3 => "Proficient",
-        4 => "Expert",
-        _ => "?",
+        0 => "Novice", 1 => "Advanced beginner", 2 => "Competent",
+        3 => "Proficient", 4 => "Expert", _ => "?",
     }
 }
