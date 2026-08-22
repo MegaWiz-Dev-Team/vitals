@@ -99,9 +99,16 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
 .pt{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;
   text-align:center;padding-bottom:.7rem}
 .pt-art{position:relative;aspect-ratio:16/9;background:#0b1312}
-.pt-art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;
-  transition:opacity .5s ease}
-.pt-art img.on{opacity:1}
+.pt-art video,.pt-art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  opacity:0;transition:opacity .45s ease}
+.pt-art video.on,.pt-art img.on{opacity:1}
+/* A cutscene cuts, it does not dissolve — the Director hands it the whole frame. */
+#cut{opacity:0;transition:opacity .18s ease;z-index:2;background:#000}
+#cut.on{opacity:1}
+.cut-tag{position:absolute;top:.55rem;right:.55rem;z-index:3;font-family:"IBM Plex Mono",monospace;
+  font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:#E7EFEE;
+  background:rgba(6,14,14,.62);padding:.2rem .5rem;border-radius:6px;opacity:0;transition:opacity .2s}
+.cut-tag.on{opacity:1}
 .place{position:absolute;left:.55rem;bottom:.55rem;font-family:"IBM Plex Mono",monospace;
   font-size:.6rem;letter-spacing:.06em;color:#E7EFEE;background:rgba(6,14,14,.6);
   padding:.2rem .5rem;border-radius:6px;backdrop-filter:blur(5px)}
@@ -245,13 +252,10 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
     <!-- patient card -->
     <div class="pt">
       <div class="pt-art">
-        <img id="ph-stable" src="/img/stable.jpg" alt="the patient">
-        <img id="ph-deteriorating" src="/img/deteriorating.jpg" alt="">
-        <img id="ph-critical" src="/img/critical.jpg" alt="">
-        <img id="ph-arrest" src="/img/arrest.jpg" alt="">
-        <img id="ph-improving" src="/img/improving.jpg" alt="">
-        <img id="ph-recovered" src="/img/recovered.jpg" alt="">
-        <img id="ph-dead" src="/img/dead.jpg" alt="">
+        <video id="loop" autoplay loop muted playsinline preload="auto"></video>
+        <video id="cut" muted playsinline preload="auto"></video>
+        <img id="fallback" src="/img/stable.jpg" alt="the patient">
+        <span class="cut-tag" id="cut-tag">cutscene</span>
         <span class="place" id="place">📷 Emergency department · night</span>
       </div>
       <div class="pt-name" id="pt-name">Ing · F 19</div>
@@ -423,10 +427,56 @@ function turn(cls,who,text,raw){
   d.querySelector('.say').textContent=text; if(raw)d.title=raw;
   $('#chat').appendChild(d); $('#chat').scrollTop=1e6;
 }
-function show(status){
-  const key=(status||'Stable').toLowerCase();
-  document.querySelectorAll('.pt-art img').forEach(i=>i.classList.remove('on'));
-  ($('#ph-'+key)||$('#ph-stable')).classList.add('on');
+/* ─── film ──────────────────────────────────────────────────────────────────
+   Story Mode does two things with video and I had done neither: it loops a clip per
+   clinical state — and the loop changes again when equipment goes on, so the mask is
+   visible — and it cuts to a full-frame cutscene on a beat, then returns to the loop.
+   The Director's priority is terminal > harm > biphasic > status change, ported as-is. */
+const CUT={ cold_open:'ep1_cold_open', trigger:'ep1_trigger', harm:'ep1_harm', biphasic:'ep1_biphasic', code_blue:'ep1_code_blue',
+  deteriorate:'ep1_deteriorate', adrenaline_calm:'ep1_adrenaline_calm',
+  WinDischarge:'ep1_win_discharge', WinIcu:'ep1_win_icu',
+  DeathArrest:'ep1_death_arrest', DeathBiphasic:'ep1_death_biphasic' };
+const LOOPS=new Set(['deteriorating','critical','improving','recovered','arrest']);
+let loopNow='', cutting=false;
+
+function stateClip(status,kit){
+  const s=(status||'stable').toLowerCase();
+  if(!LOOPS.has(s)) return null;
+  const on=new Set(kit.map(k=>k.id));
+  const suffix = on.has('ett') && s==='deteriorating' ? '_ett' : on.has('o2') ? '_o2' : '';
+  return 'ep1_state_'+s+suffix;
+}
+function show(status,kit){
+  // Only EP1 has film. The others fall back to the still, and say nothing they cannot show.
+  if(ep().id!=='ep1'){
+    $('#loop').classList.remove('on'); $('#fallback').classList.add('on');
+    $('#fallback').src='/img/'+((status||'stable').toLowerCase())+'.jpg'; return;
+  }
+  const want=stateClip(status,kit||[]);
+  if(!want){ $('#loop').classList.remove('on'); $('#fallback').classList.add('on'); return; }
+  $('#fallback').classList.remove('on');
+  if(want!==loopNow){ loopNow=want; $('#loop').src='/clip/'+want+'.mp4'; $('#loop').play().catch(()=>{}); }
+  $('#loop').classList.add('on');
+}
+/* Play a cutscene over the loop, then hand the frame back. */
+function playCut(key){
+  const asset=CUT[key]; if(!asset||ep().id!=='ep1'||cutting)return;
+  cutting=true;
+  const c=$('#cut'); c.src='/clip/'+asset+'.mp4';
+  c.currentTime=0; c.classList.add('on'); $('#cut-tag').classList.add('on');
+  c.play().catch(()=>{ c.classList.remove('on'); $('#cut-tag').classList.remove('on'); cutting=false; });
+  c.onended=()=>{ c.classList.remove('on'); $('#cut-tag').classList.remove('on'); cutting=false; };
+}
+/* The Director's own order of precedence. */
+function direct(newBeats,outcome){
+  if(outcome) return playCut(outcome);
+  const harm=newBeats.find(b=>b.startsWith('harm:'));         if(harm) return playCut('harm');
+  if(newBeats.includes('threshold:biphasic'))                 return playCut('biphasic');
+  for(const b of newBeats){
+    if(b==='status:Arrest')    return playCut('code_blue');
+    if(b==='status:Recovered') return playCut('adrenaline_calm');
+    if(b==='status:Critical')  return playCut('deteriorate');
+  }
 }
 function renderModes(){
   $('#modes').innerHTML=MODES.map(m=>`<button class="btn${m.id===mode?' on':''}" data-m="${m.id}">${m.icon} ${m.label}</button>`).join('');
@@ -445,7 +495,7 @@ function paint(v){
   $('#ep-name').textContent=E.n+' · '+E.t+' · '+v.sce_hash.slice(0,10);
   $('#pt-name').textContent=E.who; $('#pt-line').textContent=E.line; $('#place').textContent='📷 '+E.place;
   $('#pt-status').textContent=v.status; $('#pt-status').className='pt-status '+v.status;
-  show(v.status);
+  show(v.status, v.equipment);
   $('#m-hr').textContent=v.hr; $('#m-spo2').textContent=v.spo2+'%';
   $('#m-bp').textContent=v.sbp+'/'+v.dbp; $('#m-rr').textContent=v.rr;
   $('#mini-status').textContent=v.status;
@@ -467,11 +517,11 @@ function paint(v){
     : '<span class="muted">nothing recorded yet</span>';
   $('#chart').scrollTop=1e6;
 
-  for(let i=seen;i<v.beats.length;i++){
-    const b=v.beats[i];
+  const fresh=v.beats.slice(seen);
+  for(const b of fresh)
     turn('sys '+(b.startsWith('harm')?'harm':b.startsWith('terminal')?'end':''),'',say(b),b);
-  }
   seen=v.beats.length;
+  if(fresh.length) direct(fresh, v.outcome);
 
   if(v.outcome && !over){
     over=true; stop();
@@ -523,7 +573,9 @@ $('#start').onclick=async()=>{
   const e=$('#ep').value;
   const r=await (await fetch('/api/new?ep='+e)).json();
   if(r.error)return turn('sys note','',r.error);
-  id=r.id; mode='ask'; renderModes(); renderChips(); paint(r.view);
+  id=r.id; mode='ask'; loopNow=''; cutting=false; $('#cut').classList.remove('on');
+  renderModes(); renderChips(); paint(r.view);
+  if(ep().id==='ep1') playCut('cold_open');
   $('#device').src='/device/monitor?sid='+encodeURIComponent(id);
   document.querySelectorAll('.dev').forEach(b=>b.classList.toggle('on',b.dataset.dev==='monitor'));
   $('#cmd').disabled=false; $('#send').disabled=false; $('#pause').disabled=false;
