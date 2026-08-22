@@ -187,6 +187,23 @@ li strong,p strong{color:var(--ink); font-weight:600}
 .never{border-left:2px solid var(--attested); padding-left:1rem}
 .never li{color:var(--ink-2)}
 .small{font-size:.85rem; color:var(--ink-3)}
+
+/* ── architecture figure ── */
+.fig{margin:0; display:flex; flex-direction:column; gap:.75rem}
+.fig svg{width:100%; max-width:100%; height:auto; color:var(--ink-2); display:block}
+.fig figcaption{font-size:.88rem; color:var(--ink-3); max-width:46em}
+.fig .box rect{fill:var(--surface); stroke:currentColor; stroke-width:1; opacity:.95}
+.fig .box.accent rect{stroke:var(--proven); stroke-width:1.5}
+.fig .box .t{fill:var(--ink); font-family:Archivo,sans-serif; font-size:13px; font-weight:700; text-anchor:middle}
+.fig .box.accent .t{fill:var(--proven)}
+.fig .box .s{fill:var(--ink-3); font-family:"IBM Plex Mono",monospace; font-size:9.5px; text-anchor:middle}
+.fig line{stroke:currentColor; stroke-width:1.25}
+.fig .divider{stroke:var(--rule); stroke-width:1; stroke-dasharray:3 4}
+.fig .band{fill:var(--ink-3); font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.16em}
+.fig .e{fill:var(--ink-3); font-family:"IBM Plex Mono",monospace; font-size:9.5px; text-anchor:middle}
+.fig .note{fill:var(--proven); font-family:"IBM Plex Mono",monospace; font-size:10px; text-anchor:start}
+.fig .refuse{stroke:var(--attested); stroke-dasharray:4 3}
+.fig .refuse-t{fill:var(--attested); font-family:"IBM Plex Mono",monospace; font-size:10px}
 </style>
 
 <!-- 01 ───────────────────────────────────────────────── -->
@@ -274,9 +291,97 @@ stood up  <b>a6bec396869e7d889686bc42111f4a2b090aa16c4d93213262d24c858637f8ca</b
   </div>
 </section>
 
+<!-- ARCH ───────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="rail"><span class="no">06</span><span class="hash">architecture</span><span class="tag">Vitals</span></div>
+  <div class="inner">
+    <span class="eyebrow">Architecture</span>
+    <h2>Two inputs in, one hash out, and nothing trusted in between.</h2>
+    <figure class="fig">
+      <svg viewBox="0 0 920 430" role="img" preserveAspectRatio="xMidYMid meet"
+           aria-label="A run is replayed off chain from two inputs — the tape and the scenario — through the deterministic automaton, reduced to discrete facts and hashed into one leaf. On chain the leaf is appended to a Merkle tree; a claim presents the leaf and its path to the program, which recomputes the level and either grants progression or refuses the claim.">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+          <marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--attested)"/>
+          </marker>
+        </defs>
+
+        <text x="20" y="28" class="band">OFF CHAIN</text>
+
+        <g class="box">
+          <rect x="20" y="55" width="150" height="50" rx="3"/>
+          <text x="95" y="76" class="t">tape</text>
+          <text x="95" y="92" class="s">what you did, and when</text>
+        </g>
+        <g class="box">
+          <rect x="20" y="130" width="150" height="50" rx="3"/>
+          <text x="95" y="151" class="t">scenario</text>
+          <text x="95" y="167" class="s">pinned by its hash</text>
+        </g>
+        <g class="box accent">
+          <rect x="235" y="92" width="170" height="50" rx="3"/>
+          <text x="320" y="113" class="t">automaton</text>
+          <text x="320" y="129" class="s">deterministic</text>
+        </g>
+        <g class="box">
+          <rect x="470" y="92" width="180" height="50" rx="3"/>
+          <text x="560" y="113" class="t">discrete facts</text>
+          <text x="560" y="129" class="s">beats · harm · outcome</text>
+        </g>
+        <g class="box">
+          <rect x="715" y="92" width="130" height="50" rx="3"/>
+          <text x="780" y="113" class="t">leaf</text>
+          <text x="780" y="129" class="s">one sha256</text>
+        </g>
+
+        <line x1="170" y1="80"  x2="228" y2="105" marker-end="url(#ah)"/>
+        <line x1="170" y1="155" x2="228" y2="130" marker-end="url(#ah)"/>
+        <line x1="405" y1="117" x2="463" y2="117" marker-end="url(#ah)"/>
+        <text x="434" y="108" class="e">reduces</text>
+        <line x1="650" y1="117" x2="708" y2="117" marker-end="url(#ah)"/>
+        <text x="679" y="108" class="e">hashes</text>
+        <text x="20" y="207" class="note" text-anchor="start">no model anywhere on this path — anyone holding both inputs recomputes the same leaf</text>
+
+        <line x1="20" y1="245" x2="900" y2="245" class="divider"/>
+        <text x="20" y="272" class="band">ON CHAIN</text>
+
+        <g class="box">
+          <rect x="700" y="300" width="160" height="50" rx="3"/>
+          <text x="780" y="321" class="t">merkle tree</text>
+          <text x="780" y="337" class="s">one root</text>
+        </g>
+        <g class="box accent">
+          <rect x="370" y="300" width="200" height="50" rx="3"/>
+          <text x="470" y="321" class="t">program</text>
+          <text x="470" y="337" class="s">recomputes the level</text>
+        </g>
+        <g class="box">
+          <rect x="20" y="300" width="170" height="50" rx="3"/>
+          <text x="105" y="321" class="t">progression</text>
+          <text x="105" y="337" class="s">soulbound</text>
+        </g>
+
+        <line x1="780" y1="142" x2="780" y2="293" marker-end="url(#ah)"/>
+        <text x="790" y="222" class="e" text-anchor="start">append</text>
+        <line x1="700" y1="325" x2="577" y2="325" marker-end="url(#ah)"/>
+        <text x="638" y="316" class="e">leaf + path</text>
+        <line x1="370" y1="325" x2="197" y2="325" marker-end="url(#ah)"/>
+        <text x="283" y="316" class="e">grants</text>
+
+        <line x1="470" y1="350" x2="470" y2="392" marker-end="url(#ahr)" class="refuse"/>
+        <text x="482" y="386" class="refuse-t" text-anchor="start">claim above what it computed → refused</text>
+      </svg>
+      <figcaption>The tape and the scenario are the only inputs. The chain never sees a run — only a leaf that has to prove against a root it built itself.</figcaption>
+    </figure>
+  </div>
+</section>
+
 <!-- 06 ───────────────────────────────────────────────── -->
 <section class="slide">
-  <div class="rail"><span class="no">06</span><span class="hash">onchain architecture</span><span class="tag">Vitals</span></div>
+  <div class="rail"><span class="no">07</span><span class="hash">onchain architecture</span><span class="tag">Vitals</span></div>
   <div class="inner">
     <span class="eyebrow">Onchain architecture</span>
     <h2>Four primitives, none of them invented here.</h2>
@@ -299,7 +404,7 @@ stood up  <b>a6bec396869e7d889686bc42111f4a2b090aa16c4d93213262d24c858637f8ca</b
 
 <!-- 07 ───────────────────────────────────────────────── -->
 <section class="slide">
-  <div class="rail"><span class="no">07</span><span class="hash">$VITAL · the verification market</span><span class="tag">Vitals</span></div>
+  <div class="rail"><span class="no">08</span><span class="hash">$VITAL · the verification market</span><span class="tag">Vitals</span></div>
   <div class="inner">
     <span class="eyebrow">Tokenomics</span>
     <h2>The token secures verification. It never represents competence.</h2>
@@ -338,7 +443,7 @@ stood up  <b>a6bec396869e7d889686bc42111f4a2b090aa16c4d93213262d24c858637f8ca</b
 
 <!-- 08 ───────────────────────────────────────────────── -->
 <section class="slide">
-  <div class="rail"><span class="no">08</span><span class="hash">market · precedent</span><span class="tag">Vitals</span></div>
+  <div class="rail"><span class="no">09</span><span class="hash">market · precedent</span><span class="tag">Vitals</span></div>
   <div class="inner">
     <span class="eyebrow">Market and precedent</span>
     <h2>This shape already won this hackathon once.</h2>
@@ -348,9 +453,9 @@ stood up  <b>a6bec396869e7d889686bc42111f4a2b090aa16c4d93213262d24c858637f8ca</b
     </div>
     <p>Train in simulation → verify competence → route the qualified to real work. That is Vitals, for robot operators instead of clinicians. We think the pattern generalises; the largest crypto hackathon ever run agreed three months ago, out of 2,857 submissions from 150 countries.</p>
     <div class="card tally">
-      <span class="k">How episode six gets made</span>
-      <p>Stills from an image model, then <strong>a critic crew that fails the shot before a video model ever sees it</strong> — a medical advisor checking the procedure, a continuity supervisor checking the face, a director reading both verdicts. Then video. A cinematic episode costs tens of dollars, not a film crew.</p>
-      <p>It is the same principle as the rest of this: something that must be right, checked automatically. The crew verifies the content. The chain verifies the play.</p>
+      <span class="k">How episode six gets made — Skald</span>
+      <p>A producer console. Type a premise and a number of episodes and an AI showrunner drafts the series bible and scaffolds every storyboard. Then each shot runs a loop: write the prompt, generate, <strong>a crew fails the shot before the video model ever sees it</strong> — a medical advisor on the procedure, a continuity supervisor on the face — approve, and every generation is kept as a take you can roll back to, like a film set. A budget gate blocks spending past its ceiling.</p>
+      <p>Same principle as the rest of this: something that must be right, checked automatically. <strong>Skald verifies the content. The chain verifies the play.</strong></p>
     </div>
     <div class="grid g3">
       <div class="card"><span class="k">Why medicine first</span><p>The hardest instance: highest stakes, heaviest regulation, most protective of data. Solve it here and it generalises downward to every other skill credential.</p></div>
@@ -362,7 +467,7 @@ stood up  <b>a6bec396869e7d889686bc42111f4a2b090aa16c4d93213262d24c858637f8ca</b
 
 <!-- 09 ───────────────────────────────────────────────── -->
 <section class="slide">
-  <div class="rail"><span class="no">09</span><span class="hash">four weeks</span><span class="tag">Vitals</span></div>
+  <div class="rail"><span class="no">10</span><span class="hash">four weeks</span><span class="tag">Vitals</span></div>
   <div class="inner">
     <span class="eyebrow">Where it stands, and what's next</span>
     <h2>Two halves built. One week to join them.</h2>
@@ -440,5 +545,9 @@ stood up  <b>a6bec396869e7d889686bc42111f4a2b090aa16c4d93213262d24c858637f8ca</b
   .small{font-size:8.5pt}
   .sub-h{font-size:7.5pt}
   .two{gap:1.1rem}
+  /* The architecture figure is the tallest thing in the deck; cap it so a fixed-height
+     printed page cannot push the eyebrow up under the rail. */
+  .fig svg{max-height:104mm}
+  .fig figcaption{font-size:8.5pt}
 }
 </style>
