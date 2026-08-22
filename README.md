@@ -39,10 +39,23 @@ Three onchain primitives, one off-chain engine:
 |---|---|---|
 | **Case Registry** | Authors publish cases; content stays off-chain, only `case_id + content_hash + rubric_hash + price + royalty split` goes onchain. Any front-end can read it. | Anchor program + Token-2022 |
 | **Attempt Anchor** | Commit–reveal per attempt: pre-commit before the encounter, hash of `(transcript, rubric result, engine version, model id)` after. Nothing personal onchain — hashes only. | State compression (Bubblegum concurrent merkle tree) |
+| **Progression** | XP, levels, Dreyfus skill trees and badges — minted **permissionlessly**, because the program recomputes the predicate from anchored attempts instead of trusting a server. Soulbound. | Token-2022 NonTransferable + cNFT |
 | **Competency Credential** | Clear N attempts above threshold → an accredited issuer attests "OSCE-Cardio-L2" to the student's wallet. Reusable across apps without exposing the underlying data. | [Solana Attestation Service](https://solana.com/news/solana-attestation-service) |
 | *(off-chain)* **Verifier** | Re-runs the deterministic rubric over a revealed transcript and confirms it reproduces the anchored score. | `embla-engine` (Rust) |
 
-## Why this is not "certificate NFT"
+## One anchored record, three resolutions
+
+Everything here is the same attempt data read at three zoom levels — not three products:
+
+| Resolution | Stakes | Who can mint |
+|---|---|---|
+| **Attempt** — the anchored leaf | raw evidence | verifier |
+| **Progression** — level, skill tree, badge | low, continuous | **anyone; the program checks the maths** |
+| **Credential** — competency attestation | high, institutional | accredited issuer |
+
+If a feature cannot be introduced as a consequence of that sentence, it does not belong in the pitch.
+
+## Why this is not "certificate NFT" or "achievement badges"
 
 The novelty is **exam integrity as a mechanism**, not storage:
 
@@ -56,10 +69,28 @@ The novelty is **exam integrity as a mechanism**, not storage:
 - **The student cannot self-sign.** Scoring runs in a verifier that holds the issuer key
   (the school's Embla box, or a protocol verifier node). High-stakes attempts can require an
   n-of-m verifier quorum.
+- **Progression is computed, not granted.** Embla's `xp_for`, `level_for` and `dreyfus` are pure
+  functions over attempt history with unit-tested thresholds. An integer twin of them runs *inside
+  the Anchor program*: `claim_progress` takes merkle proofs, the program recomputes the level, and
+  mints only if its own arithmetic agrees. Every other achievement NFT is minted because a server
+  said so — ours because the chain checked. See [docs/GAMIFICATION.md](docs/GAMIFICATION.md).
 - **The hash chain already exists.** `embla-engine` ships a hash-chained append-only audit log
   (`engine/src/audit.rs`) with a canonical hash recipe cross-validated between its Rust and
   Python implementations. Today it is tamper-evident *to whoever holds the log*. Anchoring the
   chain head to Solana makes it tamper-evident *to the world*. That is the whole delta.
+
+## What is provable, and what is only attested
+
+Embla's rubric is **40 points deterministic and 60 points LLM-judged**. So the anchor carries two
+labelled numbers, not one:
+
+- `det_score` (40) — **re-derivable.** Re-run `embla-engine` at the pinned version, get the same
+  bytes. This is the strong claim.
+- `judged_score` (60) — **verifier-quorum attested.** Signers state which model at which version
+  produced the dimension scores. More signers means more confidence; it never means re-derivable.
+
+Escrow-backed badge predicates are expressible over `det_score` alone. We state this split up front
+rather than letting someone find it — see [docs/RISKS.md](docs/RISKS.md) §3.
 
 ## Why Solana specifically
 
@@ -89,6 +120,9 @@ Not decoration — the numbers only close on this chain:
   levels (`competency.rs`), psychometrics, and the hash-chained audit log (`audit.rs`).
 - **205 authored OSCE cases** across 12 specialties, plus JSON schemas for cases, SCEs,
   exams, and competency blueprints.
+- **A designed game layer** — XP curve, Dreyfus skill trees, badges, ranked/practice modes, and
+  anti-cheese guardrails (distinct-case and difficulty gates, a variance cap) that turn out to
+  double as anti-farming rules once badges carry escrow money.
 - A working client, scoring standard, and a real user population to test with.
 
 Most hackathon teams spend four weeks building the thing that produces the signal.
@@ -96,6 +130,8 @@ We already have it; the sprint is spent making the signal verifiable.
 
 ## Boundaries (deliberate)
 
+- **Nothing tradeable.** All progression tokens are non-transferable by construction. A market for
+  "Expert in Cardiology" would make the whole system worthless, so we forgo the volume.
 - **No patient data, ever.** Virtual patients are synthetic (DDXPlus, CC-BY-4.0). No PHI
   exists in this system to leak.
 - **No student PII onchain.** Hashes and pubkeys only. Student performance data is personal
@@ -109,6 +145,7 @@ We already have it; the sprint is spent making the signal verifiable.
 ## Docs
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — protocol design, accounts, flows, open questions
+- [docs/GAMIFICATION.md](docs/GAMIFICATION.md) — progression as onchain computation, soulbound design, escrow, anti-farming
 - [docs/SPRINT_PLAN.md](docs/SPRINT_PLAN.md) — the 4-week build
 - [docs/COLOSSEUM_FIT.md](docs/COLOSSEUM_FIT.md) — mapping to the six judging criteria
 - [docs/RISKS.md](docs/RISKS.md) — what could sink this, including the ones we caused ourselves

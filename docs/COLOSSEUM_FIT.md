@@ -25,11 +25,18 @@ real users. The repo will show engineering history, not a hackathon sprint's wor
 
 ## 3. Novelty — "How unique is this concept?"
 
-**Strong, if pitched correctly.** "Credentials on chain" is a 2017 idea and judges will
-pattern-match to it in the first ten seconds. The novelty is not storage, it is mechanism:
-commit–reveal ordering that makes retry-farming visible, plus a deterministic scorer with a
-pinned version so the credential is **re-derivable by a third party**, not merely readable.
-Lead with the re-derivation demo. Never open with the word "certificate".
+**Strong, if pitched correctly.** "Credentials on chain" is a 2017 idea and "achievement NFTs" is
+older still; judges will pattern-match within ten seconds. The novelty is not storage, it is that
+**the program computes the predicate instead of trusting an issuer**:
+
+- Commit–reveal ordering makes retry-farming visible — the chain knows the denominator.
+- `det_score` is re-derivable by any third party at the pinned engine version (RISKS §3).
+- Progression is **permissionless**: `claim_progress` hands the program merkle proofs, the program
+  runs its own integer copy of `level_for`/`dreyfus`, and mints only if its arithmetic agrees.
+  Every other achievement NFT is minted because a server said so.
+
+Lead with the failed claim, then the honest one. Never open with the word "certificate", and never
+open with the word "badge".
 
 ## 4. UX — "How well does this use Solana's performance to create great UX for downstream users?"
 
@@ -41,6 +48,9 @@ Lead with the re-derivation demo. Never open with the word "certificate".
 - Volume economics are a UX property here: at ~$0.0001 per anchor we can anchor *every* practice
   attempt, not just exams. Anchoring only the exams would be the cheap-chain compromise, and it
   would destroy the continuous-competency thesis.
+- The progression layer is where a student actually feels the chain: the skill tree advances a
+  Dreyfus stage the moment the attempts justify it, in the same screen as the score. Sub-second
+  finality is what makes that read as a game rather than as paperwork.
 
 ## 5. Open-source + composability — "Is it open-source? How well does it compose with other primitives?"
 
@@ -52,6 +62,10 @@ Lead with the re-derivation demo. Never open with the word "certificate".
   a new standard where one already exists.
 - The registry is readable by anyone: a competing trainer can serve the same cases, pay the same
   authors, and issue against the same schema. Designed as a protocol with a reference client.
+- `required_badge` puts prerequisite gating **in the registry rather than in our client**, so a
+  competing front-end inherits it for free. Composability as a concrete artifact, not a claim.
+- All progression tokens are Token-2022 **NonTransferable**. We give up secondary-market volume on
+  purpose: a tradeable "Expert in Cardiology" is credential fraud with extra steps.
 
 ## 6. Business Plan — "Is there a viable business here?"
 
@@ -63,7 +77,7 @@ world earning per attempt, without an acquiring relationship in each country.
 Unit economics are inherited, not invented for the pitch: ~80% gross margin on subscriptions,
 near-zero COGS on institutional on-prem because inference runs locally.
 
-## The three questions to rehearse
+## The four questions to rehearse
 
 1. *"Why does this need a blockchain?"* — Because the verifier must not be the same party as the
    scorer, and the relying party is in a different country. Take the chain away and you are back
@@ -71,5 +85,9 @@ near-zero COGS on institutional on-prem because inference runs locally.
 2. *"How do I know the student took the exam?"* — You don't, from us. We prove the scoring was
    faithful to the transcript; identity binding is the issuer's job and the credential names the
    issuer. Answering this cleanly is worth more than pretending it is solved.
-3. *"Isn't this just an NFT certificate?"* — Show the re-derivation: two machines, no shared
-   database, same transcript, same score. A certificate cannot do that.
+3. *"Isn't this just an NFT certificate / achievement badge?"* — Show two things. The re-derivation:
+   two machines, no shared database, same transcript, same `det_score`. Then the refused claim:
+   submit a level-up the attempts do not justify and watch the program reject its own user. A
+   certificate cannot do either.
+4. *"Which part of the score is actually provable?"* — 40 of 100 points, by weight, and we say so
+   before being asked (RISKS §3). The other 60 are verifier-quorum attested and labelled as such.
