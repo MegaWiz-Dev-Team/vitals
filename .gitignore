@@ -1,0 +1,12 @@
+target/
+node_modules/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+test-ledger/
+.anchor/
+dist/
+keys/
+*.json.key
