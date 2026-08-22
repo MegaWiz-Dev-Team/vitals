@@ -1,0 +1,91 @@
+{
+  "id": "ep1-anaphylaxis-en",
+  "title": "The Last Bite",
+  "case": "ddx-anaphylaxis-1",
+  "_note": "English text layer for Embla's EP1. The physiology (schemas/examples/sce-anaphylaxis-ep1.json), the beat->cutscene map and the rendered clips are reused unchanged — only the human-readable strings are translated. Nothing here is generated content.",
+  "patient": { "name": "Ing", "age": 19, "sex": "F", "affect": "distressed" },
+  "fallback": "…I can't really talk any more. Please help me.",
+  "dialogue": [
+    {
+      "id": "cc",
+      "reveal": "volunteered",
+      "keywords": ["what's wrong", "what happened", "how are you", "symptoms", "why are you here", "what brings you"],
+      "snomed": "39579001",
+      "patient": "Doctor… I can't breathe properly. I'm itching all over. I feel like I'm going to pass out."
+    },
+    {
+      "id": "onset",
+      "reveal": "on_ask",
+      "keywords": ["when", "start", "how long", "minutes", "began", "onset"],
+      "patient": "Just now — about ten minutes ago. And it got worse really fast."
+    },
+    {
+      "id": "allergy",
+      "reveal": "on_ask",
+      "keywords": ["allergy", "allergic", "shrimp", "prawn", "seafood", "eat", "ate", "food"],
+      "patient": "I'm allergic to shrimp. I ordered the salad and asked for no shrimp — but they must have put dried shrimp in it. I didn't notice until it was too late."
+    },
+    {
+      "id": "breathing",
+      "reveal": "on_ask",
+      "keywords": ["breathing", "breath", "short of breath", "chest", "wheeze", "tight"],
+      "patient": "It's hard to breathe. Something is squeezing my throat. There's a wheeze when I breathe in."
+    },
+    {
+      "id": "throat",
+      "reveal": "on_ask",
+      "keywords": ["throat", "swallow", "voice", "tongue", "swelling", "hoarse"],
+      "patient": "My throat feels like it's closing. My voice is going hoarse and it hurts to swallow."
+    },
+    {
+      "id": "skin",
+      "reveal": "on_ask",
+      "keywords": ["rash", "itch", "hives", "skin", "swollen", "urticaria"],
+      "patient": "I've got red welts all over. It itches so much. My lips and my eyes are starting to swell."
+    },
+    {
+      "id": "dizzy",
+      "reveal": "on_ask",
+      "keywords": ["dizzy", "lightheaded", "faint", "palpitations", "heart racing"],
+      "patient": "I'm dizzy, my heart is racing, I feel like I'm about to black out."
+    },
+    {
+      "id": "previous",
+      "reveal": "on_direct_ask",
+      "keywords": ["before", "happened before", "epipen", "auto-injector", "pen", "previous reaction"],
+      "patient": "I've reacted before but never like this. A doctor gave me a pen to carry — I left it at home."
+    },
+    {
+      "id": "meds",
+      "reveal": "on_direct_ask",
+      "keywords": ["medication", "medicine", "regular", "conditions", "asthma", "past history"],
+      "patient": "No medical conditions. I don't take anything regularly."
+    },
+    {
+      "id": "reassure",
+      "reveal": "on_ask",
+      "keywords": ["calm", "you're safe", "okay", "help", "we've got you"],
+      "patient": "Thank you, doctor… I'm really scared. Please help me."
+    }
+  ],
+  "coding": {
+    "anaphylaxis": "ICD-10 T78.0 · SNOMED 39579001",
+    "anaphylactic": "ICD-10 T78.0 · SNOMED 39579001",
+    "adrenaline": "SNOMED 387362001 (epinephrine)",
+    "epinephrine": "SNOMED 387362001",
+    "cbc": "LOINC 58410-2"
+  },
+  "cutscenes": {
+    "trigger": "ep1_trigger",
+    "cold_open": "ep1_cold_open",
+    "adrenaline_calm": "ep1_adrenaline_calm",
+    "deteriorate": "ep1_deteriorate",
+    "harm": "ep1_harm",
+    "code_blue": "ep1_code_blue",
+    "biphasic": "ep1_biphasic",
+    "win": "ep1_win_discharge",
+    "win_icu": "ep1_win_icu",
+    "death_arrest": "ep1_death_arrest",
+    "death_biphasic": "ep1_death_biphasic"
+  }
+}
