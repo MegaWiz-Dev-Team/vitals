@@ -134,9 +134,9 @@ code{font-family:"IBM Plex Mono",monospace}
 
 <header class="mast">
   <h1>Vitals — Run of Show</h1>
-  <p class="tagline">Nine slides, spoken — 5:51 of words at 145wpm, which lands near five minutes at a real presenting pace. Written to be read off a screen while standing up, so the sentences are short and the clauses don't nest. Anything in the script you can't say out loud in one breath, cut.</p>
+  <p class="tagline">Ten slides, spoken — 6:13 of words at 145wpm, which lands near five minutes at a real presenting pace. Written to be read off a screen while standing up, so the sentences are short and the clauses don't nest. Anything in the script you can't say out loud in one breath, cut.</p>
   <div class="runbar">
-    <span>Runtime <b>5:51</b></span><span>9 slides</span><span>60-second cut included</span><span>Demo is live, not recorded</span><span>Built for a <b>5-minute</b> slot</span>
+    <span>Runtime <b>6:13</b></span><span>10 slides</span><span>60-second cut included</span><span>Demo is live, not recorded</span><span>Built for a <b>6-minute</b> slot</span>
   </div>
 </header>
 
@@ -219,8 +219,21 @@ code{font-family:"IBM Plex Mono",monospace}
 
 <!-- 06 -->
 <section class="beat">
-  <div class="slug"><span class="n">06</span><h2>Onchain architecture</h2><span class="clock">2:46 – 3:11 · 25s</span></div>
-  <div class="onscreen"><span class="lbl">On screen</span><span>Slide 06 — four primitives table, then volume / latency / onboarding</span></div>
+  <div class="slug"><span class="n">06</span><h2>Architecture</h2><span class="clock">2:46 – 3:28 · 42s</span></div>
+  <div class="onscreen"><span class="lbl">On screen</span><span>Slide 06 — the diagram. Off chain above the line, on chain below, one hash crossing it.</span></div>
+  <div class="say">
+    <p>Here is the whole system on one screen.</p>
+    <p>Above the line, off chain: two inputs — the tape and the scenario — into the automaton, reduced to facts, hashed to one leaf. <em>No model on that path.</em></p>
+    <p>Below the line, on chain: the leaf goes into a tree. To claim anything you hand the program the leaf and its path, and it recomputes the level itself.</p>
+    <p>Notice what never crosses the line. <em>The chain never sees a run.</em> Not the transcript, not the vitals, not the patient. Only a hash that has to prove against a root the chain built itself.</p>
+  </div>
+  <div class="note"><span class="lbl">Delivery</span><p>Trace the diagram with your hand as you say it — left to right on top, down the right edge, right to left underneath. The shape is the argument: everything expensive and private stays above the line, and one hash crosses.</p></div>
+</section>
+
+<!-- 06 -->
+<section class="beat">
+  <div class="slug"><span class="n">07</span><h2>Why Solana</h2><span class="clock">3:28 – 3:53 · 25s</span></div>
+  <div class="onscreen"><span class="lbl">On screen</span><span>Slide 07 — four primitives table, then volume / latency / onboarding</span></div>
   <div class="say">
     <p>Four primitives, none invented by us. Registry, compressed anchors, non-transferable progression, Attestation Service.</p>
     <p>Why Solana: a cohort year worldwide is hundreds of millions of runs — a hundred and ten dollars per million, compressed. Anchoring only the exams would kill the idea.</p>
@@ -231,12 +244,12 @@ code{font-family:"IBM Plex Mono",monospace}
 
 <!-- 07 -->
 <section class="beat">
-  <div class="slug"><span class="n">07</span><h2>$VITAL</h2><span class="clock">3:11 – 4:10 · 59s</span></div>
-  <div class="onscreen"><span class="lbl">On screen</span><span>Slide 07 — stake / verify / dispute loop, sinks-and-sources, never-tokenized list</span></div>
+  <div class="slug"><span class="n">08</span><h2>$VITAL</h2><span class="clock">3:53 – 4:46 · 53s</span></div>
+  <div class="onscreen"><span class="lbl">On screen</span><span>Slide 08 — stake / verify / dispute loop, sinks-and-sources, never-tokenized list</span></div>
   <div class="say">
     <p>Almost everything here is already trustless. But one thing isn't: somebody has to replay the tape and attest the outcome — and if that's one party, I've rebuilt the database I'm escaping.</p>
     <p>So $VITAL bonds an open verifier set. Operators stake, anyone can challenge by re-running the tape, the wrong one gets slashed.</p>
-    <p>Optimistic verification usually fails because most disputes are fuzzy. This one isn't. <em>Replay is exact — two honest verifiers cannot disagree.</em> The determinism that makes the credential mean something is what makes the token enforceable.</p>
+    <p>Optimistic verification usually fails because most disputes are fuzzy. This one isn't. <em>Replay is exact — two honest verifiers cannot disagree.</em></p>
     <p>And the list I care about more: credentials and badges are never tradeable, nothing gates access to play, nobody buys a better replay. A liquid market in "Expert in Cardiology" would destroy this faster than any attack.</p>
     <p>No token ships in this hackathon. A verification market only needs to exist once verification is worth attacking.</p>
   </div>
@@ -245,21 +258,21 @@ code{font-family:"IBM Plex Mono",monospace}
 
 <!-- 08 -->
 <section class="beat">
-  <div class="slug"><span class="n">08</span><h2>Precedent, and who we are</h2><span class="clock">4:10 – 5:21 · 70s</span></div>
-  <div class="onscreen"><span class="lbl">On screen</span><span>Slide 08 — CrowdBrain quote, then the head-start card</span></div>
+  <div class="slug"><span class="n">09</span><h2>Precedent, and who we are</h2><span class="clock">4:46 – 5:43 · 57s</span></div>
+  <div class="onscreen"><span class="lbl">On screen</span><span>Slide 09 — CrowdBrain quote, the head-start card, and Skald</span></div>
   <div class="say">
-    <p>The Grand Champion of Frontier this year was CrowdBrain: train users in simulation, qualify them through QA, route the best operators to real robots. <em>That's this, for robot operators instead of clinicians.</em> Out of two thousand eight hundred submissions.</p>
-    <p>And we didn't start four weeks ago. The simulator underneath is in production with real students — four hundred and twenty-four scenarios, deterministic scoring, a hash-chained audit log, mapped to the AAMC framework.</p>
+    <p>The Grand Champion of Frontier this year was CrowdBrain: train users in simulation, qualify them through QA, route the best operators to real robots. <em>That's this, for robot operators instead of clinicians.</em></p>
+    <p>And we didn't start four weeks ago. The simulator underneath is in production with real students — four hundred and twenty-four scenarios, deterministic scoring, a hash-chained audit log.</p>
     <p>Most teams spent this hackathon building the thing that produces the signal. <em>We already had it. We spent it making the signal checkable.</em></p>
-    <p>And the obvious question about an episodic game — how do you make episode six? We have a producer console called Skald. Type a premise, and a showrunner drafts the series and every storyboard. Each shot gets generated, then a crew fails it before the video model sees it — a medical advisor on the procedure, a continuity supervisor on the face. <em>Same principle as everything else here: something that must be right, checked automatically.</em></p>
+    <p>And episode six? A producer console called Skald drafts the series and every storyboard from a premise, then a crew fails each shot before the video model sees it — a medical advisor on the procedure, a continuity supervisor on the face. <em>Same principle as everything else: something that must be right, checked automatically.</em></p>
   </div>
   <div class="note"><span class="lbl">Delivery</span><p>Say it as a compliment to them, not a claim about you. Then hand off — <strong>this is where a second team member should speak</strong>, and where names and roles go. Colosseum's own data says winning teams average three or more people across technical and non-technical roles, and a solo voice for five straight minutes reads as a solo project.</p></div>
 </section>
 
 <!-- 09 -->
 <section class="beat">
-  <div class="slug"><span class="n">09</span><h2>Close and ask</h2><span class="clock">5:21 – 5:51 · 30s</span></div>
-  <div class="onscreen"><span class="lbl">On screen</span><span>Slide 09 — working now / four weeks / cut-on-purpose</span></div>
+  <div class="slug"><span class="n">10</span><h2>Close and ask</h2><span class="clock">5:43 – 6:13 · 30s</span></div>
+  <div class="onscreen"><span class="lbl">On screen</span><span>Slide 10 — working now / four weeks / cut-on-purpose</span></div>
   <div class="say">
     <p>Two halves are built. The replay produces leaves. The program refuses bad claims. One week joins them.</p>
     <p>What we want from this room: the accreditors and residency programmes who would actually rely on a record like this. We can build the protocol. We can't grant it standing.</p>
