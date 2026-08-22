@@ -1,0 +1,508 @@
+{
+ "_note": "MOCK. Authored from the series bible (EP-C, 'The Masquerader'). Everything looks near-normal on purpose; the trap is discharging her as anxiety.",
+ "setting": "ED",
+ "tick_seconds": 1.0,
+ "vitals0": {
+  "hr": 112,
+  "sbp": 118,
+  "dbp": 74,
+  "spo2": 92,
+  "rr": 24,
+  "temp": 37.1,
+  "gcs": 15
+ },
+ "variables": {
+  "clot_burden": {
+   "init": 0.45,
+   "min": 0.0,
+   "max": 1.0
+  }
+ },
+ "initial_state": "masquerade",
+ "states": [
+  {
+   "id": "masquerade",
+   "status": "stable",
+   "dynamics": [
+    {
+     "var": "clot_burden",
+     "rate_per_min": 0.045,
+     "ceil": 1.0,
+     "when": {
+      "flag": "anticoagulated",
+      "is": false
+     }
+    },
+    {
+     "var": "spo2",
+     "rate_per_min": -0.7,
+     "floor": 0.0,
+     "when": {
+      "flag": "anticoagulated",
+      "is": false
+     }
+    },
+    {
+     "var": "hr",
+     "rate_per_min": 1.2,
+     "ceil": 150,
+     "when": {
+      "flag": "anticoagulated",
+      "is": false
+     }
+    }
+   ],
+   "bands": [
+    {
+     "status": "improving",
+     "when": {
+      "flag": "anticoagulated"
+     }
+    },
+    {
+     "status": "deteriorating",
+     "when": {
+      "var": "clot_burden",
+      "op": "gt",
+      "value": 0.65
+     }
+    },
+    {
+     "status": "critical",
+     "when": {
+      "any": [
+       {
+        "var": "spo2",
+        "op": "lt",
+        "value": 86
+       },
+       {
+        "var": "sbp",
+        "op": "lt",
+        "value": 90
+       }
+      ]
+     }
+    }
+   ],
+   "transitions": [
+    {
+     "to_state": "obstructive_shock",
+     "when": {
+      "var": "clot_burden",
+      "op": "gt",
+      "value": 0.85
+     }
+    },
+    {
+     "to_state": "treated",
+     "when": {
+      "all": [
+       {
+        "flag": "anticoagulated"
+       },
+       {
+        "var": "clot_burden",
+        "op": "lt",
+        "value": 0.7
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "obstructive_shock",
+   "status": "critical",
+   "dynamics": [
+    {
+     "var": "sbp",
+     "rate_per_min": -22,
+     "floor": 0.0,
+     "when": {
+      "flag": "lysed",
+      "is": false
+     }
+    },
+    {
+     "var": "spo2",
+     "rate_per_min": -3,
+     "floor": 0.0,
+     "when": {
+      "flag": "lysed",
+      "is": false
+     }
+    }
+   ],
+   "bands": [],
+   "transitions": [
+    {
+     "to_state": "arrest",
+     "when": {
+      "var": "sbp",
+      "op": "lt",
+      "value": 50
+     }
+    },
+    {
+     "to_state": "treated",
+     "when": {
+      "flag": "lysed"
+     }
+    }
+   ]
+  },
+  {
+   "id": "treated",
+   "status": "improving",
+   "dynamics": [
+    {
+     "var": "spo2",
+     "rate_per_min": 3,
+     "ceil": 98
+    },
+    {
+     "var": "hr",
+     "rate_per_min": -5,
+     "floor": 76
+    },
+    {
+     "var": "sbp",
+     "rate_per_min": 5,
+     "ceil": 122
+    }
+   ],
+   "bands": [],
+   "transitions": []
+  },
+  {
+   "id": "arrest",
+   "status": "arrest",
+   "dynamics": [],
+   "bands": [],
+   "transitions": [
+    {
+     "outcome": "death_arrest",
+     "when": {
+      "var": "t_in_state",
+      "op": "ge",
+      "value": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "sent_home",
+   "status": "stable",
+   "dynamics": [],
+   "bands": [],
+   "transitions": [
+    {
+     "outcome": "death_at_home",
+     "when": {
+      "var": "t_in_state",
+      "op": "ge",
+      "value": 1
+     }
+    }
+   ]
+  }
+ ],
+ "interventions": [
+  {
+   "id": "risk_score",
+   "label": "Wells / PERC",
+   "match": {
+    "any_kw": [
+     "wells",
+     "perc",
+     "risk score",
+     "pretest",
+     "pre-test",
+     "geneva"
+    ]
+   },
+   "effects": [
+    {
+     "flag": "risk_assessed"
+    },
+    {
+     "beat": "suspicion_raised"
+    }
+   ]
+  },
+  {
+   "id": "d_dimer",
+   "label": "D-dimer",
+   "match": {
+    "any_kw": [
+     "d-dimer",
+     "d dimer",
+     "ddimer"
+    ]
+   },
+   "effects": [
+    {
+     "flag": "d_dimer_done"
+    }
+   ]
+  },
+  {
+   "id": "ctpa",
+   "label": "CT pulmonary angiogram",
+   "match": {
+    "any_kw": [
+     "ctpa",
+     "ct pulmonary",
+     "ct angio",
+     "ct chest",
+     "cta"
+    ]
+   },
+   "effects": [
+    {
+     "flag": "diagnosed"
+    },
+    {
+     "beat": "diagnosis"
+    }
+   ]
+  },
+  {
+   "id": "anticoagulate",
+   "label": "Anticoagulate",
+   "match": {
+    "any_kw": [
+     "heparin",
+     "enoxaparin",
+     "lmwh",
+     "anticoag",
+     "doac",
+     "apixaban",
+     "rivaroxaban"
+    ]
+   },
+   "effects": [
+    {
+     "flag": "anticoagulated"
+    },
+    {
+     "delta": {
+      "clot_burden": -0.12
+     },
+     "floor": 0.0
+    }
+   ]
+  },
+  {
+   "id": "thrombolysis",
+   "label": "Thrombolysis for massive PE",
+   "match": {
+    "any_kw": [
+     "thrombolys",
+     "lyse",
+     "alteplase",
+     "tenecteplase"
+    ]
+   },
+   "effects": [
+    {
+     "branch": [
+      {
+       "if": {
+        "in_state": "obstructive_shock"
+       },
+       "then": [
+        {
+         "flag": "lysed"
+        },
+        {
+         "delta": {
+          "clot_burden": -0.5
+         },
+         "floor": 0.0
+        },
+        {
+         "set": {
+          "sbp": 96
+         }
+        },
+        {
+         "beat": "rescue"
+        }
+       ]
+      }
+     ],
+     "else": [
+      {
+       "harm": "systemic thrombolysis without haemodynamic indication"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "oxygen",
+   "label": "Oxygen",
+   "match": {
+    "any_kw": [
+     "oxygen",
+     "o2",
+     "mask",
+     "cannula"
+    ]
+   },
+   "effects": [
+    {
+     "delta": {
+      "spo2": 3
+     },
+     "cap": 99
+    }
+   ],
+   "equipment": "o2"
+  },
+  {
+   "id": "ecg",
+   "label": "ECG — near normal",
+   "match": {
+    "any_kw": [
+     "ecg",
+     "ekg",
+     "12-lead"
+    ]
+   },
+   "effects": [
+    {
+     "beat": "looks_normal"
+    }
+   ]
+  },
+  {
+   "id": "cxr",
+   "label": "Chest X-ray — normal",
+   "match": {
+    "any_kw": [
+     "chest x-ray",
+     "cxr",
+     "chest film",
+     "chest radiograph"
+    ]
+   },
+   "effects": [
+    {
+     "beat": "looks_normal"
+    }
+   ]
+  },
+  {
+   "id": "discharge_as_anxiety",
+   "label": "Send her home as anxiety — the trap",
+   "match": {
+    "any_kw": [
+     "anxiety",
+     "panic attack",
+     "reassure and discharge",
+     "discharge",
+     "send her home",
+     "go home"
+    ]
+   },
+   "harm": "discharged with an undiagnosed pulmonary embolism",
+   "effects": [
+    {
+     "to_state": "sent_home"
+    }
+   ]
+  }
+ ],
+ "triggers": [
+  {
+   "id": "saddle_collapse",
+   "once": true,
+   "when": {
+    "all": [
+     {
+      "in_state": "masquerade"
+     },
+     {
+      "var": "t_elapsed",
+      "op": "ge",
+      "value": 300
+     },
+     {
+      "flag": "anticoagulated",
+      "is": false
+     }
+    ]
+   },
+   "do": [
+    {
+     "beat": "collapse"
+    },
+    {
+     "to_state": "obstructive_shock"
+    }
+   ]
+  },
+  {
+   "id": "recovery",
+   "once": true,
+   "when": {
+    "all": [
+     {
+      "in_state": "treated"
+     },
+     {
+      "var": "t_in_state",
+      "op": "ge",
+      "value": 240
+     }
+    ]
+   },
+   "do": [
+    {
+     "branch": [
+      {
+       "if": {
+        "flag": "lysed"
+       },
+       "then": [
+        {
+         "outcome": "win_icu"
+        }
+       ]
+      }
+     ],
+     "else": [
+      {
+       "outcome": "win_discharge"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "outcomes": [
+  {
+   "id": "win_discharge",
+   "kind": "win",
+   "label": "Caught before the collapse"
+  },
+  {
+   "id": "win_icu",
+   "kind": "win",
+   "label": "Survived a massive PE — ICU"
+  },
+  {
+   "id": "death_arrest",
+   "kind": "lose",
+   "label": "Obstructive shock to arrest"
+  },
+  {
+   "id": "death_at_home",
+   "kind": "lose",
+   "label": "Discharged as anxiety — died at home"
+  }
+ ]
+}
