@@ -12,3 +12,6 @@ keys/
 *.json.key
 .test-ledger/
 pitch/terminals.pdf
+
+# runs in progress
+/state/

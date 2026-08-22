@@ -9,6 +9,7 @@
 
 mod chain;
 mod patient;
+mod store;
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -17,7 +18,7 @@ use std::sync::{Arc, Mutex};
 use tiny_http::{Header, Method, Response, Server};
 use vitals_progress::record::AttemptRecord;
 use vitals_progress::Difficulty;
-use vitals_replay::{hex, leaf, record_for, replay, sce_hash, Replay, Step};
+use vitals_replay::{hex, leaf, record_for, replay, resume, sce_hash, Step};
 use vitals_sce::{render_beat, Sce, SceState};
 
 const PAGE: &str = include_str!("../static/index.html");
@@ -58,6 +59,8 @@ const STILLS: &[(&str, &[u8])] = &[
 ];
 
 struct Session {
+    /// Which scenario, so a resumed run reloads the same automaton it was played against.
+    ep: String,
     state: SceState,
     tape: Vec<Step>,
     beats: Vec<String>,
@@ -68,6 +71,79 @@ struct Session {
     /// The conversation, kept only so she remembers what she already told you. It is never
     /// hashed, never anchored, and never leaves this process.
     said: Vec<(String, String)>,
+    /// Last time this run was written to disk. Ticks arrive about once a second and are cheap to
+    /// lose — the tape is the truth and a few seconds of it is a few seconds of sim — so they are
+    /// throttled. Anything the player actually *did* is written immediately.
+    saved_at: Option<std::time::Instant>,
+}
+
+/// A run as it sits on disk.
+///
+/// The state is not here, because the state is not a fact — it is what the tape computes. Storing
+/// it would create a second copy that can disagree with the tape, which is the failure this repo
+/// has already had once. On load the tape is replayed and the machine is rebuilt from it.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Saved {
+    ep: String,
+    /// The scenario this run was played against. A rewritten scenario must not silently resume a
+    /// run into a different automaton — the outcome would be re-derived under rules the player
+    /// never played.
+    sce_hash: String,
+    tape: Vec<Step>,
+    said: Vec<(String, String)>,
+    anchored: bool,
+}
+
+const SESSIONS: &str = "sessions";
+
+impl Session {
+    fn saved(&self) -> Saved {
+        Saved {
+            ep: self.ep.clone(),
+            sce_hash: hex(&sce_hash(&self.sce_json)),
+            tape: self.tape.clone(),
+            said: self.said.clone(),
+            anchored: self.anchored,
+        }
+    }
+
+    /// Rebuild a run from disk by replaying its tape.
+    fn restore(saved: Saved) -> Result<Session, String> {
+        let sce_json = std::fs::read_to_string(scenario_path(&saved.ep)).map_err(|e| e.to_string())?;
+        let want = hex(&sce_hash(&sce_json));
+        if want != saved.sce_hash {
+            return Err(format!("scenario {} changed under this run", saved.ep));
+        }
+        let (state, r) = resume(&sce_json, &saved.tape)?;
+        Ok(Session {
+            ep: saved.ep.clone(),
+            state,
+            beats: r.beats,
+            tape: saved.tape,
+            sce_json,
+            scenario: title(&saved.ep).to_string(),
+            difficulty: difficulty(&saved.ep),
+            anchored: saved.anchored,
+            said: saved.said,
+            saved_at: Some(std::time::Instant::now()),
+        })
+    }
+}
+
+/// Write a run to disk. `urgent` is false only for a bare tick.
+fn persist(store: &store::Store, id: &str, s: &mut Session, urgent: bool) {
+    const THROTTLE: std::time::Duration = std::time::Duration::from_secs(3);
+    if !urgent {
+        if let Some(t) = s.saved_at {
+            if t.elapsed() < THROTTLE {
+                return;
+            }
+        }
+    }
+    if let Err(e) = store.put(SESSIONS, id, &s.saved()) {
+        eprintln!("could not save session {id}: {e}");
+    }
+    s.saved_at = Some(std::time::Instant::now());
 }
 
 /// Everything one sitting has played. A fresh tree per sitting, so the indices below are real
@@ -138,15 +214,12 @@ impl Session {
             })
             .sum();
         let outcome = self.state.outcome().map(|o| format!("{o:?}"));
-        let leaf_hex = outcome.as_ref().map(|_| {
-            let r = Replay {
-                beats: self.beats.clone(),
-                harm_events: self.state.harm_events.clone(),
-                outcome: outcome.clone(),
-                steps: self.tape.len(),
-                sim_seconds: elapsed,
-            };
-            hex(&leaf(&sce_hash(&self.sce_json), &self.tape, &r))
+        // Derived by replaying the tape, not by reading the live state. Assembling a Replay by
+        // hand here would show the player a leaf computed one way while the verifier computes it
+        // another, and a leaf that depends on which side of the wire you stand on proves nothing.
+        let leaf_hex = outcome.as_ref().and_then(|_| {
+            let r = replay(&self.sce_json, &self.tape).ok()?;
+            Some(hex(&leaf(&sce_hash(&self.sce_json), &self.tape, &r)))
         });
         let v2 = self.state.vitals;
         // Oxygenation and perfusion carry the most weight because they are what kills first.
@@ -223,6 +296,7 @@ fn new_session(ep: &str) -> Result<Session, String> {
     let sce_json = std::fs::read_to_string(scenario_path(ep)).map_err(|e| e.to_string())?;
     let sce = Sce::from_json(&sce_json).map_err(|e| e.to_string())?;
     Ok(Session {
+        ep: ep.to_string(),
         state: SceState::new(sce),
         tape: Vec::new(),
         beats: Vec::new(),
@@ -231,6 +305,7 @@ fn new_session(ep: &str) -> Result<Session, String> {
         difficulty: difficulty(ep),
         anchored: false,
         said: Vec::new(),
+        saved_at: None,
     })
 }
 
@@ -309,8 +384,43 @@ fn main() {
         std::process::exit(2);
     }
     let server = Server::http(&addr).expect("bind");
-    let sessions: Arc<Mutex<HashMap<String, Session>>> = Arc::new(Mutex::new(HashMap::new()));
-    let mut next_id = 0u64;
+
+    let state_dir = std::env::var("VITALS_STATE_DIR").unwrap_or_else(|_| "state".into());
+    let store = store::Store::open(std::path::PathBuf::from(&state_dir))
+        .unwrap_or_else(|e| panic!("cannot open {state_dir}: {e}"));
+    // A run nobody has touched in a day is a closed tab, not a patient.
+    let swept = store.sweep(SESSIONS, std::time::Duration::from_secs(24 * 60 * 60));
+
+    let mut restored = HashMap::new();
+    let mut broken = 0usize;
+    for (id, saved) in store.list::<Saved>(SESSIONS) {
+        match Session::restore(saved) {
+            Ok(s) => {
+                restored.insert(id, s);
+            }
+            Err(e) => {
+                // Loud, and dropped. A run that will not replay is exactly the thing this repo
+                // must not paper over: it means the tape and the automaton disagree.
+                eprintln!("dropping session {id}: {e}");
+                store.del(SESSIONS, &id);
+                broken += 1;
+            }
+        }
+    }
+    // Ids are handed out in order and must not be reissued over a restored run.
+    let mut next_id = restored
+        .keys()
+        .filter_map(|k| k.strip_prefix('s').and_then(|n| n.parse::<u64>().ok()))
+        .max()
+        .unwrap_or(0);
+    println!(
+        "state      {} · {} run(s) resumed{}{}",
+        store.root().display(),
+        restored.len(),
+        if swept > 0 { format!(" · {swept} expired") } else { String::new() },
+        if broken > 0 { format!(" · {broken} unreplayable") } else { String::new() },
+    );
+    let sessions: Arc<Mutex<HashMap<String, Session>>> = Arc::new(Mutex::new(restored));
 
     let story = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../demo/ep1-en.json");
     let patient = patient::Patient::connect(&story);
@@ -461,7 +571,10 @@ fn main() {
                         next_id += 1;
                         let id = format!("s{next_id}");
                         let view = s.view();
-                        sessions.lock().unwrap().insert(id.clone(), s);
+                        let mut map = sessions.lock().unwrap();
+                        map.insert(id.clone(), s);
+                        persist(&store, &id, map.get_mut(&id).expect("just inserted"), true);
+                        drop(map);
                         json(serde_json::json!({ "id": id, "view": view }))
                     }
                     Err(e) => json(serde_json::json!({ "error": e })),
@@ -473,6 +586,7 @@ fn main() {
                 match map.get_mut(&id) {
                     None => json(serde_json::json!({ "error": "no such session" })),
                     Some(s) => {
+                        let acted = param(&url, "do").is_some();
                         if let Some(act) = param(&url, "do") {
                             let emitted = s.state.apply(&act);
                             s.beats.extend(emitted.iter().map(render_beat));
@@ -483,7 +597,9 @@ fn main() {
                             s.beats.extend(emitted.iter().map(render_beat));
                             s.tape.push(Step::Tick(dt));
                         }
-                        json(s.view())
+                        let v = s.view();
+                        persist(&store, &id, s, acted);
+                        json(v)
                     }
                 }
             }
@@ -535,7 +651,9 @@ fn main() {
                                 }
                             }
                         }
-                        json(s.view())
+                        let v = s.view();
+                        persist(&store, &id, s, true);
+                        json(v)
                     }
                 }
             }
@@ -584,6 +702,7 @@ fn main() {
                         if let Some(s) = map.get_mut(&id) {
                             s.said.push(("user".into(), q));
                             s.said.push(("assistant".into(), reply.clone()));
+                            persist(&store, &id, s, true);
                         }
                         json(serde_json::json!({ "reply": reply, "who": pt.name() }))
                     }
@@ -648,6 +767,10 @@ fn main() {
                 match c.anchor(tree_id, &rec, &leaves) {
                     Ok(a) => {
                         s.anchored = true;
+                        // Written before the response goes out. If this process dies between the
+                        // chain confirming and the reply landing, the run must not come back
+                        // looking unanchored and get anchored a second time.
+                        persist(&store, &id, s, true);
                         json(serde_json::json!({
                             "index": a.index, "root": a.root, "leaves": a.leaves,
                             "proven": a.proven, "score": rec.score(),
