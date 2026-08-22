@@ -71,6 +71,45 @@ decision that follows from the design rather than from convention.
 no seed phrase to lose. A student who cannot afford anything can still practise and still earn a
 credential.
 
+## 3b. Who actually gets $VIGIL — and who never does
+
+This section exists because the question "how do I get some?" did not have an obvious answer from
+the rest of the document, and if the person building it has to ask, a judge will too.
+
+| you are | do you hold $VIGIL? | how |
+|---|---|---|
+| **a player** | **no, by design** | you never touch it, never see it, never need a wallet |
+| a scenario author | yes | earn per replay of a scenario you wrote |
+| a verifier operator | yes | stake it to take replay work, earn fees on top |
+| a challenger | yes | catch a verifier lying and take their slashed bond |
+| an institution or sponsor | mostly no | they pay in USDC on an invoice; the token is bonded on their behalf |
+
+**Players earn nothing, and that is the design rather than an oversight.** The moment playing pays,
+farming becomes economically rational — and the distinct-case gate only protects *standing*, not
+*earnings*. Someone grinding EP1 four hundred times would never rise above Advanced beginner and
+would still be making money, which is exactly the incentive that has to not exist inside a system
+whose output is a medical credential.
+
+### What a player *can* receive
+
+Money, but never this token, and never for playing — only for a provable achievement:
+
+> A sponsor escrows a scholarship. *"First 100 to reach Emergency Medicine · Proficient this year:
+> $150 each."* The payout is **stablecoin**, released against a level the program recomputed from
+> anchored runs, gated by distinct cases so it cannot be farmed.
+
+The player is paid for **being good**, in a currency that is not the network's, by someone who
+chose to fund it. Nobody is paid for **playing**.
+
+### If we ever change our mind
+
+The alternative — players earning $VIGIL — is a normal play-to-earn design and it is not hard to
+build. It should be refused for a specific reason rather than on principle: this project's product
+is a record that a residency programme is meant to rely on, and the first question anyone asks
+about a paid-to-play credential is who was farming it. There is no answer to that question that
+survives a regulator, and losing it would invalidate every credential already issued, including the
+honest ones.
+
 ## 4. What is never tokenized
 
 This list matters more than the one above, and should be read out loud in the pitch:
