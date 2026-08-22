@@ -99,6 +99,36 @@ attestation: issued to student pubkey, signed by issuer authority
 Level thresholds come from Embla's existing competency model (`engine/src/competency.rs`,
 Dreyfus levels per specialty), not invented here.
 
+### Progression (gamification) — see [GAMIFICATION.md](GAMIFICATION.md)
+
+```
+ProgressionAccount (PDA: ["prog", student])
+  student          Pubkey
+  xp               u64          -- Sum(xp_for(attempt)) over proven leaves
+  level            u16          -- level_for(xp), RECOMPUTED BY THE PROGRAM
+  proven_leaves    u64          -- how many anchored attempts have been counted
+  last_counted     [u8; 32]     -- cursor, so an attempt cannot be counted twice
+
+SkillTreeAccount (PDA: ["skill", student, specialty])
+  specialty        u8
+  distinct_cases   u16
+  hard_cases       u16
+  avg_bps          u16          -- fixed-point, see GAMIFICATION S5
+  variance_bps     u32
+  dreyfus          u8           -- 0..4, RECOMPUTED BY THE PROGRAM
+
+mint: Token-2022, NonTransferable extension, update authority = program
+badges: compressed cNFTs, one tree per cohort-year
+```
+
+The load-bearing word is **recomputed**. `claim_progress` takes merkle proofs for a batch of
+anchored leaves, runs the integer twin of `xp_for` / `level_for` / `dreyfus`, and mints or advances
+only if its own arithmetic agrees with the claim. No off-chain issuer signs the progression layer —
+it is permissionless, and a wrong claim simply fails the instruction.
+
+`last_counted` is the anti-double-count cursor: leaves must be presented in tree order and each
+batch continues from the stored cursor.
+
 ## 3. Off-chain components
 
 | Component | Role | Stack | Source |
@@ -108,6 +138,7 @@ Dreyfus levels per specialty), not invented here.
 | `proof-program` | case registry + commit/reveal | Rust / Anchor | **new** |
 | `proof-sdk` | TS client: wallet, gasless relay, read registry | TypeScript | **new** |
 | `proof-check` | public web page: paste transcript → verify against chain | TS + Rust wasm | **new** |
+| `proof-progress` | integer twin of `xp_for`/`level_for`/`dreyfus`, shared by program + engine | Rust (no_std) | **new** |
 | Heimdall | local LLM gateway (inference never leaves the box) | — | reused |
 
 Rust across the engine, the verifier and the Anchor program is not an aesthetic choice —
@@ -137,10 +168,14 @@ without an acquiring relationship. That is the part card rails genuinely cannot 
 - **Revocation.** A case found to be clinically wrong invalidates downstream attestations.
   SAS supports revocation by the issuer — is per-attempt reveal revocation also needed, or is
   deprecating the case enough?
-- **Determinism boundary.** The rubric scorer is deterministic; any LLM-assisted grading
-  component is not. Either exclude LLM-graded dimensions from the anchored score, or anchor
-  them separately as "advisory, not re-derivable". **Decide before Week 2** — this is the
-  single most likely place for the pitch to fall apart under questioning.
+- ~~**Determinism boundary.**~~ **Settled, see [RISKS.md](RISKS.md) §3.** Embla's rubric is
+  40 points deterministic / 60 points LLM-judged. The anchor therefore carries two labelled
+  numbers: `det_score` (re-derivable) and `judged_score` (verifier-quorum attested). Escrow-backed
+  badge predicates must be expressible over `det_score` alone.
 - **Selective disclosure.** v0.1 is reveal-the-whole-transcript. A ZK range proof
   ("score ≥ 70 without showing the transcript") is the obvious v2 and probably the thing
   that makes this interesting outside medicine. Out of scope for four weeks; name it as roadmap.
+- **Fixed-point twin.** `dreyfus()` takes `f64`; the program needs integers. The two implementations
+  must agree on every threshold boundary, proven by shared test vectors rather than inspection.
+  Boundary drift here silently denies students badges they earned.
+

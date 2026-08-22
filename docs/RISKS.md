@@ -21,15 +21,41 @@ must happen **before** submission — the same sequencing already established fo
 **Action:** audit what in `embla-proof` and the reused Embla engine is patent-intended. File first,
 or consciously accept it as disclosed. This is a one-way door.
 
-## 3. The determinism boundary
+## 3. The determinism boundary — worse than assumed, and now measured
 
-The pitch rests on "a third party can re-derive the score." That is true of the rubric scorer and
-false of anything LLM-graded. If an LLM-assisted dimension is inside the anchored score, a judge
-who probes will find the claim is only partly true, and the whole credibility of the pitch goes
-with it.
+Reading `docs/SCORING.md` in Embla settles the open question from the kickoff, badly:
 
-**Action:** split the score. Anchor the deterministic part as re-derivable; anchor any LLM-graded
-part separately and label it advisory. Decide in Week 1, state it in the README.
+| | weight | scored by |
+|---|---:|---|
+| diagnostic_accuracy | 25 | deterministic |
+| investigation_choice | 15 | deterministic |
+| history_completeness | 15 | **LLM judge** |
+| management_safety | 15 | **LLM judge** |
+| communication | 10 | **LLM judge** |
+| examination | 10 | **LLM judge** |
+| red_flag_recognition | 10 | **LLM judge** |
+
+**40 points deterministic, 60 points LLM-judged** (`gemma-4-26b` via Heimdall). So the headline
+claim "a third party can re-derive the score" is, as written, true of 40% of the score.
+
+Greedy decoding at temperature 0 is not a fix. It is reproducible on the same binary and the same
+hardware; it is not reproducible across MLX versions, Metal kernel changes, or batch shape. Pinning
+`model_id` narrows the claim, it does not establish it.
+
+**Resolution — split the score, and say which half is which:**
+
+- `det_score` (40) — **re-derivable**. Anyone re-runs `embla-engine` at the pinned version and must
+  reproduce it byte-for-byte. This is the mathematically strong claim.
+- `judged_score` (60) — **quorum-attested**. One or more verifiers sign "I ran model X at version Y
+  over this transcript and got these dimension scores." Multiple independent verifiers raise
+  confidence; none of them make it re-derivable.
+
+The credential carries both numbers **and their provenance labels**. Badge predicates that sit
+behind escrow money should be expressible over `det_score` alone.
+
+This is a stronger position than the vague version, not a weaker one: knowing exactly which points
+are proof and which are attestation is a more sophisticated answer than any competitor will give.
+But it must be in the README and in the pitch, not discovered by a judge in the Q&A.
 
 ## 4. Identity binding is not solved
 
@@ -74,3 +100,24 @@ pitch better; a pitch that cannot survive contact with a real customer is worth 
 The engine head start creates a temptation to promise the ZK selective-disclosure version, the
 DePIN verifier network, and a token. Four weeks buys the commit–reveal loop, the credential, and
 the payment split. Nothing else.
+
+## 9. Escrow money turns badges into a farming target
+
+Scholarship escrow (GAMIFICATION §3) gives badges cash value, which invites grinding, shared
+accounts, and script-driven attempts. The engine's existing gates help — distinct-case requirements,
+difficulty weighting, the variance cap, exam-mode weighting — and commit–reveal makes the attempt
+denominator public, so a farmed badge carries a visible attempt count.
+
+That makes farming **legible**, not impossible. Escrow-backed predicates need first-attempts-only
+and ranked-mode flags on top. Do not ship a bounty against a practice-mode predicate.
+
+## 10. The pitch can become a grab-bag
+
+Credentials, attempt anchors, progression NFTs, badge-gated cases, author royalties, scholarship
+escrow — six things. A judge who cannot restate the project in one sentence scores it as unfocused
+regardless of how well each piece works.
+
+**The sentence:** *one anchored record, read at three resolutions — attempt, progression, credential.*
+Everything else is a consequence of that. If a feature cannot be introduced as a consequence of that
+sentence, cut it from the pitch even if it is built.
+

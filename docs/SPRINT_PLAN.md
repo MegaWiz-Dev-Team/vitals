@@ -26,33 +26,49 @@ Exit: a case is published onchain, an attempt commits, nothing is scored yet.
 
 Exit: run an encounter end-to-end, the score lands as a compressed attestation.
 
-## Week 3 — credential + money
+## Week 3 — progression (the demo week)
 
-- [ ] SAS credential + schema registration; issuer authority for one pilot school
-- [ ] Threshold rule: N attempts ≥ score in a domain → issue competency attestation
-- [ ] `proof-check` public verify page: paste a transcript, get verified / mismatch / not-found
+The progression layer is the best three minutes of video in the project: permissionless, recomputed
+onchain, and visually obvious. It gets the whole week.
+
+- [ ] `proof-progress` — integer twin of `xp_for` / `level_for` / `dreyfus`, `no_std`, shared crate
+- [ ] Shared test vectors proving the twin matches `competency.rs` on **every threshold boundary**
+- [ ] `claim_progress` instruction: merkle proofs in → program recomputes → mint/advance or fail
+- [ ] Soulbound mints: Token-2022 NonTransferable — skill-tree per specialty, profile, badges (cNFT)
+- [ ] `required_badge` gate on `CaseAccount`
+- [ ] Scholarship escrow: sponsor funds a bounty, released on a provably attained badge
 - [ ] USDC royalty split on reveal; prepaid pool for institutional seats
-- [ ] Onboard **3 real case authors** — this is the credibility differentiator, start Week 1
 
-Exit: a student finishes a domain and a portable credential appears in their wallet.
+Exit: a student levels up, the chain recomputes and agrees, a soulbound token advances, and an
+escrowed bounty pays out with no human in the loop.
 
-## Week 4 — make it land
+## Week 4 — credential stub, polish, submission
 
+The SAS competency credential drops to a **stub** — schema registered, issuance demoed for one
+domain, thresholds untuned. An institutional credential needs an institution on stage to mean
+anything; progression does not. Cut recorded deliberately, stated in the submission.
+
+- [ ] SAS schema + issuance path for one domain
 - [ ] Mainnet-beta deploy
-- [ ] Demo video: student runs a case → credential issued → third party verifies it on a
-      different machine with no access to our database. That last clause is the whole pitch.
-- [ ] Open-source release: AGPL-3.0 program + SDK, published case schema
-- [ ] Submission write-up, GitHub hygiene (judges read the repo, not just the video)
-- [ ] Business section: existing Embla model + protocol take rate
+- [ ] `proof-check` public verify page
+- [ ] Demo video (see below)
+- [ ] Open-source release: AGPL-3.0 program + SDK + published case schema
+- [ ] Submission write-up + repo hygiene — judges read the repo, not just the video
+- [ ] Onboard **3 real case authors** — start Week 1, land by now
 
 ## Weekly video updates (required by Eternal)
 
 Do not narrate the roadmap. Show the thing that started working that week:
-W1 case appearing onchain · W2 a score becoming an attestation · W3 a stranger verifying
-a credential · W4 the full loop.
+W1 a case appearing onchain · W2 a score becoming an anchored attestation · W3 **the program
+refusing a level-up claim, then accepting the honest one** · W4 the full loop plus a stranger
+verifying it on a machine that has never touched our database.
+
+W3 is the money shot. Show the failed claim first.
 
 ## Explicitly out of scope
 
-ZK selective disclosure · verifier-node DePIN with staking · token · mobile app ·
-any new clinical content. Each is a good v2 line; none survives a four-week sprint,
-and a judge respects a stated cut more than a half-built feature.
+ZK selective disclosure ("top decile without revealing the score") · verifier-node DePIN with
+staking · any fungible token · mobile app · new clinical content · **tradeable badges, ever**.
+
+The first five are v2 lines and a judge respects a stated cut more than a half-built feature.
+The last is not a scope cut, it is a design decision — see [GAMIFICATION.md](GAMIFICATION.md) §2.
