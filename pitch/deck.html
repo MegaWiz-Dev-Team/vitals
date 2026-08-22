@@ -254,9 +254,79 @@ stood up  <b>a6bec396869e7d889686bc42111f4a2b090aa16c4d93213262d24c858637f8ca</b
   </div>
 </section>
 
+<!-- CASE ───────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="rail"><span class="no">04</span><span class="hash">the machine under the case</span><span class="tag">Vitals</span></div>
+  <div class="inner">
+    <span class="eyebrow">The case, and the machine under it</span>
+    <h2>The model makes it worth playing. The automaton makes it worth proving.</h2>
+    <div class="two">
+      <div>
+        <div class="sub-h">the situation</div>
+        <div class="ledger" style="margin-bottom:1rem">
+          <div class="row"><span class="k">patient</span><span class="v">19f · shellfish, ten minutes ago</span><span class="r">HR 128</span></div>
+          <div class="row"><span class="k">airway</span><span class="v">stridor, voice going hoarse</span><span class="r">SpO₂ 91</span></div>
+          <div class="row no"><span class="k">shock</span><span class="v">flushed, dizzy, about to faint</span><span class="r">SBP 88</span></div>
+        </div>
+        <div class="sub-h">what treating her looks like</div>
+        <ul style="font-size:.92rem">
+          <li><strong>Adrenaline, intramuscular.</strong> One drug decides this. Antihistamines and steroids are what people reach for when they haven't recognised it.</li>
+          <li><strong>Oxygen, fluids, and lay her flat.</strong> The ventricle is empty — <em>standing her up can kill her.</em></li>
+          <li><strong>Admit her.</strong> Anaphylaxis relapses hours later. Sending her home is a decision the record has to remember.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="sub-h">the same thing, as a machine</div>
+        <figure class="fig">
+          <svg viewBox="0 0 540 300" role="img"
+               aria-label="The EP1 automaton: an acute state whose airway variable decays, reaching arrest if it falls too far, or recovered if adrenaline is given; from recovered a biphasic trigger sends an admitted patient to a controlled relapse and a discharged patient to a fatal one. Standing the patient up is a harm edge back toward arrest.">
+            <defs>
+              <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+              </marker>
+              <marker id="ah2r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="var(--attested)"/>
+              </marker>
+            </defs>
+
+            <g class="box accent"><rect x="14" y="112" width="112" height="42" rx="3"/>
+              <text x="70" y="130" class="t">acute</text><text x="70" y="145" class="s">airway ↓</text></g>
+            <g class="box accent"><rect x="196" y="112" width="118" height="42" rx="3"/>
+              <text x="255" y="130" class="t">recovered</text><text x="255" y="145" class="s">adrenaline held</text></g>
+            <g class="box"><rect x="14" y="234" width="112" height="42" rx="3"/>
+              <text x="70" y="252" class="t">arrest</text><text x="70" y="267" class="s">death</text></g>
+            <g class="box"><rect x="374" y="42" width="152" height="42" rx="3"/>
+              <text x="450" y="60" class="t">biphasic held</text><text x="450" y="75" class="s">win</text></g>
+            <g class="box"><rect x="374" y="192" width="152" height="42" rx="3"/>
+              <text x="450" y="210" class="t">biphasic decline</text><text x="450" y="225" class="s">death</text></g>
+
+            <line x1="126" y1="133" x2="189" y2="133" marker-end="url(#ah2)"/>
+            <text x="157" y="125" class="e">adrenaline</text>
+            <line x1="70" y1="154" x2="70" y2="227" marker-end="url(#ah2)"/>
+            <text x="78" y="196" class="e" text-anchor="start">airway &lt; 0.15</text>
+            <line x1="314" y1="124" x2="367" y2="76" marker-end="url(#ah2)"/>
+            <text x="374" y="34" class="e" text-anchor="start">admitted</text>
+            <line x1="314" y1="146" x2="367" y2="200" marker-end="url(#ah2)"/>
+            <text x="374" y="184" class="e" text-anchor="start">discharged</text>
+
+            <path d="M196 150 C 150 200, 120 210, 120 227" fill="none" marker-end="url(#ah2r)" class="refuse"/>
+            <text x="196" y="196" class="refuse-t" text-anchor="start">stood up → harm</text>
+          </svg>
+          <figcaption>Every edge is a decision, every terminal is an ending. Nothing here is a score — it is what happened.</figcaption>
+        </figure>
+      </div>
+    </div>
+    <div class="grid g3">
+      <div class="card"><span class="k">the agent</span><p>Plays the patient — hesitates, hides the smoking history, is frightened. It decides <strong>what you learn</strong>. It is in the experience and never in the evidence.</p></div>
+      <div class="card"><span class="k">the automaton</span><p>Decides <strong>what happens</strong> — vitals, transitions, harm, ending. Exact, replayable, and the only thing the hash commits to.</p></div>
+      <div class="card"><span class="k">and therefore the token</span><p>Because the automaton is exact, <strong>two honest verifiers cannot disagree</strong>. That is what makes a fraud proof settle by arithmetic — and what $VITAL bonds.</p></div>
+    </div>
+  </div>
+</section>
+
 <!-- 04 ───────────────────────────────────────────────── -->
 <section class="slide">
-  <div class="rail"><span class="no">04</span><span class="hash">commit · replay · anchor</span><span class="tag">Vitals</span></div>
+  <div class="rail"><span class="no">05</span><span class="hash">commit · replay · anchor</span><span class="tag">Vitals</span></div>
   <div class="inner">
     <span class="eyebrow">The mechanism</span>
     <h2>Every run reduces to one hash.</h2>
@@ -273,7 +343,7 @@ stood up  <b>a6bec396869e7d889686bc42111f4a2b090aa16c4d93213262d24c858637f8ca</b
 
 <!-- 05 ───────────────────────────────────────────────── -->
 <section class="slide">
-  <div class="rail"><span class="no">05</span><span class="hash">why a chain</span><span class="tag">Vitals</span></div>
+  <div class="rail"><span class="no">06</span><span class="hash">why a chain</span><span class="tag">Vitals</span></div>
   <div class="inner">
     <span class="eyebrow">Why this needs a chain</span>
     <h2>Watch the program refuse its own user.</h2>
@@ -293,7 +363,7 @@ stood up  <b>a6bec396869e7d889686bc42111f4a2b090aa16c4d93213262d24c858637f8ca</b
 
 <!-- ARCH ───────────────────────────────────────────────── -->
 <section class="slide">
-  <div class="rail"><span class="no">06</span><span class="hash">architecture</span><span class="tag">Vitals</span></div>
+  <div class="rail"><span class="no">07</span><span class="hash">architecture</span><span class="tag">Vitals</span></div>
   <div class="inner">
     <span class="eyebrow">Architecture</span>
     <h2>Two inputs in, one hash out, and nothing trusted in between.</h2>
@@ -381,7 +451,7 @@ stood up  <b>a6bec396869e7d889686bc42111f4a2b090aa16c4d93213262d24c858637f8ca</b
 
 <!-- 06 ───────────────────────────────────────────────── -->
 <section class="slide">
-  <div class="rail"><span class="no">07</span><span class="hash">onchain architecture</span><span class="tag">Vitals</span></div>
+  <div class="rail"><span class="no">08</span><span class="hash">onchain architecture</span><span class="tag">Vitals</span></div>
   <div class="inner">
     <span class="eyebrow">Onchain architecture</span>
     <h2>Four primitives, none of them invented here.</h2>
@@ -404,7 +474,7 @@ stood up  <b>a6bec396869e7d889686bc42111f4a2b090aa16c4d93213262d24c858637f8ca</b
 
 <!-- 07 ───────────────────────────────────────────────── -->
 <section class="slide">
-  <div class="rail"><span class="no">08</span><span class="hash">$VITAL · the verification market</span><span class="tag">Vitals</span></div>
+  <div class="rail"><span class="no">09</span><span class="hash">$VITAL · the verification market</span><span class="tag">Vitals</span></div>
   <div class="inner">
     <span class="eyebrow">Tokenomics</span>
     <h2>The token secures verification. It never represents competence.</h2>
@@ -443,7 +513,7 @@ stood up  <b>a6bec396869e7d889686bc42111f4a2b090aa16c4d93213262d24c858637f8ca</b
 
 <!-- 08 ───────────────────────────────────────────────── -->
 <section class="slide">
-  <div class="rail"><span class="no">09</span><span class="hash">market · precedent</span><span class="tag">Vitals</span></div>
+  <div class="rail"><span class="no">10</span><span class="hash">market · precedent</span><span class="tag">Vitals</span></div>
   <div class="inner">
     <span class="eyebrow">Market and precedent</span>
     <h2>This shape already won this hackathon once.</h2>
@@ -467,7 +537,7 @@ stood up  <b>a6bec396869e7d889686bc42111f4a2b090aa16c4d93213262d24c858637f8ca</b
 
 <!-- 09 ───────────────────────────────────────────────── -->
 <section class="slide">
-  <div class="rail"><span class="no">10</span><span class="hash">four weeks</span><span class="tag">Vitals</span></div>
+  <div class="rail"><span class="no">11</span><span class="hash">four weeks</span><span class="tag">Vitals</span></div>
   <div class="inner">
     <span class="eyebrow">Where it stands, and what's next</span>
     <h2>Two halves built. One week to join them.</h2>
