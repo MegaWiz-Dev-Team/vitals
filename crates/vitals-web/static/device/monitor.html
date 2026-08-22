@@ -1,0 +1,341 @@
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vitals — Patient Monitor</title>
+<style>
+  /* Real bedside monitors are not "dark mode UI" — they are near-black with saturated,
+     standardised trace colours, because a nurse reads them across a room at a glance and the
+     colour IS the label. ECG green, pleth cyan, respiration yellow, arterial red. Getting these
+     wrong is the first thing a clinician notices. */
+  :root{
+    --ecg:#31d84a; --pleth:#37cfe0; --resp:#f4e04d; --nibp:#ffffff; --temp:#c9d1d9;
+    --alarm:#ff4b4b; --warn:#ffb02e; --ink:#e6edf3; --dim:#7d8894; --grid:#1b2430;
+  }
+  *{box-sizing:border-box} html,body{margin:0;height:100%}
+  body{background:#04070a;color:var(--ink);font-family:"Helvetica Neue",Arial,sans-serif;
+       display:flex;flex-direction:column;overflow:hidden;-webkit-font-smoothing:antialiased}
+
+  header{display:flex;align-items:center;gap:14px;padding:6px 14px;background:#0a1119;
+         border-bottom:1px solid #16202b;font-size:13px;flex:none}
+  header .bed{font-weight:700;letter-spacing:.5px}
+  header .pt{color:var(--dim)}
+  header .sp{flex:1}
+  header .clock{font-variant-numeric:tabular-nums;color:var(--dim)}
+  .alarmbar{padding:3px 10px;border-radius:4px;font-weight:700;font-size:12px;letter-spacing:.4px;
+            background:#1b2430;color:var(--dim)}
+  .alarmbar.on{background:var(--alarm);color:#fff;animation:flash 1s steps(2,end) infinite}
+  @keyframes flash{50%{opacity:.45}}
+
+  main{flex:1;display:grid;grid-template-columns:1fr 232px;min-height:0}
+  .traces{display:grid;grid-template-rows:repeat(3,1fr);min-height:0;border-right:1px solid #16202b}
+  .lane{position:relative;min-height:0;border-bottom:1px solid #101923}
+  .lane:last-child{border-bottom:0}
+  .lane canvas{width:100%;height:100%;display:block}
+  .lane .tag{position:absolute;left:10px;top:6px;font-size:11px;font-weight:700;letter-spacing:.6px}
+  .lane .scale{position:absolute;right:10px;top:6px;font-size:10px;color:var(--dim)}
+  /* The rhythm name sits on the strip beside the lead, where a monitor prints it. */
+  .lane .rhy{margin-left:8px;font-weight:400;letter-spacing:.8px;color:var(--dim)}
+
+  .nums{display:grid;grid-template-rows:repeat(4,1fr);min-height:0}
+  .num{padding:4px 12px;overflow:hidden;border-bottom:1px solid #101923;display:flex;flex-direction:column;justify-content:center;min-height:0}
+  .num:last-child{border-bottom:0}
+  .num .lab{display:flex;justify-content:space-between;align-items:baseline;font-size:clamp(9px,1.6vh,11px);letter-spacing:.6px}
+  .num .lim{color:var(--dim);font-size:10px;font-variant-numeric:tabular-nums}
+  /* Scales with the pane. A bedside unit is read across a room, so the number wants to be as big
+     as it can be — but four fixed 56px numbers in a 250pt column overlapped each other, and two
+     vital signs sharing the same pixels is worse than a small legible one. */
+  .num .v{font-size:clamp(20px,7.2vh,56px);line-height:.95;font-weight:700;font-variant-numeric:tabular-nums}
+  .num .sub{font-size:clamp(8px,1.5vh,11px);color:var(--dim);font-variant-numeric:tabular-nums}
+  .num.alarm .v{animation:flash .8s steps(2,end) infinite}
+  /* Numbers carry the trace colour, exactly as they do on the bedside unit — the eye pairs the
+     56pt number with the waveform above it by hue, not by position. */
+  .ecg{color:var(--ecg)} .pleth{color:var(--pleth)} .resp{color:var(--resp)} .nibp{color:var(--nibp)}
+  /* No `::after{content:"--"}` here: the script already writes the dashes, and having both print
+     "----". Dropped-out numbers matter too much on this screen to render as garbage. */
+  .off{opacity:.28}
+  footer{flex:none;padding:4px 14px;background:#0a1119;border-top:1px solid #16202b;
+         font-size:11px;color:var(--dim);display:flex;gap:16px}
+</style>
+
+<header>
+  <span class="bed">BED 3 · ER</span>
+  <span class="pt" id="pt">—</span>
+  <span class="sp"></span>
+  <span class="alarmbar" id="alarm">MONITORING</span>
+  <span class="clock" id="clock">--:--:--</span>
+</header>
+
+<main>
+  <div class="traces">
+    <div class="lane"><span class="tag ecg">II <span id="r-lab" class="rhy"></span></span><span class="scale">25 mm/s</span><canvas id="c-ecg"></canvas></div>
+    <div class="lane"><span class="tag pleth">PLETH</span><canvas id="c-pleth"></canvas></div>
+    <div class="lane"><span class="tag resp">RESP</span><span class="scale">imp.</span><canvas id="c-resp"></canvas></div>
+  </div>
+  <div class="nums">
+    <div class="num ecg" id="n-hr">
+      <div class="lab"><span>HR</span><span class="lim">50–120</span></div>
+      <div class="v">--</div><div class="sub">bpm</div>
+    </div>
+    <div class="num pleth" id="n-spo2">
+      <div class="lab"><span>SpO₂</span><span class="lim">≥ 94</span></div>
+      <div class="v">--</div><div class="sub" id="s-o2">%</div>
+    </div>
+    <div class="num nibp" id="n-nibp">
+      <div class="lab"><span>NIBP</span><span class="lim">90–160</span></div>
+      <div class="v">--</div><div class="sub" id="s-nibp">mmHg</div>
+    </div>
+    <div class="num resp" id="n-rr">
+      <div class="lab"><span>RR</span><span class="lim">8–24</span></div>
+      <div class="v">--</div><div class="sub">/min</div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <span id="src">—</span><span id="net"></span>
+</footer>
+
+<script type="module">
+// Polls the engine's compact device feed. This page IS a device: it consumes vitals and shows
+// them, exactly as a real bedside unit would, and knows nothing about the case, the chat or the
+// score. Swap the feed for a real monitor's output and nothing here changes.
+const $ = s => document.querySelector(s);
+const P = new URLSearchParams(location.search);
+const BASE = P.get('base') || '';
+const SID  = P.get('sid')  || 'default';
+
+let V = { hr:0, spo2:0, sbp:0, dbp:0, rr:0, status:'', rhythm:'sinus', pulse:true, paused:false };
+let live = false;
+
+// Both default to the reassuring answer on purpose. If a future engine drops these fields, the
+// monitor degrades to the old behaviour instead of blanking a live patient's SpO₂ and drawing a
+// flat pleth — a display that invents an arrest is worse than one that misses one.
+const rhythm   = () => (V.rhythm || 'sinus').toLowerCase();
+const hasPulse = () => V.pulse !== false;
+
+// What the rhythm is called on the strip, and whether it is the kind you shock.
+const RHYTHM_LABEL = {
+  sinus:'SINUS', vf:'VF', vt:'VT', pea:'PEA', asystole:'ASYSTOLE',
+};
+
+// ── waveform engine ────────────────────────────────────────────────────────────
+// A real monitor sweeps a cursor left→right, overwriting the previous trace and leaving a short
+// blanking gap ahead of it. Scrolling the whole trace right-to-left (the obvious implementation)
+// is what makes a fake monitor read as fake at a glance.
+class Sweep {
+  constructor(canvas, colour, shape){
+    this.c = canvas; this.ctx = canvas.getContext('2d');
+    this.colour = colour; this.shape = shape; this.x = 0; this.phase = 0; this.pen = null;
+    this.timeDomain = false; this.noise = false;
+    this.resize(); addEventListener('resize', () => this.resize());
+  }
+  resize(){
+    const r = this.c.getBoundingClientRect(), d = devicePixelRatio || 1;
+    this.c.width = Math.max(1, r.width * d); this.c.height = Math.max(1, r.height * d);
+    this.ctx.setTransform(d,0,0,d,0,0);
+    this.w = r.width; this.h = r.height; this.x = 0; this.pen = null;
+    this.ctx.fillStyle = '#04070a'; this.ctx.fillRect(0,0,this.w,this.h);
+  }
+  /// `sample(msIntoCycle, cycleMs)` — time domain, so intervals stay in milliseconds.
+  step(dt, hz, amp){
+    const px = this.w / 5;                       // ≈5 s of trace across the lane
+    const adv = px * dt;
+    const g = this.ctx;
+    g.fillStyle = '#04070a';
+    g.fillRect(this.x, 0, adv + this.w*0.02, this.h);   // blanking gap ahead of the cursor
+    g.strokeStyle = this.colour; g.lineWidth = 1.6; g.lineJoin = 'round';
+    g.beginPath();
+    const steps = Math.max(1, Math.ceil(adv));
+    if (this.pen) g.moveTo(this.pen[0], this.pen[1]);
+    for (let i = 0; i <= steps; i++){
+      const x = this.x + (adv * i / steps);
+      this.phase += (hz * dt) / steps;
+      const rr = 1000 / Math.max(0.2, hz);                 // one cycle, ms
+      const v = this.timeDomain ? this.shape((this.phase % 1) * rr, rr) : this.shape(this.phase % 1);
+      // a whisper of baseline wander + noise: a perfectly clean trace looks synthesised
+      const drift = this.noise ? Math.sin(this.phase * 0.7) * 0.02 + (Math.random() - 0.5) * 0.012 : 0;
+      const y = this.h/2 - (v + drift) * (this.h * 0.40) * amp;
+      if (!this.pen && i === 0) g.moveTo(x, y); else g.lineTo(x, y);
+      this.pen = [x, y];
+    }
+    g.stroke();
+    this.x += adv;
+    // Wrapping must break the path, not close it. Continuing the same stroke from the right edge
+    // back to x=0 draws a vertical line the width of the lane — which on an ECG reads as an
+    // artefact a clinician would try to interpret.
+    if (this.x >= this.w){ this.x = 0; this.pen = null; }
+  }
+}
+// ── ECG morphology ────────────────────────────────────────────────────────────
+//
+// Drawn in MILLISECONDS, not as a fraction of the cycle, because that is the difference between a
+// trace a clinician accepts and one they do not. Real intervals do not scale together with rate:
+//
+//   P wave ~80 ms · PR interval ~160 ms · QRS ~90 ms · ST ~100 ms · T wave ~160 ms
+//
+// The QRS is ~90 ms at 60 bpm and still ~90 ms at 140 — what shrinks as the heart speeds up is
+// diastole, the flat TP segment between the T and the next P. Scaling the whole beat by rate (the
+// obvious implementation, and what this file did first) produces fat lazy complexes at slow rates
+// and needle-thin ones when the patient is tachycardic; both read as wrong immediately.
+//
+// When the rate is high enough that the fixed parts no longer fit inside one R-R, repolarisation
+// is compressed and the T starts to ride into the next P — which is what actually happens on a
+// monitor at 150+, so the failure mode is itself realistic.
+const MS = { p: 80, pr: 160, qrs: 90, st: 100, t: 160 };
+
+function ecgAt(ms, rr){
+  const fixed = MS.pr + MS.qrs;                       // depolarisation: never compressed
+  const repol = MS.st + MS.t;
+  const room  = Math.max(60, rr - fixed);             // what is left for ST/T/diastole
+  const k     = Math.min(1, room / (repol + 40));     // squeeze repolarisation, keep QRS intact
+  const st = MS.st * k, tw = MS.t * k;
+
+  const pEnd   = MS.p;
+  const qStart = MS.pr, qEnd = qStart + 20;
+  const rEnd   = qEnd + 30, sEnd = rEnd + 40;         // 90 ms of QRS, fixed
+  const tStart = sEnd + st, tEnd = tStart + tw;
+
+  if (ms < pEnd)   return 0.13 * Math.sin(ms / MS.p * Math.PI);            // P
+  if (ms < qStart) return 0;                                              // PR segment (isoelectric)
+  if (ms < qEnd)   return -0.12 * Math.sin((ms - qStart) / 20 * Math.PI); // Q
+  if (ms < rEnd)   return 1.00 * Math.sin((ms - qEnd) / 30 * Math.PI);    // R
+  if (ms < sEnd)   return -0.26 * Math.sin((ms - rEnd) / 40 * Math.PI);   // S
+  if (ms < tStart) return 0;                                              // ST segment
+  if (ms < tEnd)   return 0.22 * Math.sin((ms - tStart) / tw * Math.PI);  // T (asymmetric enough)
+  return 0;                                                              // TP — diastole
+}
+
+// Ventricular fibrillation: no organised complexes at all, a coarse chaotic baseline. A monitor
+// that shows sinus tachycardia while the engine says the patient is in arrest is telling the
+// learner the opposite of what the case is teaching.
+function vfAt(ms){
+  const t = ms / 1000;
+  return 0.55 * Math.sin(t * 33) + 0.30 * Math.sin(t * 51 + 1.7) + 0.18 * Math.sin(t * 79 + 0.4);
+}
+
+// Asystole is not a ruled straight line. A real lead picks up chest movement and mains hum, and the
+// wandering baseline is exactly why the protocol says to confirm in two leads before calling it.
+function asystoleAt(ms){
+  const t = ms / 1000;
+  return 0.035 * Math.sin(t * 1.9) + 0.012 * Math.sin(t * 11.3);
+}
+
+// Photoplethysmograph: steep systolic upstroke, slower runoff, and the dicrotic notch where the
+// aortic valve closes. The notch is the detail that makes a pleth read as a pleth rather than a
+// sawtooth — and it flattens in shock, which is information the trace is allowed to carry.
+const plethShape = t => {
+  if (t < 0.18) return Math.sin(t / 0.18 * Math.PI / 2);
+  if (t < 0.42) return Math.cos((t - 0.18) / 0.24 * Math.PI / 2) * 0.72 + 0.28;
+  if (t < 0.55) return 0.30 + 0.10 * Math.sin((t - 0.42) / 0.13 * Math.PI);
+  return 0.30 * Math.max(0, 1 - (t - 0.55) / 0.45);
+};
+
+const respShape = t => Math.sin(t * 2 * Math.PI);
+
+const ecg   = new Sweep($('#c-ecg'),   getComputedStyle(document.documentElement).getPropertyValue('--ecg').trim(),   ecgAt);
+ecg.timeDomain = true; ecg.noise = true;
+const pleth = new Sweep($('#c-pleth'), getComputedStyle(document.documentElement).getPropertyValue('--pleth').trim(), plethShape);
+const resp  = new Sweep($('#c-resp'),  getComputedStyle(document.documentElement).getPropertyValue('--resp').trim(),  respShape);
+
+let last = performance.now();
+function frame(now){
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (live && !V.paused){
+    // The rhythm comes from the engine. It used to be inferred from the status string, which drew
+    // VF for every arrest — and anaphylactic arrest is PEA, so the monitor was telling the learner
+    // to reach for the defibrillator in a rhythm no shock can treat.
+    switch (rhythm()){
+      case 'vf':
+      case 'vt':
+        ecg.shape = vfAt;       ecg.step(dt, 1, 1);                       // chaotic; rate meaningless
+        break;
+      case 'asystole':
+        ecg.shape = asystoleAt; ecg.step(dt, 1, 1);
+        break;
+      default:                                                            // sinus AND pea
+        // PEA draws normal organised complexes at a countable rate. That is not a shortcut — it is
+        // the finding. The trace looks survivable and the patient has no pulse, which is why the
+        // rule is to feel for one instead of reading the screen.
+        ecg.shape = ecgAt;      ecg.step(dt, Math.max(20, V.hr) / 60, 1);
+    }
+    // No pulse, no pleth. The probe has nothing pulsatile to detect, so the waveform goes flat and
+    // the SpO₂ number drops out — on a real monitor that dropout is the alarm.
+    if (hasPulse()){
+      // the pleth shrinks as perfusion falls — the amplitude is information, not decoration
+      pleth.shape = plethShape;
+      pleth.step(dt, Math.max(20, V.hr) / 60, V.spo2 >= 90 ? 1 : 0.55);
+    } else {
+      pleth.shape = () => 0;
+      pleth.step(dt, 1, 1);
+    }
+    // Apnoea is a flat impedance trace, not a slow one. `Math.max(4, rr)` would have drawn a calm
+    // 4-per-minute breath for a patient who has stopped breathing.
+    if (V.rr > 0){ resp.shape = respShape; resp.step(dt, V.rr / 60, 1); }
+    else { resp.shape = () => 0; resp.step(dt, 1, 1); }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ── numbers + alarms ───────────────────────────────────────────────────────────
+const LIM = { hr:[50,120], spo2:[94,100], sbp:[90,160], rr:[8,24] };
+const out = (v, [lo,hi]) => v > 0 && (v < lo || v > hi);
+
+// NIBP is intermittent on a real monitor — it shows the last cuff reading and how long ago it
+// was taken, not a live number. Faking it as continuous is a tell.
+let nibpAt = null, nibpVal = null;
+function paint(){
+  const set = (id, txt, alarm, off) => {
+    const el = $(id); el.querySelector('.v').textContent = txt;
+    el.classList.toggle('alarm', !!alarm); el.classList.toggle('off', !!off);
+  };
+  const pulse = hasPulse();
+  // HR keeps its number in PEA — the complexes are real and countable, and hiding them would hide
+  // the trap. SpO₂ and NIBP do not: both need a pulse to measure anything at all.
+  set('#n-hr',   V.hr   ? Math.round(V.hr)   : '--', out(V.hr, LIM.hr),     !live);
+  set('#n-spo2', pulse && V.spo2 ? Math.round(V.spo2) : '--', pulse && out(V.spo2, LIM.spo2), !live || !pulse);
+  set('#n-rr',   V.rr   ? Math.round(V.rr)   : '--', out(V.rr, LIM.rr),     !live);
+  $('#s-o2').textContent = live && !pulse ? 'no pulse detected' : '%';
+  if (live && !pulse){
+    set('#n-nibp', '--', false, true);
+    $('#s-nibp').textContent = 'no reading';
+  } else if (nibpVal){
+    set('#n-nibp', `${Math.round(nibpVal[0])}/${Math.round(nibpVal[1])}`, out(nibpVal[0], LIM.sbp), false);
+    const ago = Math.round((Date.now() - nibpAt)/1000);
+    $('#s-nibp').textContent = `mmHg · ${ago < 60 ? ago + ' s' : Math.round(ago/60) + ' min'} ago`;
+  } else { set('#n-nibp', '--', false, true); }
+
+  $('#r-lab').textContent = live ? (RHYTHM_LABEL[rhythm()] || rhythm().toUpperCase()) : '';
+
+  const alarms = [out(V.hr,LIM.hr), pulse && out(V.spo2,LIM.spo2), out(V.rr,LIM.rr)].filter(Boolean).length;
+  const bar = $('#alarm');
+  // Losing the pulse outranks counting how many numbers are out of range. It is one message,
+  // it names the rhythm, and it says whether a shock is on the table — because that is the
+  // decision standing in front of the learner at that moment.
+  const arrest = live && !pulse;
+  bar.classList.toggle('on', live && (arrest || alarms > 0));
+  bar.textContent = !live ? 'NO SIGNAL'
+    : arrest ? `⚠ ${RHYTHM_LABEL[rhythm()] || 'ARREST'} — ${V.shockable ? 'SHOCKABLE' : 'NO PULSE · NOT SHOCKABLE'}`
+    : (alarms ? `⚠ ${alarms} ALARM` : 'MONITORING');
+}
+setInterval(() => { $('#clock').textContent = new Date().toLocaleTimeString('en-GB'); }, 1000);
+
+// ── feed ───────────────────────────────────────────────────────────────────────
+async function poll(){
+  try{
+    const r = await fetch(`${BASE}/device/vitals`, { headers: { 'x-embla-session': SID } });
+    const d = await r.json();
+    if (d && d.hr != null){
+      V = d; live = true;
+      // take a "cuff reading" on first sight and then every 3 minutes, like an ER cycle
+      if (!nibpAt || Date.now() - nibpAt > 180000){ nibpVal = [d.sbp, d.dbp]; nibpAt = Date.now(); }
+      $('#pt').textContent = `Ing · F 19 · ${d.status || ''}`;
+      $('#src').textContent = `feed: ${BASE || location.origin}/device/vitals · sid=${SID}`;
+      $('#net').textContent = '';
+    } else { live = false; $('#net').textContent = 'no case in play'; }
+  } catch(e){ live = false; $('#net').textContent = 'engine unreachable — ' + e.message; }
+  paint();
+}
+poll(); setInterval(poll, 500);
+
+// A cuff cycles on demand, as it does at the bedside.
+addEventListener('keydown', e => { if (e.key.toLowerCase() === 'n' && live){ nibpVal=[V.sbp,V.dbp]; nibpAt=Date.now(); paint(); } });
+</script>

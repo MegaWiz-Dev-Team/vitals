@@ -8,6 +8,7 @@
 //! and sessions in a map. The point is to make the automaton playable, not to ship a platform.
 
 mod chain;
+mod patient;
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -19,6 +20,13 @@ use vitals_replay::{hex, leaf, record_for, replay, sce_hash, Replay, Step};
 use vitals_sce::{render_beat, Sce, SceState};
 
 const PAGE: &str = include_str!("../static/index.html");
+/// The real bedside monitor, vendored from Embla's device page.
+///
+/// Not reimplemented: it already draws ECG morphology in milliseconds (P 80ms, PR 160ms, a QRS
+/// that stays 90ms at any rate), sweeps a cursor the way a monitor does instead of scrolling, and
+/// knows VF from asystole from PEA. A hand-rolled trace reads as fake to a clinician instantly —
+/// which is exactly what the first version of this app did.
+const MONITOR: &str = include_str!("../static/device/monitor.html");
 
 /// The patient, keyed by the clinical status the automaton is reporting.
 ///
@@ -42,6 +50,9 @@ struct Session {
     scenario: String,
     difficulty: Difficulty,
     anchored: bool,
+    /// The conversation, kept only so she remembers what she already told you. It is never
+    /// hashed, never anchored, and never leaves this process.
+    said: Vec<(String, String)>,
 }
 
 /// Everything one sitting has played. A fresh tree per sitting, so the indices below are real
@@ -80,7 +91,7 @@ impl Session {
             .iter()
             .map(|s| match s {
                 Step::Tick(dt) => *dt,
-                Step::Do(_) => 0.0,
+                Step::Do(_) | Step::Ask(_) => 0.0,
             })
             .sum();
         let outcome = self.state.outcome().map(|o| format!("{o:?}"));
@@ -154,6 +165,7 @@ fn new_session(ep: &str) -> Result<Session, String> {
         scenario: title(ep).to_string(),
         difficulty: difficulty(ep),
         anchored: false,
+        said: Vec::new(),
     })
 }
 
@@ -208,6 +220,13 @@ fn main() {
     let sessions: Arc<Mutex<HashMap<String, Session>>> = Arc::new(Mutex::new(HashMap::new()));
     let mut next_id = 0u64;
 
+    let story = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../demo/ep1-en.json");
+    let patient = patient::Patient::connect(&story);
+    match &patient {
+        Some(p) => println!("patient    {} — local model via Heimdall", p.name()),
+        None => println!("patient    no gateway — set HEIMDALL_API_KEY to give her a voice"),
+    }
+
     let chain = chain::Chain::connect();
     let player = Arc::new(Mutex::new(Player::default()));
     match &chain {
@@ -248,6 +267,40 @@ fn main() {
                         continue;
                     }
                     None => Response::from_string("no such still").with_status_code(404),
+                }
+            }
+            (Method::Get, "/device/monitor") => {
+                let _ = req.respond(Response::from_string(MONITOR).with_header(
+                    Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..]).unwrap(),
+                ));
+                continue;
+            }
+            (Method::Get, "/device/vitals") => {
+                // The monitor identifies the bed by header, the way the device page already does.
+                let sid = req
+                    .headers()
+                    .iter()
+                    .find(|h| h.field.equiv("x-embla-session"))
+                    .map(|h| h.value.as_str().to_string())
+                    .unwrap_or_default();
+                let map = sessions.lock().unwrap();
+                match map.get(&sid) {
+                    None => json(serde_json::json!({})),
+                    Some(s) => {
+                        let v = s.state.vitals;
+                        let r = v.rhythm;
+                        json(serde_json::json!({
+                            "hr": v.hr, "spo2": v.spo2, "sbp": v.sbp, "dbp": v.dbp,
+                            "rr": v.rr, "temp": v.temp, "gcs": v.gcs,
+                            "status": format!("{:?}", s.state.status),
+                            "rhythm": r.as_str(),
+                            // A monitor that invents a pulse is worse than one that misses an
+                            // arrest, so this comes from the rhythm rather than from the numbers.
+                            "pulse": r.perfusing(),
+                            "shockable": r.shockable(),
+                            "paused": false,
+                        }))
+                    }
                 }
             }
             (Method::Get, "/api/new") => {
@@ -296,14 +349,47 @@ fn main() {
                         "tape": s.tape.iter().map(|st| match st {
                             Step::Tick(dt) => serde_json::json!({"tick": dt}),
                             Step::Do(t) => serde_json::json!({"do": t}),
+                            Step::Ask(t) => serde_json::json!({"ask": t}),
                         }).collect::<Vec<_>>()
                     })),
+                }
+            }
+            (Method::Get, "/api/say") => {
+                let id = param(&url, "id").unwrap_or_default();
+                let q = param(&url, "q").unwrap_or_default();
+                let Some(pt) = patient.as_ref() else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no gateway — she has no voice here" })));
+                    continue;
+                };
+                // Snapshot what the model needs, then release the lock: a local 26B reply takes
+                // seconds and the tick loop must not block behind it.
+                let (hist, status, spo2) = {
+                    let mut map = sessions.lock().unwrap();
+                    let Some(s) = map.get_mut(&id) else {
+                        let _ = req.respond(json(serde_json::json!({ "error": "no such session" })));
+                        continue;
+                    };
+                    // The question goes on the tape. The answer never will.
+                    s.tape.push(Step::Ask(q.clone()));
+                    (s.said.clone(), format!("{:?}", s.state.status), s.state.vitals.spo2)
+                };
+                match pt.say(&q, &hist, &status, spo2) {
+                    Ok(reply) => {
+                        let mut map = sessions.lock().unwrap();
+                        if let Some(s) = map.get_mut(&id) {
+                            s.said.push(("user".into(), q));
+                            s.said.push(("assistant".into(), reply.clone()));
+                        }
+                        json(serde_json::json!({ "reply": reply, "who": pt.name() }))
+                    }
+                    Err(e) => json(serde_json::json!({ "error": e })),
                 }
             }
             (Method::Get, "/api/chain") => {
                 let p = player.lock().unwrap();
                 json(serde_json::json!({
                     "connected": chain.is_some(),
+                    "voice": patient.is_some(),
                     "tree_id": p.tree_id,
                     "anchored": p.leaves.len(),
                     "player": chain.as_ref().map(|c| c.player()),

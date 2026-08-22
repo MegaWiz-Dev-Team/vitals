@@ -22,6 +22,13 @@ pub enum Step {
     Tick(f64),
     /// The player did something. Text, because that is what the matcher consumes.
     Do(String),
+    /// The player *asked* something.
+    ///
+    /// Recorded, never applied. History-taking is part of what a run was, so the question
+    /// belongs in the tape — but it must not reach the intervention matcher, or asking "did you
+    /// take your adrenaline?" would administer adrenaline. And only the question is kept: the
+    /// patient's reply comes from a language model, which is why it is nowhere near the hash.
+    Ask(String),
 }
 
 /// The reduction of a run: everything discrete, nothing continuous.
@@ -51,6 +58,9 @@ pub fn replay(sce_json: &str, tape: &[Step]) -> Result<Replay, String> {
                 st.tick(*dt)
             }
             Step::Do(text) => st.apply(text),
+            // Deliberately inert. Asking costs time — which the surrounding Tick steps carry —
+            // and reveals information, but it changes nothing about the patient.
+            Step::Ask(_) => Vec::new(),
         };
         for b in emitted {
             beats.push(render_beat(&b));
@@ -86,6 +96,9 @@ pub fn leaf(sce_hash: &[u8; 32], tape: &[Step], r: &Replay) -> [u8; 32] {
             // round-trips differently must not change the leaf.
             Step::Tick(dt) => h.update(format!("t{}\n", (dt * 1000.0).round() as i64)),
             Step::Do(text) => h.update(format!("d{text}\n")),
+            // A tape with no questions hashes exactly as it did before questions existed, so
+            // every leaf anchored under the older encoding still verifies.
+            Step::Ask(text) => h.update(format!("a{text}\n")),
         }
     }
 
