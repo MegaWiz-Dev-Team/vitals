@@ -248,8 +248,8 @@ impl SceState {
         let since = self.t_elapsed;
         self.equipment.push(Equipment { id: id.to_string(), setting, since_sec: since });
         match setting {
-            Some(v) => self.record("equipment", format!("ต่อ {id} ที่ {v:.0}")),
-            None => self.record("equipment", format!("ต่อ {id}")),
+            Some(v) => self.record("equipment", format!("{id} on at {v:.0}")),
+            None => self.record("equipment", format!("{id} on")),
         }
         true
     }
@@ -259,7 +259,7 @@ impl SceState {
         let n = self.equipment.len();
         self.equipment.retain(|e| e.id != id);
         let removed = self.equipment.len() != n;
-        if removed { self.record("equipment", format!("ถอด {id}")); }
+        if removed { self.record("equipment", format!("{id} off")); }
         removed
     }
 
@@ -300,18 +300,18 @@ impl SceState {
     pub fn defibrillate(&mut self, joules: f64) -> ShockResult {
         let r = self.vitals.rhythm;
         if r.perfusing() {
-            let h = format!("shock {joules:.0} J ให้ผู้ป่วยที่ยังมีชีพจร — เป็นอันตราย");
+            let h = format!("shock {joules:.0} J delivered to a perfusing patient — dangerous");
             self.harm_events.push(h.clone());
             self.record("harm", h);
             return ShockResult::Perfusing;
         }
         if !r.shockable() {
-            let h = format!("shock {joules:.0} J กับจังหวะ {} ซึ่ง shock ไม่ได้ — เสียเวลากดหน้าอกและให้ adrenaline", r.as_str());
+            let h = format!("shock {joules:.0} J into {} — not shockable, and it cost compressions and adrenaline", r.as_str());
             self.harm_events.push(h.clone());
             self.record("harm", h);
             return ShockResult::NotShockable;
         }
-        self.record("action", format!("defibrillate {joules:.0} J — จังหวะกลับเป็น sinus"));
+        self.record("action", format!("defibrillate {joules:.0} J — rhythm back to sinus"));
         self.vitals.rhythm = Rhythm::Sinus;
         ShockResult::Converted
     }

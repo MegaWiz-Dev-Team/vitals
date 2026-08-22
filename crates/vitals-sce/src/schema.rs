@@ -157,12 +157,12 @@ pub struct Intervention {
     #[serde(default)] pub harm: Option<String>,
     /// Equipment this intervention LEAVES ON the patient, if any (`"o2"`, `"iv"`, `"ett"`).
     ///
-    /// Without this, saying "ให้ออกซิเจน" moved the physiology but put nothing on the bedside,
+    /// Without this, saying "give oxygen" moved the physiology but put nothing on the bedside,
     /// while pressing the oxygen button did both — one fact with two records, which is the exact
     /// split `EquipmentSet` exists to close.
     #[serde(default)] pub equipment: Option<String>,
     /// What the setting reads when the intervention is what attached it. The case's own canonical
-    /// dose: a learner who says "ให้ออกซิเจน" without a number is asking for what this scenario
+    /// dose: a learner who says "give oxygen" without a number is asking for what this scenario
     /// teaches, and the flowmeter has to show something a learner can check.
     #[serde(default)] pub equipment_setting: Option<f64>,
 }
