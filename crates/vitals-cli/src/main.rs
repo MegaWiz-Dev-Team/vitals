@@ -190,7 +190,12 @@ fn send(
     extra: Vec<Pubkey>,
     expect_ok: bool,
 ) -> bool {
-    let mut metas = vec![AccountMeta::new(player.pubkey(), true)];
+    // The driver funds its own runs, so it is both accounts. The web server is where they differ:
+    // there the relay pays and the player's key never leaves the browser.
+    let mut metas = vec![
+        AccountMeta::new(player.pubkey(), true),
+        AccountMeta::new_readonly(player.pubkey(), true),
+    ];
     metas.extend(extra.into_iter().map(|k| AccountMeta::new(k, false)));
     metas.push(AccountMeta::new_readonly(system_program::id(), false));
 

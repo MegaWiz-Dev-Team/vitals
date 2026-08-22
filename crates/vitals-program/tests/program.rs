@@ -62,8 +62,14 @@ fn pdas(pid: &Pubkey, who: &Pubkey) -> (Pubkey, Pubkey, Pubkey) {
     )
 }
 
-fn ix(pid: Pubkey, signer: Pubkey, extra: &[Pubkey], data: Instruction) -> SolIx {
-    let mut metas = vec![AccountMeta::new(signer, true)];
+/// `funder` has the lamports and pays rent. `player` is whose run it is and needs no balance —
+/// it signs, and nothing is ever debited from it. They are the same key only because most of this
+/// test does not care; `a_player_with_no_sol_can_still_prove_and_claim` is where they differ.
+fn ix(pid: Pubkey, funder: Pubkey, player: Pubkey, extra: &[Pubkey], data: Instruction) -> SolIx {
+    let mut metas = vec![
+        AccountMeta::new(funder, true),
+        AccountMeta::new_readonly(player, true),
+    ];
     metas.extend(extra.iter().map(|k| AccountMeta::new(*k, false)));
     metas.push(AccountMeta::new_readonly(system_program::id(), false));
     SolIx { program_id: pid, accounts: metas, data: borsh::to_vec(&data).unwrap() }
@@ -89,7 +95,7 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     // ── a claim before anything is proven ──────────────────────────────────
     let e = banks
         .process_transaction(Transaction::new_signed_with_payer(
-            &[ix(pid, me, &[claim, prog], Instruction::ClaimProgress { tree_id: TREE, specialty: 1, claimed: 2 })],
+            &[ix(pid, me, me, &[claim, prog], Instruction::ClaimProgress { tree_id: TREE, specialty: 1, claimed: 2 })],
             Some(&me), &[&payer], bh,
         ))
         .await
@@ -101,7 +107,7 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     let theirs = rec(&Pubkey::new_unique(), 1, Outcome::WinDischarge, 0, Difficulty::Student);
     let e = banks
         .process_transaction(Transaction::new_signed_with_payer(
-            &[ix(pid, me, &[tree], Instruction::AnchorReplay { tree_id: TREE, record: wire(&theirs) })],
+            &[ix(pid, me, me, &[tree], Instruction::AnchorReplay { tree_id: TREE, record: wire(&theirs) })],
             Some(&me), &[&payer], bh,
         ))
         .await
@@ -118,7 +124,7 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
         let bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
         banks
             .process_transaction(Transaction::new_signed_with_payer(
-                &[ix(pid, me, &[tree], Instruction::AnchorReplay { tree_id: TREE, record: wire(r) })],
+                &[ix(pid, me, me, &[tree], Instruction::AnchorReplay { tree_id: TREE, record: wire(r) })],
                 Some(&me), &[&payer], bh,
             ))
             .await
@@ -132,7 +138,7 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     let bh1 = banks.get_new_latest_blockhash(&bh).await.unwrap();
     let e = banks
         .process_transaction(Transaction::new_signed_with_payer(
-            &[ix(pid, me, &[tree, claim], Instruction::ProveAttempt {
+            &[ix(pid, me, me, &[tree, claim], Instruction::ProveAttempt {
                 tree_id: TREE, record: wire(&forged), index: 0, path: path.to_vec() })],
             Some(&me), &[&payer], bh1,
         ))
@@ -147,7 +153,7 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
         let bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
         banks
             .process_transaction(Transaction::new_signed_with_payer(
-                &[ix(pid, me, &[tree, claim], Instruction::ProveAttempt {
+                &[ix(pid, me, me, &[tree, claim], Instruction::ProveAttempt {
                     tree_id: TREE, record: wire(r), index: i as u64, path: path.to_vec() })],
                 Some(&me), &[&payer], bh,
             ))
@@ -160,7 +166,7 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     let bh2 = banks.get_new_latest_blockhash(&bh).await.unwrap();
     let e = banks
         .process_transaction(Transaction::new_signed_with_payer(
-            &[ix(pid, me, &[tree, claim], Instruction::ProveAttempt {
+            &[ix(pid, me, me, &[tree, claim], Instruction::ProveAttempt {
                 tree_id: TREE, record: wire(&mine[0]), index: 0, path: path.to_vec() })],
             Some(&me), &[&payer], bh2,
         ))
@@ -173,7 +179,7 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     let bh3 = banks.get_new_latest_blockhash(&bh).await.unwrap();
     let e = banks
         .process_transaction(Transaction::new_signed_with_payer(
-            &[ix(pid, me, &[claim, prog], Instruction::ClaimProgress {
+            &[ix(pid, me, me, &[claim, prog], Instruction::ClaimProgress {
                 tree_id: TREE, specialty: 1, claimed: Dreyfus::Expert as u8 })],
             Some(&me), &[&payer], bh3,
         ))
@@ -186,7 +192,7 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     let bh4 = banks.get_new_latest_blockhash(&bh).await.unwrap();
     banks
         .process_transaction(Transaction::new_signed_with_payer(
-            &[ix(pid, me, &[claim, prog], Instruction::ClaimProgress {
+            &[ix(pid, me, me, &[claim, prog], Instruction::ClaimProgress {
                 tree_id: TREE, specialty: 1, claimed: Dreyfus::Competent as u8 })],
             Some(&me), &[&payer], bh4,
         ))
@@ -200,4 +206,113 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     assert_eq!(stored.level, Dreyfus::Competent as u8, "the stored level is the computed one");
     assert_eq!(stored.distinct_cases, 3);
     assert_eq!(stored.attempts_counted, 3);
+}
+
+/// The reason the funder and the player are two accounts.
+///
+/// A person who has never touched a crypto wallet has no SOL and is not about to acquire some to
+/// try a clinical case. The relay pays; the player signs. What must not happen is the shortcut
+/// that was here before — the relay signing *as* the player, which quietly gave every player on a
+/// server the same identity, the same claim buffer and the same progress account.
+#[tokio::test]
+async fn a_player_with_no_sol_can_still_prove_and_claim() {
+    let pid = Pubkey::new_unique();
+    let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
+    let (mut banks, relay, bh) = pt.start().await;
+
+    // Never funded, never airdropped. It does not exist on chain at all.
+    let player = Keypair::new();
+    let who = player.pubkey();
+    assert!(banks.get_account(who).await.unwrap().is_none(), "the player has no account");
+
+    let (tree, claim, prog) = pdas(&pid, &who);
+    let records: Vec<AttemptRecord> = (0..3)
+        .map(|i| rec(&who, i as u8 + 1, Outcome::WinDischarge, 0, Difficulty::Student))
+        .collect();
+
+    let mut bh = bh;
+    for r in &records {
+        bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+        banks
+            .process_transaction(Transaction::new_signed_with_payer(
+                &[ix(pid, relay.pubkey(), who, &[tree], Instruction::AnchorReplay {
+                    tree_id: TREE, record: wire(r) })],
+                Some(&relay.pubkey()), &[&relay, &player], bh,
+            ))
+            .await
+            .expect("the relay funds the tree, the player owns the run");
+    }
+
+    let leaves: Vec<[u8; 32]> = records.iter().map(|r| r.leaf()).collect();
+    for (i, r) in records.iter().enumerate() {
+        let path = merkle::prove(&leaves, i as u64).unwrap();
+        bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+        banks
+            .process_transaction(Transaction::new_signed_with_payer(
+                &[ix(pid, relay.pubkey(), who, &[tree, claim], Instruction::ProveAttempt {
+                    tree_id: TREE, record: wire(r), index: i as u64, path: path.to_vec() })],
+                Some(&relay.pubkey()), &[&relay, &player], bh,
+            ))
+            .await
+            .expect("proving costs the player nothing");
+    }
+
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    banks
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[ix(pid, relay.pubkey(), who, &[claim, prog], Instruction::ClaimProgress {
+                tree_id: TREE, specialty: 1, claimed: Dreyfus::Competent as u8 })],
+            Some(&relay.pubkey()), &[&relay, &player], bh,
+        ))
+        .await
+        .expect("and the level lands on the player, not the relay");
+
+    let stored: Progress = borsh::BorshDeserialize::deserialize(
+        &mut &banks.get_account(prog).await.unwrap().unwrap().data[..],
+    )
+    .unwrap();
+    assert_eq!(stored.player, who.to_bytes(), "the progress belongs to the player");
+    assert_eq!(stored.level, Dreyfus::Competent as u8);
+    assert!(banks.get_account(who).await.unwrap().is_none(), "still holds nothing");
+
+    // And the relay cannot promote itself by paying: its own progress PDA was never created.
+    let (_, _, relay_prog) = pdas(&pid, &relay.pubkey());
+    assert!(banks.get_account(relay_prog).await.unwrap().is_none(),
+            "paying for a run must not earn the payer a level");
+}
+
+/// A relay must not be able to anchor a run in somebody's name without them.
+#[tokio::test]
+async fn the_relay_cannot_sign_for_the_player() {
+    let pid = Pubkey::new_unique();
+    let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
+    let (mut banks, relay, bh) = pt.start().await;
+    let victim = Keypair::new().pubkey();
+    let (tree, _, _) = pdas(&pid, &victim);
+    let r = rec(&victim, 1, Outcome::WinDischarge, 0, Difficulty::Student);
+
+    // The relay names the victim as the player but only signs for itself.
+    let mut metas = vec![
+        AccountMeta::new(relay.pubkey(), true),
+        AccountMeta::new_readonly(victim, false),
+        AccountMeta::new(tree, false),
+        AccountMeta::new_readonly(system_program::id(), false),
+    ];
+    metas.dedup();
+    let ix = SolIx {
+        program_id: pid,
+        accounts: metas,
+        data: borsh::to_vec(&Instruction::AnchorReplay { tree_id: TREE, record: wire(&r) }).unwrap(),
+    };
+    let e = banks
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[ix], Some(&relay.pubkey()), &[&relay], bh,
+        ))
+        .await
+        .unwrap_err()
+        .unwrap();
+    assert!(
+        matches!(e, TransactionError::InstructionError(_, InstructionError::MissingRequiredSignature)),
+        "got {e:?} — the player must sign their own run"
+    );
 }
