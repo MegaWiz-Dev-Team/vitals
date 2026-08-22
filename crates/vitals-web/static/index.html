@@ -119,25 +119,52 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
 .pt-status.Improving,.pt-status.Recovered{color:var(--act)}
 .pt-line{font-size:.83rem;color:var(--ink-3)}
 
-.chat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:.85rem;
-  min-height:14rem;max-height:26rem;overflow:auto;display:flex;flex-direction:column;gap:.55rem}
-.turn{max-width:82%;display:flex;flex-direction:column;gap:.15rem}
-.turn .who{font-size:.66rem;color:var(--ink-3)}
-.turn .say{padding:.5rem .7rem;border-radius:11px;font-size:.9rem}
-.turn.her{align-self:flex-start} .turn.her .say{background:#EEF1F2;border-bottom-left-radius:4px}
-.turn.you{align-self:flex-end;align-items:flex-end} .turn.you .say{background:var(--act-soft);
-  color:#0a4c3e;border-bottom-right-radius:4px}
-.turn.sys{align-self:stretch;max-width:100%}
-.turn.sys .say{background:#F3F7F6;border:1px solid var(--line);color:var(--ink-2);font-size:.84rem}
-.turn.sys.harm .say{background:var(--warn-soft);border-color:#EBD6C4;color:var(--warn)}
-.turn.sys.end .say{background:var(--alarm-soft);border-color:#F0CFCB;color:var(--alarm);font-weight:600}
-.turn.sys.note .say{background:none;border:0;color:var(--ink-3);font-style:italic;padding:.1rem .2rem}
+.chat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:.9rem 1rem;
+  min-height:17rem;max-height:30rem;overflow:auto;display:flex;flex-direction:column;gap:.5rem}
+.chat.empty{align-items:center;justify-content:center;text-align:center}
+
+/* An encounter is a conversation with a chart running through it. Speech gets a bubble;
+   an order or an event gets a ruled line with a time on it, because that is what it is. */
+.turn{max-width:76%;display:flex;flex-direction:column;gap:.18rem}
+.turn .who{font-size:.64rem;color:var(--ink-3);padding:0 .3rem}
+.turn .say{padding:.55rem .75rem;border-radius:13px;font-size:.92rem;line-height:1.45}
+.turn.her{align-self:flex-start}
+.turn.her .say{background:#EDF1F1;border-bottom-left-radius:4px}
+.turn.her.think .say{color:var(--ink-3);font-style:italic}
+.turn.you{align-self:flex-end;align-items:flex-end}
+.turn.you .say{background:var(--act);color:#fff;border-bottom-right-radius:4px}
+
+/* the chart line */
+.ev{display:flex;align-items:baseline;gap:.6rem;font-family:"IBM Plex Mono",monospace;
+  font-size:.74rem;color:var(--ink-2);padding:.1rem 0}
+.ev .t{color:var(--ink-3);font-size:.66rem;font-variant-numeric:tabular-nums;flex:none;width:2.7rem;
+  text-align:right}
+.ev .ic{flex:none;opacity:.75}
+.ev .tx{flex:1;min-width:0}
+.ev .rule{flex:1;height:1px;background:var(--line);margin-left:.3rem}
+.ev.order{color:var(--act)} .ev.order .rule{background:#CFE4DC}
+.ev.beat{color:var(--ink-2)}
+.ev.harm{color:var(--warn);font-weight:600} .ev.harm .rule{background:#EBD6C4}
+.ev.end{color:var(--alarm);font-weight:700} .ev.end .rule{background:#F0CFCB}
+.ev.note{color:var(--ink-3);font-style:italic;font-family:"IBM Plex Sans",sans-serif;font-size:.8rem}
+
+.empty-in{max-width:24em;color:var(--ink-3)}
+.empty-in b{display:block;color:var(--ink-2);font-family:Archivo,sans-serif;font-size:1rem;
+  margin-bottom:.25rem}
 
 .acts{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:.7rem .8rem;
   display:flex;flex-direction:column;gap:.55rem}
-.modes{display:flex;flex-wrap:wrap;gap:.35rem}
+.modes{display:inline-flex;flex-wrap:wrap;gap:2px;background:var(--card-2);border:1px solid var(--line);
+  border-radius:9px;padding:2px;align-self:flex-start}
+.modes .btn{border:0;background:none;border-radius:7px;padding:.35rem .6rem;font-size:.72rem;color:var(--ink-2)}
+.modes .btn:hover{background:#fff;color:var(--ink)}
+.modes .btn.on{background:var(--act);color:#fff}
 .chips{display:flex;flex-wrap:wrap;gap:.35rem;min-height:1.9rem}
-.chips .btn{font-size:.72rem}
+/* A question is something you say; an order is something you write down. They should not
+   look like the same control. */
+.chips .btn{font-size:.74rem;border-radius:999px;font-family:"IBM Plex Sans",sans-serif}
+.acts.order-mode .chips .btn{border-radius:7px;font-family:"IBM Plex Mono",monospace;font-size:.71rem}
+.acts.order-mode #cmd{border-color:#CFE4DC}
 #cmdf{display:flex;gap:.45rem}
 #cmd{flex:1;min-width:0;font-family:"IBM Plex Mono",monospace;font-size:.8rem;background:var(--card-2);
   color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:.55rem .7rem}
@@ -430,11 +457,31 @@ const say=b=>SAY[b] || (b.startsWith("harm:") ? "harm — "+b.slice(5) : b.repla
 let id=null,timer=null,over=false,seen=0,mode='ask',asking=false,hard=false;
 const fmt=s=>`${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,'0')}`;
 
+let clockNow=0;
+function wake(){ const c=$('#chat'); c.classList.remove('empty'); const e=c.querySelector('.empty-in'); if(e)e.remove(); }
+/* Speech — hers or yours. A bubble, because someone said it. */
 function turn(cls,who,text,raw){
+  wake();
   const d=document.createElement('div'); d.className='turn '+cls;
   d.innerHTML=(who?`<span class="who">${who}</span>`:'')+`<span class="say"></span>`;
   d.querySelector('.say').textContent=text; if(raw)d.title=raw;
+  $('#chat').appendChild(d); $('#chat').scrollTop=1e6; return d;
+}
+/* Everything that is not speech — an order you gave, a beat the patient produced, the end.
+   A line with a time on it, because that is how it will read in the chart afterwards. */
+function ev(kind,icon,text,raw){
+  wake();
+  const d=document.createElement('div'); d.className='ev '+kind;
+  d.innerHTML=`<span class="t">${fmt(clockNow)}</span><span class="ic">${icon}</span>`+
+              `<span class="tx"></span><span class="rule"></span>`;
+  d.querySelector('.tx').textContent=text; if(raw)d.title=raw;
   $('#chat').appendChild(d); $('#chat').scrollTop=1e6;
+}
+function emptyState(){
+  const c=$('#chat'); c.innerHTML=''; c.classList.add('empty');
+  const E=ep();
+  c.innerHTML=`<div class="empty-in"><b>${E.who}</b>${E.line}.<br>
+    Ask her something, or start treating. The clock is the patient — she does not wait.</div>`;
 }
 /* ─── the kit ────────────────────────────────────────────────────────────────
    Embla's device tray, not a row of buttons: every item carries what it actually is,
@@ -482,13 +529,13 @@ function pick(devId){
 async function commit(k, value){
   if(k.confirm && !confirm(k.confirm)) return;
   const v=await (await fetch(`/api/kit?id=${id}&dev=${k.id}`+(value!=null?`&set=${value}`:''))).json();
-  if(v.error) return turn('sys note','',v.error);
-  turn('you','you','▸ '+k.label+(value!=null?` · ${value} ${k.unit}`:''));
+  if(v.error) return ev('note','—',v.error);
+  ev('order','▸', k.label+(value!=null?` · ${value} ${k.unit}`:''));
   paint(v);
 }
 async function detach(devId){
   const v=await (await fetch(`/api/kit?id=${id}&dev=${devId}&off=1`)).json();
-  if(v.error) return; turn('you','you','▸ remove '+KITLBL[devId].label); paint(v);
+  if(v.error) return; ev('order','✕','remove '+KITLBL[devId].label); paint(v);
 }
 
 /* ─── film ──────────────────────────────────────────────────────────────────
@@ -545,6 +592,7 @@ function direct(newBeats,outcome){
 function renderModes(){
   $('#modes').innerHTML=MODES.map(m=>`<button class="btn${m.id===mode?' on':''}" data-m="${m.id}">${m.icon} ${m.label}</button>`).join('');
   $('#modes').querySelectorAll('button').forEach(b=>b.onclick=()=>{mode=b.dataset.m;renderModes();renderChips();});
+  document.querySelector('.acts').classList.toggle('order-mode', mode!=='ask');
 }
 function renderChips(){
   const c=(CHIPS[ep().id]||{})[mode]||[];
@@ -563,7 +611,7 @@ function paint(v){
   $('#m-hr').textContent=v.hr; $('#m-spo2').textContent=v.spo2+'%';
   $('#m-bp').textContent=v.sbp+'/'+v.dbp; $('#m-rr').textContent=v.rr;
   $('#mini-status').textContent=v.status;
-  $('#clock').textContent=fmt(v.elapsed);
+  $('#clock').textContent=fmt(v.elapsed); clockNow=v.elapsed;
 
   const st=v.stability;
   $('#stab').style.width=st+'%';
@@ -587,8 +635,10 @@ function paint(v){
   $('#chart').scrollTop=1e6;
 
   const fresh=v.beats.slice(seen);
-  for(const b of fresh)
-    turn('sys '+(b.startsWith('harm')?'harm':b.startsWith('terminal')?'end':''),'',say(b),b);
+  for(const b of fresh){
+    const k = b.startsWith('harm') ? 'harm' : b.startsWith('terminal') ? 'end' : 'beat';
+    ev(k, k==='harm'?'⚠':k==='end'?'■':'·', say(b), b);
+  }
   seen=v.beats.length;
   if(fresh.length) direct(fresh, v.outcome);
 
@@ -611,19 +661,19 @@ function paint(v){
 async function step(q){
   if(!id)return;
   const v=await (await fetch('/api/step?id='+id+q)).json();
-  if(v.error)return turn('sys note','',v.error);
+  if(v.error)return ev('note','—',v.error);
   paint(v);
 }
-function doOrder(text){ turn('you','you','▸ '+text); step('&do='+encodeURIComponent(text)); }
+function doOrder(text){ ev('order','▸',text); step('&do='+encodeURIComponent(text)); }
 async function askHer(q){
   if(asking||!id)return; asking=true; $('#send').disabled=true;
   turn('you','you',q);
-  const d=document.createElement('div'); d.className='turn her';
-  d.innerHTML='<span class="who">'+ep().who.split(' · ')[0]+'</span><span class="say">…</span>';
-  $('#chat').appendChild(d); $('#chat').scrollTop=1e6;
+  const d=turn('her think', ep().who.split(' · ')[0], '…');
   step('&tick=5');                                   // talking costs time
   const r=await (await fetch('/api/say?id='+id+'&q='+encodeURIComponent(q))).json();
+  d.classList.remove('think');
   d.querySelector('.say').textContent = r.reply || ('— '+(r.error||'no answer'));
+  if(!r.reply) d.classList.add('think');
   $('#chat').scrollTop=1e6; asking=false; $('#send').disabled=false; $('#cmd').focus();
 }
 const run =()=>timer=setInterval(()=>step('&tick='+(hard?3:2)),700);
@@ -638,10 +688,10 @@ async function chainState(){
 }
 
 $('#start').onclick=async()=>{
-  stop(); over=false; seen=0; $('#chat').innerHTML=''; $('#result').style.display='none';
+  stop(); over=false; seen=0; clockNow=0; emptyState(); $('#result').style.display='none';
   const e=$('#ep').value;
   const r=await (await fetch('/api/new?ep='+e)).json();
-  if(r.error)return turn('sys note','',r.error);
+  if(r.error)return ev('note','—',r.error);
   id=r.id; mode='ask'; loopNow=''; cutting=false; $('#cut').classList.remove('on');
   renderModes(); renderChips(); paint(r.view);
   if(ep().id==='ep1') playCut('cold_open');
@@ -650,8 +700,8 @@ $('#start').onclick=async()=>{
   $('#cmd').disabled=false; $('#send').disabled=false; $('#pause').disabled=false;
   $('#pause').textContent='hold'; $('#cmd').focus();
   const voice=(await (await fetch('/api/chain')).json()).voice;
-  turn('sys note','', voice ? 'she can hear you — the clock is the patient, and she does not wait'
-                            : 'no gateway, so she cannot answer — orders still work');
+  emptyState();
+  if(!voice) ev('note','—','no gateway, so she cannot answer — orders still work');
   run(); chainState();
 };
 $('#back').onclick=()=>{ stop(); $('#game').classList.add('hide'); $('#lobby').classList.remove('hide'); renderSeason(); };
@@ -718,7 +768,17 @@ renderSeason(); renderModes();
 (async()=>{ const c=await (await fetch('/api/chain')).json();
   $('#lb-chain').textContent=c.connected?`localnet · tree #${c.tree_id}`:'no chain'; })();
 if(location.hash.startsWith('#play')){
-  const e=location.hash.split('=')[1]; if(e)$('#ep').value=e;
+  const e=(location.hash.split('=')[1]||'').split('&')[0]; if(e)$('#ep').value=e;
+  /* &script runs a canned opening — for a kiosk left playing, and for checking that the log
+     actually renders what the code says it does. */
+  if(location.hash.includes('&script')) setTimeout(async()=>{
+    await new Promise(r=>setTimeout(r,1200));
+    await askHer('What happened to you?');
+    await new Promise(r=>setTimeout(r,600));
+    commit(KITLBL.o2, 15);
+    await new Promise(r=>setTimeout(r,900));
+    doOrder('let her stand up');
+  }, 2500);
   $('#lobby').classList.add('hide'); $('#game').classList.remove('hide');
   addEventListener('load',()=>$('#start').click());
 }
