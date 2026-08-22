@@ -1,7 +1,19 @@
-# $VITAL — the verification market
+# $VIGIL — the verification market
 
 > The token secures verification. It never represents competence.
 > That sentence is the whole design, and the second half is the load-bearing one.
+
+**Why "vigil".** A vigil is kept *beside* the patient, never of the patient — which is exactly
+where this token sits relative to the credential. Operators keep vigil over a replay; lie about
+what you saw and your bond is slashed. "Vigilance" has been the motto on the American Society of
+Anesthesiologists' seal since 1932, under a lighthouse standing for dependable presence, and that
+is the job description.
+
+**And why the arena has a different name.** The place players compete is **3R** — the emergency
+room, read back. The leaderboard is the 3R board; the season happens in 3R. Players never hold
+$VIGIL and never see it, so the two layers do not merely avoid sharing incentives — *they do not
+share a name.* If you ever find yourself wanting to call the board "the $VIGIL leaderboard",
+something has gone wrong upstream.
 
 ## 1. The problem a token actually solves here
 
@@ -26,7 +38,7 @@ Replay is not fuzzy. Given the scenario hash and the tape, the outcome is **exac
 verifiers cannot disagree. So:
 
 ```
-operator stakes $VITAL          → eligible for replay work, bond sizes their throughput
+operator stakes $VIGIL          → eligible for replay work, bond sizes their throughput
 operator verifies + signs       → fee paid by whoever ordered the verification (USDC)
 anyone may challenge            → post a bond, re-run the tape, the chain sees who is right
 wrong party slashed             → challenger paid from the slash, a share burned
@@ -49,7 +61,7 @@ Neither half works without the other.
 
 **Who pays:** institutions on ordinary invoices, and sponsors funding outcome-linked
 scholarships. Fees are denominated in USDC; the token is the bond and the punishment, not the
-unit of account. A school does not have to hold $VITAL to use Vitals, and will not.
+unit of account. A school does not have to hold $VIGIL to use Vitals, and will not.
 
 **Who earns:** node operators and scenario authors — the two parties whose work the network
 consumes. Weighting distribution toward them rather than toward speculation is the only allocation
@@ -88,7 +100,7 @@ settled facts, for a network that does not yet exist, would be a number invented
 ## 6. The regulatory line
 
 A token that gates or represents a professional healthcare credential is a bad idea legally as
-well as ethically. The split above keeps $VITAL entirely on the infrastructure side of that line:
+well as ethically. The split above keeps $VIGIL entirely on the infrastructure side of that line:
 it pays for computation and punishes lying about computation. It confers no standing, no
 qualification, and no access to care.
 

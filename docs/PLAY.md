@@ -28,7 +28,14 @@ you are still deciding. One monitor stabilising, one still falling.
 No other medical simulator can do this, and it costs nothing to build, because determinism was
 already required for the credential.
 
-## 3. Door-to-drug is a speedrun category the profession already keeps
+## 3. The board is called 3R
+
+The arena has its own name — **3R**, which is "ER" read back. Not $VIGIL, deliberately: players
+never hold the token and never see it, so the competitive surface and the bonding asset should not
+even share a word. The 3R board is where you rank. $VIGIL is what a verifier stakes to be allowed
+to say your run happened.
+
+## 4. Door-to-drug is a speedrun category the profession already keeps
 
 Medicine invented these timings and audits hospitals against them:
 
@@ -44,7 +51,7 @@ They are already leaderboard categories. And unlike every speedrun board that ha
 **every entry here is a tape that anyone can re-run** — the thing those communities have wanted
 since the first submitted VHS tape.
 
-## 4. Harm is the stat that makes a player interesting
+## 5. Harm is the stat that makes a player interesting
 
 Not deaths — harm events. Fifty saves with twelve harms reads completely differently from thirty
 saves with none, and both are respectable.
@@ -53,7 +60,7 @@ It also keeps the game honest: **the fastest run and the cleanest run are differ
 and you stand her up. Slow down and the airway closes. Without that tension a timed medical game
 degenerates into button-mashing the known-good sequence.
 
-## 5. Failure has to be content
+## 6. Failure has to be content
 
 "She died because you reached for antihistamines" is a better clip than any win. A death should
 produce a **death card** — the beat list, the moment it turned, and the diff against what an expert
@@ -62,7 +69,7 @@ would have done — that a player wants to show someone.
 The design rule: *losing should be legible, teach immediately, and be shareable.* A loss screen
 that only says you lost has wasted the most memorable thing that happened all session.
 
-## 6. Every episode needs one counter-intuitive moment
+## 7. Every episode needs one counter-intuitive moment
 
 EP3 is the template. Nearly every reflex — look in the throat, get a line in, take the child from
 the mother — is harm. The first time a player learns that **doing nothing is the treatment**, they
@@ -71,21 +78,21 @@ tell somebody.
 That is a content rule, not a mechanic, and it is the one that decides whether the season is
 memorable or merely correct.
 
-## 7. The daily seed
+## 8. The daily seed
 
 One scenario, one variant, everybody plays the same one today. Same `sce_hash`, so the board is
 verifiable by construction and the comparison is exactly fair.
 
 Wordle's shape, with a patient in it.
 
-## 8. Co-op: the consult is another player
+## 9. Co-op: the consult is another player
 
 The lifeline already exists in the design as "phone a specialist". In multiplayer the specialist is
 **another player who can only see what you tell them.** They are working from your description,
 which is the actual failure mode of real clinical escalation, and it is a genuinely good asymmetric
 game mechanic on its own.
 
-## 9. The refusal, reframed as a quest log
+## 10. The refusal, reframed as a quest log
 
 Today, claiming a level you have not earned is an error. It should be the most useful screen in the
 game:
