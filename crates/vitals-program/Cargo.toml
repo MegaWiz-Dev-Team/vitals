@@ -12,3 +12,11 @@ crate-type = ["cdylib", "lib"]
 solana-program = "2"
 borsh = { version = "1", features = ["derive"] }
 vitals-progress = { path = "../vitals-progress", default-features = false, features = ["solana"] }
+
+[dev-dependencies]
+# The proof builder is std-only — the program never needs it, the test does. Dev-deps are
+# excluded from the SBF build, so enabling std here does not follow the program on chain.
+vitals-progress = { path = "../vitals-progress", features = ["std", "solana"] }
+solana-program-test = "2"
+solana-sdk = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
