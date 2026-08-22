@@ -1,0 +1,272 @@
+<title>Vitals Run of Show</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --ground:#F5F8F8; --surface:#FFFFFF; --surface-2:#EDF2F2;
+  --ink:#0F1719; --ink-2:#48585C; --ink-3:#7E8F93;
+  --rule:#D9E2E2; --rule-soft:#E8EEEE;
+  --proven:#0B6E58; --proven-soft:#E2F0EB;
+  --attested:#A24714; --attested-soft:#F6E9E1;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0B1113; --surface:#121B1D; --surface-2:#182325;
+    --ink:#E9F0F0; --ink-2:#9CAEB1; --ink-3:#68797D;
+    --rule:#223033; --rule-soft:#1A2528;
+    --proven:#42D2A7; --proven-soft:#0F2A24;
+    --attested:#E5924F; --attested-soft:#2A1C12;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0B1113; --surface:#121B1D; --surface-2:#182325;
+  --ink:#E9F0F0; --ink-2:#9CAEB1; --ink-3:#68797D;
+  --rule:#223033; --rule-soft:#1A2528;
+  --proven:#42D2A7; --proven-soft:#0F2A24;
+  --attested:#E5924F; --attested-soft:#2A1C12;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif; line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+.page{max-width:58rem; margin:0 auto; padding:clamp(2rem,5vw,4rem) clamp(1.15rem,4vw,2.5rem) 6rem}
+h1,h2,h3{font-family:Archivo,sans-serif; margin:0; text-wrap:balance}
+code{font-family:"IBM Plex Mono",monospace}
+
+/* masthead */
+.mast{border-bottom:2px solid var(--ink); padding-bottom:1.25rem; margin-bottom:2.5rem}
+.mast h1{font-size:clamp(2rem,5vw,3.1rem); font-weight:800; letter-spacing:-.035em; line-height:1}
+.mast .tagline{color:var(--ink-2); margin:.6rem 0 1.1rem; max-width:44em}
+.runbar{display:flex; flex-wrap:wrap; gap:.4rem 1.5rem; font-family:"IBM Plex Mono",monospace;
+  font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3)}
+.runbar b{color:var(--proven); font-weight:600}
+
+/* how to use */
+.howto{background:var(--surface-2); border:1px dashed var(--rule); border-radius:3px;
+  padding:1.1rem 1.25rem; margin-bottom:3rem}
+.howto h3{font-size:.72rem; font-family:"IBM Plex Mono",monospace; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--ink-3); margin-bottom:.6rem}
+.howto ul{margin:0; padding-left:1.1rem; display:flex; flex-direction:column; gap:.4rem}
+.howto li{color:var(--ink-2); font-size:.92rem}
+
+/* a beat of the run */
+.beat{border-top:1px solid var(--rule); padding-top:1.6rem; margin-top:2.6rem}
+.beat:first-of-type{border-top:0; margin-top:0}
+.slug{display:flex; flex-wrap:wrap; align-items:baseline; gap:.75rem; margin-bottom:.9rem}
+.slug .n{font-family:"IBM Plex Mono",monospace; font-size:.78rem; font-weight:600;
+  color:var(--proven); font-variant-numeric:tabular-nums}
+.slug h2{font-size:1.35rem; font-weight:700; letter-spacing:-.015em}
+.slug .clock{margin-left:auto; font-family:"IBM Plex Mono",monospace; font-size:.74rem;
+  color:var(--ink-3); font-variant-numeric:tabular-nums; white-space:nowrap}
+
+.onscreen{display:flex; gap:.7rem; align-items:baseline; margin-bottom:1.1rem;
+  font-size:.88rem; color:var(--ink-3)}
+.onscreen .lbl{font-family:"IBM Plex Mono",monospace; font-size:.66rem; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--ink-3); white-space:nowrap; padding-top:.15rem}
+
+/* the spoken line — big, because you are reading it off a screen while standing up */
+.say{
+  font-size:clamp(1.12rem,2.2vw,1.42rem); line-height:1.62; color:var(--ink);
+  border-left:3px solid var(--proven); padding-left:1.15rem;
+  display:flex; flex-direction:column; gap:.85rem; max-width:36em;
+}
+.say p{margin:0}
+.say em{font-style:normal; background:var(--proven-soft); color:var(--proven);
+  padding:0 .25em; border-radius:2px; font-weight:600}
+.say .beatpause{font-family:"IBM Plex Mono",monospace; font-size:.72rem; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--ink-3); border-left:0}
+
+.note{margin-top:1rem; font-size:.87rem; color:var(--ink-2); display:flex; gap:.7rem; align-items:baseline}
+.note .lbl{font-family:"IBM Plex Mono",monospace; font-size:.66rem; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--attested); white-space:nowrap; padding-top:.15rem}
+.note p{margin:0; max-width:40em}
+
+/* the 60s cut */
+.cut{margin-top:4rem; border:2px solid var(--ink); border-radius:3px; padding:1.75rem 1.6rem;
+  background:var(--surface)}
+.cut h2{font-size:1.5rem; font-weight:800; letter-spacing:-.02em; margin-bottom:.3rem}
+.cut .why{color:var(--ink-2); font-size:.92rem; margin:0 0 1.4rem; max-width:42em}
+.cut .say{border-left-color:var(--attested)}
+.cut .say em{background:var(--attested-soft); color:var(--attested)}
+
+.tips{margin-top:3rem; border-top:1px solid var(--rule); padding-top:1.6rem}
+.tips h2{font-size:1.1rem; font-weight:700; margin-bottom:1rem}
+.tipgrid{display:grid; gap:.9rem; grid-template-columns:repeat(auto-fit,minmax(16rem,1fr))}
+.tip{background:var(--surface); border:1px solid var(--rule); border-radius:3px; padding:.95rem 1.05rem}
+.tip .h{font-family:"IBM Plex Mono",monospace; font-size:.66rem; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--ink-3); margin-bottom:.35rem}
+.tip p{margin:0; font-size:.9rem; color:var(--ink-2)}
+
+@media print{
+  body{background:#fff}
+  .beat{break-inside:avoid}
+}
+</style>
+
+<div class="page">
+
+<header class="mast">
+  <h1>Vitals — Run of Show</h1>
+  <p class="tagline">Nine slides, spoken — 4:14 at a natural pace. Written to be read off a screen while standing up, so the sentences are short and the clauses don't nest. Anything in the script you can't say out loud in one breath, cut.</p>
+  <div class="runbar">
+    <span>Runtime <b>4:14</b></span><span>9 slides</span><span>60-second cut included</span><span>Demo is live, not recorded</span><span>To hit <b>3:00</b>: cut 07 to its last two paragraphs</span>
+  </div>
+</header>
+
+<div class="howto">
+  <h3>Before you record</h3>
+  <ul>
+    <li><strong>Run the demo once, cold, before the take.</strong> The rejection on slide 5 has to be the program actually saying no, not a screenshot. If it's a screenshot, say so.</li>
+    <li><strong>The first fifteen seconds decide it.</strong> Judges have hundreds of these. Open on the patient, not on the problem statement.</li>
+    <li><strong>Slow down on the three hashes.</strong> That's the moment the claim becomes checkable. Let it sit.</li>
+    <li><strong>Timings are measured, not estimated.</strong> Each clock is that beat's actual word count at 145 words a minute. If you naturally run faster, the whole thing shortens proportionally — don't try to hit the marks.</li>
+    <li>Never say "certificate", "badge", or "credentials on the blockchain" — every judge has a reflex against all three.</li>
+  </ul>
+</div>
+
+<!-- 01 -->
+<section class="beat">
+  <div class="slug"><span class="n">01</span><h2>Cold open</h2><span class="clock">0:00 – 0:18 · 18s</span></div>
+  <div class="onscreen"><span class="lbl">On screen</span><span>Title slide. Or better: the game already running, monitor visible, vitals moving.</span></div>
+  <div class="say">
+    <p>A nineteen-year-old walks into an emergency room. Ten minutes ago she ate something with shrimp in it. Her throat is closing.</p>
+    <p>You have about four minutes. The simulation will not wait for you.</p>
+    <p>That's Vitals. <em>Anyone can play it. Nobody can fake the replay.</em></p>
+  </div>
+  <div class="note"><span class="lbl">Delivery</span><p>Do not introduce yourself first. Do not say "hi, we're building". Start inside the case — the judge should be in the room before they know what they're watching.</p></div>
+</section>
+
+<!-- 02 -->
+<section class="beat">
+  <div class="slug"><span class="n">02</span><h2>The problem</h2><span class="clock">0:18 – 0:45 · 27s</span></div>
+  <div class="onscreen"><span class="lbl">On screen</span><span>Slide 02 — 4,350+ schools · ~23 countries · 130–147 countries applying</span></div>
+  <div class="say">
+    <p>Every medical student runs hundreds of encounters like that. Every one is scored. Every score is thrown away.</p>
+    <p>Since 2024, to practise in the US, your school needs an accreditor recognised by the WFME. About twenty-three countries have one. There are over four thousand medical schools on earth.</p>
+    <p>So most graduates alive cannot prove what they can do. <em>The evidence exists. The trust layer doesn't.</em></p>
+  </div>
+  <div class="note"><span class="lbl">Delivery</span><p>Land "twenty-three" and "four thousand" against each other. That gap is the whole slide — don't rush past it to get to the technology.</p></div>
+</section>
+
+<!-- 03 -->
+<section class="beat">
+  <div class="slug"><span class="n">03</span><h2>It already runs</h2><span class="clock">0:45 – 1:17 · 32s</span></div>
+  <div class="onscreen"><span class="lbl">On screen</span><span>Slide 03 — three tapes, three results, then the three hashes</span></div>
+  <div class="say">
+    <p>This isn't a mockup. Three people played that case.</p>
+    <p>The first gives adrenaline, oxygen, lays her flat. She lives.</p>
+    <p>The second does almost everything right — then stands her up. In anaphylaxis that can kill. She survives, but the harm is on the record.</p>
+    <p>Look at the hashes. <em>Same outcome. Completely different leaf.</em></p>
+    <p>The third gives antihistamines and waits. Nobody scripted that. The simulation killed her.</p>
+    <p>We don't anchor whether you won. We anchor how you got there.</p>
+  </div>
+  <div class="note"><span class="lbl">Delivery</span><p>This is the longest beat and it earns it. Pause after "stands her up" — a clinician in the room will react, and that reaction sells the fidelity better than you can.</p></div>
+</section>
+
+<!-- 04 -->
+<section class="beat">
+  <div class="slug"><span class="n">04</span><h2>The mechanism</h2><span class="clock">1:17 – 1:52 · 35s</span></div>
+  <div class="onscreen"><span class="lbl">On screen</span><span>Slide 04 — commit · play · reduce · anchor, then the leaf formula</span></div>
+  <div class="say">
+    <p>Every run reduces to one hash.</p>
+    <p>You commit before you play — so the chain knows how many attempts you <em>started</em>. Grinding for a lucky run is visible.</p>
+    <p>Then you play a deterministic automaton, and the tape is what you did and when. We reduce it to discrete facts and anchor one leaf.</p>
+    <p><em>There is no language model anywhere in that path.</em> This is verifiable replay — what chess engines have done for decades, pointed at a patient who's dying on a clock.</p>
+  </div>
+  <div class="note"><span class="lbl">Delivery</span><p>"No language model in that path" is the line that separates you from every other AI-plus-crypto submission this round. Say it flat, like a spec, not like a boast.</p></div>
+</section>
+
+<!-- 05 -->
+<section class="beat">
+  <div class="slug"><span class="n">05</span><h2>The refusal</h2><span class="clock">1:52 – 2:16 · 24s</span></div>
+  <div class="onscreen"><span class="lbl">On screen</span><span>Slide 05 — live terminal preferred: claim Proficient → REJECTED, claim Competent → GRANTED</span></div>
+  <div class="say">
+    <p>Here's my favourite part. Watch the program refuse me.</p>
+    <p>I claim Proficient. It recomputes the level itself and says no. <em>You're Competent. From three cases.</em></p>
+    <p>I claim Competent. Granted.</p>
+    <p>No issuer key. No oracle. No authority anyone can lean on, buy, or subpoena. The level on chain is the one the program computed, never the one I claimed.</p>
+  </div>
+  <div class="note"><span class="lbl">Delivery</span><p>Run it live if you possibly can. A protocol refusing its own author is the single most persuasive thing in this deck, and a screenshot of it is worth about a tenth as much.</p></div>
+</section>
+
+<!-- 06 -->
+<section class="beat">
+  <div class="slug"><span class="n">06</span><h2>Onchain architecture</h2><span class="clock">2:16 – 2:42 · 26s</span></div>
+  <div class="onscreen"><span class="lbl">On screen</span><span>Slide 06 — four primitives table, then volume / latency / onboarding</span></div>
+  <div class="say">
+    <p>Four primitives, none invented by us. Scenario registry, compressed replay anchors, non-transferable progression, and the Attestation Service.</p>
+    <p>Why Solana: a single cohort year worldwide is hundreds of millions of runs — a hundred and ten dollars per million, compressed. Anchoring only the exams would be the cheap-chain compromise, and it would kill the idea.</p>
+    <p>And the player never sees a seed phrase.</p>
+  </div>
+  <div class="note"><span class="lbl">Delivery</span><p>Fastest beat in the deck. If you're running long, this is where you cut — trim to the cost number and the seed-phrase line.</p></div>
+</section>
+
+<!-- 07 -->
+<section class="beat">
+  <div class="slug"><span class="n">07</span><h2>$VITAL</h2><span class="clock">2:42 – 3:40 · 58s</span></div>
+  <div class="onscreen"><span class="lbl">On screen</span><span>Slide 07 — stake / verify / dispute loop, sinks-and-sources, never-tokenized list</span></div>
+  <div class="say">
+    <p>Almost everything here is already trustless. The scenario is public, the replay is exact, the level is recomputed on chain.</p>
+    <p>One thing isn't. Somebody has to replay the tape and attest the outcome — and if that's one party, I've rebuilt the database I'm escaping.</p>
+    <p>So $VITAL bonds an open verifier set. Operators stake, anyone can challenge by re-running the tape, the wrong one gets slashed.</p>
+    <p>That works here and fails almost everywhere else for one reason. <em>Replay is exact. Two honest verifiers cannot disagree.</em> Disputes resolve by arithmetic, not committee.</p>
+    <p>And the list I care about more: credentials and badges are never tradeable, nothing gates access to play, nobody can buy a better replay. We give up the secondary market on purpose.</p>
+    <p>No token ships in this hackathon. A verification market only needs to exist once verification is worth attacking.</p>
+  </div>
+  <div class="note"><span class="lbl">Delivery</span><p>The last two paragraphs are the ones that land. Every judge has sat through a hundred token slides today; almost none of them heard a team say what they refuse to tokenize, or that they're not launching yet.</p></div>
+</section>
+
+<!-- 08 -->
+<section class="beat">
+  <div class="slug"><span class="n">08</span><h2>Precedent</h2><span class="clock">3:40 – 3:56 · 16s</span></div>
+  <div class="onscreen"><span class="lbl">On screen</span><span>Slide 08 — CrowdBrain quote</span></div>
+  <div class="say">
+    <p>The Grand Champion of Frontier this year was CrowdBrain: train users in simulation, qualify them through QA, route the best operators to real robots.</p>
+    <p><em>That's this. For robot operators instead of clinicians.</em> Out of two thousand eight hundred submissions.</p>
+  </div>
+  <div class="note"><span class="lbl">Delivery</span><p>Say it as a compliment to them, not a claim about you. "We're like the winner" reads badly; "this shape works, and here's the evidence" reads as having done the homework.</p></div>
+</section>
+
+<!-- 09 -->
+<section class="beat">
+  <div class="slug"><span class="n">09</span><h2>Close</h2><span class="clock">3:56 – 4:14 · 18s</span></div>
+  <div class="onscreen"><span class="lbl">On screen</span><span>Slide 09 — working now / four weeks / cut-on-purpose</span></div>
+  <div class="say">
+    <p>Two halves are built. The replay produces leaves. The program refuses bad claims. One week joins them.</p>
+    <p class="beatpause">— pause —</p>
+    <p><em>You play a patient who's dying, the chain keeps a replay of what you did, and anyone can re-derive it without asking us.</em></p>
+  </div>
+  <div class="note"><span class="lbl">Delivery</span><p>End on that sentence and stop. Don't add a thank-you, a roadmap, or an ask — the pause does more than another clause will.</p></div>
+</section>
+
+<!-- 60s cut -->
+<section class="cut">
+  <h2>The 60-second cut</h2>
+  <p class="why">For the pitch video's opening, or any time you get cut short. Slides 1, 3, 5, 9 only. If a judge understands nothing else, they should come away with these four things: the stakes are real, it runs, the chain refuses lies, and anyone can check it.</p>
+  <div class="say">
+    <p>A nineteen-year-old, ten minutes after eating something with shrimp in it. Her throat is closing. You have four minutes and the simulation won't wait.</p>
+    <p>Three people played that case. One saved her. One saved her but stood her up first — same outcome, different hash, because the harm is on the record. One gave antihistamines and she died. Nobody scripted that.</p>
+    <p>Every run reduces to one hash on Solana. No language model anywhere in the proof path.</p>
+    <p>Then watch this: I claim Proficient, and the program recomputes it and refuses me. No issuer key. No oracle. The level on chain is the one it computed, not the one I claimed.</p>
+    <p><em>You play a patient who's dying, the chain keeps a replay of what you did, and anyone can re-derive it without asking us.</em></p>
+  </div>
+</section>
+
+<section class="tips">
+  <h2>Questions you will get, and the answers you should already have</h2>
+  <div class="tipgrid">
+    <div class="tip"><div class="h">Why does this need a blockchain?</div><p>Because the verifier can't be the same party as the scorer, and the person relying on the record is in another country. Remove the chain and you're back to one company's database.</p></div>
+    <div class="tip"><div class="h">How do you know the student took the exam?</div><p>We don't, and we say so. We prove the scoring was faithful to the tape. Identity binding is the issuing institution's job, and the credential names them so you can price that trust yourself.</p></div>
+    <div class="tip"><div class="h">Isn't this just an NFT certificate?</div><p>Show the refusal. A certificate can't reject the person holding it.</p></div>
+    <div class="tip"><div class="h">What about the LLM parts?</div><p>The patient's dialogue in other modes. Never the evidence. In story mode it's a keyword graph, so even that is deterministic.</p></div>
+    <div class="tip"><div class="h">Is the token a security?</div><p>It bonds computation and punishes lying about computation. It confers no qualification and no access to care. That line is deliberate and it's written down.</p></div>
+    <div class="tip"><div class="h">Who's actually paying?</div><p>Institutions on ordinary invoices and sponsors funding outcome-linked scholarships. Players pay nothing and hold nothing.</p></div>
+  </div>
+</section>
+
+</div>
