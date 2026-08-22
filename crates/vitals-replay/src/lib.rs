@@ -16,7 +16,8 @@ use sha2::{Digest, Sha256};
 
 /// One entry on the tape. Mirrors the engine's own golden-test driver, which is where this
 /// format came from — the physiology tests were already a replay format, unintentionally.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Step {
     /// Advance the sim clock by `dt` seconds.
     Tick(f64),
@@ -63,8 +64,12 @@ pub struct Replay {
     pub equipment: Vec<(String, Option<f64>)>,
 }
 
-/// Run a tape and reduce it.
-pub fn replay(sce_json: &str, tape: &[Step]) -> Result<Replay, String> {
+/// Run a tape and reduce it, keeping the machine.
+///
+/// Resuming a saved run and verifying a finished one are the same operation, and they must stay
+/// the same operation: the tape drifted from the run once already because device handling existed
+/// in two places. There is one step loop, and this is it.
+pub fn resume(sce_json: &str, tape: &[Step]) -> Result<(SceState, Replay), String> {
     let sce = Sce::from_json(sce_json).map_err(|e| format!("bad SCE: {e}"))?;
     let mut st = SceState::new(sce);
     let mut beats = Vec::new();
@@ -96,14 +101,21 @@ pub fn replay(sce_json: &str, tape: &[Step]) -> Result<Replay, String> {
         }
     }
 
-    Ok(Replay {
+    let r = Replay {
         beats,
         harm_events: st.harm_events.clone(),
         outcome: st.outcome().map(|o| format!("{o:?}")),
         steps: tape.len(),
         sim_seconds,
         equipment: st.equipment().iter().map(|e| (e.id.clone(), e.setting)).collect(),
-    })
+    };
+    Ok((st, r))
+}
+
+/// Run a tape and reduce it. The verifier's view: the machine is scaffolding, the reduction is
+/// the answer.
+pub fn replay(sce_json: &str, tape: &[Step]) -> Result<Replay, String> {
+    resume(sce_json, tape).map(|(_, r)| r)
 }
 
 /// sha256 of the scenario definition. Pinning this is what stops a rewritten scenario from

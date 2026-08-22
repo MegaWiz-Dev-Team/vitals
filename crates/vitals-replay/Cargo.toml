@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
 vitals-sce = { path = "../vitals-sce" }
 vitals-progress = { path = "../vitals-progress" }
 sha2 = "0.10"
