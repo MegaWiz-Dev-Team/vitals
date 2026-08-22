@@ -11,3 +11,4 @@ dist/
 keys/
 *.json.key
 .test-ledger/
+pitch/terminals.pdf
