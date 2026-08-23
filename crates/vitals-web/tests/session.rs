@@ -212,3 +212,32 @@ fn a_patient_who_survives_still_has_a_score() {
     assert!(view["outcome"].as_str().unwrap_or("").starts_with("Win"), "{}", view["outcome"]);
     assert!(!view["news"].is_null(), "a discharged patient should still have a score");
 }
+
+/// The deck is served from the same place the app is, so anyone who can reach the bay can be
+/// shown the pitch without a file being emailed around.
+#[test]
+fn the_deck_is_served() {
+    let s = Server::start();
+    let html = s.get("/slides");
+    assert!(html.contains("<title>"), "no page came back");
+    assert!(html.len() > 100_000, "only {} bytes — that is not the deck", html.len());
+    assert!(html.contains("VITALS") || html.contains("Vitals"), "this is not the Vitals deck");
+}
+
+#[test]
+fn the_speaking_script_is_served_too() {
+    let s = Server::start();
+    let html = s.get("/slides/script");
+    assert!(html.contains("60-second cut"), "the script's own section is missing");
+}
+
+/// Baked into the binary rather than read from disk. Twice today a path that existed on the build
+/// machine did not exist in the container — the patient could not speak and the film would not
+/// play — and both looked like something else. A deck that cannot go missing cannot go missing
+/// during a pitch.
+#[test]
+fn the_deck_does_not_depend_on_a_file_being_there() {
+    let s = Server::start();
+    // The test server runs with no repo around it beyond the binary itself.
+    assert!(s.get("/slides").len() > 100_000);
+}

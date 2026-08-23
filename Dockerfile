@@ -9,6 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+# The deck and the speaking script are compiled into the binary, so they are build inputs and not
+# runtime files. `.dockerignore` lets exactly these two through.
+COPY pitch ./pitch
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
     cargo build --release -p vitals-web && \
