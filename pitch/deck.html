@@ -624,35 +624,48 @@ li strong,p strong{color:var(--ink); font-weight:600}
 
 <section class="slide">
   <div class="rail"><span class="no">09</span><span class="hash">market · precedent</span><span class="tag">Vitals</span></div>
-  <div class="inner">
+  <div class="inner" style="gap:1rem">
     <span class="eyebrow">Market and precedent</span>
     <h2>This shape already won this hackathon once.</h2>
-    <div class="card tally">
-      <span class="k">Frontier 2026 · Grand Champion</span>
-      <p><strong>CrowdBrain</strong> — "a vertically-integrated robotics DePIN built to <strong>train users in simulation, qualify them through QA, and route the best operators to real robots</strong>."</p>
+    
+    <div class="grid" style="grid-template-columns: 1fr 1fr; gap:1rem;">
+      <div class="card" style="border-left:4px solid var(--proven); background:var(--surface)">
+        <span class="k" style="color:var(--proven)">Frontier 2026 · Grand Champion</span>
+        <p style="font-size:.95rem; margin:.4rem 0; line-height:1.5;">
+          <b>CrowdBrain:</b> <i>"Train in simulation ➔ Qualify through QA ➔ Route to real work."</i>
+        </p>
+        <p class="small" style="color:var(--ink-2); margin:0;">
+          The same proven shape, built for clinicians instead of robots. Out of 2,857 submissions from 150 countries.
+        </p>
+      </div>
+
+      <div class="card" style="border-left:4px solid var(--attested); background:var(--surface)">
+        <span class="k" style="color:var(--attested)">Scenario Creation Engine · Skald</span>
+        <p style="font-size:.95rem; margin:.4rem 0; line-height:1.5;">
+          <b>Automated Medical Fact-Checking:</b> AI showrunner scaffolds scenarios; clinical crew gates content.
+        </p>
+        <p class="small" style="color:var(--ink-2); margin:0;">
+          <b>Skald verifies the content. Solana verifies the play.</b>
+        </p>
+      </div>
     </div>
-    <p>Train in simulation → verify competence → route the qualified to real work. That is Vitals, for robot operators instead of clinicians. We think the pattern generalises; the largest crypto hackathon ever run agreed three months ago, out of 2,857 submissions from 150 countries.</p>
-    <div class="card tally">
-      <span class="k">How episode six gets made — Skald</span>
-      <p>A producer console. Type a premise and a number of episodes and an AI showrunner drafts the series bible and scaffolds every storyboard. Then each shot runs a loop: write the prompt, generate, <strong>a crew fails the shot before the video model ever sees it</strong> — a medical advisor on the procedure, a continuity supervisor on the face — approve, and every generation is kept as a take you can roll back to, like a film set. A budget gate blocks spending past its ceiling.</p>
-      <p>Same principle as the rest of this: something that must be right, checked automatically. <strong>Skald verifies the content. The chain verifies the play.</strong></p>
-    </div>
-    <div class="grid" style="grid-template-columns: repeat(4, 1fr); gap:.65rem; margin-top:.4rem;">
+
+    <div class="grid" style="grid-template-columns: repeat(4, 1fr); gap:.75rem;">
       <div class="card">
         <span class="k">Why medicine first</span>
-        <p>Highest stakes & regulation. Solve trust here and it generalises downward to every other skill credential.</p>
+        <p>Highest stakes & regulation. Solve trust here and it generalises downward.</p>
       </div>
       <div class="card">
         <span class="k">Who pays</span>
-        <p>Institutions on standard invoices, sponsors funding scholarships, and scenario market take-rates. Players pay nothing.</p>
+        <p>Institutions on standard invoices, sponsor scholarships. Players pay $0.</p>
       </div>
-      <div class="card" style="border-top:2px solid var(--proven); background:var(--surface-2)">
+      <div class="card" style="border-top:3px solid var(--proven); background:var(--surface-2)">
         <span class="k" style="color:var(--proven)">Head start (2 Mos Live)</span>
-        <p><b>30 Medical Institutions (>75% of Thailand)</b> · <b>290+ Clinicians (68% active)</b> · 433 completed runs · <b>1st Place @ NECTEC 2026</b>.</p>
+        <p><b>30 Medical Institutions (>75% of TH)</b> · <b>290+ Clinicians (68% active)</b> · <b>1st Place @ NECTEC 2026</b>.</p>
       </div>
-      <div class="card" style="border-top:2px solid var(--proven); background:var(--surface-2)">
+      <div class="card" style="border-top:3px solid var(--proven); background:var(--surface-2)">
         <span class="k" style="color:var(--proven)">Team & Roles</span>
-        <p><b>Medical Sim Lead (Creator of Embla)</b> × <b>Solana Core Rust Builder</b>. Live at <b>embla.megawiz.co.th</b>.</p>
+        <p><b>Medical Sim Lead (Embla)</b> × <b>Solana Core Rust Builder</b>. Live at <b>embla.megawiz.co.th</b>.</p>
       </div>
     </div>
   </div>
