@@ -24,8 +24,8 @@ use vitals_progress::merkle;
 use vitals_progress::record::AttemptRecord;
 use vitals_progress::Difficulty;
 use vitals_program::{
-    ClaimAccount, Instruction, Progress, RecordWire, TreeAccount, SEED_CLAIM, SEED_PROGRESS,
-    SEED_TREE,
+    Account, ClaimAccount, Instruction, Progress, RecordWire, TreeAccount, SEED_ACCOUNT,
+    SEED_CLAIM, SEED_PROGRESS, SEED_TREE,
 };
 
 pub const SPECIALTY: u8 = 1;
@@ -89,30 +89,47 @@ impl Chain {
     fn tree_pda(&self, tree_id: u64) -> Pubkey {
         Pubkey::find_program_address(&[SEED_TREE, &tree_id.to_le_bytes()], &self.program_id).0
     }
-    /// Seeded on the *player*, so two players on one server never share a buffer.
-    pub fn claim_pda(&self, player: &Pubkey, tree_id: u64) -> Pubkey {
+    /// The person, keyed by the first device they ever played on.
+    pub fn account_pda(&self, id: &Pubkey) -> Pubkey {
+        Pubkey::find_program_address(&[SEED_ACCOUNT, &id.to_bytes()], &self.program_id).0
+    }
+
+    /// Seeded on the *person*, so the same record is reachable from every machine they play on —
+    /// and two people on one server never share a buffer.
+    pub fn claim_pda(&self, id: &Pubkey, tree_id: u64) -> Pubkey {
         Pubkey::find_program_address(
-            &[SEED_CLAIM, player.as_ref(), &tree_id.to_le_bytes()],
+            &[SEED_CLAIM, id.as_ref(), &tree_id.to_le_bytes()],
             &self.program_id,
         )
         .0
     }
-    pub fn progress_pda(&self, player: &Pubkey) -> Pubkey {
+    pub fn progress_pda(&self, id: &Pubkey) -> Pubkey {
         Pubkey::find_program_address(
-            &[SEED_PROGRESS, player.as_ref(), &[SPECIALTY]],
+            &[SEED_PROGRESS, id.as_ref(), &[SPECIALTY]],
             &self.program_id,
         )
         .0
+    }
+
+    /// Who this account lets play. `None` when it has never been opened.
+    pub fn account(&self, id: &Pubkey) -> Option<Account> {
+        self.fetch(&self.account_pda(id))
+    }
+
+    /// The level as it stands on chain. Needs no key at all — reading somebody's record is not a
+    /// privileged act, and that is what makes a score checkable from a machine you do not own.
+    pub fn progress(&self, id: &Pubkey) -> Option<Progress> {
+        self.fetch(&self.progress_pda(id))
     }
 
     pub fn relay_pubkey(&self) -> String {
         self.relay.pubkey().to_string()
     }
 
-    fn ix(&self, player: &Pubkey, ix: Instruction, extra: &[Pubkey]) -> Result<SolInstruction, String> {
+    fn ix(&self, device: &Pubkey, ix: Instruction, extra: &[Pubkey]) -> Result<SolInstruction, String> {
         let mut metas = vec![
             AccountMeta::new(self.relay.pubkey(), true),
-            AccountMeta::new_readonly(*player, true),
+            AccountMeta::new_readonly(*device, true),
         ];
         metas.extend(extra.iter().map(|k| AccountMeta::new(*k, false)));
         metas.push(AccountMeta::new_readonly(system_program::id(), false));
@@ -151,45 +168,65 @@ impl Chain {
     /// player paid for and cannot use.
     pub fn prepare_anchor(
         &self,
-        player: &Pubkey,
+        device: &Pubkey,
+        id: &Pubkey,
         tree_id: u64,
         rec: &AttemptRecord,
         leaves: &[[u8; 32]],
     ) -> Result<Pending, String> {
         let index = leaves.len() as u64 - 1;
         let path = merkle::prove(leaves, index).ok_or("could not build the proof")?;
-        self.prepare(
-            player,
-            vec![
-                self.ix(player, Instruction::AnchorReplay { tree_id, record: wire(rec) },
-                        &[self.tree_pda(tree_id)])?,
-                self.ix(player,
-                        Instruction::ProveAttempt { tree_id, record: wire(rec), index, path: path.to_vec() },
-                        &[self.tree_pda(tree_id), self.claim_pda(player, tree_id)])?,
-            ],
-        )
+        let acc = self.account_pda(id);
+        let mut ixs = Vec::new();
+        // First run from a new machine opens the person. Idempotent on chain, so a second tab
+        // doing the same thing is not an error.
+        if self.account(id).is_none() {
+            ixs.push(self.ix(device, Instruction::OpenAccount, &[acc])?);
+        }
+        ixs.push(self.ix(device, Instruction::AnchorReplay { tree_id, record: wire(rec) },
+                         &[acc, self.tree_pda(tree_id)])?);
+        ixs.push(self.ix(device,
+                         Instruction::ProveAttempt { tree_id, record: wire(rec), index, path: path.to_vec() },
+                         &[acc, self.tree_pda(tree_id), self.claim_pda(id, tree_id)])?);
+        self.prepare(device, ixs)
+    }
+
+    /// Let another machine act as this person. Signed by one that already can.
+    pub fn prepare_link(&self, device: &Pubkey, id: &Pubkey, add: &Pubkey, on: bool) -> Result<Pending, String> {
+        let acc = self.account_pda(id);
+        let ix = if on {
+            Instruction::AddAuthority { device: add.to_bytes() }
+        } else {
+            Instruction::RemoveAuthority { device: add.to_bytes() }
+        };
+        self.prepare(device, vec![self.ix(device, ix, &[acc])?])
+    }
+
+    /// Open a person without playing first — what a brand new browser does before it can be linked.
+    pub fn prepare_open(&self, device: &Pubkey) -> Result<Pending, String> {
+        self.prepare(device, vec![self.ix(device, Instruction::OpenAccount, &[self.account_pda(device)])?])
     }
 
     /// What the tree looks like now. Read after the transaction confirms.
-    pub fn anchored(&self, player: &Pubkey, tree_id: u64, index: u64) -> Result<Anchored, String> {
+    pub fn anchored(&self, id: &Pubkey, tree_id: u64, index: u64) -> Result<Anchored, String> {
         let tree: TreeAccount = self.fetch(&self.tree_pda(tree_id)).ok_or("tree missing")?;
         Ok(Anchored {
             index,
             root: hex32(&tree.root),
             leaves: tree.next_index,
-            proven: self.proven_count(player, tree_id) > 0,
+            proven: self.proven_count(id, tree_id) > 0,
         })
     }
 
     /// Claim a level. `Ok(msg)` when the program grants it, `Err(msg)` when it recomputes and
     /// refuses — and the refusal carries the program's own log line, because that is the point.
-    pub fn prepare_claim(&self, player: &Pubkey, tree_id: u64, level: u8) -> Result<Pending, String> {
+    pub fn prepare_claim(&self, device: &Pubkey, id: &Pubkey, tree_id: u64, level: u8) -> Result<Pending, String> {
         self.prepare(
-            player,
+            device,
             vec![self.ix(
-                player,
+                device,
                 Instruction::ClaimProgress { tree_id, specialty: SPECIALTY, claimed: level },
-                &[self.claim_pda(player, tree_id), self.progress_pda(player)],
+                &[self.account_pda(id), self.claim_pda(id, tree_id), self.progress_pda(id)],
             )?],
         )
     }
@@ -199,9 +236,9 @@ impl Chain {
     /// The level reported is the one stored in the account, which is the one the *program*
     /// computed — not the one the player asked for. Echoing the request back would make the UI
     /// agree with every claim, including the ones the chain refused.
-    pub fn claimed(&self, player: &Pubkey) -> Result<String, String> {
+    pub fn claimed(&self, id: &Pubkey) -> Result<String, String> {
         let p: Progress = self
-            .fetch(&self.progress_pda(player))
+            .fetch(&self.progress_pda(id))
             .ok_or("the claim landed but no progress account was written")?;
         Ok(format!(
             "granted · level {} · {} attempts · {} distinct · xp {}",
@@ -209,8 +246,8 @@ impl Chain {
         ))
     }
 
-    pub fn proven_count(&self, player: &Pubkey, tree_id: u64) -> usize {
-        self.fetch::<ClaimAccount>(&self.claim_pda(player, tree_id))
+    pub fn proven_count(&self, id: &Pubkey, tree_id: u64) -> usize {
+        self.fetch::<ClaimAccount>(&self.claim_pda(id, tree_id))
             .map(|c| c.attempts.len())
             .unwrap_or(0)
     }
@@ -241,11 +278,45 @@ fn wire(r: &AttemptRecord) -> RecordWire {
 /// Pull the program's own message out of the RPC error — a refusal should read as the program
 /// speaking, not as a transport failure.
 fn program_log(err: &str) -> String {
-    err.lines()
+    // The *last* log line, not the first. A transaction carries several instructions now, and the
+    // earlier ones succeeded and said so — reporting their success as the reason for the failure
+    // is worse than reporting nothing.
+    if let Some(line) = err
+        .lines()
         .map(str::trim)
-        .find(|l| l.starts_with("Program log:") && !l.contains("invoke"))
-        .map(|l| l.trim_start_matches("Program log:").trim().to_string())
-        .unwrap_or_else(|| err.lines().next().unwrap_or("failed").to_string())
+        .filter(|l| l.starts_with("Program log:") && !l.contains("invoke"))
+        .next_back()
+    {
+        return line.trim_start_matches("Program log:").trim().to_string();
+    }
+    // A refusal the program made without saying anything arrives as a bare hex code. "0xa" is not
+    // a message; it is the absence of one.
+    if let Some(code) = err
+        .split("custom program error: 0x")
+        .nth(1)
+        .and_then(|t| u32::from_str_radix(t.trim().split(|c: char| !c.is_ascii_hexdigit()).next()?, 16).ok())
+    {
+        return match code {
+            0 => "the arithmetic does not support that claim",
+            1 => "the record does not decode",
+            2 => "wrong account address",
+            3 => "nothing proven yet",
+            4 => "that run is not in the tree",
+            5 => "this claim buffer is full",
+            6 => "that run has already been proven",
+            7 => "the tree is full",
+            8 => "that run belongs to someone else",
+            9 => "that account is not this program's",
+            10 => "this machine is not linked to that account",
+            11 => "no room for another device",
+            12 => "that device is already linked",
+            13 => "that is the last device — removing it would strand the record",
+            14 => "no account yet — play a case first",
+            _ => "the program refused it",
+        }
+        .to_string();
+    }
+    err.lines().next().unwrap_or("failed").to_string()
 }
 
 fn hex32(b: &[u8; 32]) -> String {

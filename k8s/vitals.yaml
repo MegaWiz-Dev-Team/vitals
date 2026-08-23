@@ -61,7 +61,9 @@ spec:
             - {name: VITALS_STATE_DIR, value: "/state"}
             - {name: VITALS_SCENARIOS, value: "/app"}
             - {name: VITALS_RPC,       value: "http://host.orb.internal:8899"}
-            - {name: HEIMDALL_URL,     value: "http://host.orb.internal:8080"}
+            # HEIMDALL_API_URL, not HEIMDALL_URL — and it wants the /v1 suffix. Named wrong, the
+            # code silently fell back to 127.0.0.1 inside the pod, where nothing is listening.
+            - {name: HEIMDALL_API_URL, value: "http://host.orb.internal:8080/v1"}
             - name: VITALS_PROGRAM_ID
               valueFrom: {configMapKeyRef: {name: vitals-config, key: program-id}}
             # Without this the server refuses to start on 0.0.0.0 — it would otherwise sign for
@@ -71,9 +73,11 @@ spec:
             - name: HEIMDALL_API_KEY
               valueFrom: {secretKeyRef: {name: vitals-secrets, key: heimdall-key, optional: true}}
             - {name: VITALS_KEYPAIR, value: "/relay/id.json"}
+            - {name: VITALS_CLIPS,   value: "/clips"}
           volumeMounts:
             - {name: state, mountPath: /state}
             - {name: relay, mountPath: /relay, readOnly: true}
+            - {name: clips, mountPath: /clips, readOnly: true}
           readinessProbe:
             httpGet: {path: /api/chain, port: http}
             initialDelaySeconds: 2
@@ -95,6 +99,13 @@ spec:
           secret:
             secretName: vitals-relay
             defaultMode: 0400
+        # 43MB of already-rendered film. Mounted rather than baked into the image: the point of
+        # reusing Embla's cutscenes is that they do not need to be moved around again, and an
+        # image is a thing you move. Missing just means no video — the case still plays.
+        - name: clips
+          hostPath:
+            path: /Users/mimir/Developer/Embla/app-swift/Resources/cutscenes/ep1
+            type: DirectoryOrCreate
 ---
 apiVersion: v1
 kind: Service

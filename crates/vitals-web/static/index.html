@@ -59,6 +59,25 @@
   margin-left:auto;margin-right:auto}
 .backbtn{font-family:"IBM Plex Mono",monospace;font-size:.7rem}
 
+/* carrying a record between machines */
+.rec{max-width:44rem;margin:2.2rem auto 0;border:1px solid var(--border);border-radius:6px;
+  background:#fff;padding:1rem 1.15rem}
+.rec h3{margin:0 0 .15rem;font-family:Archivo,sans-serif;font-size:1rem}
+.rec .sub{margin:0 0 .9rem;font-size:.8rem;color:#6b7d82}
+.rec .row{display:flex;align-items:center;gap:.55rem;flex-wrap:wrap;margin:.45rem 0}
+.rec .lab{font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.12em;
+  text-transform:uppercase;color:#849698;min-width:6.5rem}
+.rec code{font-family:"IBM Plex Mono",monospace;font-size:.76rem;background:#f2f6f5;
+  border:1px solid var(--border);border-radius:4px;padding:.2rem .45rem;word-break:break-all}
+.rec input{font-family:"IBM Plex Mono",monospace;font-size:.76rem;padding:.35rem .5rem;
+  border:1px solid var(--border);border-radius:4px;flex:1;min-width:12rem}
+.rec button{font-family:"IBM Plex Mono",monospace;font-size:.72rem;padding:.35rem .7rem;
+  border:1px solid var(--border);border-radius:4px;background:#fff;cursor:pointer}
+.rec button:hover{background:#f2f6f5}
+.rec .go{background:var(--mint-d,#0B6E58);color:#fff;border-color:transparent}
+.rec .note{font-size:.76rem;color:#6b7d82;margin:.6rem 0 0}
+.rec .ok{color:#0B6E58}.rec .bad{color:#C6362E}
+
 /* ─────────────────────────────────────────────────────────────
    The bay: patient card and conversation on the left, the devices
    and the record on the right. The room is lit; the devices are the
@@ -299,6 +318,27 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
 
     <div class="lb-grid" id="eps"></div>
 
+    <div class="rec">
+      <h3>Your record</h3>
+      <p class="sub">The key that signs for you was made in this browser and never leaves it.
+         Your record lives on chain under an account, and an account can hold more than one machine.</p>
+      <div class="row"><span class="lab">account</span><code id="rc-acct">—</code>
+        <button id="rc-copy">copy</button></div>
+      <div class="row"><span class="lab">this machine</span><code id="rc-dev">—</code>
+        <span id="rc-state" class="note"></span></div>
+      <div class="row"><span class="lab">level</span><span id="rc-level" class="note">—</span></div>
+
+      <div class="row"><span class="lab">add a machine</span>
+        <input id="rc-add" placeholder="paste the other machine's key" spellcheck="false">
+        <button id="rc-link" class="go">link it</button></div>
+      <div class="row"><span class="lab">use an account</span>
+        <input id="rc-use" placeholder="paste an account to join or watch" spellcheck="false">
+        <button id="rc-adopt">use it</button>
+        <button id="rc-reset">forget</button></div>
+      <p class="note" id="rc-msg">On a new machine: paste the account above, then have the first
+         machine link this one's key. Watching a record needs no key at all.</p>
+    </div>
+
     <p class="lb-foot">Episodes open as you clear the one before — skill unlocks the story.
        A sponsor can open one for the whole bay; nothing you pay ever changes your standing.</p>
   </div>
@@ -447,6 +487,10 @@ const b64=b=>btoa(String.fromCharCode(...b));
 const unb64=s=>new Uint8Array([...atob(s)].map(c=>c.charCodeAt(0)));
 
 let ME=null;   /* {pub: base58, key: CryptoKey} — null when the browser cannot do Ed25519 */
+/* Who the record belongs to, which is not the same as which machine is typing.
+   Unset means "this machine is the person" — true for the browser you first played on. */
+const acctOf=()=>localStorage.getItem('vitals.account')||(ME&&ME.pub)||'';
+const setAcct=a=>a?localStorage.setItem('vitals.account',a):localStorage.removeItem('vitals.account');
 async function identity(){
   if(ME)return ME;
   try{
@@ -480,11 +524,28 @@ async function sign(hex){
 async function chainDo(url){
   const me=await identity();
   if(!me)return {error:'this browser has no Ed25519 — try Chrome, Safari 17+ or Firefox 129+'};
-  const r=await (await fetch(url+'&player='+me.pub)).json();
+  const r=await (await fetch(url+'&player='+me.pub+'&account='+acctOf())).json();
   if(r.error||!r.sign)return r;
   const sig=await sign(r.sign);
   return await (await fetch('/api/submit?player='+me.pub+'&sig='+sig)).json();
 }
+
+/* ─── carrying the record between machines ────────────────────────────────────
+   The key never moves. What moves is permission: an account lists the machines
+   allowed to act for it, and a machine already on the list can add another.
+   Reading a score needs neither — an account id is enough, which is what makes a
+   level checkable from a machine you do not own. */
+async function accountState(){
+  const me=await identity(); if(!me)return null;
+  return (await (await fetch(`/api/account?device=${me.pub}&account=${acctOf()}`)).json());
+}
+async function linkDevice(other){
+  const me=await identity(); if(!me)return {error:'no key in this browser'};
+  const r=await (await fetch(`/api/link?player=${me.pub}&account=${acctOf()}&device=${other}`)).json();
+  if(r.error||!r.sign)return r;
+  return await (await fetch('/api/submit?player='+me.pub+'&sig='+await sign(r.sign))).json();
+}
+const shortKey=k=>k?k.slice(0,6)+'…'+k.slice(-4):'—';
 
 /* ─── the season ───────────────────────────────────────────────────────────── */
 const SEASON=[
@@ -948,11 +1009,46 @@ function renderSeason(){
   $('#coin-n').textContent=cleared().length;
 }
 renderSeason(); renderModes();
-(async()=>{ const me=await identity();
+async function refreshRecord(){
+  const me=await identity();
   const c=await (await fetch('/api/chain'+(me?'?player='+me.pub:''))).json();
   $('#lb-chain').textContent=c.connected
-    ? `localnet · tree #${c.tree_id}`+(me?` · ${me.pub.slice(0,4)}…${me.pub.slice(-4)}`:' · no key')
-    : 'no chain'; })();
+    ? `localnet · tree #${c.tree_id}`+(me?` · ${shortKey(me.pub)}`:' · no key')
+    : 'no chain';
+  if(!me){ $('#rc-state').textContent='this browser cannot make a key'; return; }
+  $('#rc-dev').textContent=me.pub;
+  $('#rc-acct').textContent=acctOf();
+  const a=await accountState();
+  const mine=acctOf()===me.pub;
+  $('#rc-state').innerHTML = !a||!a.open
+    ? '<span class="note">not opened yet — finish a case and it opens itself</span>'
+    : a.linked ? `<span class="ok">linked · ${a.devices} machine${a.devices>1?'s':''}</span>`
+               : '<span class="bad">not linked — ask a linked machine to add this key</span>';
+  const pr=await (await fetch('/api/progress?account='+acctOf())).json();
+  $('#rc-level').textContent = pr.level==null ? 'nothing claimed yet'
+    : `${pr.level_name} · ${pr.attempts} attempt${pr.attempts>1?'s':''} · ${pr.distinct} distinct · xp ${pr.xp}`;
+  $('#rc-reset').style.display = mine ? 'none' : '';
+}
+$('#rc-copy').onclick=async()=>{ await navigator.clipboard.writeText(acctOf());
+  $('#rc-copy').textContent='copied'; setTimeout(()=>$('#rc-copy').textContent='copy',1200); };
+$('#rc-link').onclick=async()=>{
+  const other=$('#rc-add').value.trim(); if(!other)return;
+  $('#rc-msg').textContent='linking…';
+  const r=await linkDevice(other);
+  $('#rc-msg').innerHTML = r.error ? `<span class="bad">${r.error}</span>`
+    : `<span class="ok">linked — that machine now plays into this record (${r.devices} in total)</span>`;
+  if(!r.error) $('#rc-add').value='';
+  refreshRecord();
+};
+$('#rc-adopt').onclick=async()=>{
+  const a=$('#rc-use').value.trim(); if(!a)return;
+  setAcct(a); $('#rc-use').value='';
+  $('#rc-msg').textContent='using that account — if this machine is not linked yet, add its key from one that is';
+  refreshRecord();
+};
+$('#rc-reset').onclick=()=>{ setAcct(null);
+  $('#rc-msg').textContent='back to this machine\u2019s own record'; refreshRecord(); };
+refreshRecord();
 if(location.hash.startsWith('#play')){
   const e=(location.hash.split('=')[1]||'').split('&')[0]; if(e)$('#ep').value=e;
   /* &script runs a canned opening — for a kiosk left playing, and for checking that the log

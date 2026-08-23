@@ -53,6 +53,10 @@ fn wire(r: &AttemptRecord) -> RecordWire {
     }
 }
 
+fn acct(pid: &Pubkey, id: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(&[SEED_ACCOUNT, &id.to_bytes()], pid).0
+}
+
 fn pdas(pid: &Pubkey, who: &Pubkey) -> (Pubkey, Pubkey, Pubkey) {
     let id = TREE.to_le_bytes();
     (
@@ -91,11 +95,19 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     let (mut banks, payer, bh) = pt.start().await;
     let me = payer.pubkey();
     let (tree, claim, prog) = pdas(&pid, &me);
+    let acc = acct(&pid, &me);
+    banks
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[ix(pid, me, me, &[acc], Instruction::OpenAccount)],
+            Some(&me), &[&payer], bh,
+        ))
+        .await
+        .expect("opening an account");
 
     // ── a claim before anything is proven ──────────────────────────────────
     let e = banks
         .process_transaction(Transaction::new_signed_with_payer(
-            &[ix(pid, me, me, &[claim, prog], Instruction::ClaimProgress { tree_id: TREE, specialty: 1, claimed: 2 })],
+            &[ix(pid, me, me, &[acc, claim, prog], Instruction::ClaimProgress { tree_id: TREE, specialty: 1, claimed: 2 })],
             Some(&me), &[&payer], bh,
         ))
         .await
@@ -107,7 +119,7 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     let theirs = rec(&Pubkey::new_unique(), 1, Outcome::WinDischarge, 0, Difficulty::Student);
     let e = banks
         .process_transaction(Transaction::new_signed_with_payer(
-            &[ix(pid, me, me, &[tree], Instruction::AnchorReplay { tree_id: TREE, record: wire(&theirs) })],
+            &[ix(pid, me, me, &[acc, tree], Instruction::AnchorReplay { tree_id: TREE, record: wire(&theirs) })],
             Some(&me), &[&payer], bh,
         ))
         .await
@@ -124,7 +136,7 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
         let bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
         banks
             .process_transaction(Transaction::new_signed_with_payer(
-                &[ix(pid, me, me, &[tree], Instruction::AnchorReplay { tree_id: TREE, record: wire(r) })],
+                &[ix(pid, me, me, &[acc, tree], Instruction::AnchorReplay { tree_id: TREE, record: wire(r) })],
                 Some(&me), &[&payer], bh,
             ))
             .await
@@ -138,7 +150,7 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     let bh1 = banks.get_new_latest_blockhash(&bh).await.unwrap();
     let e = banks
         .process_transaction(Transaction::new_signed_with_payer(
-            &[ix(pid, me, me, &[tree, claim], Instruction::ProveAttempt {
+            &[ix(pid, me, me, &[acc, tree, claim], Instruction::ProveAttempt {
                 tree_id: TREE, record: wire(&forged), index: 0, path: path.to_vec() })],
             Some(&me), &[&payer], bh1,
         ))
@@ -153,7 +165,7 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
         let bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
         banks
             .process_transaction(Transaction::new_signed_with_payer(
-                &[ix(pid, me, me, &[tree, claim], Instruction::ProveAttempt {
+                &[ix(pid, me, me, &[acc, tree, claim], Instruction::ProveAttempt {
                     tree_id: TREE, record: wire(r), index: i as u64, path: path.to_vec() })],
                 Some(&me), &[&payer], bh,
             ))
@@ -166,7 +178,7 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     let bh2 = banks.get_new_latest_blockhash(&bh).await.unwrap();
     let e = banks
         .process_transaction(Transaction::new_signed_with_payer(
-            &[ix(pid, me, me, &[tree, claim], Instruction::ProveAttempt {
+            &[ix(pid, me, me, &[acc, tree, claim], Instruction::ProveAttempt {
                 tree_id: TREE, record: wire(&mine[0]), index: 0, path: path.to_vec() })],
             Some(&me), &[&payer], bh2,
         ))
@@ -179,7 +191,7 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     let bh3 = banks.get_new_latest_blockhash(&bh).await.unwrap();
     let e = banks
         .process_transaction(Transaction::new_signed_with_payer(
-            &[ix(pid, me, me, &[claim, prog], Instruction::ClaimProgress {
+            &[ix(pid, me, me, &[acc, claim, prog], Instruction::ClaimProgress {
                 tree_id: TREE, specialty: 1, claimed: Dreyfus::Expert as u8 })],
             Some(&me), &[&payer], bh3,
         ))
@@ -192,7 +204,7 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     let bh4 = banks.get_new_latest_blockhash(&bh).await.unwrap();
     banks
         .process_transaction(Transaction::new_signed_with_payer(
-            &[ix(pid, me, me, &[claim, prog], Instruction::ClaimProgress {
+            &[ix(pid, me, me, &[acc, claim, prog], Instruction::ClaimProgress {
                 tree_id: TREE, specialty: 1, claimed: Dreyfus::Competent as u8 })],
             Some(&me), &[&payer], bh4,
         ))
@@ -226,6 +238,14 @@ async fn a_player_with_no_sol_can_still_prove_and_claim() {
     assert!(banks.get_account(who).await.unwrap().is_none(), "the player has no account");
 
     let (tree, claim, prog) = pdas(&pid, &who);
+    let acc = acct(&pid, &who);
+    banks
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[ix(pid, relay.pubkey(), who, &[acc], Instruction::OpenAccount)],
+            Some(&relay.pubkey()), &[&relay, &player], bh,
+        ))
+        .await
+        .expect("the relay opens the account, the player owns it");
     let records: Vec<AttemptRecord> = (0..3)
         .map(|i| rec(&who, i as u8 + 1, Outcome::WinDischarge, 0, Difficulty::Student))
         .collect();
@@ -235,7 +255,7 @@ async fn a_player_with_no_sol_can_still_prove_and_claim() {
         bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
         banks
             .process_transaction(Transaction::new_signed_with_payer(
-                &[ix(pid, relay.pubkey(), who, &[tree], Instruction::AnchorReplay {
+                &[ix(pid, relay.pubkey(), who, &[acc, tree], Instruction::AnchorReplay {
                     tree_id: TREE, record: wire(r) })],
                 Some(&relay.pubkey()), &[&relay, &player], bh,
             ))
@@ -249,7 +269,7 @@ async fn a_player_with_no_sol_can_still_prove_and_claim() {
         bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
         banks
             .process_transaction(Transaction::new_signed_with_payer(
-                &[ix(pid, relay.pubkey(), who, &[tree, claim], Instruction::ProveAttempt {
+                &[ix(pid, relay.pubkey(), who, &[acc, tree, claim], Instruction::ProveAttempt {
                     tree_id: TREE, record: wire(r), index: i as u64, path: path.to_vec() })],
                 Some(&relay.pubkey()), &[&relay, &player], bh,
             ))
@@ -260,7 +280,7 @@ async fn a_player_with_no_sol_can_still_prove_and_claim() {
     bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
     banks
         .process_transaction(Transaction::new_signed_with_payer(
-            &[ix(pid, relay.pubkey(), who, &[claim, prog], Instruction::ClaimProgress {
+            &[ix(pid, relay.pubkey(), who, &[acc, claim, prog], Instruction::ClaimProgress {
                 tree_id: TREE, specialty: 1, claimed: Dreyfus::Competent as u8 })],
             Some(&relay.pubkey()), &[&relay, &player], bh,
         ))
@@ -289,12 +309,14 @@ async fn the_relay_cannot_sign_for_the_player() {
     let (mut banks, relay, bh) = pt.start().await;
     let victim = Keypair::new().pubkey();
     let (tree, _, _) = pdas(&pid, &victim);
+    let acc = acct(&pid, &victim);
     let r = rec(&victim, 1, Outcome::WinDischarge, 0, Difficulty::Student);
 
     // The relay names the victim as the player but only signs for itself.
     let mut metas = vec![
         AccountMeta::new(relay.pubkey(), true),
         AccountMeta::new_readonly(victim, false),
+        AccountMeta::new(acc, false),
         AccountMeta::new(tree, false),
         AccountMeta::new_readonly(system_program::id(), false),
     ];
@@ -315,4 +337,156 @@ async fn the_relay_cannot_sign_for_the_player() {
         matches!(e, TransactionError::InstructionError(_, InstructionError::MissingRequiredSignature)),
         "got {e:?} — the player must sign their own run"
     );
+}
+
+/// The thing this whole layer exists for: play on one machine, see it on another.
+#[tokio::test]
+async fn a_second_machine_plays_into_the_same_record() {
+    let pid = Pubkey::new_unique();
+    let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
+    let (mut banks, relay, bh) = pt.start().await;
+
+    let laptop = Keypair::new();          // where they started
+    let desktop = Keypair::new();         // where they carried on
+    let who = laptop.pubkey();
+    let acc = acct(&pid, &who);
+    let (tree, claim, prog) = pdas(&pid, &who);
+
+    // The address of the record is derived from the person, and the person's id is the first
+    // device's key — so this is exactly the address the old device-seeded scheme produced.
+    // Nothing anchored before this change has to move.
+    assert_eq!(
+        prog,
+        Pubkey::find_program_address(&[SEED_PROGRESS, who.as_ref(), &[1u8]], &pid).0,
+        "changing to accounts must not move anybody's progress"
+    );
+
+    let mut bh = bh;
+    let mut go = |ixs: Vec<SolIx>, signers: Vec<&Keypair>, bh| {
+        Transaction::new_signed_with_payer(&ixs, Some(&relay.pubkey()), &signers, bh)
+    };
+
+    banks.process_transaction(go(
+        vec![ix(pid, relay.pubkey(), who, &[acc], Instruction::OpenAccount)],
+        vec![&relay, &laptop], bh)).await.expect("open");
+
+    // The desktop has a key of its own and no standing at all yet.
+    let e = banks
+        .process_transaction(go(
+            vec![ix(pid, relay.pubkey(), desktop.pubkey(), &[acc, claim, prog],
+                    Instruction::ClaimProgress { tree_id: TREE, specialty: 1, claimed: 1 })],
+            vec![&relay, &desktop], bh))
+        .await.unwrap_err().unwrap();
+    assert_eq!(custom(&e), Some(VitalsError::NotAuthorized as u32),
+               "an unlinked machine is a stranger");
+
+    // Two cases played on the laptop.
+    let records: Vec<AttemptRecord> = (0..2)
+        .map(|i| rec(&who, i as u8 + 1, Outcome::WinDischarge, 0, Difficulty::Student))
+        .collect();
+    for r in &records {
+        bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+        banks.process_transaction(go(
+            vec![ix(pid, relay.pubkey(), who, &[acc, tree],
+                    Instruction::AnchorReplay { tree_id: TREE, record: wire(r) })],
+            vec![&relay, &laptop], bh)).await.expect("anchor on the laptop");
+    }
+
+    // Link the desktop, signed from the laptop.
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    banks.process_transaction(go(
+        vec![ix(pid, relay.pubkey(), who, &[acc],
+                Instruction::AddAuthority { device: desktop.pubkey().to_bytes() })],
+        vec![&relay, &laptop], bh)).await.expect("linking the desktop");
+
+    // And now the desktop proves the laptop's runs — same tree, same claim buffer, same person.
+    let leaves: Vec<[u8; 32]> = records.iter().map(|r| r.leaf()).collect();
+    for (i, r) in records.iter().enumerate() {
+        let path = merkle::prove(&leaves, i as u64).unwrap();
+        bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+        banks.process_transaction(go(
+            vec![ix(pid, relay.pubkey(), desktop.pubkey(), &[acc, tree, claim],
+                    Instruction::ProveAttempt { tree_id: TREE, record: wire(r),
+                                                index: i as u64, path: path.to_vec() })],
+            vec![&relay, &desktop], bh)).await.expect("the desktop proves the laptop's run");
+    }
+
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    banks.process_transaction(go(
+        vec![ix(pid, relay.pubkey(), desktop.pubkey(), &[acc, claim, prog],
+                Instruction::ClaimProgress { tree_id: TREE, specialty: 1, claimed: 1 })],
+        vec![&relay, &desktop], bh)).await.expect("claiming from the second machine");
+
+    let stored: Progress = borsh::BorshDeserialize::deserialize(
+        &mut &banks.get_account(prog).await.unwrap().unwrap().data[..]).unwrap();
+    assert_eq!(stored.player, who.to_bytes(), "the record belongs to the person, not the machine");
+    assert_eq!(stored.attempts_counted, 2, "both laptop runs count on the desktop");
+    assert_eq!(stored.distinct_cases, 2);
+}
+
+/// A device you no longer have should stop counting — but the last one cannot go, or the record
+/// becomes unreachable forever.
+#[tokio::test]
+async fn devices_can_be_dropped_but_never_the_last_one() {
+    let pid = Pubkey::new_unique();
+    let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
+    let (mut banks, relay, bh) = pt.start().await;
+    let owner = Keypair::new();
+    let lost = Keypair::new();
+    let stranger = Keypair::new();
+    let who = owner.pubkey();
+    let acc = acct(&pid, &who);
+    let tx = |ixs: Vec<SolIx>, signers: Vec<&Keypair>, bh| {
+        Transaction::new_signed_with_payer(&ixs, Some(&relay.pubkey()), &signers, bh)
+    };
+
+    let mut bh = bh;
+    banks.process_transaction(tx(
+        vec![ix(pid, relay.pubkey(), who, &[acc], Instruction::OpenAccount)],
+        vec![&relay, &owner], bh)).await.expect("open");
+
+    // A stranger cannot write themselves in.
+    let e = banks.process_transaction(tx(
+        vec![ix(pid, relay.pubkey(), stranger.pubkey(), &[acc],
+                Instruction::AddAuthority { device: stranger.pubkey().to_bytes() })],
+        vec![&relay, &stranger], bh)).await.unwrap_err().unwrap();
+    assert_eq!(custom(&e), Some(VitalsError::NotAuthorized as u32));
+
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    banks.process_transaction(tx(
+        vec![ix(pid, relay.pubkey(), who, &[acc],
+                Instruction::AddAuthority { device: lost.pubkey().to_bytes() })],
+        vec![&relay, &owner], bh)).await.expect("add");
+
+    // Adding the same machine twice is a mistake worth naming, not a silent no-op.
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    let e = banks.process_transaction(tx(
+        vec![ix(pid, relay.pubkey(), who, &[acc],
+                Instruction::AddAuthority { device: lost.pubkey().to_bytes() })],
+        vec![&relay, &owner], bh)).await.unwrap_err().unwrap();
+    assert_eq!(custom(&e), Some(VitalsError::AlreadyAuthorized as u32));
+
+    // The lost laptop goes.
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    banks.process_transaction(tx(
+        vec![ix(pid, relay.pubkey(), who, &[acc],
+                Instruction::RemoveAuthority { device: lost.pubkey().to_bytes() })],
+        vec![&relay, &owner], bh)).await.expect("remove");
+
+    // And it really is gone.
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    let e = banks.process_transaction(tx(
+        vec![ix(pid, relay.pubkey(), lost.pubkey(), &[acc],
+                Instruction::AddAuthority { device: stranger.pubkey().to_bytes() })],
+        vec![&relay, &lost], bh)).await.unwrap_err().unwrap();
+    assert_eq!(custom(&e), Some(VitalsError::NotAuthorized as u32));
+
+    // The last one stays, whatever the owner thinks they want.
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    let e = banks.process_transaction(tx(
+        vec![ix(pid, relay.pubkey(), who, &[acc],
+                Instruction::RemoveAuthority { device: who.to_bytes() })],
+        vec![&relay, &owner], bh)).await.unwrap_err().unwrap();
+    assert_eq!(custom(&e), Some(VitalsError::LastAuthority as u32),
+               "removing it would leave a record nobody can ever claim against");
 }

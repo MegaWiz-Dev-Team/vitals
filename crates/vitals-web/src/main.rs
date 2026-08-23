@@ -272,13 +272,19 @@ impl Session {
     }
 }
 
-fn scenario_path(id: &str) -> std::path::PathBuf {
-    // CARGO_MANIFEST_DIR is baked in at build time and points at the machine that compiled this.
-    // In a container that path does not exist, so the scenarios have to be findable at runtime.
-    let root = match std::env::var("VITALS_SCENARIOS") {
+/// Where the scenarios and the story files live.
+///
+/// CARGO_MANIFEST_DIR is baked in at build time and names the machine that compiled this. In a
+/// container that path does not exist, so everything read at runtime goes through here.
+fn scenario_root() -> std::path::PathBuf {
+    match std::env::var("VITALS_SCENARIOS") {
         Ok(d) => std::path::PathBuf::from(d),
         Err(_) => std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."),
-    };
+    }
+}
+
+fn scenario_path(id: &str) -> std::path::PathBuf {
+    let root = scenario_root();
     match id {
         "ep2" => root.join("demo/scenarios/ep2-stemi.json"),
         "ep3" => root.join("demo/scenarios/ep3-epiglottitis.json"),
@@ -450,7 +456,9 @@ fn main() {
     );
     let sessions: Arc<Mutex<HashMap<String, Session>>> = Arc::new(Mutex::new(restored));
 
-    let story = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../demo/ep1-en.json");
+    // Through the same root as the scenarios. This was the other baked-in build path, and it is
+    // why the container had a patient who could not speak even with a gateway to speak through.
+    let story = scenario_root().join("demo/ep1-en.json");
     let patient = patient::Patient::connect(&story);
     match &patient {
         Some(p) => println!("patient    {} — local model via Heimdall", p.name()),
@@ -798,9 +806,12 @@ fn main() {
                     let _ = req.respond(json(serde_json::json!({ "error": "no player key" })));
                     continue;
                 };
+                // The machine signs; the person owns. Absent an account the two are the same, which
+                // is exactly what the very first run on a brand new browser is.
+                let person = param(&url, "account").and_then(|p| pubkey(&p)).unwrap_or(who);
                 let sce = sce_hash(&s.sce_json);
                 let rec: AttemptRecord =
-                    match record_for(who.to_bytes(), sce, sce, s.difficulty, false, &s.tape, &r) {
+                    match record_for(person.to_bytes(), sce, sce, s.difficulty, false, &s.tape, &r) {
                         Ok(rec) => rec,
                         Err(e) => {
                             let _ = req.respond(json(serde_json::json!({ "error": e })));
@@ -813,12 +824,13 @@ fn main() {
                 let leaves = t.leaves.clone();
                 let index = leaves.len() as u64 - 1;
                 drop(t);
-                match c.prepare_anchor(&who, tree_id, &rec, &leaves) {
+                match c.prepare_anchor(&who, &person, tree_id, &rec, &leaves) {
                     Ok(p) => {
                         let msg = hex_bytes(&p.message());
                         pendings.lock().unwrap().insert(
                             who.to_string(),
-                            PendingWork { pending: p, session: id.clone(), index, score: rec.score(), level: None },
+                            PendingWork { pending: p, session: id.clone(), account: person,
+                                          index, score: rec.score(), level: None, link: false },
                         );
                         json(serde_json::json!({ "sign": msg }))
                     }
@@ -840,13 +852,97 @@ fn main() {
                     let _ = req.respond(json(serde_json::json!({ "error": "no player key" })));
                     continue;
                 };
+                let id = param(&url, "account").and_then(|p| pubkey(&p)).unwrap_or(who);
                 let tree_id = tree.lock().unwrap().tree_id;
-                match c.prepare_claim(&who, tree_id, level) {
+                match c.prepare_claim(&who, &id, tree_id, level) {
                     Ok(p) => {
                         let msg = hex_bytes(&p.message());
                         pendings.lock().unwrap().insert(
                             who.to_string(),
-                            PendingWork { pending: p, session: String::new(), index: 0, score: 0, level: Some(level) },
+                            PendingWork { pending: p, session: String::new(), account: id,
+                                          index: 0, score: 0, level: Some(level), link: false },
+                        );
+                        json(serde_json::json!({ "sign": msg }))
+                    }
+                    Err(e) => json(serde_json::json!({ "error": e })),
+                }
+            }
+            // Who this machine is, and whose record it may write to.
+            (Method::Get, "/api/account") => {
+                let Some(c) = chain.as_ref() else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    continue;
+                };
+                let Some(dev) = param(&url, "device").and_then(|p| pubkey(&p)) else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no device key" })));
+                    continue;
+                };
+                let person = param(&url, "account").and_then(|p| pubkey(&p)).unwrap_or(dev);
+                let acct = c.account(&person);
+                json(serde_json::json!({
+                    "account": person.to_string(),
+                    "open": acct.is_some(),
+                    // Whether *this* machine may act for that person. A machine that has been
+                    // named but not yet linked is a machine that can watch and not play.
+                    "linked": acct.as_ref().map(|a| a.allows(&dev)).unwrap_or(person == dev),
+                    "devices": acct.as_ref().map(|a| a.authorities.len()).unwrap_or(0),
+                }))
+            }
+            // Reading somebody's level is not a privileged act, and that is the whole point:
+            // a score you can only see on the machine that earned it is not a credential.
+            (Method::Get, "/api/progress") => {
+                let Some(c) = chain.as_ref() else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    continue;
+                };
+                let Some(person) = param(&url, "account").and_then(|p| pubkey(&p)) else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no account" })));
+                    continue;
+                };
+                match c.progress(&person) {
+                    Some(pr) => json(serde_json::json!({
+                        "account": person.to_string(),
+                        "level": pr.level,
+                        "level_name": chain::level_name(pr.level),
+                        "attempts": pr.attempts_counted,
+                        "distinct": pr.distinct_cases,
+                        "xp": pr.xp,
+                    })),
+                    None => json(serde_json::json!({
+                        "account": person.to_string(), "level": serde_json::Value::Null,
+                        "message": "nothing claimed yet",
+                    })),
+                }
+            }
+            // Link or unlink a machine. Signed by one that is already trusted.
+            (Method::Get, "/api/link") => {
+                let Some(c) = chain.as_ref() else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    continue;
+                };
+                let Some(dev) = param(&url, "player").and_then(|p| pubkey(&p)) else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no player key" })));
+                    continue;
+                };
+                let person = param(&url, "account").and_then(|p| pubkey(&p)).unwrap_or(dev);
+                let Some(other) = param(&url, "device").and_then(|p| pubkey(&p)) else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no device to link" })));
+                    continue;
+                };
+                let on = param(&url, "off").is_none();
+                let built = if c.account(&person).is_none() && person == dev {
+                    // Nothing to add a device to yet.
+                    c.prepare_open(&dev)
+                } else {
+                    c.prepare_link(&dev, &person, &other, on)
+                };
+                match built {
+                    Ok(p) => {
+                        let msg = hex_bytes(&p.message());
+                        pendings.lock().unwrap().insert(
+                            dev.to_string(),
+                            PendingWork { pending: p, session: String::new(), account: person,
+                                          index: 0, score: 0, level: None, link: true },
                         );
                         json(serde_json::json!({ "sign": msg }))
                     }
@@ -872,18 +968,31 @@ fn main() {
                     let _ = req.respond(json(serde_json::json!({ "error": "nothing waiting to be signed" })));
                     continue;
                 };
+                // Only an anchor put a leaf on the list, so only an anchor takes one back off.
+                let speculative = work.level.is_none() && !work.link;
                 let tx = match work.pending.signed(&sig) {
                     Ok(tx) => tx,
                     Err(e) => {
-                        if work.level.is_none() {
+                        if speculative {
                             tree.lock().unwrap().leaves.pop();
                         }
                         let _ = req.respond(json(serde_json::json!({ "error": e })));
                         continue;
                     }
                 };
+                let id = work.account;
+                if work.link {
+                    let _ = req.respond(match c.submit(&tx) {
+                        Ok(()) => {
+                            let n = c.account(&id).map(|a| a.authorities.len()).unwrap_or(0);
+                            json(serde_json::json!({ "linked": true, "devices": n }))
+                        }
+                        Err(e) => json(serde_json::json!({ "error": e })),
+                    });
+                    continue;
+                }
                 match (c.submit(&tx), work.level) {
-                    (Ok(()), Some(_)) => match c.claimed(&who) {
+                    (Ok(()), Some(_)) => match c.claimed(&id) {
                         Ok(m) => json(serde_json::json!({ "granted": true, "message": m })),
                         Err(m) => json(serde_json::json!({ "granted": false, "message": m })),
                     },
@@ -903,11 +1012,11 @@ fn main() {
                         // in an arm deadlocks the one thread this server has — which is not a slow
                         // request, it is every request from then on.
                         let tree_id = tree.lock().unwrap().tree_id;
-                        match c.anchored(&who, tree_id, work.index) {
+                        match c.anchored(&id, tree_id, work.index) {
                             Ok(a) => json(serde_json::json!({
                                 "index": a.index, "root": a.root, "leaves": a.leaves,
                                 "proven": a.proven, "score": work.score,
-                                "counted": c.proven_count(&who, tree_id),
+                                "counted": c.proven_count(&id, tree_id),
                             })),
                             Err(e) => json(serde_json::json!({ "error": e })),
                         }
@@ -931,10 +1040,14 @@ struct PendingWork {
     pending: chain::Pending,
     /// Which run this anchors. Empty for a claim.
     session: String,
+    /// Whose record this lands on — not necessarily the key that signs it.
+    account: solana_sdk::pubkey::Pubkey,
     index: u64,
     score: u32,
     /// Set for a claim, `None` for an anchor.
     level: Option<u8>,
+    /// True when this transaction only moves devices around and touches no tree.
+    link: bool,
 }
 
 /// A player key as the browser sends it: base58, and it has to be a real curve point or the
