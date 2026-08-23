@@ -23,6 +23,14 @@ use vitals_replay::{hex, leaf, record_for, replay, resume, sce_hash, Step};
 use vitals_sce::{render_beat, Sce, SceState};
 
 const PAGE: &str = include_str!("../static/index.html");
+/// The pitch, served by the same process that serves the bay.
+///
+/// Baked in rather than read from disk. Twice in one day a path that existed on the build machine
+/// did not exist in the container — the patient could not speak, and the film would not play — and
+/// both failures looked like something else entirely. A deck cannot go missing halfway through a
+/// pitch if there is no file for it to go missing from.
+const DECK: &str = include_str!("../../../pitch/deck.html");
+const SCRIPT: &str = include_str!("../../../pitch/script.html");
 /// The real bedside monitor, vendored from Embla's device page.
 ///
 /// Not reimplemented: it already draws ECG morphology in milliseconds (P 80ms, PR 160ms, a QRS
@@ -381,6 +389,12 @@ fn new_session(ep: &str) -> Result<Session, String> {
     })
 }
 
+fn html(body: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+    Response::from_string(body).with_header(
+        Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..]).unwrap(),
+    )
+}
+
 fn json(v: impl Serialize) -> Response<std::io::Cursor<Vec<u8>>> {
     let body = serde_json::to_string(&v).unwrap_or_else(|_| "{}".into());
     Response::from_string(body)
@@ -590,6 +604,18 @@ fn main() {
                 );
                 continue;
             }
+            // ── the pitch ───────────────────────────────────────────────────────
+            // Unguarded, like the bay itself. Everything in the deck is already public in the
+            // repository, so a token here would protect nothing and only stop it opening.
+            (Method::Get, "/slides") | (Method::Get, "/slides/") => {
+                let _ = req.respond(html(DECK));
+                continue;
+            }
+            (Method::Get, "/slides/script") => {
+                let _ = req.respond(html(SCRIPT));
+                continue;
+            }
+
             // ── film ────────────────────────────────────────────────────────────
             // Story Mode does not show a still and call it a patient: it loops a per-state clip
             // and cuts to a full-frame cutscene on a beat. Both are already rendered.
