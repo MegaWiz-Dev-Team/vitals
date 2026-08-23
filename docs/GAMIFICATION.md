@@ -48,7 +48,28 @@ A program that *computes* rather than *stores* is also the honest answer to
 ### Skill-tree NFT — one per specialty, evolving
 
 Not 205 badges cluttering a wallet. **One token per specialty**, whose metadata advances through
-the Dreyfus stages already implemented: Novice → Advanced beginner → Competent → Proficient → Expert
+the Dreyfus stages already implemented:
+
+```mermaid
+flowchart LR
+    L1["1. Novice<br/><i>(Stage 0)</i>"]
+    L2["2. Adv. Beginner<br/><i>(Stage 1)</i>"]
+    L3["3. Competent<br/><i>(Stage 2)</i>"]
+    L4["4. Proficient<br/><i>(Stage 3)</i>"]
+    L5["5. Expert<br/><i>(Stage 4)</i>"]
+
+    L1 -->|Verified Leaves| L2
+    L2 -->|Distinct Cases + Accuracy| L3
+    L3 -->|Hard Cases + Low Variance| L4
+    L4 -->|Mastery Predicate| L5
+
+    style L1 fill:#F8FAFA,stroke:#C9D6D6
+    style L2 fill:#E6F1ED,stroke:#0A5E4B
+    style L3 fill:#E6F1ED,stroke:#0A5E4B,stroke-width:2px
+    style L4 fill:#FFF6ED,stroke:#8E3D11,stroke-width:2px
+    style L5 fill:#E6F1ED,stroke:#0A5E4B,stroke-width:3px
+```
+
 (with Thai labels from `dreyfus_th`). Art changes at each stage — that is the shareable moment, and
 the reason a student cares before any employer does.
 
