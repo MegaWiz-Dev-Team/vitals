@@ -52,9 +52,11 @@ are built from. Scaling past one means moving the tree out of the process first.
 HTTP redirecting. It is applied separately from `vitals.yaml` so deploying never quietly exposes
 anything.
 
-There is **no public Ingress, and that is deliberate**: Colosseum submissions are public and
-explicitly non-confidential, so a publicly reachable demo is public disclosure. The patent has to
-be filed first. See `RISKS.md`.
+There is **no public Ingress, and that is deliberate** — but not for the reason first written
+here. Colosseum accepts a private repository with judges granted access, so submitting never
+required publishing anything. What is still true is that a publicly reachable demo is a public
+disclosure in its own right, and the patent question is open. Keep it internal until that is
+answered. See `RISKS.md`.
 
 ## What is on chain, and what is not
 
