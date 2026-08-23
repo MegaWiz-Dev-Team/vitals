@@ -163,3 +163,52 @@ fn a_wrong_owner_and_a_missing_session_look_the_same() {
     let absent = s.json(&format!("/api/step?id=nosuchsessionatall&player={B}&tick=1"));
     assert_eq!(theirs["error"], absent["error"], "the error tells a guesser which ids are live");
 }
+
+/// NEWS2 is an *early warning* score: it exists to decide whether somebody needs to come, and
+/// how fast. Once a patient has died there is nothing left to warn about, and printing
+/// "15 · emergency response" beside "Dead" is the same category of nonsense as a heart rate on a
+/// corpse — which is the bug it appeared next to.
+#[test]
+fn a_dead_patient_is_not_given_an_early_warning_score() {
+    let s = Server::start();
+    let id = s.new_case(A);
+    s.json(&format!("/api/step?id={id}&player={A}&do=let%20her%20stand%20up"));
+
+    let mut view = serde_json::Value::Null;
+    for _ in 0..30 {
+        view = s.json(&format!("/api/step?id={id}&player={A}&tick=30"));
+        if !view["outcome"].is_null() {
+            break;
+        }
+    }
+    let outcome = view["outcome"].as_str().unwrap_or("").to_string();
+    assert!(outcome.starts_with("Death"), "the run did not end in a death: {outcome}");
+
+    assert!(view["news"].is_null(), "a dead patient was given a NEWS2 of {}", view["news"]);
+    // And the vitals it would have been computed from are gone too.
+    assert_eq!(view["hr"], 0.0);
+    assert_eq!(view["rr"], 0.0);
+}
+
+/// A patient who lives still gets one — the rule is about death, not about the run being over.
+#[test]
+fn a_patient_who_survives_still_has_a_score() {
+    let s = Server::start();
+    let id = s.new_case(A);
+    for o in ["adrenaline im", "oxygen", "supine"] {
+        s.json(&format!("/api/step?id={id}&player={A}&do={}", o.replace(' ', "%20")));
+    }
+    s.json(&format!("/api/step?id={id}&player={A}&tick=60"));
+    s.json(&format!("/api/step?id={id}&player={A}&do=normal%20saline%20bolus"));
+    s.json(&format!("/api/step?id={id}&player={A}&tick=300"));
+    s.json(&format!("/api/step?id={id}&player={A}&do=admit%20for%20observation"));
+    let mut view = serde_json::Value::Null;
+    for _ in 0..10 {
+        view = s.json(&format!("/api/step?id={id}&player={A}&tick=300"));
+        if !view["outcome"].is_null() {
+            break;
+        }
+    }
+    assert!(view["outcome"].as_str().unwrap_or("").starts_with("Win"), "{}", view["outcome"]);
+    assert!(!view["news"].is_null(), "a discharged patient should still have a score");
+}

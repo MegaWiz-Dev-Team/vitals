@@ -10,6 +10,7 @@
 mod chain;
 mod patient;
 mod store;
+use vitals_web::news2;
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -223,10 +224,23 @@ struct View {
     equipment: Vec<Kit>,
     /// Everything that happened, stamped with the scenario clock — the chart.
     chart: Vec<Note>,
-    /// 0..100. Derived from the vitals against adult normal ranges, not a field the engine
-    /// keeps: the automaton models a patient, not a health bar. Shown because a bar is
-    /// legible at a glance and the numbers underneath it are the truth.
-    stability: u32,
+    /// NEWS2 — what a ward actually escalates on, computed from the observations above.
+    ///
+    /// This used to be a "stability" percentage invented here, and it averaged: a patient with
+    /// one catastrophic derangement and six normal readings came out looking well. That is the
+    /// mistake the real score exists to prevent.
+    ///
+    /// `None` once she has died. It is an *early warning* score — it exists to decide whether
+    /// somebody needs to come and how fast, and there is nothing left to warn about.
+    news: Option<News>,
+}
+
+#[derive(Serialize)]
+struct News {
+    total: u32,
+    worst: u32,
+    band: &'static str,
+    response: &'static str,
 }
 
 #[derive(Serialize, Clone)]
@@ -243,11 +257,6 @@ struct Note {
     text: String,
 }
 
-/// How far a value sits inside its normal band, 0 (way out) to 1 (fine).
-fn band(v: f64, lo: f64, hi: f64, span: f64) -> f64 {
-    let d = if v < lo { lo - v } else if v > hi { v - hi } else { 0.0 };
-    (1.0 - (d / span)).clamp(0.0, 1.0)
-}
 
 impl Session {
     fn view(&self) -> View {
@@ -268,14 +277,13 @@ impl Session {
             let r = replay(&self.sce_json, &self.tape).ok()?;
             Some(hex(&leaf(&sce_hash(&self.sce_json), &self.tape, &r)))
         });
-        let v2 = self.state.vitals;
-        // Oxygenation and perfusion carry the most weight because they are what kills first.
-        let stability = (band(v2.spo2, 94.0, 100.0, 14.0) * 0.34
-            + band(v2.sbp, 100.0, 140.0, 45.0) * 0.28
-            + band(v2.hr, 60.0, 100.0, 60.0) * 0.16
-            + band(v2.rr, 12.0, 20.0, 18.0) * 0.12
-            + band(v2.gcs as f64, 15.0, 15.0, 7.0) * 0.10)
-            * 100.0;
+        // Supplemental oxygen is worth points of its own: holding 96% on a mask is not the same
+        // patient as holding 96% on air, and the score is built to say so.
+        let on_oxygen = self.state.has_equipment("o2") || self.state.has_equipment("ett");
+        let obs = news2::Obs {
+            rr: v.rr, spo2: v.spo2, on_oxygen, sbp: v.sbp, hr: v.hr, temp: v.temp, gcs: v.gcs,
+        };
+        let n = news2::score(&obs);
 
         View {
             scenario: self.scenario.clone(),
@@ -305,7 +313,12 @@ impl Session {
                 .iter()
                 .map(|e| Note { t: e.t_sec, kind: e.kind.clone(), text: e.text.clone() })
                 .collect(),
-            stability: if self.state.outcome().is_some() && stability < 3.0 { 0 } else { stability.round() as u32 },
+            news: (self.state.status != vitals_sce::PatientStatus::Dead).then(|| News {
+                total: n.total,
+                worst: n.worst,
+                band: n.band.as_str(),
+                response: n.band.response(),
+            }),
         }
     }
 }
@@ -1295,15 +1308,4 @@ mod tests {
         assert!(kit_phrase("o2", None).unwrap().contains("10 lpm"), "falls back to the scenario dose");
     }
 
-    // ── the stability meter ─────────────────────────────────────────────────
-
-    #[test]
-    fn band_is_one_inside_the_range_and_zero_far_outside() {
-        assert_eq!(band(96.0, 94.0, 100.0, 14.0), 1.0, "inside the band is perfect");
-        assert_eq!(band(94.0, 94.0, 100.0, 14.0), 1.0, "the edge is still inside");
-        assert_eq!(band(80.0, 94.0, 100.0, 14.0), 0.0, "a full span out is zero");
-        assert_eq!(band(40.0, 94.0, 100.0, 14.0), 0.0, "and it clamps rather than going negative");
-        let half = band(87.0, 94.0, 100.0, 14.0);
-        assert!((half - 0.5).abs() < 1e-9, "half a span out is half, got {half}");
-    }
 }

@@ -18,6 +18,10 @@ solana-client = "2"
 solana-sdk = "2"
 borsh = { version = "1", features = ["derive"] }
 
+[lib]
+name = "vitals_web"
+path = "src/lib.rs"
+
 [[bin]]
 name = "vitals-web"
 path = "src/main.rs"
