@@ -206,3 +206,25 @@ fn no_insecure_subresource() {
     let html = page();
     assert!(!html.contains("http://"), "an http:// reference makes an https page 'Not Secure'");
 }
+
+/// The waveform must not be drawn through the lane's label.
+///
+/// It was: the trace was centred in the whole lane at 0.40 amplitude, so its peak reached 10% of
+/// the lane height while "SINUS" and "25 mm/s" sit at 6px — an R wave straight through the text.
+///
+/// This is a shape check, not a geometry one: the real proof is measuring the topmost lit pixel
+/// in the canvas, which is done by hand against a running monitor. What it guards is the specific
+/// regression — going back to centring on the full lane height.
+#[test]
+fn the_monitor_reserves_a_band_for_its_labels() {
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/device/monitor.html");
+    let html = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
+    assert!(
+        html.contains("this.top"),
+        "the trace no longer reserves a label band — labels will be drawn through"
+    );
+    assert!(
+        !html.contains("this.h/2 -"),
+        "the trace is centred on the whole lane again, which puts its peak inside the label"
+    );
+}
