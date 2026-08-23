@@ -977,13 +977,9 @@ fn main() {
                     continue;
                 };
                 let on = param(&url, "off").is_none();
-                let built = if c.account(&person).is_none() && person == dev {
-                    // Nothing to add a device to yet.
-                    c.prepare_open(&dev)
-                } else {
-                    c.prepare_link(&dev, &person, &other, on)
-                };
-                match built {
+                // prepare_link opens the account itself when there is not one yet, so the
+                // transaction always does what the button said.
+                match c.prepare_link(&dev, &person, &other, on) {
                     Ok(p) => {
                         let msg = hex_bytes(&p.message());
                         pendings.lock().unwrap().insert(
