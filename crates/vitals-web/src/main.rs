@@ -61,6 +61,9 @@ const STILLS: &[(&str, &[u8])] = &[
 struct Session {
     /// Which scenario, so a resumed run reloads the same automaton it was played against.
     ep: String,
+    /// Whose case this is. `None` for a kiosk or a browser that cannot make a key — then the
+    /// session id is the only secret, which is why it is not a counter any more.
+    owner: Option<String>,
     state: SceState,
     tape: Vec<Step>,
     beats: Vec<String>,
@@ -85,6 +88,8 @@ struct Session {
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Saved {
     ep: String,
+    #[serde(default)]
+    owner: Option<String>,
     /// The scenario this run was played against. A rewritten scenario must not silently resume a
     /// run into a different automaton — the outcome would be re-derived under rules the player
     /// never played.
@@ -97,9 +102,41 @@ struct Saved {
 const SESSIONS: &str = "sessions";
 
 impl Session {
+    /// May this caller touch this case?
+    ///
+    /// An owned case answers only to its owner. An anonymous one answers to whoever holds the id,
+    /// which is safe only because the id is now 128 bits of randomness rather than `s7`.
+    fn answers_to(&self, who: Option<&str>) -> bool {
+        match (&self.owner, who) {
+            (None, _) => true,
+            (Some(mine), Some(you)) => mine == you,
+            (Some(_), None) => false,
+        }
+    }
+}
+
+/// A session id nobody can walk to from the one before it.
+///
+/// It used to be `s1`, `s2`, `s3`. On a server two people can reach, a counter is an index of
+/// everybody else's cases — and every route looked a session up by id and did as it was told.
+fn fresh_id() -> String {
+    use solana_sdk::signature::{Keypair, Signer};
+    hex_bytes(&Keypair::new().pubkey().to_bytes()[..16])
+}
+
+/// The same answer for "there is no such case" and "that case is not yours".
+///
+/// Two different answers would let a guesser tell live ids from dead ones, which is most of the
+/// work of finding somebody to interfere with.
+fn no_such_session() -> Response<std::io::Cursor<Vec<u8>>> {
+    json(serde_json::json!({ "error": "no such session" }))
+}
+
+impl Session {
     fn saved(&self) -> Saved {
         Saved {
             ep: self.ep.clone(),
+            owner: self.owner.clone(),
             sce_hash: hex(&sce_hash(&self.sce_json)),
             tape: self.tape.clone(),
             said: self.said.clone(),
@@ -117,6 +154,7 @@ impl Session {
         let (state, r) = resume(&sce_json, &saved.tape)?;
         Ok(Session {
             ep: saved.ep.clone(),
+            owner: saved.owner.clone(),
             state,
             beats: r.beats,
             tape: saved.tape,
@@ -317,6 +355,7 @@ fn new_session(ep: &str) -> Result<Session, String> {
     let sce = Sce::from_json(&sce_json).map_err(|e| e.to_string())?;
     Ok(Session {
         ep: ep.to_string(),
+        owner: None,
         state: SceState::new(sce),
         tape: Vec::new(),
         beats: Vec::new(),
@@ -441,12 +480,8 @@ fn main() {
             }
         }
     }
-    // Ids are handed out in order and must not be reissued over a restored run.
-    let mut next_id = restored
-        .keys()
-        .filter_map(|k| k.strip_prefix('s').and_then(|n| n.parse::<u64>().ok()))
-        .max()
-        .unwrap_or(0);
+    // No counter to carry across a restart any more: ids are random, so a restored run cannot
+    // collide with a fresh one and there is nothing to resume from.
     println!(
         "state      {} · {} run(s) resumed{}{}",
         store.root().display(),
@@ -491,7 +526,14 @@ fn main() {
         (None, true) => println!("auth       none — loopback only, so the blast radius is this machine"),
         (None, false) => unreachable!("refused to start above"),
     }
-    println!("Vitals — play at http://{addr}");
+    // The address it actually got, not the one it asked for. Binding to :0 is how a test gets a
+    // port nobody else has, and that is useless if the server then reports the zero back.
+    let bound = server
+        .server_addr()
+        .to_ip()
+        .map(|a| a.to_string())
+        .unwrap_or_else(|| addr.clone());
+    println!("Vitals — play at http://{bound}");
 
     // One slow local model, and /api/say holds a worker for as long as it takes. Without a
     // ceiling a single caller can occupy the GPU indefinitely.
@@ -612,9 +654,9 @@ fn main() {
             (Method::Get, "/api/new") => {
                 let ep = param(&url, "ep").unwrap_or_else(|| "ep1".into());
                 match new_session(&ep) {
-                    Ok(s) => {
-                        next_id += 1;
-                        let id = format!("s{next_id}");
+                    Ok(mut s) => {
+                        s.owner = param(&url, "player").and_then(|p| pubkey(&p)).map(|k| k.to_string());
+                        let id = fresh_id();
                         let view = s.view();
                         let mut map = sessions.lock().unwrap();
                         map.insert(id.clone(), s);
@@ -627,9 +669,10 @@ fn main() {
             }
             (Method::Get, "/api/step") => {
                 let id = param(&url, "id").unwrap_or_default();
+                let caller = param(&url, "player");
                 let mut map = sessions.lock().unwrap();
-                match map.get_mut(&id) {
-                    None => json(serde_json::json!({ "error": "no such session" })),
+                match map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) {
+                    None => no_such_session(),
                     Some(s) => {
                         let acted = param(&url, "do").is_some();
                         if let Some(act) = param(&url, "do") {
@@ -654,12 +697,13 @@ fn main() {
             // shape Embla's device tray uses, so the chart and a debrief can quote the number.
             (Method::Get, "/api/kit") => {
                 let id = param(&url, "id").unwrap_or_default();
+                let caller = param(&url, "player");
                 let dev = param(&url, "dev").unwrap_or_default();
                 let set = param(&url, "set").and_then(|v| v.parse::<f64>().ok());
                 let off = param(&url, "off").is_some();
                 let mut map = sessions.lock().unwrap();
-                match map.get_mut(&id) {
-                    None => json(serde_json::json!({ "error": "no such session" })),
+                match map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) {
+                    None => no_such_session(),
                     Some(s) => {
                         if off {
                             s.state.detach(&dev);
@@ -704,9 +748,10 @@ fn main() {
             }
             (Method::Get, "/api/tape") => {
                 let id = param(&url, "id").unwrap_or_default();
+                let caller = param(&url, "player");
                 let map = sessions.lock().unwrap();
-                match map.get(&id) {
-                    None => json(serde_json::json!({ "error": "no such session" })),
+                match map.get(&id).filter(|s| s.answers_to(caller.as_deref())) {
+                    None => no_such_session(),
                     // The tape in the same shape vitals-replay takes, so a player can hand it to
                     // someone else and have the leaf re-derived off this machine entirely.
                     Some(s) => json(serde_json::json!({
@@ -724,6 +769,7 @@ fn main() {
             }
             (Method::Get, "/api/say") => {
                 let id = param(&url, "id").unwrap_or_default();
+                let caller = param(&url, "player");
                 let q = param(&url, "q").unwrap_or_default();
                 let Some(pt) = patient.as_ref() else {
                     let _ = req.respond(json(serde_json::json!({ "error": "no gateway — she has no voice here" })));
@@ -733,8 +779,8 @@ fn main() {
                 // seconds and the tick loop must not block behind it.
                 let (hist, status, spo2) = {
                     let mut map = sessions.lock().unwrap();
-                    let Some(s) = map.get_mut(&id) else {
-                        let _ = req.respond(json(serde_json::json!({ "error": "no such session" })));
+                    let Some(s) = map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) else {
+                        let _ = req.respond(no_such_session());
                         continue;
                     };
                     // The question goes on the tape. The answer never will.
@@ -773,13 +819,14 @@ fn main() {
             }
             (Method::Get, "/api/anchor") => {
                 let id = param(&url, "id").unwrap_or_default();
+                let caller = param(&url, "player");
                 let Some(c) = chain.as_ref() else {
                     let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
                     continue;
                 };
                 let mut map = sessions.lock().unwrap();
-                let Some(s) = map.get_mut(&id) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no such session" })));
+                let Some(s) = map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) else {
+                    let _ = req.respond(no_such_session());
                     continue;
                 };
                 if s.state.outcome().is_none() {

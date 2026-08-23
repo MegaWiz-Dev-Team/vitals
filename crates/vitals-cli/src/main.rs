@@ -22,7 +22,7 @@ use vitals_progress::record::AttemptRecord;
 use vitals_progress::{Difficulty, Dreyfus};
 use vitals_program::{
     ClaimAccount, Instruction, Progress, RecordWire, TreeAccount, SEED_CLAIM, SEED_PROGRESS,
-    SEED_TREE,
+    SEED_ACCOUNT, SEED_TREE,
 };
 use vitals_replay::{hex, record_for, replay, sce_hash, Replay, Step};
 
@@ -83,6 +83,11 @@ fn main() {
         .unwrap_or_else(|| rpc.get_slot().expect("slot"));
     println!("tree      #{tree_id}\n");
 
+    // The person has to exist before anything can be recorded against them. Opening twice is a
+    // no-op on chain, so re-running the driver is free.
+    let acct = account_pda(&program_id, &player.pubkey()).0;
+    send(&rpc, &player, &program_id, Instruction::OpenAccount, vec![acct], true);
+
     // ── 1. play and anchor ──────────────────────────────────────────────────
     println!("── 1 · play the season, anchor every run ──────────────");
     let mut records = Vec::new();
@@ -103,7 +108,7 @@ fn main() {
             &hex(&rec.leaf())[..12]
         );
         send(&rpc, &player, &program_id, Instruction::AnchorReplay { tree_id, record: wire(&rec) },
-             vec![tree_pda(&program_id, tree_id).0], true);
+             vec![acct, tree_pda(&program_id, tree_id).0], true);
         leaves.push(rec.leaf());
         records.push(rec);
     }
@@ -117,7 +122,7 @@ fn main() {
         let path = merkle::prove(&leaves, i as u64).expect("path");
         let ok = send(&rpc, &player, &program_id,
             Instruction::ProveAttempt { tree_id, record: wire(rec), index: i as u64, path: path.to_vec() },
-            vec![tree_pda(&program_id, tree_id).0, claim_pda(&program_id, &player.pubkey(), tree_id).0], true);
+            vec![acct, tree_pda(&program_id, tree_id).0, claim_pda(&program_id, &player.pubkey(), tree_id).0], true);
         println!("  index {i}  {}", if ok { "proven" } else { "REJECTED" });
     }
 
@@ -126,7 +131,7 @@ fn main() {
     let path = merkle::prove(&leaves, 1).expect("path");
     let ok = send(&rpc, &player, &program_id,
         Instruction::ProveAttempt { tree_id, record: wire(&forged), index: 1, path: path.to_vec() },
-        vec![tree_pda(&program_id, tree_id).0, claim_pda(&program_id, &player.pubkey(), tree_id).0], false);
+        vec![acct, tree_pda(&program_id, tree_id).0, claim_pda(&program_id, &player.pubkey(), tree_id).0], false);
     println!("  forged   {}   (the stood-up run, with its harm scrubbed)",
         if ok { "ACCEPTED — the tree is broken" } else { "rejected" });
 
@@ -138,7 +143,7 @@ fn main() {
     for claimed in [Dreyfus::Expert, Dreyfus::Proficient] {
         let ok = send(&rpc, &player, &program_id,
             Instruction::ClaimProgress { tree_id, specialty: SPECIALTY_CARDIO, claimed: claimed as u8 },
-            vec![claim_pda(&program_id, &player.pubkey(), tree_id).0,
+            vec![acct, claim_pda(&program_id, &player.pubkey(), tree_id).0,
                  progress_pda(&program_id, &player.pubkey(), SPECIALTY_CARDIO).0], claimed == Dreyfus::Proficient);
         println!("  claim {:<18} {}", claimed.as_str(), if ok { "GRANTED" } else { "REJECTED" });
     }
@@ -170,6 +175,11 @@ fn wire(r: &AttemptRecord) -> RecordWire {
     }
 }
 
+/// The person. Its id is the driver's own key, so the claim and progress addresses below are the
+/// same ones the device-seeded scheme produced before accounts existed.
+fn account_pda(program_id: &Pubkey, id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[SEED_ACCOUNT, &id.to_bytes()], program_id)
+}
 fn tree_pda(program_id: &Pubkey, tree_id: u64) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[SEED_TREE, &tree_id.to_le_bytes()], program_id)
 }
@@ -237,5 +247,119 @@ fn level_name(v: u8) -> &'static str {
     match v {
         0 => "Novice", 1 => "Advanced beginner", 2 => "Competent",
         3 => "Proficient", 4 => "Expert", _ => "?",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The driver is the reference client, so the addresses it computes have to be the same ones
+    /// the program derives — otherwise it works by luck on whatever the server also happens to
+    /// get wrong.
+    #[test]
+    fn the_addresses_match_the_program_seeds() {
+        let pid = Pubkey::new_from_array([9; 32]);
+        let me = Pubkey::new_from_array([4; 32]);
+        assert_eq!(
+            account_pda(&pid, &me).0,
+            Pubkey::find_program_address(&[SEED_ACCOUNT, &me.to_bytes()], &pid).0
+        );
+        assert_eq!(
+            tree_pda(&pid, 7).0,
+            Pubkey::find_program_address(&[SEED_TREE, &7u64.to_le_bytes()], &pid).0
+        );
+        assert_eq!(
+            claim_pda(&pid, &me, 7).0,
+            Pubkey::find_program_address(&[SEED_CLAIM, me.as_ref(), &7u64.to_le_bytes()], &pid).0
+        );
+        assert_eq!(
+            progress_pda(&pid, &me, 1).0,
+            Pubkey::find_program_address(&[SEED_PROGRESS, me.as_ref(), &[1]], &pid).0
+        );
+    }
+
+    /// Different ids must not collide, or two seasons share a tree.
+    #[test]
+    fn a_different_tree_id_is_a_different_tree() {
+        let pid = Pubkey::new_from_array([9; 32]);
+        assert_ne!(tree_pda(&pid, 1).0, tree_pda(&pid, 2).0);
+        // And the same id is stable, which is what lets a rerun add to the season it started.
+        assert_eq!(tree_pda(&pid, 42).0, tree_pda(&pid, 42).0);
+    }
+
+    /// Two players never share a claim buffer. This was once false, and every player on a server
+    /// held the same level as a result.
+    #[test]
+    fn two_players_never_share_a_buffer() {
+        let pid = Pubkey::new_from_array([9; 32]);
+        let a = Pubkey::new_from_array([1; 32]);
+        let b = Pubkey::new_from_array([2; 32]);
+        assert_ne!(claim_pda(&pid, &a, 7).0, claim_pda(&pid, &b, 7).0);
+        assert_ne!(progress_pda(&pid, &a, 1).0, progress_pda(&pid, &b, 1).0);
+        // Nor do two specialties of one player.
+        assert_ne!(progress_pda(&pid, &a, 1).0, progress_pda(&pid, &a, 2).0);
+    }
+
+    #[test]
+    fn a_refusal_reads_as_the_program_speaking() {
+        let err = "\
+RPC response error -32002: Transaction simulation failed
+    Program log: claim rejected: claimed Expert, computed Proficient
+    Program abc consumed 1111 of 200000 compute units";
+        assert_eq!(first_program_log(err), "claim rejected: claimed Expert, computed Proficient");
+    }
+
+    #[test]
+    fn a_transport_failure_is_not_dressed_up_as_a_refusal() {
+        let err = "error sending request for url (http://127.0.0.1:8899/)";
+        assert_eq!(program_log_line(err), None);
+        assert!(first_program_log(err).starts_with("error sending request"));
+    }
+
+    #[test]
+    fn levels_are_named_in_order_and_nothing_beyond_them_is() {
+        assert_eq!(
+            (0..5).map(level_name).collect::<Vec<_>>(),
+            ["Novice", "Advanced beginner", "Competent", "Proficient", "Expert"]
+        );
+        assert_eq!(level_name(5), "?");
+    }
+
+    #[test]
+    fn difficulty_survives_the_trip_to_the_wire() {
+        use vitals_progress::record::Outcome;
+        for (d, n) in [
+            (vitals_progress::Difficulty::Student, 0u8),
+            (vitals_progress::Difficulty::Intern, 1),
+            (vitals_progress::Difficulty::Resident, 2),
+        ] {
+            let r = AttemptRecord {
+                player: [1; 32], sce_hash: [2; 32], case: [3; 32], run_hash: [4; 32],
+                difficulty: d, exam_mode: false, outcome: Outcome::WinDischarge, harm_count: 0,
+            };
+            assert_eq!(wire(&r).difficulty, n);
+        }
+    }
+
+    /// The season the driver plays has to be on disk, or it panics halfway through a demo.
+    #[test]
+    fn every_scenario_the_driver_plays_exists() {
+        for f in [
+            "conformance/sce-anaphylaxis-ep1.json",
+            "demo/scenarios/ep2-stemi.json",
+            "demo/scenarios/ep3-epiglottitis.json",
+            "demo/scenarios/ep4-pulmonary-embolism.json",
+            "demo/scenarios/ep5-the-night-the-stars-fell.json",
+        ] {
+            let p = repo().join(f);
+            assert!(p.exists(), "{} is missing", p.display());
+        }
+    }
+
+    #[test]
+    fn tape_helpers_build_what_they_say() {
+        assert_eq!(tick(30.0), Step::Tick(30.0));
+        assert_eq!(act("adrenaline im"), Step::Do("adrenaline im".into()));
     }
 }

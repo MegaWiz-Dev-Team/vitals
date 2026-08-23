@@ -616,6 +616,10 @@ async function linkDevice(other){
   return await (await fetch('/api/submit?player='+me.pub+'&sig='+await sign(r.sign))).json();
 }
 const shortKey=k=>k?k.slice(0,6)+'…'+k.slice(-4):'—';
+/* Every call that reaches into a case says who is asking. The server answers an owned case only
+   to its owner — a session id used to be `s7`, and anybody who typed it could give your patient
+   an order that lands on your tape for good. */
+const asMe=()=>ME?'&player='+ME.pub:'';
 
 /* ─── the season ───────────────────────────────────────────────────────────── */
 const SEASON=[
@@ -839,13 +843,13 @@ async function commit(k, value){
   // Support that can only ever be added teaches that nothing you attach can be got wrong, so the
   // two that cannot be undone ask first.
   if(k.confirm && !confirm(k.confirm)) return;
-  const v=await (await fetch(`/api/kit?id=${id}&dev=${k.id}`+(value!=null?`&set=${value}`:''))).json();
+  const v=await (await fetch(`/api/kit?id=${id}&dev=${k.id}`+(value!=null?`&set=${value}`:'')+asMe())).json();
   if(v.error) return ev('note','—',v.error);
   ev('order','▸', k.label+(value!=null?` · ${value} ${k.unit}`:''));
   paint(v);
 }
 async function detach(devId){
-  const v=await (await fetch(`/api/kit?id=${id}&dev=${devId}&off=1`)).json();
+  const v=await (await fetch(`/api/kit?id=${id}&dev=${devId}&off=1`+asMe())).json();
   if(v.error) return; ev('order','✕','remove '+KITLBL[devId].label); paint(v);
 }
 
@@ -971,7 +975,7 @@ function paint(v){
 
 async function step(q){
   if(!id)return;
-  const v=await (await fetch('/api/step?id='+id+q)).json();
+  const v=await (await fetch('/api/step?id='+id+q+asMe())).json();
   if(v.error)return ev('note','—',v.error);
   paint(v);
 }
@@ -981,7 +985,7 @@ async function askHer(q){
   turn('you','you',q);
   const d=turn('her think', ep().who.split(' · ')[0], '…');
   step('&tick=5');                                   // talking costs time
-  const r=await (await fetch('/api/say?id='+id+'&q='+encodeURIComponent(q))).json();
+  const r=await (await fetch('/api/say?id='+id+'&q='+encodeURIComponent(q)+asMe())).json();
   d.classList.remove('think');
   d.querySelector('.say').textContent = r.reply || ('— '+(r.error||'no answer'));
   if(!r.reply) d.classList.add('think');
@@ -1001,9 +1005,12 @@ async function chainState(){
 }
 
 $('#start').onclick=async()=>{
+  // Before the case exists, not after. A case opened while the key was still being generated
+  // would belong to nobody, and a case that belongs to nobody answers to anyone holding its id.
+  await identity();
   stop(); over=false; seen=0; clockNow=0; emptyState(); $('#result').style.display='none';
   const e=$('#ep').value;
-  const r=await (await fetch('/api/new?ep='+e)).json();
+  const r=await (await fetch('/api/new?ep='+e+asMe())).json();
   if(r.error)return ev('note','—',r.error);
   id=r.id; mode='ask'; loopNow=''; cutting=false; $('#cut').classList.remove('on');
   renderModes(); renderChips(); paint(r.view);
@@ -1058,7 +1065,7 @@ $('#anchor').onclick=async()=>{
   $(sel).onclick=async()=>{ const r=await chainDo('/api/claim?level='+lv);
     $('#verdict').innerHTML += r.granted?`<span class="g">✓ ${r.message}</span>`:`<span class="r">✗ ${r.message}</span>`; };
 });
-$('#copy').onclick=async()=>{ const t=await (await fetch('/api/tape?id='+id)).json();
+$('#copy').onclick=async()=>{ const t=await (await fetch('/api/tape?id='+id+asMe())).json();
   await navigator.clipboard.writeText(JSON.stringify(t,null,1)); $('#copy').textContent='tape copied'; };
 
 /* ─── lobby ────────────────────────────────────────────────────────────────── */
