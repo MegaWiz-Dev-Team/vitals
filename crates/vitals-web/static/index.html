@@ -59,15 +59,32 @@
   margin-left:auto;margin-right:auto}
 .backbtn{font-family:"IBM Plex Mono",monospace;font-size:.7rem}
 
+/* ── the wallet button ────────────────────────────────────────────────────────
+   Identity sits in the bar where it always is, the way My Profile or a wallet
+   does. Two lines: what you have earned, and who you are — enough to recognise
+   yourself without opening anything. */
+.me{display:flex;align-items:center;gap:.5rem;background:rgba(255,255,255,.14);
+  border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:.28rem .7rem .28rem .6rem;
+  color:#fff;cursor:pointer;font-family:inherit;transition:background .12s,border-color .12s}
+.me:hover{background:rgba(255,255,255,.24);border-color:rgba(255,255,255,.4)}
+.me:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+.me-dot{width:.44rem;height:.44rem;border-radius:999px;background:var(--mint);flex:none}
+.me[data-state="watch"] .me-dot{background:var(--gold)}
+.me[data-state="none"] .me-dot{background:var(--lock)}
+.me-t{display:flex;flex-direction:column;align-items:flex-start;line-height:1.15}
+.me-t b{font-size:.78rem;font-weight:600;letter-spacing:0}
+.me-t em{font-style:normal;font-family:"IBM Plex Mono",monospace;font-size:.62rem;opacity:.72}
+@media (max-width:640px){ .me-t em{display:none} }
+
+/* the record's own sheet — wider than the device picker, which is a list of five things */
+.sheet-rec{width:min(34rem,100%);max-width:34rem}
+.sheet-rec .rec{margin:0;border:0;box-shadow:none;padding:1rem 0 0}
+
 /* carrying a record between machines — the lobby's own vocabulary: white card, 16px,
    Archivo headings, mono for anything that is a token rather than a word */
 .rec{max-width:38rem;margin:2.4rem auto 0;background:#fff;border:1px solid var(--border);
   border-radius:16px;box-shadow:0 6px 20px rgba(15,45,58,.07);padding:1.15rem 1.25rem 1.25rem;
   text-align:left}
-.rec-top{display:flex;align-items:center;gap:.6rem;margin-bottom:.9rem}
-.rec-eyebrow{font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.16em;
-  text-transform:uppercase;color:var(--mint-d);font-weight:600}
-.rec-top .sp{flex:1}
 .pill{font-family:"IBM Plex Mono",monospace;font-size:.64rem;letter-spacing:.1em;
   text-transform:uppercase;padding:.2rem .6rem;border-radius:999px;white-space:nowrap}
 .pill.here{background:#e4f5f0;color:var(--mint-d)}
@@ -407,6 +424,12 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
     <span class="sp"></span>
     <span class="coin" id="coin" title="what a sponsor has funded for this bay">◎ <b id="coin-n">0</b></span>
     <span class="coin" id="lb-chain">—</span>
+    <!-- Identity belongs where it always is, not in a card you scroll to find. This is the
+         wallet button: the level and who you are, at a glance, opening the rest on demand. -->
+    <button class="me" id="me" data-state="none">
+      <span class="me-dot"></span>
+      <span class="me-t"><b id="me-lv">my record</b><em id="me-k">no key yet</em></span>
+    </button>
   </div>
 
   <div class="lb-wrap">
@@ -418,57 +441,6 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
     </div>
 
     <div class="lb-grid" id="eps"></div>
-
-    <div class="rec" id="rec">
-      <div class="rec-top">
-        <span class="rec-eyebrow" id="rc-title">Your record</span>
-        <span class="sp"></span>
-        <span class="pill" id="rc-pill">—</span>
-      </div>
-
-      <p class="rec-level" id="rc-level">—</p>
-      <p class="rec-sub" id="rc-sub"></p>
-
-      <div class="rec-list" id="rc-list">
-        <h4>Machines that play into it</h4>
-        <div id="rc-devices"></div>
-      </div>
-
-      <div class="rec-acts" id="rc-acts">
-        <button class="rbtn go" id="rc-open">Play on another machine</button>
-        <button class="rbtn" id="rc-join">Use another account</button>
-      </div>
-
-      <!-- one flow, in the order you actually do it, on the machine you do it from -->
-      <div class="steps hide" id="rc-flow">
-        <ol>
-          <li>On the other machine, open Vitals and press <b>Use another account</b>.
-            <div class="row"><span class="tok"><span id="rc-acct">—</span>
-              <button id="rc-copy">copy</button></span></div>
-          </li>
-          <li>It will show you a key. Paste it here.
-            <div class="row"><input id="rc-add" placeholder="the key that machine shows" spellcheck="false">
-              <button class="rbtn go" id="rc-link">Add it</button></div>
-          </li>
-        </ol>
-      </div>
-
-      <div class="steps hide" id="rc-joinbox">
-        <ol>
-          <li>Paste the account from the machine you already play on.
-            <div class="row"><input id="rc-use" placeholder="that machine's account" spellcheck="false">
-              <button class="rbtn go" id="rc-adopt">Use it</button></div>
-          </li>
-        </ol>
-      </div>
-
-      <p class="rec-hint hide" id="rc-handover">This machine can watch the record but not play into
-        it yet. Give this key to a machine that already can:
-        <span class="row"><span class="tok"><span id="rc-dev">—</span>
-          <button id="rc-devcopy">copy</button></span></span></p>
-
-      <p class="rec-msg" id="rc-msg"></p>
-    </div>
 
     <p class="lb-foot">Episodes open as you clear the one before — skill unlocks the story.
        A sponsor can open one for the whole bay; nothing you pay ever changes your standing.</p>
@@ -579,6 +551,7 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
     <div class="sheet" id="sheet"></div>
   </div>
 
+
   <section class="result" id="result">
     <h2 id="outcome"></h2>
     <div class="sub" id="outnote"></div>
@@ -596,6 +569,62 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
     <div class="hint" style="margin-top:.5rem">Hand the tape and the scenario to anyone — they recompute this leaf without asking us.</div>
   </section>
 </div>
+
+  <!-- Top level, not inside #game. The picker's veil lives in the game view because that is the
+       only place it opens; this one opens from the lobby bar, and #game carries `hide` there —
+       which is display:none on the parent, so the sheet was being opened invisibly. -->
+  <div class="veil" id="recveil" hidden>
+    <div class="sheet sheet-rec">
+      <div class="sheet-h"><b id="rc-title">My record</b>
+        <span class="pill" id="rc-pill">—</span><span class="sp"></span>
+        <button class="btn" id="rec-close">close</button></div>
+    <div class="rec" id="rec">
+      <p class="rec-level" id="rc-level">—</p>
+      <p class="rec-sub" id="rc-sub"></p>
+
+      <div class="rec-list" id="rc-list">
+        <h4>Machines that play into it</h4>
+        <div id="rc-devices"></div>
+      </div>
+
+      <div class="rec-acts" id="rc-acts">
+        <button class="rbtn go" id="rc-open">Play on another machine</button>
+        <button class="rbtn" id="rc-join">Use another account</button>
+      </div>
+
+      <!-- one flow, in the order you actually do it, on the machine you do it from -->
+      <div class="steps hide" id="rc-flow">
+        <ol>
+          <li>On the other machine, open Vitals and press <b>Use another account</b>.
+            <div class="row"><span class="tok"><span id="rc-acct">—</span>
+              <button id="rc-copy">copy</button></span></div>
+          </li>
+          <li>It will show you a key. Paste it here.
+            <div class="row"><input id="rc-add" placeholder="the key that machine shows" spellcheck="false">
+              <button class="rbtn go" id="rc-link">Add it</button></div>
+          </li>
+        </ol>
+      </div>
+
+      <div class="steps hide" id="rc-joinbox">
+        <ol>
+          <li>Paste the account from the machine you already play on.
+            <div class="row"><input id="rc-use" placeholder="that machine's account" spellcheck="false">
+              <button class="rbtn go" id="rc-adopt">Use it</button></div>
+          </li>
+        </ol>
+      </div>
+
+      <p class="rec-hint hide" id="rc-handover">This machine can watch the record but not play into
+        it yet. Give this key to a machine that already can:
+        <span class="row"><span class="tok"><span id="rc-dev">—</span>
+          <button id="rc-devcopy">copy</button></span></span></p>
+
+      <p class="rec-msg" id="rc-msg"></p>
+    </div>
+
+    </div>
+  </div>
 
 <script>
 const $=s=>document.querySelector(s);
@@ -1258,7 +1287,13 @@ async function refreshRecord(){
     $('#rc-pill').className='pill none'; $('#rc-pill').textContent='no key';
     $('#rc-level').textContent='This browser cannot make a key';
     $('#rc-sub').textContent='Ed25519 in WebCrypto — try Chrome, Safari 17+ or Firefox 129+';
-    ['#rc-list','#rc-acts','#rc-flow','#rc-joinbox','#rc-handover'].forEach(x=>show(x,false));
+    // `show` here was the page's *other* show — the one that swaps the film behind the patient.
+    // It took `'#rc-list'` as a clinical status and `false` as the kit list. Nothing threw, which
+    // is why it survived the rename that caught every other call.
+    ['#rc-list','#rc-acts','#rc-flow','#rc-joinbox','#rc-handover'].forEach(x=>vis(x,false));
+    $('#me').dataset.state='none';
+    $('#me-lv').textContent='no key';
+    $('#me-k').textContent='this browser cannot sign';
     return;
   }
   const mine=acctOf()===me.pub;
@@ -1267,7 +1302,7 @@ async function refreshRecord(){
 
   $('#rc-acct').textContent=acctOf();
   $('#rc-dev').textContent=me.pub;
-  $('#rc-title').textContent = mine?'Your record':'Someone else\u2019s record';
+  $('#rc-title').textContent = mine?'My record':'Someone else\u2019s record';
 
   /* One word for where this machine stands. */
   const pill=$('#rc-pill');
@@ -1278,6 +1313,11 @@ async function refreshRecord(){
 
   /* The level is the thing anyone came here for, so it goes first and it goes big. */
   const pr=await (await fetch('/api/progress?account='+acctOf())).json();
+  /* The bar carries the two things worth knowing without opening anything: what you have earned,
+     and which record you are looking at. */
+  $('#me').dataset.state = !open_ ? 'none' : (linked ? 'own' : 'watch');
+  $('#me-lv').textContent = pr.level==null ? (open_?'no level yet':'my record') : pr.level_name;
+  $('#me-k').textContent = mine ? shortKey(me.pub) : 'watching '+shortKey(acctOf());
   if(pr.level==null){
     $('#rc-level').textContent = open_?'Nothing claimed yet':'No record yet';
     $('#rc-sub').textContent = open_
@@ -1318,6 +1358,15 @@ $('#rc-join').onclick=()=>{
 };
 const copyTo=async(btn,text)=>{ await navigator.clipboard.writeText(text);
   const was=btn.textContent; btn.textContent='copied'; setTimeout(()=>btn.textContent=was,1200); };
+/* Its own sheet, not the picker's. The picker rewrites its innerHTML every time it opens, so
+   sharing one would tear the record's handlers off their elements. */
+function openRecord(){ $('#recveil').hidden=false; refreshRecord(); }
+function closeRecord(){ $('#recveil').hidden=true; vis('#rc-flow',false); vis('#rc-joinbox',false); }
+$('#me').onclick=openRecord;
+$('#rec-close').onclick=closeRecord;
+$('#recveil').addEventListener('click',e=>{ if(e.target===$('#recveil')) closeRecord(); });
+addEventListener('keydown',e=>{ if(e.key==='Escape'&&!$('#recveil').hidden) closeRecord(); });
+
 $('#rc-copy').onclick=e=>copyTo(e.target,acctOf());
 $('#rc-devcopy').onclick=async e=>copyTo(e.target,(await identity()).pub);
 $('#rc-link').onclick=async()=>{
