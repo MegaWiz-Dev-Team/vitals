@@ -1,8 +1,9 @@
 # TLS on an internal name only.
 #
-# vitals.internal resolves nowhere outside this machine, and the certificate is signed by the
-# cluster's own CA — so this is HTTPS without being publication. The public Ingress is a separate
-# decision that comes after the patent filing, not a flag flipped here.
+# vitals.asgard.internal — the house convention every other service here follows, resolved by an
+# /etc/hosts entry pointing at the ingress, and signed by the cluster's own CA. So this is HTTPS
+# without being publication. The public Ingress is a separate decision that comes after the patent
+# filing, not a flag flipped here.
 #
 # Applied separately from vitals.yaml so that deploying never quietly exposes anything:
 #   kubectl apply -f k8s/ingress-internal.yaml
@@ -19,10 +20,10 @@ metadata:
 spec:
   ingressClassName: nginx
   tls:
-    - hosts: ["vitals.internal"]
+    - hosts: ["vitals.asgard.internal"]
       secretName: vitals-tls
   rules:
-    - host: vitals.internal
+    - host: vitals.asgard.internal
       http:
         paths:
           - path: /
