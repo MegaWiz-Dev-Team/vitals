@@ -602,3 +602,93 @@ fn dreyfus_from_u8(v: u8) -> Result<Dreyfus, ProgramError> {
         _ => return Err(ProgramError::InvalidInstructionData),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The list is what makes a person more than a machine, so membership is the load-bearing
+    /// check in the whole account layer.
+    #[test]
+    fn an_account_allows_exactly_the_keys_on_its_list() {
+        let a = Pubkey::new_from_array([1; 32]);
+        let b = Pubkey::new_from_array([2; 32]);
+        let stranger = Pubkey::new_from_array([3; 32]);
+        let acct = Account { id: a.to_bytes(), authorities: vec![a.to_bytes(), b.to_bytes()] };
+        assert!(acct.allows(&a));
+        assert!(acct.allows(&b));
+        assert!(!acct.allows(&stranger));
+    }
+
+    #[test]
+    fn an_account_with_no_devices_allows_nobody() {
+        let acct = Account { id: [1; 32], authorities: vec![] };
+        assert!(!acct.allows(&Pubkey::new_from_array([1; 32])),
+                "being the id is not the same as being on the list");
+    }
+
+    /// The account has to fit the space reserved for it or writing the eighth device fails at
+    /// runtime, on chain, for whoever happens to own eight machines.
+    #[test]
+    fn a_full_account_fits_in_its_allocation() {
+        let acct = Account { id: [7; 32], authorities: vec![[9; 32]; MAX_AUTHORITIES] };
+        let encoded = borsh::to_vec(&acct).expect("serialise");
+        assert!(encoded.len() <= ACCOUNT_LEN,
+                "{} bytes into {ACCOUNT_LEN}", encoded.len());
+    }
+
+    #[test]
+    fn an_account_round_trips_through_borsh() {
+        let acct = Account { id: [7; 32], authorities: vec![[1; 32], [2; 32]] };
+        let back: Account =
+            borsh::BorshDeserialize::deserialize(&mut &borsh::to_vec(&acct).unwrap()[..]).unwrap();
+        assert_eq!(back.id, acct.id);
+        assert_eq!(back.authorities, acct.authorities);
+    }
+
+    /// A partly-filled account is the normal case, and `try_from_slice` refuses trailing bytes —
+    /// which is exactly the bug that broke reading claim accounts once already.
+    #[test]
+    fn a_partly_filled_account_decodes_from_a_full_length_buffer() {
+        let acct = Account { id: [7; 32], authorities: vec![[1; 32]] };
+        let mut buf = borsh::to_vec(&acct).unwrap();
+        buf.resize(ACCOUNT_LEN, 0);
+        let back: Account = borsh::BorshDeserialize::deserialize(&mut &buf[..])
+            .expect("prefix decode, not try_from_slice");
+        assert_eq!(back.authorities.len(), 1);
+    }
+
+    #[test]
+    fn every_seed_is_distinct() {
+        let seeds = [SEED_ACCOUNT, SEED_TREE, SEED_CLAIM, SEED_PROGRESS];
+        for (i, a) in seeds.iter().enumerate() {
+            for b in &seeds[i + 1..] {
+                assert_ne!(a, b, "two kinds of account would share an address");
+            }
+        }
+    }
+
+    /// The property the whole migration rests on: an account whose id is its first device puts
+    /// the progress record at the address the device-seeded scheme already used.
+    #[test]
+    fn moving_to_accounts_does_not_move_the_progress_address() {
+        let pid = Pubkey::new_from_array([42; 32]);
+        let device = Pubkey::new_from_array([13; 32]);
+        let acct = Account { id: device.to_bytes(), authorities: vec![device.to_bytes()] };
+        let by_account = Pubkey::find_program_address(&[SEED_PROGRESS, &acct.id, &[1]], &pid).0;
+        let by_device = Pubkey::find_program_address(&[SEED_PROGRESS, device.as_ref(), &[1]], &pid).0;
+        assert_eq!(by_account, by_device);
+    }
+
+    #[test]
+    fn error_codes_are_stable() {
+        // The web server translates these numbers into sentences for people. Renumbering them
+        // silently would make every message wrong rather than missing.
+        assert_eq!(VitalsError::ClaimNotEarned as u32, 0);
+        assert_eq!(VitalsError::NotYourRun as u32, 8);
+        assert_eq!(VitalsError::WrongOwner as u32, 9);
+        assert_eq!(VitalsError::NotAuthorized as u32, 10);
+        assert_eq!(VitalsError::LastAuthority as u32, 13);
+        assert_eq!(VitalsError::NoAccount as u32, 14);
+    }
+}

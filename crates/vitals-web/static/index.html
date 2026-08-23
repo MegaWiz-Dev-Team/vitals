@@ -59,24 +59,64 @@
   margin-left:auto;margin-right:auto}
 .backbtn{font-family:"IBM Plex Mono",monospace;font-size:.7rem}
 
-/* carrying a record between machines */
-.rec{max-width:44rem;margin:2.2rem auto 0;border:1px solid var(--border);border-radius:6px;
-  background:#fff;padding:1rem 1.15rem}
-.rec h3{margin:0 0 .15rem;font-family:Archivo,sans-serif;font-size:1rem}
-.rec .sub{margin:0 0 .9rem;font-size:.8rem;color:#6b7d82}
-.rec .row{display:flex;align-items:center;gap:.55rem;flex-wrap:wrap;margin:.45rem 0}
-.rec .lab{font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.12em;
-  text-transform:uppercase;color:#849698;min-width:6.5rem}
-.rec code{font-family:"IBM Plex Mono",monospace;font-size:.76rem;background:#f2f6f5;
-  border:1px solid var(--border);border-radius:4px;padding:.2rem .45rem;word-break:break-all}
-.rec input{font-family:"IBM Plex Mono",monospace;font-size:.76rem;padding:.35rem .5rem;
-  border:1px solid var(--border);border-radius:4px;flex:1;min-width:12rem}
-.rec button{font-family:"IBM Plex Mono",monospace;font-size:.72rem;padding:.35rem .7rem;
-  border:1px solid var(--border);border-radius:4px;background:#fff;cursor:pointer}
-.rec button:hover{background:#f2f6f5}
-.rec .go{background:var(--mint-d,#0B6E58);color:#fff;border-color:transparent}
-.rec .note{font-size:.76rem;color:#6b7d82;margin:.6rem 0 0}
-.rec .ok{color:#0B6E58}.rec .bad{color:#C6362E}
+/* carrying a record between machines — the lobby's own vocabulary: white card, 16px,
+   Archivo headings, mono for anything that is a token rather than a word */
+.rec{max-width:38rem;margin:2.4rem auto 0;background:#fff;border:1px solid var(--border);
+  border-radius:16px;box-shadow:0 6px 20px rgba(15,45,58,.07);padding:1.15rem 1.25rem 1.25rem;
+  text-align:left}
+.rec-top{display:flex;align-items:center;gap:.6rem;margin-bottom:.9rem}
+.rec-eyebrow{font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--mint-d);font-weight:600}
+.rec-top .sp{flex:1}
+.pill{font-family:"IBM Plex Mono",monospace;font-size:.64rem;letter-spacing:.1em;
+  text-transform:uppercase;padding:.2rem .6rem;border-radius:999px;white-space:nowrap}
+.pill.here{background:#e4f5f0;color:var(--mint-d)}
+.pill.view{background:#f1f3f3;color:var(--lock)}
+.pill.none{background:#fdf3dd;color:#8a6300}
+
+.rec-level{font-family:Archivo,sans-serif;font-size:1.5rem;font-weight:800;letter-spacing:-.02em;
+  color:#12262c;margin:0;line-height:1.15}
+.rec-sub{font-family:"IBM Plex Mono",monospace;font-size:.78rem;color:#5b6b70;margin:.25rem 0 0}
+
+.rec-list{margin:1.05rem 0 0;border-top:1px solid var(--border);padding-top:.85rem}
+.rec-list h4{font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--lock);margin:0 0 .5rem;font-weight:600}
+.dev{display:flex;align-items:center;gap:.55rem;padding:.3rem 0;font-size:.85rem;color:#37474c}
+.dev .dot{width:.5rem;height:.5rem;border-radius:999px;background:var(--mint);flex:none}
+.dev .dot.off{background:#d3dbdb}
+.dev .k{font-family:"IBM Plex Mono",monospace;font-size:.76rem;color:#5b6b70;margin-left:auto}
+
+.rec-acts{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1rem}
+.rbtn{font-family:"IBM Plex Sans",sans-serif;font-size:.82rem;font-weight:500;
+  padding:.48rem .9rem;border:1px solid var(--border);border-radius:999px;background:#fff;
+  color:#12262c;cursor:pointer;transition:background .12s,border-color .12s}
+.rbtn:hover{background:#f4f8f7;border-color:#cfdad9}
+.rbtn.go{background:var(--mint-d);border-color:transparent;color:#fff}
+.rbtn.go:hover{background:#1a8b76}
+.rbtn:focus-visible{outline:3px solid var(--mint);outline-offset:2px}
+
+/* a key is a token you move, not text you read: short by default, whole on copy */
+.tok{display:inline-flex;align-items:center;gap:.5rem;background:#f4f8f7;border:1px solid var(--border);
+  border-radius:999px;padding:.28rem .35rem .28rem .7rem;font-family:"IBM Plex Mono",monospace;
+  font-size:.78rem;color:#37474c;max-width:100%}
+.tok button{font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.08em;
+  text-transform:uppercase;border:0;border-radius:999px;background:var(--navy);color:#fff;
+  padding:.22rem .6rem;cursor:pointer}
+.tok button:hover{background:#1b4250}
+
+.steps{margin:.9rem 0 0;padding:.85rem .95rem;background:#f7faf9;border:1px solid var(--border);
+  border-radius:12px}
+.steps ol{margin:0;padding-left:1.15rem;display:flex;flex-direction:column;gap:.6rem}
+.steps li{font-size:.85rem;color:#37474c;line-height:1.45}
+.steps li::marker{font-family:"IBM Plex Mono",monospace;font-size:.75rem;color:var(--mint-d);font-weight:600}
+.steps .row{display:flex;gap:.45rem;margin-top:.4rem;flex-wrap:wrap}
+.steps input{font-family:"IBM Plex Mono",monospace;font-size:.78rem;padding:.42rem .6rem;
+  border:1px solid var(--border);border-radius:999px;flex:1;min-width:11rem;background:#fff}
+.steps input:focus-visible{outline:3px solid var(--mint);outline-offset:1px}
+.rec-msg{font-size:.82rem;color:#5b6b70;margin:.85rem 0 0;line-height:1.5}
+.rec-msg .ok{color:var(--mint-d);font-weight:600}
+.rec-msg .bad{color:#c6362e;font-weight:600}
+.rec-hint{font-size:.82rem;color:#5b6b70;margin:.9rem 0 0;line-height:1.5}
 
 /* ─────────────────────────────────────────────────────────────
    The bay: patient card and conversation on the left, the devices
@@ -318,25 +358,55 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
 
     <div class="lb-grid" id="eps"></div>
 
-    <div class="rec">
-      <h3>Your record</h3>
-      <p class="sub">The key that signs for you was made in this browser and never leaves it.
-         Your record lives on chain under an account, and an account can hold more than one machine.</p>
-      <div class="row"><span class="lab">account</span><code id="rc-acct">—</code>
-        <button id="rc-copy">copy</button></div>
-      <div class="row"><span class="lab">this machine</span><code id="rc-dev">—</code>
-        <span id="rc-state" class="note"></span></div>
-      <div class="row"><span class="lab">level</span><span id="rc-level" class="note">—</span></div>
+    <div class="rec" id="rec">
+      <div class="rec-top">
+        <span class="rec-eyebrow" id="rc-title">Your record</span>
+        <span class="sp"></span>
+        <span class="pill" id="rc-pill">—</span>
+      </div>
 
-      <div class="row"><span class="lab">add a machine</span>
-        <input id="rc-add" placeholder="paste the other machine's key" spellcheck="false">
-        <button id="rc-link" class="go">link it</button></div>
-      <div class="row"><span class="lab">use an account</span>
-        <input id="rc-use" placeholder="paste an account to join or watch" spellcheck="false">
-        <button id="rc-adopt">use it</button>
-        <button id="rc-reset">forget</button></div>
-      <p class="note" id="rc-msg">On a new machine: paste the account above, then have the first
-         machine link this one's key. Watching a record needs no key at all.</p>
+      <p class="rec-level" id="rc-level">—</p>
+      <p class="rec-sub" id="rc-sub"></p>
+
+      <div class="rec-list" id="rc-list">
+        <h4>Machines that play into it</h4>
+        <div id="rc-devices"></div>
+      </div>
+
+      <div class="rec-acts" id="rc-acts">
+        <button class="rbtn go" id="rc-open">Play on another machine</button>
+        <button class="rbtn" id="rc-join">Use another account</button>
+      </div>
+
+      <!-- one flow, in the order you actually do it, on the machine you do it from -->
+      <div class="steps hide" id="rc-flow">
+        <ol>
+          <li>On the other machine, open Vitals and press <b>Use another account</b>.
+            <div class="row"><span class="tok"><span id="rc-acct">—</span>
+              <button id="rc-copy">copy</button></span></div>
+          </li>
+          <li>It will show you a key. Paste it here.
+            <div class="row"><input id="rc-add" placeholder="the key that machine shows" spellcheck="false">
+              <button class="rbtn go" id="rc-link">Add it</button></div>
+          </li>
+        </ol>
+      </div>
+
+      <div class="steps hide" id="rc-joinbox">
+        <ol>
+          <li>Paste the account from the machine you already play on.
+            <div class="row"><input id="rc-use" placeholder="that machine's account" spellcheck="false">
+              <button class="rbtn go" id="rc-adopt">Use it</button></div>
+          </li>
+        </ol>
+      </div>
+
+      <p class="rec-hint hide" id="rc-handover">This machine can watch the record but not play into
+        it yet. Give this key to a machine that already can:
+        <span class="row"><span class="tok"><span id="rc-dev">—</span>
+          <button id="rc-devcopy">copy</button></span></span></p>
+
+      <p class="rec-msg" id="rc-msg"></p>
     </div>
 
     <p class="lb-foot">Episodes open as you clear the one before — skill unlocks the story.
@@ -1009,45 +1079,103 @@ function renderSeason(){
   $('#coin-n').textContent=cleared().length;
 }
 renderSeason(); renderModes();
+/* The panel does three different jobs for three different situations. Showing all three at
+   once is what made it unreadable: two paste fields side by side, when only one of them is
+   ever the one you want, and the account and the machine printed as the same 44 characters
+   with nothing saying why. */
+/* Not `show` — the page already has one, for swapping the film behind the patient. Shadowing
+   it threw at parse time and took the whole script with it. */
+const vis=(sel,on)=>$(sel).classList.toggle('hide',!on);
+
 async function refreshRecord(){
   const me=await identity();
   const c=await (await fetch('/api/chain'+(me?'?player='+me.pub:''))).json();
   $('#lb-chain').textContent=c.connected
     ? `localnet · tree #${c.tree_id}`+(me?` · ${shortKey(me.pub)}`:' · no key')
     : 'no chain';
-  if(!me){ $('#rc-state').textContent='this browser cannot make a key'; return; }
-  $('#rc-dev').textContent=me.pub;
-  $('#rc-acct').textContent=acctOf();
-  const a=await accountState();
+  if(!me){
+    $('#rc-pill').className='pill none'; $('#rc-pill').textContent='no key';
+    $('#rc-level').textContent='This browser cannot make a key';
+    $('#rc-sub').textContent='Ed25519 in WebCrypto — try Chrome, Safari 17+ or Firefox 129+';
+    ['#rc-list','#rc-acts','#rc-flow','#rc-joinbox','#rc-handover'].forEach(x=>show(x,false));
+    return;
+  }
   const mine=acctOf()===me.pub;
-  $('#rc-state').innerHTML = !a||!a.open
-    ? '<span class="note">not opened yet — finish a case and it opens itself</span>'
-    : a.linked ? `<span class="ok">linked · ${a.devices} machine${a.devices>1?'s':''}</span>`
-               : '<span class="bad">not linked — ask a linked machine to add this key</span>';
+  const a=await accountState();
+  const open_=a&&a.open, linked=a?a.linked:mine;
+
+  $('#rc-acct').textContent=acctOf();
+  $('#rc-dev').textContent=me.pub;
+  $('#rc-title').textContent = mine?'Your record':'Someone else\u2019s record';
+
+  /* One word for where this machine stands. */
+  const pill=$('#rc-pill');
+  if(!open_){ pill.className='pill none'; pill.textContent='not opened yet'; }
+  else if(linked && mine){ pill.className='pill here'; pill.textContent='this machine'; }
+  else if(linked){ pill.className='pill here'; pill.textContent='linked'; }
+  else { pill.className='pill view'; pill.textContent='watching only'; }
+
+  /* The level is the thing anyone came here for, so it goes first and it goes big. */
   const pr=await (await fetch('/api/progress?account='+acctOf())).json();
-  $('#rc-level').textContent = pr.level==null ? 'nothing claimed yet'
-    : `${pr.level_name} · ${pr.attempts} attempt${pr.attempts>1?'s':''} · ${pr.distinct} distinct · xp ${pr.xp}`;
-  $('#rc-reset').style.display = mine ? 'none' : '';
+  if(pr.level==null){
+    $('#rc-level').textContent = open_?'Nothing claimed yet':'No record yet';
+    $('#rc-sub').textContent = open_
+      ? 'Finish a case and claim a level'
+      : 'Finish a case and the account opens itself';
+  }else{
+    $('#rc-level').textContent=pr.level_name;
+    $('#rc-sub').textContent=`${pr.attempts} attempt${pr.attempts===1?'':'s'} · `
+      +`${pr.distinct} case${pr.distinct===1?'':'s'} · ${pr.xp} xp`;
+  }
+
+  /* Which machines can play into it. Truncated: a key is a token you move, not text you read. */
+  vis('#rc-list', open_);
+  if(open_){
+    const n=a.devices;
+    $('#rc-devices').innerHTML =
+      `<div class="dev"><span class="dot${linked?'':' off'}"></span>`
+      +`<span>${mine?'this browser':(linked?'this browser':'this browser — not linked')}</span>`
+      +`<span class="k">${shortKey(me.pub)}</span></div>`
+      + (n>1 ? `<div class="dev"><span class="dot"></span><span>${n-1} other`
+               +`${n-1===1?'':'s'}</span><span class="k">linked</span></div>` : '');
+  }
+
+  /* Only ever offer the action that applies here. */
+  vis('#rc-acts', true);
+  vis('#rc-open', linked);                 // hand the record to another machine
+  $('#rc-join').textContent = mine?'Use another account':'Back to my own record';
+  vis('#rc-handover', open_ && !linked);   // this machine is watching and wants in
+  if(!linked){ vis('#rc-flow',false); }
 }
-$('#rc-copy').onclick=async()=>{ await navigator.clipboard.writeText(acctOf());
-  $('#rc-copy').textContent='copied'; setTimeout(()=>$('#rc-copy').textContent='copy',1200); };
+
+$('#rc-open').onclick=()=>{ vis('#rc-joinbox',false);
+  vis('#rc-flow', $('#rc-flow').classList.contains('hide')); };
+$('#rc-join').onclick=()=>{
+  if(acctOf()!==(ME&&ME.pub)){ setAcct(null); $('#rc-msg').textContent='Back to this machine\u2019s own record.'; refreshRecord(); return; }
+  vis('#rc-flow',false);
+  vis('#rc-joinbox', $('#rc-joinbox').classList.contains('hide'));
+};
+const copyTo=async(btn,text)=>{ await navigator.clipboard.writeText(text);
+  const was=btn.textContent; btn.textContent='copied'; setTimeout(()=>btn.textContent=was,1200); };
+$('#rc-copy').onclick=e=>copyTo(e.target,acctOf());
+$('#rc-devcopy').onclick=async e=>copyTo(e.target,(await identity()).pub);
 $('#rc-link').onclick=async()=>{
   const other=$('#rc-add').value.trim(); if(!other)return;
-  $('#rc-msg').textContent='linking…';
+  $('#rc-msg').textContent='Linking…';
   const r=await linkDevice(other);
   $('#rc-msg').innerHTML = r.error ? `<span class="bad">${r.error}</span>`
-    : `<span class="ok">linked — that machine now plays into this record (${r.devices} in total)</span>`;
-  if(!r.error) $('#rc-add').value='';
+    : `<span class="ok">Linked.</span> That machine now plays into this record — ${r.devices} in total.`;
+  if(!r.error){ $('#rc-add').value=''; vis('#rc-flow',false); }
   refreshRecord();
 };
 $('#rc-adopt').onclick=async()=>{
   const a=$('#rc-use').value.trim(); if(!a)return;
-  setAcct(a); $('#rc-use').value='';
-  $('#rc-msg').textContent='using that account — if this machine is not linked yet, add its key from one that is';
+  setAcct(a); $('#rc-use').value=''; vis('#rc-joinbox',false);
+  // The handover hint below already says what to do with the key; repeating it here just made
+  // the card say the same sentence twice.
+  $('#rc-msg').textContent='';
   refreshRecord();
 };
-$('#rc-reset').onclick=()=>{ setAcct(null);
-  $('#rc-msg').textContent='back to this machine\u2019s own record'; refreshRecord(); };
 refreshRecord();
 if(location.hash.startsWith('#play')){
   const e=(location.hash.split('=')[1]||'').split('&')[0]; if(e)$('#ep').value=e;

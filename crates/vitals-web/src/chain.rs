@@ -329,3 +329,83 @@ pub fn level_name(v: u8) -> &'static str {
         3 => "Proficient", 4 => "Expert", _ => "?",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The bug this pins: a transaction carries several instructions, and the earlier ones log
+    /// their success. Taking the *first* log line reported that success as the reason for the
+    /// failure — "anchored leaf at index 1" shown to someone whose claim was rejected.
+    #[test]
+    fn the_reason_is_the_last_thing_the_program_said() {
+        let err = "\
+RPC response error -32002: Transaction simulation failed: Error processing Instruction 1
+    Program log: Instruction: AnchorReplay
+    Program log: anchored leaf at index 1 — score 100 of 100
+    Program log: claim rejected: claimed Expert, computed Competent
+    Program abc invoke [1]";
+        assert_eq!(program_log(err), "claim rejected: claimed Expert, computed Competent");
+    }
+
+    /// A refusal the program made without saying anything arrives as a bare hex code.
+    #[test]
+    fn a_bare_error_code_becomes_a_sentence() {
+        let err = "RPC response error -32002: Transaction simulation failed: \
+                   Error processing Instruction 0: custom program error: 0xa; 3 log messages:";
+        assert_eq!(program_log(err), "this machine is not linked to that account");
+    }
+
+    #[test]
+    fn every_error_the_program_can_return_has_words() {
+        // 0..=14 are the VitalsError variants. None may fall through to the generic text, or a
+        // refusal arrives at a person as a hex number.
+        for code in 0..=14u32 {
+            let err = format!("custom program error: 0x{code:x};");
+            let got = program_log(&err);
+            assert_ne!(got, "the program refused it", "error {code} has no message of its own");
+            assert!(!got.contains("0x"), "error {code} leaked its code: {got}");
+        }
+    }
+
+    #[test]
+    fn an_unknown_code_still_says_something_human() {
+        assert_eq!(program_log("custom program error: 0xff;"), "the program refused it");
+    }
+
+    #[test]
+    fn a_transport_failure_is_not_dressed_up_as_a_refusal() {
+        let err = "error sending request for url (http://127.0.0.1:8899/)\nCaused by: connection refused";
+        assert!(program_log(err).starts_with("error sending request"));
+    }
+
+    #[test]
+    fn hex32_is_lowercase_and_sixty_four_characters() {
+        let h = hex32(&[0xab; 32]);
+        assert_eq!(h.len(), 64);
+        assert_eq!(h, "ab".repeat(32));
+        assert_eq!(hex32(&[0u8; 32]), "0".repeat(64));
+    }
+
+    #[test]
+    fn levels_are_named_in_order_and_nothing_beyond_them_is() {
+        assert_eq!(
+            (0..5).map(level_name).collect::<Vec<_>>(),
+            ["Novice", "Advanced beginner", "Competent", "Proficient", "Expert"]
+        );
+        assert_eq!(level_name(5), "?", "an out-of-range level must not read as a real one");
+        assert_eq!(level_name(255), "?");
+    }
+
+    #[test]
+    fn difficulty_survives_the_trip_to_the_wire_and_back() {
+        use vitals_progress::record::Outcome;
+        for (d, n) in [(Difficulty::Student, 0u8), (Difficulty::Intern, 1), (Difficulty::Resident, 2)] {
+            let r = AttemptRecord {
+                player: [1; 32], sce_hash: [2; 32], case: [3; 32], run_hash: [4; 32],
+                difficulty: d, exam_mode: false, outcome: Outcome::WinDischarge, harm_count: 0,
+            };
+            assert_eq!(wire(&r).difficulty, n, "{d:?} must encode as {n}");
+        }
+    }
+}
