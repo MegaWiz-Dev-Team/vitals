@@ -239,3 +239,31 @@ fn a_forged_signature_is_refused_and_the_tree_is_left_alone() {
     let after = s.json("/api/chain")["anchored"].as_u64().unwrap_or(0);
     assert_eq!(before, after, "the refused leaf stayed on the tree");
 }
+
+/// Linking a machine before ever finishing a case.
+///
+/// The account only exists once something has been anchored against it, so the first link has to
+/// open it and add the machine in one go. It used to build the open and quietly drop the device
+/// on the floor: the button said "Add it", a transaction went out, and nothing was linked.
+#[test]
+#[ignore = "needs a validator and VITALS_PROGRAM_ID"]
+fn a_machine_that_has_never_played_can_still_link_another() {
+    let s = Server::start().expect("VITALS_PROGRAM_ID");
+    let first = Player::new();
+    let second = Player::new();
+    let account = first.pubkey();
+
+    let before = s.json(&format!("/api/account?device={account}&account={account}"));
+    assert_eq!(before["open"], false, "this test is pointless if the account already exists");
+
+    let linked = s.signed(
+        &first,
+        &format!("/api/link?player={account}&account={account}&device={}", second.pubkey()),
+    );
+    assert!(linked["error"].is_null(), "linking failed: {linked}");
+    assert_eq!(linked["devices"], 2, "the machine was not added: {linked}");
+
+    let state = s.json(&format!("/api/account?device={}&account={account}", second.pubkey()));
+    assert_eq!(state["open"], true);
+    assert_eq!(state["linked"], true, "the second machine still cannot play: {state}");
+}

@@ -194,17 +194,24 @@ impl Chain {
     /// Let another machine act as this person. Signed by one that already can.
     pub fn prepare_link(&self, device: &Pubkey, id: &Pubkey, add: &Pubkey, on: bool) -> Result<Pending, String> {
         let acc = self.account_pda(id);
+        let mut ixs = Vec::new();
+        // The account only exists once something has been anchored against it, and someone can
+        // reasonably want a second machine before they have finished their first case. Opening it
+        // here rather than refusing means the button does what it says — the earlier version built
+        // the open and dropped the device on the floor.
+        if self.account(id).is_none() {
+            if device != id {
+                return Err("that account does not exist yet".into());
+            }
+            ixs.push(self.ix(device, Instruction::OpenAccount, &[acc])?);
+        }
         let ix = if on {
             Instruction::AddAuthority { device: add.to_bytes() }
         } else {
             Instruction::RemoveAuthority { device: add.to_bytes() }
         };
-        self.prepare(device, vec![self.ix(device, ix, &[acc])?])
-    }
-
-    /// Open a person without playing first — what a brand new browser does before it can be linked.
-    pub fn prepare_open(&self, device: &Pubkey) -> Result<Pending, String> {
-        self.prepare(device, vec![self.ix(device, Instruction::OpenAccount, &[self.account_pda(device)])?])
+        ixs.push(self.ix(device, ix, &[acc])?);
+        self.prepare(device, ixs)
     }
 
     /// What the tree looks like now. Read after the transaction confirms.
