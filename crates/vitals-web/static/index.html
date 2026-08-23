@@ -76,10 +76,6 @@
 .me-t em{font-style:normal;font-family:"IBM Plex Mono",monospace;font-size:.62rem;opacity:.72}
 @media (max-width:640px){ .me-t em{display:none} }
 
-/* the record's own sheet — wider than the device picker, which is a list of five things */
-.sheet-rec{width:min(34rem,100%);max-width:34rem}
-.sheet-rec .rec{margin:0;border:0;box-shadow:none;padding:1rem 0 0}
-
 /* carrying a record between machines — the lobby's own vocabulary: white card, 16px,
    Archivo headings, mono for anything that is a token rather than a word */
 .rec{max-width:38rem;margin:2.4rem auto 0;background:#fff;border:1px solid var(--border);
@@ -372,6 +368,17 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
   box-shadow:0 24px 60px -20px rgba(10,22,24,.5)}
 .sheet-h{display:flex;align-items:center;gap:.6rem;padding:.85rem 1rem;border-bottom:1px solid var(--line)}
 .sheet-h b{font-family:Archivo,sans-serif;font-size:.98rem;font-weight:700}
+
+/* The record's own sheet. It has to come after `.sheet` rather than before it: same specificity,
+   so the later rule wins, and written earlier it lost its own width silently — the sheet stayed
+   at the picker's 23rem while claiming 34.
+   Wider than the picker because that is a list of five short things and this is a record. */
+.sheet-rec{width:min(34rem,100%);max-width:34rem}
+/* The header is inset 1rem; the body has to match it or the text runs to the border while the
+   title does not, which is what it was doing. Bottom padding included — a sheet that ends flush
+   against its last button reads as cut off. */
+.sheet-rec .rec{margin:0;border:0;border-radius:0;box-shadow:none;
+  padding:1.05rem 1rem 1.1rem;overflow:auto}
 .sheet-h .sp{margin-left:auto}
 .sheet-b{padding:.9rem 1rem;overflow:auto;display:flex;flex-direction:column;gap:1rem}
 .grp-h{font-family:"IBM Plex Mono",monospace;font-size:.6rem;letter-spacing:.15em;
