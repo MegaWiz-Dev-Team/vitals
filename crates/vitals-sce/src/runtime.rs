@@ -372,15 +372,24 @@ impl SceState {
         let text = action.to_lowercase();
         if let Some(i) = self.match_intervention(sce, &text) {
             let iv = &sce.interventions[i];
-            if let Some(h) = &iv.harm {
-                self.harm_events.push(h.clone());
-                self.record("harm", h.clone());
-                beats.push(NarrativeBeat::Harm(h.clone()));
-            }
             let id = iv.id.clone();
             let eq = iv.equipment.clone();
             let eq_set = iv.equipment_setting;
-            self.run_effects(sce, &iv.effects, &mut beats);
+            // The order itself, on the timeline, by id and stamped with the clock. It used to
+            // leave nothing behind but a membership in `done`, so the record could say a mask went
+            // on and at what flow and could not say adrenaline was ever given — let alone when.
+            // A debrief cannot be written from a record that does not contain the orders, and the
+            // time and the ordering are exactly the parts a verifier can recompute.
+            //
+            // Recorded before the effects run, so the order precedes the harm it caused.
+            self.record("action", id.clone());
+            if let Some(h) = &sce.interventions[i].harm {
+                let h = h.clone();
+                self.harm_events.push(h.clone());
+                self.record("harm", h.clone());
+                beats.push(NarrativeBeat::Harm(h));
+            }
+            self.run_effects(sce, &sce.interventions[i].effects.clone(), &mut beats);
             // Whatever the intervention leaves on the patient goes onto the bedside too. Typed
             // order and pressed button now converge on one record; attach() is idempotent on id, so
             // a learner who says it and then presses it does not end up with two masks.

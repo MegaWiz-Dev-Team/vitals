@@ -7,4 +7,4 @@ pub mod runtime;
 pub mod schema;
 
 pub use runtime::{render_beat, NarrativeBeat, Outcome, PatientStatus, SceState, Vitals};
-pub use schema::Sce;
+pub use schema::{DebriefSpec, Expect, Sce};
