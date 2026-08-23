@@ -7,13 +7,13 @@ Written as an honest self-assessment, including where we are weak.
 
 **Strong.** Most entries demo a prototype built in four weeks. We demo a chain layer built in
 four weeks on top of a production-shaped Rust engine with a deterministic rubric scorer, a
-hash-chained audit log cross-validated across two implementations, 205 authored cases, and
+hash-chained audit log cross-validated across two implementations, 424 authored scenarios in production across 30 medical institutions (>75% of Thailand), and
 real users. The repo will show engineering history, not a hackathon sprint's worth of commits.
 
 ## 2. Potential Impact — "TAM? Impact on the broader Solana ecosystem?"
 
 **Strong on the vertical, medium on the ecosystem.**
-- Immediate market: ~100k Thai health students, 23+ medical schools; SEA and global EN beyond.
+- Immediate market: ~100k Thai health students, 23+ medical schools (already active in >75% of Thai medical faculties); scaling to 4,350+ global medical schools on Solana.
 - The larger claim is credentialing generally — clinical skill is the hardest case (high stakes,
   heavily regulated, fiercely protective of data). Solving it here generalises downward to every
   other skill credential.

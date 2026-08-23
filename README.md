@@ -21,6 +21,19 @@ needs to prove competence to a residency programme in another country.
 
 ---
 
+## 🏆 Proven Traction & National Validation (2 Months Live)
+
+Vitals is built upon an award-winning clinical simulation engine already in active production:
+
+- **1st Place Grand Champion @ NECTEC AI for Thai 2026** ([team01.aiforthai.in.th](https://team01.aiforthai.in.th))
+- **30 Medical Institutions Active** — Organic adoption across **>75% of all medical schools in Thailand** (including *Chulalongkorn University, Mahidol Siriraj, Mahidol Ramathibodi, Chiang Mai University, Khon Kaen University, and Thammasat University*).
+- **290+ Clinicians & Medical Students** (68% real activation rate).
+- **433 Completed Clinical Scenarios (671 runs)** scored across a catalog of **424 authored clinical scenarios**.
+- **Live Production Platform**: [embla.megawiz.co.th](https://embla.megawiz.co.th)
+
+---
+
+
 ## The problem
 
 A medical student's skill is invisible until an exam board says otherwise, and that
