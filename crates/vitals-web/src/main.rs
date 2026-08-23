@@ -1106,3 +1106,161 @@ fn kit_phrase(dev: &str, set: Option<f64>) -> Option<String> {
         _ => return None,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── things that arrive from the network ─────────────────────────────────
+    //
+    // Every one of these turns an attacker-controlled string into something the rest of the
+    // server trusts — a public key, a signature, a query value. They had no tests at all.
+
+    #[test]
+    fn a_pubkey_must_round_trip_exactly() {
+        // A real one, and the check that makes it real: base58 has no canonical padding, so a
+        // string that decodes to 32 bytes is not necessarily the string those bytes encode to.
+        let real = "AStZxZ8XgH9nSKarLT4MzUrY8HM5LtExzDaN9SDoaKiq";
+        assert_eq!(pubkey(real).map(|k| k.to_string()).as_deref(), Some(real));
+    }
+
+    /// Forty-three characters is a real address, not a truncated one. A pubkey is 32 bytes and
+    /// base58 spends 43 or 44 characters on them depending on the leading byte — so a length
+    /// check would reject roughly one address in 256, and only for the people who happen to hold
+    /// one. The round-trip is the check; the length never was.
+    #[test]
+    fn a_forty_three_character_key_is_valid() {
+        let short = "AStZxZ8XgH9nSKarLT4MzUrY8HM5LtExzDaN9SDoaKi";
+        assert_eq!(short.len(), 43);
+        assert_eq!(pubkey(short).map(|k| k.to_string()).as_deref(), Some(short));
+    }
+
+    #[test]
+    fn pubkey_refuses_everything_that_is_not_one() {
+        for bad in [
+            "",
+            "notapubkey",
+            "0OIl",                                          // the four base58 excludes
+            "AStZxZ8XgH9nSKarLT4MzUrY8HM5LtExzDaN9SDoaKiqq", // one char long
+            "1AStZxZ8XgH9nSKarLT4MzUrY8HM5LtExzDaN9SDoaKiq", // leading zero byte, different string
+            "../../etc/passwd",
+            "AStZxZ8XgH9nSKarLT4MzUrY8HM5LtExzDaN9SDoaKi ",  // trailing space
+        ] {
+            assert!(pubkey(bad).is_none(), "accepted {bad:?}");
+        }
+    }
+
+    #[test]
+    fn a_signature_is_exactly_sixty_four_bytes_of_hex() {
+        let ok = "ab".repeat(64);
+        assert_eq!(sig64(&ok).map(|s| s[0]), Some(0xab));
+        assert_eq!(sig64(&ok).map(|s| s.len()), Some(64));
+        for bad in [
+            String::new(),
+            "ab".repeat(63),          // short
+            "ab".repeat(65),          // long
+            "zz".repeat(64),          // not hex
+            format!("{}gg", "ab".repeat(63)),
+            format!(" {}", "ab".repeat(64)).trim_end().to_string(), // leading space, right length
+        ] {
+            assert!(sig64(&bad).is_none(), "accepted {:?}", &bad[..bad.len().min(12)]);
+        }
+    }
+
+    #[test]
+    fn hex_round_trips_through_sig64() {
+        let bytes: [u8; 64] = std::array::from_fn(|i| (i * 7 % 251) as u8);
+        assert_eq!(sig64(&hex_bytes(&bytes)), Some(bytes));
+    }
+
+    #[test]
+    fn hex_is_lowercase_and_zero_padded() {
+        assert_eq!(hex_bytes(&[0, 1, 15, 16, 255]), "00010f10ff");
+    }
+
+    #[test]
+    fn base58_decodes_the_known_all_zero_key() {
+        // 32 zero bytes encode as 32 '1's, and nothing else does.
+        assert_eq!(bs58_to_32(&"1".repeat(32)), Some([0u8; 32]));
+    }
+
+    // ── query parsing ───────────────────────────────────────────────────────
+
+    #[test]
+    fn param_reads_values_and_decodes_them() {
+        let u = "/api/step?id=s1&do=oxygen%20face%20mask&tick=30";
+        assert_eq!(param(u, "id").as_deref(), Some("s1"));
+        assert_eq!(param(u, "do").as_deref(), Some("oxygen face mask"));
+        assert_eq!(param(u, "tick").as_deref(), Some("30"));
+        assert_eq!(param(u, "missing"), None);
+    }
+
+    #[test]
+    fn param_does_not_match_a_key_that_merely_ends_with_the_one_asked_for() {
+        // `account` must not be answered by `subaccount`, or a caller can aim a request at
+        // somebody else's record by naming a parameter carefully.
+        let u = "/api?subaccount=theirs&account=mine";
+        assert_eq!(param(u, "account").as_deref(), Some("mine"));
+    }
+
+    // ── which routes need a token ───────────────────────────────────────────
+
+    #[test]
+    fn guarding_covers_everything_that_spends_or_signs() {
+        for p in ["/api/anchor", "/api/claim", "/api/say"] {
+            assert!(guarded(p), "{p} makes the server sign or spend");
+        }
+        for p in ["/", "/api/new", "/api/step", "/api/kit", "/api/tape", "/api/chain"] {
+            assert!(!guarded(p), "{p} is play, and a kiosk must not need a token to play");
+        }
+    }
+
+    // ── scenario table ──────────────────────────────────────────────────────
+
+    #[test]
+    fn every_episode_has_a_title_a_difficulty_and_a_file() {
+        for ep in ["ep1", "ep2", "ep3", "ep4", "ep5"] {
+            assert!(title(ep).starts_with(&ep.to_uppercase()), "{ep} title is {}", title(ep));
+            let p = scenario_path(ep);
+            assert!(p.exists(), "{ep}: {} is missing", p.display());
+        }
+        // The ladder is meant to climb.
+        assert_eq!(difficulty("ep1"), Difficulty::Student);
+        assert_eq!(difficulty("ep2"), Difficulty::Intern);
+        assert_eq!(difficulty("ep5"), Difficulty::Resident);
+    }
+
+    #[test]
+    fn an_unknown_episode_falls_back_rather_than_panicking() {
+        assert!(scenario_path("../../etc/passwd").exists(), "unknown ids fall back to EP1");
+        assert_eq!(difficulty("nonsense"), Difficulty::Student);
+    }
+
+    // ── the device picker ───────────────────────────────────────────────────
+
+    #[test]
+    fn kit_phrases_carry_the_number_the_learner_dialled() {
+        assert_eq!(kit_phrase("o2", Some(6.0)).as_deref(), Some("oxygen face mask 6 lpm"));
+        assert_eq!(kit_phrase("iv", Some(250.0)).as_deref(), Some("iv access normal saline 250 ml/hr"));
+        assert_eq!(kit_phrase("defib", Some(200.0)).as_deref(), Some("defibrillate 200 j"));
+        assert_eq!(kit_phrase("nothing", None), None);
+    }
+
+    #[test]
+    fn kit_phrases_without_a_setting_still_read_as_orders() {
+        assert_eq!(kit_phrase("ett", None).as_deref(), Some("intubate, secure the airway"));
+        assert!(kit_phrase("o2", None).unwrap().contains("10 lpm"), "falls back to the scenario dose");
+    }
+
+    // ── the stability meter ─────────────────────────────────────────────────
+
+    #[test]
+    fn band_is_one_inside_the_range_and_zero_far_outside() {
+        assert_eq!(band(96.0, 94.0, 100.0, 14.0), 1.0, "inside the band is perfect");
+        assert_eq!(band(94.0, 94.0, 100.0, 14.0), 1.0, "the edge is still inside");
+        assert_eq!(band(80.0, 94.0, 100.0, 14.0), 0.0, "a full span out is zero");
+        assert_eq!(band(40.0, 94.0, 100.0, 14.0), 0.0, "and it clamps rather than going negative");
+        let half = band(87.0, 94.0, 100.0, 14.0);
+        assert!((half - 0.5).abs() < 1e-9, "half a span out is half, got {half}");
+    }
+}
