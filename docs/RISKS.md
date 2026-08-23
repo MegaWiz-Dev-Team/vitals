@@ -2,24 +2,63 @@
 
 Ordered by what actually kills the project, not by likelihood.
 
-## 1. Timing — the Eternal window may close before a 4-week sprint fits
+## 1. Timing — resolved 2026-08-23
 
-As of 2026-08-22 the Eternal countdown showed **~15 days**. A 4-week sprint does not fit inside
-15 days. Two readings: the countdown is the deadline to *enter and start the timer*, or it is the
-deadline to *submit*. The site does not disambiguate and the FAQ answers are client-rendered.
+The countdown is the deadline to **start the timer**, not to submit. Read off colosseum.com and
+its Eternal FAQ, which is client-rendered and therefore has to be read with a real browser — which
+is why the first attempt could not settle it.
 
-**Action before anything else:** confirm with Colosseum which it is. If it is the entry deadline,
-the timer must start within ~2 weeks. If it is the submission deadline, target the next scheduled
-hackathon instead and use the extra runway. Do not start building on the assumption.
+    Eternal window closes    2026-09-07 ~07:00       ← last moment to start a sprint
+    start today              submit by 2026-09-20
+    start on the last day    submit by 2026-10-05
 
-## 2. Public submission destroys patent novelty
+Eternal is not the hackathon. It is a self-initiated 4-week sprint between the two hackathons
+Colosseum runs each year: sign up, click the stopwatch, post a one-minute video update every week,
+submit at the end. It is judged on *"ability to prioritize, iterate, and ship"*, so the four weeks
+are themselves the exhibit — starting the clock with the work already finished leaves nothing to
+show in the weekly updates.
 
-Colosseum's rules state entrants should not assume any confidentiality in their submission, and
-submissions are public. If any part of the Embla scoring/competency work is patent-track, filing
-must happen **before** submission — the same sequencing already established for trial registration.
+The prize is not the one on the front page. The Eternal Award is **$25,000 non-dilutive USDC**
+every six months; the $250,000 is investment from the accelerator's fund, which is a separate
+outcome. Teams that have raised venture capital for the submitted product are not eligible.
 
-**Action:** audit what in `vitals` and the reused Embla engine is patent-intended. File first,
-or consciously accept it as disclosed. This is a one-way door.
+Colosseum's own FAQ says they *"highly encourage all builders to participate in [the two annual
+hackathons] to increase their odds of being selected for the accelerator program."*
+
+**Decision taken 2026-08-23:** skip this Eternal window, target the next full hackathon. Four
+weeks is not enough for a product whose market has not been validated, and the odds are better in
+the main event by the organiser's own account. The next hackathon's dates are not published on the
+site — that still needs asking.
+
+Resubmitting an earlier entry is allowed *"if it has materially changed — a clear pivot,
+substantial progress made over several months, and/or meaningful traction."* A pivot must link the
+prior submission and explain what changed.
+
+## 2. Patent novelty — the constraint is real, the conflict was not
+
+An earlier version of this file recorded that Colosseum submissions are public and concluded that
+submitting and filing a patent were mutually exclusive. **That was wrong, and it was repeated for
+a day before anyone checked.** The FAQ says plainly:
+
+> the product GitHub repo — *if closed source you'll need to grant Colosseum access privately*
+
+A private repository with judges granted access is explicitly supported. Submitting does not
+require publishing.
+
+**What did happen:** the repository was public from 2026-08-22 to 2026-08-23 — about one day, with
+zero forks and zero stars — and was made private again once this was understood. Going private
+stops further spread; it does not unpublish what was published. For novelty purposes the test is
+whether it was *available* to the public, not how many people took it.
+
+That matters differently by jurisdiction. The United States allows a 12-month grace period for an
+inventor's own disclosure, which would put a US filing deadline around 2026-08 the following year.
+Europe, China, Japan and Korea apply absolute novelty with no grace period, so rights there may
+already be affected. One day and no forks is the best version of this situation to take to a
+patent attorney, and it is a conversation to have quickly rather than eventually.
+
+**Action:** audit what in `vitals` and the reused Embla engine is patent-intended, and take the
+one-day-public fact to a lawyer. Keep the repository private until that returns an answer. None of
+this blocks a submission any more.
 
 ## 3. The determinism boundary — worse than assumed, and now measured
 
