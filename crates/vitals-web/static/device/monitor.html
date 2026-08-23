@@ -132,6 +132,10 @@ class Sweep {
     this.c.width = Math.max(1, r.width * d); this.c.height = Math.max(1, r.height * d);
     this.ctx.setTransform(d,0,0,d,0,0);
     this.w = r.width; this.h = r.height; this.x = 0; this.pen = null;
+    // A band across the top the trace never enters, so the lead name and the paper speed stay
+    // readable. A real strip chart reserves this; drawing the trace through the label and hoping
+    // the text wins is how "SINUS" ends up with an R wave through it.
+    this.top = Math.min(18, this.h * 0.3);
     this.ctx.fillStyle = '#04070a'; this.ctx.fillRect(0,0,this.w,this.h);
   }
   /// `sample(msIntoCycle, cycleMs)` — time domain, so intervals stay in milliseconds.
@@ -152,7 +156,9 @@ class Sweep {
       const v = this.timeDomain ? this.shape((this.phase % 1) * rr, rr) : this.shape(this.phase % 1);
       // a whisper of baseline wander + noise: a perfectly clean trace looks synthesised
       const drift = this.noise ? Math.sin(this.phase * 0.7) * 0.02 + (Math.random() - 0.5) * 0.012 : 0;
-      const y = this.h/2 - (v + drift) * (this.h * 0.40) * amp;
+      // Centred in what is left below the label band, not in the whole lane.
+      const mid = this.top + (this.h - this.top) / 2;
+      const y = mid - (v + drift) * ((this.h - this.top) * 0.40) * amp;
       if (!this.pen && i === 0) g.moveTo(x, y); else g.lineTo(x, y);
       this.pen = [x, y];
     }
