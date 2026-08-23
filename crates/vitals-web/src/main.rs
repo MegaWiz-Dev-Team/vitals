@@ -759,6 +759,38 @@ fn main() {
                     }
                 }
             }
+            // What the run is told back. Derived from the tape, so anyone holding the tape and the
+            // scenario re-derives the same debrief — it is evidence, not commentary.
+            (Method::Get, "/api/debrief") => {
+                let id = param(&url, "id").unwrap_or_default();
+                let caller = param(&url, "player");
+                let mut map = sessions.lock().unwrap();
+                match map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) {
+                    None => no_such_session(),
+                    Some(s) => match vitals_replay::debrief(&s.sce_json, &s.tape) {
+                        Err(e) => json(serde_json::json!({ "error": e })),
+                        Ok(d) => json(serde_json::json!({
+                            "outcome": d.outcome,
+                            "seconds": d.sim_seconds,
+                            "expected": d.expected.iter().map(|e| serde_json::json!({
+                                "id": e.id, "label": e.label, "why": e.why,
+                                "within": e.within, "done_at": e.done_at,
+                                "late": e.late, "late_by": e.late_by,
+                            })).collect::<Vec<_>>(),
+                            "avoided": d.avoided.iter().filter(|a| a.done_at.is_some())
+                                .map(|a| serde_json::json!({
+                                    "id": a.id, "label": a.label, "why": a.why, "done_at": a.done_at,
+                                })).collect::<Vec<_>>(),
+                            "harms": d.harms.iter().map(|h| serde_json::json!({
+                                "text": h.text, "at": h.at, "caused_by": h.caused_by,
+                            })).collect::<Vec<_>>(),
+                            "statuses": d.statuses.iter().map(|sp| serde_json::json!({
+                                "status": sp.status, "from": sp.from, "seconds": sp.seconds,
+                            })).collect::<Vec<_>>(),
+                        })),
+                    },
+                }
+            }
             (Method::Get, "/api/tape") => {
                 let id = param(&url, "id").unwrap_or_default();
                 let caller = param(&url, "player");

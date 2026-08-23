@@ -63,21 +63,33 @@ fn code_only(js: &str) -> String {
             }
             '`' => {
                 i += 1;
-                let mut depth = 0usize;
+                // One entry per open `${`, each counting the braces nested inside it. A flat
+                // counter reads `||{}` as closing the interpolation, which walked the scan off
+                // the rails and reported a balanced file as broken.
+                let mut interp: Vec<usize> = Vec::new();
                 while i < b.len() {
                     match b[i] {
                         '\\' => i += 1,
                         '$' if i + 1 < b.len() && b[i + 1] == '{' => {
-                            depth += 1;
+                            interp.push(0);
                             out.push('{');
                             i += 1;
                         }
-                        '}' if depth > 0 => {
-                            depth -= 1;
+                        '{' if !interp.is_empty() => {
+                            *interp.last_mut().expect("non-empty") += 1;
+                            out.push('{');
+                        }
+                        '}' if !interp.is_empty() => {
+                            let d = interp.last_mut().expect("non-empty");
+                            if *d == 0 {
+                                interp.pop();
+                            } else {
+                                *d -= 1;
+                            }
                             out.push('}');
                         }
-                        '`' if depth == 0 => break,
-                        ch if depth > 0 => out.push(ch),
+                        '`' if interp.is_empty() => break,
+                        ch if !interp.is_empty() => out.push(ch),
                         _ => {}
                     }
                     i += 1;

@@ -62,21 +62,39 @@ fn remove_as_free_text_puts_it_back_on() {
                "this is why Step::Off exists and free text cannot be trusted for devices");
 }
 
-/// A tape that never touches a dial must hash exactly as it did before dials were on the tape,
+/// A tape that never touches a dial must encode exactly as it did before dials were on the tape,
 /// or every leaf anchored under the older encoding stops verifying.
+///
+/// The scenario hash is held at zero on purpose. This test is about the *tape* encoding, and an
+/// earlier version fed it the real scenario — so editing the scenario broke a test that claims to
+/// be about something else, and the failure looked like an encoding regression when it was a
+/// scenario edit doing exactly what the scenario hash exists to do.
 #[test]
-fn tapes_without_device_steps_hash_unchanged() {
+fn tapes_without_device_steps_encode_unchanged() {
     let sce = ep1();
     let tape = vec![
         Step::Tick(30.0),
         Step::Do("adrenaline im".into()),
-        Step::Ask("any allergies?".into()),
         Step::Tick(300.0),
     ];
     let r = replay(&sce, &tape).unwrap();
-    let got = vitals_replay::hex(&leaf(&sce_hash(&sce), &tape, &r));
-    assert_eq!(got, "29d71874991e5754c7d9fbcc5fed08bf2dd9e042ea828d569c960469bf5428b9",
-               "computed by the pre-Set/Off code on this same tape");
+    assert_eq!(
+        vitals_replay::hex(&leaf(&[0u8; 32], &tape, &r)),
+        "e759e9c138a97e014a413def8b49e9826cbcec29957dfe740b1eb8d8fdcb234e",
+        "computed by the pre-Set/Off code over this same tape"
+    );
+}
+
+/// And the scenario hash still does its job: rewriting the scenario must change the leaf, or a
+/// rewritten case could silently revalue every credential ever issued against it.
+#[test]
+fn a_different_scenario_is_a_different_leaf() {
+    let sce = ep1();
+    let tape = vec![Step::Tick(30.0), Step::Do("adrenaline im".into())];
+    let r = replay(&sce, &tape).unwrap();
+    let a = leaf(&sce_hash(&sce), &tape, &r);
+    let b = leaf(&sce_hash(&format!("{sce} ")), &tape, &r);
+    assert_ne!(a, b, "a changed scenario produced the same leaf");
 }
 
 /// The exact tape the web server now writes when a player dials O2 to 6, starts an IV at 250,

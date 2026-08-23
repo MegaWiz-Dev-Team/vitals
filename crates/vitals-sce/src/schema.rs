@@ -184,6 +184,26 @@ pub struct OutcomeDef {
     #[serde(default)] pub label: Option<String>,
 }
 
+/// The clinical expectations of one case.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct DebriefSpec {
+    /// Orders that should have been given, optionally by a deadline.
+    #[serde(default)] pub expect: Vec<Expect>,
+    /// Orders that should not have been given at all.
+    #[serde(default)] pub avoid: Vec<Expect>,
+}
+
+/// One expectation, keyed by intervention id.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Expect {
+    pub id: String,
+    #[serde(default)] pub label: Option<String>,
+    /// Seconds from the start of the case. Absent means it matters that it happened, not when.
+    #[serde(default)] pub within_sec: Option<f64>,
+    /// Why it matters. A debrief that says "late" without saying what late costs teaches nothing.
+    #[serde(default)] pub why: Option<String>,
+}
+
 /// The whole time-evolving scenario — the optional `scenario` block of a Case.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Sce {
@@ -199,6 +219,12 @@ pub struct Sce {
     #[serde(default)] pub interventions: Vec<Intervention>,
     #[serde(default)] pub triggers: Vec<Trigger>,
     #[serde(default)] pub outcomes: Vec<OutcomeDef>,
+    /// What a clinician expects of this case, and by when.
+    ///
+    /// Optional, and deliberately data rather than code: the targets are clinical judgement, they
+    /// differ per scenario, and a doctor has to be able to change one without a programmer. A
+    /// scenario that sets none still debriefs — it reports the facts and judges nothing.
+    #[serde(default)] pub debrief: Option<DebriefSpec>,
 }
 
 impl Sce {

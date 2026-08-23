@@ -326,6 +326,23 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
 .clock2{font-family:"IBM Plex Mono",monospace;font-size:.78rem;font-variant-numeric:tabular-nums;
   color:var(--ink-2);flex:none}
 
+/* ── the debrief ──────────────────────────────────────────────────────────────
+   The score is the verdict; this is the reasoning. Every line is a time or an
+   ordering taken from the tape, so it is evidence rather than commentary. */
+.db{margin:1rem 0 0;text-align:left;display:flex;flex-direction:column;gap:.9rem}
+.db h4{font-family:"IBM Plex Mono",monospace;font-size:.62rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-3);margin:0 0 .4rem;font-weight:600}
+.db-r{display:flex;gap:.6rem;align-items:baseline;padding:.32rem 0;border-bottom:1px solid var(--line)}
+.db-r:last-child{border-bottom:0}
+.db-n{flex:1;min-width:0;font-size:.86rem;color:var(--ink)}
+.db-w{font-family:"IBM Plex Mono",monospace;font-size:.76rem;font-variant-numeric:tabular-nums;
+  flex:none;text-align:right}
+.db-w.ok{color:var(--act)} .db-w.late{color:var(--warn)} .db-w.never{color:var(--alarm)}
+.db-y{display:block;font-size:.76rem;color:var(--ink-3);margin-top:.15rem;line-height:1.45}
+.db-h{border-left:2px solid var(--alarm);padding:.4rem 0 .4rem .6rem}
+.db-h b{color:var(--alarm);font-weight:600;font-size:.86rem}
+.db-h .src{font-family:"IBM Plex Mono",monospace;font-size:.74rem;color:var(--ink-2);display:block;margin-top:.1rem}
+
 /* ── the device picker ────────────────────────────────────────────────────────
    Two steps, the way the reference does it: choose the device, then set it. Grouped
    A / B / C because that is the order a resuscitation is taught, and a picker that
@@ -574,6 +591,7 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
       <button class="btn" id="c1" disabled>claim Advanced beginner</button>
       <button class="btn" id="copy">copy the tape</button>
     </div>
+    <div class="db" id="db"></div>
     <div class="verdict" id="verdict"></div>
     <div class="hint" style="margin-top:.5rem">Hand the tape and the scenario to anyone — they recompute this leaf without asking us.</div>
   </section>
@@ -1050,6 +1068,7 @@ function paint(v){
     over=true; stop();
     const win=v.outcome.startsWith('Win');
     $('#result').className='result '+(win?'win':'lose'); $('#result').style.display='block';
+    showDebrief();
     $('#outcome').textContent=say('terminal:'+v.outcome);
     $('#outnote').textContent=(v.harm.length?'Harm on the record: '+v.harm.join(', '):'No harm recorded.')+'  ·  '+v.outcome;
     $('#leaf').textContent=v.leaf;
@@ -1154,6 +1173,52 @@ $('#anchor').onclick=async()=>{
   $(sel).onclick=async()=>{ const r=await chainDo('/api/claim?level='+lv);
     $('#verdict').innerHTML += r.granted?`<span class="g">✓ ${r.message}</span>`:`<span class="r">✗ ${r.message}</span>`; };
 });
+/* The score says what happened. This says why — and every line of it is a time or an ordering
+   taken from the tape, so the person reading it could check it themselves. */
+async function showDebrief(){
+  const d=await (await fetch('/api/debrief?id='+id+asMe())).json();
+  if(d.error){ $('#db').innerHTML=''; return; }
+  const F=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+  let h='';
+
+  if(d.expected.length){
+    h+='<div><h4>what the case asked for</h4>'+d.expected.map(e=>{
+      let w,c;
+      if(e.done_at==null){ w = e.within!=null ? 'never · '+F(e.within)+' target' : 'never'; c='never'; }
+      else if(e.late){ w = F(e.done_at)+' · '+F(e.late_by)+' late'; c='late'; }
+      else { w = F(e.done_at); c='ok'; }
+      /* The reason is shown only where it was missed. Told what you did right, you skim; told
+         what it costs to be four minutes late, you remember. */
+      const why = (e.done_at==null||e.late) && e.why ? `<span class="db-y">${e.why}</span>` : '';
+      return `<div class="db-r"><span class="db-n">${e.label}${why}</span>`
+            +`<span class="db-w ${c}">${w}</span></div>`;
+    }).join('')+'</div>';
+  }
+
+  if(d.avoided.length){
+    h+='<div><h4>what it asked you not to do</h4>'+d.avoided.map(a=>
+      `<div class="db-r"><span class="db-n">${a.label}`
+      +(a.why?`<span class="db-y">${a.why}</span>`:'')
+      +`</span><span class="db-w never">${F(a.done_at)}</span></div>`).join('')+'</div>';
+  }
+
+  if(d.harms.length){
+    h+='<div><h4>harm</h4>'+d.harms.map(x=>
+      `<div class="db-h"><b>${F(x.at)} — ${x.text}</b>`
+      +(x.caused_by?`<span class="src">after your order: ${(KITLBL[x.caused_by]||{}).label||x.caused_by}</span>`
+                   :'<span class="src">not from anything you ordered</span>')
+      +`</div>`).join('')+'</div>';
+  }
+
+  const spans=d.statuses.filter(s=>s.seconds>=1);
+  if(spans.length){
+    h+='<div><h4>time in each state</h4>'+spans.map(s=>
+      `<div class="db-r"><span class="db-n">${s.status}</span>`
+      +`<span class="db-w">${F(s.seconds)}</span></div>`).join('')+'</div>';
+  }
+  $('#db').innerHTML=h;
+}
+
 $('#copy').onclick=async()=>{ const t=await (await fetch('/api/tape?id='+id+asMe())).json();
   await navigator.clipboard.writeText(JSON.stringify(t,null,1)); $('#copy').textContent='tape copied'; };
 

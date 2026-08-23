@@ -194,3 +194,135 @@ pub fn record_for(
         harm_count: r.harm_events.len() as u16,
     })
 }
+
+// ── the debrief ─────────────────────────────────────────────────────────────
+//
+// Vitals could grade but not teach. A finished case gave an outcome, a score and a hash, and said
+// nothing about *why* — not that adrenaline came four minutes late, not which order caused the
+// harm, not how long she spent in arrest. The score is the verdict; this is the reasoning.
+//
+// Every line below is a time or an ordering derived from the tape, so a verifier holding the same
+// two inputs re-derives the same debrief. Nothing here is an opinion and nothing needs a model.
+// The targets it measures against are clinical judgement and live in the scenario file.
+
+/// One thing the scenario expected, and what actually happened.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Expectation {
+    pub id: String,
+    pub label: String,
+    pub why: String,
+    /// The target, in seconds from the start of the case. `None` means it matters that it
+    /// happened, not when.
+    pub within: Option<f64>,
+    /// When it was first done. `None` means never.
+    pub done_at: Option<f64>,
+    /// Done, but past the target. Never late when it was never done — that is a different failure
+    /// and it reads differently.
+    pub late: bool,
+    pub late_by: Option<f64>,
+}
+
+/// Something that hurt her, and the order it came from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HarmAt {
+    pub text: String,
+    pub at: f64,
+    /// The order recorded immediately before it. `None` when the harm came from the passage of
+    /// time rather than from anything the player did.
+    pub caused_by: Option<String>,
+}
+
+/// How long she spent in one clinical state.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Span {
+    pub status: String,
+    pub from: f64,
+    pub seconds: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Debrief {
+    pub outcome: Option<String>,
+    pub sim_seconds: f64,
+    pub expected: Vec<Expectation>,
+    /// Orders the scenario says not to give, that were given anyway.
+    pub avoided: Vec<Expectation>,
+    pub harms: Vec<HarmAt>,
+    pub statuses: Vec<Span>,
+}
+
+/// Replay a tape and say what it did, against what the scenario asked for.
+pub fn debrief(sce_json: &str, tape: &[Step]) -> Result<Debrief, String> {
+    let sce = Sce::from_json(sce_json).map_err(|e| format!("bad SCE: {e}"))?;
+    let spec = sce.debrief.clone();
+    let (st, r) = resume(sce_json, tape)?;
+    let events = st.events();
+
+    // First time each intervention was ordered. The automaton records orders by id, so this is
+    // an exact match rather than a guess at what the learner meant.
+    let first_at = |id: &str| -> Option<f64> {
+        events.iter().find(|e| e.kind == "action" && e.text == id).map(|e| e.t_sec)
+    };
+
+    let build = |e: &vitals_sce::Expect| {
+        let done_at = first_at(&e.id);
+        let (late, late_by) = match (e.within_sec, done_at) {
+            (Some(target), Some(t)) if t > target => (true, Some(t - target)),
+            _ => (false, None),
+        };
+        Expectation {
+            id: e.id.clone(),
+            label: e.label.clone().unwrap_or_else(|| e.id.clone()),
+            why: e.why.clone().unwrap_or_default(),
+            within: e.within_sec,
+            done_at,
+            late,
+            late_by,
+        }
+    };
+
+    let (expected, avoided) = match &spec {
+        Some(s) => (
+            s.expect.iter().map(&build).collect(),
+            s.avoid.iter().map(&build).collect(),
+        ),
+        None => (Vec::new(), Vec::new()),
+    };
+
+    // Harm, blamed on the order recorded immediately before it. The automaton records the order
+    // first and then the harm it caused, so "immediately before" is the cause and not a guess.
+    let mut harms = Vec::new();
+    for (i, e) in events.iter().enumerate() {
+        if e.kind != "harm" {
+            continue;
+        }
+        let caused_by = events[..i]
+            .iter()
+            .rev()
+            .find(|p| p.kind == "action")
+            .filter(|p| (e.t_sec - p.t_sec).abs() < 1e-6)
+            .map(|p| p.text.clone());
+        harms.push(HarmAt { text: e.text.clone(), at: e.t_sec, caused_by });
+    }
+
+    // How long each state lasted. The last one runs to the end of the tape.
+    let marks: Vec<(&str, f64)> = events
+        .iter()
+        .filter(|e| e.kind == "status")
+        .map(|e| (e.text.as_str(), e.t_sec))
+        .collect();
+    let mut statuses = Vec::new();
+    for (i, (name, from)) in marks.iter().enumerate() {
+        let until = marks.get(i + 1).map(|(_, t)| *t).unwrap_or(r.sim_seconds);
+        statuses.push(Span { status: (*name).to_string(), from: *from, seconds: (until - from).max(0.0) });
+    }
+
+    Ok(Debrief {
+        outcome: r.outcome.clone(),
+        sim_seconds: r.sim_seconds,
+        expected,
+        avoided,
+        harms,
+        statuses,
+    })
+}
