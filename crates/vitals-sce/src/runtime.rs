@@ -406,6 +406,19 @@ impl SceState {
                 self.set_var(sce, &d.var, nv);
             }
         }
+        self.normalise();
+    }
+
+    /// Keep the vitals arithmetically possible.
+    ///
+    /// Systolic and diastolic are separate variables that a scenario drives independently, and
+    /// nothing stopped one crossing the other: shock drops systolic faster, and `50/54` reached
+    /// the screen. That is not a severe blood pressure, it is not a blood pressure at all.
+    /// Narrow pulse pressure in shock is real; inverted pulse pressure is a bug.
+    fn normalise(&mut self) {
+        if self.vitals.dbp > self.vitals.sbp {
+            self.vitals.dbp = self.vitals.sbp;
+        }
     }
 
     /// Returns true if an effect changed state or terminated.
@@ -492,6 +505,20 @@ impl SceState {
         self.outcome_id = Some(id.to_string());
         self.record("outcome", id.to_string());
         self.status = match kind { "win" => PatientStatus::Recovered, "death" => PatientStatus::Dead, _ => self.status };
+        // A body that has stopped has stopped. Terminating used to set a status and leave every
+        // vital frozen at whatever it held the instant before, so the screen showed a patient
+        // marked Dead with a pulse of 128 and a respiratory rate of 28 — the monitor sweeping,
+        // the chest still rising. Death is a fact about the patient, not a display state.
+        if kind == "death" {
+            self.vitals.hr = 0.0;
+            self.vitals.sbp = 0.0;
+            self.vitals.dbp = 0.0;
+            self.vitals.rr = 0.0;
+            // No pulse for an oximeter to read. A saturation is a measurement of flowing blood.
+            self.vitals.spo2 = 0.0;
+            self.vitals.gcs = 3;
+            self.vitals.rhythm = Rhythm::Asystole;
+        }
         beats.push(NarrativeBeat::Terminal(o));
     }
 

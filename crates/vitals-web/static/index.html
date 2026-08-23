@@ -255,32 +255,76 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
 .nudge{font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--alarm);margin-bottom:.45rem;
   min-height:1rem}
 .nudge:empty{display:none}
-.kit{display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.5rem}
-.kit .k-i{font-family:"IBM Plex Mono",monospace;font-size:.68rem;background:var(--act-soft);
-  color:#0a4c3e;border-radius:999px;padding:.2rem .55rem;display:inline-flex;gap:.3rem;align-items:center}
-.kit .k-i b{font-weight:600}
-.kit .k-i .x{cursor:pointer;opacity:.5} .kit .k-i .x:hover{opacity:1;color:var(--alarm)}
-.tray{display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.5rem}
-.tray .btn{font-size:.68rem}
-.tray .grp{font-family:"IBM Plex Mono",monospace;font-size:.56rem;letter-spacing:.14em;
-  text-transform:uppercase;color:var(--ink-3);width:100%;margin-top:.25rem}
+/* ── what is on the patient ───────────────────────────────────────────────────
+   A tray, not a row of tags: the thing, its setting, and how long it has been on.
+   Tabular figures because the numbers are read down a column, not across. */
+.tray{display:flex;flex-direction:column;gap:.1rem;margin-bottom:.55rem}
+.t-row{display:flex;align-items:center;gap:.5rem;padding:.3rem .1rem;
+  border-bottom:1px solid var(--line);font-size:.78rem}
+.t-row:last-child{border-bottom:0}
+.t-dot{width:.42rem;height:.42rem;border-radius:999px;background:var(--act);flex:none}
+.t-n{color:var(--ink);flex:1;min-width:0}
+.t-v{font-family:"IBM Plex Mono",monospace;font-size:.74rem;font-weight:600;color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.t-t{font-family:"IBM Plex Mono",monospace;font-size:.68rem;color:var(--ink-3);
+  font-variant-numeric:tabular-nums;flex:none}
+.t-x{border:0;background:none;font-family:"IBM Plex Mono",monospace;font-size:.62rem;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);cursor:pointer;padding:.1rem .2rem}
+.t-x:hover{color:var(--alarm)}
 .setrow{display:flex;flex-wrap:wrap;gap:.25rem;margin:.35rem 0 .5rem}
 .setrow .btn{font-size:.66rem;padding:.25rem .5rem}
-.posrow{display:flex;gap:.9rem;font-size:.8rem;color:var(--ink-2)}
-.posrow input{accent-color:var(--act)}
 
-.chart{display:flex;flex-direction:column;gap:.22rem;max-height:11rem;overflow:auto;
+/* ── disposition ──────────────────────────────────────────────────────────────
+   A decision about where the patient goes, which is not a preference and does not
+   belong in a row with the mute button. */
+.dispo{display:flex;flex-direction:column;gap:.5rem}
+.dispo-row{display:flex;gap:.55rem;align-items:flex-start;cursor:pointer;font-size:.82rem}
+.dispo-row input{accent-color:var(--act);margin-top:.15rem}
+.dispo-row b{font-weight:600;display:block;color:var(--ink)}
+.dispo-row em{font-style:normal;font-size:.74rem;color:var(--ink-3)}
+
+/* ── the chart ────────────────────────────────────────────────────────────────
+   Orders and events are different kinds of fact. The tag says which; the rule down
+   the left carries it without being read. */
+.chart{display:flex;flex-direction:column;gap:.1rem;max-height:11rem;overflow:auto;
   font-family:"IBM Plex Mono",monospace;font-size:.68rem}
-.chart .c{display:flex;gap:.45rem}
+.chart .c{display:flex;gap:.5rem;align-items:baseline;padding:.16rem 0 .16rem .5rem;
+  border-left:2px solid var(--line)}
 .chart .c .t{color:var(--ink-3);flex:none;width:2.6rem;font-variant-numeric:tabular-nums}
-.chart .c.harm{color:var(--warn)} .chart .c.outcome{color:var(--alarm)}
-.chart .c.beat{color:var(--act)} .chart .c.equipment{color:var(--ink-2)}
+.chart .c-k{flex:none;width:4.2rem;font-size:.58rem;letter-spacing:.1em;color:var(--ink-3)}
+.chart .c-x{flex:1;min-width:0;color:var(--ink-2)}
+.chart .c.action{border-left-color:var(--act)}
+.chart .c.action .c-k{color:var(--act)}
+.chart .c.equipment{border-left-color:#9fc4bb}
+.chart .c.harm{border-left-color:var(--warn)}
+.chart .c.harm .c-k,.chart .c.harm .c-x{color:var(--warn)}
+.chart .c.outcome{border-left-color:var(--alarm)}
+.chart .c.outcome .c-k,.chart .c.outcome .c-x{color:var(--alarm);font-weight:600}
 
-.stab{display:flex;align-items:center;gap:.6rem}
-.bar-s{flex:1;height:.5rem;background:#E4EBEA;border-radius:999px;overflow:hidden}
-.bar-s i{display:block;height:100%;width:0;border-radius:999px;transition:width .5s,background .5s}
+/* ── NEWS2 ────────────────────────────────────────────────────────────────────
+   A total out of 20, not a percentage. It fills as she worsens, which is the right
+   way round: more bar is more trouble. */
+.news{display:flex;align-items:center;gap:.85rem}
+.news-l{text-align:left;flex:none}
+.news-n{font-family:Archivo,sans-serif;font-size:2rem;font-weight:800;line-height:1;
+  letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:var(--act)}
+.news-r{flex:1;min-width:0}
+.news-band{font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--act);font-weight:600}
+.news-do{font-size:.74rem;color:var(--ink-3);margin:.05rem 0 .3rem}
+.news-bar{display:flex;gap:2px}
+.news-bar i{flex:1;height:.42rem;border-radius:1px;background:#E4EBEA}
+.news-bar i.on{background:var(--act)}
+.news[data-band="medium"] .news-n,.news[data-band="medium"] .news-band{color:var(--warn)}
+.news[data-band="medium"] .news-bar i.on{background:var(--warn)}
+.news[data-band="high"] .news-n,.news[data-band="high"] .news-band{color:var(--alarm)}
+.news[data-band="high"] .news-bar i.on{background:var(--alarm)}
+/* She has died: the score is withheld rather than shown as zero, because zero is a reading and
+   this is the absence of one. */
+.news[data-band="none"] .news-n{color:var(--ink-3)}
+.news[data-band="none"] .news-band{color:var(--alarm)}
 .clock2{font-family:"IBM Plex Mono",monospace;font-size:.78rem;font-variant-numeric:tabular-nums;
-  color:var(--ink-2)}
+  color:var(--ink-2);flex:none}
 
 /* ── the device picker ────────────────────────────────────────────────────────
    Two steps, the way the reference does it: choose the device, then set it. Grouped
@@ -479,15 +523,25 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
     </div>
     <iframe class="device" id="device" title="bedside device" src="about:blank"></iframe>
 
-    <div class="panel">
-      <div class="k">treatment · kit</div>
-      <div id="nudge" class="nudge"></div>
-      <div class="kit" id="kit"><span class="muted">nothing attached</span></div>
-      <button class="btn" id="addkit" style="width:100%">+ attach a device</button>
-      <div class="posrow">
-        <label><input type="checkbox" id="p-admit"> admit</label>
-        <button class="btn" id="sound" title="the clips carry their own room tone">🔇 sound off</button>
+    <!-- NEWS2 is what a ward escalates on, so it goes where the eye lands first. -->
+    <div class="panel news" id="newsbox">
+      <div class="news-l">
+        <div class="k" style="margin:0">news2</div>
+        <div class="news-n" id="news-n">0</div>
       </div>
+      <div class="news-r">
+        <div class="news-band" id="news-band">low</div>
+        <div class="news-do" id="news-do">routine observations</div>
+        <div class="news-bar" id="news-bar"></div>
+      </div>
+      <span class="clock2" id="clock">0:00</span>
+    </div>
+
+    <div class="panel">
+      <div class="k">attached</div>
+      <div id="nudge" class="nudge"></div>
+      <div class="tray" id="kit"><span class="muted">nothing on the patient</span></div>
+      <button class="btn" id="addkit" style="width:100%">+ attach a device</button>
     </div>
 
     <div class="panel">
@@ -495,10 +549,12 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
       <div class="chart" id="chart"><span class="muted">nothing recorded yet</span></div>
     </div>
 
-    <div class="panel stab">
-      <div class="k" style="margin:0">stability</div>
-      <div class="bar-s"><i id="stab"></i></div>
-      <span class="clock2" id="clock">0:00</span>
+    <!-- A disposition is a clinical decision. It does not belong in a row with the mute button. -->
+    <div class="panel dispo">
+      <div class="k">disposition</div>
+      <label class="dispo-row"><input type="checkbox" id="p-admit">
+        <span><b>Admit for observation</b><em>biphasic reactions come back hours later</em></span></label>
+      <button class="btn" id="sound" title="the clips carry their own room tone">🔇 sound off</button>
     </div>
   </aside>
 
@@ -736,15 +792,15 @@ function emptyState(){
    first. 999 mL/hr is not a bug — it is an IV run wide open, and it is one of the
    presets a learner picks from. */
 const KIT=[
- {id:'o2',  label:'O₂ face mask', detail:'high-flow', unit:'L/min', presets:[6,10,15], def:10,
+ {id:'o2',  label:'O₂ face mask', device:'O₂ mask', detail:'high-flow', unit:'L/min', presets:[6,10,15], def:10,
   detach:true,  group:'breathing'},
- {id:'iv',  label:'IV + fluid',   detail:'0.9% NaCl', unit:'mL/hr', presets:[80,125,500,999], def:999,
+ {id:'iv',  label:'IV + fluid',   device:'IV · 0.9% NaCl', detail:'0.9% NaCl', unit:'mL/hr', presets:[80,125,500,999], def:999,
   detach:true,  group:'circulation'},
- {id:'ett', label:'Intubate',     detail:'ETT 7.0 · cuffed', unit:null, presets:[], def:null,
+ {id:'ett', label:'Intubate',     device:'ETT 7.0 cuffed', detail:'ETT 7.0 · cuffed', unit:null, presets:[], def:null,
   detach:true,  group:'airway',      confirm:'Intubate now?'},
- {id:'supine', label:'Lay flat, legs up', detail:'once, not a device', unit:null, presets:[], def:null,
+ {id:'supine', label:'Lay flat, legs up', device:'positioned supine', detail:'once, not a device', unit:null, presets:[], def:null,
   detach:false, group:'circulation'},
- {id:'defib', label:'Defibrillate', detail:'VF / pulseless VT only', unit:'J', presets:[120,150,200,360], def:200,
+ {id:'defib', label:'Defibrillate', device:'defibrillator', detail:'VF / pulseless VT only', unit:'J', presets:[120,150,200,360], def:200,
   detach:false, group:'circulation', confirm:'Deliver the shock?'},
 ];
 const KITLBL=Object.fromEntries(KIT.map(k=>[k.id,k]));
@@ -928,24 +984,57 @@ function paint(v){
   $('#mini-status').textContent=v.status;
   $('#clock').textContent=fmt(v.elapsed); clockNow=v.elapsed;
 
-  const st=v.stability;
-  $('#stab').style.width=st+'%';
-  $('#stab').style.background = st>65?'var(--act)' : st>35?'#E0A33C' : 'var(--alarm)';
+  /* NEWS2 — the score a ward escalates on. It is a total out of 20 rather than a percentage,
+     and it does not average: one observation scoring 3 raises the band on its own, which is the
+     whole reason the invented "stability" meter had to go. */
+  const n=v.news;
+  if(!n){
+    /* She has died. An early warning score answers "does somebody need to come, and how fast" —
+       there is nothing left to answer, and printing one beside "Dead" is the same nonsense as a
+       heart rate on a corpse. */
+    $('#news-n').textContent='—';
+    $('#news-band').textContent = v.outcome && v.outcome.startsWith('Death') ? 'deceased' : 'no score';
+    $('#news-do').textContent = say('terminal:'+v.outcome);
+    $('#newsbox').dataset.band='none';
+    $('#news-bar').innerHTML = Array.from({length:20},()=>'<i></i>').join('');
+    $('#clock').textContent = fmt(v.elapsed);
+    return;
+  }
+  $('#news-n').textContent = n.total;
+  $('#news-band').textContent = n.band + ' risk';
+  $('#news-do').textContent = n.response;
+  $('#newsbox').dataset.band = n.band;
+  /* Twenty ticks, filled to the score. A bar that fills as the patient worsens reads the right
+     way round: more bar is more trouble. */
+  $('#news-bar').innerHTML = Array.from({length:20},(_,i)=>
+    `<i class="${i < n.total ? 'on':''}"></i>`).join('');
 
+  /* A tray, not a row of tags. What a bedside shows is the thing on the patient, its setting,
+     and how long it has been there — "Intubate ×" is an order you typed, not a tube in a throat. */
   $('#kit').innerHTML = v.equipment.length
     ? v.equipment.map(k=>{ const d=KITLBL[k.id];
-        const val=k.setting!=null?`<b>${k.setting}</b>${d&&d.unit?' '+d.unit:''}`:'';
-        const x=(!d||d.detach)?`<span class="x" data-off="${k.id}" title="take it off">✕</span>`:'';
-        return `<span class="k-i">${d?d.label:k.id} ${val}${x}</span>`; }).join('')
-    : '<span class="muted">nothing attached</span>';
+        const val = k.setting!=null ? `${k.setting}${d&&d.unit?' '+d.unit:''}` : '';
+        const x = (!d||d.detach) ? `<button class="t-x" data-off="${k.id}" title="take it off">remove</button>` : '';
+        const since = fmt(Math.max(0, v.elapsed - (k.since||0)));
+        return `<div class="t-row"><span class="t-dot"></span>
+          <span class="t-n">${d?(d.device||d.label):k.id}</span>
+          <span class="t-v">${val}</span><span class="t-t">${since}</span>${x}</div>`; }).join('')
+    : '<span class="muted">nothing on the patient</span>';
   $('#kit').querySelectorAll('[data-off]').forEach(x=>x.onclick=()=>detach(x.dataset.off));
   renderTray(v.equipment);
 
   const given = v.chart.some(c=>c.kind==='action' && c.text.toLowerCase().includes(E.key.match));
   $('#nudge').textContent = (given||over) ? '' : '⚠ no '+E.key.drug+' yet';
 
+  /* Orders and events are different kinds of fact and a real chart never runs them together in
+     one column of lowercase fragments. The tag says which, and the rule down the left carries it
+     at a glance. */
+  const KIND={action:'ORDER', equipment:'DEVICE', harm:'HARM', outcome:'OUTCOME'};
   $('#chart').innerHTML = v.chart.length
-    ? v.chart.slice(-40).map(c=>`<div class="c ${c.kind}"><span class="t">${fmt(c.t)}</span><span>${c.text}</span></div>`).join('')
+    ? v.chart.slice(-40).map(c=>
+        `<div class="c ${c.kind}"><span class="t">${fmt(c.t)}</span>`
+        +`<span class="c-k">${KIND[c.kind]||'EVENT'}</span>`
+        +`<span class="c-x">${c.text}</span></div>`).join('')
     : '<span class="muted">nothing recorded yet</span>';
   $('#chart').scrollTop=1e6;
 
