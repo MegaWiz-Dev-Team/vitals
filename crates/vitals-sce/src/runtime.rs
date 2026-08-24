@@ -549,8 +549,11 @@ impl SceState {
     }
 
     fn match_intervention(&self, sce: &Sce, text: &str) -> Option<usize> {
-        let t = text.to_lowercase();
-        let has = |k: &str| t.contains(&k.to_lowercase());
+        // Both sides canonicalised: the learner may type through an IME, and a case authored in
+        // Japanese may carry full-width keywords for the same reason. Comparing raw would make
+        // matching depend on which keyboard wrote the case file.
+        let t = crate::text::canon(text).to_lowercase();
+        let has = |k: &str| t.contains(&crate::text::canon(k).to_lowercase());
         for (i, iv) in sce.interventions.iter().enumerate() {
             let m = &iv.matcher;
             let has_positive = !m.any_kw.is_empty() || !m.all_groups.is_empty();

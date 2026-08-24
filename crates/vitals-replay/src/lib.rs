@@ -126,6 +126,23 @@ pub fn sce_hash(sce_json: &str) -> [u8; 32] {
 
 /// The leaf. Canonical, newline-delimited, length-prefixed per section so no two different runs
 /// can serialise to the same bytes by rearranging fields.
+impl Step {
+    /// Record an order the learner gave.
+    ///
+    /// Canonicalises on the way in, so the tape — and therefore the leaf built from it — holds
+    /// one form of the text regardless of which keyboard produced it. Constructing `Step::Do`
+    /// directly skips this; that is left possible on purpose, because replaying an old tape has
+    /// to reproduce exactly the bytes it was anchored with, canonical or not.
+    pub fn did(text: &str) -> Step {
+        Step::Do(vitals_sce::text::canon(text))
+    }
+
+    /// Record a question. Hashed into the leaf like an order, so canonicalised like one.
+    pub fn asked(text: &str) -> Step {
+        Step::Ask(vitals_sce::text::canon(text))
+    }
+}
+
 pub fn leaf(sce_hash: &[u8; 32], tape: &[Step], r: &Replay) -> [u8; 32] {
     let mut h = Sha256::new();
     h.update(b"vitals.leaf.v1\n");
