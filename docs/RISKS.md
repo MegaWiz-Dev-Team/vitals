@@ -25,10 +25,16 @@ outcome. Teams that have raised venture capital for the submitted product are no
 Colosseum's own FAQ says they *"highly encourage all builders to participate in [the two annual
 hackathons] to increase their odds of being selected for the accelerator program."*
 
-**Decision taken 2026-08-23:** skip this Eternal window, target the next full hackathon. Four
-weeks is not enough for a product whose market has not been validated, and the odds are better in
-the main event by the organiser's own account. The next hackathon's dates are not published on the
-site — that still needs asking.
+**Decision taken 2026-08-23, reaffirmed 2026-08-24:** skip this Eternal window, target the fall
+hackathon. The dates turned out to be published all along — this file recorded them as unknown,
+which was wrong: **spring ran 6 Apr – 11 May; the fall hackathon runs 28 Sep – 2 Nov 2026.**
+
+That settles the calendar: **five weeks of preparation (now → 27 Sep), then a five-week
+hackathon.** The same ten weeks Eternal-then-hackathon would have taken, but as one submission
+twice as good rather than two half as good — and the odds are better in the main event by the
+organiser's own account. The decision briefly flipped to "start Eternal now" on 2026-08-24 and was
+reversed the same day when the real dates surfaced, since the main argument for Eternal (that it
+was the only deadline available) turned out to be false.
 
 Resubmitting an earlier entry is allowed *"if it has materially changed — a clear pivot,
 substantial progress made over several months, and/or meaningful traction."* A pivot must link the

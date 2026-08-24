@@ -69,13 +69,28 @@ open with the word "badge".
 
 ## 6. Business Plan — "Is there a viable business here?"
 
-**Strong — it already has revenue mechanics.** Embla's model carries over: student subscription,
-institutional on-prem seats, and now a protocol take rate on the case marketplace. The onchain
-layer adds a business the old model could not have: independent case authors anywhere in the
-world earning per attempt, without an acquiring relationship in each country.
+> ⚠️ **Rewritten 2026-08-24 — the paragraph that stood here was false and this file is public.**
+> It claimed institutional on-prem seats as a revenue line and ~80% gross margin on near-zero COGS.
+> Market testing settled both: **18 faculties use the product and none bought**, and Vitals runs
+> global B2C on cloud inference, so we pay for every playthrough. `docs/DECISIONS.md` is
+> authoritative.
 
-Unit economics are inherited, not invented for the pitch: ~80% gross margin on subscriptions,
-near-zero COGS on institutional on-prem because inference runs locally.
+**The model, as decided:** **the learner is free, forever, in every country.** Revenue comes from
+the parties who *rely on* the record rather than the people producing it — verification fees from
+employers and residency programmes, and a protocol take rate on the case marketplace — with
+donations as the base, held and disbursed on chain.
+
+That is a mission constraint before it is a business one. The countries with the fewest doctors
+have the highest attrition and the lowest examination pass rates; a product that charges goes where
+people can pay, which is where the marginal doctor is worth ~370 people rather than ~2,150.
+**Charging would aim this at the places it matters least.**
+
+What the onchain layer adds is a business the old model could not have: independent case authors
+anywhere in the world earning per attempt, with no acquiring relationship in each country.
+
+The finding behind the change is worth more than the paragraph it replaced: *we tested institutional
+sales in our home market, with 18 faculties actively using the product, and nobody bought. The buyer
+is the learner.*
 
 ## The four questions to rehearse
 
