@@ -135,9 +135,17 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     let mine: Vec<AttemptRecord> = (1..=3)
         .map(|i| rec(&me, i, Outcome::WinDischarge, 0, Difficulty::Student))
         .collect();
+    // Threaded, not shadowed. `get_new_latest_blockhash(&h)` waits for a hash different from `h`,
+    // so asking it repeatedly about the *same* stale `h` can return the same answer every time —
+    // and this test later re-sends a transaction it has already sent, expecting the program to
+    // refuse it as a duplicate. Reuse the blockhash and the two transactions become byte-identical,
+    // the runtime dedupes rather than executing, and the refusal never happens. Under load the
+    // ProgramTest tick task is starved, fewer blockhashes appear, and that is exactly when it bit:
+    // three failures in four full-workspace runs, and never once when run alone.
+    let mut bh = bh;
     let mut leaves = Vec::new();
     for r in &mine {
-        let bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+        bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
         banks
             .process_transaction(Transaction::new_signed_with_payer(
                 &[ix(pid, me, me, &[acc, tree], Instruction::AnchorReplay { tree_id: TREE, record: wire(r) })],
@@ -151,12 +159,12 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     // ── a record that was never anchored must not prove ───────────────────
     let forged = AttemptRecord { harm_count: 0, outcome: Outcome::WinIcu, ..mine[0] };
     let path = merkle::prove(&leaves, 0).unwrap();
-    let bh1 = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
     let e = banks
         .process_transaction(Transaction::new_signed_with_payer(
             &[ix(pid, me, me, &[acc, tree, claim], Instruction::ProveAttempt {
                 tree_id: TREE, record: wire(&forged), index: 0, path: path.to_vec() })],
-            Some(&me), &[&payer], bh1,
+            Some(&me), &[&payer], bh,
         ))
         .await
         .unwrap_err()
@@ -166,7 +174,7 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     // ── prove all three ───────────────────────────────────────────────────
     for (i, r) in mine.iter().enumerate() {
         let path = merkle::prove(&leaves, i as u64).unwrap();
-        let bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+        bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
         banks
             .process_transaction(Transaction::new_signed_with_payer(
                 &[ix(pid, me, me, &[acc, tree, claim], Instruction::ProveAttempt {
@@ -179,12 +187,12 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
 
     // ── the same run twice ────────────────────────────────────────────────
     let path = merkle::prove(&leaves, 0).unwrap();
-    let bh2 = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
     let e = banks
         .process_transaction(Transaction::new_signed_with_payer(
             &[ix(pid, me, me, &[acc, tree, claim], Instruction::ProveAttempt {
                 tree_id: TREE, record: wire(&mine[0]), index: 0, path: path.to_vec() })],
-            Some(&me), &[&payer], bh2,
+            Some(&me), &[&payer], bh,
         ))
         .await
         .unwrap_err()
@@ -192,12 +200,12 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     assert_eq!(custom(&e), Some(VitalsError::DuplicateAttempt as u32), "one run counts once");
 
     // ── claim more than the arithmetic allows ─────────────────────────────
-    let bh3 = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
     let e = banks
         .process_transaction(Transaction::new_signed_with_payer(
             &[ix(pid, me, me, &[acc, claim, prog], Instruction::ClaimProgress {
                 tree_id: TREE, specialty: 1, claimed: Dreyfus::Expert as u8 })],
-            Some(&me), &[&payer], bh3,
+            Some(&me), &[&payer], bh,
         ))
         .await
         .unwrap_err()
@@ -205,12 +213,12 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     assert_eq!(custom(&e), Some(VitalsError::ClaimNotEarned as u32), "Expert needs eight distinct cases");
 
     // ── and the claim the evidence does support ───────────────────────────
-    let bh4 = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
     banks
         .process_transaction(Transaction::new_signed_with_payer(
             &[ix(pid, me, me, &[acc, claim, prog], Instruction::ClaimProgress {
                 tree_id: TREE, specialty: 1, claimed: Dreyfus::Competent as u8 })],
-            Some(&me), &[&payer], bh4,
+            Some(&me), &[&payer], bh,
         ))
         .await
         .expect("Competent is exactly what three distinct full-mark cases earn");
