@@ -37,7 +37,8 @@ fn a_kind_nobody_classified_is_kept_not_deleted() {
 fn sweep_will_not_expire_the_tree_however_old_it_is() {
     let root = tmp("tree");
     let store = Store::open(root.clone()).unwrap();
-    store.put("tree", "current", &serde_json::json!({ "tree_id": 7, "leaves": [] }));
+    store.put("tree", "current", &serde_json::json!({ "tree_id": 7, "leaves": [] }))
+        .expect("write the tree");
 
     let gone = store.sweep("tree", Duration::from_secs(0));
 
@@ -52,7 +53,7 @@ fn sweep_will_not_expire_the_tree_however_old_it_is() {
 fn sweep_still_expires_sessions() {
     let root = tmp("sess");
     let store = Store::open(root.clone()).unwrap();
-    store.put("sess", "abc", &serde_json::json!({ "ep": "ep1" }));
+    store.put("sess", "abc", &serde_json::json!({ "ep": "ep1" })).expect("write the session");
 
     let gone = store.sweep("sess", Duration::from_secs(0));
 

@@ -232,7 +232,6 @@ impl SceState {
     /// (e.g. `"airway_patency"`), or a pseudo-clock. For the HUD/stats.
     pub fn var(&self, name: &str) -> f64 { self.get_var(name) }
 
-    /// Advance the soft real-time clock by `dt` seconds.
     // ── equipment ──────────────────────────────────────────────────────────
     //
     // Attaching is idempotent on id: turning the flowmeter from 6 to 10 LPM updates the setting and
@@ -325,6 +324,7 @@ impl SceState {
         ShockResult::Converted
     }
 
+    /// Advance the soft real-time clock by `dt` seconds.
     pub fn tick(&mut self, dt: f64) -> Vec<NarrativeBeat> {
         let mut beats = Vec::new();
         if self.outcome.is_some() { return beats; }
@@ -440,7 +440,7 @@ impl SceState {
     fn apply_dynamics(&mut self, sce: &Sce, dt: f64) {
         let st = &sce.states[self.state_idx];
         for d in &st.dynamics {
-            let on = d.when.as_ref().map_or(true, |c| self.eval(sce, c));
+            let on = d.when.as_ref().is_none_or(|c| self.eval(sce, c));
             if on {
                 let mut nv = self.get_var(&d.var) + d.rate_per_min / 60.0 * dt;
                 if let Some(f) = d.floor { nv = nv.max(f); }
@@ -620,7 +620,7 @@ impl SceState {
     }
 
     fn flag_active(&self, f: &str) -> bool {
-        self.flags.get(f).map_or(false, |&exp| exp > self.t_elapsed)
+        self.flags.get(f).is_some_and(|&exp| exp > self.t_elapsed)
     }
 
     fn get_var(&self, name: &str) -> f64 {

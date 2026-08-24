@@ -13,5 +13,23 @@ license = "AGPL-3.0-or-later"
 # checked, not assumed. This is the belt for the day someone adds a line that is not covered by
 # it: a wrapped counter in a program whose whole job is counting is not something a test would
 # necessarily catch, but a panicking transaction is.
+# Two lint groups this workspace cannot silence from its own source, allowed by name rather than
+# by turning the gate off — CI runs clippy with `-D warnings`, and a blanket allow would make that
+# gate mean nothing.
+#
+# `unexpected_cfgs`: Solana's `entrypoint!` macro expands to cfgs that cargo has no way to know
+# are real. Listing the exact values keeps every *other* unexpected cfg an error.
+#
+# `deprecated`: solana-program moved `system_program` and `system_instruction` into the separate
+# `solana-system-interface` crate. Migrating means adding a dependency to a program that currently
+# has three, which is a decision to take deliberately rather than as a side effect of quietening a
+# lint. Remove this the day that migration happens.
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(target_os, values("solana"))',
+    'cfg(feature, values("custom-heap", "custom-panic"))',
+] }
+deprecated = "allow"
+
 [profile.release]
 overflow-checks = true

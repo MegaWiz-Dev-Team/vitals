@@ -25,7 +25,7 @@ use vitals_progress::record::AttemptRecord;
 use vitals_progress::Difficulty;
 use vitals_program::{
     Account, ClaimAccount, Instruction, Progress, RecordWire, TreeAccount, SEED_ACCOUNT,
-    SEED_CLAIM, SEED_PROGRESS, SEED_TREE,
+    SEED_CLAIM, SEED_PROGRESS,
 };
 
 pub const SPECIALTY: u8 = 1;
@@ -296,9 +296,7 @@ fn program_log(err: &str) -> String {
     // is worse than reporting nothing.
     if let Some(line) = err
         .lines()
-        .map(str::trim)
-        .filter(|l| l.starts_with("Program log:") && !l.contains("invoke"))
-        .next_back()
+        .map(str::trim).rfind(|l| l.starts_with("Program log:") && !l.contains("invoke"))
     {
         return line.trim_start_matches("Program log:").trim().to_string();
     }

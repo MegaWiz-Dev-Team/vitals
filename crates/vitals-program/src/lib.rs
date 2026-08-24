@@ -150,7 +150,7 @@ pub struct Account {
 impl Account {
     pub fn allows(&self, key: &Pubkey) -> bool {
         let k = key.to_bytes();
-        self.authorities.iter().any(|a| *a == k)
+        self.authorities.contains(&k)
     }
 }
 
@@ -323,7 +323,7 @@ fn authority(program_id: &Pubkey, accounts: &[AccountInfo], device: [u8; 32], ad
     let mut account = authorised(program_id, account_ai, signer)?;
 
     if add {
-        if account.authorities.iter().any(|a| *a == device) {
+        if account.authorities.contains(&device) {
             return Err(VitalsError::AlreadyAuthorized.into());
         }
         if account.authorities.len() >= MAX_AUTHORITIES {
