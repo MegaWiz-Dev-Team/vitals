@@ -722,7 +722,7 @@ fn main() {
                         if let Some(act) = param(&url, "do") {
                             let emitted = s.state.apply(&act);
                             s.beats.extend(emitted.iter().map(render_beat));
-                            s.tape.push(Step::Do(act));
+                            s.tape.push(Step::did(&act));
                         }
                         if let Some(dt) = param(&url, "tick").and_then(|v| v.parse::<f64>().ok()) {
                             let emitted = s.state.tick(dt);
@@ -770,7 +770,7 @@ fn main() {
                             // for someone who typed it. The picker is a convenience, not a bypass.
                             let emitted = s.state.apply(&phrase);
                             s.beats.extend(emitted.iter().map(render_beat));
-                            s.tape.push(Step::Do(phrase));
+                            s.tape.push(Step::did(&phrase));
                             // Then correct the reading to what was actually dialled in. attach()
                             // records it too, so the chart quotes the learner's number rather
                             // than the scenario's canonical dose.
@@ -860,7 +860,7 @@ fn main() {
                         continue;
                     };
                     // The question goes on the tape. The answer never will.
-                    s.tape.push(Step::Ask(q.clone()));
+                    s.tape.push(Step::asked(&q));
                     (s.said.clone(), format!("{:?}", s.state.status), s.state.vitals.spo2)
                 };
                 match pt.say(&q, &hist, &status, spo2) {
