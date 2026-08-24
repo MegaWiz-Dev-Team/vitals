@@ -29,22 +29,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # 1.93.1
         with:
+          toolchain: 1.93.1
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
       - name: clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: tests
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
 
   chain:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # 1.93.1
+        with:
+          toolchain: 1.93.1
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
       - name: install solana
@@ -89,8 +92,8 @@ jobs:
         # Serially: each test spawns its own server, and four servers competing for one validator
         # under a CI runner's CPU budget is a slower, flakier way to learn nothing extra.
         run: |
-          cargo test -p vitals-web --test chain_flow -- --ignored --test-threads=1
-          cargo test -p vitals-cli --test driver -- --ignored
+          cargo test -p vitals-web --test chain_flow --locked -- --ignored --test-threads=1
+          cargo test -p vitals-cli --test driver --locked -- --ignored
 
   supply-chain:
     runs-on: ubuntu-latest
@@ -126,7 +129,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # 1.93.1
+        with:
+          toolchain: 1.93.1
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: generate CycloneDX SBOM
         run: |
