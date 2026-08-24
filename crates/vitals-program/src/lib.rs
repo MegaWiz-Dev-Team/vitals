@@ -17,6 +17,7 @@ use solana_program::{
     entrypoint,
     entrypoint::ProgramResult,
     msg,
+    clock::Clock,
     program::invoke_signed,
     program_error::ProgramError,
     pubkey::Pubkey,
@@ -30,6 +31,9 @@ use vitals_progress::{adjudicate, Attempt, Difficulty, Dreyfus, Verdict};
 
 pub const SEED_ACCOUNT: &[u8] = b"acct";
 pub const SEED_TREE: &[u8] = b"tree";
+/// One open commitment per player. Seeded on the player, so a commitment cannot be made on
+/// somebody else's behalf and cannot be confused with theirs.
+pub const SEED_COMMIT: &[u8] = b"commit";
 pub const SEED_CLAIM: &[u8] = b"claim";
 pub const SEED_PROGRESS: &[u8] = b"prog";
 
@@ -55,10 +59,33 @@ pub struct RecordWire {
     /// 0 none · 1 win_discharge · 2 win_icu · 3 death_biphasic · 4 death_arrest
     pub outcome: u8,
     pub harm_count: u16,
+
+    // ── vt02 ────────────────────────────────────────────────────────────────
+    // Note what is *not* here: `commitment` and `committed_slot`. Those are read from the
+    // commitment account and nowhere else. A field the caller fills in proves nothing — it records
+    // what the caller asserted — and leaving them off the wire makes supplying them impossible
+    // rather than merely forbidden.
+    //
+    // The score fields are accepted from the caller, and the two halves earn that differently.
+    // `det_score` is re-derivable: `run_hash` binds the tape, so anyone can replay it against the
+    // pinned engine and recompute it — a lie is detectable by exactly the mechanism the product
+    // is about. `judged_score` is NOT re-derivable; it is meant to be verifier-attested, and the
+    // attestation mechanism does not exist yet, so today it is a self-asserted number in a
+    // permanent record. Nothing on chain consumes it (claims recompute from the outcome), so it
+    // cannot buy progression — but do not build anything on it until attestation exists.
+    pub rubric_hash: [u8; 32],
+    pub det_score: u16,
+    pub det_max: u16,
+    pub judged_score: u16,
+    pub judged_max: u16,
 }
 
 impl RecordWire {
-    fn decode(&self) -> Result<AttemptRecord, ProgramError> {
+    /// `commitment` and `committed_slot` come from the account, not from `self`.
+    ///
+    /// They are arguments rather than fields for the reason above: the caller cannot supply them,
+    /// so the leaf cannot claim a commitment that was never made.
+    fn decode(&self, commitment: [u8; 32], committed_slot: u64) -> Result<AttemptRecord, ProgramError> {
         Ok(AttemptRecord {
             player: self.player,
             sce_hash: self.sce_hash,
@@ -71,6 +98,13 @@ impl RecordWire {
                 _ => return Err(VitalsError::BadRecord.into()),
             },
             exam_mode: self.exam_mode,
+            commitment,
+            committed_slot,
+            rubric_hash: self.rubric_hash,
+            det_score: self.det_score,
+            det_max: self.det_max,
+            judged_score: self.judged_score,
+            judged_max: self.judged_max,
             outcome: Outcome::from_u8(self.outcome).ok_or(VitalsError::BadRecord)?,
             harm_count: self.harm_count,
         })
@@ -86,8 +120,39 @@ pub enum Instruction {
     /// Stop a device from acting as this person — a lost laptop, a borrowed machine.
     RemoveAuthority { device: [u8; 32] },
     AnchorReplay { tree_id: u64, record: RecordWire },
-    ProveAttempt { tree_id: u64, record: RecordWire, index: u64, path: Vec<[u8; 32]> },
+    /// `commitment` and `committed_slot` are arguments here and read from the account at anchor
+    /// time, and the asymmetry is deliberate.
+    ///
+    /// Nothing validates them when a leaf is created, so anchoring must not trust the caller.
+    /// Proving is the opposite: the record has to hash to a leaf that is already in the tree, so a
+    /// wrong commitment produces a wrong leaf and the Merkle check rejects it. The proof is the
+    /// validation. Requiring the account instead would be worse than useless — it is consumed on
+    /// anchor and may be closed for its rent, so an honest prover would have nothing to read.
+    ProveAttempt {
+        tree_id: u64,
+        record: RecordWire,
+        index: u64,
+        path: Vec<[u8; 32]>,
+        commitment: [u8; 32],
+        committed_slot: u64,
+    },
     ClaimProgress { tree_id: u64, specialty: u8, claimed: u8 },
+    /// Declare, before the run, which case is about to be attempted.
+    ///
+    /// `hash` is `hash(case ‖ player ‖ nonce)`: it names the case without revealing it, so the
+    /// commitment can be checked afterwards without telling anyone watching the chain which
+    /// station is being attempted.
+    Commit { hash: [u8; 32] },
+    /// Clear an open commitment that will not be used.
+    ///
+    /// No lamports move, and none can: the count of commitments ever made lives in this same
+    /// account, and the account must stay rent-exempt to keep holding it. The count is the whole
+    /// mechanism — without it, a learner could commit five times, play five, anchor the good one
+    /// and clear the other four, leaving a chain that says they attempted once. So the account is
+    /// permanent, its ~0.0012 SOL is the one-time price of the counter (the relay pays it, and it
+    /// is noise next to the per-player rent already paid), and closing only frees the open slot
+    /// so a new commitment can be made cleanly.
+    CloseCommitment,
 }
 
 /// Trees are addressed by id rather than being one global tree.
@@ -139,6 +204,31 @@ pub struct TreeAccount {
 /// `id` is the first device's public key. That choice is what makes this free to adopt — the
 /// seeds `["prog", id, specialty]` are byte-for-byte what `["prog", device, specialty]` produced
 /// before, so every record anchored under the old scheme is already at the right address.
+/// An open commitment, plus the count that survives it.
+///
+/// `started` is the load-bearing field. The claim this whole mechanism makes is *"the chain
+/// already knows how many times you started"*, and a commitment that could be closed for its rent
+/// would let a learner erase the attempts they did not like — commit five, play five, anchor the
+/// good one, close the rest. Rent is refundable; the count is not, so it lives here and only ever
+/// goes up.
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+pub struct Commitment {
+    /// hash(case ‖ player ‖ nonce). Zero when no commitment is open.
+    pub hash: [u8; 32],
+    /// The slot the open commitment was made at.
+    pub slot: u64,
+    /// How many commitments this player has ever made. Monotonic.
+    pub started: u64,
+    /// Whether `hash`/`slot` describe an open commitment or a spent one.
+    pub open: bool,
+}
+
+pub const COMMITMENT_LEN: usize = 32 + 8 + 8 + 1;
+
+pub fn commitment_pda(program_id: &Pubkey, player: &[u8; 32]) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[SEED_COMMIT, player], program_id)
+}
+
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub struct Account {
     pub id: [u8; 32],
@@ -228,6 +318,8 @@ pub enum VitalsError {
     /// Removing the last device would strand the record forever.
     LastAuthority = 13,
     NoAccount = 14,
+    /// Anchoring without having declared the attempt first.
+    NoCommitment = 15,
 }
 
 impl From<VitalsError> for ProgramError {
@@ -246,9 +338,11 @@ pub fn process_instruction(program_id: &Pubkey, accounts: &[AccountInfo], data: 
         Instruction::AnchorReplay { tree_id, record } => {
             anchor_replay(program_id, accounts, tree_id, record)
         }
-        Instruction::ProveAttempt { tree_id, record, index, path } => {
-            prove_attempt(program_id, accounts, tree_id, record, index, path)
+        Instruction::ProveAttempt { tree_id, record, index, path, commitment, committed_slot } => {
+            prove_attempt(program_id, accounts, tree_id, record, index, path, commitment, committed_slot)
         }
+        Instruction::Commit { hash } => commit(program_id, accounts, hash),
+        Instruction::CloseCommitment => close_commitment(program_id, accounts),
         Instruction::ClaimProgress { tree_id, specialty, claimed } => {
             claim_progress(program_id, accounts, tree_id, specialty, claimed)
         }
@@ -348,12 +442,95 @@ fn authority(program_id: &Pubkey, accounts: &[AccountInfo], device: [u8; 32], ad
 
 // ── 1. anchor ───────────────────────────────────────────────────────────────
 
+/// Declare, before playing, which case is about to be attempted.
+///
+/// Creates the player's commitment account on first use and increments `started` every time. The
+/// counter is what the claim rests on, so it is written before anything can go wrong afterwards.
+fn commit(program_id: &Pubkey, accounts: &[AccountInfo], hash: [u8; 32]) -> ProgramResult {
+    let it = &mut accounts.iter();
+    let funder = next_account_info(it)?;
+    let device = next_account_info(it)?;
+    let account_ai = next_account_info(it)?;
+    let commit_ai = next_account_info(it)?;
+    let system = next_account_info(it)?;
+
+    if !funder.is_signer || !device.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let account = authorised(program_id, account_ai, device)?;
+
+    // All-zero is the sentinel for "no commitment open" — in this account and in the record's
+    // placeholder era. Accepting it as a real commitment would make a vt02 leaf ambiguous about
+    // the one thing the field exists to make unambiguous.
+    if hash == [0u8; 32] {
+        return Err(VitalsError::BadRecord.into());
+    }
+
+    let (pda, bump) = commitment_pda(program_id, &account.id);
+    if pda != *commit_ai.key {
+        return Err(VitalsError::WrongPda.into());
+    }
+
+    let mut c = if commit_ai.data_is_empty() {
+        create_pda(funder, commit_ai, system, program_id, COMMITMENT_LEN,
+                   &[SEED_COMMIT, account.id.as_ref(), &[bump]])?;
+        Commitment { hash: [0; 32], slot: 0, started: 0, open: false }
+    } else {
+        owned_by(commit_ai, program_id)?;
+        read::<Commitment>(commit_ai)?
+    };
+
+    // Overwriting an open commitment is allowed — a learner who walks away mid-case should not be
+    // locked out — but it still counts. That is the whole point of a monotonic counter: every
+    // declaration of intent is on the record, whether or not it turned into an anchored run.
+    c.hash = hash;
+    c.slot = Clock::get()?.slot;
+    c.started = c.started.saturating_add(1);
+    c.open = true;
+    write(commit_ai, &c)
+}
+
+/// Clear the open commitment, keeping the count — and keeping the rent, necessarily.
+///
+/// `started` is deliberately untouched: a learner who could close their way back to zero could
+/// commit five times, play five, anchor the flattering one and erase the rest. And because the
+/// counter lives in this account, the lamports stay too — refunding them would delete the one
+/// number that must survive.
+fn close_commitment(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+    let it = &mut accounts.iter();
+    let funder = next_account_info(it)?;
+    let device = next_account_info(it)?;
+    let account_ai = next_account_info(it)?;
+    let commit_ai = next_account_info(it)?;
+
+    if !funder.is_signer || !device.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let account = authorised(program_id, account_ai, device)?;
+    let (pda, _) = commitment_pda(program_id, &account.id);
+    if pda != *commit_ai.key {
+        return Err(VitalsError::WrongPda.into());
+    }
+    owned_by(commit_ai, program_id)?;
+
+    let mut c = read::<Commitment>(commit_ai)?;
+    c.hash = [0; 32];
+    c.slot = 0;
+    c.open = false;
+    write(commit_ai, &c)?;
+
+    // The account stays, holding only the count. Reclaiming its lamports entirely would take the
+    // count with it, which is the thing that must not be reclaimable.
+    Ok(())
+}
+
 fn anchor_replay(program_id: &Pubkey, accounts: &[AccountInfo], tree_id: u64, wire: RecordWire) -> ProgramResult {
     let it = &mut accounts.iter();
     let funder = next_account_info(it)?;
     let device = next_account_info(it)?;
     let account_ai = next_account_info(it)?;
     let tree_ai = next_account_info(it)?;
+    let commit_ai = next_account_info(it)?;
     let system = next_account_info(it)?;
 
     // Two signers with different jobs. `funder` has the lamports and pays rent; `device` is a
@@ -376,7 +553,28 @@ fn anchor_replay(program_id: &Pubkey, accounts: &[AccountInfo], tree_id: u64, wi
         write(tree_ai, &TreeAccount::empty())?;
     }
 
-    let record = wire.decode()?;
+    // The commitment comes from the account and from nowhere else. This is the reason the wire
+    // does not carry it: at anchor time nothing else can check it, so a value the caller supplied
+    // would record only what the caller asserted. Consumed here — one commitment, one anchor —
+    // so the same declaration cannot cover a second attempt.
+    let (cpda, _) = commitment_pda(program_id, &account.id);
+    if cpda != *commit_ai.key {
+        return Err(VitalsError::WrongPda.into());
+    }
+    if commit_ai.data_is_empty() {
+        return Err(VitalsError::NoCommitment.into());
+    }
+    owned_by(commit_ai, program_id)?;
+    let mut c = read::<Commitment>(commit_ai)?;
+    if !c.open {
+        return Err(VitalsError::NoCommitment.into());
+    }
+    let (commitment, committed_slot) = (c.hash, c.slot);
+    c.open = false;
+    c.hash = [0; 32];
+    write(commit_ai, &c)?;
+
+    let record = wire.decode(commitment, committed_slot)?;
     // Anchoring is not open to bystanders. Without this anyone could fill somebody else's tree
     // with leaves naming other players — they could never claim them, but a full tree is a tree
     // that has to be rolled, and that is a denial of service somebody else pays for.
@@ -396,6 +594,10 @@ fn anchor_replay(program_id: &Pubkey, accounts: &[AccountInfo], tree_id: u64, wi
 
 // ── 2. prove ────────────────────────────────────────────────────────────────
 
+// Eight arguments: the standard four every handler takes, plus the four facts a proof is — the
+// record, where it sits, the path to it, and the declaration it answers. Bundling them would
+// invent a struct that exists for one call from one dispatcher.
+#[allow(clippy::too_many_arguments)]
 fn prove_attempt(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -403,6 +605,8 @@ fn prove_attempt(
     wire: RecordWire,
     index: u64,
     path: Vec<[u8; 32]>,
+    commitment: [u8; 32],
+    committed_slot: u64,
 ) -> ProgramResult {
     let it = &mut accounts.iter();
     let funder = next_account_info(it)?;
@@ -417,7 +621,7 @@ fn prove_attempt(
     }
     let account = authorised(program_id, account_ai, device)?;
 
-    let record = wire.decode()?;
+    let record = wire.decode(commitment, committed_slot)?;
     // The record names its person, so an anchored run cannot be claimed by a bystander — and can
     // be claimed from any machine that person plays on.
     if record.player != account.id {

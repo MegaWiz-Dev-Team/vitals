@@ -14,12 +14,12 @@
 /// Both are sha256 and must agree; [`tests::both_backends_agree_with_the_standard`] pins that
 /// against published vectors so a future swap cannot diverge quietly.
 #[cfg(feature = "solana")]
-fn sha256(parts: &[&[u8]]) -> [u8; 32] {
+pub(crate) fn sha256(parts: &[&[u8]]) -> [u8; 32] {
     solana_program::hash::hashv(parts).to_bytes()
 }
 
 #[cfg(not(feature = "solana"))]
-fn sha256(parts: &[&[u8]]) -> [u8; 32] {
+pub(crate) fn sha256(parts: &[&[u8]]) -> [u8; 32] {
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
     for p in parts {

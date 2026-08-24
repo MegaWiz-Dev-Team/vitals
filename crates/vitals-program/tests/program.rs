@@ -29,6 +29,13 @@ fn rec(player: &Pubkey, case: u8, outcome: Outcome, harm: u16, d: Difficulty) ->
         sce_hash: [9; 32],
         case: c,
         run_hash: [3; 32],
+        commitment: [7; 32],
+        committed_slot: 11,
+        rubric_hash: [0u8; 32],
+        det_score: 0,
+        det_max: 0,
+        judged_score: 0,
+        judged_max: 0,
         difficulty: d,
         exam_mode: false,
         outcome,
@@ -50,6 +57,11 @@ fn wire(r: &AttemptRecord) -> RecordWire {
         exam_mode: r.exam_mode,
         outcome: r.outcome as u8,
         harm_count: r.harm_count,
+        rubric_hash: r.rubric_hash,
+        det_score: r.det_score,
+        det_max: r.det_max,
+        judged_score: r.judged_score,
+        judged_max: r.judged_max,
     }
 }
 
@@ -81,6 +93,42 @@ fn ix(pid: Pubkey, funder: Pubkey, player: Pubkey, extra: &[Pubkey], data: Instr
     metas.extend(extra.iter().map(|k| AccountMeta::new(*k, false)));
     metas.push(AccountMeta::new_readonly(system_program::id(), false));
     SolIx { program_id: pid, accounts: metas, data: borsh::to_vec(&data).unwrap() }
+}
+
+fn cpda(pid: &Pubkey, who: &Pubkey) -> Pubkey {
+    vitals_program::commitment_pda(pid, &who.to_bytes()).0
+}
+
+/// Declare an attempt the way a client would: send `Commit`, then read back what the chain
+/// actually recorded. The slot is the reason for the read-back — the program assigns it, and the
+/// record built for the leaf has to carry the same one, or the local Merkle list forks from the
+/// tree and every proof after it fails for a reason that has nothing to do with what a test is
+/// trying to show.
+async fn committed(
+    banks: &mut solana_program_test::BanksClient,
+    pid: Pubkey,
+    funder: &Keypair,
+    device: &Keypair,
+    bh: solana_sdk::hash::Hash,
+) -> ([u8; 32], u64) {
+    let who = device.pubkey();
+    let hash = [7u8; 32];
+    let mut signers: Vec<&Keypair> = vec![funder];
+    if device.pubkey() != funder.pubkey() {
+        signers.push(device);
+    }
+    banks
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[ix(pid, funder.pubkey(), who, &[acct(&pid, &who), cpda(&pid, &who)],
+                 Instruction::Commit { hash })],
+            Some(&funder.pubkey()), &signers, bh,
+        ))
+        .await
+        .expect("commit");
+    let data = banks.get_account(cpda(&pid, &who)).await.unwrap().expect("commitment account").data;
+    let c: Commitment = borsh::from_slice(&data).expect("commitment layout");
+    assert!(c.open && c.hash == hash, "the chain recorded a different commitment");
+    (c.hash, c.slot)
 }
 
 fn custom(err: &TransactionError) -> Option<u32> {
@@ -120,10 +168,16 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     assert_eq!(custom(&e), Some(VitalsError::NoAttempts as u32), "an empty claim must not pass");
 
     // ── anchoring somebody else's run ─────────────────────────────────────
+    // The commitment gate sits before the ownership check, so open one first — otherwise this
+    // refusal would be NoCommitment and the test would prove nothing about ownership. The failed
+    // transaction rolls back, so the commitment survives for the next stage regardless.
+    let bh2 = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    committed(&mut banks, pid, &payer, &payer, bh2).await;
     let theirs = rec(&Pubkey::new_unique(), 1, Outcome::WinDischarge, 0, Difficulty::Student);
     let e = banks
         .process_transaction(Transaction::new_signed_with_payer(
-            &[ix(pid, me, me, &[acc, tree], Instruction::AnchorReplay { tree_id: TREE, record: wire(&theirs) })],
+            &[ix(pid, me, me, &[acc, tree, cpda(&pid, &me)],
+                 Instruction::AnchorReplay { tree_id: TREE, record: wire(&theirs) })],
             Some(&me), &[&payer], bh,
         ))
         .await
@@ -132,7 +186,7 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     assert_eq!(custom(&e), Some(VitalsError::NotYourRun as u32), "a bystander must not fill the tree");
 
     // ── anchor three of my own, one per case ──────────────────────────────
-    let mine: Vec<AttemptRecord> = (1..=3)
+    let mut mine: Vec<AttemptRecord> = (1..=3)
         .map(|i| rec(&me, i, Outcome::WinDischarge, 0, Difficulty::Student))
         .collect();
     // Threaded, not shadowed. `get_new_latest_blockhash(&h)` waits for a hash different from `h`,
@@ -144,11 +198,18 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     // three failures in four full-workspace runs, and never once when run alone.
     let mut bh = bh;
     let mut leaves = Vec::new();
-    for r in &mine {
+    for r in &mut mine {
+        // One commitment per anchor — each is consumed. The record then carries exactly what the
+        // chain recorded, because the leaf the program computes will.
+        bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+        let (ch, cs) = committed(&mut banks, pid, &payer, &payer, bh).await;
+        r.commitment = ch;
+        r.committed_slot = cs;
         bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
         banks
             .process_transaction(Transaction::new_signed_with_payer(
-                &[ix(pid, me, me, &[acc, tree], Instruction::AnchorReplay { tree_id: TREE, record: wire(r) })],
+                &[ix(pid, me, me, &[acc, tree, cpda(&pid, &me)],
+                     Instruction::AnchorReplay { tree_id: TREE, record: wire(r) })],
                 Some(&me), &[&payer], bh,
             ))
             .await
@@ -163,7 +224,8 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     let e = banks
         .process_transaction(Transaction::new_signed_with_payer(
             &[ix(pid, me, me, &[acc, tree, claim], Instruction::ProveAttempt {
-                tree_id: TREE, record: wire(&forged), index: 0, path: path.to_vec() })],
+                tree_id: TREE, record: wire(&forged), index: 0, path: path.to_vec(),
+                commitment: forged.commitment, committed_slot: forged.committed_slot })],
             Some(&me), &[&payer], bh,
         ))
         .await
@@ -178,7 +240,8 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
         banks
             .process_transaction(Transaction::new_signed_with_payer(
                 &[ix(pid, me, me, &[acc, tree, claim], Instruction::ProveAttempt {
-                    tree_id: TREE, record: wire(r), index: i as u64, path: path.to_vec() })],
+                    tree_id: TREE, record: wire(r), index: i as u64, path: path.to_vec(),
+                commitment: r.commitment, committed_slot: r.committed_slot })],
                 Some(&me), &[&payer], bh,
             ))
             .await
@@ -191,7 +254,8 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     let e = banks
         .process_transaction(Transaction::new_signed_with_payer(
             &[ix(pid, me, me, &[acc, tree, claim], Instruction::ProveAttempt {
-                tree_id: TREE, record: wire(&mine[0]), index: 0, path: path.to_vec() })],
+                tree_id: TREE, record: wire(&mine[0]), index: 0, path: path.to_vec(),
+                commitment: mine[0].commitment, committed_slot: mine[0].committed_slot })],
             Some(&me), &[&payer], bh,
         ))
         .await
@@ -258,17 +322,21 @@ async fn a_player_with_no_sol_can_still_prove_and_claim() {
         ))
         .await
         .expect("the relay opens the account, the player owns it");
-    let records: Vec<AttemptRecord> = (0..3)
+    let mut records: Vec<AttemptRecord> = (0..3)
         .map(|i| rec(&who, i as u8 + 1, Outcome::WinDischarge, 0, Difficulty::Student))
         .collect();
 
     let mut bh = bh;
-    for r in &records {
+    for r in &mut records {
+        bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+        let (ch, cs) = committed(&mut banks, pid, &relay, &player, bh).await;
+        r.commitment = ch;
+        r.committed_slot = cs;
         bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
         banks
             .process_transaction(Transaction::new_signed_with_payer(
-                &[ix(pid, relay.pubkey(), who, &[acc, tree], Instruction::AnchorReplay {
-                    tree_id: TREE, record: wire(r) })],
+                &[ix(pid, relay.pubkey(), who, &[acc, tree, cpda(&pid, &who)],
+                     Instruction::AnchorReplay { tree_id: TREE, record: wire(r) })],
                 Some(&relay.pubkey()), &[&relay, &player], bh,
             ))
             .await
@@ -282,7 +350,8 @@ async fn a_player_with_no_sol_can_still_prove_and_claim() {
         banks
             .process_transaction(Transaction::new_signed_with_payer(
                 &[ix(pid, relay.pubkey(), who, &[acc, tree, claim], Instruction::ProveAttempt {
-                    tree_id: TREE, record: wire(r), index: i as u64, path: path.to_vec() })],
+                    tree_id: TREE, record: wire(r), index: i as u64, path: path.to_vec(),
+                commitment: r.commitment, committed_slot: r.committed_slot })],
                 Some(&relay.pubkey()), &[&relay, &player], bh,
             ))
             .await
@@ -330,6 +399,7 @@ async fn the_relay_cannot_sign_for_the_player() {
         AccountMeta::new_readonly(victim, false),
         AccountMeta::new(acc, false),
         AccountMeta::new(tree, false),
+        AccountMeta::new(cpda(&pid, &victim), false),
         AccountMeta::new_readonly(system_program::id(), false),
     ];
     metas.dedup();
@@ -393,13 +463,17 @@ async fn a_second_machine_plays_into_the_same_record() {
                "an unlinked machine is a stranger");
 
     // Two cases played on the laptop.
-    let records: Vec<AttemptRecord> = (0..2)
+    let mut records: Vec<AttemptRecord> = (0..2)
         .map(|i| rec(&who, i as u8 + 1, Outcome::WinDischarge, 0, Difficulty::Student))
         .collect();
-    for r in &records {
+    for r in &mut records {
+        bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+        let (ch, cs) = committed(&mut banks, pid, &relay, &laptop, bh).await;
+        r.commitment = ch;
+        r.committed_slot = cs;
         bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
         banks.process_transaction(go(
-            vec![ix(pid, relay.pubkey(), who, &[acc, tree],
+            vec![ix(pid, relay.pubkey(), who, &[acc, tree, cpda(&pid, &who)],
                     Instruction::AnchorReplay { tree_id: TREE, record: wire(r) })],
             vec![&relay, &laptop], bh)).await.expect("anchor on the laptop");
     }
@@ -419,7 +493,8 @@ async fn a_second_machine_plays_into_the_same_record() {
         banks.process_transaction(go(
             vec![ix(pid, relay.pubkey(), desktop.pubkey(), &[acc, tree, claim],
                     Instruction::ProveAttempt { tree_id: TREE, record: wire(r),
-                                                index: i as u64, path: path.to_vec() })],
+                                                index: i as u64, path: path.to_vec(),
+                commitment: r.commitment, committed_slot: r.committed_slot })],
             vec![&relay, &desktop], bh)).await.expect("the desktop proves the laptop's run");
     }
 
@@ -515,18 +590,27 @@ async fn devices_can_be_dropped_but_never_the_last_one() {
 async fn a_stranger_cannot_append_to_my_tree() {
     let pid = Pubkey::new_unique();
     let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
-    let (banks, mine, bh) = pt.start().await;
+    let (mut banks, mine, bh) = pt.start().await;
     let me = mine.pubkey();
 
     // My tree, with one honest leaf in it.
     let (tree, _, _) = pdas(&pid, &me, &me);
     let acc = acct(&pid, &me);
-    let r = rec(&me, 1, Outcome::WinDischarge, 0, Difficulty::Student);
     let mut tx = Transaction::new_with_payer(
-        &[
-            ix(pid, me, me, &[acc], Instruction::OpenAccount),
-            ix(pid, me, me, &[acc, tree], Instruction::AnchorReplay { tree_id: TREE, record: wire(&r) }),
-        ],
+        &[ix(pid, me, me, &[acc], Instruction::OpenAccount)],
+        Some(&me),
+    );
+    tx.sign(&[&mine], bh);
+    banks.process_transaction(tx).await.expect("open");
+    let bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    let (ch, cs) = committed(&mut banks, pid, &mine, &mine, bh).await;
+    let mut r = rec(&me, 1, Outcome::WinDischarge, 0, Difficulty::Student);
+    r.commitment = ch;
+    r.committed_slot = cs;
+    let bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    let mut tx = Transaction::new_with_payer(
+        &[ix(pid, me, me, &[acc, tree, cpda(&pid, &me)],
+             Instruction::AnchorReplay { tree_id: TREE, record: wire(&r) })],
         Some(&me),
     );
     tx.sign(&[&mine], bh);
@@ -541,13 +625,23 @@ async fn a_stranger_cannot_append_to_my_tree() {
     banks.process_transaction(tx).await.expect("fund the stranger");
 
     let their_acc = acct(&pid, &them);
-    let theirs = rec(&them, 1, Outcome::WinDischarge, 0, Difficulty::Student);
     let mut tx = Transaction::new_with_payer(
-        &[
-            ix(pid, them, them, &[their_acc], Instruction::OpenAccount),
-            // They name *my* tree account, with my tree id.
-            ix(pid, them, them, &[their_acc, tree], Instruction::AnchorReplay { tree_id: TREE, record: wire(&theirs) }),
-        ],
+        &[ix(pid, them, them, &[their_acc], Instruction::OpenAccount)],
+        Some(&them),
+    );
+    tx.sign(&[&stranger], banks.get_latest_blockhash().await.unwrap());
+    banks.process_transaction(tx).await.expect("the stranger's own account");
+    // The stranger commits properly too. Without this their attempt would be refused for the
+    // missing commitment, and the test would prove nothing about tree ownership.
+    let bh3 = banks.get_latest_blockhash().await.unwrap();
+    let (sch, scs) = committed(&mut banks, pid, &stranger, &stranger, bh3).await;
+    let mut theirs = rec(&them, 1, Outcome::WinDischarge, 0, Difficulty::Student);
+    theirs.commitment = sch;
+    theirs.committed_slot = scs;
+    let mut tx = Transaction::new_with_payer(
+        // They name *my* tree account, with my tree id — with their own commitment open.
+        &[ix(pid, them, them, &[their_acc, tree, cpda(&pid, &them)],
+             Instruction::AnchorReplay { tree_id: TREE, record: wire(&theirs) })],
         Some(&them),
     );
     tx.sign(&[&stranger], banks.get_latest_blockhash().await.unwrap());
@@ -590,12 +684,19 @@ async fn naming_an_account_that_is_not_yours_is_refused_everywhere() {
         Some(&me), &[&payer, &other_kp], bh,
     )).await.expect("open both");
 
-    let r = rec(&me, 1, Outcome::WinDischarge, 0, Difficulty::Student);
     let mut bh = bh;
+    // A commitment first — the gate sits before most of the refusals under test, and each failed
+    // substitution rolls back, so one open declaration serves every doomed attempt below and is
+    // finally consumed by the honest anchor.
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    let (ch, cs) = committed(&mut banks, pid, &payer, &payer, bh).await;
+    let mut r = rec(&me, 1, Outcome::WinDischarge, 0, Difficulty::Student);
+    r.commitment = ch;
+    r.committed_slot = cs;
 
     // Someone else's account record, in place of mine.
     let e = banks.process_transaction(Transaction::new_signed_with_payer(
-        &[ix(pid, me, me, &[other_acc, tree],
+        &[ix(pid, me, me, &[other_acc, tree, cpda(&pid, &other)],
              Instruction::AnchorReplay { tree_id: TREE, record: wire(&r) })],
         Some(&me), &[&payer], bh,
     )).await.unwrap_err().unwrap();
@@ -610,7 +711,7 @@ async fn naming_an_account_that_is_not_yours_is_refused_everywhere() {
     // Someone else's tree, in place of mine.
     bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
     let e = banks.process_transaction(Transaction::new_signed_with_payer(
-        &[ix(pid, me, me, &[acc, other_tree],
+        &[ix(pid, me, me, &[acc, other_tree, cpda(&pid, &me)],
              Instruction::AnchorReplay { tree_id: TREE, record: wire(&r) })],
         Some(&me), &[&payer], bh,
     )).await.unwrap_err().unwrap();
@@ -620,7 +721,7 @@ async fn naming_an_account_that_is_not_yours_is_refused_everywhere() {
     // there being nothing to prove.
     bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
     banks.process_transaction(Transaction::new_signed_with_payer(
-        &[ix(pid, me, me, &[acc, tree],
+        &[ix(pid, me, me, &[acc, tree, cpda(&pid, &me)],
              Instruction::AnchorReplay { tree_id: TREE, record: wire(&r) })],
         Some(&me), &[&payer], bh,
     )).await.expect("anchor");
@@ -630,7 +731,8 @@ async fn naming_an_account_that_is_not_yours_is_refused_everywhere() {
     bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
     let e = banks.process_transaction(Transaction::new_signed_with_payer(
         &[ix(pid, me, me, &[acc, tree, other_claim], Instruction::ProveAttempt {
-            tree_id: TREE, record: wire(&r), index: 0, path: path.to_vec() })],
+            tree_id: TREE, record: wire(&r), index: 0, path: path.to_vec(),
+                commitment: r.commitment, committed_slot: r.committed_slot })],
         Some(&me), &[&payer], bh,
     )).await.unwrap_err().unwrap();
     assert_eq!(custom(&e), Some(VitalsError::WrongPda as u32), "a foreign claim buffer");
@@ -639,7 +741,8 @@ async fn naming_an_account_that_is_not_yours_is_refused_everywhere() {
     bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
     banks.process_transaction(Transaction::new_signed_with_payer(
         &[ix(pid, me, me, &[acc, tree, claim], Instruction::ProveAttempt {
-            tree_id: TREE, record: wire(&r), index: 0, path: path.to_vec() })],
+            tree_id: TREE, record: wire(&r), index: 0, path: path.to_vec(),
+                commitment: r.commitment, committed_slot: r.committed_slot })],
         Some(&me), &[&payer], bh,
     )).await.expect("prove");
 
@@ -663,9 +766,10 @@ async fn a_device_with_no_account_cannot_anchor() {
     let acc = acct(&pid, &me);
     let r = rec(&me, 1, Outcome::WinDischarge, 0, Difficulty::Student);
 
-    // The account PDA is correct — it simply has never been created.
+    // The account PDA is correct — it simply has never been created. The commitment account is
+    // named too, so the refusal is the account's absence and not a short account list.
     let e = banks.process_transaction(Transaction::new_signed_with_payer(
-        &[ix(pid, me, me, &[acc, tree],
+        &[ix(pid, me, me, &[acc, tree, cpda(&pid, &me)],
              Instruction::AnchorReplay { tree_id: TREE, record: wire(&r) })],
         Some(&me), &[&payer], bh,
     )).await.unwrap_err().unwrap();
@@ -731,6 +835,11 @@ async fn a_record_with_an_impossible_difficulty_or_outcome_is_refused() {
         Some(&me), &[&payer], bh,
     )).await.expect("open");
 
+    // One commitment covers both bad attempts: each transaction fails at decode and rolls back,
+    // which un-consumes it — the same rollback that stops a failed anchor eating a declaration.
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    committed(&mut banks, pid, &payer, &payer, bh).await;
+
     for (field, w) in [
         ("difficulty", {
             let mut w = wire(&rec(&me, 1, Outcome::WinDischarge, 0, Difficulty::Student));
@@ -745,10 +854,154 @@ async fn a_record_with_an_impossible_difficulty_or_outcome_is_refused() {
     ] {
         bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
         let e = banks.process_transaction(Transaction::new_signed_with_payer(
-            &[ix(pid, me, me, &[acc, tree],
+            &[ix(pid, me, me, &[acc, tree, cpda(&pid, &me)],
                  Instruction::AnchorReplay { tree_id: TREE, record: w })],
             Some(&me), &[&payer], bh,
         )).await.unwrap_err().unwrap();
         assert_eq!(custom(&e), Some(VitalsError::BadRecord as u32), "{field} out of range");
     }
+}
+
+/// The gate itself: a run that was never declared cannot be anchored.
+#[tokio::test]
+async fn anchoring_without_a_commitment_is_refused() {
+    let pid = Pubkey::new_unique();
+    let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
+    let (mut banks, payer, bh) = pt.start().await;
+    let me = payer.pubkey();
+    let (tree, _, _) = pdas(&pid, &me, &me);
+    let acc = acct(&pid, &me);
+
+    banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc], Instruction::OpenAccount)],
+        Some(&me), &[&payer], bh,
+    )).await.expect("open");
+
+    let r = rec(&me, 1, Outcome::WinDischarge, 0, Difficulty::Student);
+    let bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    let e = banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc, tree, cpda(&pid, &me)],
+             Instruction::AnchorReplay { tree_id: TREE, record: wire(&r) })],
+        Some(&me), &[&payer], bh,
+    )).await.unwrap_err().unwrap();
+    assert_eq!(custom(&e), Some(VitalsError::NoCommitment as u32));
+}
+
+/// One declaration covers one anchor. The second run needs its own.
+#[tokio::test]
+async fn a_commitment_is_consumed_by_the_anchor_it_covers() {
+    let pid = Pubkey::new_unique();
+    let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
+    let (mut banks, payer, bh) = pt.start().await;
+    let me = payer.pubkey();
+    let (tree, _, _) = pdas(&pid, &me, &me);
+    let acc = acct(&pid, &me);
+
+    let mut bh = bh;
+    banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc], Instruction::OpenAccount)],
+        Some(&me), &[&payer], bh,
+    )).await.expect("open");
+
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    let (ch, cs) = committed(&mut banks, pid, &payer, &payer, bh).await;
+    let mut r = rec(&me, 1, Outcome::WinDischarge, 0, Difficulty::Student);
+    r.commitment = ch;
+    r.committed_slot = cs;
+
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc, tree, cpda(&pid, &me)],
+             Instruction::AnchorReplay { tree_id: TREE, record: wire(&r) })],
+        Some(&me), &[&payer], bh,
+    )).await.expect("the committed anchor");
+
+    // The same declaration must not stretch to a second run.
+    let r2 = rec(&me, 2, Outcome::WinDischarge, 0, Difficulty::Student);
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    let e = banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc, tree, cpda(&pid, &me)],
+             Instruction::AnchorReplay { tree_id: TREE, record: wire(&r2) })],
+        Some(&me), &[&payer], bh,
+    )).await.unwrap_err().unwrap();
+    assert_eq!(custom(&e), Some(VitalsError::NoCommitment as u32), "a spent commitment was reused");
+}
+
+/// The trap the whole mechanism exists to close: closing commitments must not erase the count.
+///
+/// Without this, a learner commits five times, plays five, anchors the flattering run and closes
+/// the rest — and the chain says they attempted once. Rent is refundable; the fact is not.
+#[tokio::test]
+async fn closing_a_commitment_keeps_the_count() {
+    let pid = Pubkey::new_unique();
+    let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
+    let (mut banks, payer, bh) = pt.start().await;
+    let me = payer.pubkey();
+    let acc = acct(&pid, &me);
+    let commit = cpda(&pid, &me);
+
+    let mut bh = bh;
+    banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc], Instruction::OpenAccount)],
+        Some(&me), &[&payer], bh,
+    )).await.expect("open");
+
+    // Three declarations — the middle one overwritten, which still counts, because every
+    // statement of intent is on the record whether or not it became a run.
+    for h in [[1u8; 32], [2u8; 32], [3u8; 32]] {
+        bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+        banks.process_transaction(Transaction::new_signed_with_payer(
+            &[ix(pid, me, me, &[acc, commit], Instruction::Commit { hash: h })],
+            Some(&me), &[&payer], bh,
+        )).await.expect("commit");
+    }
+    let c: Commitment = borsh::from_slice(
+        &banks.get_account(commit).await.unwrap().unwrap().data).unwrap();
+    assert_eq!(c.started, 3);
+    let lamports_before = banks.get_account(commit).await.unwrap().unwrap().lamports;
+
+    // Close it. The open slot clears; the count and the account survive.
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc, commit], Instruction::CloseCommitment)],
+        Some(&me), &[&payer], bh,
+    )).await.expect("close");
+
+    let after = banks.get_account(commit).await.unwrap().expect("the account must survive a close");
+    let c: Commitment = borsh::from_slice(&after.data).unwrap();
+    assert!(!c.open, "closing must clear the open slot");
+    assert_eq!(c.started, 3, "closing erased the count — the whole mechanism is decoration");
+    assert_eq!(after.lamports, lamports_before, "lamports moved on close; the counter is buyable");
+
+    // And the record keeps growing from where it left off.
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc, commit], Instruction::Commit { hash: [4u8; 32] })],
+        Some(&me), &[&payer], bh,
+    )).await.expect("commit after close");
+    let c: Commitment = borsh::from_slice(
+        &banks.get_account(commit).await.unwrap().unwrap().data).unwrap();
+    assert_eq!(c.started, 4);
+}
+
+/// All-zero is the sentinel for "nothing open" and must not be committable as a real value.
+#[tokio::test]
+async fn a_zero_commitment_is_refused() {
+    let pid = Pubkey::new_unique();
+    let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
+    let (mut banks, payer, bh) = pt.start().await;
+    let me = payer.pubkey();
+    let acc = acct(&pid, &me);
+
+    banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc], Instruction::OpenAccount)],
+        Some(&me), &[&payer], bh,
+    )).await.expect("open");
+
+    let bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    let e = banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc, cpda(&pid, &me)], Instruction::Commit { hash: [0u8; 32] })],
+        Some(&me), &[&payer], bh,
+    )).await.unwrap_err().unwrap();
+    assert_eq!(custom(&e), Some(VitalsError::BadRecord as u32));
 }

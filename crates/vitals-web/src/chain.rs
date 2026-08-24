@@ -24,8 +24,8 @@ use vitals_progress::merkle;
 use vitals_progress::record::AttemptRecord;
 use vitals_progress::Difficulty;
 use vitals_program::{
-    Account, ClaimAccount, Instruction, Progress, RecordWire, TreeAccount, SEED_ACCOUNT,
-    SEED_CLAIM, SEED_PROGRESS,
+    commitment_pda, Account, ClaimAccount, Commitment, Instruction, Progress, RecordWire,
+    TreeAccount, SEED_ACCOUNT, SEED_CLAIM, SEED_PROGRESS,
 };
 
 pub const SPECIALTY: u8 = 1;
@@ -180,6 +180,40 @@ impl Chain {
     /// One transaction, so one signature from the player rather than two round trips through the
     /// browser — and atomically: a leaf that lands in the tree but never gets proven is a leaf the
     /// player paid for and cannot use.
+    /// Build the declaration a player signs before a run starts.
+    ///
+    /// Bundles OpenAccount for a first-time player, because `Commit` requires the account to
+    /// exist — a commitment has to belong to somebody. The transaction lands before any play
+    /// happens; that ordering is the entire meaning of the word.
+    pub fn prepare_commit(&self, device: &Pubkey, id: &Pubkey, hash: [u8; 32]) -> Result<Pending, String> {
+        let acc = self.account_pda(id);
+        let commit = commitment_pda(&self.program_id, &id.to_bytes()).0;
+        let mut ixs = Vec::new();
+        if self.account(id).is_none() {
+            ixs.push(self.ix(device, Instruction::OpenAccount, &[acc])?);
+        }
+        ixs.push(self.ix(device, Instruction::Commit { hash }, &[acc, commit])?);
+        self.prepare(device, ixs)
+    }
+
+    /// What the chain says this player has open, and how many times they have ever started.
+    ///
+    /// Read back after a commit lands, because the slot is assigned on chain — the client cannot
+    /// know it in advance, and the record it builds later must carry the same slot the program
+    /// will stamp into the leaf, or the two sides compute different hashes.
+    pub fn commitment(&self, id: &Pubkey) -> Option<Commitment> {
+        self.fetch(&commitment_pda(&self.program_id, &id.to_bytes()).0)
+    }
+
+    /// The anchor and its proof, as two transactions the player signs together.
+    ///
+    /// They used to be one. The vt02 record made the wire 80 bytes longer, and it rides in both
+    /// instructions — with the 384-byte Merkle path on top, the combined transaction reached
+    /// 1,656 bytes against a 1,232-byte packet limit. Two transactions fit with room to spare,
+    /// and the in-page key signs both in the same breath, so the player notices nothing.
+    ///
+    /// If the first lands and the second fails, the run is anchored but not yet proven — an
+    /// intact state, not a corrupt one: the leaf is in the tree and the proof can be re-sent.
     pub fn prepare_anchor(
         &self,
         device: &Pubkey,
@@ -187,7 +221,7 @@ impl Chain {
         tree_id: u64,
         rec: &AttemptRecord,
         leaves: &[[u8; 32]],
-    ) -> Result<Pending, String> {
+    ) -> Result<(Pending, Pending), String> {
         let index = leaves.len() as u64 - 1;
         let path = merkle::prove(leaves, index).ok_or("could not build the proof")?;
         let acc = self.account_pda(id);
@@ -198,11 +232,14 @@ impl Chain {
             ixs.push(self.ix(device, Instruction::OpenAccount, &[acc])?);
         }
         ixs.push(self.ix(device, Instruction::AnchorReplay { tree_id, record: wire(rec) },
-                         &[acc, self.tree_pda(tree_id)])?);
-        ixs.push(self.ix(device,
-                         Instruction::ProveAttempt { tree_id, record: wire(rec), index, path: path.to_vec() },
-                         &[acc, self.tree_pda(tree_id), self.claim_pda(id, tree_id)])?);
-        self.prepare(device, ixs)
+                         &[acc, self.tree_pda(tree_id),
+                           commitment_pda(&self.program_id, &id.to_bytes()).0])?);
+        let anchor = self.prepare(device, ixs)?;
+        let prove = self.prepare(device, vec![self.ix(device,
+            Instruction::ProveAttempt { tree_id, record: wire(rec), index, path: path.to_vec(),
+                                        commitment: rec.commitment, committed_slot: rec.committed_slot },
+            &[acc, self.tree_pda(tree_id), self.claim_pda(id, tree_id)])?])?;
+        Ok((anchor, prove))
     }
 
     /// Let another machine act as this person. Signed by one that already can.
@@ -293,6 +330,13 @@ fn wire(r: &AttemptRecord) -> RecordWire {
         exam_mode: r.exam_mode,
         outcome: r.outcome as u8,
         harm_count: r.harm_count,
+        // Mirrors of what the record already holds. Deliberately no commitment: the program reads
+        // that from the account, so there is nothing here for a caller to assert.
+        rubric_hash: r.rubric_hash,
+        det_score: r.det_score,
+        det_max: r.det_max,
+        judged_score: r.judged_score,
+        judged_max: r.judged_max,
     }
 }
 
@@ -423,6 +467,8 @@ RPC response error -32002: Transaction simulation failed: Error processing Instr
             let r = AttemptRecord {
                 player: [1; 32], sce_hash: [2; 32], case: [3; 32], run_hash: [4; 32],
                 difficulty: d, exam_mode: false, outcome: Outcome::WinDischarge, harm_count: 0,
+                commitment: [0u8; 32], committed_slot: 0, rubric_hash: [0u8; 32],
+                det_score: 0, det_max: 0, judged_score: 0, judged_max: 0,
             };
             assert_eq!(wire(&r).difficulty, n, "{d:?} must encode as {n}");
         }

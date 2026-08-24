@@ -701,13 +701,25 @@ async function sign(hex){
   return hexOf(new Uint8Array(await crypto.subtle.sign({name:'Ed25519'},me.key,unhex(hex))));
 }
 /* prepare on the server → sign here → submit. The server cannot do the middle step. */
+let runCommitted=false;
+async function commitRun(){
+  runCommitted=false;
+  const r=await chainDo('/api/commit?id='+id);
+  if(r&&r.committed){runCommitted=true; ev('note','—','committed — attempt #'+r.started+' on the record');}
+  else if(r&&r.error&&!/no chain/.test(r.error)) ev('note','—','commit failed: '+r.error);
+  return r;
+}
 async function chainDo(url){
   const me=await identity();
   if(!me)return {error:'this browser has no Ed25519 — try Chrome, Safari 17+ or Firefox 129+'};
   const r=await (await fetch(url+'&player='+me.pub+'&account='+acctOf())).json();
   if(r.error||!r.sign)return r;
+  /* An anchor arrives as two messages — the record outgrew one packet — and the key signs both
+     in the same breath. One message stays one signature. */
   const sig=await sign(r.sign);
-  return await (await fetch('/api/submit?player='+me.pub+'&sig='+sig)).json();
+  let q='/api/submit?player='+me.pub+'&sig='+sig;
+  if(r.sign2)q+='&sig2='+await sign(r.sign2);
+  return await (await fetch(q)).json();
 }
 
 /* ─── carrying the record between machines ────────────────────────────────────
@@ -1157,6 +1169,11 @@ $('#start').onclick=async()=>{
   const r=await (await fetch('/api/new?ep='+e+asMe())).json();
   if(r.error)return ev('note','—',r.error);
   id=r.id; mode='ask'; loopNow=''; cutting=false; $('#cut').classList.remove('on');
+  /* Declare the run before playing it. The whole integrity claim is that the chain knew you
+     started before you knew how it would go — so the declaration has to land here, at the top,
+     not at anchor time when the outcome is already on the screen. If it fails the run still
+     plays; it just cannot anchor, and the anchor button will say why. */
+  commitRun();
   renderModes(); renderChips(); paint(r.view);
   if(ep().id==='ep1') playCut('cold_open');
   $('#device').src='/device/monitor?sid='+encodeURIComponent(id);

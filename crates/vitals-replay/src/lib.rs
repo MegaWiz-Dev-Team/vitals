@@ -204,6 +204,12 @@ pub fn hex(b: &[u8; 32]) -> String {
 /// `case` is the scenario hash by default: three runs of one patient are one case, and the
 /// competency model is entitled to know that. A host that authors many cases against one
 /// scenario passes its own case id instead.
+// Nine arguments, and clippy is right that it is a lot. They are nine independent facts about
+// one attempt — who, which engine, which case, how hard, which mode, what happened, and what was
+// declared beforehand — none optional, none derivable from another here. A params struct would
+// spread the same nine names over nine lines and add a type whose only job is to be built once,
+// immediately, by both callers. If a tenth fact appears, that is the moment to bundle.
+#[allow(clippy::too_many_arguments)]
 pub fn record_for(
     player: [u8; 32],
     sce_hash: [u8; 32],
@@ -212,13 +218,15 @@ pub fn record_for(
     exam_mode: bool,
     tape: &[Step],
     r: &Replay,
+    commitment: [u8; 32],
+    committed_slot: u64,
 ) -> Result<vitals_progress::record::AttemptRecord, String> {
     let outcome = match r.outcome.as_deref() {
         None => vitals_progress::record::Outcome::NoTerminal,
         Some(s) => vitals_progress::record::Outcome::parse(s)
             .ok_or_else(|| format!("unknown outcome {s:?} — this build cannot score it"))?,
     };
-    Ok(vitals_progress::record::AttemptRecord {
+    let mut rec = vitals_progress::record::AttemptRecord {
         player,
         sce_hash,
         case,
@@ -227,7 +235,29 @@ pub fn record_for(
         exam_mode,
         outcome,
         harm_count: r.harm_events.len() as u16,
-    })
+
+        // Passed in rather than computed here: this crate replays a tape and has no idea what was
+        // committed before the run started. The caller that made the commitment supplies it, and
+        // the program checks it against the commitment account rather than believing anyone.
+        commitment,
+        committed_slot,
+
+        // A story-mode run is deterministic end to end. Its whole score is re-derivable by anyone
+        // who replays this tape against the pinned engine, so it goes in `det_*` and the judged
+        // half is zero — not missing, but the record stating that no part of it rested on a
+        // witness. There is no rubric either: the outcome comes from the physiology.
+        rubric_hash: [0u8; 32],
+        det_score: 0,
+        det_max: 0,
+        judged_score: 0,
+        judged_max: 0,
+    };
+    // Filled after construction because the score is derived from the outcome and the harm count
+    // that were just set. Saturating rather than truncating: a score that wrapped to a small
+    // number in a record meant to be trusted later is the worst possible failure of this field.
+    rec.det_score = rec.score().min(u16::MAX as u32) as u16;
+    rec.det_max = rec.max_score().min(u16::MAX as u32) as u16;
+    Ok(rec)
 }
 
 // ── the debrief ─────────────────────────────────────────────────────────────

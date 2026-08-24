@@ -139,11 +139,16 @@ impl Server {
         serde_json::from_str(&body).unwrap_or(serde_json::Value::Null)
     }
 
-    /// prepare on the server, sign here, submit — the shape the browser uses.
+    /// prepare on the server, sign here, submit — the shape the browser uses. An anchor comes
+    /// back as two messages (the record outgrew one packet) and both are signed together.
     fn signed(&self, p: &Player, path: &str) -> serde_json::Value {
         let r = self.json(path);
         let Some(msg) = r["sign"].as_str() else { return r };
-        self.json(&format!("/api/submit?player={}&sig={}", p.pubkey(), p.sign(msg)))
+        let mut url = format!("/api/submit?player={}&sig={}", p.pubkey(), p.sign(msg));
+        if let Some(msg2) = r["sign2"].as_str() {
+            url.push_str(&format!("&sig2={}", p.sign(msg2)));
+        }
+        self.json(&url)
     }
 
     /// Play EP1 well enough to win. `extra` makes an otherwise identical run distinct, because
@@ -154,6 +159,11 @@ impl Server {
             .as_str()
             .expect("session")
             .to_string();
+        // Declare the run before playing it — the shape the browser now uses, and the thing the
+        // program enforces: an undeclared run is refused at anchor time.
+        let c = self.signed(p, &format!("/api/commit?id={id}&player={who}&account={account}"));
+        assert_eq!(c["committed"], true, "commit failed: {c}");
+
         let mut orders = vec!["adrenaline im", "oxygen face mask 10 lpm", "lay her flat, legs up"];
         if let Some(e) = extra {
             orders.push(e);
@@ -262,6 +272,10 @@ fn a_forged_signature_is_refused_and_the_tree_is_left_alone() {
     let before = s.json("/api/chain")["anchored"].as_u64().unwrap_or(0);
 
     let id = s.json(&format!("/api/new?ep=ep1&player={me}"))["id"].as_str().unwrap().to_string();
+    // The victim commits honestly — the attack under test is at the signature, not the gate, and
+    // without a commitment the anchor refuses before there is ever anything to sign.
+    let c = s.signed(&victim, &format!("/api/commit?id={id}&player={me}&account={me}"));
+    assert_eq!(c["committed"], true, "commit failed: {c}");
     for o in ["adrenaline im", "oxygen face mask 10 lpm", "lay her flat, legs up"] {
         s.json(&format!("/api/step?id={id}&player={me}&do={}", enc(o)));
     }
