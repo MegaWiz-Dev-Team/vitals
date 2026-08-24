@@ -8,6 +8,22 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 CLUSTER="${CLUSTER:-devnet}"
+
+# Who may replace this program afterwards. Deliberately has no default.
+#
+# A deploy leaves the upgrade authority on whichever key ran it, which on a laptop is a hot key
+# that also pays for everything else. That is the quiet way a program ends up one stolen laptop
+# away from being replaced — and it devalues any audit of it, because a report certifies bytecode
+# that the key holder can swap out the next day. Auditors write that sentence in their reports.
+#
+# Point it at a Squads multisig, or pass the deployer's own key to say out loud that this cluster
+# is disposable. `none` burns the authority and makes the program permanently immutable — correct
+# for a final mainnet deploy, unrecoverable everywhere else.
+#
+# The authority key needs a balance of its own: changing authority and upgrading are transactions
+# it has to pay for. A freshly created multisig with no SOL cannot do either.
+UPGRADE_AUTHORITY="${UPGRADE_AUTHORITY:-}"
+
 RPC="${RPC:-https://api.$CLUSTER.solana.com}"
 KEY="${VITALS_KEYPAIR:-$HOME/.config/solana/id.json}"
 # The program keypair IS the program id. Kept outside target/ because `cargo clean` deletes that
@@ -16,6 +32,13 @@ PROGRAM_KEY="keys/vitals_program-keypair.json"
 
 [ -f "$PROGRAM_KEY" ] || { echo "no program keypair at $PROGRAM_KEY"; exit 1; }
 PROGRAM_ID=$(solana address -k "$PROGRAM_KEY")
+
+
+if [ -z "$UPGRADE_AUTHORITY" ]; then
+  echo "set UPGRADE_AUTHORITY — a multisig address, the deployer's own key, or 'none' to burn it" >&2
+  echo "  (see the note in this script; leaving it implicit is how a hot key ends up owning prod)" >&2
+  exit 1
+fi
 
 echo "── cluster    $CLUSTER"
 echo "── program    $PROGRAM_ID"
@@ -42,6 +65,22 @@ fi
 cd crates/vitals-program && cargo build-sbf --arch v3 && cd ../..
 solana program deploy target/deploy/vitals_program.so \
   --program-id "$PROGRAM_KEY" --keypair "$KEY" --url "$RPC"
+
+# The bytecode that just landed is the bytecode this tree builds — checked, not assumed. A deploy
+# that silently lagged behind the source is the failure this catches, and it is the one that
+# actually happens.
+VITALS_PROGRAM_ID="$PROGRAM_ID" VITALS_RPC="$RPC" scripts/verify-deploy.sh
+
+if [ "$UPGRADE_AUTHORITY" = "none" ]; then
+  echo "── burning the upgrade authority. This program becomes permanently immutable."
+  solana program set-upgrade-authority "$PROGRAM_ID" --final \
+    --keypair "$KEY" --url "$RPC"
+elif [ "$UPGRADE_AUTHORITY" != "$(solana address -k "$KEY")" ]; then
+  solana program set-upgrade-authority "$PROGRAM_ID" \
+    --new-upgrade-authority "$UPGRADE_AUTHORITY" \
+    --keypair "$KEY" --url "$RPC" --skip-new-upgrade-authority-signer-check
+fi
+echo "── authority   $(solana program show "$PROGRAM_ID" --url "$RPC" | awk '/Authority/{print $2}')"
 
 cat <<DONE
 
