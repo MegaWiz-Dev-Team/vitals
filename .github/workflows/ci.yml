@@ -109,10 +109,18 @@ jobs:
           # The whole history: a key committed five commits ago and deleted four ago is still
           # published the moment the repository opens.
           fetch-depth: 0
-      - name: gitleaks
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: gitleaks over the full history
+        # The gitleaks binary is open source and free; only the gitleaks-action wrapper demands a
+        # paid licence for organization repos, which is what failed the first run without ever
+        # scanning. Running the binary directly restores the scan and depends on nothing but a
+        # pinned release tarball, verified by SHA-256.
+        run: |
+          VER=8.30.1
+          SHA=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" -o gl.tgz
+          echo "$SHA  gl.tgz" | sha256sum -c -
+          tar xzf gl.tgz gitleaks
+          ./gitleaks git --no-banner --redact --exit-code 1 .
 
   sbom:
     runs-on: ubuntu-latest
