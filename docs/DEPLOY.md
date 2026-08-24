@@ -91,8 +91,18 @@ the relay key.
 ## Cloud Run
 
 ```
-VITALS_PROGRAM_ID=<from deploy-devnet.sh> scripts/deploy-cloudrun.sh
+VITALS_GCP_PROJECT=vitals-academy VITALS_PROGRAM_ID=<from deploy-devnet.sh> scripts/deploy-cloudrun.sh
 ```
+
+The project exists: **`vitals-academy`** (number 995399340966), on the same billing account as
+`cloud-super-hero` and `mega-care`, with Firestore already created in `asia-southeast1` —
+the same region Cloud Run runs in, and a location that cannot be changed afterwards. Writing a
+document with Thai text and reading it back is the check that the store code and the database
+agree, and it passes.
+
+The script still refuses to run without `VITALS_GCP_PROJECT` even though there is now an obvious
+answer. The guard is not about the answer being unknown; it is about the wrong answer being
+one keystroke away, and it refuses `cloud-super-hero*` for the same reason.
 
 The whole product is one binary — page, API and relay together — so there is no separate frontend
 to host. That follows from the relay paying fees: a static host cannot hold a signing key, and
