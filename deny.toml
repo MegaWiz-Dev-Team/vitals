@@ -71,4 +71,8 @@ unknown-git = "deny"
 
 [bans]
 multiple-versions = "allow"   # the Solana SDK guarantees duplicates; denying is noise
-wildcards = "deny"            # a "*" version is a dependency nobody chose
+wildcards = "deny"            # an external "*" is a dependency nobody chose
+# ...but the crates in this workspace depend on each other by path with no version, which reads
+# as a wildcard and is not one — it is how a workspace refers to its own members. Allow only
+# those, so a real external "*" still fails.
+allow-wildcard-paths = true
