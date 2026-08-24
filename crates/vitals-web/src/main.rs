@@ -536,7 +536,18 @@ fn main() {
     // Resume the tree this server was filling. Starting a new one every boot would strand every
     // leaf already anchored, because the proof is built from the leaf list and the old list is
     // what those leaves were anchored into.
-    let tree = Arc::new(Mutex::new(store.get::<Tree>(TREE, "current").unwrap_or_default()));
+    //
+    // Keyed to this deployment rather than to a fixed name: two servers sharing a store used to
+    // share the list and overwrite each other. Without a chain there is nothing to anchor into,
+    // so the key is irrelevant and a fixed one keeps offline runs working.
+    let tree_key = match &chain {
+        Some(c) => {
+            let (relay, program, rpc) = c.deployment();
+            store::tree_key(&relay, &program, &rpc)
+        }
+        None => "offline".to_string(),
+    };
+    let tree = Arc::new(Mutex::new(store.get::<Tree>(TREE, &tree_key).unwrap_or_default()));
     match &chain {
         Some(c) => {
             let mut t = tree.lock().unwrap();
@@ -1124,7 +1135,7 @@ fn main() {
                     (Ok(()), None) => {
                         // The tree really changed, so write it before anything else can fail.
                         let t = tree.lock().unwrap();
-                        let _ = store.put(TREE, "current", &*t);
+                        let _ = store.put(TREE, &tree_key, &*t);
                         drop(t);
                         let mut map = sessions.lock().unwrap();
                         if let Some(s) = map.get_mut(&work.session) {

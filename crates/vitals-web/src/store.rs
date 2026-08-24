@@ -106,6 +106,39 @@ pub fn class_of(kind: &str) -> Class {
     }
 }
 
+/// Where this deployment's leaf list lives.
+///
+/// The tree used to sit at the constant key `tree/current`, which says nothing about who filled
+/// it or which chain it was anchored to. Two servers sharing a store therefore shared the list —
+/// and the list is what every Merkle proof is rebuilt from, so the anchor survives on chain while
+/// nothing can be proven against it. The same defect was fixed on chain this morning, where the
+/// tree *account* was addressed by a globally-guessable id; this is one layer down.
+///
+/// Keyed on all three things that make a tree a different tree: the relay that funds it (the
+/// on-chain tree is seeded on that same key), the program, and the cluster. The RPC url is what
+/// separates devnet from mainnet, because one relay key can legitimately serve both while their
+/// leaves must never land in one list.
+///
+/// Deterministic, because a server restarting has to find the tree it was filling. A fresh empty
+/// one would silently drop the ability to prove everything anchored before the restart.
+pub fn tree_key(relay: &str, program: &str, rpc: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(b"vitals.tree.v1\n");
+    for part in [relay, program, rpc] {
+        h.update(part.as_bytes());
+        h.update(b"\n");
+    }
+    let d = h.finalize();
+    // Readable prefix so a document can be matched to its relay by eye, then enough hash to make
+    // the whole thing unique.
+    format!("{}-{}", &relay[..8.min(relay.len())], hex16(&d))
+}
+
+fn hex16(bytes: &[u8]) -> String {
+    bytes.iter().take(8).map(|b| format!("{b:02x}")).collect()
+}
+
 impl Store {
     pub fn open(root: PathBuf) -> io::Result<Store> {
         let project = std::env::var("GOOGLE_CLOUD_PROJECT")
