@@ -99,6 +99,28 @@ pub fn tree_seeds(tree_id: u64) -> [u8; 8] {
     tree_id.to_le_bytes()
 }
 
+/// Where an operator's anchoring tree lives.
+///
+/// Seeded on the operator as well as the id, and both halves are load-bearing. `tree_id` is the
+/// slot the server started in — a *global* number, so two servers booting in the same ~400 ms
+/// window choose the same one and, while the address came from that number alone, addressed the
+/// same account. Observed live: two servers on one machine both reported `tree #413`.
+///
+/// The accident was the smaller half of it. Nothing tied a tree to whoever created it, so any
+/// funder could pass any `tree_id` and append a leaf into a stranger's tree — no collision
+/// required, just the number, which the server prints. Deriving from the operator's key makes a
+/// foreign tree unaddressable rather than merely unlikely to be hit: a different signer computes
+/// a different account and cannot reach yours at all.
+///
+/// The cost, stated plainly: a tree belongs to the key that created it, so rotating the relay key
+/// starts a new tree. Old trees stay on chain and old proofs keep verifying against them.
+pub fn tree_pda(program_id: &Pubkey, operator: &Pubkey, tree_id: u64) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[SEED_TREE, operator.as_ref(), &tree_id.to_le_bytes()],
+        program_id,
+    )
+}
+
 // ── accounts ────────────────────────────────────────────────────────────────
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Copy)]
@@ -343,13 +365,14 @@ fn anchor_replay(program_id: &Pubkey, accounts: &[AccountInfo], tree_id: u64, wi
     let account = authorised(program_id, account_ai, device)?;
 
     let id = tree_seeds(tree_id);
-    let (pda, bump) = Pubkey::find_program_address(&[SEED_TREE, &id], program_id);
+    let (pda, bump) = tree_pda(program_id, funder.key, tree_id);
     if pda != *tree_ai.key {
         return Err(VitalsError::WrongPda.into());
     }
 
     if tree_ai.data_is_empty() {
-        create_pda(funder, tree_ai, system, program_id, TREE_LEN, &[SEED_TREE, &id, &[bump]])?;
+        create_pda(funder, tree_ai, system, program_id, TREE_LEN,
+                   &[SEED_TREE, funder.key.as_ref(), &id, &[bump]])?;
         write(tree_ai, &TreeAccount::empty())?;
     }
 
@@ -402,8 +425,8 @@ fn prove_attempt(
     }
 
     let id = tree_seeds(tree_id);
-    let (tree_pda, _) = Pubkey::find_program_address(&[SEED_TREE, &id], program_id);
-    if tree_pda != *tree_ai.key {
+    let (tree_key, _) = tree_pda(program_id, funder.key, tree_id);
+    if tree_key != *tree_ai.key {
         return Err(VitalsError::WrongPda.into());
     }
     owned_by(tree_ai, program_id)?;
@@ -605,6 +628,41 @@ fn dreyfus_from_u8(v: u8) -> Result<Dreyfus, ProgramError> {
 
 #[cfg(test)]
 mod tests {
+    /// Two servers that start in the same slot must not share a tree.
+    ///
+    /// `tree_id` is the slot the server started in, and a slot is a global number: two operators
+    /// booting within the same ~400 ms window pick the same one. While the address was derived
+    /// from that number alone, they addressed the same account and appended into each other's
+    /// tree — silently, and permanently, since the tree is the thing every Merkle proof is built
+    /// against. Observed live: two servers on one machine both reported `tree #413`.
+    ///
+    /// This matters because the repository says out loud that it wants to be "a protocol with one
+    /// reference client": other people running their own servers is the intended end state, not a
+    /// hypothetical.
+    #[test]
+    fn two_operators_in_one_slot_do_not_share_a_tree() {
+        let program = Pubkey::new_unique();
+        let (a, b) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let slot = 413;
+        assert_ne!(tree_pda(&program, &a, slot).0, tree_pda(&program, &b, slot).0);
+    }
+
+    #[test]
+    fn one_operator_still_gets_a_tree_per_id() {
+        let program = Pubkey::new_unique();
+        let me = Pubkey::new_unique();
+        assert_ne!(tree_pda(&program, &me, 413).0, tree_pda(&program, &me, 414).0);
+    }
+
+    #[test]
+    fn the_same_operator_and_id_is_always_the_same_tree() {
+        // Resuming after a restart has to find the tree it was filling, or the server starts a
+        // fresh one and can no longer prove anything it anchored before the restart.
+        let program = Pubkey::new_unique();
+        let me = Pubkey::new_unique();
+        assert_eq!(tree_pda(&program, &me, 413).0, tree_pda(&program, &me, 413).0);
+    }
+
     use super::*;
 
     /// The list is what makes a person more than a machine, so membership is the load-bearing

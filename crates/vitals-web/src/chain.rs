@@ -86,8 +86,14 @@ impl Chain {
         self.rpc.get_slot().unwrap_or(0)
     }
 
+    /// Where this relay's tree lives.
+    ///
+    /// Scoped to the relay's own key, not to `tree_id` alone. The id is the slot the server
+    /// started in, which is a global number two operators can pick in the same instant — and,
+    /// worse, one anybody can simply read off another server and reuse. Deriving from the relay
+    /// makes another operator's tree unaddressable from here rather than merely unlikely to be hit.
     fn tree_pda(&self, tree_id: u64) -> Pubkey {
-        Pubkey::find_program_address(&[SEED_TREE, &tree_id.to_le_bytes()], &self.program_id).0
+        vitals_program::tree_pda(&self.program_id, &self.relay.pubkey(), tree_id).0
     }
     /// The person, keyed by the first device they ever played on.
     pub fn account_pda(&self, id: &Pubkey) -> Pubkey {
