@@ -15,3 +15,15 @@ pitch/terminals.pdf
 
 # runs in progress
 /state/
+
+# internal docs — commercial position and tactics, never published
+docs/DECISIONS.md
+docs/TECH_HANDOFF_PROMPT.md
+docs/HANDOFF_FINANCE_MARKETING.md
+docs/PRECEDENT_FRONTIER.md
+docs/PITCH_FRAME.md
+docs/CHECKLIST.md
+docs/COLOSSEUM_SUBMISSION_PLAN.md
+docs/TECH_PLAN_COLOSSEUM.md
+docs/PUBLISHING_REVIEW.md
+docs/internal/
