@@ -12,7 +12,7 @@
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub struct Store {
     backend: Backend,
@@ -202,7 +202,7 @@ impl Store {
                 let url = self.backend.doc_path(kind, key).ok_or_else(bad)?;
                 let body = Store::wrap(&serde_json::to_string(v)?);
                 self.fs_put(&url, body)
-                    .map_err(|e| io::Error::other(e))
+                    .map_err(io::Error::other)
             }
             Backend::Disk { .. } => {
                 let path = self.path(kind, key).ok_or_else(bad)?;

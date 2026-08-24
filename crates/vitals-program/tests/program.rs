@@ -310,7 +310,7 @@ async fn a_player_with_no_sol_can_still_prove_and_claim() {
 async fn the_relay_cannot_sign_for_the_player() {
     let pid = Pubkey::new_unique();
     let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
-    let (mut banks, relay, bh) = pt.start().await;
+    let (banks, relay, bh) = pt.start().await;
     let victim = Keypair::new().pubkey();
     let (tree, _, _) = pdas(&pid, &relay.pubkey(), &victim);
     let acc = acct(&pid, &victim);
@@ -366,7 +366,7 @@ async fn a_second_machine_plays_into_the_same_record() {
     );
 
     let mut bh = bh;
-    let mut go = |ixs: Vec<SolIx>, signers: Vec<&Keypair>, bh| {
+    let go = |ixs: Vec<SolIx>, signers: Vec<&Keypair>, bh| {
         Transaction::new_signed_with_payer(&ixs, Some(&relay.pubkey()), &signers, bh)
     };
 
@@ -507,7 +507,7 @@ async fn devices_can_be_dropped_but_never_the_last_one() {
 async fn a_stranger_cannot_append_to_my_tree() {
     let pid = Pubkey::new_unique();
     let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
-    let (mut banks, mine, bh) = pt.start().await;
+    let (banks, mine, bh) = pt.start().await;
     let me = mine.pubkey();
 
     // My tree, with one honest leaf in it.
@@ -563,7 +563,7 @@ async fn naming_an_account_that_is_not_yours_is_refused_everywhere() {
     let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
     let (mut banks, payer, bh) = pt.start().await;
     let me = payer.pubkey();
-    let (tree, claim, prog) = pdas(&pid, &me, &me);
+    let (tree, claim, _prog) = pdas(&pid, &me, &me);
     let acc = acct(&pid, &me);
 
     // A second player whose account genuinely exists. That detail is the test: an account that
@@ -649,7 +649,7 @@ async fn naming_an_account_that_is_not_yours_is_refused_everywhere() {
 async fn a_device_with_no_account_cannot_anchor() {
     let pid = Pubkey::new_unique();
     let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
-    let (mut banks, payer, bh) = pt.start().await;
+    let (banks, payer, bh) = pt.start().await;
     let me = payer.pubkey();
     let (tree, _, _) = pdas(&pid, &me, &me);
     let acc = acct(&pid, &me);

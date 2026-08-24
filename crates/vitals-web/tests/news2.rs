@@ -114,5 +114,5 @@ fn absurd_readings_still_score() {
     let s = news::score(&news::Obs { rr: 0.0, spo2: 0.0, on_oxygen: true, sbp: 0.0, hr: 0.0, temp: -50.0, gcs: 3 });
     assert_eq!(s.total, 3 + 3 + 2 + 3 + 3 + 3 + 3);
     let s = news::score(&news::Obs { rr: 999.0, spo2: 200.0, on_oxygen: false, sbp: 999.0, hr: 999.0, temp: 99.0, gcs: 15 });
-    assert_eq!(s.total, 3 + 0 + 0 + 3 + 3 + 2 + 0);
+    assert_eq!(s.total, (3 + 3 + 3 + 2));
 }

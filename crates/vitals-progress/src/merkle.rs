@@ -95,8 +95,12 @@ impl Tree {
         let index = self.next_index;
         let mut current = leaf;
         let mut i = index;
+        // clippy suggests iterating `filled` directly, which cannot be done here: the body reads
+        // `zeros[level]` as well, and the index is what ties the two arrays to the same level of
+        // the tree. Naming the level once is what makes that correspondence readable.
+        #[allow(clippy::needless_range_loop)]
         for level in 0..DEPTH {
-            if i % 2 == 0 {
+            if i.is_multiple_of(2) {
                 // We are the left child; the right sibling is still empty, so remember our hash
                 // for when it arrives.
                 self.filled[level] = current;
@@ -121,7 +125,7 @@ pub fn root_from_proof(leaf: [u8; 32], index: u64, path: &[[u8; 32]]) -> Option<
     let mut current = leaf;
     let mut i = index;
     for sibling in path.iter().take(DEPTH) {
-        current = if i % 2 == 0 { hash_node(&current, sibling) } else { hash_node(sibling, &current) };
+        current = if i.is_multiple_of(2) { hash_node(&current, sibling) } else { hash_node(sibling, &current) };
         i /= 2;
     }
     Some(current)

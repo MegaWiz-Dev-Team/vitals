@@ -1,0 +1,89 @@
+name: ci
+
+# The chain path is the point of this workflow. Five tests covering the relay, multi-device
+# accounts and the anchoring flow sat behind `#[ignore]` and had never run anywhere — not locally,
+# not here — because they need a validator. A local validator hands out 500,000,000 SOL and needs
+# no faucet, so the reason they were skipped never actually applied.
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: tests
+        run: cargo test --workspace
+
+  chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: install solana
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: build the program
+        run: cd crates/vitals-program && cargo build-sbf --arch v3
+
+      - name: start a validator
+        run: |
+          solana-test-validator --reset --quiet &
+          for _ in $(seq 1 60); do
+            solana -u localhost cluster-version >/dev/null 2>&1 && break
+            sleep 1
+          done
+          solana -u localhost cluster-version
+
+      - name: deploy
+        id: deploy
+        run: |
+          solana config set --url localhost
+          solana-keygen new --no-bip39-passphrase -s --force -o ~/.config/solana/id.json
+          solana airdrop 100
+          # A throwaway program id: CI must never touch the real keypair, which *is* the program's
+          # identity on every cluster and is deliberately not in this repository.
+          solana-keygen new --no-bip39-passphrase -s --force -o /tmp/program.json
+          solana program deploy target/deploy/vitals_program.so --program-id /tmp/program.json
+          echo "id=$(solana address -k /tmp/program.json)" >> "$GITHUB_OUTPUT"
+
+      - name: the deployed program is this build
+        env:
+          VITALS_PROGRAM_ID: ${{ steps.deploy.outputs.id }}
+          VITALS_RPC: http://127.0.0.1:8899
+        run: scripts/verify-deploy.sh
+
+      - name: chain tests
+        env:
+          VITALS_PROGRAM_ID: ${{ steps.deploy.outputs.id }}
+          VITALS_RPC: http://127.0.0.1:8899
+        # Serially: each test spawns its own server, and four servers competing for one validator
+        # under a CI runner's CPU budget is a slower, flakier way to learn nothing extra.
+        run: |
+          cargo test -p vitals-web --test chain_flow -- --ignored --test-threads=1
+          cargo test -p vitals-cli --test driver -- --ignored
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

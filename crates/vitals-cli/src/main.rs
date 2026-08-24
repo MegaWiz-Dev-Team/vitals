@@ -6,7 +6,7 @@
 //! Nothing between the replay and the chain is trusted. The program never sees a tape; it sees
 //! a leaf that must prove against a root it built itself.
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshDeserialize;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
@@ -22,7 +22,7 @@ use vitals_progress::record::AttemptRecord;
 use vitals_progress::{Difficulty, Dreyfus};
 use vitals_program::{
     ClaimAccount, Instruction, Progress, RecordWire, TreeAccount, SEED_CLAIM, SEED_PROGRESS,
-    SEED_ACCOUNT, SEED_TREE,
+    SEED_ACCOUNT,
 };
 use vitals_replay::{hex, record_for, replay, sce_hash, Replay, Step};
 
@@ -244,6 +244,12 @@ fn program_log_line(err: &str) -> Option<String> {
         .map(|l| l.trim_start_matches("Program log:").trim().to_string())
 }
 
+/// The first line of a program error that is worth showing a human.
+///
+/// Only the tests call it, so it is compiled only for them. Without the gate the binary build
+/// reports it as dead code and the test build stops compiling without it — the two clippy runs
+/// disagree, and deleting it to satisfy the first one is what broke the second.
+#[cfg(test)]
 fn first_program_log(err: &str) -> String {
     program_log_line(err).unwrap_or_else(|| err.lines().next().unwrap_or("").to_string())
 }
