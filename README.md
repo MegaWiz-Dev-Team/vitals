@@ -26,7 +26,7 @@ needs to prove competence to a residency programme in another country.
 Vitals is built upon an award-winning clinical simulation engine already in active production:
 
 - **1st Place Grand Champion @ NECTEC AI for Thai 2026** ([team01.aiforthai.in.th](https://team01.aiforthai.in.th))
-- **30 Medical Institutions Active** — Organic adoption across **>75% of all medical schools in Thailand**.
+- **18 of Thailand’s 29 medical faculties with active learners** — counted by verified faculty; self-reported signup entries excluded.
 - **290+ Clinicians & Medical Students** (68% real activation rate).
 - **433 Completed Clinical Scenarios (671 runs)** scored across a catalog of **424 authored clinical scenarios**.
 - **Live Production Platform**: [embla.megawiz.co.th](https://embla.megawiz.co.th)
