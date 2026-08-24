@@ -108,12 +108,12 @@ fn main() {
             &hex(&rec.leaf())[..12]
         );
         send(&rpc, &player, &program_id, Instruction::AnchorReplay { tree_id, record: wire(&rec) },
-             vec![acct, tree_pda(&program_id, tree_id).0], true);
+             vec![acct, tree_pda(&program_id, &player.pubkey(), tree_id).0], true);
         leaves.push(rec.leaf());
         records.push(rec);
     }
 
-    let tree: TreeAccount = fetch(&rpc, &tree_pda(&program_id, tree_id).0).expect("tree");
+    let tree: TreeAccount = fetch(&rpc, &tree_pda(&program_id, &player.pubkey(), tree_id).0).expect("tree");
     println!("\n  tree root {}   leaves {}\n", &hex(&tree.root)[..24], tree.next_index);
 
     // ── 2. prove ────────────────────────────────────────────────────────────
@@ -122,7 +122,7 @@ fn main() {
         let path = merkle::prove(&leaves, i as u64).expect("path");
         let ok = send(&rpc, &player, &program_id,
             Instruction::ProveAttempt { tree_id, record: wire(rec), index: i as u64, path: path.to_vec() },
-            vec![acct, tree_pda(&program_id, tree_id).0, claim_pda(&program_id, &player.pubkey(), tree_id).0], true);
+            vec![acct, tree_pda(&program_id, &player.pubkey(), tree_id).0, claim_pda(&program_id, &player.pubkey(), tree_id).0], true);
         println!("  index {i}  {}", if ok { "proven" } else { "REJECTED" });
     }
 
@@ -131,7 +131,7 @@ fn main() {
     let path = merkle::prove(&leaves, 1).expect("path");
     let ok = send(&rpc, &player, &program_id,
         Instruction::ProveAttempt { tree_id, record: wire(&forged), index: 1, path: path.to_vec() },
-        vec![acct, tree_pda(&program_id, tree_id).0, claim_pda(&program_id, &player.pubkey(), tree_id).0], false);
+        vec![acct, tree_pda(&program_id, &player.pubkey(), tree_id).0, claim_pda(&program_id, &player.pubkey(), tree_id).0], false);
     println!("  forged   {}   (the stood-up run, with its harm scrubbed)",
         if ok { "ACCEPTED — the tree is broken" } else { "rejected" });
 
@@ -180,8 +180,13 @@ fn wire(r: &AttemptRecord) -> RecordWire {
 fn account_pda(program_id: &Pubkey, id: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[SEED_ACCOUNT, &id.to_bytes()], program_id)
 }
-fn tree_pda(program_id: &Pubkey, tree_id: u64) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[SEED_TREE, &tree_id.to_le_bytes()], program_id)
+/// Deliberately delegates rather than re-deriving.
+///
+/// This file used to carry its own copy of the seeds. When the tree became operator-scoped, the
+/// copy did not, and the driver started reading an account that no longer existed — a duplicated
+/// derivation is a second definition of where things live, and the two drift silently.
+fn tree_pda(program_id: &Pubkey, operator: &Pubkey, tree_id: u64) -> (Pubkey, u8) {
+    vitals_program::tree_pda(program_id, operator, tree_id)
 }
 fn claim_pda(program_id: &Pubkey, player: &Pubkey, tree_id: u64) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[SEED_CLAIM, player.as_ref(), &tree_id.to_le_bytes()], program_id)
@@ -266,8 +271,8 @@ mod tests {
             Pubkey::find_program_address(&[SEED_ACCOUNT, &me.to_bytes()], &pid).0
         );
         assert_eq!(
-            tree_pda(&pid, 7).0,
-            Pubkey::find_program_address(&[SEED_TREE, &7u64.to_le_bytes()], &pid).0
+            tree_pda(&pid, &me, 7).0,
+            vitals_program::tree_pda(&pid, &me, 7).0
         );
         assert_eq!(
             claim_pda(&pid, &me, 7).0,
@@ -283,9 +288,12 @@ mod tests {
     #[test]
     fn a_different_tree_id_is_a_different_tree() {
         let pid = Pubkey::new_from_array([9; 32]);
-        assert_ne!(tree_pda(&pid, 1).0, tree_pda(&pid, 2).0);
+        let me = Pubkey::new_unique();
+        assert_ne!(tree_pda(&pid, &me, 1).0, tree_pda(&pid, &me, 2).0);
+        // And the operator is load-bearing: same id, different funder, different tree.
+        assert_ne!(tree_pda(&pid, &me, 1).0, tree_pda(&pid, &Pubkey::new_unique(), 1).0);
         // And the same id is stable, which is what lets a rerun add to the season it started.
-        assert_eq!(tree_pda(&pid, 42).0, tree_pda(&pid, 42).0);
+        assert_eq!(tree_pda(&pid, &me, 42).0, tree_pda(&pid, &me, 42).0);
     }
 
     /// Two players never share a claim buffer. This was once false, and every player on a server
