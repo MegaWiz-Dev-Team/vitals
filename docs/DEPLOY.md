@@ -103,9 +103,44 @@ assumption this product removes.
 | | where | why |
 |---|---|---|
 | server | Cloud Run, one instance | Same place `embla-cloud` runs. Pinned to one instance because the anchoring tree lives in memory — two copies would each keep their own and overwrite the other's leaves. |
-| state | Firestore | A Cloud Run container has no disk that survives a request. Setting `GOOGLE_CLOUD_PROJECT` is what selects this backend; without it the store writes files. |
+| state | Firestore, in this product's own project | A Cloud Run container has no disk that survives a request. Setting `GOOGLE_CLOUD_PROJECT` is what selects this backend; without it the store writes files. The project is not shared with `embla-cloud` — see below. |
 | relay key | Secret Manager, mounted at `/relay/id.json` | Read as a file, not an environment variable. |
 | the model | wherever the GPU is | Heimdall cannot run on Cloud Run. Point `HEIMDALL_API_URL` at the machine that has one — and if that ever becomes a hosted model instead, the deck's claim that a *local* model plays the patient stops being true and has to change with it. |
+
+### Why a separate project
+
+`embla-cloud` keeps identified people in its Firestore — a LINE user id, a display name and a
+profile each — gathered under a consent version it records alongside them. A Cloud Run service
+takes its Firestore credential from the metadata server, and that credential is scoped to the
+project. A service deployed next to those documents can read them, by default, without ever
+intending to. Those people agreed to Embla; they did not agree to this. Per-database IAM
+conditions could carve that back, but then isolation is something maintained rather than
+something true, and it stays correct only as long as everyone remembers it. A separate project
+makes it the default. `deploy-cloudrun.sh` therefore has no default project and refuses
+`cloud-super-hero*` outright.
+
+The same boundary answers a few other things at once: what this product costs is legible on its
+own bill, a Colosseum reviewer can be granted the project rather than a slice of a shared one,
+and if the experiment ends, deleting the project ends it.
+
+### Two kinds of record
+
+The store holds both, and they look identical — JSON behind the same six methods:
+
+| kind | losing it costs | expires |
+|---|---|---|
+| `sess` | one learner, one run in progress | yes, by age |
+| `tree` | **every proof this server can issue** | never |
+
+The Merkle root is anchored on chain and survives anything. The path from a leaf to that root is
+not on chain — it is rebuilt from the leaf list here. Expire the list and the anchor remains,
+provably meaningless. `sweep` refuses durable kinds rather than trusting its caller to pass the
+right string, and a kind nobody has classified is treated as durable: forgetting to classify
+something should cost disk, not data.
+
+Rankings will want a third kind — derived, rebuildable, queryable — and a store that answers
+"what percentile is this" cheaply. That is not built. There is no one to rank yet, and a
+leaderboard schema chosen before the first cohort exists is a guess about what a cohort is.
 
 ## What is on chain, and what is not
 
