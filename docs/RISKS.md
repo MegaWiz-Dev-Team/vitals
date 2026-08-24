@@ -56,9 +56,15 @@ Europe, China, Japan and Korea apply absolute novelty with no grace period, so r
 already be affected. One day and no forks is the best version of this situation to take to a
 patent attorney, and it is a conversation to have quickly rather than eventually.
 
-**Action:** audit what in `vitals` and the reused Embla engine is patent-intended, and take the
-one-day-public fact to a lawyer. Keep the repository private until that returns an answer. None of
-this blocks a submission any more.
+**Resolved 2026-08-24 — by decision, not by legal advice.** The patent is not the moat: the case
+library, the faculties already using the product, the conformance suite and the accumulating
+outcome data are. The repository opens and a public demo is wanted. What is written above about
+jurisdictions remains factually true and is kept for the record — it is the price that was
+knowingly paid, not a warning that was missed. Anything still patent-intended in the Embla engine
+is a separate question and is unaffected by this repository being public.
+
+**Action:** none for this repository. If a filing is ever wanted for something in the reused
+engine, it has to be assessed on its own and the one-day-public fact goes to the attorney then.
 
 ## 3. The determinism boundary — worse than assumed, and now measured
 
