@@ -128,6 +128,14 @@ impl Chain {
         self.fetch(&self.progress_pda(id))
     }
 
+    /// This deployment's identity for storage: relay, program, cluster.
+    ///
+    /// The three things that make one server's leaf list a different list from another's. See
+    /// `store::tree_key` for why the list cannot simply live at a fixed name.
+    pub fn deployment(&self) -> (String, String, String) {
+        (self.relay.pubkey().to_string(), self.program_id.to_string(), self.rpc.url())
+    }
+
     pub fn relay_pubkey(&self) -> String {
         self.relay.pubkey().to_string()
     }
