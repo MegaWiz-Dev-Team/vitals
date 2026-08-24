@@ -548,3 +548,199 @@ async fn a_stranger_cannot_append_to_my_tree() {
         "a stranger appended a leaf into my tree"
     );
 }
+
+/// Substituting one account for another is the attack this program refuses most often, and until
+/// now the refusal had no test at all.
+///
+/// `WrongPda` is raised at six places — twice for the account, twice for the tree, once each for
+/// the claim buffer and the progress record — and every one of them guards the same thing: an
+/// instruction that names a *real* account of the *right shape* which simply is not the one it is
+/// entitled to touch. It is also the class the tree bug belonged to, where the check was present
+/// and derived from the wrong seed. A present check with no test is how that survives.
+#[tokio::test]
+async fn naming_an_account_that_is_not_yours_is_refused_everywhere() {
+    let pid = Pubkey::new_unique();
+    let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
+    let (mut banks, payer, bh) = pt.start().await;
+    let me = payer.pubkey();
+    let (tree, claim, prog) = pdas(&pid, &me, &me);
+    let acc = acct(&pid, &me);
+
+    // A second player whose account genuinely exists. That detail is the test: an account that
+    // was never created is caught earlier and by a different name — `NoAccount` — so substituting
+    // a non-existent one never reaches the check being exercised here.
+    let other_kp = Keypair::new();
+    let other = other_kp.pubkey();
+    let (other_tree, other_claim, other_prog) = pdas(&pid, &other, &other);
+    let other_acc = acct(&pid, &other);
+
+    banks.process_transaction(Transaction::new_signed_with_payer(
+        &[
+            ix(pid, me, me, &[acc], Instruction::OpenAccount),
+            ix(pid, me, other, &[other_acc], Instruction::OpenAccount),
+        ],
+        Some(&me), &[&payer, &other_kp], bh,
+    )).await.expect("open both");
+
+    let r = rec(&me, 1, Outcome::WinDischarge, 0, Difficulty::Student);
+    let mut bh = bh;
+
+    // Someone else's account record, in place of mine.
+    let e = banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[other_acc, tree],
+             Instruction::AnchorReplay { tree_id: TREE, record: wire(&r) })],
+        Some(&me), &[&payer], bh,
+    )).await.unwrap_err().unwrap();
+    // NotAuthorized, not WrongPda, and the difference is the design: the PDA check in
+    // `authorised` compares the account's *stored* id against the address it lives at, so it
+    // catches an account whose contents do not match its own location. A legitimate account
+    // belonging to someone else passes that check honestly and is stopped one line later, by not
+    // listing this device. Both are refusals; naming the right one is what makes the test worth
+    // having.
+    assert_eq!(custom(&e), Some(VitalsError::NotAuthorized as u32), "a foreign account record");
+
+    // Someone else's tree, in place of mine.
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    let e = banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc, other_tree],
+             Instruction::AnchorReplay { tree_id: TREE, record: wire(&r) })],
+        Some(&me), &[&payer], bh,
+    )).await.unwrap_err().unwrap();
+    assert_eq!(custom(&e), Some(VitalsError::WrongPda as u32), "a foreign tree");
+
+    // Anchor honestly, so the later substitutions fail on the account they name rather than on
+    // there being nothing to prove.
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc, tree],
+             Instruction::AnchorReplay { tree_id: TREE, record: wire(&r) })],
+        Some(&me), &[&payer], bh,
+    )).await.expect("anchor");
+
+    // Someone else's claim buffer, in place of mine.
+    let path = merkle::prove(&[r.leaf()], 0).unwrap();
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    let e = banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc, tree, other_claim], Instruction::ProveAttempt {
+            tree_id: TREE, record: wire(&r), index: 0, path: path.to_vec() })],
+        Some(&me), &[&payer], bh,
+    )).await.unwrap_err().unwrap();
+    assert_eq!(custom(&e), Some(VitalsError::WrongPda as u32), "a foreign claim buffer");
+
+    // Prove honestly, then aim the claim at someone else's progress record.
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc, tree, claim], Instruction::ProveAttempt {
+            tree_id: TREE, record: wire(&r), index: 0, path: path.to_vec() })],
+        Some(&me), &[&payer], bh,
+    )).await.expect("prove");
+
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    let e = banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc, claim, other_prog], Instruction::ClaimProgress {
+            tree_id: TREE, specialty: 1, claimed: Dreyfus::Novice as u8 })],
+        Some(&me), &[&payer], bh,
+    )).await.unwrap_err().unwrap();
+    assert_eq!(custom(&e), Some(VitalsError::WrongPda as u32), "a foreign progress record");
+}
+
+/// Acting before opening an account is refused by name rather than by accident.
+#[tokio::test]
+async fn a_device_with_no_account_cannot_anchor() {
+    let pid = Pubkey::new_unique();
+    let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
+    let (mut banks, payer, bh) = pt.start().await;
+    let me = payer.pubkey();
+    let (tree, _, _) = pdas(&pid, &me, &me);
+    let acc = acct(&pid, &me);
+    let r = rec(&me, 1, Outcome::WinDischarge, 0, Difficulty::Student);
+
+    // The account PDA is correct — it simply has never been created.
+    let e = banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc, tree],
+             Instruction::AnchorReplay { tree_id: TREE, record: wire(&r) })],
+        Some(&me), &[&payer], bh,
+    )).await.unwrap_err().unwrap();
+    assert_eq!(custom(&e), Some(VitalsError::NoAccount as u32));
+}
+
+/// The device list is capped, and the cap is enforced rather than silently truncating.
+///
+/// A truncating write would be the dangerous version: a learner adds a ninth machine, is told
+/// nothing, and finds the record unreachable from it.
+#[tokio::test]
+async fn the_device_list_refuses_a_ninth_machine() {
+    let pid = Pubkey::new_unique();
+    let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
+    let (mut banks, payer, bh) = pt.start().await;
+    let me = payer.pubkey();
+    let acc = acct(&pid, &me);
+
+    let mut bh = bh;
+    banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc], Instruction::OpenAccount)],
+        Some(&me), &[&payer], bh,
+    )).await.expect("open");
+
+    // Opening writes the first authority, so MAX_AUTHORITIES - 1 more are allowed.
+    for i in 1..MAX_AUTHORITIES {
+        bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+        let device = Pubkey::new_unique();
+        banks.process_transaction(Transaction::new_signed_with_payer(
+            &[ix(pid, me, me, &[acc],
+                 Instruction::AddAuthority { device: device.to_bytes() })],
+            Some(&me), &[&payer], bh,
+        )).await.unwrap_or_else(|e| panic!("adding device {i}: {e:?}"));
+    }
+
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    let e = banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc],
+             Instruction::AddAuthority { device: Pubkey::new_unique().to_bytes() })],
+        Some(&me), &[&payer], bh,
+    )).await.unwrap_err().unwrap();
+    assert_eq!(custom(&e), Some(VitalsError::AuthoritiesFull as u32));
+}
+
+/// A record whose enums are out of range is refused, not coerced.
+///
+/// `difficulty` and `outcome` arrive as raw bytes over the wire, so a client — buggy, or a second
+/// implementation of this protocol reading the spec differently — can send a value no variant
+/// answers to. Clamping it to the nearest valid one would anchor a record that says something the
+/// player never did, permanently, in a structure whose entire purpose is to be trusted later.
+#[tokio::test]
+async fn a_record_with_an_impossible_difficulty_or_outcome_is_refused() {
+    let pid = Pubkey::new_unique();
+    let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
+    let (mut banks, payer, bh) = pt.start().await;
+    let me = payer.pubkey();
+    let (tree, _, _) = pdas(&pid, &me, &me);
+    let acc = acct(&pid, &me);
+
+    let mut bh = bh;
+    banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc], Instruction::OpenAccount)],
+        Some(&me), &[&payer], bh,
+    )).await.expect("open");
+
+    for (field, w) in [
+        ("difficulty", {
+            let mut w = wire(&rec(&me, 1, Outcome::WinDischarge, 0, Difficulty::Student));
+            w.difficulty = 9;
+            w
+        }),
+        ("outcome", {
+            let mut w = wire(&rec(&me, 1, Outcome::WinDischarge, 0, Difficulty::Student));
+            w.outcome = 200;
+            w
+        }),
+    ] {
+        bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+        let e = banks.process_transaction(Transaction::new_signed_with_payer(
+            &[ix(pid, me, me, &[acc, tree],
+                 Instruction::AnchorReplay { tree_id: TREE, record: w })],
+            Some(&me), &[&payer], bh,
+        )).await.unwrap_err().unwrap();
+        assert_eq!(custom(&e), Some(VitalsError::BadRecord as u32), "{field} out of range");
+    }
+}
