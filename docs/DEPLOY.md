@@ -91,7 +91,7 @@ the relay key.
 ## Cloud Run
 
 ```
-VITALS_GCP_PROJECT=vitals-academy-dev VITALS_PROGRAM_ID=<from deploy-devnet.sh> scripts/deploy-cloudrun.sh
+VITALS_GCP_PROJECT=vitals-academy VITALS_PROGRAM_ID=<from deploy-devnet.sh> scripts/deploy-cloudrun.sh
 ```
 
 Two projects exist, on the same billing account as `cloud-super-hero` and `mega-care`, both with
@@ -100,8 +100,11 @@ afterwards:
 
 | project | number | for |
 |---|---|---|
-| `vitals-academy-dev` | 367117259093 | everything until real money is involved |
-| `vitals-academy` | 995399340966 | production. Empty and unused on purpose |
+| `vitals-academy` | 995399340966 | the public demo — real learners' records, whatever chain they anchor to |
+| `vitals-academy-dev` | 367117259093 | testing and load. Deletable data |
+
+The split follows who the data belongs to, not which Solana cluster it points at. The cluster is
+`VITALS_RPC`, an environment variable.
 
 The unqualified name is production, as it is for every sibling project. Writing a document with
 Thai text and reading it back is the check that the store code and the database agree; both pass.
