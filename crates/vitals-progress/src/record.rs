@@ -60,6 +60,23 @@ impl Outcome {
 }
 
 /// Points lost per recorded harm event.
+/// The commitment a player makes before a run: `hash(case ‖ player ‖ nonce)`.
+///
+/// One definition, used by every client and every verifier. The program never recomputes this —
+/// it cannot, without the nonce — it only stores what was committed and stamps it into the leaf.
+/// The check happens at reveal: the player discloses the nonce, anyone recomputes this hash and
+/// compares it with the leaf. The nonce is what keeps the case hidden from chain observers
+/// between commit and reveal; without it, watching the chain would tell you which station a
+/// candidate is about to sit.
+///
+/// Domain-separated for the same reason the leaf is: a hash that could be confused with some
+/// other 32-byte value in this system is a collision waiting to be constructed.
+pub fn commitment_hash(case: &[u8; 32], player: &[u8; 32], nonce: &[u8; 32]) -> [u8; 32] {
+    // Through the crate's own sha256, which is the syscall on chain and the sha2 crate off it —
+    // the same split the Merkle tree already uses, so both worlds compute the same bytes.
+    crate::merkle::sha256(&[b"vitals.commit.v1\n", case, player, nonce])
+}
+
 pub const HARM_PENALTY: u32 = 15;
 
 pub const MAX_SCORE: u32 = 100;
@@ -81,6 +98,42 @@ pub struct AttemptRecord {
     /// Commits to the tape, the beats and the harm events — the detail the chain does not need
     /// to hold but must be able to check when someone reveals it.
     pub run_hash: [u8; 32],
+
+    // ── vt02 ────────────────────────────────────────────────────────────────
+    /// `hash(case ‖ player ‖ nonce)` — *which* commitment this run answers.
+    ///
+    /// In the leaf rather than left to the program's behaviour, and that is the whole argument:
+    /// the program is upgradeable, so "the program required a commitment" is only as strong as
+    /// "you can prove which version ran at that slot". A later upgrade that accepted uncommitted
+    /// anchors would make old and new records indistinguishable. The commitment account is also
+    /// consumed on use — closed accounts leave state, and most RPCs prune history — so the leaf is
+    /// the only place this survives.
+    pub commitment: [u8; 32],
+    /// The slot the commitment was made at — *that it came first*.
+    ///
+    /// The hash alone binds which commitment; the slot binds the ordering. Either alone is
+    /// insufficient, which is why both are here rather than one.
+    pub committed_slot: u64,
+    /// The scorer's inputs, pinned separately from the case's presentation content.
+    ///
+    /// A case can be reworded without changing how it is marked, and can be re-marked without a
+    /// word changing. Two hashes say which happened.
+    pub rubric_hash: [u8; 32],
+
+    /// The part of the score a verifier can recompute by re-running the pinned engine.
+    pub det_score: u16,
+    /// What `det_score` was out of.
+    pub det_max: u16,
+    /// The part attested by a judge rather than derived.
+    pub judged_score: u16,
+    /// What `judged_score` was out of. **Zero means nothing here required a witness** — a true and
+    /// useful thing for a deterministic run to state about itself.
+    ///
+    /// Never sum these into one number, at any layer. "Does the deterministic part alone predict
+    /// passing?" is the strongest result this project can produce, because a third party can
+    /// recompute it without trusting our model, our version, or us — and summing makes it
+    /// permanently unanswerable.
+    pub judged_max: u16,
 }
 
 impl AttemptRecord {
@@ -98,8 +151,8 @@ impl AttemptRecord {
 
     /// Canonical fixed-width encoding. Field order is part of the specification: change it and
     /// every leaf ever anchored stops verifying.
-    pub fn encode(&self) -> [u8; 137] {
-        let mut out = [0u8; 137];
+    pub fn encode(&self) -> [u8; 217] {
+        let mut out = [0u8; 217];
         out[0..32].copy_from_slice(&self.player);
         out[32..64].copy_from_slice(&self.sce_hash);
         out[64..96].copy_from_slice(&self.case);
@@ -112,8 +165,17 @@ impl AttemptRecord {
         out[129] = self.exam_mode as u8;
         out[130] = self.outcome as u8;
         out[131..133].copy_from_slice(&self.harm_count.to_le_bytes());
+        // ── vt02 appends here. Bytes 0..133 above keep the offsets vt01 gave them, because a
+        // version tag lets a reader pick a layout and does not excuse moving a field inside one.
+        out[133..165].copy_from_slice(&self.commitment);
+        out[165..173].copy_from_slice(&self.committed_slot.to_le_bytes());
+        out[173..205].copy_from_slice(&self.rubric_hash);
+        out[205..207].copy_from_slice(&self.det_score.to_le_bytes());
+        out[207..209].copy_from_slice(&self.det_max.to_le_bytes());
+        out[209..211].copy_from_slice(&self.judged_score.to_le_bytes());
+        out[211..213].copy_from_slice(&self.judged_max.to_le_bytes());
         // Version tag last, so a future encoding can be told apart from this one.
-        out[133..137].copy_from_slice(b"vt01");
+        out[213..217].copy_from_slice(b"vt02");
         out
     }
 
@@ -146,6 +208,13 @@ mod tests {
             outcome,
             harm_count: harm,
             run_hash: [3; 32],
+            commitment: [0u8; 32],
+            committed_slot: 0,
+            rubric_hash: [0u8; 32],
+            det_score: 0,
+            det_max: 0,
+            judged_score: 0,
+            judged_max: 0,
         }
     }
 

@@ -85,6 +85,13 @@ struct Session {
     scenario: String,
     difficulty: Difficulty,
     anchored: bool,
+    /// The declaration this run answers: (commitment hash, the slot it landed at, the nonce).
+    ///
+    /// Written when the player's commit transaction confirms, read when the record is built —
+    /// the leaf must carry the same (hash, slot) the program stamped, or the server's local
+    /// leaf list forks from the tree on chain and every later proof fails. The nonce stays
+    /// here so the run can be revealed later; it never reaches the chain.
+    commit: Option<([u8; 32], u64, [u8; 32])>,
     /// The conversation, kept only so she remembers what she already told you. It is never
     /// hashed, never anchored, and never leaves this process.
     said: Vec<(String, String)>,
@@ -111,6 +118,8 @@ struct Saved {
     tape: Vec<Step>,
     said: Vec<(String, String)>,
     anchored: bool,
+    #[serde(default)]
+    commit: Option<([u8; 32], u64, [u8; 32])>,
 }
 
 const SESSIONS: &str = "sessions";
@@ -155,6 +164,7 @@ impl Session {
             tape: self.tape.clone(),
             said: self.said.clone(),
             anchored: self.anchored,
+            commit: self.commit,
         }
     }
 
@@ -176,6 +186,7 @@ impl Session {
             scenario: title(&saved.ep).to_string(),
             difficulty: difficulty(&saved.ep),
             anchored: saved.anchored,
+            commit: saved.commit,
             said: saved.said,
             saved_at: Some(std::time::Instant::now()),
         })
@@ -391,7 +402,8 @@ fn new_session(ep: &str) -> Result<Session, String> {
         anchored: false,
         said: Vec::new(),
         saved_at: None,
-    })
+        commit: None,
+        })
 }
 
 fn html(body: &str) -> Response<std::io::Cursor<Vec<u8>>> {
@@ -450,7 +462,7 @@ fn percent_decode(s: &str) -> String {
 /// Playing is open because a kiosk should just work. Signing a transaction on request is not,
 /// and "whoever can reach the port" is not an authorisation model.
 fn guarded(path: &str) -> bool {
-    matches!(path, "/api/anchor" | "/api/claim" | "/api/say")
+    matches!(path, "/api/anchor" | "/api/claim" | "/api/commit" | "/api/say")
 }
 
 fn bearer_ok(req: &tiny_http::Request, token: &Option<String>) -> bool {
@@ -910,6 +922,53 @@ fn main() {
                     },
                 }))
             }
+            // Declare the run before it is played. The player signs the declaration; the chain
+            // stamps the slot; the session keeps all of it so the record built at anchor time
+            // carries exactly what the program will stamp into the leaf.
+            (Method::Get, "/api/commit") => {
+                let Some(c) = &chain else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no chain configured" })));
+                    continue;
+                };
+                let Some(id) = param(&url, "id") else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no session" })));
+                    continue;
+                };
+                let Some(who) = param(&url, "player").and_then(|p| pubkey(&p)) else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no player key" })));
+                    continue;
+                };
+                let person = param(&url, "account").and_then(|p| pubkey(&p)).unwrap_or(who);
+                let case = {
+                    let map = sessions.lock().unwrap();
+                    let Some(s) = map.get(&id) else {
+                        drop(map);
+                        let _ = req.respond(no_such_session());
+                        continue;
+                    };
+                    sce_hash(&s.sce_json)
+                };
+                // The nonce is what keeps the case hidden from chain observers until reveal. It
+                // never leaves this process except inside a debrief the player asks for.
+                let nonce = {
+                    use solana_sdk::signature::Signer;
+                    solana_sdk::signature::Keypair::new().pubkey().to_bytes()
+                };
+                let hash = vitals_progress::record::commitment_hash(&case, &person.to_bytes(), &nonce);
+                match c.prepare_commit(&who, &person, hash) {
+                    Ok(p) => {
+                        let msg = hex_bytes(&p.message());
+                        pendings.lock().unwrap().insert(
+                            who.to_string(),
+                            PendingWork { pending: p, session: id.clone(), account: person,
+                                          prove: None, commit: Some((hash, nonce)),
+                                          index: 0, score: 0, level: None, link: false },
+                        );
+                        json(serde_json::json!({ "sign": msg }))
+                    }
+                    Err(e) => json(serde_json::json!({ "error": e })),
+                }
+            }
             (Method::Get, "/api/anchor") => {
                 let id = param(&url, "id").unwrap_or_default();
                 let caller = param(&url, "player");
@@ -950,8 +1009,18 @@ fn main() {
                 // is exactly what the very first run on a brand new browser is.
                 let person = param(&url, "account").and_then(|p| pubkey(&p)).unwrap_or(who);
                 let sce = sce_hash(&s.sce_json);
+                // The commitment made before this run started. Anchoring without one is refused
+                // here with a sentence rather than by the program with an error code — the
+                // program will refuse it anyway, since it reads the commitment account and finds
+                // nothing open, but the person typing deserves to know what was missing.
+                let Some((chash, cslot, _nonce)) = s.commit else {
+                    let _ = req.respond(json(serde_json::json!({
+                        "error": "this run was never committed — the chain refuses runs that were not declared before play"
+                    })));
+                    continue;
+                };
                 let rec: AttemptRecord =
-                    match record_for(person.to_bytes(), sce, sce, s.difficulty, false, &s.tape, &r) {
+                    match record_for(person.to_bytes(), sce, sce, s.difficulty, false, &s.tape, &r, chash, cslot) {
                         Ok(rec) => rec,
                         Err(e) => {
                             let _ = req.respond(json(serde_json::json!({ "error": e })));
@@ -965,14 +1034,16 @@ fn main() {
                 let index = leaves.len() as u64 - 1;
                 drop(t);
                 match c.prepare_anchor(&who, &person, tree_id, &rec, &leaves) {
-                    Ok(p) => {
-                        let msg = hex_bytes(&p.message());
+                    Ok((anchor, prove)) => {
+                        let msg = hex_bytes(&anchor.message());
+                        let msg2 = hex_bytes(&prove.message());
                         pendings.lock().unwrap().insert(
                             who.to_string(),
-                            PendingWork { pending: p, session: id.clone(), account: person,
+                            PendingWork { pending: anchor, prove: Some(prove),
+                                          session: id.clone(), account: person, commit: None,
                                           index, score: rec.score(), level: None, link: false },
                         );
-                        json(serde_json::json!({ "sign": msg }))
+                        json(serde_json::json!({ "sign": msg, "sign2": msg2 }))
                     }
                     Err(e) => {
                         // Building it failed, so the leaf was never anchored. Take it back off the
@@ -999,7 +1070,7 @@ fn main() {
                         let msg = hex_bytes(&p.message());
                         pendings.lock().unwrap().insert(
                             who.to_string(),
-                            PendingWork { pending: p, session: String::new(), account: id,
+                            PendingWork { pending: p, session: String::new(), account: id, prove: None, commit: None,
                                           index: 0, score: 0, level: Some(level), link: false },
                         );
                         json(serde_json::json!({ "sign": msg }))
@@ -1077,7 +1148,7 @@ fn main() {
                         let msg = hex_bytes(&p.message());
                         pendings.lock().unwrap().insert(
                             dev.to_string(),
-                            PendingWork { pending: p, session: String::new(), account: person,
+                            PendingWork { pending: p, session: String::new(), account: person, prove: None, commit: None,
                                           index: 0, score: 0, level: None, link: true },
                         );
                         json(serde_json::json!({ "sign": msg }))
@@ -1105,7 +1176,7 @@ fn main() {
                     continue;
                 };
                 // Only an anchor put a leaf on the list, so only an anchor takes one back off.
-                let speculative = work.level.is_none() && !work.link;
+                let speculative = work.level.is_none() && !work.link && work.commit.is_none();
                 let tx = match work.pending.signed(&sig) {
                     Ok(tx) => tx,
                     Err(e) => {
@@ -1117,6 +1188,29 @@ fn main() {
                     }
                 };
                 let id = work.account;
+                if let Some((hash, nonce)) = work.commit {
+                    let _ = req.respond(match c.submit(&tx) {
+                        Ok(()) => match c.commitment(&id) {
+                            // Read back rather than assumed: the slot was assigned on chain, and
+                            // the record built at anchor time must carry the same one the program
+                            // will stamp into the leaf — a guessed slot forks the server's leaf
+                            // list from the tree.
+                            Some(cm) if cm.open && cm.hash == hash => {
+                                let mut map = sessions.lock().unwrap();
+                                if let Some(s) = map.get_mut(&work.session) {
+                                    s.commit = Some((hash, cm.slot, nonce));
+                                    persist(&store, &work.session, s, true);
+                                }
+                                json(serde_json::json!({ "committed": true, "started": cm.started }))
+                            }
+                            _ => json(serde_json::json!({
+                                "error": "the commit landed but could not be read back — try again"
+                            })),
+                        },
+                        Err(e) => json(serde_json::json!({ "error": e })),
+                    });
+                    continue;
+                }
                 if work.link {
                     let _ = req.respond(match c.submit(&tx) {
                         Ok(()) => {
@@ -1137,6 +1231,24 @@ fn main() {
                         let t = tree.lock().unwrap();
                         let _ = store.put(TREE, &tree_key, &*t);
                         drop(t);
+                        // The proof rides as a second transaction — the pair stopped fitting in
+                        // one packet when the record grew. The anchor is already in; a proof that
+                        // fails here leaves an intact state (anchored, provable later), so the
+                        // error is reported rather than unwound.
+                        if let Some(prove) = work.prove {
+                            let sent = param(&url, "sig2")
+                                .and_then(|h| sig64(&h))
+                                .ok_or_else(|| "anchored, but no second signature for the proof".to_string())
+                                .and_then(|s2| prove.signed(&s2))
+                                .and_then(|tx2| c.submit(&tx2));
+                            if let Err(e) = sent {
+                                let _ = req.respond(json(serde_json::json!({
+                                    "anchored": true, "proven": false,
+                                    "error": format!("anchored, but the proof did not land: {e}"),
+                                })));
+                                continue;
+                            }
+                        }
                         let mut map = sessions.lock().unwrap();
                         if let Some(s) = map.get_mut(&work.session) {
                             s.anchored = true;
@@ -1174,8 +1286,16 @@ fn main() {
 /// What the browser is waiting to sign, and what to do once it has.
 struct PendingWork {
     pending: chain::Pending,
+    /// The proof transaction that follows a successful anchor. Two transactions because the pair
+    /// stopped fitting in one packet when the record grew — see `prepare_anchor`. The player
+    /// signs both messages together; the server submits them in order.
+    prove: Option<chain::Pending>,
     /// Which run this anchors. Empty for a claim.
     session: String,
+    /// Set when this transaction is a pre-run commitment: (hash, nonce). On success the slot is
+    /// read back from the account — the program assigned it, so only the chain knows it — and
+    /// all three land in the session for the record to use at anchor time.
+    commit: Option<([u8; 32], [u8; 32])>,
     /// Whose record this lands on — not necessarily the key that signs it.
     account: solana_sdk::pubkey::Pubkey,
     index: u64,
@@ -1343,7 +1463,7 @@ mod tests {
 
     #[test]
     fn guarding_covers_everything_that_spends_or_signs() {
-        for p in ["/api/anchor", "/api/claim", "/api/say"] {
+        for p in ["/api/anchor", "/api/claim", "/api/commit", "/api/say"] {
             assert!(guarded(p), "{p} makes the server sign or spend");
         }
         for p in ["/", "/api/new", "/api/step", "/api/kit", "/api/tape", "/api/chain"] {

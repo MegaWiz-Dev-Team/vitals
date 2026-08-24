@@ -95,10 +95,28 @@ fn main() {
     for (title, file, difficulty, tape) in &episodes {
         let json = std::fs::read_to_string(repo().join(file)).expect("scenario");
         let sce = sce_hash(&json);
+
+        // Declare the attempt before playing it. The nonce keeps the case hidden from anyone
+        // watching the chain; the slot comes back from the account because the program assigned
+        // it — the record must carry the same (hash, slot) the program will stamp into the leaf,
+        // or the local leaf list forks from the tree and every proof below fails.
+        let nonce: [u8; 32] = {
+            let mut n = [0u8; 32];
+            n[..8].copy_from_slice(&tree_id.to_le_bytes());
+            n[8..16].copy_from_slice(&(records.len() as u64).to_le_bytes());
+            n
+        };
+        let chash = vitals_progress::record::commitment_hash(&sce, &player.pubkey().to_bytes(), &nonce);
+        let commit_acct = vitals_program::commitment_pda(&program_id, &player.pubkey().to_bytes()).0;
+        send(&rpc, &player, &program_id, Instruction::Commit { hash: chash },
+             vec![acct, commit_acct], true);
+        let cm: vitals_program::Commitment = fetch(&rpc, &commit_acct).expect("commitment");
+        assert!(cm.open && cm.hash == chash, "the commitment on chain is not the one just made");
+
         let r: Replay = replay(&json, tape).expect("replay");
         // The scenario hash is the case identity: replaying one episode is one case, however
         // many times you do it.
-        let rec = record_for(player.pubkey().to_bytes(), sce, sce, *difficulty, false, tape, &r)
+        let rec = record_for(player.pubkey().to_bytes(), sce, sce, *difficulty, false, tape, &r, cm.hash, cm.slot)
             .expect("record");
         println!(
             "  {title:<30} {:<14} harm {}  score {:>3}   leaf {}",
@@ -108,7 +126,7 @@ fn main() {
             &hex(&rec.leaf())[..12]
         );
         send(&rpc, &player, &program_id, Instruction::AnchorReplay { tree_id, record: wire(&rec) },
-             vec![acct, tree_pda(&program_id, &player.pubkey(), tree_id).0], true);
+             vec![acct, tree_pda(&program_id, &player.pubkey(), tree_id).0, commit_acct], true);
         leaves.push(rec.leaf());
         records.push(rec);
     }
@@ -121,7 +139,8 @@ fn main() {
     for (i, rec) in records.iter().enumerate() {
         let path = merkle::prove(&leaves, i as u64).expect("path");
         let ok = send(&rpc, &player, &program_id,
-            Instruction::ProveAttempt { tree_id, record: wire(rec), index: i as u64, path: path.to_vec() },
+            Instruction::ProveAttempt { tree_id, record: wire(rec), index: i as u64, path: path.to_vec(),
+                                       commitment: rec.commitment, committed_slot: rec.committed_slot },
             vec![acct, tree_pda(&program_id, &player.pubkey(), tree_id).0, claim_pda(&program_id, &player.pubkey(), tree_id).0], true);
         println!("  index {i}  {}", if ok { "proven" } else { "REJECTED" });
     }
@@ -130,7 +149,8 @@ fn main() {
     let forged = AttemptRecord { harm_count: 0, outcome: vitals_progress::record::Outcome::WinDischarge, ..records[1] };
     let path = merkle::prove(&leaves, 1).expect("path");
     let ok = send(&rpc, &player, &program_id,
-        Instruction::ProveAttempt { tree_id, record: wire(&forged), index: 1, path: path.to_vec() },
+        Instruction::ProveAttempt { tree_id, record: wire(&forged), index: 1, path: path.to_vec(),
+                                   commitment: forged.commitment, committed_slot: forged.committed_slot },
         vec![acct, tree_pda(&program_id, &player.pubkey(), tree_id).0, claim_pda(&program_id, &player.pubkey(), tree_id).0], false);
     println!("  forged   {}   (the stood-up run, with its harm scrubbed)",
         if ok { "ACCEPTED — the tree is broken" } else { "rejected" });
@@ -164,6 +184,11 @@ fn wire(r: &AttemptRecord) -> RecordWire {
         sce_hash: r.sce_hash,
         case: r.case,
         run_hash: r.run_hash,
+        rubric_hash: r.rubric_hash,
+        det_score: r.det_score,
+        det_max: r.det_max,
+        judged_score: r.judged_score,
+        judged_max: r.judged_max,
         difficulty: match r.difficulty {
             Difficulty::Student => 0,
             Difficulty::Intern => 1,
@@ -351,6 +376,8 @@ RPC response error -32002: Transaction simulation failed
             let r = AttemptRecord {
                 player: [1; 32], sce_hash: [2; 32], case: [3; 32], run_hash: [4; 32],
                 difficulty: d, exam_mode: false, outcome: Outcome::WinDischarge, harm_count: 0,
+                commitment: [0u8; 32], committed_slot: 0, rubric_hash: [0u8; 32],
+                det_score: 0, det_max: 0, judged_score: 0, judged_max: 0,
             };
             assert_eq!(wire(&r).difficulty, n);
         }
