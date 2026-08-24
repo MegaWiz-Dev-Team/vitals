@@ -68,8 +68,18 @@ All taken 2026-08-24 unless noted.
 
 | | | |
 |---|---|---|
-| `vitals-academy-dev` | 367117259093 | testnet and devnet — everything until the money line |
-| `vitals-academy` | 995399340966 | production. Configured, empty, and deliberately unused |
+| `vitals-academy` | 995399340966 | **the public demo, from the day it opens** — real learners, real records |
+| `vitals-academy-dev` | 367117259093 | testing, load, throwaway. Its data may be deleted at any time |
+
+**Corrected same day.** The first version of this split mapped dev/prod onto devnet/mainnet. That is
+the wrong axis, and both projects being empty is the only reason the mistake was free. The public
+demo carries **real learners' runs from the day it opens** and stands for roughly fifty days before
+submission; that data belongs in production whatever chain it is anchored to. Putting it in a
+project named `-dev` would mean migrating real user data later — the exact move this whole day has
+been spent avoiding, at the tape format, at the tree PDA, and at the tree storage key.
+
+The Solana cluster is an environment variable, as established below. Production points at devnet now
+and at mainnet when the money line is crossed, which is a config change rather than a migration.
 
 An earlier draft of this entry proposed using `vitals-academy` for development and adding
 `vitals-academy-prod` later. That was backwards, and worth recording because the mistake is one-way:
@@ -81,8 +91,8 @@ That accident has one benefit: the production project's Firestore is already in 
 and a database's location cannot be changed after creation. The thing most likely to be got wrong
 under time pressure is already right.
 
-The second project stays empty until **a relay key holds SOL that could be sold, or the treasury
-takes a real donation.**
+What the money line now triggers is **production's RPC moving to mainnet**, and the mainnet relay
+key living only in production's secret store — not the creation of anything.
 
 The reasoning, so it is not re-litigated:
 
