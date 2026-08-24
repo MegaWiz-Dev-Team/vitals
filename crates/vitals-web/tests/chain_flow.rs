@@ -58,6 +58,12 @@ impl Drop for Server {
     }
 }
 
+/// The address of a keypair file, via the CLI these tests already depend on.
+fn pubkey_of(key: &std::path::Path) -> Option<String> {
+    let out = Command::new("solana").arg("address").arg("-k").arg(key).output().ok()?;
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
 impl Server {
     fn start() -> Option<Server> {
         let program = std::env::var("VITALS_PROGRAM_ID").ok()?;
@@ -85,11 +91,17 @@ impl Server {
             .stdout(Stdio::null()).stderr(Stdio::null())
             .status().ok()?.success();
         if !ok { return None; }
+        // Funded by transfer from whoever is running the suite, not by airdrop. A local validator
+        // will airdrop all day; devnet's faucet refuses, and the tests then failed inside the
+        // anchoring assertions — reporting that the chain path is broken when what is broken is
+        // that the relay has no lamports. One path that works on any cluster where the operator
+        // has funds is worth more than a faster one that lies on three of them.
         let rpc = std::env::var("VITALS_RPC").unwrap_or_else(|_| "http://127.0.0.1:8899".into());
-        Command::new("solana")
-            .args(["airdrop", "10", "-k"]).arg(&key).args(["-u", &rpc])
+        let funded = Command::new("solana")
+            .args(["transfer", &pubkey_of(&key)?, "0.1", "--allow-unfunded-recipient", "-u", &rpc])
             .stdout(Stdio::null()).stderr(Stdio::null())
-            .status().ok()?;
+            .status().ok()?.success();
+        if !funded { return None; }
         let mut child = Command::new(env!("CARGO_BIN_EXE_vitals-web"))
             .env("VITALS_WEB_BIND", "127.0.0.1:0")
             .env("VITALS_STATE_DIR", &state)

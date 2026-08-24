@@ -158,6 +158,26 @@ Rankings will want a third kind — derived, rebuildable, queryable — and a st
 "what percentile is this" cheaply. That is not built. There is no one to rank yet, and a
 leaderboard schema chosen before the first cohort exists is a guess about what a cohort is.
 
+## Live on devnet
+
+```
+535FMHHZ4rp5hNmvSmdNFoaatLX82cCXHfRg3hpyBTSG
+https://explorer.solana.com/address/535FMHHZ4rp5hNmvSmdNFoaatLX82cCXHfRg3hpyBTSG?cluster=devnet
+```
+
+Deployed 24 August, verified byte-for-byte against this tree, upgrade authority left on the
+deployer's key — stated explicitly rather than defaulted, which is what saying "this cluster is
+disposable" out loud looks like. The four chain tests run against it, not only against a local
+validator, which is the first time the whole path has been exercised on a public cluster.
+
+They fund their relays by transfer rather than airdrop. A local validator will airdrop all day;
+devnet's faucet refuses, and the tests then failed inside the anchoring assertions — reporting a
+broken chain path when what was empty was a wallet. One funding path that works everywhere beats a
+faster one that lies on three clusters out of four.
+
+Note the running cost of doing this: each test server takes 0.1 SOL and the accounts it creates
+keep their rent. Cheap on a local validator, real on devnet, which is why CI uses the former.
+
 ## Who may replace the program, and how anyone checks it
 
 Two things decide whether a deployed program can be trusted, and neither is the code itself.
