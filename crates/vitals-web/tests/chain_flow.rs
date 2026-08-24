@@ -61,12 +61,40 @@ impl Drop for Server {
 impl Server {
     fn start() -> Option<Server> {
         let program = std::env::var("VITALS_PROGRAM_ID").ok()?;
-        let state = std::env::temp_dir().join(format!("vitals-chain-{}", std::process::id()));
+        // Unique per server, not per process: these tests are threads in one binary, so
+        // process::id() is the same for all of them. They shared one state directory, and each
+        // start() wiped it — so a test could delete the sessions of a test still running. That is
+        // why the suite passed one at a time and failed together.
+        static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let state = std::env::temp_dir()
+            .join(format!("vitals-chain-{}-{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&state);
+        std::fs::create_dir_all(&state).ok()?;
+
+        // Its own relay key, because the tree is scoped to whoever funds it. Sharing one key made
+        // every server in this suite an *instance of one operator*, which is the configuration
+        // production explicitly forbids — Cloud Run is pinned to a single instance for exactly
+        // this reason — so they addressed the same tree and overwrote each other's leaves. Four
+        // independent operators is what the suite is actually modelling, and independent
+        // operators have their own keys.
+        let key = state.join("relay.json");
+        let ok = Command::new("solana-keygen")
+            .args(["new", "--no-bip39-passphrase", "-s", "--force", "-o"])
+            .arg(&key)
+            .stdout(Stdio::null()).stderr(Stdio::null())
+            .status().ok()?.success();
+        if !ok { return None; }
+        let rpc = std::env::var("VITALS_RPC").unwrap_or_else(|_| "http://127.0.0.1:8899".into());
+        Command::new("solana")
+            .args(["airdrop", "10", "-k"]).arg(&key).args(["-u", &rpc])
+            .stdout(Stdio::null()).stderr(Stdio::null())
+            .status().ok()?;
         let mut child = Command::new(env!("CARGO_BIN_EXE_vitals-web"))
             .env("VITALS_WEB_BIND", "127.0.0.1:0")
             .env("VITALS_STATE_DIR", &state)
             .env("VITALS_PROGRAM_ID", program)
+            .env("VITALS_KEYPAIR", &key)
             .env_remove("VITALS_TOKEN")
             .env_remove("HEIMDALL_API_KEY")
             .stdout(Stdio::piped())

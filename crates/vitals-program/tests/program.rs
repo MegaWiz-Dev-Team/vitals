@@ -10,7 +10,7 @@ use solana_sdk::{
     instruction::{AccountMeta, Instruction as SolIx},
     pubkey::Pubkey,
     signature::{Keypair, Signer},
-    system_program,
+    system_program, system_instruction,
     transaction::{Transaction, TransactionError},
     instruction::InstructionError,
 };
@@ -57,10 +57,14 @@ fn acct(pid: &Pubkey, id: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(&[SEED_ACCOUNT, &id.to_bytes()], pid).0
 }
 
-fn pdas(pid: &Pubkey, who: &Pubkey) -> (Pubkey, Pubkey, Pubkey) {
+/// The tree belongs to whoever *pays* — that is what stops one operator appending into another's
+/// tree — while the claim and the progress belong to whoever *played*. Most of these tests use one
+/// key for both, so the two arguments are usually the same; the ones that separate a funding relay
+/// from a penniless player are exactly the ones this distinction exists for.
+fn pdas(pid: &Pubkey, funder: &Pubkey, who: &Pubkey) -> (Pubkey, Pubkey, Pubkey) {
     let id = TREE.to_le_bytes();
     (
-        Pubkey::find_program_address(&[SEED_TREE, &id], pid).0,
+        vitals_program::tree_pda(pid, funder, TREE).0,
         Pubkey::find_program_address(&[SEED_CLAIM, who.as_ref(), &id], pid).0,
         Pubkey::find_program_address(&[SEED_PROGRESS, who.as_ref(), &[1u8]], pid).0,
     )
@@ -94,7 +98,7 @@ async fn anchor_prove_claim_and_every_way_it_can_refuse() {
     let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
     let (mut banks, payer, bh) = pt.start().await;
     let me = payer.pubkey();
-    let (tree, claim, prog) = pdas(&pid, &me);
+    let (tree, claim, prog) = pdas(&pid, &me, &me);
     let acc = acct(&pid, &me);
     banks
         .process_transaction(Transaction::new_signed_with_payer(
@@ -237,7 +241,7 @@ async fn a_player_with_no_sol_can_still_prove_and_claim() {
     let who = player.pubkey();
     assert!(banks.get_account(who).await.unwrap().is_none(), "the player has no account");
 
-    let (tree, claim, prog) = pdas(&pid, &who);
+    let (tree, claim, prog) = pdas(&pid, &relay.pubkey(), &who);
     let acc = acct(&pid, &who);
     banks
         .process_transaction(Transaction::new_signed_with_payer(
@@ -296,7 +300,7 @@ async fn a_player_with_no_sol_can_still_prove_and_claim() {
     assert!(banks.get_account(who).await.unwrap().is_none(), "still holds nothing");
 
     // And the relay cannot promote itself by paying: its own progress PDA was never created.
-    let (_, _, relay_prog) = pdas(&pid, &relay.pubkey());
+    let (_, _, relay_prog) = pdas(&pid, &relay.pubkey(), &relay.pubkey());
     assert!(banks.get_account(relay_prog).await.unwrap().is_none(),
             "paying for a run must not earn the payer a level");
 }
@@ -308,7 +312,7 @@ async fn the_relay_cannot_sign_for_the_player() {
     let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
     let (mut banks, relay, bh) = pt.start().await;
     let victim = Keypair::new().pubkey();
-    let (tree, _, _) = pdas(&pid, &victim);
+    let (tree, _, _) = pdas(&pid, &relay.pubkey(), &victim);
     let acc = acct(&pid, &victim);
     let r = rec(&victim, 1, Outcome::WinDischarge, 0, Difficulty::Student);
 
@@ -350,7 +354,7 @@ async fn a_second_machine_plays_into_the_same_record() {
     let desktop = Keypair::new();         // where they carried on
     let who = laptop.pubkey();
     let acc = acct(&pid, &who);
-    let (tree, claim, prog) = pdas(&pid, &who);
+    let (tree, claim, prog) = pdas(&pid, &relay.pubkey(), &who);
 
     // The address of the record is derived from the person, and the person's id is the first
     // device's key — so this is exactly the address the old device-seeded scheme produced.
@@ -489,4 +493,58 @@ async fn devices_can_be_dropped_but_never_the_last_one() {
         vec![&relay, &owner], bh)).await.unwrap_err().unwrap();
     assert_eq!(custom(&e), Some(VitalsError::LastAuthority as u32),
                "removing it would leave a record nobody can ever claim against");
+}
+
+/// A stranger must not be able to append into somebody else's anchoring tree.
+///
+/// This is the failure the PDA change exists to close, and it needed no collision to reach: the
+/// tree address came from `tree_id` alone, `tree_id` is the slot the server booted in, and the
+/// server prints it on its own status line. Anyone who read that number could name the tree and
+/// add a leaf to it — the root moves, and the operator's tree now contains records they cannot
+/// account for. Deriving the address from the funder makes a foreign tree unreachable rather than
+/// merely unlikely to be hit by accident.
+#[tokio::test]
+async fn a_stranger_cannot_append_to_my_tree() {
+    let pid = Pubkey::new_unique();
+    let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
+    let (mut banks, mine, bh) = pt.start().await;
+    let me = mine.pubkey();
+
+    // My tree, with one honest leaf in it.
+    let (tree, _, _) = pdas(&pid, &me, &me);
+    let acc = acct(&pid, &me);
+    let r = rec(&me, 1, Outcome::WinDischarge, 0, Difficulty::Student);
+    let mut tx = Transaction::new_with_payer(
+        &[
+            ix(pid, me, me, &[acc], Instruction::OpenAccount),
+            ix(pid, me, me, &[acc, tree], Instruction::AnchorReplay { tree_id: TREE, record: wire(&r) }),
+        ],
+        Some(&me),
+    );
+    tx.sign(&[&mine], bh);
+    banks.process_transaction(tx).await.expect("my own anchor");
+
+    // Somebody else, funded, who knows the tree id — which is all they ever needed to know.
+    let stranger = Keypair::new();
+    let them = stranger.pubkey();
+    let fund = system_instruction::transfer(&me, &them, 10_000_000_000);
+    let mut tx = Transaction::new_with_payer(&[fund], Some(&me));
+    tx.sign(&[&mine], bh);
+    banks.process_transaction(tx).await.expect("fund the stranger");
+
+    let their_acc = acct(&pid, &them);
+    let theirs = rec(&them, 1, Outcome::WinDischarge, 0, Difficulty::Student);
+    let mut tx = Transaction::new_with_payer(
+        &[
+            ix(pid, them, them, &[their_acc], Instruction::OpenAccount),
+            // They name *my* tree account, with my tree id.
+            ix(pid, them, them, &[their_acc, tree], Instruction::AnchorReplay { tree_id: TREE, record: wire(&theirs) }),
+        ],
+        Some(&them),
+    );
+    tx.sign(&[&stranger], banks.get_latest_blockhash().await.unwrap());
+    assert!(
+        banks.process_transaction(tx).await.is_err(),
+        "a stranger appended a leaf into my tree"
+    );
 }
