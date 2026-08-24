@@ -279,7 +279,7 @@ impl Session {
             .iter()
             .map(|s| match s {
                 Step::Tick(dt) => *dt,
-                Step::Do(_) | Step::Ask(_) | Step::Set(..) | Step::Off(_) => 0.0,
+                Step::Do(_) | Step::Act { .. } | Step::Ask(_) | Step::Set(..) | Step::Off(_) => 0.0,
             })
             .sum();
         let outcome = self.state.outcome().map(|o| format!("{o:?}"));
@@ -722,7 +722,12 @@ fn main() {
                         if let Some(act) = param(&url, "do") {
                             let emitted = s.state.apply(&act);
                             s.beats.extend(emitted.iter().map(render_beat));
-                            s.tape.push(Step::did(&act));
+                            // Recognition happens here, once, and its answer goes on the tape beside the
+                            // words. An order nobody understood is recorded as exactly that — an
+                            // empty resolution — so replay stays faithful to a run in which nothing
+                            // happened, even after the matcher learns the phrase.
+                            let id = s.state.resolve(&act).unwrap_or_default();
+                            s.tape.push(Step::acted(&act, &id));
                         }
                         if let Some(dt) = param(&url, "tick").and_then(|v| v.parse::<f64>().ok()) {
                             let emitted = s.state.tick(dt);
@@ -836,6 +841,7 @@ fn main() {
                         "tape": s.tape.iter().map(|st| match st {
                             Step::Tick(dt) => serde_json::json!({"tick": dt}),
                             Step::Do(t) => serde_json::json!({"do": t}),
+                            Step::Act { text, id } => serde_json::json!({"do": text, "act": id}),
                             Step::Ask(t) => serde_json::json!({"ask": t}),
                             Step::Set(id, v) => serde_json::json!({"set": id, "to": v}),
                             Step::Off(id) => serde_json::json!({"off": id}),

@@ -83,6 +83,7 @@ fn show(label: &str, sce_json: &str, h: &[u8; 32], tape: &[Step]) -> [u8; 32] {
             Step::Tick(dt) => println!("   ·  +{dt:.0}s"),
             Step::Ask(q) => println!("   ?  {q}"),
             Step::Do(t) => println!("   >  {t}"),
+            Step::Act { text, id } => println!("   >  {text}  [{id}]"),
             Step::Set(id, v) => println!("   ~  {id} -> {v:.0}"),
             Step::Off(id) => println!("   x  {id} off"),
         }
