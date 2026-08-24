@@ -9,8 +9,7 @@
 
 mod chain;
 mod patient;
-mod store;
-use vitals_web::news2;
+use vitals_web::{news2, store};
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -517,7 +516,7 @@ fn main() {
     // collide with a fresh one and there is nothing to resume from.
     println!(
         "state      {} · {} run(s) resumed{}{}",
-        store.root().display(),
+        store.describe(),
         restored.len(),
         if swept > 0 { format!(" · {swept} expired") } else { String::new() },
         if broken > 0 { format!(" · {broken} unreplayable") } else { String::new() },

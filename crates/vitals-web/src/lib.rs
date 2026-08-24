@@ -6,3 +6,4 @@
 //! `#[cfg(test)]` block at the bottom of a web server.
 
 pub mod news2;
+pub mod store;
