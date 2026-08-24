@@ -15,9 +15,11 @@ agent writes code
 ```
 
 The AI in this pipeline is not a bolt-on scanner. The agent that writes the code runs the gates
-each iteration; the review workflow is a *different* instance reading the diff cold, told exactly
-what this program has promised (`docs/INVARIANTS.md`) — because both real authorization bugs here
-were found by asking *who is allowed to write here*, not by pattern-matching.
+each iteration; the review workflow is a *different model from a different vendor* (Gemini on
+Vertex) reading the diff cold, told exactly what this program has promised
+(`docs/INVARIANTS.md`) — because both real authorization bugs here were found by asking *who is
+allowed to write here*, not by pattern-matching. Cross-vendor is deliberate: a reviewer that
+shares the writer's model shares the writer's blind spots.
 
 ## CI — `.github/workflows/ci.yml`, on every push and PR
 
@@ -62,7 +64,7 @@ join in when a local validator is up.
 |---|---|---|
 | program keypair | this machine + offline backup | is the program's identity; CI uses throwaway ids |
 | relay key (demo) | GCP Secret Manager, mounted as a file | the code reads a path; creating it is a decision the preflight enforces |
-| `ANTHROPIC_API_KEY` | GitHub secret (to be added) | ai-review skips quietly until it exists |
+| ai-review credentials | **none** | Gemini on Vertex through the same OIDC federation — a dedicated SA holding only `roles/aiplatform.user` |
 | GCP deploy credentials | **none** | OIDC federation; nothing stored |
 
 ## First-run honesty
@@ -79,4 +81,5 @@ configs are reviewed but not yet machine-checked.
   committer appears; today it would only fight the single-operator flow.
 - `solana-verify` reproducible builds — blocked on crates.io locally; the day CI can run it, the
   bytecode check upgrades from "matches this machine's build" to "matches any machine's".
-- The `ANTHROPIC_API_KEY` secret — a human adds it; ai-review is dormant until then.
+- ~~The review API key~~ — gone as a requirement: ai-review runs keyless on Vertex, verified
+  answering from both `global` and `asia-southeast1` before this was committed.

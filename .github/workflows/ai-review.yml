@@ -8,48 +8,73 @@ name: ai-review
 # It reviews against docs/INVARIANTS.md rather than generic taste, because that file is where
 # both real authorization bugs in this repository were ultimately caught: not by asking "is a
 # check missing" but by asking "who is allowed to write here".
+#
+# Auth is the same keyless OIDC the deploy uses: a dedicated service account holding exactly
+# roles/aiplatform.user, reachable only from this repository through the workload identity pool.
+# There is no API key stored anywhere, so there is no API key to leak.
 on:
   pull_request:
 
 permissions:
   contents: read
   pull-requests: write
-  issues: write
   id-token: write
+
+concurrency:
+  group: ai-review-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   review:
     runs-on: ubuntu-latest
-    # Skips quietly when the key is absent rather than failing every fork PR.
-    env:
-      HAVE_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+    # Fork PRs get no OIDC token for this pool; skip rather than fail them.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        if: env.HAVE_KEY == 'true'
         with:
           fetch-depth: 0
-      - uses: anthropics/claude-code-action@c81e3bc69d1b18badbb63ba39581218f02421678 # v1
-        if: env.HAVE_KEY == 'true'
+
+      - name: the diff under review
+        run: |
+          git diff --merge-base "origin/${{ github.base_ref }}" > /tmp/pr.diff
+          wc -c /tmp/pr.diff
+
+      - name: review against the invariants
+        id: gemini
+        uses: google-github-actions/run-gemini-cli@f77273f4c914e4bf38440cf36a0369cb64a37489 # v0.1.22
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          use_vertex_ai: "true"
+          gcp_project_id: vitals-academy
+          gcp_location: asia-southeast1
+          gcp_workload_identity_provider: projects/995399340966/locations/global/workloadIdentityPools/github/providers/github-oidc
+          gcp_service_account: gemini-reviewer@vitals-academy.iam.gserviceaccount.com
           prompt: |
-            Review this pull request as a security reviewer for a Solana program whose product is
-            trust: every leaf anchored is a claim someone will verify years from now.
+            You are the security reviewer for a Solana program whose product is trust: every
+            anchored leaf is a claim someone will verify years from now.
 
-            Read docs/INVARIANTS.md first. For each changed file, ask of every write path: who is
-            allowed to write here, and does the code check the actor or merely the shape? The two
-            real bugs in this repository's history were checks that existed but bound the wrong
-            thing — a tree PDA derived from a guessable id, a storage key that named nobody.
+            Read docs/INVARIANTS.md in this checkout, then read /tmp/pr.diff. For every write
+            path the diff touches, ask: who is allowed to write here, and does the code check the
+            actor or merely the shape? The two real bugs in this repository's history were checks
+            that existed but bound the wrong thing — a tree PDA derived from a guessable id, a
+            storage key that named nobody.
 
-            Specifically flag:
+            Flag, with file and line from the diff:
             - any value a caller supplies that the program then treats as proven
             - any new PDA or storage key whose seeds do not name an owner
-            - any change to AttemptRecord encoding that moves an existing byte (vt01/vt02 offsets
-              are frozen forever; only appending under a new tag is legal)
+            - any change that moves an existing byte of the AttemptRecord encoding (vt01/vt02
+              offsets are frozen forever; only appending under a new version tag is legal)
             - any arithmetic on counters or scores outside the existing bounds reasoning
             - any new #[ignore] test, silenced lint, or weakened assertion
-            - anything in a hidden/rubric path that would leak exam content into a public surface
+            - anything in a hidden/rubric path that would leak exam content to a public surface
+            - an invariant the change now relies on that is missing from docs/INVARIANTS.md
 
-            If a change adds an invariant the program now relies on, require it to be added to
-            docs/INVARIANTS.md in the same PR. Comment only on what matters; do not restate the
-            diff.
+            Be brief. If nothing matters, say exactly: nothing security-relevant in this change.
+
+      - name: post the review
+        if: always() && steps.gemini.outputs.summary != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BODY: ${{ steps.gemini.outputs.summary }}
+        run: |
+          printf '## ai-review (Gemini, against INVARIANTS.md)\n\n%s\n' "$BODY" > /tmp/comment.md
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md
