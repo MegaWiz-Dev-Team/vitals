@@ -61,11 +61,28 @@ All taken 2026-08-24 unless noted.
 
 ---
 
-## GCP projects — one now, two when a key can lose money
+## GCP projects — `vitals-academy-dev` now, `vitals-academy` held for production
 
-**Decided 2026-08-24.** `vitals-academy` (995399340966) serves testnet and devnet. A second project
-is created **at the moment a relay key holds SOL that could be sold, or the treasury takes a real
-donation** — and not before.
+**Decided 2026-08-24.** Two projects, matching the convention every sibling already follows
+(`cloud-super-hero` / `-dev`, `mega-care` / `-dev`): the unqualified name is production.
+
+| | | |
+|---|---|---|
+| `vitals-academy-dev` | 367117259093 | testnet and devnet — everything until the money line |
+| `vitals-academy` | 995399340966 | production. Configured, empty, and deliberately unused |
+
+An earlier draft of this entry proposed using `vitals-academy` for development and adding
+`vitals-academy-prod` later. That was backwards, and worth recording because the mistake is one-way:
+**a deleted GCP project id can never be reused**, so renaming after the fact is impossible and
+deleting `vitals-academy` to free the name would have destroyed it. Both projects therefore exist
+from the start, and only one is used.
+
+That accident has one benefit: the production project's Firestore is already in `asia-southeast1`,
+and a database's location cannot be changed after creation. The thing most likely to be got wrong
+under time pressure is already right.
+
+The second project stays empty until **a relay key holds SOL that could be sold, or the treasury
+takes a real donation.**
 
 The reasoning, so it is not re-litigated:
 
@@ -87,9 +104,7 @@ The reasoning, so it is not re-litigated:
 **The trigger is nearer than "someday mainnet."** The plan puts a Commission account and treasury in
 the hackathon phase; the moment those take real money, the second project is due.
 
-**When it is created:** Firestore must be `asia-southeast1`, the same as here. The location cannot
-be changed after creation, and a mismatch would put the two halves of one product on opposite sides
-of the region boundary for no reason.
+Both Firestores are `asia-southeast1`, matching each other and the Cloud Run region.
 
 A leaf list no longer collides between deployments regardless of project — that was fixed at the
 storage key rather than papered over with a project boundary. See `store::tree_key`.

@@ -91,14 +91,20 @@ the relay key.
 ## Cloud Run
 
 ```
-VITALS_GCP_PROJECT=vitals-academy VITALS_PROGRAM_ID=<from deploy-devnet.sh> scripts/deploy-cloudrun.sh
+VITALS_GCP_PROJECT=vitals-academy-dev VITALS_PROGRAM_ID=<from deploy-devnet.sh> scripts/deploy-cloudrun.sh
 ```
 
-The project exists: **`vitals-academy`** (number 995399340966), on the same billing account as
-`cloud-super-hero` and `mega-care`, with Firestore already created in `asia-southeast1` —
-the same region Cloud Run runs in, and a location that cannot be changed afterwards. Writing a
-document with Thai text and reading it back is the check that the store code and the database
-agree, and it passes.
+Two projects exist, on the same billing account as `cloud-super-hero` and `mega-care`, both with
+Firestore in `asia-southeast1` — the region Cloud Run runs in, and a choice that cannot be changed
+afterwards:
+
+| project | number | for |
+|---|---|---|
+| `vitals-academy-dev` | 367117259093 | everything until real money is involved |
+| `vitals-academy` | 995399340966 | production. Empty and unused on purpose |
+
+The unqualified name is production, as it is for every sibling project. Writing a document with
+Thai text and reading it back is the check that the store code and the database agree; both pass.
 
 The script still refuses to run without `VITALS_GCP_PROJECT` even though there is now an obvious
 answer. The guard is not about the answer being unknown; it is about the wrong answer being
