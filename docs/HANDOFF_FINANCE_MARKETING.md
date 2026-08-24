@@ -221,9 +221,23 @@ product sold abroad.
 
 **Our strongest-demand markets are our worst patent markets.**
 
-Japan and Korea plausibly have mandatory national practical examinations — **unverified, and worth
-confirming early**, because if true it is built-in compelled demand of exactly the kind that is
-hardest to find. They are also absolute-novelty jurisdictions with no grace period.
+~~Japan and Korea plausibly have mandatory national practical examinations — unverified~~
+**— CONFIRMED 2026-08-25, and more strongly than expected.**
+
+- **Japan** runs a **nationally standardised pre-clinical OSCE since 2023**, and the **2021
+  amendment to the Medical Practitioners' Act** made passing CBT + that OSCE the legal gate for a
+  student to perform procedures under supervision. There is a **second** national OSCE at the end
+  of clinical clerkship (post-CC OSCE, run by CATO). **Two national OSCE checkpoints per student,
+  one of them written into statute.**
+- **Korea** added a clinical skills test to the **national medical licensing examination in 2009** —
+  a clinical performance examination with standardised patients plus an OSCE. Passing it is part of
+  licensure.
+
+This is compelled demand of the kind that is hardest to find, and it is the OSCE format we already
+build for. It raises what the novelty in those markets was worth — which is now moot, since the
+patent gate was dropped, but it also means **JP/KR demand is no longer a hypothesis in the market
+plan.** What is still unknown is scale (candidates per year) and whether an outside provider can
+reach those students at all. They are also absolute-novelty jurisdictions with no grace period.
 
 Nobody has taken this to a lawyer yet. Two things can be done in parallel while that is pending,
 and both are cheap:
