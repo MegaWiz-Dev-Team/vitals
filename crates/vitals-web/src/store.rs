@@ -79,6 +79,33 @@ fn safe(key: &str) -> Option<&str> {
     ok.then_some(key)
 }
 
+/// What losing a record costs.
+///
+/// Every record in this store is JSON behind the same six methods, which makes them look alike.
+/// They are not. A session is one learner's run in progress; the tree is the leaf list every
+/// Merkle proof this server ever issued is rebuilt from. The root is anchored on chain and
+/// survives anything, but the *path* to a leaf is not on chain — it is here. Expire this list
+/// and the anchor stays, provably meaningless.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Class {
+    /// Safe to expire. Losing it costs one learner one run.
+    Ephemeral,
+    /// Never expired by age.
+    Durable,
+}
+
+/// Classify a kind. Anything unrecognised is durable.
+///
+/// The default is the point. A kind added later reaches `sweep` before anyone remembers to
+/// classify it; defaulting to expiry makes that oversight delete data, while defaulting to
+/// keeping makes it use disk — which gets noticed, and can be fixed after the fact.
+pub fn class_of(kind: &str) -> Class {
+    match kind {
+        "sess" => Class::Ephemeral,
+        _ => Class::Durable,
+    }
+}
+
 impl Store {
     pub fn open(root: PathBuf) -> io::Result<Store> {
         let project = std::env::var("GOOGLE_CLOUD_PROJECT")
@@ -276,7 +303,17 @@ impl Store {
     /// Only the disk backend can do this cheaply — Firestore would need a timestamp field and a
     /// query, and abandoned runs there are small and cost nothing to leave. Returning zero is
     /// honest: nothing was swept.
+    /// Delete records of `kind` older than `max_age`, and report how many went.
+    ///
+    /// Refuses durable kinds outright rather than trusting the caller to only pass expiring
+    /// ones. The call site that matters passes a constant today, but the signature takes a
+    /// string, and the cost of the wrong string is losing every proof this server can issue.
+    /// Returns zero on Firestore too — expiring by age there needs a stored timestamp and a
+    /// query, and reporting a number it did not delete would be worse than doing nothing.
     pub fn sweep(&self, kind: &str, max_age: std::time::Duration) -> usize {
+        if class_of(kind) == Class::Durable {
+            return 0;
+        }
         if matches!(self.backend, Backend::Firestore { .. }) {
             return 0;
         }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Put the server on Cloud Run, where embla-cloud already lives.
+# Put the server on Cloud Run, in a project of its own.
 #
 # The whole product is one Rust binary — page, API and relay together — so there is no separate
 # frontend to host. That is a consequence of the relay paying fees: a static host cannot hold a
@@ -7,7 +7,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-PROJECT="${VITALS_GCP_PROJECT:-cloud-super-hero-dev}"
+# Deliberately has no default. embla-cloud's project holds identified users — line_user_id,
+# display_name, a profile per person — collected under a stated consent version. A Cloud Run
+# service gets its Firestore token from the metadata server, and that token is scoped to the
+# project, so a service deployed alongside them can read those documents whether or not it
+# ever means to. Those people consented to Embla. Keeping this product in its own project
+# makes that separation the default rather than something IAM has to be talked into.
+PROJECT="${VITALS_GCP_PROJECT:-}"
 REGION="${REGION:-asia-southeast1}"
 SERVICE="${SERVICE:-vitals}"
 PROGRAM_ID="${VITALS_PROGRAM_ID:-}"
@@ -16,6 +22,23 @@ RPC="${VITALS_RPC:-https://api.devnet.solana.com}"
 HEIMDALL="${HEIMDALL_API_URL:-}"
 
 [ -n "$PROGRAM_ID" ] || { echo "set VITALS_PROGRAM_ID (scripts/deploy-devnet.sh prints it)"; exit 1; }
+[ -n "$PROJECT" ] || { echo "set VITALS_GCP_PROJECT — this product gets its own project, see above"; exit 1; }
+
+case "$PROJECT" in
+  cloud-super-hero*)
+    echo "refusing: $PROJECT holds Embla's identified users. Use a project of this product's own." >&2
+    exit 1 ;;
+esac
+
+# Deploying as whoever gcloud happens to be is how a service ends up running with a backup
+# uploader's permissions, or failing halfway with a half-created service to clean up.
+WHO="$(gcloud config get-value account 2>/dev/null)"
+echo "── as        $WHO"
+case "$WHO" in
+  *gserviceaccount.com)
+    echo "   that is a service account, not you. gcloud auth login first." >&2
+    exit 1 ;;
+esac
 
 echo "── project   $PROJECT / $REGION"
 echo "── service   $SERVICE"
