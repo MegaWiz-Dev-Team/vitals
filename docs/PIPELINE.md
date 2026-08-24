@@ -59,13 +59,14 @@ sandboxed machine cannot install (gitleaks, cargo-deny — CI runs them regardle
 join in when a local validator is up.
 
 `AI_REVIEW=1 scripts/gates.sh` adds the same review CI runs, before the change leaves the machine
-— `scripts/ai-review-local.sh`. It is the one place a stored key is used, and deliberately so: on
-this side of the trust boundary the key is already at home, so nothing is copied anywhere. It
-reads `syn-api-secrets`, **not** the `asgard-secrets` key bifrost serves prod with — a local tool
-must not share a fate with a running service — passes the key through the environment and the
-payloads through stdin (never as arguments, where `ps` would show them), writes nothing to disk,
-sends only the diff, and cannot fail the gates: a reviewer's opinion is advice, not a barrier. CI
-stays keyless on Vertex; this is the local convenience, not the system of record.
+— `scripts/ai-review-local.sh`, and with the same auth as CI: none stored. It mints a short-lived
+Vertex token from the gcloud login already on the machine, exactly as CI mints one from GitHub's
+OIDC. No key is read or copied, which is also the answer to *which cluster Gemini key to borrow* —
+neither. The cluster's keys belong to the services that own them (bifrost's serves prod; syn's
+belongs to a PHI system), and a review convenience has no business spending either one's quota or
+muddying its audit trail; a token from your own login is attributed to you and expires by itself.
+It sends only the diff, prints to the terminal, and cannot fail the gates — a reviewer's opinion
+is advice, not a barrier.
 
 ## Secrets policy
 
