@@ -6,3 +6,12 @@ members = ["crates/vitals-progress", "crates/vitals-program", "crates/vitals-cli
 version = "0.2.0"
 edition = "2021"
 license = "AGPL-3.0-or-later"
+
+# On-chain code is built in release, where Rust wraps integer overflow silently by default. The
+# arithmetic here is currently defended by bounds rather than by `checked_*` — norm_bps guards a
+# zero divisor and clamps, the tree refuses to append past MAX_LEAVES — and that reasoning was
+# checked, not assumed. This is the belt for the day someone adds a line that is not covered by
+# it: a wrapped counter in a program whose whole job is counting is not something a test would
+# necessarily catch, but a panicking transaction is.
+[profile.release]
+overflow-checks = true
