@@ -51,4 +51,12 @@ else
   printf '  \033[33mskip\033[0m  chain — no local validator\n'
 fi
 
+# An optional last reading: the same review CI runs, before the change leaves the machine. Off by
+# default because it makes a network call and needs the cluster; on with AI_REVIEW=1. It never
+# fails the gates — a reviewer's opinion is advice, not a gate — it just prints.
+if [ "${AI_REVIEW:-0}" = "1" ]; then
+  echo "── ai pre-review (Gemini, local) ──"
+  scripts/ai-review-local.sh
+fi
+
 [ "$FAIL" = 0 ] && echo "── all green ──" || { echo "── RED ──"; exit 1; }

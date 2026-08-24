@@ -58,6 +58,15 @@ One command, everything CI checks that can run offline, with graceful skips for 
 sandboxed machine cannot install (gitleaks, cargo-deny — CI runs them regardless). Chain gates
 join in when a local validator is up.
 
+`AI_REVIEW=1 scripts/gates.sh` adds the same review CI runs, before the change leaves the machine
+— `scripts/ai-review-local.sh`. It is the one place a stored key is used, and deliberately so: on
+this side of the trust boundary the key is already at home, so nothing is copied anywhere. It
+reads `syn-api-secrets`, **not** the `asgard-secrets` key bifrost serves prod with — a local tool
+must not share a fate with a running service — passes the key through the environment and the
+payloads through stdin (never as arguments, where `ps` would show them), writes nothing to disk,
+sends only the diff, and cannot fail the gates: a reviewer's opinion is advice, not a barrier. CI
+stays keyless on Vertex; this is the local convenience, not the system of record.
+
 ## Secrets policy
 
 | secret | where | why there |
