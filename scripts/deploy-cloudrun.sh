@@ -50,7 +50,15 @@ echo "── rpc       $RPC"
 ENV="GOOGLE_CLOUD_PROJECT=$PROJECT,VITALS_RPC=$RPC,VITALS_PROGRAM_ID=$PROGRAM_ID,VITALS_SCENARIOS=/app,VITALS_KEYPAIR=/relay/id.json"
 [ -n "$HEIMDALL" ] && ENV="$ENV,HEIMDALL_API_URL=$HEIMDALL"
 
-gcloud builds submit --project "$PROJECT" --tag "gcr.io/$PROJECT/$SERVICE" .
+# Phases, so CI can put a scanner between the build and the deploy without duplicating any of
+# the flags below — a duplicated flag list is a second definition of the deployment, and second
+# definitions drift. PHASE=all keeps the one-command behaviour for a human.
+PHASE="${PHASE:-all}"
+
+if [ "$PHASE" = "build" ] || [ "$PHASE" = "all" ]; then
+  gcloud builds submit --project "$PROJECT" --tag "gcr.io/$PROJECT/$SERVICE" .
+fi
+[ "$PHASE" = "build" ] && exit 0
 
 # One instance, because the anchoring tree is held in memory and two copies would each keep their
 # own and overwrite the other's leaves — the leaves their own proofs are built from.

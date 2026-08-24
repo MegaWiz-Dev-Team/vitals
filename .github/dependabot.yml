@@ -1,0 +1,17 @@
+# Dependency freshness is a security property here: the advisory ignore-list in deny.toml is
+# only honest if something keeps proposing the upgrades that would shrink it.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      solana:
+        patterns: ["solana-*", "agave-*"]
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

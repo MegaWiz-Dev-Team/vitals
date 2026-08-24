@@ -1,0 +1,72 @@
+# cargo-deny — the supply-chain gate.
+#
+# Three questions, answered on every push: does any dependency carry a known vulnerability, is
+# every licence compatible with shipping this workspace as AGPL-3.0-or-later, and does every
+# crate come from crates.io rather than a git URL somebody could move.
+
+[advisories]
+version = 2
+yanked = "deny"
+# Every id below arrives through the Solana SDK at versions pinned upstream — the deployed
+# program's own dependency tree is solana-program + borsh + this workspace, and the signing/TLS
+# advisories sit in the client and test tooling. The alternative to ignoring them is vendoring
+# the SDK. The list is exact ids on purpose: a NEW advisory still fails the build, and every
+# entry is owed a re-check at each SDK bump.
+ignore = [
+    "RUSTSEC-2021-0145", # atty — via solana clap tooling, unmaintained, no unsound use here
+    "RUSTSEC-2022-0093", # ed25519-dalek 1.x double-pubkey-sign — via solana-sdk keypair (client side)
+    "RUSTSEC-2023-0126", # rsa Marvin — via test/rpc tooling, no RSA in this product
+    "RUSTSEC-2024-0344", # curve25519-dalek timing — program tree already at fixed 4.1.3; old copy in client tree
+    "RUSTSEC-2024-0375", # atty successor advisory chain
+    "RUSTSEC-2024-0388", # derivative unmaintained — proc-macro, build-time only
+    "RUSTSEC-2024-0436", # paste unmaintained — proc-macro, build-time only
+    "RUSTSEC-2025-0119", # tonic — rpc client path only
+    "RUSTSEC-2025-0141", # solana client tree
+    "RUSTSEC-2025-0161", # solana client tree
+    "RUSTSEC-2026-0097", # solana client tree
+    "RUSTSEC-2026-0098", # rustls-webpki name constraints — RPC-over-TLS client path
+    "RUSTSEC-2026-0099", # rustls-webpki wildcard — same
+    "RUSTSEC-2026-0104", # rustls-webpki CRL panic — same
+    "RUSTSEC-2026-0173", # solana client tree
+    "RUSTSEC-2026-0186", # solana client tree
+    "RUSTSEC-2026-0247", # solana client tree
+    "RUSTSEC-2026-0248", # solana client tree
+    "RUSTSEC-2026-0251", # solana client tree
+    "RUSTSEC-2026-0253", # solana client tree
+    "RUSTSEC-2026-0255", # bincode — via solana zk sdk, not used by this workspace directly
+]
+
+[licenses]
+version = 2
+# What an AGPL-3.0-or-later work may incorporate. Everything here is GPL-compatible permissive
+# or weak copyleft; anything not listed fails the build and gets a deliberate decision instead
+# of a shrug.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unlicense",
+    "CC0-1.0",
+    "MPL-2.0",
+    "0BSD",
+    "OpenSSL",
+]
+
+[[licenses.clarify]]
+# ring's licence file is famously a concatenation; this is the standard clarification.
+crate = "ring"
+expression = "MIT AND ISC AND OpenSSL"
+license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+
+[bans]
+multiple-versions = "allow"   # the Solana SDK guarantees duplicates; denying is noise
+wildcards = "deny"            # a "*" version is a dependency nobody chose
