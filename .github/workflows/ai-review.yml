@@ -1,0 +1,55 @@
+name: ai-review
+
+# The AI half of the pipeline. The local half already exists — an agent writes the code and runs
+# every gate in scripts/gates.sh before each commit — so this job is the second, independent
+# reading: a reviewer with no memory of writing the change, told exactly what this program has
+# promised to keep true.
+#
+# It reviews against docs/INVARIANTS.md rather than generic taste, because that file is where
+# both real authorization bugs in this repository were ultimately caught: not by asking "is a
+# check missing" but by asking "who is allowed to write here".
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    # Skips quietly when the key is absent rather than failing every fork PR.
+    env:
+      HAVE_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: env.HAVE_KEY == 'true'
+        with:
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@c81e3bc69d1b18badbb63ba39581218f02421678 # v1
+        if: env.HAVE_KEY == 'true'
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review this pull request as a security reviewer for a Solana program whose product is
+            trust: every leaf anchored is a claim someone will verify years from now.
+
+            Read docs/INVARIANTS.md first. For each changed file, ask of every write path: who is
+            allowed to write here, and does the code check the actor or merely the shape? The two
+            real bugs in this repository's history were checks that existed but bound the wrong
+            thing — a tree PDA derived from a guessable id, a storage key that named nobody.
+
+            Specifically flag:
+            - any value a caller supplies that the program then treats as proven
+            - any new PDA or storage key whose seeds do not name an owner
+            - any change to AttemptRecord encoding that moves an existing byte (vt01/vt02 offsets
+              are frozen forever; only appending under a new tag is legal)
+            - any arithmetic on counters or scores outside the existing bounds reasoning
+            - any new #[ignore] test, silenced lint, or weakened assertion
+            - anything in a hidden/rubric path that would leak exam content into a public surface
+
+            If a change adds an invariant the program now relies on, require it to be added to
+            docs/INVARIANTS.md in the same PR. Comment only on what matters; do not restate the
+            diff.

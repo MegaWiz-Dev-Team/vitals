@@ -11,6 +11,11 @@
 //! ordered beat list — and a 1e-6 wobble in diastolic pressure cannot flip any of it. The
 //! trajectory is simulated; the outcome is proven.
 
+// No unsafe, enforced rather than observed. Nothing in the replay engine needs it, and in a codebase whose
+// product is verifiability, "the compiler checked every memory access" should be a property a
+// stranger can confirm from one line. (vitals-program cannot carry this: Solana's entrypoint!
+// macro expands to the unsafe input deserialisation every program has.)
+#![forbid(unsafe_code)]
 use vitals_sce::{render_beat, Sce, SceState};
 use sha2::{Digest, Sha256};
 

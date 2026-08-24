@@ -1,0 +1,81 @@
+name: cd-demo
+
+# Deploys the public demo to Cloud Run in `vitals-academy` — by hand, from a button, behind an
+# environment approval. Not on push: deploying is spending (min-instances 1 bills continuously)
+# and, once real learners exist, an interruption of them, so it stays a decision a person takes.
+#
+# Auth is keyless: GitHub's OIDC token is exchanged for the deployer service account through a
+# workload identity pool whose condition names exactly this repository. There is no GCP key in
+# any secret, so there is no GCP key to leak.
+#
+# What is deliberately NOT here: the Solana program deploy. That requires the program keypair —
+# the program's identity on every cluster — and the upgrade authority's signature, both of which
+# stay with a human until the authority is a multisig. scripts/deploy-devnet.sh is that path.
+on:
+  workflow_dispatch:
+    inputs:
+      program_id:
+        description: Solana program id the server should point at
+        required: true
+        default: 535FMHHZ4rp5hNmvSmdNFoaatLX82cCXHfRg3hpyBTSG
+
+permissions:
+  contents: read
+  id-token: write   # the OIDC exchange
+
+concurrency:
+  group: cd-demo    # one deploy at a time; the service is pinned to one instance for a reason
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: demo   # requires a human approval in the repo's environment settings
+    env:
+      PROJECT: vitals-academy
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+        with:
+          workload_identity_provider: projects/995399340966/locations/global/workloadIdentityPools/github/providers/github-oidc
+          service_account: github-deployer@vitals-academy.iam.gserviceaccount.com
+
+      - name: the secrets the service mounts must exist first
+        run: |
+          missing=""
+          for s in vitals-relay-key vitals-token heimdall-key; do
+            gcloud secrets describe "$s" --project "$PROJECT" >/dev/null 2>&1 || missing="$missing $s"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::missing Secret Manager entries:$missing — create them before deploying; the relay key is a decision, not a default"
+            exit 1
+          fi
+
+      - name: build
+        env:
+          VITALS_GCP_PROJECT: ${{ env.PROJECT }}
+          VITALS_PROGRAM_ID: ${{ inputs.program_id }}
+          PHASE: build
+        run: scripts/deploy-cloudrun.sh
+
+      - name: scan the image before it serves anyone
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: gcr.io/vitals-academy/vitals
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: deploy
+        env:
+          VITALS_GCP_PROJECT: ${{ env.PROJECT }}
+          VITALS_PROGRAM_ID: ${{ inputs.program_id }}
+          PHASE: deploy
+        run: scripts/deploy-cloudrun.sh
+
+      - name: the service answers, and points at the right chain
+        run: |
+          URL=$(gcloud run services describe vitals --project "$PROJECT" --region asia-southeast1 --format='value(status.url)')
+          echo "serving at $URL"
+          curl -sSf --max-time 20 "$URL/api/chain" | tee /tmp/chain.json
+          grep -q '"program"' /tmp/chain.json || { echo "::error::the service is up but not connected to a chain"; exit 1; }

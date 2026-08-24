@@ -13,6 +13,11 @@
 //! `no_std` and allocation-free: it compiles unchanged into the Anchor program, the verifier, and
 //! the wasm on the public verify page.
 
+// No unsafe, enforced rather than observed. Nothing in scoring and the Merkle tree needs it, and in a codebase whose
+// product is verifiability, "the compiler checked every memory access" should be a property a
+// stranger can confirm from one line. (vitals-program cannot carry this: Solana's entrypoint!
+// macro expands to the unsafe input deserialisation every program has.)
+#![forbid(unsafe_code)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod merkle;
