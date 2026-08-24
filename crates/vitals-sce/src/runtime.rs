@@ -364,13 +364,46 @@ impl SceState {
     /// text rather than a host-specific action type — one less thing for a second
     /// implementation to get wrong.
     pub fn apply(&mut self, action: &str) -> Vec<NarrativeBeat> {
+        let text = crate::text::canon(action).to_lowercase();
+        let sce_rc = Arc::clone(&self.sce);
+        let i = self.match_intervention(&sce_rc, &text);
+        self.fire(i)
+    }
+
+    /// Which intervention this text names, if any.
+    ///
+    /// Recognition, separated from application. The caller runs this once while the learner is
+    /// playing, writes the answer onto the tape, and replay never has to ask again — which is what
+    /// lets recognition get better without changing what an anchored run did.
+    pub fn resolve(&self, text: &str) -> Option<String> {
+        let sce_rc = Arc::clone(&self.sce);
+        let t = crate::text::canon(text).to_lowercase();
+        self.match_intervention(&sce_rc, &t).map(|i| sce_rc.interventions[i].id.clone())
+    }
+
+    /// Apply an intervention the caller has already identified.
+    ///
+    /// The route a resolved tape takes. Recognition happened once, when the run was played; here
+    /// there is an id and nothing to interpret, which is what keeps replay reproducible however
+    /// clever recognition gets. An id this scenario does not define does nothing — a verifier
+    /// replaying somebody else's tape must not panic on it, and half-applying would be worse.
+    pub fn apply_id(&mut self, id: &str) -> Vec<NarrativeBeat> {
+        let sce_rc = Arc::clone(&self.sce);
+        let i = sce_rc.interventions.iter().position(|iv| iv.id == id);
+        self.fire(i)
+    }
+
+    /// Run intervention `i`, then let the scenario move.
+    ///
+    /// Transitions and status are re-checked even when nothing matched, because time and the
+    /// patient do not wait for the learner to say something the machine understands.
+    fn fire(&mut self, i: Option<usize>) -> Vec<NarrativeBeat> {
         let mut beats = Vec::new();
         if self.outcome.is_some() { return beats; }
         let sce_rc = Arc::clone(&self.sce);
         let sce: &Sce = &sce_rc;
 
-        let text = action.to_lowercase();
-        if let Some(i) = self.match_intervention(sce, &text) {
+        if let Some(i) = i {
             let iv = &sce.interventions[i];
             let id = iv.id.clone();
             let eq = iv.equipment.clone();

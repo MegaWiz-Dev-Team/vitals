@@ -23,6 +23,14 @@ pub enum Step {
     Tick(f64),
     /// The player did something. Text, because that is what the matcher consumes.
     Do(String),
+    /// An order the learner gave, already resolved to the intervention it names.
+    ///
+    /// The text is kept because it is the only evidence of how the order was phrased, and a
+    /// debrief is half about phrasing. The id is what replay uses. Recognition therefore happens
+    /// once, while the run is being played, and never again — which is what lets recognition
+    /// improve without invalidating a leaf already anchored, and what lets an order arrive in a
+    /// language no keyword list covers.
+    Act { text: String, id: String },
     /// The player *asked* something.
     ///
     /// Recorded, never applied. History-taking is part of what a run was, so the question
@@ -82,6 +90,7 @@ pub fn resume(sce_json: &str, tape: &[Step]) -> Result<(SceState, Replay), Strin
                 st.tick(*dt)
             }
             Step::Do(text) => st.apply(text),
+            Step::Act { id, .. } => st.apply_id(id),
             // Deliberately inert. Asking costs time — which the surrounding Tick steps carry —
             // and reveals information, but it changes nothing about the patient.
             Step::Ask(_) => Vec::new(),
@@ -137,6 +146,11 @@ impl Step {
         Step::Do(vitals_sce::text::canon(text))
     }
 
+    /// Record an order together with what recognition resolved it to.
+    pub fn acted(text: &str, id: &str) -> Step {
+        Step::Act { text: vitals_sce::text::canon(text), id: id.to_string() }
+    }
+
     /// Record a question. Hashed into the leaf like an order, so canonicalised like one.
     pub fn asked(text: &str) -> Step {
         Step::Ask(vitals_sce::text::canon(text))
@@ -155,6 +169,10 @@ pub fn leaf(sce_hash: &[u8; 32], tape: &[Step], r: &Replay) -> [u8; 32] {
             // round-trips differently must not change the leaf.
             Step::Tick(dt) => h.update(format!("t{}\n", (dt * 1000.0).round() as i64)),
             Step::Do(text) => h.update(format!("d{text}\n")),
+            // A distinct prefix, so a tape that resolves nothing hashes byte for byte as it did
+            // before resolution existed and every leaf already anchored still verifies. The unit
+            // separator cannot occur in learner text, so no order can spell itself into another.
+            Step::Act { text, id } => h.update(format!("D{text}\x1f{id}\n")),
             // A tape with no questions hashes exactly as it did before questions existed, so
             // every leaf anchored under the older encoding still verifies.
             Step::Ask(text) => h.update(format!("a{text}\n")),
