@@ -1,4 +1,5 @@
 [package]
+publish = false   # internal workspace crate, never to crates.io
 name = "vitals-sce"
 description = "Independent implementation of the Vitals scenario semantics — schema and interpreter"
 version.workspace = true

@@ -1,4 +1,5 @@
 [package]
+publish = false   # internal workspace crate, never to crates.io
 name = "vitals-program"
 description = "The Vitals Solana program — recomputes progression instead of trusting a claim"
 version.workspace = true
