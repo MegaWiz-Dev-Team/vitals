@@ -1,35 +1,36 @@
 #!/usr/bin/env bash
 # A second reading of the working changes, before they ever leave this machine — the local mirror
-# of the Gemini PR review in CI.
+# of the Gemini PR review in CI, and the same auth as CI: none stored.
 #
-# The key never touches disk and never touches a command line. It is read from the cluster secret
-# into one shell variable, handed to the reviewer through the environment, and gone when the
-# process exits. Nothing is uploaded but the diff and the invariants, and the review prints to the
-# terminal — it is advice for the person about to commit, not a record.
+# It uses the gcloud login already on this machine to mint a short-lived Vertex token, exactly as
+# CI mints one from GitHub's OIDC. No API key is read, copied, or held — which sidesteps the
+# question of *which* cluster key to borrow, and its real answer: neither. The cluster's keys
+# belong to the services that own them (bifrost's serves prod; syn's belongs to a PHI system), and
+# a code-review convenience has no business spending either one's quota or muddying its audit
+# trail. A token from your own login is attributed to you and expires on its own.
 #
-# Two deliberate refusals:
-#   - it reads syn-api-secrets, not asgard-secrets: the latter is the key bifrost serves prod with,
-#     and a local tool must not share a fate with a running service.
-#   - it sends a DIFF, never the whole tree. The hidden rubric content this product guards lives in
-#     embla-cases, not here, but sending only the change keeps the habit honest.
+# Only the diff is sent, never the tree, and the review prints to the terminal — advice for the
+# person about to commit, not a record.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
 DIFF=$(git diff HEAD)
 [ -n "$DIFF" ] || { echo "  nothing changed — nothing to review"; exit 0; }
 
-KEY=$(kubectl get secret -n asgard syn-api-secrets \
-        -o jsonpath='{.data.GEMINI_API_KEY}' 2>/dev/null | base64 -d)
-if [ -z "$KEY" ]; then
-  echo "  ai-review skipped: syn-api-secrets/GEMINI_API_KEY not reachable (need the cluster)"
+TOKEN=$(gcloud auth print-access-token 2>/dev/null)
+if [ -z "$TOKEN" ]; then
+  echo "  ai-review skipped: no gcloud login (run: gcloud auth login)"
   exit 0
 fi
+PROJECT="${VITALS_GCP_PROJECT:-vitals-academy}"
+LOCATION="${VERTEX_LOCATION:-global}"
 
 INV=$(cat docs/INVARIANTS.md 2>/dev/null)
 
-# The key goes in through the environment, the payloads through stdin — never as arguments, where
-# they would show up in `ps` and the shell history of anyone sharing this box.
-GEMINI_KEY="$KEY" REVIEW_DIFF="$DIFF" REVIEW_INV="$INV" python3 - <<'PY'
+# Token and payloads go in through the environment, never as arguments where ps and shell history
+# would capture them.
+REVIEW_TOKEN="$TOKEN" REVIEW_PROJECT="$PROJECT" REVIEW_LOCATION="$LOCATION" \
+REVIEW_DIFF="$DIFF" REVIEW_INV="$INV" python3 - <<'PY'
 import os, json, urllib.request, urllib.error
 
 prompt = f"""You are the security reviewer for a Solana program whose product is trust: every
@@ -60,10 +61,15 @@ DIFF:
 {os.environ['REVIEW_DIFF'][:60000]}
 """
 
+proj, loc = os.environ["REVIEW_PROJECT"], os.environ["REVIEW_LOCATION"]
+host = "aiplatform.googleapis.com" if loc == "global" else f"{loc}-aiplatform.googleapis.com"
+url = (f"https://{host}/v1/projects/{proj}/locations/{loc}"
+       f"/publishers/google/models/gemini-2.5-flash:generateContent")
 req = urllib.request.Request(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
-    data=json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode(),
-    headers={"Content-Type": "application/json", "x-goog-api-key": os.environ["GEMINI_KEY"]},
+    url,
+    data=json.dumps({"contents": [{"role": "user", "parts": [{"text": prompt}]}]}).encode(),
+    headers={"Content-Type": "application/json",
+             "Authorization": "Bearer " + os.environ["REVIEW_TOKEN"]},
 )
 try:
     with urllib.request.urlopen(req, timeout=60) as r:
