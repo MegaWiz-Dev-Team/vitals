@@ -77,7 +77,9 @@ SECRETS="/relay/id.json=vitals-relay-key:latest,VITALS_TOKEN=vitals-token:latest
 PHASE="${PHASE:-all}"
 
 if [ "$PHASE" = "build" ] || [ "$PHASE" = "all" ]; then
-  gcloud builds submit --project "$PROJECT" --tag "gcr.io/$PROJECT/$SERVICE" .
+  # Through cloudbuild.yaml rather than --tag: the Dockerfile needs BuildKit, which the
+  # implicit --tag build does not enable.
+  gcloud builds submit --project "$PROJECT" --config cloudbuild.yaml --substitutions "_SERVICE=$SERVICE" .
 fi
 [ "$PHASE" = "build" ] && exit 0
 
