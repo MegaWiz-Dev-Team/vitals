@@ -10,10 +10,46 @@
 
 use serde_json::{json, Value};
 
-pub struct Patient {
+/// Which model is speaking for her.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Backend {
+    /// The local model on the Heimdall gateway. Preferred: nothing leaves the machine.
+    Local,
+    /// The cloud model, standing in when the local one cannot be reached.
+    Cloud,
+}
+
+impl Backend {
+    /// Pick the voice for an encounter, given which backends answered a reachability check.
+    ///
+    /// Local always wins when it can serve — the cloud is an understudy, not a load-balanced
+    /// peer. `None` means neither answered, and the app plays without a voice and says so rather
+    /// than pretending one exists. Decided once, here, and held for the whole encounter.
+    pub fn choose(local_ok: bool, cloud_ok: bool) -> Option<Backend> {
+        if local_ok {
+            Some(Backend::Local)
+        } else if cloud_ok {
+            Some(Backend::Cloud)
+        } else {
+            None
+        }
+    }
+}
+
+/// One model endpoint the patient can speak through.
+struct Wire {
     url: String,
-    key: String,
     model: String,
+    /// A static bearer (the local gateway key). `None` means mint one per request from the
+    /// metadata server — how Cloud Run reaches Vertex with no key stored anywhere, the same
+    /// pattern `store.rs` uses for Firestore.
+    key: Option<String>,
+}
+
+pub struct Patient {
+    /// The endpoint chosen for this encounter, and which kind it is.
+    wire: Wire,
+    backend: Backend,
     persona: Value,
 }
 
@@ -21,13 +57,41 @@ impl Patient {
     /// `None` when the gateway is unreachable or unconfigured. The app then plays without a
     /// voice and says so, rather than blocking on a service the demo does not require.
     pub fn connect(story_path: &std::path::Path) -> Option<Patient> {
-        let url = std::env::var("HEIMDALL_API_URL")
-            .unwrap_or_else(|_| "http://127.0.0.1:8080/v1".into());
-        let key = std::env::var("HEIMDALL_API_KEY").ok()?;
-        let model = std::env::var("HEIMDALL_CHAT_MODEL")
-            .unwrap_or_else(|_| "mlx-community/gemma-4-26b-a4b-it-4bit".into());
         let persona: Value = serde_json::from_str(&std::fs::read_to_string(story_path).ok()?).ok()?;
-        Some(Patient { url, key, model, persona })
+
+        // The local gateway: preferred, requires its key. Absent key ⇒ no local voice.
+        let local = std::env::var("HEIMDALL_API_KEY").ok().map(|key| Wire {
+            url: std::env::var("HEIMDALL_API_URL")
+                .unwrap_or_else(|_| "http://127.0.0.1:8080/v1".into()),
+            model: std::env::var("HEIMDALL_CHAT_MODEL")
+                .unwrap_or_else(|_| "mlx-community/gemma-4-26b-a4b-it-4bit".into()),
+            key: Some(key),
+        });
+
+        // The cloud stand-in: Vertex OpenAI-compat, keyless via the metadata server. Configured
+        // by VITALS_VERTEX_URL (the openapi base) so it is off unless deliberately turned on.
+        let cloud = std::env::var("VITALS_VERTEX_URL").ok().map(|url| Wire {
+            url,
+            model: std::env::var("VITALS_VERTEX_MODEL")
+                .unwrap_or_else(|_| "google/gemini-3.1-flash-lite".into()),
+            key: None,
+        });
+
+        // One reachability check each, now, so the choice is made once and held. A per-turn
+        // decision could swap her voice mid-examination.
+        let local_ok = local.as_ref().is_some_and(reachable);
+        let cloud_ok = cloud.as_ref().is_some_and(reachable);
+        let backend = Backend::choose(local_ok, cloud_ok)?;
+        let wire = match backend {
+            Backend::Local => local?,
+            Backend::Cloud => cloud?,
+        };
+        Some(Patient { wire, backend, persona })
+    }
+
+    /// Which model is speaking this encounter — for the status line and the debrief.
+    pub fn backend(&self) -> Backend {
+        self.backend
     }
 
     pub fn name(&self) -> String {
@@ -89,14 +153,15 @@ impl Patient {
         messages.push(json!({"role":"user","content": question}));
 
         let body = json!({
-            "model": self.model,
+            "model": self.wire.model,
             "max_tokens": 90,
             "temperature": 0.7,
             "messages": messages
         });
 
-        let resp = ureq::post(&format!("{}/chat/completions", self.url.trim_end_matches('/')))
-            .set("Authorization", &format!("Bearer {}", self.key))
+        let bearer = self.wire.bearer()?;
+        let resp = ureq::post(&format!("{}/chat/completions", self.wire.url.trim_end_matches('/')))
+            .set("Authorization", &format!("Bearer {bearer}"))
             .set("Content-Type", "application/json")
             .timeout(std::time::Duration::from_secs(90))
             .send_json(body)
@@ -108,5 +173,49 @@ impl Patient {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .ok_or_else(|| "the gateway returned nothing".to_string())
+    }
+}
+
+/// A cheap check that a model endpoint will answer before an encounter commits to it.
+///
+/// One short request with a tiny budget. It is allowed to be wrong in the safe direction: a
+/// local model that passes here and dies mid-encounter just means one muted turn, not a swapped
+/// voice — the backend is already fixed for the session by then.
+fn reachable(w: &Wire) -> bool {
+    let Ok(bearer) = w.bearer() else { return false };
+    ureq::post(&format!("{}/chat/completions", w.url.trim_end_matches('/')))
+        .set("Authorization", &format!("Bearer {bearer}"))
+        .set("Content-Type", "application/json")
+        .timeout(std::time::Duration::from_secs(6))
+        .send_json(json!({
+            "model": w.model, "max_tokens": 1,
+            "messages": [{"role": "user", "content": "ok"}]
+        }))
+        .is_ok()
+}
+
+impl Wire {
+    /// The bearer token for this endpoint: the static key if it has one, else a short-lived
+    /// token from the Cloud Run metadata server — the keyless path Vertex uses, the same one
+    /// `store.rs` uses for Firestore.
+    fn bearer(&self) -> Result<String, String> {
+        if let Some(k) = &self.key {
+            return Ok(k.clone());
+        }
+        if let Ok(t) = std::env::var("GOOGLE_ACCESS_TOKEN") {
+            return Ok(t);
+        }
+        let resp = ureq::get(
+            "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+        )
+        .set("Metadata-Flavor", "Google")
+        .timeout(std::time::Duration::from_secs(5))
+        .call()
+        .map_err(|e| format!("metadata token: {e}"))?;
+        let v: Value = resp.into_json().map_err(|e| format!("metadata token: {e}"))?;
+        v["access_token"]
+            .as_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| "metadata token: no access_token".to_string())
     }
 }
