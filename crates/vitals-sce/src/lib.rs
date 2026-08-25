@@ -9,6 +9,7 @@
 // macro expands to the unsafe input deserialisation every program has.)
 #![forbid(unsafe_code)]
 pub mod text;
+pub mod reveal_gate;
 pub mod runtime;
 pub mod schema;
 
