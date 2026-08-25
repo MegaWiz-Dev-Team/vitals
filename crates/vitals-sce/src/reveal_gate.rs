@@ -102,3 +102,29 @@ impl Gate {
         out
     }
 }
+
+/// The constraint to add to a regeneration, given what the last reply leaked.
+///
+/// Lives here, not in the patient: which node leaked and what that means is the gate's knowledge,
+/// so the patient stays pure model-plumbing that takes an opaque hint and appends it to the
+/// system prompt. `None` when nothing leaked — the caller sends the reply unchanged.
+///
+/// It names the node ids, which the system prompt already maps to their scripted lines, so this
+/// reveals nothing new; it only re-imposes the reveal discipline the model just broke. A blind
+/// re-roll gets the same tendency back — this is what makes a regeneration actually change the
+/// answer.
+pub fn retry_hint(violations: &[Violation]) -> Option<String> {
+    if violations.is_empty() {
+        return None;
+    }
+    let ids: Vec<&str> = violations
+        .iter()
+        .map(|Violation::UnearnedReveal(id)| id.as_str())
+        .collect();
+    Some(format!(
+        "You just volunteered something the patient reveals only when asked about it directly. \
+         Do not mention {} unless the doctor asks about that specifically. Answer again, in \
+         character, without it.",
+        ids.join(" or "),
+    ))
+}

@@ -83,3 +83,25 @@ fn a_clean_reply_that_earns_nothing_and_leaks_nothing_is_fine() {
     let earned = std::collections::HashSet::new();
     assert!(g.check("It hurts. I'm frightened.", &earned).is_empty());
 }
+
+// ── the retry hint: gate-side, so the patient stays pure model-plumbing ──────────────────────
+
+#[test]
+fn a_clean_reply_asks_for_no_retry() {
+    // No violations, no hint — the caller sends the reply as is.
+    assert_eq!(vitals_sce::reveal_gate::retry_hint(&[]), None);
+}
+
+#[test]
+fn the_hint_names_what_leaked_and_says_not_to_volunteer_it() {
+    use vitals_sce::reveal_gate::{retry_hint, Violation};
+    let h = retry_hint(&[
+        Violation::UnearnedReveal("previous".into()),
+        Violation::UnearnedReveal("meds".into()),
+    ])
+    .expect("a hint for a leak");
+    // It carries the ids the system prompt already maps to content, and the discipline to apply.
+    assert!(h.contains("previous"), "{h}");
+    assert!(h.contains("meds"), "{h}");
+    assert!(h.to_lowercase().contains("unless"), "{h}");
+}
