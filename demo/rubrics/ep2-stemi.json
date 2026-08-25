@@ -1,0 +1,13 @@
+{
+  "case": "ep2-stemi",
+  "pass_bps": 7000,
+  "status": "provisional — needles derived from the ep2-stemi automaton (intervention ids, harm names, outcome ids); point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "items": [
+    { "label": "12-lead ECG obtained",              "type": "action",     "needle": "ecg",                       "points": 6 },
+    { "label": "Aspirin given",                      "type": "action",     "needle": "aspirin",                   "points": 6 },
+    { "label": "Reperfusion — primary PCI or lytics","type": "action_any", "any_of": ["cath", "thrombolys"],      "points": 12 },
+    { "label": "Avoided nitrate in RV infarct",      "type": "no_harm",    "needle": "nitrate in RV infarct",     "points": 5 },
+    { "label": "Avoided shock to a perfusing rhythm","type": "no_harm",    "needle": "unsynchronised shock",      "points": 5 },
+    { "label": "Patient reperfused (survives)",      "type": "outcome",    "any_of": ["win_discharge", "win_icu"],"points": 6 }
+  ]
+}
