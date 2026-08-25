@@ -487,6 +487,9 @@ a.give:hover{filter:brightness(1.06)}
     <span class="spacer"></span>
     <button class="btn" id="diff" data-d="easy">easy</button>
     <span class="ep" id="chainstate">—</span>
+    <!-- The design's point, on screen: the chain knows how many times you started. Five
+         practice runs need five visible commitments, and this is where they are visible. -->
+    <span class="ep" id="tally" title="what the chain has counted for this account">—</span>
   </div>
 
   <main class="stage">
@@ -725,10 +728,19 @@ async function sign(hex){
 }
 /* prepare on the server → sign here → submit. The server cannot do the middle step. */
 let runCommitted=false;
+/* The two numbers the chain holds against this account: declared starts (the commitment
+   account's count) and anchored proofs. Kept here so a commit can move the counter the moment
+   it lands, without waiting for the next full chain read. */
+let TALLY={started:null,anchored:0};
+function showTally(){
+  if(TALLY.started==null && !TALLY.anchored) return;
+  $('#tally').textContent=`started ${TALLY.started??0} · anchored ${TALLY.anchored}`;
+}
 async function commitRun(){
   runCommitted=false;
   const r=await chainDo('/api/commit?id='+id);
-  if(r&&r.committed){runCommitted=true; ev('note','—','committed — attempt #'+r.started+' on the record');}
+  if(r&&r.committed){runCommitted=true; ev('note','—','committed — attempt #'+r.started+' on the record');
+    if(r.started!=null){TALLY.started=r.started; showTally();}}
   else if(r&&r.error&&!/no chain/.test(r.error)) ev('note','—','commit failed: '+r.error);
   return r;
 }
@@ -1182,6 +1194,12 @@ async function chainState(){
     ? `localnet · tree #${c.tree_id} · ${c.anchored} anchored`+(c.proven!=null?` · ${c.proven} yours`:'')
     : 'no validator';
   $('#anchor').disabled = !c.connected || !over;
+  if(me && c.connected){
+    const a=await accountState();
+    if(a && a.started!=null) TALLY.started=a.started;
+    TALLY.anchored=c.proven||0;
+    showTally();
+  }
   return c;
 }
 
@@ -1245,6 +1263,9 @@ $('#anchor').onclick=async()=>{
   if(r.error){v.innerHTML+=`<span class="r">${r.error}</span>`;$('#anchor').textContent='anchor this run on chain';$('#anchor').disabled=false;return;}
   v.innerHTML+=`<span class="g">anchored at index ${r.index} · score ${r.score} · ${r.proven?'proven':'PROOF FAILED'}</span>`;
   v.innerHTML+=`<span class="n">root ${r.root.slice(0,24)}… · ${r.leaves} leaves · ${r.counted} counted</span>`;
+  /* The star the station card wears: earned here, by an anchor that really landed. */
+  const st=starred(), e=$('#ep').value;
+  if(!st.includes(e)){st.push(e);localStorage.setItem('vitals.starred',JSON.stringify(st));}
   $('#anchor').textContent='anchored'; ['#c1','#c2','#c3','#c4'].forEach(s=>$(s).disabled=false); chainState();
 };
 [['#c4',4],['#c3',3],['#c2',2],['#c1',1]].forEach(([sel,lv])=>{
@@ -1302,19 +1323,71 @@ $('#copy').onclick=async()=>{ const t=await (await fetch('/api/tape?id='+id+asMe
 
 /* ─── lobby ────────────────────────────────────────────────────────────────── */
 const cleared=()=>JSON.parse(localStorage.getItem('vitals.cleared')||'[]');
-const open_=i=>i===0||cleared().includes(SEASON[i-1].id);
-function renderSeason(){
+/* Which episodes this browser has anchored on chain. Written only from a real anchor result —
+   the star is a fact about the chain, cached here so the lobby shows it without a per-case
+   query, which the chain does not offer yet. */
+const starred=()=>JSON.parse(localStorage.getItem('vitals.starred')||'[]');
+
+/* ─── what opens a door ────────────────────────────────────────────────────────
+   With a chain: the level the PROGRAM computed from proven attempts — the UI only compares a
+   tier's threshold against a number the chain certified, so a door that opens here opened
+   because the record earned it. localStorage decides only when there is no chain to ask
+   (a kiosk, an offline laptop), where nothing is claimed and nothing is owed. */
+const TIER_LV={student:0,intern:1,resident:2};
+const LVNAME={1:'Advanced beginner',2:'Competent',3:'Proficient',4:'Expert'};
+let CHAINLV=null; /* null = no chain reachable → the old local ladder */
+async function chainLevel(){
+  try{
+    const me=await identity(); if(!me)return null;
+    const pr=await (await fetch('/api/progress?account='+acctOf())).json();
+    if(pr.error)return null;
+    return pr.level==null?0:pr.level;
+  }catch(e){ return null }
+}
+const open_=i=>{
+  if(i===0)return true;
+  if(CHAINLV!=null)return CHAINLV>=TIER_LV[SEASON[i].tier];
+  return cleared().includes(SEASON[i-1].id);
+};
+/* Paint now, ask the chain after: a stranger's first click must never wait on an RPC. The
+   lobby appears instantly under whatever was last known, and repaints only if the chain's
+   answer changes a door. */
+async function renderSeason(){
+  paintSeason();
+  const lv=await chainLevel();
+  if(lv!==CHAINLV){ CHAINLV=lv; paintSeason(); }
+}
+function paintSeason(){
   $('#eps').innerHTML=SEASON.map((e,i)=>{
-    const un=open_(i), done=cleared().includes(e.id);
+    const un=open_(i), done=cleared().includes(e.id), star=starred().includes(e.id);
+    const need=TIER_LV[e.tier];
     const art=e.art?`<img src="${e.art}" alt="">`:`<div class="art-ph">art in production</div>`;
-    return `<button class="tile ${un?'':'lock'}" data-ep="${e.id}" ${un?'':'disabled'}>
-      <div class="art">${art}<span class="no">${e.n}${done?' · cleared':''}</span><span class="tier">${e.tier}</span></div>
+    /* A locked door with a chain behind it is a door you can ask the program to open: the
+       claim runs on chain and the program grants or refuses from the record alone. Without a
+       chain the lock stays a lock, and only the old local ladder lifts it. */
+    const lockGo = CHAINLV!=null
+      ? `claim ${LVNAME[need]||'a level'} to open`
+      : `clear ${SEASON[i-1]?SEASON[i-1].n:''} to open`;
+    const claimable = !un && CHAINLV!=null;
+    return `<button class="tile ${un?'':'lock'}" data-ep="${e.id}"
+      ${claimable?`data-claim="${need}"`:''} ${un||claimable?'':'disabled'}>
+      <div class="art">${art}<span class="no">${e.n}${star?' <span title="anchored on chain">★</span>':''}${done?' · cleared':''}</span><span class="tier">${e.tier}</span></div>
       <div class="body"><h3>${e.t}</h3><p>${e.d}</p>
-      <span class="go">${un?'enter the bay':'clear '+SEASON[i-1].n+' to open'}</span></div></button>`;
+      <span class="go">${un?'enter the bay':lockGo}</span></div></button>`;
   }).join('');
   $('#eps').querySelectorAll('.tile:not(.lock)').forEach(b=>b.onclick=()=>{
     $('#ep').value=b.dataset.ep; $('#lobby').classList.add('hide');
     $('#game').classList.remove('hide'); $('#start').click(); });
+  /* The claim happens on the card that is locked, and the verdict lands on it too: the
+     program computes, then the door opens — or says why it will not. */
+  $('#eps').querySelectorAll('.tile.lock[data-claim]').forEach(b=>b.onclick=async()=>{
+    const go=b.querySelector('.go'), was=go.textContent;
+    go.textContent='asking the program…';
+    const r=await chainDo('/api/claim?level='+b.dataset.claim);
+    if(r&&r.granted){ go.textContent='✓ '+(r.message||'granted'); setTimeout(renderSeason,900); }
+    else { go.textContent='✗ '+((r&&(r.message||r.error))||'refused');
+           setTimeout(()=>{go.textContent=was;},2600); }
+  });
   $('#coin-n').textContent=cleared().length;
 }
 renderSeason(); renderModes();
