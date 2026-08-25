@@ -68,6 +68,8 @@ impl Meter {
             num("VITALS_TURNS_PER_MIN", 6) as usize,
             num("VITALS_TURNS_PER_DAY", 200) as usize,
             num("VITALS_MONTHLY_TURNS", 20_000),
+            // /donate always serves the built-in treasury page; this env var's only job is the
+            // sentinel that shows the donate button — an off-switch that needs no rebuild.
             std::env::var("VITALS_DONATE_URL").ok().filter(|s| !s.is_empty()),
             store,
         )

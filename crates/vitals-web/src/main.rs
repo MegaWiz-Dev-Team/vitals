@@ -25,6 +25,9 @@ const PAGE: &str = include_str!("../static/index.html");
 /// because the first visitor a public URL meets is as likely to be a reviewer deciding what this
 /// company is as a learner deciding whether to press play — and the bay answers only the second.
 const LANDING: &str = include_str!("../static/landing.html");
+/// Where the money goes: the treasury address, a Solana Pay QR, and the explorer link to audit
+/// it. Baked into the binary like the landing — a donation page that can 404 is a donation lost.
+const DONATE: &str = include_str!("../static/donate.html");
 /// The pitch, served by the same process that serves the bay.
 ///
 /// Baked in rather than read from disk. Twice in one day a path that existed on the build machine
@@ -1005,17 +1008,15 @@ fn main() {
             // The month's spend, the ceiling and where donations go — public, because the
             // ceiling being visible is the point. Anyone can check what the bay has left.
             (Method::Get, "/api/meter") => json(meter.view()),
-            // Through the server so the click is counted — measured conversion is the evidence
-            // a funder asks for — then straight on to the payment page.
-            (Method::Get, "/donate") => match meter.donate_url().map(str::to_string) {
-                Some(to) => {
-                    meter.click(&store);
-                    Response::from_string("")
-                        .with_status_code(302)
-                        .with_header(Header::from_bytes(&b"Location"[..], to.as_bytes()).unwrap())
-                }
-                None => Response::from_string("no donation link is configured yet").with_status_code(404),
-            },
+            // The treasury page, always — no env var in this handler, so there is nothing to
+            // misconfigure into a loop. The visit is counted: page views of /donate are the
+            // conversion this side can measure honestly; the money itself is audited on chain.
+            // VITALS_DONATE_URL has exactly one remaining job, elsewhere: the sentinel that
+            // shows the donate button in the UI.
+            (Method::Get, "/donate") => {
+                meter.click(&store);
+                html(DONATE)
+            }
             (Method::Get, "/api/chain") => {
                 let t = tree.lock().unwrap();
                 let who = param(&url, "player").and_then(|p| pubkey(&p));
