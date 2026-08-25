@@ -35,3 +35,6 @@ docs/COLOSSEUM_FIT.md
 docs/PRECEDENT_FRONTIER.md
 docs/COLOSSEUM_SUBMISSION_PLAN.md
 docs/DECISIONS.md
+bench/p2_probes.txt
+bench/p2_results.md
+pitch/*backup*.html
