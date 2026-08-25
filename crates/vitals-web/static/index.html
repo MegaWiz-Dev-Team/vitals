@@ -1344,7 +1344,11 @@ const starred=()=>JSON.parse(localStorage.getItem('vitals.starred')||'[]');
    tier's threshold against a number the chain certified, so a door that opens here opened
    because the record earned it. localStorage decides only when there is no chain to ask
    (a kiosk, an offline laptop), where nothing is claimed and nothing is owed. */
-const TIER_LV={student:0,intern:1,resident:2};
+/* Per episode, not per tier — and the difference is a deadlock. Competent needs three DISTINCT
+   cases anchored, so the third case must be reachable at Advanced beginner: gate EP3 at the
+   level EP3 is needed to earn, and the door would be its own key, shut forever. EP3 therefore
+   opens at L1 with EP2; the Competent wall stands in front of EP4-5. */
+const NEED={ep1:0,ep2:1,ep3:1,ep4:2,ep5:2};
 const LVNAME={1:'Advanced beginner',2:'Competent',3:'Proficient',4:'Expert'};
 let CHAINLV=null; /* null = no chain reachable → the old local ladder */
 async function chainLevel(){
@@ -1357,7 +1361,7 @@ async function chainLevel(){
 }
 const open_=i=>{
   if(i===0)return true;
-  if(CHAINLV!=null)return CHAINLV>=TIER_LV[SEASON[i].tier];
+  if(CHAINLV!=null)return CHAINLV>=NEED[SEASON[i].id];
   return cleared().includes(SEASON[i-1].id);
 };
 /* Paint now, ask the chain after: a stranger's first click must never wait on an RPC. The
@@ -1371,7 +1375,7 @@ async function renderSeason(){
 function paintSeason(){
   $('#eps').innerHTML=SEASON.map((e,i)=>{
     const un=open_(i), done=cleared().includes(e.id), star=starred().includes(e.id);
-    const need=TIER_LV[e.tier];
+    const need=NEED[e.id];
     const art=e.art?`<img src="${e.art}" alt="">`:`<div class="art-ph">art in production</div>`;
     /* A locked door with a chain behind it is a door you can ask the program to open: the
        claim runs on chain and the program grants or refuses from the record alone. Without a
