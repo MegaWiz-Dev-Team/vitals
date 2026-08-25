@@ -66,11 +66,11 @@ Named so they are not rediscovered as findings.
 - **Invariant 3 is untestable from outside.** It guards an account whose contents disagree with its
   own address, which cannot be produced through any instruction. It is defence against a future
   bug, not against a caller.
-- **`TreeFull` and `ClaimFull` are not covered at the program boundary.** They need 4,096 leaves
-  and 16 anchor-and-prove cycles respectively; both are better reached by pre-seeding an account
-  than by paying for them on every run.
-- **`WrongOwner` is not covered.** It needs an account owned by another program, which
-  `ProgramTest::add_account` can construct.
+- ~~`TreeFull`, `ClaimFull`, `WrongOwner` uncovered~~ — **now covered.** All three are reached by
+  pre-seeding the edge state with `ProgramTest::add_account` (a full tree at `MAX_LEAVES`, a claim
+  buffer at `CLAIM_CAPACITY`, an account owned by the system program) rather than paying for
+  thousands of real operations. Every one of the sixteen error variants now has a test that fires
+  it.
 - **Overflow.** The arithmetic is defended by bounds rather than by `checked_*` — `norm_bps`
   returns early on a zero divisor and clamps, the tree checks before incrementing — and
   `overflow-checks` is on in release so a future unguarded line aborts rather than wraps.

@@ -1005,3 +1005,162 @@ async fn a_zero_commitment_is_refused() {
     )).await.unwrap_err().unwrap();
     assert_eq!(custom(&e), Some(VitalsError::BadRecord as u32));
 }
+
+/// Fund a keypair we control so it can be the funder/signer, since ProgramTest's own payer is a
+/// random key and the tree PDA is derived from whoever funds. Seeding our own operator lets the
+/// pre-seeded fixtures below be derived from a key we hold.
+fn fund(pt: &mut ProgramTest, who: &Pubkey) {
+    pt.add_account(*who, solana_sdk::account::Account {
+        lamports: 100_000_000_000,
+        data: vec![],
+        owner: system_program::id(),
+        executable: false,
+        rent_epoch: 0,
+    });
+}
+
+/// Pre-seed an account the program will read, so a full/foreign state can be reached without
+/// paying for thousands of real operations to build it.
+fn seed(pt: &mut ProgramTest, key: Pubkey, owner: Pubkey, mut data: Vec<u8>, len: usize) {
+    data.resize(len, 0);
+    pt.add_account(
+        key,
+        solana_sdk::account::Account {
+            lamports: 1_000_000_000,
+            data,
+            owner,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+}
+
+/// A tree at capacity refuses the next leaf rather than wrapping or overwriting.
+///
+/// MAX_LEAVES is 4,096; anchoring that many to reach the edge honestly is not a test, it is a
+/// denial-of-service on the suite. The edge state is pre-seeded instead — a tree whose next index
+/// is already MAX_LEAVES — and the one thing under test is that the next append is refused.
+#[tokio::test]
+async fn a_full_tree_refuses_another_leaf() {
+    let pid = Pubkey::new_unique();
+    let mut pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
+    let op = Keypair::new();
+    let me = op.pubkey();
+    fund(&mut pt, &me);
+
+    let (tree, _, _) = pdas(&pid, &me, &me);
+    let full = TreeAccount {
+        root: [0; 32],
+        next_index: vitals_progress::merkle::MAX_LEAVES,
+        filled: [[0; 32]; vitals_progress::merkle::DEPTH],
+    };
+    seed(&mut pt, tree, pid, borsh::to_vec(&full).unwrap(), TREE_LEN);
+
+    let (mut banks, _p, bh) = pt.start().await;
+
+    let mut bh = bh;
+    banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acct(&pid, &me)], Instruction::OpenAccount)],
+        Some(&me), &[&op], bh,
+    )).await.expect("open");
+
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    let (ch, cs) = committed(&mut banks, pid, &op, &op, bh).await;
+    let mut r = rec(&me, 1, Outcome::WinDischarge, 0, Difficulty::Student);
+    r.commitment = ch;
+    r.committed_slot = cs;
+
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    let e = banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acct(&pid, &me), tree, cpda(&pid, &me)],
+             Instruction::AnchorReplay { tree_id: TREE, record: wire(&r) })],
+        Some(&me), &[&op], bh,
+    )).await.unwrap_err().unwrap();
+    assert_eq!(custom(&e), Some(VitalsError::TreeFull as u32));
+}
+
+/// A claim buffer at capacity refuses the seventeenth proof.
+///
+/// Same reasoning: sixteen honest anchor-and-prove cycles to fill it is cost without insight, so
+/// the full buffer is pre-seeded with sixteen distinct proven attempts and the test anchors and
+/// proves one more real run. The proof itself must pass — the leaf really is in the tree — so
+/// what is under test is precisely the capacity refusal and not some earlier failure.
+#[tokio::test]
+async fn a_full_claim_buffer_refuses_another_proof() {
+    let pid = Pubkey::new_unique();
+    let mut pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
+    let op = Keypair::new();
+    let me = op.pubkey();
+    fund(&mut pt, &me);
+
+    let (_, claim, _) = pdas(&pid, &me, &me);
+    let attempts: Vec<ProvenAttempt> = (0..CLAIM_CAPACITY as u8)
+        .map(|i| ProvenAttempt {
+            leaf: [100 + i; 32], // distinct, and none equal to the real leaf below
+            case: [0; 32], score: 100, max: 100, difficulty: 0, exam_mode: false,
+        })
+        .collect();
+    let full = ClaimAccount { player: me.to_bytes(), count: CLAIM_CAPACITY as u8, attempts };
+    seed(&mut pt, claim, pid, borsh::to_vec(&full).unwrap(), CLAIM_LEN);
+
+    let (mut banks, _p, bh) = pt.start().await;
+    let (tree, _, _) = pdas(&pid, &me, &me);
+    let acc = acct(&pid, &me);
+
+    let mut bh = bh;
+    banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc], Instruction::OpenAccount)],
+        Some(&me), &[&op], bh,
+    )).await.expect("open");
+
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    let (ch, cs) = committed(&mut banks, pid, &op, &op, bh).await;
+    let mut r = rec(&me, 1, Outcome::WinDischarge, 0, Difficulty::Student);
+    r.commitment = ch;
+    r.committed_slot = cs;
+
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc, tree, cpda(&pid, &me)],
+             Instruction::AnchorReplay { tree_id: TREE, record: wire(&r) })],
+        Some(&me), &[&op], bh,
+    )).await.expect("anchor");
+
+    let path = merkle::prove(&[r.leaf()], 0).unwrap();
+    bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+    let e = banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc, tree, claim], Instruction::ProveAttempt {
+            tree_id: TREE, record: wire(&r), index: 0, path: path.to_vec(),
+            commitment: r.commitment, committed_slot: r.committed_slot })],
+        Some(&me), &[&op], bh,
+    )).await.unwrap_err().unwrap();
+    assert_eq!(custom(&e), Some(VitalsError::ClaimFull as u32));
+}
+
+/// An account the program is handed but does not own is refused.
+///
+/// The address is the right one — it is the account PDA for this player — but it is owned by the
+/// system program, not by us. A program that read it anyway would trust bytes an attacker could
+/// have written. `authorised` checks ownership before it reads.
+#[tokio::test]
+async fn an_account_owned_by_another_program_is_refused() {
+    let pid = Pubkey::new_unique();
+    let mut pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
+    let op = Keypair::new();
+    let me = op.pubkey();
+    fund(&mut pt, &me);
+
+    // A well-formed Account, at the right PDA, but owned by the system program.
+    let acc = acct(&pid, &me);
+    let plausible = Account { id: me.to_bytes(), authorities: vec![me.to_bytes()] };
+    seed(&mut pt, acc, system_program::id(), borsh::to_vec(&plausible).unwrap(), ACCOUNT_LEN);
+
+    let (banks, _p, bh) = pt.start().await;
+
+    let e = banks.process_transaction(Transaction::new_signed_with_payer(
+        &[ix(pid, me, me, &[acc],
+             Instruction::AddAuthority { device: Pubkey::new_unique().to_bytes() })],
+        Some(&me), &[&op], bh,
+    )).await.unwrap_err().unwrap();
+    assert_eq!(custom(&e), Some(VitalsError::WrongOwner as u32));
+}
