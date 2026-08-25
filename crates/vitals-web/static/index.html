@@ -1035,8 +1035,13 @@ function show(status,kit){
   // Only EP1 has film — and only while the film actually loads. A deploy without the clips
   // must degrade to the stills, not to a black frame, which is what it did on Cloud Run.
   if(ep().id!=='ep1' || !film){
-    $('#loop').classList.remove('on'); $('#fallback').classList.add('on');
-    $('#fallback').src='/img/'+lastShown+'.jpg'; return;
+    $('#loop').classList.remove('on');
+    /* The stills are EP1's patient. For EP1 they are the right degrade when the film is
+       missing; over Prasit or Khaopun they are a wrong-patient error a clinician clocks
+       instantly — an empty dark bay with the place tag reads truer than the wrong face. */
+    if(ep().id==='ep1'){ $('#fallback').classList.add('on'); $('#fallback').src='/img/'+lastShown+'.jpg'; }
+    else $('#fallback').classList.remove('on');
+    return;
   }
   const want=stateClip(status,kit||[]);
   if(!want){ $('#loop').classList.remove('on'); $('#fallback').classList.add('on');
@@ -1281,7 +1286,9 @@ $('#anchor').onclick=async()=>{
 };
 [['#c4',4],['#c3',3],['#c2',2],['#c1',1]].forEach(([sel,lv])=>{
   $(sel).onclick=async()=>{ const r=await chainDo('/api/claim?level='+lv);
-    $('#verdict').innerHTML += r.granted?`<span class="g">✓ ${r.message}</span>`:`<span class="r">✗ ${r.message}</span>`; };
+    $('#verdict').innerHTML += r.granted?`<span class="g">✓ ${r.message}</span>`:`<span class="r">✗ ${r.message}</span>`;
+    /* The wallet button's level is the thing a grant just changed — say so without a reload. */
+    if(r.granted) refreshRecord(); };
 });
 /* The score says what happened. This says why — and every line of it is a time or an ordering
    taken from the tape, so the person reading it could check it themselves. */
@@ -1399,7 +1406,7 @@ function paintSeason(){
     const go=b.querySelector('.go'), was=go.textContent;
     go.textContent='asking the program…';
     const r=await chainDo('/api/claim?level='+b.dataset.claim);
-    if(r&&r.granted){ go.textContent='✓ '+(r.message||'granted'); setTimeout(renderSeason,900); }
+    if(r&&r.granted){ go.textContent='✓ '+(r.message||'granted'); refreshRecord(); setTimeout(renderSeason,900); }
     else { go.textContent='✗ '+((r&&(r.message||r.error))||'refused');
            setTimeout(()=>{go.textContent=was;},2600); }
   });
