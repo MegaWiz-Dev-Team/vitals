@@ -419,6 +419,21 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
   font-family:"IBM Plex Mono",monospace;font-size:.71rem}
 .verdict .g{color:var(--act)} .verdict .r{color:var(--warn)} .verdict .n{color:var(--ink-3)}
 .hint{font-size:.77rem;color:var(--ink-3)}
+
+/* ── the meter and the ceiling ────────────────────────────────────────────────
+   The bay is free and the compute is donated, so the constraint is shown rather than hidden:
+   a pill that counts the month down in the open, and a card — not a bare 429 — when the month
+   is spent, saying what the money did and where more comes from. */
+a.give{text-decoration:none;background:var(--gold);color:#0f2d3a;font-weight:700}
+a.give:hover{filter:brightness(1.06)}
+.ceiling{position:fixed;left:50%;transform:translateX(-50%);bottom:1.1rem;z-index:60;
+  width:min(34rem,calc(100vw - 2rem));background:linear-gradient(115deg,var(--navy),var(--mint-d));
+  color:#fff;border-radius:14px;padding:1rem 1.15rem;box-shadow:0 18px 44px rgba(15,45,58,.45);
+  display:flex;flex-direction:column;gap:.45rem;font-size:.9rem}
+.ceiling b{font-family:Archivo,sans-serif;font-size:1.05rem}
+.ceiling .cl-give{align-self:flex-start;background:var(--gold);color:#0f2d3a;font-weight:700;
+  text-decoration:none;border-radius:999px;padding:.45rem .9rem;margin-top:.2rem}
+.ceiling .cl-count{font-family:"IBM Plex Mono",monospace;font-size:.7rem;opacity:.85}
 </style>
 </head>
 <body>
@@ -430,6 +445,9 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
     <span class="lb-sub">the resus bay</span>
     <span class="sp"></span>
     <span class="coin" id="coin" title="what a sponsor has funded for this bay">◎ <b id="coin-n">0</b></span>
+    <span class="coin hide" id="meterpill" title="the month's compute, paid for by donations">—</span>
+    <a class="coin give hide" id="donate" href="/donate" target="_blank" rel="noopener"
+       title="the bay is free — donations pay for its compute">♥ keep it running</a>
     <span class="coin" id="lb-chain">—</span>
     <!-- Identity belongs where it always is, not in a card you scroll to find. This is the
          wallet button: the level and who you are, at a glance, opening the rest on demand. -->
@@ -576,6 +594,11 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
     <div class="hint" style="margin-top:.5rem">Hand the tape and the scenario to anyone — they recompute this leaf without asking us.</div>
   </section>
 </div>
+
+  <!-- The visible ceiling: when the month's compute is spent this card says what the money did
+       and where more comes from. Fixed at the bottom so it reads the same from the lobby and
+       from the bay. Hidden until the meter says so. -->
+  <div id="ceiling" class="ceiling hide" role="status"></div>
 
   <!-- Top level, not inside #game. The picker's veil lives in the game view because that is the
        only place it opens; this one opens from the lobby bar, and #game carries `hide` there —
@@ -1145,6 +1168,8 @@ async function askHer(q){
   d.classList.remove('think');
   d.querySelector('.say').textContent = r.reply || ('— '+(r.error||'no answer'));
   if(!r.reply) d.classList.add('think');
+  /* The month is spent: the reply carries the whole meter, and the card takes it from here. */
+  if(r.ceiling) showCeiling(r.ceiling);
   $('#chat').scrollTop=1e6; asking=false; $('#send').disabled=false; $('#cmd').focus();
 }
 const run =()=>timer=setInterval(()=>step('&tick='+(hard?3:2)),700);
@@ -1410,6 +1435,32 @@ $('#rc-adopt').onclick=async()=>{
   $('#rc-msg').textContent='';
   refreshRecord();
 };
+/* ─── the meter ────────────────────────────────────────────────────────────────
+   The bay is free; donations pay for its compute. Both halves of that sentence are shown:
+   the pill counts the month in the open, and when the ceiling is reached the card says what
+   the money funded — the constraint is part of the product, not an error state. */
+function showCeiling(m){
+  const c=$('#ceiling'); c.classList.remove('hide');
+  const used=(+m.used).toLocaleString(), clicks=(+m.clicks||0).toLocaleString();
+  c.innerHTML=
+    `<b>The bay has spent its month of compute.</b>
+     <span>${used} conversations with a dying patient ran free in ${m.month} — every one paid
+     for by donations. Orders and the monitor still work; her voice returns on the 1st.</span>`
+    +(m.donate?`<a class="cl-give" href="/donate" target="_blank" rel="noopener">Keep the bay running →</a>`:'')
+    +`<span class="cl-count">♥ ${clicks} ${+m.clicks===1?'person':'people'} followed the donate link this month</span>`;
+}
+async function meterState(){
+  let m; try{ m=await (await fetch('/api/meter')).json(); }catch(e){ return; }
+  if(!m) return;
+  if(m.donate) $('#donate').classList.remove('hide');
+  if(m.cap!=null){
+    $('#meterpill').classList.remove('hide');
+    $('#meterpill').textContent=`◎ ${(+m.used).toLocaleString()} / ${(+m.cap).toLocaleString()} this month`;
+    if(m.used>=m.cap) showCeiling(m);
+  }
+}
+meterState();
+
 refreshRecord();
 if(location.hash.startsWith('#play')){
   const e=(location.hash.split('=')[1]||'').split('&')[0]; if(e)$('#ep').value=e;
