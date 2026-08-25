@@ -93,3 +93,16 @@ configs are reviewed but not yet machine-checked.
   bytecode check upgrades from "matches this machine's build" to "matches any machine's".
 - ~~The review API key~~ — gone as a requirement: ai-review runs keyless on Vertex, verified
   answering from both `global` and `asia-southeast1` before this was committed.
+
+## Branch protection
+
+`main` blocks force-pushes and branch deletion (enforced for admins too), and nothing else. In a
+shared checkout where several sessions commit and push to `main` at once, the real hazard is one
+session force-pushing over another's work — that is now impossible, while ordinary pushes stay
+unblocked so no session is halted mid-flight.
+
+Requiring PR review or passing checks before merge is deliberately **not** enabled yet: it would
+turn every direct push into a pull request and stop the concurrent sessions cold. It is the right
+next step once the work settles to one or two committers — the CI that would gate it has proven
+itself green across five jobs — but imposing it now would trade a real, rare hazard (force-push
+clobber, already closed) for constant friction on every commit.
