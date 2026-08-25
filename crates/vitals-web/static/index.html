@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Vitals — the resus bay</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🫀</text></svg>">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
 /* ─── scene select — Embla's language: mint over navy, chunky buttons, locked tiles ─── */
@@ -1020,7 +1021,7 @@ const CUT={ cold_open:'ep1_cold_open', trigger:'ep1_trigger', harm:'ep1_harm', b
   WinDischarge:'ep1_win_discharge', WinIcu:'ep1_win_icu',
   DeathArrest:'ep1_death_arrest', DeathBiphasic:'ep1_death_biphasic' };
 const LOOPS=new Set(['deteriorating','critical','improving','recovered','arrest']);
-let loopNow='', cutting=false;
+let loopNow='', cutting=false, film=true, lastShown='stable';
 
 function stateClip(status,kit){
   const s=(status||'stable').toLowerCase();
@@ -1030,20 +1031,30 @@ function stateClip(status,kit){
   return 'ep1_state_'+s+suffix;
 }
 function show(status,kit){
-  // Only EP1 has film. The others fall back to the still, and say nothing they cannot show.
-  if(ep().id!=='ep1'){
+  lastShown=(status||'stable').toLowerCase();
+  // Only EP1 has film — and only while the film actually loads. A deploy without the clips
+  // must degrade to the stills, not to a black frame, which is what it did on Cloud Run.
+  if(ep().id!=='ep1' || !film){
     $('#loop').classList.remove('on'); $('#fallback').classList.add('on');
-    $('#fallback').src='/img/'+((status||'stable').toLowerCase())+'.jpg'; return;
+    $('#fallback').src='/img/'+lastShown+'.jpg'; return;
   }
   const want=stateClip(status,kit||[]);
-  if(!want){ $('#loop').classList.remove('on'); $('#fallback').classList.add('on'); return; }
+  if(!want){ $('#loop').classList.remove('on'); $('#fallback').classList.add('on');
+    $('#fallback').src='/img/'+lastShown+'.jpg'; return; }
   $('#fallback').classList.remove('on');
   if(want!==loopNow){ loopNow=want; $('#loop').src='/clip/'+want+'.mp4'; $('#loop').play().catch(()=>{}); }
   $('#loop').classList.add('on');
 }
+/* One failed clip turns the film off for the visit: every later state change takes the still
+   path instead of re-requesting files that are not there. The still keeps tracking status. */
+$('#loop').addEventListener('error',()=>{ film=false; loopNow='';
+  $('#loop').classList.remove('on');
+  $('#fallback').src='/img/'+lastShown+'.jpg'; $('#fallback').classList.add('on'); });
+$('#cut').addEventListener('error',()=>{ film=false;
+  $('#cut').classList.remove('on'); $('#cut-tag').classList.remove('on'); cutting=false; });
 /* Play a cutscene over the loop, then hand the frame back. */
 function playCut(key){
-  const asset=CUT[key]; if(!asset||ep().id!=='ep1'||cutting)return;
+  const asset=CUT[key]; if(!asset||ep().id!=='ep1'||cutting||!film)return;
   cutting=true;
   const c=$('#cut'); c.src='/clip/'+asset+'.mp4';
   c.muted=!sound; c.currentTime=0; c.classList.add('on'); $('#cut-tag').classList.add('on');
@@ -1191,7 +1202,7 @@ async function chainState(){
   const me=await identity();
   const c=await (await fetch('/api/chain'+(me?'?player='+me.pub:''))).json();
   $('#chainstate').textContent = c.connected
-    ? `localnet · tree #${c.tree_id} · ${c.anchored} anchored`+(c.proven!=null?` · ${c.proven} yours`:'')
+    ? `${c.cluster||'?'} · tree #${c.tree_id} · ${c.anchored} anchored`+(c.proven!=null?` · ${c.proven} yours`:'')
     : 'no validator';
   $('#anchor').disabled = !c.connected || !over;
   if(me && c.connected){
@@ -1403,7 +1414,7 @@ async function refreshRecord(){
   const me=await identity();
   const c=await (await fetch('/api/chain'+(me?'?player='+me.pub:''))).json();
   $('#lb-chain').textContent=c.connected
-    ? `localnet · tree #${c.tree_id}`+(me?` · ${shortKey(me.pub)}`:' · no key')
+    ? `${c.cluster||'?'} · tree #${c.tree_id}`+(me?` · ${shortKey(me.pub)}`:' · no key')
     : 'no chain';
   if(!me){
     $('#rc-pill').className='pill none'; $('#rc-pill').textContent='no key';

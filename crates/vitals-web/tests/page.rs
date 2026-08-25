@@ -213,9 +213,13 @@ fn the_token_placeholder_survives() {
 }
 
 /// Nothing may load over plain http, or the browser marks the whole page insecure.
+///
+/// The SVG namespace in the favicon's data: URI is exempt by name: `xmlns` is an identifier the
+/// browser compares and never fetches, so it cannot trip mixed-content — the check stays strict
+/// for everything that actually loads.
 #[test]
 fn no_insecure_subresource() {
-    let html = page();
+    let html = page().replace("xmlns='http://www.w3.org/2000/svg'", "");
     assert!(!html.contains("http://"), "an http:// reference makes an https page 'Not Secure'");
 }
 
