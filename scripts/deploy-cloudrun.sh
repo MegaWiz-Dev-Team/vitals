@@ -18,8 +18,17 @@ REGION="${REGION:-asia-southeast1}"
 SERVICE="${SERVICE:-vitals}"
 PROGRAM_ID="${VITALS_PROGRAM_ID:-}"
 RPC="${VITALS_RPC:-https://api.devnet.solana.com}"
-# Heimdall needs a GPU and cannot run here. Reach the machine that has one.
+# Heimdall needs a GPU and cannot run here. Reach the machine that has one — when there is one.
 HEIMDALL="${HEIMDALL_API_URL:-}"
+# The cloud voice — Vertex, keyless through the metadata server. The public demo runs on this
+# (the recorded exception to Heimdall-only: synthetic patient, no PHI, not clinical care); the
+# local gateway takes over automatically whenever HEIMDALL_API_URL is reachable.
+VERTEX_URL="${VITALS_VERTEX_URL:-}"
+VERTEX_MODEL="${VITALS_VERTEX_MODEL:-}"
+# The meter: per-address windows and the visible monthly ceiling. Defaults live in the binary;
+# these only need setting to change them. The donation link is where the ceiling card points.
+MONTHLY="${VITALS_MONTHLY_TURNS:-}"
+DONATE="${VITALS_DONATE_URL:-}"
 
 [ -n "$PROGRAM_ID" ] || { echo "set VITALS_PROGRAM_ID (scripts/deploy-devnet.sh prints it)"; exit 1; }
 [ -n "$PROJECT" ] || { echo "set VITALS_GCP_PROJECT — this product gets its own project, see above"; exit 1; }
@@ -49,6 +58,18 @@ echo "── rpc       $RPC"
 # The relay key is read as a file, not an env var, so it is mounted as one below.
 ENV="GOOGLE_CLOUD_PROJECT=$PROJECT,VITALS_RPC=$RPC,VITALS_PROGRAM_ID=$PROGRAM_ID,VITALS_SCENARIOS=/app,VITALS_KEYPAIR=/relay/id.json"
 [ -n "$HEIMDALL" ] && ENV="$ENV,HEIMDALL_API_URL=$HEIMDALL"
+[ -n "$VERTEX_URL" ] && ENV="$ENV,VITALS_VERTEX_URL=$VERTEX_URL"
+[ -n "$VERTEX_MODEL" ] && ENV="$ENV,VITALS_VERTEX_MODEL=$VERTEX_MODEL"
+[ -n "$MONTHLY" ] && ENV="$ENV,VITALS_MONTHLY_TURNS=$MONTHLY"
+[ -n "$DONATE" ] && ENV="$ENV,VITALS_DONATE_URL=$DONATE"
+if [ -z "$HEIMDALL" ] && [ -z "$VERTEX_URL" ]; then
+  echo "── voice     none — set VITALS_VERTEX_URL (cloud) or HEIMDALL_API_URL (local); orders still work"
+fi
+
+# The Heimdall key is mounted only when there is a gateway to reach. A cloud-only deploy has no
+# heimdall-key secret at all, and requiring one would make the optional path mandatory.
+SECRETS="/relay/id.json=vitals-relay-key:latest,VITALS_TOKEN=vitals-token:latest"
+[ -n "$HEIMDALL" ] && SECRETS="$SECRETS,HEIMDALL_API_KEY=heimdall-key:latest"
 
 # Phases, so CI can put a scanner between the build and the deploy without duplicating any of
 # the flags below — a duplicated flag list is a second definition of the deployment, and second
@@ -69,7 +90,7 @@ gcloud run deploy "$SERVICE" \
   --min-instances 1 --max-instances 1 --concurrency 8 \
   --cpu 1 --memory 512Mi \
   --set-env-vars "$ENV" \
-  --set-secrets "/relay/id.json=vitals-relay-key:latest,VITALS_TOKEN=vitals-token:latest,HEIMDALL_API_KEY=heimdall-key:latest"
+  --set-secrets "$SECRETS"
 
 echo
 echo "   $(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format='value(status.url)')"

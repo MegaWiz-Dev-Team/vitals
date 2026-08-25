@@ -5,8 +5,11 @@
 //! cannot be re-derived. The model is what makes her worth talking to. The automaton is what makes
 //! the run worth proving. Those are different jobs and they are kept in different places.
 //!
-//! Inference goes through the local Heimdall gateway — no cloud provider, no clinical text leaving
-//! the machine.
+//! Inference prefers the local Heimdall gateway. The public demo runs on a cloud model — a
+//! **recorded exception** (decided 2026-08-24) to the standing rule of *Heimdall-only, no cloud
+//! LLM*: this patient is synthetic, the dialogue carries no PHI, and playing her is not clinical
+//! care. It is an exception, not an oversight — the rule still holds everywhere a real patient's
+//! data could appear, which is why the local gateway stays preferred whenever it is reachable.
 
 use serde_json::{json, Value};
 

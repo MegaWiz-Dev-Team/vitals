@@ -8,7 +8,7 @@
 //! and sessions in a map. The point is to make the automaton playable, not to ship a platform.
 
 mod chain;
-use vitals_web::{news2, patient, store};
+use vitals_web::{meter, news2, patient, store};
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -417,6 +417,30 @@ fn json(v: impl Serialize) -> Response<std::io::Cursor<Vec<u8>>> {
         .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap())
 }
 
+/// A JSON reply that is not a 200. The body still carries the whole story — a metering refusal
+/// is a page the front end renders, not a status code it apologises for.
+fn json_code(v: impl Serialize, code: u16) -> Response<std::io::Cursor<Vec<u8>>> {
+    json(v).with_status_code(code)
+}
+
+/// Who is calling, as far as rate limiting is concerned.
+///
+/// Behind Cloud Run the socket peer is the load balancer, and the visitor is the first entry of
+/// `X-Forwarded-For` — later entries are whatever proxies appended, and the *last* one is the
+/// only one Google vouches for, but for a politeness window the first is the honest choice: it
+/// is the same for one browser and different for two households. Player keys and session ids are
+/// deliberately not used here; a browser mints those for free.
+fn client_addr(req: &tiny_http::Request) -> String {
+    req.headers()
+        .iter()
+        .find(|h| h.field.equiv("x-forwarded-for"))
+        .and_then(|h| h.value.as_str().split(',').next().map(|s| s.trim().to_string()))
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| {
+            req.remote_addr().map(|a| a.ip().to_string()).unwrap_or_else(|| "unknown".into())
+        })
+}
+
 fn param(url: &str, key: &str) -> Option<String> {
     url.split_once('?')?.1.split('&').find_map(|kv| {
         let (k, v) = kv.split_once('=')?;
@@ -533,6 +557,10 @@ fn main() {
         if broken > 0 { format!(" · {broken} unreplayable") } else { String::new() },
     );
     let sessions: Arc<Mutex<HashMap<String, Session>>> = Arc::new(Mutex::new(restored));
+
+    // What this bay may spend, resumed from the store so a deploy does not reset the month.
+    let mut meter = meter::Meter::open(&store);
+    println!("meter      {}", meter.describe());
 
     // Through the same root as the scenarios. This was the other baked-in build path, and it is
     // why the container had a patient who could not speak even with a gateway to speak through.
@@ -885,6 +913,26 @@ fn main() {
                     let _ = req.respond(json(serde_json::json!({ "error": "no gateway — she has no voice here" })));
                     continue;
                 };
+                // The bay is free and the inference is paid for by donations, so the spend is
+                // metered per address and capped per month. The ceiling reply carries the whole
+                // meter: the page turns it into "what this month funded", not a bare 429.
+                match meter.allow(&client_addr(&req), &store) {
+                    meter::Verdict::Ok => {}
+                    meter::Verdict::SlowDown { retry_secs } => {
+                        let _ = req.respond(json_code(serde_json::json!({
+                            "error": "she needs a moment — you are asking faster than the bay allows",
+                            "retry_in": retry_secs,
+                        }), 429));
+                        continue;
+                    }
+                    meter::Verdict::Ceiling => {
+                        let _ = req.respond(json_code(serde_json::json!({
+                            "error": "this month's compute is spent",
+                            "ceiling": meter.view(),
+                        }), 429));
+                        continue;
+                    }
+                }
                 // Snapshot what the model needs, then release the lock: a local 26B reply takes
                 // seconds and the tick loop must not block behind it.
                 let (hist, status, spo2) = {
@@ -899,6 +947,9 @@ fn main() {
                 };
                 match pt.say(&q, &hist, &status, spo2) {
                     Ok(reply) => {
+                        // Counted only when she actually answered — a failed call is not billed
+                        // to the month or to the visitor.
+                        meter.spend(&store);
                         let mut map = sessions.lock().unwrap();
                         if let Some(s) = map.get_mut(&id) {
                             s.said.push(("user".into(), q));
@@ -910,6 +961,20 @@ fn main() {
                     Err(e) => json(serde_json::json!({ "error": e })),
                 }
             }
+            // The month's spend, the ceiling and where donations go — public, because the
+            // ceiling being visible is the point. Anyone can check what the bay has left.
+            (Method::Get, "/api/meter") => json(meter.view()),
+            // Through the server so the click is counted — measured conversion is the evidence
+            // a funder asks for — then straight on to the payment page.
+            (Method::Get, "/donate") => match meter.donate_url().map(str::to_string) {
+                Some(to) => {
+                    meter.click(&store);
+                    Response::from_string("")
+                        .with_status_code(302)
+                        .with_header(Header::from_bytes(&b"Location"[..], to.as_bytes()).unwrap())
+                }
+                None => Response::from_string("no donation link is configured yet").with_status_code(404),
+            },
             (Method::Get, "/api/chain") => {
                 let t = tree.lock().unwrap();
                 let who = param(&url, "player").and_then(|p| pubkey(&p));
@@ -1471,7 +1536,8 @@ mod tests {
         for p in ["/api/anchor", "/api/claim", "/api/commit", "/api/say"] {
             assert!(guarded(p), "{p} makes the server sign or spend");
         }
-        for p in ["/", "/api/new", "/api/step", "/api/kit", "/api/tape", "/api/chain"] {
+        for p in ["/", "/api/new", "/api/step", "/api/kit", "/api/tape", "/api/chain",
+                  "/api/meter", "/donate"] {
             assert!(!guarded(p), "{p} is play, and a kiosk must not need a token to play");
         }
     }
