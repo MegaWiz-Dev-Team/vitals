@@ -7682,11 +7682,23 @@ name = "vitals-cli"
 version = "0.2.0"
 dependencies = [
  "borsh 1.8.0",
+ "serde_json",
  "solana-client",
  "solana-sdk",
+ "vitals-osce",
  "vitals-program",
  "vitals-progress",
  "vitals-replay",
+ "vitals-sce",
+]
+
+[[package]]
+name = "vitals-osce"
+version = "0.2.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "vitals-sce",
 ]
 
 [[package]]
