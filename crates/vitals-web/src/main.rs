@@ -639,6 +639,23 @@ fn main() {
         let url = req.url().to_string();
         let path = url.split('?').next().unwrap_or("/").to_string();
 
+        // The apex answers with the landing and nothing else; anything deeper moves permanently
+        // to the game origin. 301 on purpose — the split is a recorded decision, not a phase —
+        // and the landing carries its own short cache life so a proxy caching the apex never
+        // holds anything of the game's.
+        if host_of(&req) == APEX {
+            let resp = match apex_target(&url) {
+                None => html(LANDING).with_header(
+                    Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=300"[..]).unwrap(),
+                ),
+                Some(to) => Response::from_string("")
+                    .with_status_code(301)
+                    .with_header(Header::from_bytes(&b"Location"[..], to.as_bytes()).unwrap()),
+            };
+            let _ = req.respond(resp);
+            continue;
+        }
+
         if guarded(&path) && !bearer_ok(&req, &token) {
             let _ = req.respond(
                 Response::from_string(r#"{"error":"unauthorised"}"#)
@@ -1399,6 +1416,30 @@ struct PendingWork {
     link: bool,
 }
 
+/// The apex is the company's front door and nothing else (decided 2026-08-25): the game, its
+/// APIs and its session state live on the devnet host. One instance serves both names, so the
+/// split is the Host header — an allowlist of exactly one special name, with every other name
+/// (devnet, run.app, localhost) keeping the full app unchanged.
+const APEX: &str = "vitals.academy";
+const GAME_ORIGIN: &str = "https://devnet.vitals.academy";
+
+fn host_of(req: &tiny_http::Request) -> String {
+    req.headers()
+        .iter()
+        .find(|h| h.field.equiv("host"))
+        .map(|h| h.value.as_str().trim().to_ascii_lowercase())
+        .and_then(|h| h.split(':').next().map(str::to_string))
+        .unwrap_or_default()
+}
+
+/// What the apex does with a URL: `None` serves the landing, otherwise the permanent home of
+/// that path on the game origin — a deep link pasted against the apex still lands somewhere
+/// real, query string and all. Decided on the path alone so `/?utm_source=...` stays a landing.
+fn apex_target(url: &str) -> Option<String> {
+    let path = url.split('?').next().unwrap_or("/");
+    (path != "/").then(|| format!("{GAME_ORIGIN}{url}"))
+}
+
 /// Where to listen, with the platform's word winning over ours.
 ///
 /// Cloud Run assigns `PORT` and health-probes exactly that port; a container that binds anything
@@ -1565,6 +1606,21 @@ mod tests {
         // somebody else's record by naming a parameter carefully.
         let u = "/api?subaccount=theirs&account=mine";
         assert_eq!(param(u, "account").as_deref(), Some("mine"));
+    }
+
+    // ── the apex ────────────────────────────────────────────────────────────
+
+    /// The front door serves the landing and moves everything else — path, query and all — to
+    /// the game origin. A deep link shared from the game must survive being pasted on the apex.
+    #[test]
+    fn the_apex_keeps_the_landing_and_redirects_the_rest() {
+        assert_eq!(apex_target("/"), None);
+        assert_eq!(apex_target("/?utm_source=colosseum"), None, "campaign links are landings");
+        assert_eq!(apex_target("/play").as_deref(), Some("https://devnet.vitals.academy/play"));
+        assert_eq!(
+            apex_target("/api/chain?player=abc").as_deref(),
+            Some("https://devnet.vitals.academy/api/chain?player=abc"),
+        );
     }
 
     // ── where to listen ─────────────────────────────────────────────────────
