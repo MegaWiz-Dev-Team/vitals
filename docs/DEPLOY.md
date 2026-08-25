@@ -28,6 +28,12 @@ port can make the relay sign.
 | `VITALS_KEYPAIR` | `~/.config/solana/id.json` | the **relay**. Pays fees, holds no player key |
 | `VITALS_TOKEN` | — | required to bind off loopback |
 | `VITALS_CLIPS` | Embla's `cutscenes/ep1` | absent just means no video |
+| `VITALS_VERTEX_URL` | — | the cloud voice (Vertex, OpenAI-compat base URL) — keyless on Cloud Run via the metadata server. The recorded exception to local-only inference: synthetic patient, no PHI. Off unless set |
+| `VITALS_VERTEX_MODEL` | `google/gemini-3.1-flash-lite` | |
+| `VITALS_TURNS_PER_MIN` | `6` | questions one address may ask the patient per minute |
+| `VITALS_TURNS_PER_DAY` | `200` | same, per day |
+| `VITALS_MONTHLY_TURNS` | `20000` | the **visible monthly ceiling** on answered turns, bay-wide. `0` disables it — explicitly, because a forgotten env var must mean bounded, not unlimited |
+| `VITALS_DONATE_URL` | — | where `/donate` redirects (clicks are counted as conversion). The donate button hides without it |
 
 ## Cluster
 
