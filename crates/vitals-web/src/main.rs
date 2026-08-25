@@ -507,7 +507,10 @@ fn main() {
     // syn-sentry web app, an eir-fhir container publishing on the host, and the service port the
     // hermodr fleet uses inside the cluster. A default that collides with the neighbours is a
     // default that fails on the one day nobody is watching.
-    let addr = std::env::var("VITALS_WEB_BIND").unwrap_or_else(|_| "127.0.0.1:8474".into());
+    let addr = bind_addr(
+        std::env::var("PORT").ok().as_deref(),
+        std::env::var("VITALS_WEB_BIND").ok().as_deref(),
+    );
     let token = std::env::var("VITALS_TOKEN").ok().filter(|s| !s.is_empty());
     let loopback = addr.starts_with("127.") || addr.starts_with("localhost");
     if !loopback && token.is_none() {
@@ -1396,6 +1399,21 @@ struct PendingWork {
     link: bool,
 }
 
+/// Where to listen, with the platform's word winning over ours.
+///
+/// Cloud Run assigns `PORT` and health-probes exactly that port; a container that binds anything
+/// else boots perfectly and never becomes healthy — which is precisely how the first public
+/// deploy failed, the app on its own 8474 while the probe watched 8080. So `PORT`, when given,
+/// is not a preference to weigh against `VITALS_WEB_BIND`; it is the address the platform will
+/// judge us by. Everywhere else `VITALS_WEB_BIND` decides, and the default stays loopback so a
+/// laptop never opens a public port by accident.
+fn bind_addr(platform_port: Option<&str>, configured: Option<&str>) -> String {
+    match platform_port {
+        Some(p) if !p.is_empty() => format!("0.0.0.0:{p}"),
+        _ => configured.map(str::to_string).unwrap_or_else(|| "127.0.0.1:8474".into()),
+    }
+}
+
 /// A player key as the browser sends it: base58, and it has to be a real curve point or the
 /// transaction it is put into can never be signed.
 fn pubkey(s: &str) -> Option<solana_sdk::pubkey::Pubkey> {
@@ -1547,6 +1565,24 @@ mod tests {
         // somebody else's record by naming a parameter carefully.
         let u = "/api?subaccount=theirs&account=mine";
         assert_eq!(param(u, "account").as_deref(), Some("mine"));
+    }
+
+    // ── where to listen ─────────────────────────────────────────────────────
+
+    /// Cloud Run probes the port it assigned, not the one we prefer. An app that boots
+    /// perfectly on the wrong port fails in the way that is hardest to see from inside.
+    #[test]
+    fn the_platforms_port_wins_and_binds_publicly() {
+        assert_eq!(bind_addr(Some("8080"), None), "0.0.0.0:8080");
+        assert_eq!(bind_addr(Some("8080"), Some("0.0.0.0:8474")), "0.0.0.0:8080");
+    }
+
+    #[test]
+    fn without_a_platform_port_the_operator_decides_and_the_default_is_loopback() {
+        assert_eq!(bind_addr(None, Some("0.0.0.0:8474")), "0.0.0.0:8474");
+        assert_eq!(bind_addr(None, None), "127.0.0.1:8474");
+        // An empty PORT is no PORT — some shells export the variable before it has a value.
+        assert_eq!(bind_addr(Some(""), None), "127.0.0.1:8474");
     }
 
     // ── which routes need a token ───────────────────────────────────────────
