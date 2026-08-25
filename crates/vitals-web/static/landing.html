@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vitals — anyone can play, nobody can fake the replay</title>
+<meta name="description" content="A patient is dying on a clock and you decide what happens next. Free clinical simulation for medical students — every run verifiable on Solana.">
+<meta property="og:title" content="Vitals">
+<meta property="og:description" content="A patient is dying on a clock and you decide what happens next. Anyone can play. Nobody can fake the replay.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#F5F8F8; --surface:#FFFFFF; --surface-2:#EDF2F2;
+  --ink:#0F1719; --ink-2:#48585C; --ink-3:#7E8F93;
+  --rule:#D9E2E2; --rule-soft:#E8EEEE;
+  --proven:#0B6E58; --proven-soft:#E2F0EB;
+  --attested:#A24714; --attested-soft:#F6E9E1;
+}
+@media (prefers-color-scheme:dark){:root{
+  --ground:#0B1113; --surface:#121B1D; --surface-2:#182325;
+  --ink:#E9F0F0; --ink-2:#9CAEB1; --ink-3:#68797D;
+  --rule:#223033; --rule-soft:#1A2528;
+  --proven:#42D2A7; --proven-soft:#0F2A24;
+  --attested:#E5924F; --attested-soft:#2A1C12;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;font-size:16px;line-height:1.65;
+  -webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:Archivo,Arial,sans-serif;margin:0;text-wrap:balance}
+a{color:var(--proven)}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+.wrap{max-width:62rem;margin:0 auto;padding:0 clamp(1.1rem,4vw,2.5rem)}
+.rail{border-bottom:1px solid var(--rule-soft);padding:.8rem 0;display:flex;gap:1rem;align-items:baseline;
+  font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.08em;color:var(--ink-3)}
+.rail b{color:var(--ink);letter-spacing:.14em}
+.hero{padding:clamp(3rem,8vw,5.5rem) 0 clamp(2rem,5vw,3rem)}
+.hero h1{font-size:clamp(2.1rem,5.5vw,3.6rem);line-height:1.08;font-weight:800}
+.hero .sub{font-size:clamp(1.02rem,2vw,1.25rem);color:var(--ink-2);max-width:38em;margin:1.1rem 0 1.6rem}
+.cta{display:inline-block;background:var(--proven);color:#fff;text-decoration:none;font-weight:700;
+  font-family:Archivo,Arial,sans-serif;padding:.85rem 1.7rem;border-radius:8px;font-size:1.05rem}
+.cta.ghost{background:transparent;color:var(--proven);border:2px solid var(--proven);margin-left:.6rem}
+.tag{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--proven);font-weight:600}
+section{padding:clamp(1.8rem,4vw,2.8rem) 0;border-top:1px solid var(--rule-soft)}
+.grid{display:grid;gap:1rem}
+@media(min-width:760px){.g4{grid-template-columns:repeat(4,1fr)}.g3{grid-template-columns:repeat(3,1fr)}.g2{grid-template-columns:1fr 1fr}}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:1rem 1.1rem}
+.card .k{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-2);font-weight:600;display:block;margin-bottom:.35rem}
+.card p{margin:0;font-size:.92rem;color:var(--ink-2)}
+.card.hl{border-color:var(--proven)} .card.hl .k{color:var(--proven)}
+.stat .n{font-family:Archivo;font-size:2rem;font-weight:800;color:var(--proven);display:block;line-height:1.1}
+.stat .l{font-size:.84rem;color:var(--ink-2)}
+h2{font-size:clamp(1.4rem,3vw,1.9rem);margin-bottom:1.1rem}
+.note{background:var(--surface-2);border:1px dashed var(--rule);border-radius:10px;padding:1rem 1.2rem;
+  font-size:.92rem;color:var(--ink-2)}
+footer{border-top:1px solid var(--rule);padding:1.6rem 0 2.4rem;font-size:.85rem;color:var(--ink-3)}
+footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="rail"><b>VITALS</b><span>verifiable clinical replay</span><span style="margin-left:auto">RUST · SOLANA · AGPL-3.0</span></div>
+
+  <div class="hero">
+    <span class="tag">Free for every learner, in every country, forever</span>
+    <h1>A patient is dying on a clock.<br>You decide what happens next.</h1>
+    <p class="sub"><strong>Anyone can play. Nobody can fake the replay.</strong> Talk to her, treat her — a
+    deterministic physiology engine decides if she lives. Every run reduces to one hash anchored on
+    Solana, so anyone can replay the tape and get the same answer, without asking us.</p>
+    <a class="cta" href="/play">▶ Play — no signup, ~60 seconds to your first patient</a>
+    <a class="cta ghost" href="https://github.com/MegaWiz-Dev-Team/vitals">Source (AGPL)</a>
+  </div>
+
+  <section>
+    <h2>One run, four facts</h2>
+    <div class="grid g4">
+      <div class="card"><span class="k">Talk to her</span><p>She answers in her own words. She can be wrong, and she can be too breathless to answer.</p></div>
+      <div class="card"><span class="k">Treat her</span><p>Orders, drugs, airway, fluids — a live bedside monitor moves the way the physiology moves.</p></div>
+      <div class="card"><span class="k">She lives or she doesn't</span><p>No script. A deterministic clinical automaton decides in real time, from what you did and when.</p></div>
+      <div class="card hl"><span class="k">The run is provable</span><p>Every case reduces to one hash. Replay the tape, get the same answer — no trust required.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Not a prototype</h2>
+    <div class="grid g4">
+      <div class="card stat"><span class="n">18 / 29</span><span class="l">Thai medical faculties with active learners on the engine underneath — verified faculties, not signup entries</span></div>
+      <div class="card stat"><span class="n">671</span><span class="l">scored runs across 433 authored clinical scenarios</span></div>
+      <div class="card stat"><span class="n">1st</span><span class="l">Grand Champion, NECTEC AI for Thai 2026</span></div>
+      <div class="card stat"><span class="n">~1,400</span><span class="l">years of human life associated with one additional doctor <a href="https://pubmed.ncbi.nlm.nih.gov/30776056/">(Basu et al., JAMA IM 2019)</a></span></div>
+    </div>
+    <p class="note" style="margin-top:1rem">Our mission: <strong>1% more doctors who actually reach
+    patients, every year.</strong> 9.1% of medical students never finish, and the largest single cause
+    is academic difficulty. We find the learner who is going to fail <em>before</em> they fail, and
+    route them to the practice that closes their specific gap.</p>
+  </section>
+
+  <section>
+    <h2>Why a chain is load-bearing here</h2>
+    <div class="grid g3">
+      <div class="card"><span class="k">The program refuses its own user</span><p>Progression is recomputed on-chain from Merkle proofs. Claim a level you didn't earn and the program rejects it — no issuer key, no oracle.</p></div>
+      <div class="card"><span class="k">Proof that crosses borders</span><p>A residency programme in another country can verify a record without trusting us or the school that produced it.</p></div>
+      <div class="card"><span class="k">Donations the donor can audit</span><p>Money given for a scenario can only fund that scenario — enforced by the program, released against the delivered content hash.</p></div>
+    </div>
+    <p class="note" style="margin-top:1rem"><strong>Stated before anyone asks:</strong> 40 of 100 rubric
+    points are re-derivable; 60 are attested by named judges. We cannot prove who sat at the keyboard —
+    identity binding belongs to the credential issuer. And we do not grant standing: only a medical
+    board can make competence authoritative.</p>
+  </section>
+
+  <section>
+    <h2>Team</h2>
+    <div class="grid g3">
+      <div class="card"><span class="k">Paripol Toopiroh</span><p>CEO &amp; AI architect — engine and chain, Rust end to end</p></div>
+      <div class="card hl"><span class="k">Dr. Sirawit Tansiri</span><p>Co-founding physician — clinical accuracy, OSCE rubrics, safety gates</p></div>
+      <div class="card"><span class="k">Voranichayanan</span><p>Co-founder &amp; COO — registered nurse; hospital operations</p></div>
+    </div>
+    <p style="font-size:.85rem;color:var(--ink-3);margin:.8rem 0 0">…with Pongsakorn Jaikaew (AI engineering) and Napaphach W. (QA). Bangkok, Thailand.</p>
+  </section>
+
+  <footer>
+    <div class="links mono">
+      <a href="/play">Play</a>
+      <a href="https://github.com/MegaWiz-Dev-Team/vitals">GitHub</a>
+      <a href="https://explorer.solana.com/address/535FMHHZ4rp5hNmvSmdNFoaatLX82cCXHfRg3hpyBTSG?cluster=devnet">Program on Solana</a>
+      <a href="https://embla.megawiz.co.th">Embla (the engine, in production)</a>
+    </div>
+    <div><strong>Vitals</strong> is built by <strong>MegaWiz Co., Ltd.</strong> (Bangkok, Thailand) —
+    the product company behind the Embla clinical-simulation engine. · paripol@megawiz.co ·
+    Open source under AGPL-3.0 + commercial licence. No learner is ever charged.</div>
+  </footer>
+</div>
+</body>
+</html>

@@ -21,6 +21,10 @@ use vitals_replay::{hex, leaf, record_for, replay, resume, sce_hash, Step};
 use vitals_sce::{render_beat, Sce, SceState};
 
 const PAGE: &str = include_str!("../static/index.html");
+/// The front door. The product page lives at `/` and the game one click behind it at `/play`,
+/// because the first visitor a public URL meets is as likely to be a reviewer deciding what this
+/// company is as a learner deciding whether to press play — and the bay answers only the second.
+const LANDING: &str = include_str!("../static/landing.html");
 /// The pitch, served by the same process that serves the bay.
 ///
 /// Baked in rather than read from disk. Twice in one day a path that existed on the build machine
@@ -651,6 +655,10 @@ fn main() {
 
         let resp = match (req.method(), path.as_str()) {
             (Method::Get, "/") => {
+                let _ = req.respond(html(LANDING));
+                continue;
+            }
+            (Method::Get, "/play") => {
                 // The page is served by the same process that holds the token, so handing it over
                 // does not widen anything: reaching the page and reaching the API are one boundary.
                 let page = match &token {
@@ -1548,7 +1556,7 @@ mod tests {
         for p in ["/api/anchor", "/api/claim", "/api/commit", "/api/say"] {
             assert!(guarded(p), "{p} makes the server sign or spend");
         }
-        for p in ["/", "/api/new", "/api/step", "/api/kit", "/api/tape", "/api/chain",
+        for p in ["/", "/play", "/api/new", "/api/step", "/api/kit", "/api/tape", "/api/chain",
                   "/api/meter", "/donate"] {
             assert!(!guarded(p), "{p} is play, and a kiosk must not need a token to play");
         }
