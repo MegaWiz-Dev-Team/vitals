@@ -62,6 +62,11 @@ ENV="GOOGLE_CLOUD_PROJECT=$PROJECT,VITALS_RPC=$RPC,VITALS_PROGRAM_ID=$PROGRAM_ID
 [ -n "$VERTEX_MODEL" ] && ENV="$ENV,VITALS_VERTEX_MODEL=$VERTEX_MODEL"
 [ -n "$MONTHLY" ] && ENV="$ENV,VITALS_MONTHLY_TURNS=$MONTHLY"
 [ -n "$DONATE" ] && ENV="$ENV,VITALS_DONATE_URL=$DONATE"
+# Where the film lives inside the container — the GCS volume (vitals-academy-clips) is mounted
+# once on the service and survives deploys, but --set-env-vars replaces the whole env, so the
+# path has to ride along here or a redeploy silently mutes the film.
+CLIPS="${VITALS_CLIPS:-/clips/ep1}"
+ENV="$ENV,VITALS_CLIPS=$CLIPS"
 if [ -z "$HEIMDALL" ] && [ -z "$VERTEX_URL" ]; then
   echo "── voice     none — set VITALS_VERTEX_URL (cloud) or HEIMDALL_API_URL (local); orders still work"
 fi
