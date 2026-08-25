@@ -8,8 +8,7 @@
 //! and sessions in a map. The point is to make the automaton playable, not to ship a platform.
 
 mod chain;
-mod patient;
-use vitals_web::{news2, store};
+use vitals_web::{news2, patient, store};
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -540,8 +539,14 @@ fn main() {
     let story = scenario_root().join("demo/ep1-en.json");
     let patient = patient::Patient::connect(&story);
     match &patient {
-        Some(p) => println!("patient    {} — local model via Heimdall", p.name()),
-        None => println!("patient    no gateway — set HEIMDALL_API_KEY to give her a voice"),
+        Some(p) => {
+            let via = match p.backend() {
+                patient::Backend::Local => "local model via Heimdall",
+                patient::Backend::Cloud => "cloud model (local unreachable — fallback)",
+            };
+            println!("patient    {} — {via}", p.name());
+        }
+        None => println!("patient    no voice — set HEIMDALL_API_KEY (local) or VITALS_VERTEX_URL (cloud)"),
     }
 
     let chain = chain::Chain::connect();

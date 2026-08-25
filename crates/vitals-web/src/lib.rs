@@ -11,4 +11,5 @@
 // macro expands to the unsafe input deserialisation every program has.)
 #![forbid(unsafe_code)]
 pub mod news2;
+pub mod patient;
 pub mod store;
