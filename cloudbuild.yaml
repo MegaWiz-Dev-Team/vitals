@@ -1,0 +1,15 @@
+# BuildKit, because the Dockerfile uses `RUN --mount` cache mounts and the default Cloud Build
+# docker step refuses them. The caches start empty on every Cloud Build run — the mounts exist
+# for the machine that builds repeatedly — BuildKit is simply the builder that accepts the syntax.
+#
+# An 8-vCPU machine, because the build is a Rust release compile of the Solana dependency tree:
+# roughly an hour on the default 2 vCPUs, under twenty minutes here, for a few tenths of a dollar.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    env: ['DOCKER_BUILDKIT=1']
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/${_SERVICE}', '.']
+substitutions:
+  _SERVICE: vitals
+images: ['gcr.io/$PROJECT_ID/${_SERVICE}']
+options:
+  machineType: E2_HIGHCPU_8
