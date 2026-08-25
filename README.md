@@ -162,8 +162,11 @@ We already have it; the sprint is spent making the signal verifiable.
   exists in this system to leak.
 - **No student PII onchain.** Hashes and pubkeys only. Student performance data is personal
   data under PDPA — it stays off-chain, under the student's control, revealed selectively.
-- **Inference stays local.** Clinical reasoning runs on the local Heimdall gateway. The
-  onchain layer never requires shipping clinical content to a cloud LLM.
+- **Inference stays local — with one recorded exception.** Clinical reasoning runs on the local
+  Heimdall gateway, and the onchain layer never requires shipping clinical content to a cloud
+  LLM. The public demo's synthetic-patient voice may fall back to a cloud model (see
+  `crates/vitals-web/src/patient.rs`): the patient is synthetic, no PHI exists, and the local
+  gateway takes over whenever it is reachable.
 - **Institutions keep fiat rails.** Thai medical schools are not going to pay in USDC.
   Crypto rails serve the open protocol and independent case authors; the B2B contract stays
   boring on purpose.
@@ -173,5 +176,11 @@ We already have it; the sprint is spent making the signal verifiable.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — protocol design, accounts, flows, open questions
 - [docs/GAMIFICATION.md](docs/GAMIFICATION.md) — progression as onchain computation, soulbound design, escrow, anti-farming
 - [docs/SPRINT_PLAN.md](docs/SPRINT_PLAN.md) — the 4-week build
-- [docs/COLOSSEUM_FIT.md](docs/COLOSSEUM_FIT.md) — mapping to the six judging criteria
 - [docs/RISKS.md](docs/RISKS.md) — what could sink this, including the ones we caused ourselves
+
+## Security
+
+Dependency advisories are triaged in [deny.toml](deny.toml), assessment included — the currently
+ignored RUSTSEC entries sit in the Solana SDK's RPC-over-TLS client path, are not reachable from
+the deployed program, and clear when the SDK bumps its `rustls` line. CI runs `cargo deny` on
+every push.
