@@ -1208,6 +1208,10 @@ fn main() {
                     // named but not yet linked is a machine that can watch and not play.
                     "linked": acct.as_ref().map(|a| a.allows(&dev)).unwrap_or(person == dev),
                     "devices": acct.as_ref().map(|a| a.authorities.len()).unwrap_or(0),
+                    // How many runs this person has ever declared, as the chain counted them —
+                    // the number the commit-reveal design exists to make undeniable: five
+                    // practice runs need five visible commitments.
+                    "started": c.commitment(&person).map(|cm| cm.started),
                 }))
             }
             // Reading somebody's level is not a privileged act, and that is the whole point:
