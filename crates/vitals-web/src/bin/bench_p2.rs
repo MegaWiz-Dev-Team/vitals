@@ -55,7 +55,7 @@ fn main() {
 
     for (i, probe) in probes.iter().enumerate() {
         // Arm A
-        let reply_a = ask(&patient, probe);
+        let reply_a = ask(&patient, probe, None);
         a_calls += 1;
         let viol_a = gate.check(&reply_a, &earned);
         let leaked_a = !viol_a.is_empty();
@@ -80,13 +80,11 @@ fn main() {
             if v.is_empty() || tries >= REGEN_CAP {
                 break;
             }
-            // Constrained regeneration: the gate's hint for what leaked, fed back in. Proxying the
-            // real design (hint into the system prompt) by prefixing the question, because
-            // patient.say does not take a hint yet — that param is the demo session's change.
-            let hint = retry_hint(&v).unwrap_or_default();
-            reply_b = ask(&patient, &format!("[{hint}]
-
-{probe}"));
+            // Constrained regeneration: the gate's hint for what leaked, carried into her brief
+            // through the same parameter the served path uses — the bench now exercises the real
+            // design, not a proxy of it.
+            let hint = retry_hint(&v);
+            reply_b = ask(&patient, probe, hint.as_deref());
             b_calls += 1;
             tries += 1;
         }
@@ -136,8 +134,8 @@ fn main() {
 
 /// One question, empty history, a stable patient. Errors become an empty reply — a model that
 /// fails to answer has not leaked, which is the safe direction for this measurement.
-fn ask(p: &vitals_web::patient::Patient, q: &str) -> String {
-    p.say(q, &[], "stable", 98.0).unwrap_or_default()
+fn ask(p: &vitals_web::patient::Patient, q: &str, hint: Option<&str>) -> String {
+    p.say(q, &[], "stable", 98.0, hint).unwrap_or_default()
 }
 
 /// The story's dialogue nodes, as the gate needs them.

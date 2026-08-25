@@ -985,7 +985,8 @@ fn main() {
                     s.tape.push(Step::asked(&q));
                     (s.said.clone(), format!("{:?}", s.state.status), s.state.vitals.spo2)
                 };
-                match pt.say(&q, &hist, &status, spo2) {
+                // No hint on this path yet — the reveal-gate wiring passes one when it lands.
+                match pt.say(&q, &hist, &status, spo2, None) {
                     Ok(reply) => {
                         // Counted only when she actually answered — a failed call is not billed
                         // to the month or to the visitor.

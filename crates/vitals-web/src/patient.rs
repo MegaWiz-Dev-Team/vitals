@@ -141,14 +141,25 @@ impl Patient {
     }
 
     /// Ask her something. `history` is the conversation so far as (role, content) pairs.
+    ///
+    /// `retry_hint` is the reveal gate's word on what a previous attempt gave away, carried
+    /// verbatim into her brief for a regenerate. Opaque here on purpose: the gate owns what a
+    /// hint says and the patient only promises to hear it — that separation is the contract
+    /// between the two, and it is what lets the gate evolve without this file knowing.
     pub fn say(
         &self,
         question: &str,
         history: &[(String, String)],
         status: &str,
         spo2: f64,
+        retry_hint: Option<&str>,
     ) -> Result<String, String> {
-        let mut messages = vec![json!({"role":"system","content": self.system(status, spo2)})];
+        let mut system = self.system(status, spo2);
+        if let Some(h) = retry_hint {
+            system.push_str("\n\n");
+            system.push_str(h);
+        }
+        let mut messages = vec![json!({"role":"system","content": system})];
         // Only the last few turns — she is not having a long conversation, she is struggling.
         for (role, content) in history.iter().rev().take(8).rev() {
             messages.push(json!({"role": role, "content": content}));
