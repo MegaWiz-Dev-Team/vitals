@@ -89,6 +89,7 @@ gcloud run deploy "$SERVICE" \
   --project "$PROJECT" --region "$REGION" \
   --image "gcr.io/$PROJECT/$SERVICE" \
   --allow-unauthenticated \
+  --port 8474 \
   --min-instances 1 --max-instances 1 --concurrency 8 \
   --cpu 1 --memory 512Mi \
   --set-env-vars "$ENV" \
