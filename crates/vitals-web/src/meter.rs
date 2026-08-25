@@ -97,6 +97,18 @@ impl Meter {
         if self.cap > 0 && self.used >= self.cap {
             return Verdict::Ceiling;
         }
+        self.window(addr)
+    }
+
+    /// The window with no ceiling — for what costs storage rather than inference, like opening
+    /// a run. Play has to keep working after the month's voice budget is spent; only the spend
+    /// itself stops.
+    pub fn allow_free(&mut self, addr: &str, store: &Store) -> Verdict {
+        self.roll(store);
+        self.window(addr)
+    }
+
+    fn window(&mut self, addr: &str) -> Verdict {
         // Bounded memory before a new entry, not after: the map only grows one address at a
         // time, so pruning at a threshold keeps it at the threshold.
         if self.windows.len() >= 4096 && !self.windows.contains_key(addr) {
@@ -257,6 +269,18 @@ mod tests {
         let mut open = Meter::with(100, 100, 0, None, &s);
         open.used = 1_000_000;
         assert_eq!(open.allow("c", &s), Verdict::Ok);
+    }
+
+    #[test]
+    fn the_ceiling_never_stops_what_is_free_but_the_window_still_does() {
+        let s = store("free");
+        let mut m = Meter::with(2, 100, 1, None, &s);
+        m.spend(&s);
+        // The month is spent: speech is refused, opening a run is not.
+        assert_eq!(m.allow("a", &s), Verdict::Ceiling);
+        assert_eq!(m.allow_free("a", &s), Verdict::Ok);
+        assert_eq!(m.allow_free("a", &s), Verdict::Ok);
+        assert!(matches!(m.allow_free("a", &s), Verdict::SlowDown { .. }));
     }
 
     #[test]

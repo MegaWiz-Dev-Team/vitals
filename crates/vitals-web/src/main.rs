@@ -752,6 +752,18 @@ fn main() {
                 }
             }
             (Method::Get, "/api/new") => {
+                // A run is a stored document, and a loop hammering "new" is a bill with no
+                // learner attached. The window only, never the ceiling: opening a run must
+                // survive the month's voice budget running out.
+                if let meter::Verdict::SlowDown { retry_secs } =
+                    meter.allow_free(&format!("new:{}", client_addr(&req)), &store)
+                {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "error": "too many new runs from this address — give it a minute",
+                        "retry_in": retry_secs,
+                    }), 429));
+                    continue;
+                }
                 let ep = param(&url, "ep").unwrap_or_else(|| "ep1".into());
                 match new_session(&ep) {
                     Ok(mut s) => {
