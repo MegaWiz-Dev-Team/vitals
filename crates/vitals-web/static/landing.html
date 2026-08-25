@@ -61,6 +61,26 @@ h2{font-size:clamp(1.4rem,3vw,1.9rem);margin-bottom:1.1rem}
   font-size:.92rem;color:var(--ink-2)}
 footer{border-top:1px solid var(--rule);padding:1.6rem 0 2.4rem;font-size:.85rem;color:var(--ink-3)}
 footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
+.lede{font-size:clamp(1.05rem,2.2vw,1.35rem);color:var(--ink);font-weight:500;max-width:34em;
+  line-height:1.4;margin:0 0 1.2rem}
+.lede b{color:var(--proven)}
+.phase{border-left:3px solid var(--rule);padding:.1rem 0 .1rem 1.15rem;margin:0 0 1.35rem}
+.phase:last-child{margin-bottom:0}
+.phase.live{border-color:var(--proven)} .phase.now{border-color:var(--attested)}
+.phase .st{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.1em;
+  text-transform:uppercase;font-weight:600;display:flex;align-items:center;gap:.55rem;margin-bottom:.5rem}
+.phase.live .st{color:var(--proven)} .phase.now .st{color:var(--attested)} .phase.next .st{color:var(--ink-3)}
+.phase .dot{width:.6rem;height:.6rem;border-radius:50%;background:currentColor;flex:none}
+.phase.next .dot{background:transparent;border:1.5px solid currentColor}
+.phase ul{margin:0;padding-left:1.1rem;color:var(--ink-2);font-size:.92rem}
+.phase li{margin:.28rem 0}
+.phase li em{color:var(--ink);font-style:normal;font-weight:600}
+.mission{background:var(--proven-soft);border:1px solid var(--proven);border-radius:12px;
+  padding:1.3rem 1.5rem;margin-top:1rem}
+.mission .spine{font-family:Archivo,Arial,sans-serif;font-size:clamp(1.25rem,3vw,1.7rem);
+  font-weight:800;color:var(--proven);line-height:1.15;margin:0 0 .7rem}
+.mission p{margin:.5rem 0 0;color:var(--ink-2);font-size:.94rem}
+.mission strong{color:var(--ink)}
 </style>
 </head>
 <body>
@@ -88,6 +108,37 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
   </section>
 
   <section>
+    <h2>Where we are</h2>
+    <p class="lede">Stated plainly, so you can check us. The demo you can play today is the green
+    tier. The <b>star gate</b> — OSCE stations that unlock the next chapter — is what we are wiring now.</p>
+    <div class="phase live">
+      <div class="st"><span class="dot"></span>Live on devnet — play it now</div>
+      <ul>
+        <li>Playable in ~60 seconds, no signup</li>
+        <li>Deterministic replay: same tape → same outcome, with no language model and no keyword matcher in the loop</li>
+        <li>Every run anchored on Solana; your level recomputed on-chain from Merkle proofs, not issued by a key</li>
+        <li>An independent verification tool, public and reproducible — a stranger re-derives your level straight from the chain</li>
+      </ul>
+    </div>
+    <div class="phase now">
+      <div class="st"><span class="dot"></span>Building now — the star gate</div>
+      <ul>
+        <li>OSCE exam mode: a deterministic 40-point rubric scored per station, re-derivable by anyone</li>
+        <li>Stars earned unlock the next story episode — <em>you earned it, the chain checked it, the door opened</em></li>
+        <li>Commit before the encounter, so the chain already knows how many times you started — you cannot practise five times and anchor only the good run</li>
+      </ul>
+    </div>
+    <div class="phase next">
+      <div class="st"><span class="dot"></span>Next</div>
+      <ul>
+        <li>Judged 60 — a named-clinician feedback layer beside the re-derivable 40</li>
+        <li>Patients who speak Japanese, Korean, and Chinese</li>
+        <li>Mainnet, with the program's upgrade authority handed to a multisig</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
     <h2>Not a prototype</h2>
     <div class="grid g4">
       <div class="card stat"><span class="n">18 / 29</span><span class="l">Thai medical faculties with active learners on the engine underneath — verified faculties, not signup entries</span></div>
@@ -95,10 +146,16 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
       <div class="card stat"><span class="n">1st</span><span class="l">Grand Champion, NECTEC AI for Thai 2026</span></div>
       <div class="card stat"><span class="n">~1,400</span><span class="l">years of human life associated with one additional doctor <a href="https://pubmed.ncbi.nlm.nih.gov/30776056/">(Basu et al., JAMA IM 2019)</a></span></div>
     </div>
-    <p class="note" style="margin-top:1rem">Our mission: <strong>1% more doctors who actually reach
-    patients, every year.</strong> 9.1% of medical students never finish, and the largest single cause
-    is academic difficulty. We find the learner who is going to fail <em>before</em> they fail, and
-    route them to the practice that closes their specific gap.</p>
+    <div class="mission">
+      <p class="spine">A market for skill that can be verified.</p>
+      <p><strong>Our mission: 1% more doctors who actually reach patients, every year</strong> — counted
+      as newly <em>licensed</em>, not merely graduated, because a graduate who never passes their
+      licensing examination never sees a patient.</p>
+      <p>9.1% of medical students never finish, and the single largest cause is academic difficulty.
+      We find the learner who is going to fail <em>before</em> they fail and route them to the practice
+      that closes their specific gap — then make the evidence of that practice something a residency in
+      another country can trust without trusting us, or the school that produced it.</p>
+    </div>
   </section>
 
   <section>
