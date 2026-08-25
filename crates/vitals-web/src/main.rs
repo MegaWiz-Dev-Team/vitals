@@ -1021,6 +1021,10 @@ fn main() {
                 let who = param(&url, "player").and_then(|p| pubkey(&p));
                 json(serde_json::json!({
                     "connected": chain.is_some(),
+                    // Which cluster the records anchor to, read off the RPC url — the page shows
+                    // this string, and a label the server derives cannot drift from where the
+                    // transactions actually go. It said "localnet" on the public demo once.
+                    "cluster": chain.as_ref().map(|c| cluster_of(&c.deployment().2)),
                     "voice": patient.is_some(),
                     "tree_id": t.tree_id,
                     "anchored": t.leaves.len(),
@@ -1460,6 +1464,23 @@ fn bind_addr(platform_port: Option<&str>, configured: Option<&str>) -> String {
     }
 }
 
+/// The cluster an RPC url points at, for the label on screen. Substring matching is enough:
+/// the public endpoints all carry their cluster's name, and anything unrecognised is reported
+/// as what it is rather than guessed.
+fn cluster_of(rpc: &str) -> &'static str {
+    if rpc.contains("devnet") {
+        "devnet"
+    } else if rpc.contains("testnet") {
+        "testnet"
+    } else if rpc.contains("mainnet") {
+        "mainnet"
+    } else if rpc.contains("127.0.0.1") || rpc.contains("localhost") {
+        "localnet"
+    } else {
+        "custom"
+    }
+}
+
 /// A player key as the browser sends it: base58, and it has to be a real curve point or the
 /// transaction it is put into can never be signed.
 fn pubkey(s: &str) -> Option<solana_sdk::pubkey::Pubkey> {
@@ -1657,6 +1678,18 @@ mod tests {
                   "/api/meter", "/donate"] {
             assert!(!guarded(p), "{p} is play, and a kiosk must not need a token to play");
         }
+    }
+
+    // ── the cluster label ───────────────────────────────────────────────────
+
+    #[test]
+    fn the_label_names_the_cluster_the_rpc_actually_points_at() {
+        assert_eq!(cluster_of("https://api.devnet.solana.com"), "devnet");
+        assert_eq!(cluster_of("https://api.testnet.solana.com"), "testnet");
+        assert_eq!(cluster_of("https://api.mainnet-beta.solana.com"), "mainnet");
+        assert_eq!(cluster_of("http://127.0.0.1:8899"), "localnet");
+        assert_eq!(cluster_of("http://localhost:8899"), "localnet");
+        assert_eq!(cluster_of("https://rpc.example.com"), "custom");
     }
 
     // ── scenario table ──────────────────────────────────────────────────────

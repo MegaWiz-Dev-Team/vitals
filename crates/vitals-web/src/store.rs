@@ -101,7 +101,10 @@ pub enum Class {
 /// keeping makes it use disk — which gets noticed, and can be fixed after the fact.
 pub fn class_of(kind: &str) -> Class {
     match kind {
-        "sess" => Class::Ephemeral,
+        // Both spellings: the server stores runs under "sessions", and the mismatch with the
+        // shorthand here meant the 24-hour sweep classified them durable and never deleted
+        // one — the startup line reported "0 expired" forever and read as a quiet server.
+        "sess" | "sessions" => Class::Ephemeral,
         _ => Class::Durable,
     }
 }
@@ -403,6 +406,16 @@ mod tests {
             assert!(s.put("sess", bad, &1u8).is_err(), "accepted {bad:?}");
             assert_eq!(s.get::<u8>("sess", bad), None, "read back {bad:?}");
         }
+    }
+
+    /// The kind the server actually stores runs under must be sweepable — the mismatch with
+    /// the shorthand is exactly the bug this pins down.
+    #[test]
+    fn the_kind_the_server_uses_for_runs_is_ephemeral() {
+        assert_eq!(class_of("sessions"), Class::Ephemeral);
+        assert_eq!(class_of("sess"), Class::Ephemeral);
+        assert_eq!(class_of("tree"), Class::Durable);
+        assert_eq!(class_of("meter"), Class::Durable);
     }
 
     #[test]
