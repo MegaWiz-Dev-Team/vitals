@@ -1164,3 +1164,117 @@ async fn an_account_owned_by_another_program_is_refused() {
     )).await.unwrap_err().unwrap();
     assert_eq!(custom(&e), Some(VitalsError::WrongOwner as u32));
 }
+
+/// An `AttemptRecord` on `case`, scored `det_score`/`det_max` on its rubric, exam or practice.
+fn exam_rec(player: &Pubkey, case: u8, det_score: u16, det_max: u16, exam: bool) -> AttemptRecord {
+    let mut r = rec(player, case, Outcome::WinDischarge, 0, Difficulty::Student);
+    r.exam_mode = exam;
+    r.det_score = det_score;
+    r.det_max = det_max;
+    r
+}
+
+/// The star gate's core claim, end to end on chain: an exam run's deterministic score is persisted
+/// in the *claim buffer* (not only the leaf), and a star is measured on that det score — so a
+/// cleared exam earns one, a sub-bar exam does not, and a practice run never can whatever its
+/// outcome. This is the on-chain half of the fix that stopped stars being measured on the outcome.
+#[tokio::test]
+async fn an_exam_run_persists_its_det_score_and_earns_a_star() {
+    let pid = Pubkey::new_unique();
+    let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
+    let (mut banks, payer, bh) = pt.start().await;
+    let me = payer.pubkey();
+    let (tree, claim, _prog) = pdas(&pid, &me, &me);
+    let acc = acct(&pid, &me);
+    banks
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[ix(pid, me, me, &[acc], Instruction::OpenAccount)],
+            Some(&me),
+            &[&payer],
+            bh,
+        ))
+        .await
+        .expect("opening an account");
+
+    // Three distinct cases: an exam cleared at det 40/40, an exam below the 70% bar at 24/40, and a
+    // practice run with a perfect outcome. Only the first is a star.
+    let mut runs: Vec<AttemptRecord> = vec![
+        exam_rec(&me, 1, 40, 40, true),
+        exam_rec(&me, 2, 24, 40, true),
+        exam_rec(&me, 3, 40, 40, false),
+    ];
+
+    let mut bh = bh;
+    let mut leaves = Vec::new();
+    for r in &mut runs {
+        bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+        let (ch, cs) = committed(&mut banks, pid, &payer, &payer, bh).await;
+        r.commitment = ch;
+        r.committed_slot = cs;
+        bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+        banks
+            .process_transaction(Transaction::new_signed_with_payer(
+                &[ix(pid, me, me, &[acc, tree, cpda(&pid, &me)],
+                     Instruction::AnchorReplay { tree_id: TREE, record: wire(r) })],
+                Some(&me),
+                &[&payer],
+                bh,
+            ))
+            .await
+            .expect("anchoring an exam run");
+        leaves.push(r.leaf());
+    }
+    for (i, r) in runs.iter().enumerate() {
+        let path = merkle::prove(&leaves, i as u64).unwrap();
+        bh = banks.get_new_latest_blockhash(&bh).await.unwrap();
+        banks
+            .process_transaction(Transaction::new_signed_with_payer(
+                &[ix(pid, me, me, &[acc, tree, claim], Instruction::ProveAttempt {
+                    tree_id: TREE,
+                    record: wire(r),
+                    index: i as u64,
+                    path: path.to_vec(),
+                    commitment: r.commitment,
+                    committed_slot: r.committed_slot,
+                })],
+                Some(&me),
+                &[&payer],
+                bh,
+            ))
+            .await
+            .expect("proving an exam run");
+    }
+
+    // Read the claim buffer back: det must be persisted per attempt, and the star measured on it.
+    let data = banks.get_account(claim).await.unwrap().expect("claim account").data;
+    // deserialize, not from_slice: the account is CLAIM_LEN-padded, so the Vec is followed by zero
+    // bytes the struct does not read — from_slice would reject them as "not all bytes read".
+    let claim_acct: ClaimAccount =
+        borsh::BorshDeserialize::deserialize(&mut &data[..]).expect("claim layout");
+    assert_eq!(claim_acct.attempts.len(), 3);
+    let cleared = claim_acct.attempts.iter().find(|a| a.case[0] == 1).unwrap();
+    assert_eq!(
+        (cleared.det_score, cleared.det_max),
+        (40, 40),
+        "the det score must survive into the claim buffer, not only the leaf"
+    );
+
+    let attempts: Vec<vitals_progress::Attempt> = claim_acct
+        .attempts
+        .iter()
+        .map(|a| vitals_progress::Attempt {
+            case: a.case,
+            score: a.score,
+            max: a.max,
+            det_score: a.det_score,
+            det_max: a.det_max,
+            difficulty: Difficulty::Student,
+            exam_mode: a.exam_mode,
+        })
+        .collect();
+    assert_eq!(
+        vitals_progress::stars(&attempts, vitals_progress::STAR_PASS_BPS),
+        1,
+        "only the cleared exam case is a star — not the sub-bar exam, not the practice run"
+    );
+}
