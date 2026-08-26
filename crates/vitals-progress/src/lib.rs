@@ -236,6 +236,33 @@ pub fn summarize(attempts: &[Attempt]) -> Summary {
     }
 }
 
+/// Stars earned: distinct cases cleared **in exam mode** at or above `pass_bps`.
+///
+/// The star is the exam gate the story rides on, and three properties make it mean something:
+/// practice runs (`exam_mode == false`) never earn one, so a learner cannot farm stars outside the
+/// exam; a case cleared more than once is still a single star; and only a `det_score`-backed
+/// attempt should ever reach here, because a star that is not re-derivable is not one a stranger
+/// can check (docs/RISKS.md §3).
+///
+/// Additive on purpose: `summarize`/`dreyfus` are untouched, so the level the live demo computes is
+/// unchanged. Allocation-free, counting distinct the same O(n²) way `summarize` does over the same
+/// bounded attempt buffer, so it compiles into the on-chain program unchanged.
+pub fn stars(attempts: &[Attempt], pass_bps: u32) -> u32 {
+    let cleared = |a: &Attempt| a.exam_mode && norm_bps(a.score, a.max) >= pass_bps;
+    let mut count: u32 = 0;
+    for (i, a) in attempts.iter().enumerate() {
+        if !cleared(a) {
+            continue;
+        }
+        // Only the first cleared attempt of a case scores its star, mirroring `summarize`'s
+        // distinctness so replaying a station cannot buy a second star.
+        if !attempts[..i].iter().any(|p| p.case == a.case && cleared(p)) {
+            count += 1;
+        }
+    }
+    count
+}
+
 /// Verdict for a `claim_progress` instruction: the chain never grants what it cannot recompute.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verdict {
@@ -265,6 +292,45 @@ mod tests {
 
     fn attempt(tag: u8, pct: u32, difficulty: Difficulty) -> Attempt {
         Attempt { case: case(tag), score: pct, max: 100, difficulty, exam_mode: false }
+    }
+
+    /// Same, but declared as an exam run — the only kind that can earn a star.
+    fn exam(tag: u8, pct: u32) -> Attempt {
+        Attempt { exam_mode: true, ..attempt(tag, pct, Difficulty::Student) }
+    }
+
+    #[test]
+    fn a_cleared_exam_case_is_one_star() {
+        assert_eq!(stars(&[exam(1, 80)], 7000), 1);
+        assert_eq!(stars(&[exam(1, 65)], 7000), 0); // below the 70% bar
+    }
+
+    #[test]
+    fn practice_never_earns_a_star() {
+        // A perfect practice run (exam_mode = false) earns nothing — stars cannot be farmed.
+        assert_eq!(stars(&[attempt(1, 100, Difficulty::Student)], 7000), 0);
+    }
+
+    #[test]
+    fn a_case_cleared_twice_is_still_one_star() {
+        assert_eq!(stars(&[exam(1, 80), exam(1, 95)], 7000), 1);
+    }
+
+    #[test]
+    fn distinct_cleared_exam_cases_each_score() {
+        // Two distinct cleared, one below the bar, one practice: 2 stars.
+        let runs = [
+            exam(1, 90),
+            exam(2, 75),
+            exam(3, 40),
+            attempt(4, 100, Difficulty::Student),
+        ];
+        assert_eq!(stars(&runs, 7000), 2);
+    }
+
+    #[test]
+    fn a_failed_then_passed_exam_case_scores_once() {
+        assert_eq!(stars(&[exam(1, 50), exam(1, 88)], 7000), 1);
     }
 
     /// Mirrors upstream `dreyfus_stages()` — same inputs, same expected stages.
