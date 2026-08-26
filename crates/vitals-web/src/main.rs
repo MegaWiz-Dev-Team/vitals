@@ -598,11 +598,13 @@ fn main() {
     println!("meter      {}", meter.describe());
 
     // The star bar: an exam-mode case counts as cleared at or above this fraction of the
-    // deterministic rubric, in basis points. One number, visible in every /api/stars reply.
+    // deterministic rubric, in basis points. The default is the canonical constant — the same
+    // one the rubric files are test-pinned to — not a literal, so an unset env on any deploy
+    // resolves to exactly the number the enforce-test guards and the two cannot drift silently.
     let star_pass_bps: u32 = std::env::var("VITALS_STAR_PASS_BPS")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(6_500);
+        .unwrap_or(vitals_progress::STAR_PASS_BPS);
 
     // Which stations can host an exam — asked once, from the same function the commit gate and
     // the anchor scorer ask, and served to the page so the UI never keeps its own copy.
