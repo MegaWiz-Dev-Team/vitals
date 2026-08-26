@@ -4,6 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Vitals — anyone can play, nobody can fake the replay</title>
+<!-- Google Analytics 4 · production hostnames only (dev / localhost / *.run.app do not report) -->
+<script>
+if(location.hostname.endsWith('vitals.academy')){
+  var s=document.createElement('script');s.async=true;
+  s.src='https://www.googletagmanager.com/gtag/js?id=G-LH5JSMQBSL';
+  document.head.appendChild(s);
+  window.dataLayer=window.dataLayer||[];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js',new Date());gtag('config','G-LH5JSMQBSL');
+}
+</script>
 <meta name="description" content="A patient is dying on a clock and you decide what happens next. Free clinical simulation for medical students — every run verifiable on Solana.">
 <meta property="og:title" content="Vitals">
 <meta property="og:description" content="A patient is dying on a clock and you decide what happens next. Anyone can play. Nobody can fake the replay.">

@@ -4,6 +4,18 @@
      regeneration away from being lost. And `build-pdf.sh` renders that file straight off disk
      through a `file://` URL, so none of this reaches the PDF — which is what you want: a printed
      deck has no arrow keys. -->
+
+<!-- Google Analytics 4 · production hostnames only (dev / localhost / *.run.app do not report) -->
+<script>
+if(location.hostname.endsWith('vitals.academy')){
+  var s=document.createElement('script');s.async=true;
+  s.src='https://www.googletagmanager.com/gtag/js?id=G-LH5JSMQBSL';
+  document.head.appendChild(s);
+  window.dataLayer=window.dataLayer||[];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js',new Date());gtag('config','G-LH5JSMQBSL');
+}
+</script>
 <style>
 html{scroll-behavior:smooth}
 body{scroll-snap-type:y mandatory}

@@ -3,6 +3,17 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Donate — Vitals</title>
+<!-- Google Analytics 4 · production hostnames only (dev / localhost / *.run.app do not report) -->
+<script>
+if(location.hostname.endsWith('vitals.academy')){
+  var s=document.createElement('script');s.async=true;
+  s.src='https://www.googletagmanager.com/gtag/js?id=G-LH5JSMQBSL';
+  document.head.appendChild(s);
+  window.dataLayer=window.dataLayer||[];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js',new Date());gtag('config','G-LH5JSMQBSL');
+}
+</script>
 <meta name="description" content="Fund free clinical training. Donations are held in an on-chain treasury anyone can audit.">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
