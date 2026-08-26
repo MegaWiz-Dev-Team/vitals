@@ -3,16 +3,37 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Donate — Vitals</title>
-<!-- Google Analytics 4 · production hostnames only (dev / localhost / *.run.app do not report) -->
+<!-- Google Analytics 4 · production-only, consent mode (analytics denied until accepted) -->
 <script>
 window.dataLayer=window.dataLayer||[];
 function gtag(){dataLayer.push(arguments);}
 if(location.hostname.endsWith('vitals.academy')){
+  gtag('consent','default',{analytics_storage:'denied',ad_storage:'denied'});
   var s=document.createElement('script');s.async=true;
   s.src='https://www.googletagmanager.com/gtag/js?id=G-LH5JSMQBSL';
   document.head.appendChild(s);
   gtag('js',new Date());
   gtag('config','G-LH5JSMQBSL');
+  (function(){
+    var KEY='vitals-analytics-consent',c=null;
+    try{c=localStorage.getItem(KEY)}catch(e){}
+    if(c==='granted'){gtag('consent','update',{analytics_storage:'granted'});return;}
+    if(c==='denied'){return;}
+    function show(){
+      if(document.getElementById('va-consent'))return;
+      var b=document.createElement('div');b.id='va-consent';
+      b.setAttribute('style','position:fixed;left:0;right:0;bottom:0;z-index:2147483647;background:#0F1719;color:#E9F0F0;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;padding:13px 18px;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:center;box-shadow:0 -1px 0 rgba(255,255,255,.09)');
+      var t=document.createElement('span');t.setAttribute('style','max-width:44em');
+      t.textContent='We use privacy-respecting analytics to see how the site is used. No cookies are set until you accept.';
+      b.appendChild(t);
+      function btn(txt,bg,fg,bd){var x=document.createElement('button');x.textContent=txt;x.setAttribute('style','cursor:pointer;font:600 14px inherit;padding:.5em 1.25em;border-radius:7px;border:'+bd+';background:'+bg+';color:'+fg);return x;}
+      var yes=btn('Accept','#0B6E58','#fff','none'),no=btn('Decline','transparent','#E9F0F0','1px solid rgba(255,255,255,.35)');
+      yes.onclick=function(){try{localStorage.setItem(KEY,'granted')}catch(e){}gtag('consent','update',{analytics_storage:'granted'});b.remove();};
+      no.onclick=function(){try{localStorage.setItem(KEY,'denied')}catch(e){}b.remove();};
+      b.appendChild(yes);b.appendChild(no);document.body.appendChild(b);
+    }
+    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',show);else show();
+  })();
 }
 /* Every button, link, tile, and [data-ga] click reports once — delegated, so new
    controls are covered without hand-tagging. gtag() is a harmless no-op off production. */
@@ -65,7 +86,7 @@ audit</strong>, not in a black box.</p>
 <div class="card">
 <span class="k">Treasury address · Solana (SOL or USDC)</span>
 <div class="addr"><span class="mono" id="addrText">9FJRwWnTNQXB9ff5SSmQKytCdVYqTQQPUz1b4zX9mt8y</span>
-<button class="btn" onclick="navigator.clipboard.writeText(document.getElementById('addrText').textContent).then(()=>{this.textContent='✓ copied';setTimeout(()=>this.textContent='copy',1500)})">copy</button></div>
+<button class="btn" data-ga="copy-address" onclick="navigator.clipboard.writeText(document.getElementById('addrText').textContent).then(()=>{this.textContent='✓ copied';setTimeout(()=>this.textContent='copy',1500)})">copy</button></div>
 <div id="qr"></div>
 <p style="font-size:.85rem;color:var(--ink-2);text-align:center;margin:.2rem 0 0">Scan with Phantom, Solflare or any Solana wallet ·
 <a href="https://explorer.solana.com/address/9FJRwWnTNQXB9ff5SSmQKytCdVYqTQQPUz1b4zX9mt8y">audit the treasury yourself</a></p>
