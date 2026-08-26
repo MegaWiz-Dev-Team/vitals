@@ -545,6 +545,49 @@ a.give:hover{filter:brightness(1.06)}
 .ceiling .cl-give{align-self:flex-start;background:var(--gold);color:#0f2d3a;font-weight:700;
   text-decoration:none;border-radius:999px;padding:.45rem .9rem;margin-top:.2rem}
 .ceiling .cl-count{font-family:"IBM Plex Mono",monospace;font-size:.7rem;opacity:.85}
+
+/* ── B6-B8 · the cinema layer ─────────────────────────────────────────────────
+   Everything between scenes happens on one black surface: the recap, the title
+   card, the stinger, the up-next card, a trailer. Fullscreen because a title card
+   half the size of the page is a toast, not a title card. */
+.cine{position:fixed;inset:0;z-index:80;background:#000;color:#fff;display:flex;
+  align-items:center;justify-content:center;text-align:center;cursor:pointer;padding:1.2rem}
+.cine[data-skip="no"]{cursor:default}
+.cine-skip{position:absolute;right:1rem;bottom:.9rem;font-family:"IBM Plex Mono",monospace;
+  font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.45)}
+@keyframes cinein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.tc{animation:cinein .5s ease}
+.tc-k{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.3em;
+  text-transform:uppercase;color:#7fe7d2;margin-bottom:.7rem}
+.tc-t{font-family:Archivo,sans-serif;font-weight:800;font-size:clamp(1.6rem,7vw,3.4rem);
+  letter-spacing:.02em;text-transform:uppercase;line-height:1.1;text-wrap:balance}
+.tc-prev{font-family:Archivo,sans-serif;font-size:clamp(1.2rem,5vw,2rem);font-weight:600;color:#cfe4de}
+.tc-prev b{color:#fff;letter-spacing:.1em}
+.rc-still{position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:center;
+  animation:cinein .45s ease}
+.rc-still img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.55}
+.rc-void{position:absolute;inset:0;
+  background:radial-gradient(700px 420px at 50% 30%,#14323d 0%,#050b0d 70%)}
+.rc-line{position:relative;margin:0 auto 4.2rem;padding:0 1.4rem;max-width:34em;
+  font-family:Archivo,sans-serif;font-size:clamp(1rem,4vw,1.5rem);font-weight:600;line-height:1.35;
+  color:#fff;text-shadow:0 2px 18px rgba(0,0,0,.8);text-wrap:balance}
+.sting{max-width:30em;font-family:Archivo,sans-serif;font-size:clamp(1.05rem,4.4vw,1.7rem);
+  font-weight:600;line-height:1.45;color:#e7efee;animation:cinein 1.1s ease;text-wrap:balance}
+.un{cursor:default;max-width:24rem;width:100%;animation:cinein .4s ease}
+.un-k{font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.26em;
+  text-transform:uppercase;color:#7fe7d2;margin-bottom:.8rem}
+.un-card{display:flex;gap:.8rem;align-items:center;background:#0d1a1e;border:1px solid #1e3238;
+  border-radius:14px;padding:.8rem;text-align:left;margin-bottom:.9rem}
+.un-card img,.un-ph{width:6.4rem;aspect-ratio:16/10;border-radius:8px;object-fit:cover;flex:none;
+  background:linear-gradient(150deg,#0f2d3a,#1f9d86)}
+.un-n{font-family:"IBM Plex Mono",monospace;font-size:.6rem;letter-spacing:.14em;
+  color:#7fe7d2;text-transform:uppercase}
+.un-t{font-family:Archivo,sans-serif;font-weight:700;font-size:1.05rem;margin:.15rem 0}
+.un-rt{font-family:"IBM Plex Mono",monospace;font-size:.6rem;letter-spacing:.1em;
+  color:#8aa0a4;text-transform:uppercase}
+.un-note{font-size:.8rem;color:#ffd766;margin:0 0 .8rem}
+.un-acts{display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap}
+.un-count{margin-top:.8rem;font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:#8aa0a4}
 </style>
 </head>
 <body>
@@ -715,6 +758,11 @@ a.give:hover{filter:brightness(1.06)}
     <div class="hint" style="margin-top:.5rem">Hand the tape and the scenario to anyone — they recompute this leaf without asking us.</div>
   </section>
 </div>
+
+  <!-- The cinema layer: recap, title card, stinger, up-next and trailers all share this
+       one black surface. cineShow() runs a queue of steps; a tap advances the skippable
+       ones; cards that carry their own buttons drive themselves. -->
+  <div class="cine hide" id="cine"></div>
 
   <!-- The visible ceiling: when the month's compute is spent this card says what the money did
        and where more comes from. Fixed at the bottom so it reads the same from the lobby and
@@ -938,6 +986,35 @@ const SEASON=[
   d:'Everyone you have met, in one room, on the worst night of the year.'},
 ];
 const ep=()=>SEASON.find(e=>e.id===$('#ep').value)||SEASON[0];
+
+/* ── B7 · "Previously on Vitals…" ─────────────────────────────────────────────
+   Three frames, one line each, straight off the season arc (docs/internal/SEASON_ARC.md).
+   EP2's recap wears EP1's real frames; the later ones run on dark memory-frames until
+   their episodes have art — a wrong face is worse than no face. Phase 3 (narrative
+   prose pass) owns this copy: polish the lines here and in STINGER, nowhere else. */
+const RECAP={
+ ep2:[['/img/critical.jpg','Nineteen years old. The wrong salad. Her throat closed in minutes.'],
+      ['/img/recovered.jpg','Adrenaline, first and fast — Ing walked out of this bay alive.'],
+      ['/img/stable.jpg','\u201cOne day I\u2019m coming back here. To help.\u201d She meant it.']],
+ ep3:[[null,'Prasit, 58. A taxi driver with an artery closing on the clock.'],
+      [null,'The cath lab beat the clock. Time is muscle — you spent it well.'],
+      [null,'He taped his radio channel to the desk: \u201cThe day you need a car, call.\u201d']],
+ ep4:[[null,'A five-year-old who would not cry. Khaopun — Prasit\u2019s grandson.'],
+      [null,'You kept him calm and the airway held. His stillness was the emergency.'],
+      [null,'His mother watched it all. Mali — one of ours, a nurse on this ward.']],
+ ep5:[[null,'Mali. Nurse, mother, patient — the clot nobody saw coming.'],
+      [null,'Heparin bought her back. The system is stretched past its people.'],
+      [null,'Tonight is the new year festival. The fireworks factory is running late.']],
+};
+/* ── B8 · stingers ── the black card after the outcome: one line that makes the next
+   episode inevitable. Phase 3 polishes these together with RECAP above. */
+const STINGER={
+ ep1:'Ing goes home with a promise. Across town, a taxi driver rubs his chest and blames the traffic.',
+ ep2:'\u201cThe day you need a car — radio me.\u201d He will be back sooner than that, carrying someone smaller.',
+ ep3:'His mother finally exhales. Sixteen hours into her shift, her calf begins to ache.',
+ ep4:'Mali is discharged in time for the new year. Nobody watches the fireworks factory after midnight.',
+ ep5:'For the first time all night, the room is quiet. Everyone you ever saved is standing in it.',
+};
 
 /* ─── what you can do, by mode ─────────────────────────────────────────────── */
 const MODES=[
@@ -1335,6 +1412,7 @@ function paint(v){
     if(win){ const c=cleared(), e=$('#ep').value;
       if(!c.includes(e)){c.push(e);localStorage.setItem('vitals.cleared',JSON.stringify(c));} }
     chainState(); $('#result').scrollIntoView({behavior:'smooth',block:'nearest'});
+    endFlow(win);
   }
 }
 
@@ -1594,15 +1672,11 @@ function paintSeason(){
     /* A station card is only ever an exam — that is what a station is. Episodes enter as
        practice unless the exam door below is the thing clicked. */
     const entry=SEASON.find(x=>x.id===b.dataset.ep);
-    EXAMRUN=!!(entry&&entry.station);
-    $('#ep').value=b.dataset.ep; $('#lobby').classList.add('hide');
-    $('#game').classList.remove('hide'); $('#start').click(); });
+    enterEpisode(b.dataset.ep, !!(entry&&entry.station)); });
   /* The exam door on the same card: same bay, but the ceremony will bind exam into the
      commitment before the first order is possible. */
   $('#eps').querySelectorAll('[data-exam]').forEach(x=>x.onclick=(ev)=>{
-    ev.stopPropagation(); EXAMRUN=true;
-    $('#ep').value=x.dataset.exam; $('#lobby').classList.add('hide');
-    $('#game').classList.remove('hide'); $('#start').click(); });
+    ev.stopPropagation(); enterEpisode(x.dataset.exam,true); });
   $('#coin-n').textContent=cleared().length;
   renderHero(); paintRing();
 }
@@ -1659,10 +1733,7 @@ function renderHero(){
     <div class="hero-txt"><div class="hero-eye">${eye}</div><h1>${h1}</h1><p>${line}</p>
       <div class="hero-act"><span class="hero-play">${play}</span><span class="hero-rt">${e.rt||''}</span></div>
       ${pr>0&&pr<1?`<div class="hero-prog"><i style="width:${Math.round(pr*100)}%"></i></div>`:''}</div>`;
-  $('#hero').onclick=()=>{
-    EXAMRUN=!!e.station;
-    $('#ep').value=e.id; $('#lobby').classList.add('hide');
-    $('#game').classList.remove('hide'); $('#start').click(); };
+  $('#hero').onclick=()=>enterEpisode(e.id,e.station);
 }
 /* C10 · the ring: five episodes round the dial, stars under it. Stations are the
    season's interludes, so only the five shifts count toward the circle. */
@@ -1675,6 +1746,128 @@ function paintRing(){
       <circle cx="18" cy="18" r="15.5" class="ring-fg" stroke-dasharray="${(C*n/5).toFixed(1)} ${C}"/>
       <text x="18" y="21.5" class="ring-n">${n}</text></svg>
     <span class="ring-t"><b>${n} of 5</b> episodes<br>\u2b50 ${st} star${st===1?'':'s'}</span>`;
+}
+
+/* ── B6-B8 · the cinema layer ─────────────────────────────────────────────────
+   A queue of steps on one black surface. A tap (or Escape) advances any skippable
+   step; a card with its own buttons sets skip:false and drives itself. The queue's
+   done() runs exactly once, when the last step ends or the whole thing is skipped
+   through — which is what lets the intro hand the frame to the run and nothing else. */
+let cineQ=null;
+function cineShow(steps,done){
+  if(cineQ)clearTimeout(cineQ.timer);
+  if(!steps.length){cineHide();return done&&done();}
+  cineQ={steps,i:-1,done,timer:null};
+  $('#cine').classList.remove('hide');
+  cineNext();
+}
+function cineNext(){
+  if(!cineQ)return;
+  clearTimeout(cineQ.timer);
+  cineQ.i++;
+  if(cineQ.i>=cineQ.steps.length){const d=cineQ.done;cineHide();return d&&d();}
+  const st=cineQ.steps[cineQ.i];
+  $('#cine').innerHTML=st.html;
+  $('#cine').dataset.skip=st.skip===false?'no':'yes';
+  if(st.ms)cineQ.timer=setTimeout(cineNext,st.ms);
+  if(st.wire)st.wire($('#cine'));
+}
+function cineHide(){
+  if(cineQ)clearTimeout(cineQ.timer);
+  cineQ=null; $('#cine').classList.add('hide'); $('#cine').innerHTML=''; $('#cine').dataset.skip='';
+}
+$('#cine').onclick=()=>{ if(cineQ&&$('#cine').dataset.skip!=='no')cineNext(); };
+addEventListener('keydown',e=>{ if(e.key==='Escape'&&cineQ&&$('#cine').dataset.skip!=='no')cineNext(); });
+
+/* B6 · the title card: 1.5 seconds of black and the episode's name, skippable. */
+const titleCard=e=>({ms:1500,html:'<div class="tc"><div class="tc-k">'
+  +(e.station?'night shift training · '+e.n:(e.sn||e.n))+'</div><div class="tc-t">'
+  +e.t.toUpperCase()+'</div></div><span class="cine-skip">tap to skip</span>'});
+/* B7 · the recap: an intro card, then three frames with a line each. */
+function recapSteps(e){
+  const R=RECAP[e.id]; if(!R)return[];
+  const steps=[{ms:1400,html:'<div class="tc"><div class="tc-prev">Previously on <b>VITALS</b>\u2026</div></div><span class="cine-skip">tap to skip</span>'}];
+  for(const[img,line]of R)steps.push({ms:2600,html:'<div class="rc-still">'
+    +(img?'<img src="'+img+'" alt="">':'<div class="rc-void"></div>')
+    +'<div class="rc-line">'+line+'</div></div><span class="cine-skip">tap to skip</span>'});
+  return steps;
+}
+/* ── the front door of an episode ─────────────────────────────────────────────
+   Every entry from the shelf routes here: the recap for EP2-5, the title card for
+   everything, and only then the run — the case clock never ticks under the recap.
+   The kiosk hash path (#play) keeps calling #start directly and stays overlay-free,
+   and so does the restart button: a restart is not an entrance. */
+function enterEpisode(epId,exam){
+  const e=SEASON.find(x=>x.id===epId)||SEASON[0];
+  EXAMRUN=!!(exam||e.station);
+  $('#ep').value=e.id;
+  $('#lobby').classList.add('hide'); $('#game').classList.remove('hide');
+  const steps=e.station?[]:recapSteps(e);
+  steps.push(titleCard(e));
+  cineShow(steps,()=>$('#start').click());
+}
+/* ── B8 · the end-of-episode flow ─────────────────────────────────────────────
+   Outcome → stinger → up next. The terminal cutscene keeps the frame until it ends;
+   a restart mid-wait cancels the whole thing (the run id is the guard). */
+function endFlow(win){
+  const runId=id, eId=$('#ep').value, exam=EXAMLIVE;
+  let waited=0;
+  const go=()=>{
+    if(id!==runId||!over)return;
+    if(cutting&&waited<12000){waited+=400;return void setTimeout(go,400);}
+    const steps=[];
+    if(win&&STINGER[eId])steps.push({ms:3600,
+      html:'<div class="sting">'+STINGER[eId]+'</div><span class="cine-skip">tap to skip</span>'});
+    cineShow(steps,()=>{ if(id===runId&&over)upNext(win,exam,eId); });
+  };
+  setTimeout(go,win?2600:1600);
+}
+/* The next door that is actually open, walking the shelf left to right. */
+function nextOpen(eId){
+  const i=SEASON.findIndex(x=>x.id===eId);
+  for(let j=i+1;j<SEASON.length;j++)if(open_(j))return SEASON[j];
+  return null;
+}
+function upNext(win,exam,eId){
+  const i=SEASON.findIndex(x=>x.id===eId);
+  let nxt=win?nextOpen(eId):SEASON[i], note=null;
+  if(win&&exam&&!nxt){
+    /* The star is not banked until the anchor lands, so the door it opens still reads
+       shut here — show the door anyway and say what opens it. No auto-advance: leaving
+       an exam un-anchored by countdown would cost the star the run just earned. */
+    nxt=SEASON.slice(i+1).find(x=>!x.station)||null;
+    note='Anchor this run first — the star is what opens this door.';
+  }
+  if(!nxt){
+    /* Past the finale. Phase 3's epilogue (the transfer letter) replaces this card. */
+    return cineShow([{skip:false,html:'<div class="un"><div class="un-k">end of season 1</div>'
+      +'<div class="un-t" style="font-size:1.5rem">The Resus Bay</div>'
+      +'<p class="un-note">VITALS will return.</p>'
+      +'<div class="un-acts"><button class="btn go" data-un-x data-ga="upnext:shelf">back to the shelf</button></div></div>',
+      wire:r=>{r.querySelector('[data-un-x]').onclick=()=>{cineHide();$('#back').click();};}}]);
+  }
+  const auto=win&&!exam;
+  cineShow([{skip:false,html:'<div class="un"><div class="un-k">'+(win?'up next':'run it back')+'</div>'
+    +'<div class="un-card">'+(nxt.art?'<img src="'+nxt.art+'" alt="">':'<div class="un-ph"></div>')
+    +'<div><div class="un-n">'+(nxt.sn||nxt.n)+(nxt.station?' · night shift training':'')+'</div>'
+    +'<div class="un-t">'+nxt.t+'</div><div class="un-rt">'+(nxt.rt||'')+'</div></div></div>'
+    +(note?'<p class="un-note">'+note+'</p>':'')
+    +'<div class="un-acts"><button class="btn go" data-un-go data-ga="upnext:play">▶ '+(win?'play now':'run it back')+'</button>'
+    +'<button class="btn" data-un-stay data-ga="upnext:stay">'+(exam&&win?'review & anchor':'read the debrief')+'</button></div>'
+    +(auto?'<div class="un-count">starting in <b data-un-n>5</b>\u2026</div>':'')+'</div>',
+    wire:r=>{
+      const go=()=>{cineHide();enterEpisode(nxt.id,nxt.station);};
+      r.querySelector('[data-un-go]').onclick=go;
+      r.querySelector('[data-un-stay]').onclick=()=>{cineHide();
+        $('#result').scrollIntoView({behavior:'smooth',block:'nearest'});};
+      /* The countdown is the binge loop; either button cancels it (cineHide clears the
+         handle — clearTimeout and clearInterval share an id space by spec). */
+      if(auto){let n=5;const tid=setInterval(()=>{
+        const el=r.querySelector('[data-un-n]');
+        if(!el||!cineQ){clearInterval(tid);return;}
+        if(--n<=0){clearInterval(tid);go();}else el.textContent=n;},1000);
+        cineQ.timer=tid;}
+    }}]);
 }
 renderSeason(); renderModes();
 /* The panel does three different jobs for three different situations. Showing all three at
