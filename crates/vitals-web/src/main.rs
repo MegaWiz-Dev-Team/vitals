@@ -379,6 +379,10 @@ fn scenario_path(id: &str) -> std::path::PathBuf {
         "ep3" => root.join("demo/scenarios/ep3-epiglottitis.json"),
         "ep4" => root.join("demo/scenarios/ep4-pulmonary-embolism.json"),
         "ep5" => root.join("demo/scenarios/ep5-the-night-the-stars-fell.json"),
+        // The OSCE stations — exam-only interludes between story episodes, converted from
+        // embla-cases specimens (see demo/stations/*.sce.json headers for provenance).
+        "osce-a" => root.join("demo/stations/osce-a.sce.json"),
+        "osce-b" => root.join("demo/stations/osce-b.sce.json"),
         _ => root.join("conformance/sce-anaphylaxis-ep1.json"),
     }
 }
@@ -394,6 +398,8 @@ fn rubric_path(id: &str) -> Option<std::path::PathBuf> {
         "ep3" => "demo/rubrics/ep3-epiglottitis.json",
         "ep4" => "demo/rubrics/ep4-pulmonary-embolism.json",
         "ep5" => "demo/rubrics/ep5-the-night-the-stars-fell.json",
+        "osce-a" => "demo/rubrics/osce-a.json",
+        "osce-b" => "demo/rubrics/osce-b.json",
         _ => return None,
     };
     let p = scenario_root().join(file);
@@ -406,13 +412,15 @@ fn title(id: &str) -> &'static str {
         "ep3" => "EP3 · Don't Make Him Cry",
         "ep4" => "EP4 · The Masquerader",
         "ep5" => "EP5 · The Night the Stars Fell",
+        "osce-a" => "OSCE-A · Rash After the Buffet",
+        "osce-b" => "OSCE-B · Ten Minutes to Prove It",
         _ => "EP1 · The Last Bite",
     }
 }
 
 fn difficulty(ep: &str) -> Difficulty {
     match ep {
-        "ep2" => Difficulty::Intern,
+        "ep2" | "osce-b" => Difficulty::Intern,
         "ep3" | "ep4" | "ep5" => Difficulty::Resident,
         _ => Difficulty::Student,
     }
@@ -609,7 +617,7 @@ fn main() {
 
     // Which stations can host an exam — asked once, from the same function the commit gate and
     // the anchor scorer ask, and served to the page so the UI never keeps its own copy.
-    let exam_eps: Vec<&'static str> = ["ep1", "ep2", "ep3", "ep4", "ep5"]
+    let exam_eps: Vec<&'static str> = ["ep1", "osce-a", "ep2", "osce-b", "ep3", "ep4", "ep5"]
         .into_iter()
         .filter(|e| rubric_path(e).is_some())
         .collect();
@@ -1806,22 +1814,24 @@ mod tests {
 
     #[test]
     fn every_episode_has_a_title_a_difficulty_and_a_file() {
-        for ep in ["ep1", "ep2", "ep3", "ep4", "ep5"] {
+        for ep in ["ep1", "ep2", "ep3", "ep4", "ep5", "osce-a", "osce-b"] {
             assert!(title(ep).starts_with(&ep.to_uppercase()), "{ep} title is {}", title(ep));
             let p = scenario_path(ep);
             assert!(p.exists(), "{ep}: {} is missing", p.display());
         }
-        // The ladder is meant to climb.
+        // The ladder is meant to climb — and the stations sit on the tier they rehearse.
         assert_eq!(difficulty("ep1"), Difficulty::Student);
         assert_eq!(difficulty("ep2"), Difficulty::Intern);
         assert_eq!(difficulty("ep5"), Difficulty::Resident);
+        assert_eq!(difficulty("osce-a"), Difficulty::Student);
+        assert_eq!(difficulty("osce-b"), Difficulty::Intern);
     }
 
     /// The commit gate and the anchor scorer both ask this function, so the set of cases that
     /// can host an exam has exactly one definition.
     #[test]
     fn only_rubricd_cases_can_host_exams() {
-        for ep in ["ep2", "ep3", "ep4", "ep5"] {
+        for ep in ["ep2", "ep3", "ep4", "ep5", "osce-a", "osce-b"] {
             assert!(rubric_path(ep).is_some(), "{ep} has an authored rubric");
         }
         // ep1 stays the story-only intro — the door a stranger walks through unexamined.
