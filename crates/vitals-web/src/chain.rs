@@ -323,6 +323,8 @@ impl Chain {
                         case: a.case,
                         score: a.score,
                         max: a.max,
+                        det_score: a.det_score,
+                        det_max: a.det_max,
                         difficulty: match a.difficulty {
                             1 => Difficulty::Intern,
                             2 => Difficulty::Resident,

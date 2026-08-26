@@ -1097,7 +1097,7 @@ async fn a_full_claim_buffer_refuses_another_proof() {
     let attempts: Vec<ProvenAttempt> = (0..CLAIM_CAPACITY as u8)
         .map(|i| ProvenAttempt {
             leaf: [100 + i; 32], // distinct, and none equal to the real leaf below
-            case: [0; 32], score: 100, max: 100, difficulty: 0, exam_mode: false,
+            case: [0; 32], score: 100, max: 100, det_score: 0, det_max: 0, difficulty: 0, exam_mode: false,
         })
         .collect();
     let full = ClaimAccount { player: me.to_bytes(), count: CLAIM_CAPACITY as u8, attempts };

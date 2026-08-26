@@ -78,6 +78,8 @@ fn main() {
             case: a.case,
             score: a.score,
             max: a.max,
+            det_score: a.det_score,
+            det_max: a.det_max,
             difficulty: match a.difficulty {
                 1 => Difficulty::Intern,
                 2 => Difficulty::Resident,
@@ -92,10 +94,15 @@ fn main() {
         let c = &a.case;
         let tag = format!("{:02x}{:02x}{:02x}{:02x}", c[0], c[1], c[2], c[3]);
         println!(
-            "  #{i} case {tag}… score {}/{} diff {} exam {}",
-            a.score, a.max, a.difficulty, a.exam_mode
+            "  #{i} case {tag}… outcome {}/{} · det {}/{} diff {} exam {}",
+            a.score, a.max, a.det_score, a.det_max, a.difficulty, a.exam_mode
         );
     }
+    let stars = vitals_progress::stars(&attempts, vitals_progress::STAR_PASS_BPS);
+    println!(
+        "\nstars (distinct exam cases cleared at det >= {}%): {stars}",
+        vitals_progress::STAR_PASS_BPS / 100
+    );
 
     let s = summarize(&attempts);
     println!(

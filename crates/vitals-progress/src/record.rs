@@ -203,6 +203,8 @@ impl AttemptRecord {
             case: self.case,
             score: self.score(),
             max: self.max_score(),
+            det_score: self.det_score,
+            det_max: self.det_max,
             difficulty: self.difficulty,
             exam_mode: self.exam_mode,
         }

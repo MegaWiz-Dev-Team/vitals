@@ -264,8 +264,13 @@ impl TreeAccount {
 pub struct ProvenAttempt {
     pub leaf: [u8; 32],
     pub case: [u8; 32],
+    /// The outcome score (out of `max`) — what `summarize`/level is computed from.
     pub score: u32,
     pub max: u32,
+    /// The deterministic rubric score (out of `det_max`) — what a star is measured on. Kept in the
+    /// buffer, not only the leaf, so the star tally is re-derivable from the claim account alone.
+    pub det_score: u16,
+    pub det_max: u16,
     pub difficulty: u8,
     pub exam_mode: bool,
 }
@@ -277,7 +282,7 @@ pub struct ClaimAccount {
     pub attempts: Vec<ProvenAttempt>,
 }
 
-pub const CLAIM_LEN: usize = 32 + 1 + 4 + CLAIM_CAPACITY * (32 + 32 + 4 + 4 + 1 + 1);
+pub const CLAIM_LEN: usize = 32 + 1 + 4 + CLAIM_CAPACITY * (32 + 32 + 4 + 4 + 2 + 2 + 1 + 1);
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
 pub struct Progress {
@@ -670,6 +675,10 @@ fn prove_attempt(
         case: record.case,
         score: record.score(),
         max: record.max_score(),
+        // The det score already arrived in the record to rebuild the leaf — persist it here rather
+        // than discard it, so the star tally can read it from the claim buffer.
+        det_score: record.det_score,
+        det_max: record.det_max,
         difficulty: wire.difficulty,
         exam_mode: record.exam_mode,
     });
@@ -723,6 +732,8 @@ fn claim_progress(
             case: a.case,
             score: a.score,
             max: a.max,
+            det_score: a.det_score,
+            det_max: a.det_max,
             difficulty: match a.difficulty {
                 1 => Difficulty::Intern,
                 2 => Difficulty::Resident,

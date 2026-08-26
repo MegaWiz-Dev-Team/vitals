@@ -266,4 +266,28 @@ mod tests {
         // The pin is stable and equals the standalone hash of the same bytes.
         assert_eq!(rhash, vitals_progress::record::rubric_hash(rubric.as_bytes()));
     }
+
+    #[test]
+    fn every_rubric_uses_the_canonical_star_bar() {
+        // Enforce-equal: a rubric whose pass_bps drifts from the one global bar is a failing test,
+        // not a silent bug — so the star a verifier re-derives from the pinned rubric and the star
+        // the tally counts against the global cannot disagree.
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/rubrics");
+        let mut checked = 0;
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let r: Rubric = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            assert_eq!(
+                r.pass_bps,
+                vitals_progress::STAR_PASS_BPS,
+                "{:?} pass_bps drifted from the canonical star bar",
+                path.file_name().unwrap()
+            );
+            checked += 1;
+        }
+        assert!(checked >= 3, "expected the three seeded rubrics at least, found {checked}");
+    }
 }

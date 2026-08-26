@@ -85,15 +85,28 @@ impl Dreyfus {
 #[derive(Debug, Clone, Copy)]
 pub struct Attempt {
     pub case: [u8; 32],
-    /// Deterministic points earned. See `docs/RISKS.md` §3 — only `det_score` is anchored as
-    /// re-derivable, so only `det_score` may drive an escrow-backed claim.
+    /// The outcome-based score (did the patient do well), out of `max`. Drives `summarize`/level —
+    /// the story-mode grade. Not what a star is measured on.
     pub score: u32,
-    /// Points available. Zero max scores as zero, matching upstream `norm`.
+    /// Points available for `score`. Zero max scores as zero, matching upstream `norm`.
     pub max: u32,
+    /// The deterministic rubric score — the re-derivable 40. `docs/RISKS.md` §3: only this is
+    /// anchored as re-derivable, so only this may earn a star or drive an escrow-backed claim. Zero
+    /// for a run that was not marked against a rubric (i.e. any non-exam run).
+    pub det_score: u16,
+    /// Points available for `det_score` (the rubric's total).
+    pub det_max: u16,
     pub difficulty: Difficulty,
     /// `mode == "exam"` upstream: 1.5× XP.
     pub exam_mode: bool,
 }
+
+/// The canonical bar a deterministic rubric score must clear to earn a star: 70%, a standard OSCE
+/// pass mark. One number for the whole system — every rubric file's `pass_bps` is enforced equal to
+/// it (see the vitals-osce test) and the server's `VITALS_STAR_PASS_BPS` defaults to it, so a star
+/// a verifier re-derives from the pinned rubric and a star the tally counts can never disagree.
+/// Provisional, tunable alongside the rubrics pending clinical review.
+pub const STAR_PASS_BPS: u32 = 7000;
 
 /// What the chain recomputes for one specialty, and compares a claim against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -248,7 +261,9 @@ pub fn summarize(attempts: &[Attempt]) -> Summary {
 /// unchanged. Allocation-free, counting distinct the same O(n²) way `summarize` does over the same
 /// bounded attempt buffer, so it compiles into the on-chain program unchanged.
 pub fn stars(attempts: &[Attempt], pass_bps: u32) -> u32 {
-    let cleared = |a: &Attempt| a.exam_mode && norm_bps(a.score, a.max) >= pass_bps;
+    // A star is measured on the deterministic rubric score, never the outcome — process gates
+    // outcome. `det_score`/`det_max` are the re-derivable 40; a lucky good outcome earns nothing.
+    let cleared = |a: &Attempt| a.exam_mode && norm_bps(a.det_score as u32, a.det_max as u32) >= pass_bps;
     let mut count: u32 = 0;
     for (i, a) in attempts.iter().enumerate() {
         if !cleared(a) {
@@ -291,12 +306,37 @@ mod tests {
     }
 
     fn attempt(tag: u8, pct: u32, difficulty: Difficulty) -> Attempt {
-        Attempt { case: case(tag), score: pct, max: 100, difficulty, exam_mode: false }
+        Attempt { case: case(tag), score: pct, max: 100, det_score: 0, det_max: 0, difficulty, exam_mode: false }
     }
 
-    /// Same, but declared as an exam run — the only kind that can earn a star.
-    fn exam(tag: u8, pct: u32) -> Attempt {
-        Attempt { exam_mode: true, ..attempt(tag, pct, Difficulty::Student) }
+    /// An exam run scoring `det_pct`% on its rubric — the only kind that can earn a star. A star is
+    /// measured on the rubric (det), never the outcome, so the outcome score here is deliberately 0.
+    fn exam(tag: u8, det_pct: u16) -> Attempt {
+        Attempt {
+            case: case(tag),
+            score: 0,
+            max: 100,
+            det_score: det_pct,
+            det_max: 100,
+            difficulty: Difficulty::Student,
+            exam_mode: true,
+        }
+    }
+
+    #[test]
+    fn a_star_is_the_det_score_not_the_outcome() {
+        // A perfect outcome (100/100) with poor process (det 50/100) earns no star — process gates
+        // outcome. This is the whole point of measuring the star on det.
+        let a = Attempt {
+            case: case(1),
+            score: 100,
+            max: 100,
+            det_score: 50,
+            det_max: 100,
+            difficulty: Difficulty::Student,
+            exam_mode: true,
+        };
+        assert_eq!(stars(&[a], 7000), 0);
     }
 
     #[test]
@@ -435,7 +475,7 @@ mod bounds {
 
     #[test]
     fn summarize_survives_saturated_scores() {
-        let a = [Attempt { case: [1; 32], score: u32::MAX, max: 1, difficulty: Difficulty::Resident, exam_mode: true }; 8];
+        let a = [Attempt { case: [1; 32], score: u32::MAX, max: 1, det_score: 0, det_max: 0, difficulty: Difficulty::Resident, exam_mode: true }; 8];
         let s = summarize(&a);
         assert_eq!(s.avg_bps, 10_000, "norm is clamped, so the average cannot exceed full marks");
         assert!(s.xp > 0 && s.level >= 1);
