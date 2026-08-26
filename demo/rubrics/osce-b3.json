@@ -1,0 +1,20 @@
+{
+  "case": "osce-b3",
+  "pass_bps": 7000,
+  "status": "provisional — converted from embla-cases ddx-croup-1 v1.0.0 (sha256:77feb6529b4ab715): hidden.expected_workup→action (sats, neck film, doorway grading), hidden.red_flags→no_harm (antibiotics for a virus; the worsening a late steroid invites), hidden.management_plan→dexamethasone + observation + safety-netting, hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "items": [
+    { "label": "Asked how it started — the cold, then the second-night bark", "type": "action",    "needle": "ask_onset",      "points": 2 },
+    { "label": "Asked about fever — cool, unlike the mimic",                  "type": "action",    "needle": "ask_fever",      "points": 3 },
+    { "label": "Asked if she is drinking — no drool, no statue-child",        "type": "action",    "needle": "ask_drink",      "points": 2 },
+    { "label": "Graded her from the doorway, hands off",                      "type": "action",    "needle": "severity_score", "points": 4 },
+    { "label": "Neck film — the steeple, and a clean epiglottis",             "type": "action",    "needle": "xray_neck",      "points": 1 },
+    { "label": "Saturations checked",                                         "type": "action",    "needle": "exam_sats",      "points": 1 },
+    { "label": "Dexamethasone given — the whole visit in one syrup",          "type": "action",    "needle": "dexamethasone",  "points": 6 },
+    { "label": "…and given before the stridor came to rest",                  "type": "action_by", "needle": "dexamethasone", "by_sec": 420, "points": 4 },
+    { "label": "No antibiotics for a virus",                                  "type": "no_harm",   "needle": "never bacterial", "points": 5 },
+    { "label": "The safety-net speech, said back word for word",              "type": "action",    "needle": "advise",         "points": 3 },
+    { "label": "An hour of watching before the door",                         "type": "action",    "needle": "observe_child",  "points": 3 },
+    { "label": "Named it — mild croup",                                       "type": "action",    "needle": "dx_croup",       "points": 2 },
+    { "label": "Home before the cartoon ends",                                "type": "outcome",   "any_of": ["win_discharge"], "points": 4 }
+  ]
+}

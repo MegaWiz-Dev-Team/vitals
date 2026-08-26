@@ -529,6 +529,116 @@ mod tests {
         assert!(!det.cleared(&r), "the antihistamine reflex must not clear the bar: {s}/{m}");
     }
 
+    /// Station B2 (osce-b2, from embla-cases ddx-pericarditis-1): ST elevation is a finding, not
+    /// a diagnosis. A febrile fourteen-year-old with a rub and a favourite chair — the competent
+    /// tape reads the shape off twelve leads and treats with tablets. The failing tape is the
+    /// STEMI reflex from station B run on the wrong chest: aspirin, cath lab, lytics — and the
+    /// sac fills with blood.
+    #[test]
+    fn station_b2_competent_run_clears_and_the_stemi_reflex_fails() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/");
+        let sce = std::fs::read_to_string(format!("{root}stations/osce-b2.sce.json")).unwrap();
+        let rubric_json = std::fs::read_to_string(format!("{root}rubrics/osce-b2.json")).unwrap();
+        let parsed = vitals_sce::Sce::from_json(&sce).unwrap();
+        assert!(parsed.validate().is_empty(), "osce-b2: {:?}", parsed.validate());
+        let tape = vec![
+            Step::Do("where is the pain — what makes it better?".into()),
+            Step::Tick(10.0),
+            Step::Do("does breathing change it?".into()),
+            Step::Tick(10.0),
+            Step::Do("any fever or a cold lately?".into()),
+            Step::Tick(10.0),
+            Step::Do("listen to the heart — sit him forward".into()),
+            Step::Tick(10.0),
+            Step::Do("12-lead ecg".into()), // t=40 — inside ten minutes, and read for its shape
+            Step::Tick(10.0),
+            Step::Do("troponin".into()),
+            Step::Tick(10.0),
+            Step::Do("echocardiogram".into()),
+            Step::Tick(10.0),
+            Step::Do("pericarditis".into()),
+            Step::Tick(5.0),
+            Step::Do("ibuprofen with food".into()),
+            Step::Tick(160.0), // rest on tablets runs out to a discharge
+        ];
+        let (s, m, rhash) = det_for_run(&sce, &tape, &rubric_json).unwrap();
+        assert_eq!((s, m), (40, 40));
+        assert_eq!(rhash, vitals_progress::record::rubric_hash(rubric_json.as_bytes()));
+        // The reflex: call it a STEMI, load aspirin, spin the lab, push the lytic. The sac
+        // fills, the pressure falls, and the run lands nowhere near the bar.
+        let reflex = vec![
+            Step::Do("12-lead ecg".into()),
+            Step::Tick(10.0),
+            Step::Do("aspirin 300 chewed".into()),
+            Step::Tick(10.0),
+            Step::Do("call it a stemi".into()),
+            Step::Tick(10.0),
+            Step::Do("activate the cath lab".into()),
+            Step::Tick(10.0),
+            Step::Do("thrombolysis".into()),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+        ];
+        let (s, m, _) = det_for_run(&sce, &reflex, &rubric_json).unwrap();
+        let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
+        let det = DetResult { earned: s, max: m, items: vec![] };
+        assert!(!det.cleared(&r), "the stemi reflex must not clear the bar: {s}/{m}");
+    }
+
+    /// Station B3 (osce-b3, from embla-cases ddx-croup-1): the mild rung of the croup ladder —
+    /// grade her from the doorway, one syrup of dexamethasone, an hour of watching, the speech,
+    /// home. The failing tape treats a virus with antibiotics and reaches for the door with
+    /// nothing behind it; the steroid never comes, and the airway stops waiting.
+    #[test]
+    fn station_b3_competent_run_clears_and_antibiotics_for_a_virus_fail() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/");
+        let sce = std::fs::read_to_string(format!("{root}stations/osce-b3.sce.json")).unwrap();
+        let rubric_json = std::fs::read_to_string(format!("{root}rubrics/osce-b3.json")).unwrap();
+        let parsed = vitals_sce::Sce::from_json(&sce).unwrap();
+        assert!(parsed.validate().is_empty(), "osce-b3: {:?}", parsed.validate());
+        let tape = vec![
+            Step::Do("when did the bark start?".into()),
+            Step::Tick(10.0),
+            Step::Do("any fever?".into()),
+            Step::Tick(10.0),
+            Step::Do("is she drinking?".into()),
+            Step::Tick(10.0),
+            Step::Do("score her from the doorway".into()),
+            Step::Tick(10.0),
+            Step::Do("check the saturations".into()),
+            Step::Tick(10.0),
+            Step::Do("neck and chest films".into()),
+            Step::Tick(10.0),
+            Step::Do("dexamethasone syrup".into()), // t=60 — the whole visit, given early
+            Step::Tick(10.0),
+            Step::Do("watch her for an hour".into()),
+            Step::Tick(10.0),
+            Step::Do("give the safety-net advice".into()),
+            Step::Tick(10.0),
+            Step::Do("croup".into()),
+            Step::Tick(220.0), // the watched hour runs out to a discharge
+        ];
+        let (s, m, rhash) = det_for_run(&sce, &tape, &rubric_json).unwrap();
+        assert_eq!((s, m), (40, 40));
+        assert_eq!(rhash, vitals_progress::record::rubric_hash(rubric_json.as_bytes()));
+        // Amoxicillin for a bark and straight for the door: the discharge harm fires, the
+        // steroid never comes, the seventh minute tips her into the night she didn't have.
+        let bottle = vec![
+            Step::Do("any fever?".into()),
+            Step::Tick(10.0),
+            Step::Do("amoxicillin for the throat".into()),
+            Step::Tick(10.0),
+            Step::Do("send her home".into()),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+        ];
+        let (s, m, _) = det_for_run(&sce, &bottle, &rubric_json).unwrap();
+        let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
+        let det = DetResult { earned: s, max: m, items: vec![] };
+        assert!(!det.cleared(&r), "antibiotics-and-home must not clear the bar: {s}/{m}");
+    }
+
     #[test]
     fn every_rubric_uses_the_canonical_star_bar() {
         // Enforce-equal: a rubric whose pass_bps drifts from the one global bar is a failing test,

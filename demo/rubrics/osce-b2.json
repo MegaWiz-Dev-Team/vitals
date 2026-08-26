@@ -1,0 +1,19 @@
+{
+  "case": "osce-b2",
+  "pass_bps": 7000,
+  "status": "provisional — converted from embla-cases ddx-pericarditis-1 v1.0.0 (sha256:405ae47a26a67ddc): hidden.expected_workup→action/action_by (ECG, echo, troponin, CXR), hidden.red_flags→no_harm (the STEMI reflex: a needless cath activation, a lytic into an inflamed pericardium), hidden.correct_diagnosis→action+outcome, hidden.management_plan→NSAID not aspirin in a child; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "items": [
+    { "label": "Asked the pain's position — found the favourite chair", "type": "action",    "needle": "ask_pain",     "points": 3 },
+    { "label": "Asked what breathing does to it",                       "type": "action",    "needle": "ask_breath",   "points": 2 },
+    { "label": "Asked the fever and the cold last week",                "type": "action",    "needle": "ask_fever",    "points": 2 },
+    { "label": "Heard the rub, leaning him forward",                    "type": "action",    "needle": "exam_heart",   "points": 3 },
+    { "label": "12-lead ECG within ten minutes — and read its shape",   "type": "action_by", "needle": "ecg", "by_sec": 600, "points": 4 },
+    { "label": "Troponin sent",                                         "type": "action",    "needle": "troponin",     "points": 1 },
+    { "label": "Echo — ruled the tamponade out",                        "type": "action",    "needle": "echo",         "points": 2 },
+    { "label": "NSAID — treated the fire, not a clot",                  "type": "action",    "needle": "nsaid",        "points": 9 },
+    { "label": "Never sent a rub to the cath lab",                      "type": "no_harm",   "needle": "no culprit artery", "points": 2 },
+    { "label": "Never lysed an inflamed pericardium",                   "type": "no_harm",   "needle": "inflamed pericardium", "points": 6 },
+    { "label": "Named it — pericarditis, not a STEMI",                  "type": "action",    "needle": "dx_pericarditis", "points": 2 },
+    { "label": "Home on tablets — the sac never filled",                "type": "outcome",   "any_of": ["win_discharge"], "points": 4 }
+  ]
+}
