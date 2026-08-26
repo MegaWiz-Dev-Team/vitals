@@ -525,8 +525,9 @@ a.give:hover{filter:brightness(1.06)}
     <span class="brand">Vital<span>s</span></span>
     <span class="ep" id="ep-name">the resus bay</span>
     <select id="ep" class="hide">
-      <option value="ep1">EP1</option><option value="ep2">EP2</option>
-      <option value="ep3">EP3</option><option value="ep4">EP4</option><option value="ep5">EP5</option>
+      <option value="ep1">EP1</option><option value="osce-a">OSCE A</option><option value="ep2">EP2</option>
+      <option value="osce-b">OSCE B</option><option value="ep3">EP3</option><option value="ep4">EP4</option>
+      <option value="ep5">EP5</option>
     </select>
     <button class="btn" id="back">← episodes</button>
     <button class="btn go" id="start">restart</button>
@@ -836,10 +837,20 @@ const SEASON=[
   who:'Ing · F 19', line:'breathless, urticaria all over, lips swelling',
   place:'Emergency department · night', key:{drug:'Adrenaline',match:'adren'},
   d:'A nineteen-year-old, ten minutes after the wrong salad. Her throat is closing.'},
+ /* The stations are exam-only interludes — same bay, same engine, but the card commits
+    exam-ness before the first order, and the star it earns is what opens the next episode. */
+ {id:'osce-a',n:'OSCE A',t:'Rash After the Buffet',tier:'student',station:true,
+  who:'Somchai · M 71', line:'urticaria head to toe, face swelling, cramping belly pain',
+  place:'OSCE station · examiner watching', key:{drug:'Adrenaline',match:'adren'},
+  d:'Thirty minutes after a meal he will not talk about. You saw this in EP1 — prove it.'},
  {id:'ep2',n:'EP2',t:'Time Is Muscle',tier:'intern',
   who:'Prasit · M 58', line:'crushing chest pain to the jaw, sweating',
   place:'Emergency department · evening', key:{drug:'reperfusion',match:'cath'},
   d:'A taxi driver, chest pain to the jaw. The ECG tells the truth in ten minutes.'},
+ {id:'osce-b',n:'OSCE B',t:'Ten Minutes to Prove It',tier:'intern',station:true,
+  who:'Somchai Jaidee · M 25', line:'crushing chest pain to both arms, nauseous, terrified',
+  place:'OSCE station · examiner watching', key:{drug:'the ECG',match:'ecg'},
+  d:'A young smoker certain he is dying. The wall clock says ten minutes — beat it.'},
  {id:'ep3',n:'EP3',t:"Don't Make Him Cry",tier:'resident',
   who:'Khaopun · M 5', line:'tripod, drooling, muffled voice, will not lie down',
   place:'Paediatric bay · evening', key:{drug:'the airway team',match:'ent'},
@@ -889,6 +900,21 @@ const CHIPS={
       drug:['oxygen','heparin'],
       proc:['wells score','thrombolysis'],
       dx:['pulmonary embolism','admit','reassure and discharge']},
+ /* Station chips. The asks are scripted interventions in the scenario — they route through the
+    do path (fire() below), never /api/say: Step::Ask leaves no event on the tape, and an ask
+    that leaves no event scores zero history marks. At a station, asking IS an action. */
+ 'osce-a':{ask:['any allergies?','what did you eat before this?','can you breathe all right?'],
+      exam:['look at the skin','listen to the chest'],
+      lab:['serum tryptase','12-lead ecg','full blood count','chest x-ray'],
+      drug:['adrenaline im','oxygen mask','normal saline bolus','chlorpheniramine','hydrocortisone'],
+      proc:['lay him flat, legs up','iv access'],
+      dx:['anaphylaxis','admit for observation','discharge home']},
+ 'osce-b':{ask:['where is the pain?','does it go anywhere?','any risk factors — smoking, sugar, pressure?'],
+      exam:['listen to the heart','check the pulses'],
+      lab:['12-lead ecg','troponin','chest x-ray'],
+      drug:['aspirin 300 chewed','oxygen'],
+      proc:['activate the cath lab','thrombolysis','iv access'],
+      dx:['acute stemi','admit','reassure and discharge']},
  ep5:{ask:['what happened?','where does it hurt?','can you feel your legs?'],
       exam:['primary survey','check the chest','check for bleeding'],
       lab:['blood gas','crossmatch'],
@@ -1139,7 +1165,10 @@ function renderChips(){
   $('#chips').querySelectorAll('button').forEach(b=>b.onclick=()=>fire(b.dataset.x));
   $('#cmd').placeholder = mode==='ask' ? 'ask her anything…' : 'or type the order yourself…';
 }
-function fire(text){ mode==='ask' ? askHer(text) : doOrder(text); }
+/* At a station every chip is an order — the asks included. Step::Ask never reaches the tape
+   (vitals-replay treats it as inert), so an ask routed through /api/say would leave the
+   history-taking marks unearnable. The scenario answers with scripted patient words instead. */
+function fire(text){ (mode==='ask' && !ep().station) ? askHer(text) : doOrder(text); }
 
 function paint(v){
   const E=ep();
@@ -1335,6 +1364,14 @@ $('#anchor').onclick=async()=>{
   /* The star the station card wears: earned here, by an anchor that really landed. */
   const st=starred(), e=$('#ep').value;
   if(!st.includes(e)){st.push(e);localStorage.setItem('vitals.starred',JSON.stringify(st));}
+  /* An exam that cleared the bar is a star the chain will certify in a moment. Floor the
+     count locally now — a door must not stand shut in front of the room while two
+     signatures land — then ask /api/stars until the chain's answer catches up. */
+  if(EXAMLIVE&&r.det&&r.det.max>0&&r.det.score*10000>=STARBAR*r.det.max){
+    const ls=localStars();
+    if(!ls.includes(e)){ls.push(e);localStorage.setItem('vitals.stars',JSON.stringify(ls));}
+  }
+  refreshStars();
   $('#anchor').textContent='anchored'; ['#c1','#c2','#c3','#c4'].forEach(s=>$(s).disabled=false); chainState();
 };
 [['#c4',4],['#c3',3],['#c2',2],['#c1',1]].forEach(([sel,lv])=>{
@@ -1400,32 +1437,47 @@ const cleared=()=>JSON.parse(localStorage.getItem('vitals.cleared')||'[]');
 const starred=()=>JSON.parse(localStorage.getItem('vitals.starred')||'[]');
 
 /* ─── what opens a door ────────────────────────────────────────────────────────
-   With a chain: the level the PROGRAM computed from proven attempts — the UI only compares a
-   tier's threshold against a number the chain certified, so a door that opens here opened
-   because the record earned it. localStorage decides only when there is no chain to ask
-   (a kiosk, an offline laptop), where nothing is claimed and nothing is owed. */
-/* Per episode, not per tier — and the difference is a deadlock. Competent needs three DISTINCT
-   cases anchored, so the third case must be reachable at Advanced beginner: gate EP3 at the
-   level EP3 is needed to earn, and the door would be its own key, shut forever. EP3 therefore
-   opens at L1 with EP2; the Competent wall stands in front of EP4-5. */
-const NEED={ep1:0,ep2:1,ep3:1,ep4:2,ep5:2};
-const LVNAME={1:'Advanced beginner',2:'Competent',3:'Proficient',4:'Expert'};
-let CHAINLV=null; /* null = no chain reachable → the old local ladder */
+   Stars, counted — not levels. A star is an exam run anchored at or above the rubric bar,
+   and the server counts them from proven attempts (/api/stars), so a door that opens here
+   opened because the record earned it. Count-based on purpose: a star from an episode's own
+   exam counts the same as a station's, so a strong player never dead-ends. The mainline is
+   EP1 → OSCE A → ★ → EP2 → OSCE B → ★★ → EP3, with EP4/EP5 behind three and four. */
+const NEED={ep1:0,'osce-a':0,ep2:1,'osce-b':1,ep3:2,ep4:3,ep5:4};
+let STARS=null;   /* last count the chain certified — null until it answers */
+let STARBAR=7000; /* the pass bar in bps; refreshed from /api/stars so the two cannot drift */
+/* Stars this browser watched being earned — exam runs anchored here that cleared the bar.
+   Optimistic on purpose: the chain's count lands only after two signatures land, and a demo
+   must not stand in front of a shut door waiting for finality. Only ever a floor under the
+   chain's answer, never a substitute — a fresh browser starts from what the chain says. */
+const localStars=()=>JSON.parse(localStorage.getItem('vitals.stars')||'[]');
+const starsKnown=()=>Math.max(STARS??0, localStars().length);
 /* Which stations can sit an exam — served by /api/chain from the server's rubric map, never
    copied here; and whether the run being started is one. The mode chosen here is what the
    ceremony binds into the commitment. */
 let EXAM_EPS=[]; let EXAMRUN=false; let EXAMLIVE=false;
-async function chainLevel(){
+async function fetchStars(){
   try{
     const me=await identity(); if(!me)return null;
-    const pr=await (await fetch('/api/progress?account='+acctOf())).json();
-    if(pr.error)return null;
-    return pr.level==null?0:pr.level;
+    const r=await (await fetch('/api/stars?account='+acctOf())).json();
+    if(r.error||r.stars==null)return null;
+    if(r.pass_bps)STARBAR=r.pass_bps;
+    return r.stars;
   }catch(e){ return null }
 }
+/* Ask again a few times after an anchor: the count is computed from what has landed, and
+   landing takes seconds. Retries stop once the chain has caught up with the local floor. */
+function refreshStars(tries=4){
+  fetchStars().then(s=>{
+    if(s!=null&&s!==STARS){ STARS=s; paintSeason(); }
+    if(tries>0&&(s==null||s<localStars().length)) setTimeout(()=>refreshStars(tries-1),2500);
+  });
+}
 const open_=i=>{
-  if(i===0)return true;
-  if(CHAINLV!=null)return CHAINLV>=NEED[SEASON[i].id];
+  const need=NEED[SEASON[i].id]||0;
+  if(!need)return true;
+  if(STARS!=null||localStars().length)return starsKnown()>=need;
+  /* No chain and no star ever earned here: the offline kiosk ladder — clear the previous
+     card (which, with the stations in the row, still walks EP1 → OSCE A → EP2 → …). */
   return cleared().includes(SEASON[i-1].id);
 };
 /* Paint now, ask the chain after: a stranger's first click must never wait on an RPC. The
@@ -1433,8 +1485,8 @@ const open_=i=>{
    answer changes a door. */
 async function renderSeason(){
   paintSeason();
-  const lv=await chainLevel();
-  let repaint = lv!==CHAINLV; CHAINLV=lv;
+  const s=await fetchStars();
+  let repaint = s!=null && s!==STARS; if(s!=null)STARS=s;
   if(!EXAM_EPS.length){
     try{ const c=await (await fetch('/api/chain')).json();
       if(c.exam_eps&&c.exam_eps.length){ EXAM_EPS=c.exam_eps; repaint=true; } }catch(e){}
@@ -1446,21 +1498,22 @@ function paintSeason(){
     const un=open_(i), done=cleared().includes(e.id), star=starred().includes(e.id);
     const need=NEED[e.id];
     const art=e.art?`<img src="${e.art}" alt="">`:`<div class="art-ph">art in production</div>`;
-    /* A locked door with a chain behind it is a door you can ask the program to open: the
-       claim runs on chain and the program grants or refuses from the record alone. Without a
-       chain the lock stays a lock, and only the old local ladder lifts it. */
-    const lockGo = CHAINLV!=null
-      ? `claim ${LVNAME[need]||'a level'} to open`
+    /* A locked door names its price in stars, and stars come only from passed exams — no
+       claim button here: the count moves when an anchored exam clears the bar, so the door
+       opens the moment the record earns it and not a click sooner. */
+    const lockGo = (STARS!=null||localStars().length)
+      ? `${need===1?'1 star':need+' stars'} to open — pass the OSCE stations`
       : `clear ${SEASON[i-1]?SEASON[i-1].n:''} to open`;
-    const claimable = !un && CHAINLV!=null;
-    return `<button class="tile ${un?'':'lock'}" data-ep="${e.id}" data-ga="tile:${e.id}"
-      ${claimable?`data-claim="${need}"`:''} ${un||claimable?'':'disabled'}>
+    return `<button class="tile ${un?'':'lock'}" data-ep="${e.id}" data-ga="tile:${e.id}" ${un?'':'disabled'}>
       <div class="art">${art}<span class="no">${e.n}${star?' <span title="anchored on chain">★</span>':''}${done?' · cleared':''}</span><span class="tier">${e.tier}</span></div>
       <div class="body"><h3>${e.t}</h3><p>${e.d}</p>
-      <span class="go">${un?'enter the bay':lockGo}</span>${un&&EXAM_EPS.includes(e.id)?`<span class="go exam" data-exam="${e.id}" data-ga="exam:${e.id}">\u2605 sit the OSCE station</span>`:''}</div></button>`;
+      <span class="go">${un?(e.station?'\u2605 sit the station — exam conditions':'enter the bay'):lockGo}</span>${un&&!e.station&&EXAM_EPS.includes(e.id)?`<span class="go exam" data-exam="${e.id}" data-ga="exam:${e.id}">\u2605 sit the OSCE exam</span>`:''}</div></button>`;
   }).join('');
   $('#eps').querySelectorAll('.tile:not(.lock)').forEach(b=>b.onclick=()=>{
-    EXAMRUN=false;
+    /* A station card is only ever an exam — that is what a station is. Episodes enter as
+       practice unless the exam door below is the thing clicked. */
+    const entry=SEASON.find(x=>x.id===b.dataset.ep);
+    EXAMRUN=!!(entry&&entry.station);
     $('#ep').value=b.dataset.ep; $('#lobby').classList.add('hide');
     $('#game').classList.remove('hide'); $('#start').click(); });
   /* The exam door on the same card: same bay, but the ceremony will bind exam into the
@@ -1469,16 +1522,6 @@ function paintSeason(){
     ev.stopPropagation(); EXAMRUN=true;
     $('#ep').value=x.dataset.exam; $('#lobby').classList.add('hide');
     $('#game').classList.remove('hide'); $('#start').click(); });
-  /* The claim happens on the card that is locked, and the verdict lands on it too: the
-     program computes, then the door opens — or says why it will not. */
-  $('#eps').querySelectorAll('.tile.lock[data-claim]').forEach(b=>b.onclick=async()=>{
-    const go=b.querySelector('.go'), was=go.textContent;
-    go.textContent='asking the program…';
-    const r=await chainDo('/api/claim?level='+b.dataset.claim);
-    if(r&&r.granted){ go.textContent='✓ '+(r.message||'granted'); refreshRecord(); setTimeout(renderSeason,900); }
-    else { go.textContent='✗ '+((r&&(r.message||r.error))||'refused');
-           setTimeout(()=>{go.textContent=was;},2600); }
-  });
   $('#coin-n').textContent=cleared().length;
 }
 renderSeason(); renderModes();
