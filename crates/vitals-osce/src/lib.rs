@@ -13,6 +13,7 @@
 #![forbid(unsafe_code)]
 
 use serde::Deserialize;
+use vitals_replay::{resume, Step};
 use vitals_sce::runtime::Event;
 use vitals_sce::text::canon;
 
@@ -141,6 +142,25 @@ pub fn score(events: &[Event], rubric: &Rubric) -> DetResult {
     DetResult { earned, max, items }
 }
 
+/// Score a finished run for anchoring, in one call: replay its tape, mark it against `rubric_json`,
+/// and return `(det_score, det_max, rubric_hash)` ready to stamp into the leaf.
+///
+/// This is the exact path a verifier re-runs — `vitals_replay::resume` reproduces the events from
+/// the tape, `score` marks them, `rubric_hash` pins which rubric did the marking — so `det_score`
+/// is re-derivable by anyone with the tape and the pinned rubric, which is what lets it, and only
+/// it, back an on-chain claim. The rubric is passed as its authored bytes so the hash a verifier
+/// recomputes is byte-identical.
+pub fn det_for_run(
+    sce_json: &str,
+    tape: &[Step],
+    rubric_json: &str,
+) -> Result<(u16, u16, [u8; 32]), String> {
+    let rubric: Rubric = serde_json::from_str(rubric_json).map_err(|e| e.to_string())?;
+    let (state, _replay) = resume(sce_json, tape)?;
+    let det = score(state.events(), &rubric);
+    Ok((det.earned, det.max, vitals_progress::record::rubric_hash(rubric_json.as_bytes())))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,5 +241,29 @@ mod tests {
         let r = DetResult { earned: 0, max: 0, items: vec![] };
         assert_eq!(r.bps(), 0);
         assert!(!r.cleared(&rubric()));
+    }
+
+    #[test]
+    fn det_for_run_marks_a_real_replay_and_pins_the_rubric() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/");
+        let sce = std::fs::read_to_string(format!("{root}scenarios/ep2-stemi.json")).unwrap();
+        let rubric = std::fs::read_to_string(format!("{root}rubrics/ep2-stemi.json")).unwrap();
+        // A competent STEMI: ECG, aspirin, oxygen, reperfuse, then time to salvage muscle.
+        let tape = vec![
+            Step::Do("12-lead ecg".into()),
+            Step::Tick(20.0),
+            Step::Do("aspirin 300 chewed".into()),
+            Step::Tick(15.0),
+            Step::Do("oxygen".into()),
+            Step::Tick(15.0),
+            Step::Do("activate the cath lab for pci".into()),
+            Step::Tick(200.0),
+            Step::Tick(60.0),
+        ];
+        let (s, m, rhash) = det_for_run(&sce, &tape, &rubric).unwrap();
+        assert_eq!((s, m), (40, 40)); // full marks — the re-derivable 40
+        assert_ne!(rhash, [0u8; 32]);
+        // The pin is stable and equals the standalone hash of the same bytes.
+        assert_eq!(rhash, vitals_progress::record::rubric_hash(rubric.as_bytes()));
     }
 }
