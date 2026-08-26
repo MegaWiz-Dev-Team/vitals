@@ -372,6 +372,113 @@ fn scenario_root() -> std::path::PathBuf {
     }
 }
 
+/// One declared member of a station set — which Embla case it was (or will be) converted from,
+/// and how the clinic card introduces it. A member is *declared* here even before its files
+/// exist: the shelf shows a coming-soon card for it, and playability is a fact about the disk
+/// ([`member_playable`]), never a second list to keep in sync. Display fields only — the
+/// scenario file, whose hash is the case's identity on chain, is never touched from here.
+struct SetMember {
+    /// The station id — the `ep` the whole engine already routes on.
+    id: &'static str,
+    /// The embla-cases id this member is converted from. Provenance, worn on the card.
+    case: &'static str,
+    /// The clinic display title — the real case name, the way Embla's bank names it.
+    title: &'static str,
+    /// The Eir specialty chip.
+    specialty: &'static str,
+    /// The tier the case plays at. [`difficulty`] reads this for every member, so adding a
+    /// Phase-5b member here is the whole server arm: files land, the member goes live.
+    tier: Difficulty,
+}
+
+/// The station sets (DECISIONS.md "Station Sets", 27 ส.ค.) — the one copy, server side.
+/// From EP2 on, an episode door is opened by **its own set's stars and nothing else's**:
+/// each member is worth 0–2 stars (best det ≥70% → 1, ≥85% → 2), and farming another
+/// gate's stations buys nothing here.
+struct StationSet {
+    gate: &'static str,
+    /// The episode this gate opens.
+    opens: &'static str,
+    /// Stars required once the full roster is published. While the set is short, the live
+    /// need is capped at what the published members can yield — see [`resolve_sets`].
+    need: u32,
+    members: &'static [SetMember],
+}
+
+const SETS: &[StationSet] = &[
+    StationSet { gate: "gate2", opens: "ep2", need: 2, members: &[
+        SetMember { id: "osce-a",  case: "ddx-anaphylaxis-1", title: "Anaphylaxis — adult, first presentation", specialty: "eir-emergency", tier: Difficulty::Student },
+        SetMember { id: "osce-a2", case: "ddx-anaphylaxis-2", title: "Anaphylaxis — adult, second presentation", specialty: "eir-emergency", tier: Difficulty::Student },
+    ]},
+    StationSet { gate: "gate3", opens: "ep3", need: 4, members: &[
+        SetMember { id: "osce-b",  case: "ddx-possible-nstemi-stemi-2", title: "Acute chest pain — possible NSTEMI / STEMI", specialty: "eir-cardio", tier: Difficulty::Intern },
+        SetMember { id: "osce-b2", case: "ddx-pericarditis-1", title: "Pericarditis — acute chest pain", specialty: "eir-cardio", tier: Difficulty::Intern },
+        SetMember { id: "osce-b3", case: "ddx-croup-1", title: "Croup — child, first presentation", specialty: "eir-ent", tier: Difficulty::Intern },
+    ]},
+    StationSet { gate: "gate4", opens: "ep4", need: 5, members: &[
+        SetMember { id: "osce-c",  case: "ddx-croup-2", title: "Croup — child, worse every night", specialty: "eir-ent", tier: Difficulty::Resident },
+        SetMember { id: "osce-c2", case: "ddx-bronchospasm-acute-asthma-exacerbation-2", title: "Acute asthma exacerbation — bronchospasm", specialty: "eir-pulmonology", tier: Difficulty::Intern },
+        SetMember { id: "osce-c3", case: "ddx-pneumonia-2", title: "Pneumonia — adult", specialty: "eir-pulmonology", tier: Difficulty::Intern },
+    ]},
+    StationSet { gate: "gate5", opens: "ep5", need: 7, members: &[
+        SetMember { id: "osce-d",  case: "embla-upper-gastrointestinal-bleeding-intern", title: "Upper GI bleeding — adult, full case", specialty: "eir-gastroenterology", tier: Difficulty::Intern },
+        SetMember { id: "osce-d2", case: "ddx-pulmonary-embolism-2", title: "Pulmonary embolism — adult", specialty: "eir-pulmonology", tier: Difficulty::Resident },
+        SetMember { id: "osce-d3", case: "ddx-p-anaphylaxis-1", title: "Anaphylaxis — paediatric", specialty: "eir-emergency", tier: Difficulty::Intern },
+        SetMember { id: "osce-d4", case: "embla-septic-shock-with-multi-organ-failure-resident", title: "Septic shock — multi-organ failure", specialty: "eir-emergency", tier: Difficulty::Resident },
+    ]},
+];
+
+fn set_member(id: &str) -> Option<&'static SetMember> {
+    SETS.iter().flat_map(|s| s.members.iter()).find(|m| m.id == id)
+}
+
+/// A member is playable when both halves of its identity exist on disk: the scenario (whose
+/// hash is the case on chain) and the rubric (without which an exam cannot be scored). A
+/// declared member without files is "coming soon" — a card on the shelf, never an error.
+fn member_playable(id: &str) -> bool {
+    scenario_path(id).exists() && rubric_path(id).is_some()
+}
+
+/// A set as it stands on this disk today: which members are live, their on-chain case hashes,
+/// and the door's live price. While the roster is short the need is capped at what the
+/// published members can actually yield (2 stars each) — **a gate must never be impossible**,
+/// only cheaper until the full set ships and the cap stops binding.
+struct SetState {
+    set: &'static StationSet,
+    need_now: u32,
+    /// Each declared member, with its scenario hash when playable — the same hash the
+    /// commitment binds and the leaf carries, so /api/stars can translate proven attempts
+    /// back into set members without a per-request file read.
+    members: Vec<(&'static SetMember, Option<[u8; 32]>)>,
+}
+
+fn resolve_sets() -> Vec<SetState> {
+    SETS.iter()
+        .map(|s| {
+            let members: Vec<_> = s
+                .members
+                .iter()
+                .map(|m| {
+                    let h = member_playable(m.id)
+                        .then(|| std::fs::read_to_string(scenario_path(m.id)).ok().map(|j| sce_hash(&j)))
+                        .flatten();
+                    (m, h)
+                })
+                .collect();
+            let playable = members.iter().filter(|(_, h)| h.is_some()).count() as u32;
+            SetState { set: s, need_now: s.need.min(playable * 2), members }
+        })
+        .collect()
+}
+
+const fn tier_str(d: Difficulty) -> &'static str {
+    match d {
+        Difficulty::Student => "student",
+        Difficulty::Intern => "intern",
+        Difficulty::Resident => "resident",
+    }
+}
+
 fn scenario_path(id: &str) -> std::path::PathBuf {
     let root = scenario_root();
     match id {
@@ -379,12 +486,12 @@ fn scenario_path(id: &str) -> std::path::PathBuf {
         "ep3" => root.join("demo/scenarios/ep3-epiglottitis.json"),
         "ep4" => root.join("demo/scenarios/ep4-pulmonary-embolism.json"),
         "ep5" => root.join("demo/scenarios/ep5-the-night-the-stars-fell.json"),
-        // The OSCE stations — exam-only interludes between story episodes, converted from
-        // embla-cases specimens (see demo/stations/*.sce.json headers for provenance).
-        "osce-a" => root.join("demo/stations/osce-a.sce.json"),
-        "osce-b" => root.join("demo/stations/osce-b.sce.json"),
-        "osce-c" => root.join("demo/stations/osce-c.sce.json"),
-        "osce-d" => root.join("demo/stations/osce-d.sce.json"),
+        // Any declared set member — the four stations today, their Phase-5b siblings the day
+        // their files land — lives under demo/stations by its own id (see the *.sce.json
+        // headers for provenance). A declared-only member resolves to a path that does not
+        // exist yet, which is exactly what "coming soon" looks like on disk — never the EP1
+        // fallback, because playing EP1 under a station's name would anchor the wrong case.
+        m if set_member(m).is_some() => root.join("demo/stations").join(format!("{id}.sce.json")),
         _ => root.join("conformance/sce-anaphylaxis-ep1.json"),
     }
 }
@@ -395,18 +502,15 @@ fn scenario_path(id: &str) -> std::path::PathBuf {
 /// commit gate and the anchor scoring ask this same function, so they cannot disagree about
 /// which cases those are.
 fn rubric_path(id: &str) -> Option<std::path::PathBuf> {
-    let file = match id {
-        "ep2" => "demo/rubrics/ep2-stemi.json",
-        "ep3" => "demo/rubrics/ep3-epiglottitis.json",
-        "ep4" => "demo/rubrics/ep4-pulmonary-embolism.json",
-        "ep5" => "demo/rubrics/ep5-the-night-the-stars-fell.json",
-        "osce-a" => "demo/rubrics/osce-a.json",
-        "osce-b" => "demo/rubrics/osce-b.json",
-        "osce-c" => "demo/rubrics/osce-c.json",
-        "osce-d" => "demo/rubrics/osce-d.json",
+    let p = match id {
+        "ep2" => scenario_root().join("demo/rubrics/ep2-stemi.json"),
+        "ep3" => scenario_root().join("demo/rubrics/ep3-epiglottitis.json"),
+        "ep4" => scenario_root().join("demo/rubrics/ep4-pulmonary-embolism.json"),
+        "ep5" => scenario_root().join("demo/rubrics/ep5-the-night-the-stars-fell.json"),
+        // Set members share one naming rule, so a Phase-5b rubric goes live by existing.
+        m if set_member(m).is_some() => scenario_root().join("demo/rubrics").join(format!("{id}.json")),
         _ => return None,
     };
-    let p = scenario_root().join(file);
     p.exists().then_some(p)
 }
 
@@ -416,18 +520,26 @@ fn title(id: &str) -> &'static str {
         "ep3" => "EP3 · Don't Make Him Cry",
         "ep4" => "EP4 · The Masquerader",
         "ep5" => "EP5 · The Night the Stars Fell",
-        "osce-a" => "OSCE-A · Rash After the Buffet",
-        "osce-b" => "OSCE-B · Ten Minutes to Prove It",
-        "osce-c" => "OSCE-C · The Bark at Midnight",
-        "osce-d" => "OSCE-D · A Glass of Blood",
-        _ => "EP1 · The Last Bite",
+        // Stations wear the clinic name, not a drama title (Station Sets v2: การ์ดคลินิก
+        // ไม่ใช่การ์ดละคร). The prefix keeps the station id readable in the save list; the
+        // case name is the one Embla's bank uses. Display only — hashes never move from here.
+        "osce-a" => "OSCE-A · Anaphylaxis — adult, first presentation",
+        "osce-b" => "OSCE-B · Acute chest pain — possible NSTEMI / STEMI",
+        "osce-c" => "OSCE-C · Croup — child, worse every night",
+        "osce-d" => "OSCE-D · Upper GI bleeding — adult, full case",
+        _ => set_member(id).map(|m| m.title).unwrap_or("EP1 · The Last Bite"),
     }
 }
 
 fn difficulty(ep: &str) -> Difficulty {
+    // A set member's tier is declared once, in SETS — the shelf chip and the XP weight read
+    // the same field, and a Phase-5b member needs no arm here.
+    if let Some(m) = set_member(ep) {
+        return m.tier;
+    }
     match ep {
-        "ep2" | "osce-b" | "osce-d" => Difficulty::Intern,
-        "ep3" | "ep4" | "ep5" | "osce-c" => Difficulty::Resident,
+        "ep2" => Difficulty::Intern,
+        "ep3" | "ep4" | "ep5" => Difficulty::Resident,
         _ => Difficulty::Student,
     }
 }
@@ -622,12 +734,32 @@ fn main() {
         .unwrap_or(vitals_progress::STAR_PASS_BPS);
 
     // Which stations can host an exam — asked once, from the same function the commit gate and
-    // the anchor scorer ask, and served to the page so the UI never keeps its own copy.
-    let exam_eps: Vec<&'static str> =
-        ["ep1", "osce-a", "ep2", "osce-b", "ep3", "osce-c", "ep4", "osce-d", "ep5"]
-        .into_iter()
-        .filter(|e| rubric_path(e).is_some())
-        .collect();
+    // the anchor scorer ask, and served to the page so the UI never keeps its own copy. Shelf
+    // order, built from SETS: each gate's stations sit between the episode that taught them and
+    // the door they open, and a Phase-5b member joins the moment its files land.
+    let exam_eps: Vec<&'static str> = {
+        let mut v: Vec<&'static str> = vec!["ep1"];
+        for s in SETS {
+            v.extend(s.members.iter().map(|m| m.id));
+            v.push(s.opens);
+        }
+        v.into_iter().filter(|e| rubric_path(e).is_some()).collect()
+    };
+
+    // Station Sets v2 — resolved once against the disk. The hashes here are what let
+    // /api/stars translate proven attempts back into set members without re-reading files.
+    let set_states = resolve_sets();
+    println!(
+        "sets       {}",
+        set_states
+            .iter()
+            .map(|st| {
+                let p = st.members.iter().filter(|(_, h)| h.is_some()).count();
+                format!("{} {}/{} live · need {} (now {})", st.set.gate, p, st.members.len(), st.set.need, st.need_now)
+            })
+            .collect::<Vec<_>>()
+            .join(" · ")
+    );
 
     // Through the same root as the scenarios. This was the other baked-in build path, and it is
     // why the container had a patient who could not speak even with a gateway to speak through.
@@ -1086,6 +1218,25 @@ fn main() {
                     "voice": patient.is_some(),
                     // Which stations can sit an exam — the server's rubric map is the only copy.
                     "exam_eps": exam_eps,
+                    // Station Sets v2, the shape without the player: which sets exist, who is
+                    // in them, what each door costs today. The page draws the shelf from this
+                    // — declared-but-unpublished members become coming-soon cards — and joins
+                    // it with the per-player tiers from /api/stars. One copy, this one.
+                    "sets": set_states.iter().map(|st| serde_json::json!({
+                        "gate": st.set.gate,
+                        "opens": st.set.opens,
+                        "need": st.set.need,
+                        "need_now": st.need_now,
+                        "complete": st.members.iter().all(|(_, h)| h.is_some()),
+                        "members": st.members.iter().map(|(m, h)| serde_json::json!({
+                            "id": m.id,
+                            "case": m.case,
+                            "title": m.title,
+                            "specialty": m.specialty,
+                            "tier": tier_str(m.tier),
+                            "playable": h.is_some(),
+                        })).collect::<Vec<_>>(),
+                    })).collect::<Vec<_>>(),
                     "tree_id": t.tree_id,
                     "anchored": t.leaves.len(),
                     "relay": chain.as_ref().map(|c| c.relay_pubkey()),
@@ -1355,10 +1506,47 @@ fn main() {
                     continue;
                 };
                 let tree_id = tree.lock().unwrap().tree_id;
+                // Station Sets v2: the two-tier star per member, from the best proven det of
+                // that case — one claim-buffer read answers every set. The playable members'
+                // hashes were resolved at boot; a declared-only member is tier 0 by definition,
+                // present in the reply so the shape never shifts when Phase 5b publishes it.
+                let cases: Vec<[u8; 32]> = set_states
+                    .iter()
+                    .flat_map(|st| st.members.iter().filter_map(|(_, h)| *h))
+                    .collect();
+                let tiers = c.star_tiers(&person, tree_id, &cases, star_pass_bps, vitals_progress::STAR_EXCELLENT_BPS);
+                let mut next = tiers.iter().copied();
+                let sets: Vec<serde_json::Value> = set_states
+                    .iter()
+                    .map(|st| {
+                        let mut total = 0u32;
+                        let members: serde_json::Map<String, serde_json::Value> = st
+                            .members
+                            .iter()
+                            .map(|(m, h)| {
+                                let t = if h.is_some() { next.next().unwrap_or(0) } else { 0 };
+                                total += t;
+                                (m.id.to_string(), t.into())
+                            })
+                            .collect();
+                        serde_json::json!({
+                            "gate": st.set.gate,
+                            "opens": st.set.opens,
+                            "need": st.set.need,
+                            "need_now": st.need_now,
+                            "total": total,
+                            "tiers": members,
+                        })
+                    })
+                    .collect();
                 json(serde_json::json!({
+                    // The original fields, exactly as they were — the verify page and the old
+                    // scripts read these, and a door that opened on them keeps opening.
                     "account": person.to_string(),
                     "stars": c.star_count(&person, tree_id, star_pass_bps),
                     "pass_bps": star_pass_bps,
+                    "excellent_bps": vitals_progress::STAR_EXCELLENT_BPS,
+                    "sets": sets,
                 }))
             }
             // Link or unlink a machine. Signed by one that is already trusted.
@@ -1853,6 +2041,60 @@ mod tests {
     fn an_unknown_episode_falls_back_rather_than_panicking() {
         assert!(scenario_path("../../etc/passwd").exists(), "unknown ids fall back to EP1");
         assert_eq!(difficulty("nonsense"), Difficulty::Student);
+    }
+
+    // ── station sets ────────────────────────────────────────────────────────
+
+    /// The set table is the one copy of the gate design — so the design's own invariants are
+    /// pinned here: satisfiable needs, unique members, a published lead per set, and gates
+    /// keyed to the episodes they open.
+    #[test]
+    fn station_sets_are_well_formed_and_lead_members_are_live() {
+        let mut seen = std::collections::HashSet::new();
+        for (s, opens) in SETS.iter().zip(["ep2", "ep3", "ep4", "ep5"]) {
+            assert_eq!(s.opens, opens, "{} opens the wrong door", s.gate);
+            assert!(s.need >= 1 && s.need <= 2 * s.members.len() as u32,
+                "{}: need {} can never be met by {} members", s.gate, s.need, s.members.len());
+            for m in s.members {
+                assert!(seen.insert(m.id), "{} is declared in two sets", m.id);
+                assert!(m.id.starts_with("osce-"), "{} is not a station id", m.id);
+                assert!(!m.case.is_empty() && !m.title.is_empty() && !m.specialty.is_empty());
+            }
+            assert!(member_playable(s.members[0].id),
+                "{}: lead member {} must be playable today", s.gate, s.members[0].id);
+        }
+    }
+
+    /// While a set is short of its roster, the door's live price is capped at what the
+    /// published members can yield — a gate must never be impossible, only cheaper until
+    /// Phase 5b ships the rest. Resolved against the real files, so the day new members land
+    /// this test re-prices the doors by itself.
+    #[test]
+    fn a_short_set_caps_its_need_at_what_its_members_can_yield() {
+        for st in resolve_sets() {
+            let playable = st.members.iter().filter(|(_, h)| h.is_some()).count() as u32;
+            assert!(playable >= 1, "{}: no playable member at all", st.set.gate);
+            assert_eq!(st.need_now, st.set.need.min(playable * 2));
+            // every playable member carries the hash the chain will see for it
+            for (m, h) in &st.members {
+                assert_eq!(h.is_some(), member_playable(m.id), "{} hash/playability disagree", m.id);
+            }
+        }
+    }
+
+    /// A declared-but-unpublished member resolves to its own absent file — never to the EP1
+    /// fallback, because playing EP1 under a station's name would anchor the wrong case hash.
+    /// And with no rubric it can host no exam, so a coming-soon card can never cost a star.
+    #[test]
+    fn a_coming_soon_member_is_a_card_not_an_error_and_never_an_exam() {
+        for st in resolve_sets() {
+            for (m, h) in st.members.iter().filter(|(_, h)| h.is_none()) {
+                assert!(scenario_path(m.id).ends_with(format!("demo/stations/{}.sce.json", m.id)),
+                    "{} must resolve under demo/stations", m.id);
+                assert!(rubric_path(m.id).is_none(), "{} without files cannot host an exam", m.id);
+                assert!(h.is_none());
+            }
+        }
     }
 
     // ── the device picker ───────────────────────────────────────────────────

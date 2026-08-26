@@ -310,14 +310,13 @@ impl Chain {
             .unwrap_or(0)
     }
 
-    /// Stars on this tree — distinct exam-mode cases the player has cleared at or above `pass_bps`.
-    /// Reads the same claim buffer as `proven_count`, maps each proven attempt into the scorer's
-    /// shape, and defers to `vitals_progress::stars`. Additive: the level path is unchanged.
-    pub fn star_count(&self, id: &Pubkey, tree_id: u64, pass_bps: u32) -> u32 {
+    /// The player's proven attempts on this tree, in the scorer's shape — the one read every
+    /// star question starts from. Empty when there is no claim account yet, which is what a
+    /// brand new player is.
+    fn proven_attempts(&self, id: &Pubkey, tree_id: u64) -> Vec<vitals_progress::Attempt> {
         self.fetch::<ClaimAccount>(&self.claim_pda(id, tree_id))
             .map(|c| {
-                let attempts: Vec<vitals_progress::Attempt> = c
-                    .attempts
+                c.attempts
                     .iter()
                     .map(|a| vitals_progress::Attempt {
                         case: a.case,
@@ -332,10 +331,25 @@ impl Chain {
                         },
                         exam_mode: a.exam_mode,
                     })
-                    .collect();
-                vitals_progress::stars(&attempts, pass_bps)
+                    .collect()
             })
-            .unwrap_or(0)
+            .unwrap_or_default()
+    }
+
+    /// Stars on this tree — distinct exam-mode cases the player has cleared at or above `pass_bps`.
+    /// Reads the same claim buffer as `proven_count`, maps each proven attempt into the scorer's
+    /// shape, and defers to `vitals_progress::stars`. Additive: the level path is unchanged.
+    pub fn star_count(&self, id: &Pubkey, tree_id: u64, pass_bps: u32) -> u32 {
+        vitals_progress::stars(&self.proven_attempts(id, tree_id), pass_bps)
+    }
+
+    /// The two-tier star for each of `cases` (Station Sets v2): 0, 1 (≥ pass) or 2 (≥ excellent),
+    /// from the **best** deterministic score among this player's proven exam attempts of that
+    /// case. One claim-buffer fetch answers the whole list — a set gate asks about every member
+    /// at once, and one RPC per member would turn a lobby paint into a fetch storm.
+    pub fn star_tiers(&self, id: &Pubkey, tree_id: u64, cases: &[[u8; 32]], pass_bps: u32, excellent_bps: u32) -> Vec<u32> {
+        let attempts = self.proven_attempts(id, tree_id);
+        cases.iter().map(|c| vitals_progress::star_tier(&attempts, c, pass_bps, excellent_bps)).collect()
     }
 
     fn fetch<T: borsh::BorshDeserialize>(&self, key: &Pubkey) -> Option<T> {

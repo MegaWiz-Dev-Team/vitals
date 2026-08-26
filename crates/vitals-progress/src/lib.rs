@@ -278,6 +278,40 @@ pub fn stars(attempts: &[Attempt], pass_bps: u32) -> u32 {
     count
 }
 
+/// The excellence bar: 85% on the deterministic rubric, the second star of the two-tier star
+/// (Station Sets v2, DECISIONS.md 27 ส.ค.). Same scale and same discipline as [`STAR_PASS_BPS`]:
+/// one number for the whole system, measured only on the re-derivable det score. 8_500 bps also
+/// happens to be the Dreyfus expert bar — excellence here means the same thing it means there.
+pub const STAR_EXCELLENT_BPS: u32 = 8500;
+
+/// The two-tier star for one case: 2 at or above `excellent_bps`, 1 at or above `pass_bps`,
+/// else 0 — measured on the **best** deterministic score among this player's exam-mode attempts
+/// of that case, because a set gate asks "has this case ever been done this well", not "was the
+/// last run good". Practice runs never reach the comparison (same rule as [`stars`]), and a case
+/// never attempted scores 0 through the same arithmetic: the best of nothing is 0 bps.
+///
+/// Server-side only for now — the chain's `stars` tally is untouched, so nothing about the
+/// deployed program changes. Allocation-free and `no_std` anyway, so the day the program wants
+/// it, it compiles in unchanged.
+pub fn star_tier(attempts: &[Attempt], case: &[u8; 32], pass_bps: u32, excellent_bps: u32) -> u32 {
+    let mut best: u32 = 0;
+    for a in attempts {
+        if a.exam_mode && a.case == *case {
+            let bps = norm_bps(a.det_score as u32, a.det_max as u32);
+            if bps > best {
+                best = bps;
+            }
+        }
+    }
+    if best >= excellent_bps {
+        2
+    } else if best >= pass_bps {
+        1
+    } else {
+        0
+    }
+}
+
 /// Verdict for a `claim_progress` instruction: the chain never grants what it cannot recompute.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verdict {
@@ -371,6 +405,48 @@ mod tests {
     #[test]
     fn a_failed_then_passed_exam_case_scores_once() {
         assert_eq!(stars(&[exam(1, 50), exam(1, 88)], 7000), 1);
+    }
+
+    /// The two-tier star sits exactly on its published thresholds — 8499 is not excellent and
+    /// 6999 is not a pass, because a bar a student can argue with is not a bar.
+    #[test]
+    fn star_tier_exact_boundaries() {
+        let c = case(1);
+        let t = |det: u16| star_tier(&[exam(1, det)], &c, STAR_PASS_BPS, STAR_EXCELLENT_BPS);
+        // det here is a percentage (det_max 100), so 84.99% is not expressible — pin the bps
+        // boundary on a 10_000-max attempt instead, where one point is one basis point.
+        let fine = |det: u16| {
+            let a = Attempt { det_max: 10_000, ..exam(1, 0) };
+            let a = Attempt { det_score: det, ..a };
+            star_tier(&[a], &c, STAR_PASS_BPS, STAR_EXCELLENT_BPS)
+        };
+        assert_eq!(fine(8_499), 1); // one bps under excellent: still just a pass
+        assert_eq!(fine(8_500), 2); // exactly excellent
+        assert_eq!(fine(6_999), 0); // one bps under the pass bar: nothing
+        assert_eq!(fine(7_000), 1); // exactly the pass bar
+        // and the coarse percentage path agrees where it can express the same points
+        assert_eq!(t(84), 1);
+        assert_eq!(t(85), 2);
+        assert_eq!(t(69), 0);
+        assert_eq!(t(70), 1);
+    }
+
+    #[test]
+    fn star_tier_takes_the_best_attempt_not_the_last() {
+        // Failed, then excellent, then merely passed: the best run is what the tier reads.
+        let runs = [exam(1, 40), exam(1, 92), exam(1, 71)];
+        assert_eq!(star_tier(&runs, &case(1), STAR_PASS_BPS, STAR_EXCELLENT_BPS), 2);
+    }
+
+    #[test]
+    fn star_tier_ignores_practice_and_other_cases() {
+        // A perfect practice run and a stranger case's excellent exam: neither is this case's tier.
+        let mut practice = attempt(1, 0, Difficulty::Student);
+        practice.det_score = 100; practice.det_max = 100; // even with a det on the tape
+        let runs = [practice, exam(2, 95)];
+        assert_eq!(star_tier(&runs, &case(1), STAR_PASS_BPS, STAR_EXCELLENT_BPS), 0);
+        // and a case never attempted at all is 0, not an error
+        assert_eq!(star_tier(&[], &case(1), STAR_PASS_BPS, STAR_EXCELLENT_BPS), 0);
     }
 
     /// Mirrors upstream `dreyfus_stages()` — same inputs, same expected stages.
