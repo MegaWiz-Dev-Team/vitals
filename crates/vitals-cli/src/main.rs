@@ -106,7 +106,8 @@ fn main() {
             n[8..16].copy_from_slice(&(records.len() as u64).to_le_bytes());
             n
         };
-        let chash = vitals_progress::record::commitment_hash(&sce, &player.pubkey().to_bytes(), &nonce);
+        // Mode 0: the CLI demo plays practice runs. Exam-ness is bound into the commitment.
+        let chash = vitals_progress::record::commitment_hash(&sce, &player.pubkey().to_bytes(), &nonce, 0);
         let commit_acct = vitals_program::commitment_pda(&program_id, &player.pubkey().to_bytes()).0;
         send(&rpc, &player, &program_id, Instruction::Commit { hash: chash },
              vec![acct, commit_acct], true);

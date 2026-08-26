@@ -71,10 +71,17 @@ impl Outcome {
 ///
 /// Domain-separated for the same reason the leaf is: a hash that could be confused with some
 /// other 32-byte value in this system is a collision waiting to be constructed.
-pub fn commitment_hash(case: &[u8; 32], player: &[u8; 32], nonce: &[u8; 32]) -> [u8; 32] {
+///
+/// `mode` (practice = 0, exam = 1) is bound in for the same reason the case is: whether a run
+/// was an exam is decided before it is played, and the chain holds the proof of that ordering.
+/// Without it, a good practice run could be anchored as an exam after the outcome was known —
+/// undetectable by any verifier, because no public byte would say when the label was chosen.
+/// A single byte at a fixed position; the domain tag moves v1→v2 so no v1 preimage (which had
+/// no mode) can ever collide with a v2 one.
+pub fn commitment_hash(case: &[u8; 32], player: &[u8; 32], nonce: &[u8; 32], mode: u8) -> [u8; 32] {
     // Through the crate's own sha256, which is the syscall on chain and the sha2 crate off it —
     // the same split the Merkle tree already uses, so both worlds compute the same bytes.
-    crate::merkle::sha256(&[b"vitals.commit.v1\n", case, player, nonce])
+    crate::merkle::sha256(&[b"vitals.commit.v2\n", case, player, nonce, &[mode]])
 }
 
 pub const HARM_PENALTY: u32 = 15;
@@ -269,5 +276,20 @@ mod tests {
         assert_eq!(Outcome::parse("WinDischarge"), Some(Outcome::WinDischarge));
         assert_eq!(Outcome::parse("SomethingNewInV2"), None);
         assert_eq!(Outcome::from_u8(9), None);
+    }
+
+    /// Exam-ness is decided before the run is played, and the commitment is where that ordering
+    /// lives — so the mode must change the hash, or relabelling after the outcome would be
+    /// invisible to every verifier.
+    #[test]
+    fn the_commitment_binds_the_mode() {
+        let (case, player, nonce) = ([1u8; 32], [2u8; 32], [3u8; 32]);
+        let practice = commitment_hash(&case, &player, &nonce, 0);
+        let exam = commitment_hash(&case, &player, &nonce, 1);
+        assert_ne!(practice, exam);
+        // And every other input still binds as it did.
+        assert_ne!(practice, commitment_hash(&[9u8; 32], &player, &nonce, 0));
+        assert_ne!(practice, commitment_hash(&case, &[9u8; 32], &nonce, 0));
+        assert_ne!(practice, commitment_hash(&case, &player, &[9u8; 32], 0));
     }
 }
