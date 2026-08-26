@@ -754,6 +754,168 @@ mod tests {
         assert!(!det.cleared(&r), "score-says-home must not clear the bar: {s}/{m}");
     }
 
+    /// Station D2 (osce-d2, from embla-cases ddx-pulmonary-embolism-2): pretest thinking —
+    /// Wells out loud, then the CTPA the score demands, then the anticoagulation the scan has
+    /// earned (gated like B's cath lab). The failing tape stalls on a d-dimer that could never
+    /// say no and pushes heparin on a hunch the gate refuses; the clot finishes the argument.
+    #[test]
+    fn station_d2_competent_run_clears_and_the_dimer_stall_fails() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/");
+        let sce = std::fs::read_to_string(format!("{root}stations/osce-d2.sce.json")).unwrap();
+        let rubric_json = std::fs::read_to_string(format!("{root}rubrics/osce-d2.json")).unwrap();
+        let parsed = vitals_sce::Sce::from_json(&sce).unwrap();
+        assert!(parsed.validate().is_empty(), "osce-d2: {:?}", parsed.validate());
+        let tape = vec![
+            Step::Do("what were you doing when it started?".into()),
+            Step::Tick(10.0),
+            Step::Do("any illnesses — any tablets?".into()),
+            Step::Tick(10.0),
+            Step::Do("how are your legs?".into()),
+            Step::Tick(10.0),
+            Step::Do("examine the calves".into()),
+            Step::Tick(10.0),
+            Step::Do("wells score".into()), // high before a single test
+            Step::Tick(10.0),
+            Step::Do("ct pulmonary angiogram".into()), // the scan the score demanded
+            Step::Tick(10.0),
+            Step::Do("low-molecular-weight heparin".into()), // t=60 — a clot with a name, starved
+            Step::Tick(10.0),
+            Step::Do("oxygen".into()),
+            Step::Tick(5.0),
+            Step::Do("pulmonary embolism".into()),
+            Step::Tick(5.0),
+            Step::Do("admit to the unit".into()),
+            Step::Tick(160.0), // the infusion runs; the unit takes her
+        ];
+        let (s, m, rhash) = det_for_run(&sce, &tape, &rubric_json).unwrap();
+        assert_eq!((s, m), (40, 40));
+        assert_eq!(rhash, vitals_progress::record::rubric_hash(rubric_json.as_bytes()));
+        // The stall: a dimer at high probability, heparin on a hunch the gate refuses, and
+        // waiting. The clot extends at six minutes and she greys out — under the bar, even
+        // with the ungated action credit.
+        let stall = vec![
+            Step::Do("d-dimer".into()),
+            Step::Tick(10.0),
+            Step::Do("heparin".into()), // refused — the scan first
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+        ];
+        let (s, m, _) = det_for_run(&sce, &stall, &rubric_json).unwrap();
+        let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
+        let det = DetResult { earned: s, max: m, items: vec![] };
+        assert!(!det.cleared(&r), "the dimer stall must not clear the bar: {s}/{m}");
+    }
+
+    /// Station D3 (osce-d3, from embla-cases ddx-p-anaphylaxis-1, re-aged paediatric per the set
+    /// design): the season's first disease, child-sized — same drug, different dose. The failing
+    /// tape does everything station A taught, including the adult half-milligram, and the child
+    /// survives it; the run still lands under the bar, because the dose was the exam.
+    #[test]
+    fn station_d3_competent_run_clears_and_the_adult_dose_fails() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/");
+        let sce = std::fs::read_to_string(format!("{root}stations/osce-d3.sce.json")).unwrap();
+        let rubric_json = std::fs::read_to_string(format!("{root}rubrics/osce-d3.json")).unwrap();
+        let parsed = vitals_sce::Sce::from_json(&sce).unwrap();
+        assert!(parsed.validate().is_empty(), "osce-d3: {:?}", parsed.validate());
+        let competent = |adrenaline: &str| {
+            vec![
+                Step::Do("how much does she weigh?".into()),
+                Step::Tick(10.0),
+                Step::Do("any known allergies?".into()),
+                Step::Tick(10.0),
+                Step::Do("what did she eat?".into()),
+                Step::Tick(10.0),
+                Step::Do(adrenaline.into()), // t=30 — inside five minutes either way
+                Step::Tick(10.0),
+                Step::Do("oxygen".into()),
+                Step::Tick(5.0),
+                Step::Do("saline 20 ml/kg".into()),
+                Step::Tick(5.0),
+                Step::Do("anaphylaxis".into()),
+                Step::Tick(5.0),
+                Step::Do("admit and watch for the second wave".into()),
+                Step::Tick(160.0), // the biphasic watch runs out to a discharge
+            ]
+        };
+        let tape = competent("adrenaline 0.2 mg im — 0.01 per kilo");
+        let (s, m, rhash) = det_for_run(&sce, &tape, &rubric_json).unwrap();
+        assert_eq!((s, m), (40, 40));
+        assert_eq!(rhash, vitals_progress::record::rubric_hash(rubric_json.as_bytes()));
+        // The same competent run with one number wrong: 0.5 mg into twenty kilos. She lives —
+        // and the station is failed, because the harm and both dose marks are gone.
+        let adult = competent("adrenaline 0.5 mg im — the adult dose");
+        let (s, m, _) = det_for_run(&sce, &adult, &rubric_json).unwrap();
+        let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
+        let det = DetResult { earned: s, max: m, items: vec![] };
+        assert!(!det.cleared(&r), "the adult dose must not clear the bar: {s}/{m}");
+        assert!(s >= 20, "the adult dose still treats — the run fails on marks, not on death: {s}/{m}");
+    }
+
+    /// Station D4 (osce-d4, from embla-cases embla-septic-shock-with-multi-organ-failure-resident):
+    /// the sepsis six inside the golden hour, in order — cultures before antibiotics, volume
+    /// before noradrenaline, and a door for the pus before the unit. The failing tape is the
+    /// reflex done backwards: antibiotics with no cultures, pressors into an empty tank, and
+    /// five minutes of shock on dry lines.
+    #[test]
+    fn station_d4_competent_run_clears_and_the_backwards_reflex_fails() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/");
+        let sce = std::fs::read_to_string(format!("{root}stations/osce-d4.sce.json")).unwrap();
+        let rubric_json = std::fs::read_to_string(format!("{root}rubrics/osce-d4.json")).unwrap();
+        let parsed = vitals_sce::Sce::from_json(&sce).unwrap();
+        assert!(parsed.validate().is_empty(), "osce-d4: {:?}", parsed.validate());
+        let tape = vec![
+            Step::Do("ask the niece what happened".into()),
+            Step::Tick(10.0),
+            Step::Do("feel the skin — perfusion".into()),
+            Step::Tick(10.0),
+            Step::Do("press the right loin".into()),
+            Step::Tick(10.0),
+            Step::Do("lactate".into()),
+            Step::Tick(10.0),
+            Step::Do("two sets of blood cultures".into()),
+            Step::Tick(10.0),
+            Step::Do("urinalysis".into()),
+            Step::Tick(10.0),
+            Step::Do("two large-bore lines".into()),
+            Step::Tick(10.0),
+            Step::Do("warmed crystalloid 30 ml/kg".into()), // through real bore
+            Step::Tick(10.0),
+            Step::Do("broad-spectrum antibiotics now".into()), // t=80 — cultures already flown
+            Step::Tick(10.0),
+            Step::Do("noradrenaline".into()), // the tank is full; the pressure holds
+            Step::Tick(10.0),
+            Step::Do("oxygen".into()),
+            Step::Tick(10.0),
+            Step::Do("urinary catheter — hourly output".into()),
+            Step::Tick(10.0),
+            Step::Do("call urology — unblock the kidney".into()),
+            Step::Tick(10.0),
+            Step::Do("icu bed".into()),
+            Step::Tick(5.0),
+            Step::Do("septic shock — urosepsis".into()),
+            Step::Tick(200.0), // stabilised, sourced, booked — the unit takes her warm
+        ];
+        let (s, m, rhash) = det_for_run(&sce, &tape, &rubric_json).unwrap();
+        assert_eq!((s, m), (40, 40));
+        assert_eq!(rhash, vitals_progress::record::rubric_hash(rubric_json.as_bytes()));
+        // Backwards: meropenem before any culture (harm), noradrenaline into an empty tank
+        // (refused), and waiting. Dry lines at five minutes; the pressure walks down to arrest.
+        let backwards = vec![
+            Step::Do("meropenem now".into()),
+            Step::Tick(10.0),
+            Step::Do("noradrenaline".into()),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+        ];
+        let (s, m, _) = det_for_run(&sce, &backwards, &rubric_json).unwrap();
+        let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
+        let det = DetResult { earned: s, max: m, items: vec![] };
+        assert!(!det.cleared(&r), "the backwards reflex must not clear the bar: {s}/{m}");
+    }
+
     #[test]
     fn every_rubric_uses_the_canonical_star_bar() {
         // Enforce-equal: a rubric whose pass_bps drifts from the one global bar is a failing test,

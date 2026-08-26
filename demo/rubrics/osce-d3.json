@@ -1,0 +1,21 @@
+{
+  "case": "osce-d3",
+  "pass_bps": 7000,
+  "status": "provisional — converted from embla-cases ddx-p-anaphylaxis-1 v1.0.0 (sha256:dae926c523d9caa9), re-aged paediatric per the set design (see the scenario _note): hidden.management_plan→weight-based adrenaline (the adult half-milligram is a scored harm even though she survives it), hidden.red_flags→no_harm (delay, IV push, the observation window), hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "items": [
+    { "label": "Asked her weight before any dose",                 "type": "action",    "needle": "ask_weight",       "points": 3 },
+    { "label": "Asked the known allergy",                          "type": "action",    "needle": "ask_allergy",      "points": 2 },
+    { "label": "Asked what she ate — found the fritters",          "type": "action",    "needle": "ask_exposure",     "points": 2 },
+    { "label": "Adrenaline drawn to her kilos — 0.01 mg/kg IM",    "type": "action",    "needle": "adrenaline_child", "points": 6 },
+    { "label": "…and inside five minutes",                         "type": "action_by", "needle": "adrenaline_child", "by_sec": 300, "points": 4 },
+    { "label": "Never the adult half-milligram",                   "type": "no_harm",   "needle": "an adult dose",    "points": 6 },
+    { "label": "Never IV push",                                    "type": "no_harm",   "needle": "arrhythmia",       "points": 1 },
+    { "label": "The window never closed on the argument",          "type": "no_harm",   "needle": "adrenaline delayed", "points": 2 },
+    { "label": "Fluids at 20 mL/kg",                               "type": "action",    "needle": "fluids",           "points": 2 },
+    { "label": "Oxygen on",                                        "type": "action",    "needle": "oxygen",           "points": 1 },
+    { "label": "Admitted for the biphasic watch",                  "type": "action",    "needle": "observe",          "points": 2 },
+    { "label": "Did not discharge inside the observation window",  "type": "no_harm",   "needle": "observation window", "points": 2 },
+    { "label": "Named it — anaphylaxis",                           "type": "action",    "needle": "dx_anaphylaxis",   "points": 2 },
+    { "label": "Weighed, dosed, watched — she goes home",          "type": "outcome",   "any_of": ["win_discharge"],  "points": 5 }
+  ]
+}

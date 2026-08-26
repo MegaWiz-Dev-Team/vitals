@@ -1,0 +1,18 @@
+{
+  "case": "osce-d2",
+  "pass_bps": 7000,
+  "status": "provisional — converted from embla-cases ddx-pulmonary-embolism-2 v1.0.0 (sha256:b397a41f3ffa93fe): hidden.expected_workup→action (CTPA the decider; ECG/CXR supportive), hidden.red_flags→no_harm (needless lytics on a held pressure; the anxiety reassurance at 88%), hidden.management_plan→anticoagulation once confirmed + oxygen, hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "items": [
+    { "label": "Asked the illnesses — cancer, on hormones",         "type": "action",  "needle": "ask_history",  "points": 2 },
+    { "label": "Asked about her legs",                              "type": "action",  "needle": "ask_legs",     "points": 2 },
+    { "label": "Examined the calf — found the source",              "type": "action",  "needle": "exam_legs",    "points": 2 },
+    { "label": "Wells before the tests — pretest thinking out loud","type": "action",  "needle": "wells",        "points": 4 },
+    { "label": "CTPA — the scan the score demanded",                "type": "action",  "needle": "ctpa",         "points": 7 },
+    { "label": "Anticoagulation, once the clot had a name",         "type": "action",  "needle": "heparin",      "points": 6 },
+    { "label": "Oxygen on",                                         "type": "action",  "needle": "oxygen",       "points": 1 },
+    { "label": "No lytics on a held pressure",                      "type": "no_harm", "needle": "intracranial bleed", "points": 4 },
+    { "label": "Never reassured the mimic out the door",            "type": "no_harm", "needle": "favourite exit", "points": 3 },
+    { "label": "Named it — pulmonary embolism",                     "type": "action",  "needle": "dx_pe",        "points": 2 },
+    { "label": "Anticoagulated and alive — the unit takes her",     "type": "outcome", "any_of": ["win_icu"],    "points": 7 }
+  ]
+}

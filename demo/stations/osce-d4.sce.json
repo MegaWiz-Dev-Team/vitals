@@ -1,0 +1,250 @@
+{
+ "_note": "OSCE station D4 — converted from embla-cases embla-septic-shock-with-multi-organ-failure-resident v1.0.0 (sha256:68f009e58029a6fc). Presentation follows the deploy-safe form; the hidden block informed only the rubric (demo/rubrics/osce-d4.json). Clinically shaped, not clinically reviewed. The finale's rehearsal at resident scale: a 72-year-old diabetic with a fever of 39.5, a pressure of 80, a lactate of 5.6 and a kidney full of pus behind a stone. The sepsis six inside the golden hour — cultures before the antibiotics, volume before the noradrenaline, and then the part protocols forget: the source. A dammed kidney reseeds the blood until urology opens a door for the pus.",
+ "setting": "ED",
+ "tick_seconds": 1.0,
+ "vitals0": { "hr": 120, "sbp": 80, "dbp": 40, "spo2": 90, "rr": 28, "temp": 39.5, "gcs": 13 },
+ "initial_state": "consult",
+ "states": [
+  {
+   "id": "consult",
+   "status": "deteriorating",
+   "dynamics": [
+    { "var": "sbp",  "rate_per_min": -2,   "floor": 44, "when": { "flag": "pressor_running", "is": false } },
+    { "var": "spo2", "rate_per_min": -0.3, "floor": 86 },
+    { "var": "hr",   "rate_per_min": 1,    "ceil": 168, "when": { "flag": "pressor_running", "is": false } }
+   ],
+   "bands": [
+    { "status": "critical", "when": { "var": "sbp", "op": "lt", "value": 65 } }
+   ],
+   "transitions": [
+    { "to_state": "resuscitated",
+      "when": { "all": [ { "flag": "fluids_given" }, { "flag": "abx_given" }, { "flag": "pressor_running" } ] } },
+    { "outcome": "death_arrest", "when": { "var": "sbp", "op": "lt", "value": 58 } }
+   ]
+  },
+  {
+   "id": "resuscitated",
+   "status": "improving",
+   "dynamics": [
+    { "var": "sbp",  "rate_per_min": 2,     "ceil": 96 },
+    { "var": "spo2", "rate_per_min": 0.5,   "ceil": 96 },
+    { "var": "hr",   "rate_per_min": -3,    "floor": 98 },
+    { "var": "temp", "rate_per_min": -0.05, "floor": 37.8 }
+   ],
+   "bands": [],
+   "transitions": [
+    { "outcome": "death_arrest", "when": { "var": "sbp", "op": "lt", "value": 58 } }
+   ]
+  }
+ ],
+ "interventions": [
+  {
+   "id": "ask_niece",
+   "label": "Ask the niece what happened",
+   "match": { "any_kw": ["niece", "what happened", "history", "relative"] },
+   "effects": [ { "beat": "— the niece: \"Fever and shaking since yesterday, hardly any water passed. Her kidney stones ached all last week.\" A story with an address on it." } ]
+  },
+  {
+   "id": "exam_perfusion",
+   "label": "Feel the skin",
+   "match": { "any_kw": ["perfusion", "cap refill", "feel the skin", "hands", "mottl"] },
+   "effects": [ { "beat": "mottled knees, arms cold to the elbow, refill four seconds — the periphery closed its doors an hour ago" } ]
+  },
+  {
+   "id": "exam_flank",
+   "label": "Press the right loin",
+   "match": { "any_kw": ["loin", "flank", "cva"] },
+   "effects": [ { "beat": "she flinches through the drowsiness at the right loin — cva tenderness, the pus signing its address" } ]
+  },
+  {
+   "id": "lactate",
+   "label": "Lactate",
+   "match": { "any_kw": ["lactate", "blood gas", "abg", "vbg"] },
+   "effects": [ { "beat": "lactate 5.6 — the tissues running on debt; a number to clear, not just to file" } ]
+  },
+  {
+   "id": "cultures",
+   "label": "Two sets of blood cultures",
+   "match": { "any_kw": ["culture"] },
+   "effects": [
+    { "flag": "cultures_drawn" },
+    { "beat": "two sets off different arms, urine bottled behind them — the lab gets its evidence before the bombardment" }
+   ]
+  },
+  {
+   "id": "urinalysis",
+   "label": "Urinalysis",
+   "match": { "any_kw": ["urinalysis", "dipstick", "urine test", "urine sample"] },
+   "effects": [ { "beat": "urine like weak tea, packed with white cells and bacteria — the source named on a strip" } ]
+  },
+  {
+   "id": "two_lines",
+   "label": "Two large-bore lines",
+   "match": { "any_kw": ["large-bore", "large bore", "two lines", "second line", "iv access", "cannula", "16g", "14g"] },
+   "effects": [
+    { "flag": "lines_in" },
+    { "beat": "two grey cannulas, one in each fold — the bore is the resuscitation" }
+   ],
+   "equipment": "iv",
+   "equipment_setting": 999
+  },
+  {
+   "id": "antibiotics",
+   "label": "Broad-spectrum antibiotics",
+   "match": { "any_kw": ["antibiotic", "broad-spectrum", "meropenem", "ceftriax", "tazocin", "piperacillin", "pip-tazo"] },
+   "effects": [
+    { "branch": [
+      { "if": { "flag": "cultures_drawn" },
+        "then": [
+         { "flag": "abx_given" },
+         { "beat": "meropenem dosed to the kidneys, running in the first bag — the golden hour spent on what kills the killer" }
+        ] }
+     ],
+     "else": [
+      { "flag": "abx_given" },
+      { "harm": "the antibiotics flew before a single culture — the enemy will never be named" }
+     ] }
+   ]
+  },
+  {
+   "id": "fluids",
+   "label": "Crystalloid 30 mL/kg",
+   "match": { "any_kw": ["crystalloid", "saline", "ringer", "30 ml/kg", "fluid", "bolus"] },
+   "effects": [
+    { "branch": [
+      { "if": { "flag": "lines_in" },
+        "then": [
+         { "flag": "fluids_given" },
+         { "delta": { "sbp": 10 }, "cap": 92 },
+         { "beat": "thirty mils a kilo of warmed crystalloid through both barrels — the pressure lifts its head" }
+        ] }
+     ],
+     "else": [
+      { "delta": { "sbp": 3 }, "cap": 84 },
+      { "beat": "a litre crawling through one thin green line — bore first, then volume" }
+     ] }
+   ]
+  },
+  {
+   "id": "norepinephrine",
+   "label": "Noradrenaline",
+   "match": { "any_kw": ["norepinephrine", "noradrenaline", "levophed", "pressor", "vasopress"] },
+   "effects": [
+    { "branch": [
+      { "if": { "flag": "fluids_given" },
+        "then": [
+         { "flag": "pressor_running" },
+         { "delta": { "sbp": 12 }, "cap": 96 },
+         { "beat": "noradrenaline climbing by the minute — the map holds at 65 and stays there" }
+        ] }
+     ],
+     "else": [ { "beat": "pressors into an empty tank — fill her first: vasoconstriction has nothing to squeeze" } ] }
+   ]
+  },
+  {
+   "id": "oxygen",
+   "label": "Oxygen",
+   "match": { "any_kw": ["oxygen", "o2", "mask"] },
+   "effects": [ { "delta": { "spo2": 4 }, "cap": 97 } ],
+   "equipment": "o2",
+   "equipment_setting": 10
+  },
+  {
+   "id": "catheter",
+   "label": "Urinary catheter — hourly output",
+   "match": { "any_kw": ["catheter", "foley", "hourly", "urine output"] },
+   "effects": [
+    { "flag": "catheter_in" },
+    { "beat": "a catheter for the hourly truth — fifteen mils the first hour, a kidney whispering" }
+   ]
+  },
+  {
+   "id": "source_control",
+   "label": "Call urology — unblock the kidney",
+   "match": { "any_kw": ["urolog", "unblock", "stent", "nephrostom", "source control", "drain the kidney"] },
+   "effects": [
+    { "flag": "source_planned" },
+    { "beat": "ct shows a stone corking the right ureter — urology books the theatre tonight: the pus gets a door" }
+   ]
+  },
+  {
+   "id": "icu_bed",
+   "label": "ICU bed",
+   "match": { "any_kw": ["icu", "intensive"] },
+   "effects": [ { "flag": "icu_booked" }, { "beat": "the unit accepts her, pump and all" } ]
+  },
+  {
+   "id": "dx_sepsis",
+   "label": "Name the diagnosis",
+   "match": { "any_kw": ["septic shock", "sepsis", "urosepsis", "pyelonephritis"] },
+   "effects": [ { "flag": "dx_named" }, { "beat": "septic shock from an obstructed, infected kidney — named with its source and its clock" } ]
+  }
+ ],
+ "triggers": [
+  {
+   "id": "dry_lines",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "consult" },
+    { "var": "t_elapsed", "op": "ge", "value": 300 },
+    { "flag": "fluids_given", "is": false }
+   ] },
+   "do": [
+    { "harm": "half the resuscitation is speed — five minutes of shock on dry lines" }
+   ]
+  },
+  {
+   "id": "golden_hour_closes",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "consult" },
+    { "var": "t_elapsed", "op": "ge", "value": 480 },
+    { "flag": "abx_given", "is": false }
+   ] },
+   "do": [
+    { "harm": "the golden hour closed with no antimicrobial on board — every hour of delay stacks the odds against her" }
+   ]
+  },
+  {
+   "id": "vasoplegia",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "consult" },
+    { "flag": "fluids_given" },
+    { "flag": "pressor_running", "is": false },
+    { "var": "t_elapsed", "op": "ge", "value": 420 }
+   ] },
+   "do": [
+    { "harm": "the tank is full and the pressure still sags — vasoplegia does not answer to volume" }
+   ]
+  },
+  {
+   "id": "dammed_kidney",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "resuscitated" },
+    { "var": "t_in_state", "op": "ge", "value": 420 },
+    { "flag": "source_planned", "is": false }
+   ] },
+   "do": [
+    { "harm": "a dammed kidney reseeds the blood — the pressure sags against a rising pump" },
+    { "delta": { "sbp": -16 }, "floor": 52 }
+   ]
+  },
+  {
+   "id": "unit_takes_her",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "resuscitated" },
+    { "flag": "source_planned" },
+    { "flag": "icu_booked" },
+    { "var": "t_in_state", "op": "ge", "value": 180 }
+   ] },
+   "do": [ { "outcome": "win_icu" } ]
+  }
+ ],
+ "outcomes": [
+  { "id": "win_icu",      "kind": "win",   "label": "Six boxes, one golden hour, and a door for the pus — the unit takes her warm" },
+  { "id": "death_arrest", "kind": "death", "label": "The hour was spent watching — multi-organ failure collected on schedule" }
+ ]
+}

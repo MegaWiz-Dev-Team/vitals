@@ -1,0 +1,23 @@
+{
+  "case": "osce-d4",
+  "pass_bps": 7000,
+  "status": "provisional — converted from embla-cases embla-septic-shock-with-multi-organ-failure-resident v1.0.0 (sha256:68f009e58029a6fc): hidden.expected_workup→action (cultures, urinalysis, lactate), hidden.red_flags→no_harm (dry lines, the closed golden hour, antibiotics before cultures, volume-refractory shock unanswered, the unsourced kidney), hidden.management_plan→sepsis six + noradrenaline + urological source control + ICU; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "items": [
+    { "label": "Read the shock off her skin",                      "type": "action",    "needle": "exam_perfusion", "points": 1 },
+    { "label": "Pressed the right loin — the source's address",    "type": "action",    "needle": "exam_flank",     "points": 2 },
+    { "label": "Lactate measured",                                 "type": "action",    "needle": "lactate",        "points": 1 },
+    { "label": "Cultures before the bombardment",                  "type": "action",    "needle": "cultures",       "points": 2 },
+    { "label": "Urine tested — the source named on a strip",       "type": "action",    "needle": "urinalysis",     "points": 1 },
+    { "label": "Thirty mils a kilo through real bore",             "type": "action",    "needle": "fluids",         "points": 3 },
+    { "label": "The lines never ran dry into the shock",           "type": "no_harm",   "needle": "on dry lines",   "points": 2 },
+    { "label": "Broad-spectrum antibiotics given",                 "type": "action",    "needle": "antibiotics",    "points": 5 },
+    { "label": "…inside the golden hour",                          "type": "action_by", "needle": "antibiotics", "by_sec": 480, "points": 4 },
+    { "label": "The enemy got named — cultures flew first",        "type": "no_harm",   "needle": "never be named", "points": 3 },
+    { "label": "The golden hour never closed empty",               "type": "no_harm",   "needle": "golden hour closed", "points": 2 },
+    { "label": "Noradrenaline when the volume stopped answering",  "type": "action",    "needle": "norepinephrine", "points": 4 },
+    { "label": "Vasoplegia never left to sag unanswered",          "type": "no_harm",   "needle": "vasoplegia",     "points": 2 },
+    { "label": "Source control — a door for the pus",              "type": "action",    "needle": "source_control", "points": 2 },
+    { "label": "Named it — septic shock, with its source",         "type": "action",    "needle": "dx_sepsis",      "points": 1 },
+    { "label": "The unit takes her warm",                          "type": "outcome",   "any_of": ["win_icu"],      "points": 5 }
+  ]
+}
