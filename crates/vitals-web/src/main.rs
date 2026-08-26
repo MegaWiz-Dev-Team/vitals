@@ -391,6 +391,8 @@ fn scenario_path(id: &str) -> std::path::PathBuf {
 fn rubric_path(id: &str) -> Option<std::path::PathBuf> {
     let file = match id {
         "ep2" => "demo/rubrics/ep2-stemi.json",
+        "ep3" => "demo/rubrics/ep3-epiglottitis.json",
+        "ep4" => "demo/rubrics/ep4-pulmonary-embolism.json",
         _ => return None,
     };
     let p = scenario_root().join(file);
@@ -1801,8 +1803,11 @@ mod tests {
     /// can host an exam has exactly one definition.
     #[test]
     fn only_rubricd_cases_can_host_exams() {
-        assert!(rubric_path("ep2").is_some(), "ep2 has an authored rubric");
-        for ep in ["ep1", "ep3", "ep4", "ep5", "nonsense"] {
+        for ep in ["ep2", "ep3", "ep4"] {
+            assert!(rubric_path(ep).is_some(), "{ep} has an authored rubric");
+        }
+        // ep1 is the story-only intro; ep5's rubric is authored last.
+        for ep in ["ep1", "ep5", "nonsense"] {
             assert!(rubric_path(ep).is_none(), "{ep} has no rubric yet");
         }
     }
