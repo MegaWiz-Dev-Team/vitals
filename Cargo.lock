@@ -7754,6 +7754,7 @@ dependencies = [
  "solana-sdk",
  "tiny_http",
  "ureq",
+ "vitals-osce",
  "vitals-program",
  "vitals-progress",
  "vitals-replay",
