@@ -313,8 +313,6 @@ impl Chain {
     /// Stars on this tree — distinct exam-mode cases the player has cleared at or above `pass_bps`.
     /// Reads the same claim buffer as `proven_count`, maps each proven attempt into the scorer's
     /// shape, and defers to `vitals_progress::stars`. Additive: the level path is unchanged.
-    // Wired by `GET /api/stars` in main.rs (developer-45's zone) — drop this allow once it calls in.
-    #[allow(dead_code)]
     pub fn star_count(&self, id: &Pubkey, tree_id: u64, pass_bps: u32) -> u32 {
         self.fetch::<ClaimAccount>(&self.claim_pda(id, tree_id))
             .map(|c| {
