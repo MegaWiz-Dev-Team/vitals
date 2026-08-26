@@ -604,6 +604,13 @@ fn main() {
         .and_then(|v| v.parse().ok())
         .unwrap_or(6_500);
 
+    // Which stations can host an exam — asked once, from the same function the commit gate and
+    // the anchor scorer ask, and served to the page so the UI never keeps its own copy.
+    let exam_eps: Vec<&'static str> = ["ep1", "ep2", "ep3", "ep4", "ep5"]
+        .into_iter()
+        .filter(|e| rubric_path(e).is_some())
+        .collect();
+
     // Through the same root as the scenarios. This was the other baked-in build path, and it is
     // why the container had a patient who could not speak even with a gateway to speak through.
     let story = scenario_root().join("demo/ep1-en.json");
@@ -1059,6 +1066,8 @@ fn main() {
                     // transactions actually go. It said "localnet" on the public demo once.
                     "cluster": chain.as_ref().map(|c| cluster_of(&c.deployment().2)),
                     "voice": patient.is_some(),
+                    // Which stations can sit an exam — the server's rubric map is the only copy.
+                    "exam_eps": exam_eps,
                     "tree_id": t.tree_id,
                     "anchored": t.leaves.len(),
                     "relay": chain.as_ref().map(|c| c.relay_pubkey()),
@@ -1121,7 +1130,7 @@ fn main() {
                             who.to_string(),
                             PendingWork { pending: p, session: id.clone(), account: person,
                                           prove: None, commit: Some((hash, nonce, mode)),
-                                          index: 0, score: 0, level: None, link: false },
+                                          index: 0, score: 0, det: None, level: None, link: false },
                         );
                         json(serde_json::json!({ "sign": msg }))
                     }
@@ -1222,7 +1231,9 @@ fn main() {
                             who.to_string(),
                             PendingWork { pending: anchor, prove: Some(prove),
                                           session: id.clone(), account: person, commit: None,
-                                          index, score: rec.score(), level: None, link: false },
+                                          index, score: rec.score(),
+                                          det: s.exam_mode.then_some((rec.det_score, rec.det_max)),
+                                          level: None, link: false },
                         );
                         json(serde_json::json!({ "sign": msg, "sign2": msg2 }))
                     }
@@ -1252,7 +1263,7 @@ fn main() {
                         pendings.lock().unwrap().insert(
                             who.to_string(),
                             PendingWork { pending: p, session: String::new(), account: id, prove: None, commit: None,
-                                          index: 0, score: 0, level: Some(level), link: false },
+                                          index: 0, score: 0, det: None, level: Some(level), link: false },
                         );
                         json(serde_json::json!({ "sign": msg }))
                     }
@@ -1356,7 +1367,7 @@ fn main() {
                         pendings.lock().unwrap().insert(
                             dev.to_string(),
                             PendingWork { pending: p, session: String::new(), account: person, prove: None, commit: None,
-                                          index: 0, score: 0, level: None, link: true },
+                                          index: 0, score: 0, det: None, level: None, link: true },
                         );
                         json(serde_json::json!({ "sign": msg }))
                     }
@@ -1474,6 +1485,7 @@ fn main() {
                             Ok(a) => json(serde_json::json!({
                                 "index": a.index, "root": a.root, "leaves": a.leaves,
                                 "proven": a.proven, "score": work.score,
+                                "det": work.det.map(|(s, m)| serde_json::json!({"score": s, "max": m})),
                                 "counted": c.proven_count(&id, tree_id),
                             })),
                             Err(e) => json(serde_json::json!({ "error": e })),
@@ -1511,6 +1523,9 @@ struct PendingWork {
     account: solana_sdk::pubkey::Pubkey,
     index: u64,
     score: u32,
+    /// The deterministic exam mark stamped into the record at anchor time — carried here only
+    /// so the submit reply can show it; `None` for practice runs and for non-anchor work.
+    det: Option<(u16, u16)>,
     /// Set for a claim, `None` for an anchor.
     level: Option<u8>,
     /// True when this transaction only moves devices around and touches no tree.

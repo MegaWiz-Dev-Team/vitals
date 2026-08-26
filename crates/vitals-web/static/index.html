@@ -93,6 +93,7 @@ addEventListener('click',function(e){
   font-weight:700;font-size:.82rem;color:#fff;background:linear-gradient(180deg,#2ed3b4,#1fa78f);
   box-shadow:0 4px 0 #178b76;transition:transform .06s,box-shadow .06s}
 .tile:active .go{transform:translateY(3px);box-shadow:0 1px 0 #178b76}
+.tile .go.exam{background:linear-gradient(180deg,#ffd766,#f0b429);box-shadow:0 4px 0 #c68f1f;color:#4a3403;margin-left:.45rem}
 .tile.lock{cursor:not-allowed}
 .tile.lock .art{filter:grayscale(.92);opacity:.62}
 .tile.lock .art::after{content:'🔒';position:absolute;inset:0;display:grid;place-items:center;
@@ -788,6 +789,7 @@ function showTally(){
 async function commitRun(exam){
   runCommitted=false;
   const r=await chainDo('/api/commit?id='+id+'&exam='+(exam?1:0));
+  EXAMLIVE=!!(r&&r.committed&&r.exam);
   if(r&&r.committed){runCommitted=true;
     ev('note','—','committed — attempt #'+r.started+' on the record · '+(r.exam?'OSCE exam':'practice'));
     if(r.started!=null){TALLY.started=r.started; showTally();}}
@@ -1141,7 +1143,7 @@ function fire(text){ mode==='ask' ? askHer(text) : doOrder(text); }
 
 function paint(v){
   const E=ep();
-  $('#ep-name').textContent=E.n+' · '+E.t+' · '+v.sce_hash.slice(0,10);
+  $('#ep-name').textContent=E.n+' · '+E.t+' · '+v.sce_hash.slice(0,10)+(EXAMLIVE?' · OSCE EXAM':'');
   $('#pt-name').textContent=E.who; $('#pt-line').textContent=E.line; $('#place').textContent='📷 '+E.place;
   $('#pt-status').textContent=v.status; $('#pt-status').className='pt-status '+v.status;
   show(v.status, v.equipment);
@@ -1282,7 +1284,7 @@ $('#start').onclick=async()=>{
      started before you knew how it would go — so the declaration has to land here, at the top,
      not at anchor time when the outcome is already on the screen. If it fails the run still
      plays; it just cannot anchor, and the anchor button will say why. */
-  commitRun();
+  commitRun(EXAMRUN);
   renderModes(); renderChips(); paint(r.view);
   if(ep().id==='ep1') playCut('cold_open');
   $('#device').src='/device/monitor?sid='+encodeURIComponent(id);
@@ -1294,7 +1296,7 @@ $('#start').onclick=async()=>{
   if(!voice) ev('note','—','no gateway, so she cannot answer — orders still work');
   run(); chainState();
 };
-$('#back').onclick=()=>{ stop(); $('#game').classList.add('hide'); $('#lobby').classList.remove('hide'); renderSeason(); };
+$('#back').onclick=()=>{ stop(); EXAMRUN=false; EXAMLIVE=false; $('#game').classList.add('hide'); $('#lobby').classList.remove('hide'); renderSeason(); };
 $('#pause').onclick=()=>{ if(timer){stop();$('#pause').textContent='resume';} else{run();$('#pause').textContent='hold';} };
 $('#diff').onclick=()=>{ hard=!hard; $('#diff').textContent=hard?'hard':'easy'; $('#diff').classList.toggle('on',hard);
   if(timer){stop();run();} };
@@ -1329,6 +1331,7 @@ $('#anchor').onclick=async()=>{
   if(r.error){v.innerHTML+=`<span class="r">${r.error}</span>`;$('#anchor').textContent='anchor this run on chain';$('#anchor').disabled=false;return;}
   v.innerHTML+=`<span class="g">anchored at index ${r.index} · score ${r.score} · ${r.proven?'proven':'PROOF FAILED'}</span>`;
   v.innerHTML+=`<span class="n">root ${r.root.slice(0,24)}… · ${r.leaves} leaves · ${r.counted} counted</span>`;
+  if(r.det) v.innerHTML+=`<span class="g">OSCE ${r.det.score}/${r.det.max} — deterministic, re-derivable by anyone</span>`;
   /* The star the station card wears: earned here, by an anchor that really landed. */
   const st=starred(), e=$('#ep').value;
   if(!st.includes(e)){st.push(e);localStorage.setItem('vitals.starred',JSON.stringify(st));}
@@ -1408,6 +1411,10 @@ const starred=()=>JSON.parse(localStorage.getItem('vitals.starred')||'[]');
 const NEED={ep1:0,ep2:1,ep3:1,ep4:2,ep5:2};
 const LVNAME={1:'Advanced beginner',2:'Competent',3:'Proficient',4:'Expert'};
 let CHAINLV=null; /* null = no chain reachable → the old local ladder */
+/* Which stations can sit an exam — served by /api/chain from the server's rubric map, never
+   copied here; and whether the run being started is one. The mode chosen here is what the
+   ceremony binds into the commitment. */
+let EXAM_EPS=[]; let EXAMRUN=false; let EXAMLIVE=false;
 async function chainLevel(){
   try{
     const me=await identity(); if(!me)return null;
@@ -1427,7 +1434,12 @@ const open_=i=>{
 async function renderSeason(){
   paintSeason();
   const lv=await chainLevel();
-  if(lv!==CHAINLV){ CHAINLV=lv; paintSeason(); }
+  let repaint = lv!==CHAINLV; CHAINLV=lv;
+  if(!EXAM_EPS.length){
+    try{ const c=await (await fetch('/api/chain')).json();
+      if(c.exam_eps&&c.exam_eps.length){ EXAM_EPS=c.exam_eps; repaint=true; } }catch(e){}
+  }
+  if(repaint) paintSeason();
 }
 function paintSeason(){
   $('#eps').innerHTML=SEASON.map((e,i)=>{
@@ -1445,10 +1457,17 @@ function paintSeason(){
       ${claimable?`data-claim="${need}"`:''} ${un||claimable?'':'disabled'}>
       <div class="art">${art}<span class="no">${e.n}${star?' <span title="anchored on chain">★</span>':''}${done?' · cleared':''}</span><span class="tier">${e.tier}</span></div>
       <div class="body"><h3>${e.t}</h3><p>${e.d}</p>
-      <span class="go">${un?'enter the bay':lockGo}</span></div></button>`;
+      <span class="go">${un?'enter the bay':lockGo}</span>${un&&EXAM_EPS.includes(e.id)?`<span class="go exam" data-exam="${e.id}" data-ga="exam:${e.id}">\u2605 sit the OSCE station</span>`:''}</div></button>`;
   }).join('');
   $('#eps').querySelectorAll('.tile:not(.lock)').forEach(b=>b.onclick=()=>{
+    EXAMRUN=false;
     $('#ep').value=b.dataset.ep; $('#lobby').classList.add('hide');
+    $('#game').classList.remove('hide'); $('#start').click(); });
+  /* The exam door on the same card: same bay, but the ceremony will bind exam into the
+     commitment before the first order is possible. */
+  $('#eps').querySelectorAll('[data-exam]').forEach(x=>x.onclick=(ev)=>{
+    ev.stopPropagation(); EXAMRUN=true;
+    $('#ep').value=x.dataset.exam; $('#lobby').classList.add('hide');
     $('#game').classList.remove('hide'); $('#start').click(); });
   /* The claim happens on the card that is locked, and the verdict lands on it too: the
      program computes, then the door opens — or says why it will not. */
