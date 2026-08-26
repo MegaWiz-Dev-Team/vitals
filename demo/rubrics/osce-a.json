@@ -1,0 +1,17 @@
+{
+  "case": "osce-a",
+  "pass_bps": 7000,
+  "status": "provisional — converted from embla-cases ddx-anaphylaxis-1 v1.0.0 (sha256:a744574cee3040da): hidden.expected_workup→action/action_any, hidden.red_flags→no_harm, hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "items": [
+    { "label": "Asked about known allergies",                    "type": "action",     "needle": "ask_allergy",        "points": 4 },
+    { "label": "Asked what he ate — found the exposure",         "type": "action",     "needle": "ask_exposure",       "points": 4 },
+    { "label": "Adrenaline IM within five minutes",              "type": "action_by",  "needle": "adrenaline_im", "by_sec": 300, "points": 10 },
+    { "label": "Never let the adrenaline window close",          "type": "no_harm",    "needle": "adrenaline delayed", "points": 4 },
+    { "label": "Oxygen for the falling sats",                    "type": "action",     "needle": "oxygen",             "points": 3 },
+    { "label": "Serum tryptase sent",                            "type": "action",     "needle": "tryptase",           "points": 2 },
+    { "label": "Supporting workup — ECG, CBC or CXR",            "type": "action_any", "any_of": ["ecg", "cbc", "cxr"], "points": 2 },
+    { "label": "Did not discharge inside the observation window","type": "no_harm",    "needle": "observation window", "points": 3 },
+    { "label": "Named the diagnosis — anaphylaxis",              "type": "action",     "needle": "dx_anaphylaxis",     "points": 4 },
+    { "label": "Patient survives to discharge",                  "type": "outcome",    "any_of": ["win_discharge"],    "points": 4 }
+  ]
+}

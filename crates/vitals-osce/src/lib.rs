@@ -267,6 +267,94 @@ mod tests {
         assert_eq!(rhash, vitals_progress::record::rubric_hash(rubric.as_bytes()));
     }
 
+    /// Station A (osce-a, from embla-cases ddx-anaphylaxis-1), marked by the exact anchor path.
+    /// The competent tape speaks in the chip texts the UI actually sends — asks included, because
+    /// at a station an ask IS a do — and earns the full 40; the antihistamine-and-wait tape lets
+    /// the adrenaline window close and lands under the bar, which is what makes the star a claim.
+    #[test]
+    fn station_a_competent_run_clears_and_hesitation_fails() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/");
+        let sce = std::fs::read_to_string(format!("{root}stations/osce-a.sce.json")).unwrap();
+        let rubric_json = std::fs::read_to_string(format!("{root}rubrics/osce-a.json")).unwrap();
+        let parsed = vitals_sce::Sce::from_json(&sce).unwrap();
+        assert!(parsed.validate().is_empty(), "osce-a: {:?}", parsed.validate());
+        let tape = vec![
+            Step::Do("any allergies?".into()),
+            Step::Tick(15.0),
+            Step::Do("what did you eat before this?".into()),
+            Step::Tick(15.0),
+            Step::Do("adrenaline im".into()), // t=30 — inside the five-minute window
+            Step::Tick(10.0),
+            Step::Do("oxygen mask".into()),
+            Step::Tick(10.0),
+            Step::Do("serum tryptase".into()),
+            Step::Tick(5.0),
+            Step::Do("12-lead ecg".into()),
+            Step::Tick(5.0),
+            Step::Do("anaphylaxis".into()),
+            Step::Tick(160.0), // the observation window runs out to discharge
+        ];
+        let (s, m, rhash) = det_for_run(&sce, &tape, &rubric_json).unwrap();
+        assert_eq!((s, m), (40, 40));
+        assert_eq!(rhash, vitals_progress::record::rubric_hash(rubric_json.as_bytes()));
+        // Antihistamine alone, then waiting: the delay harm fires at five minutes, the patient
+        // arrests, and the run must not clear — retry with feedback is the mastery model.
+        let hesitation = vec![
+            Step::Do("chlorpheniramine".into()),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+        ];
+        let (s, m, _) = det_for_run(&sce, &hesitation, &rubric_json).unwrap();
+        let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
+        let det = DetResult { earned: s, max: m, items: vec![] };
+        assert!(!det.cleared(&r), "a run without adrenaline must not clear: {s}/{m}");
+    }
+
+    /// Station B (osce-b, from embla-cases ddx-possible-nstemi-stemi-2): chest pain → ECG inside
+    /// ten minutes → reperfusion decision. The cath lab refuses a hunch — activating it without
+    /// an ECG earns the action but never the outcome, and stays under the bar.
+    #[test]
+    fn station_b_competent_run_clears_and_a_hunch_fails() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/");
+        let sce = std::fs::read_to_string(format!("{root}stations/osce-b.sce.json")).unwrap();
+        let rubric_json = std::fs::read_to_string(format!("{root}rubrics/osce-b.json")).unwrap();
+        let parsed = vitals_sce::Sce::from_json(&sce).unwrap();
+        assert!(parsed.validate().is_empty(), "osce-b: {:?}", parsed.validate());
+        let tape = vec![
+            Step::Do("where is the pain?".into()),
+            Step::Tick(20.0),
+            Step::Do("any risk factors — smoking, sugar, pressure?".into()),
+            Step::Tick(20.0),
+            Step::Do("12-lead ecg".into()), // t=40 — door-to-ECG well inside ten minutes
+            Step::Tick(10.0),
+            Step::Do("aspirin 300 chewed".into()),
+            Step::Tick(10.0),
+            Step::Do("troponin".into()),
+            Step::Tick(10.0),
+            Step::Do("acute stemi".into()),
+            Step::Tick(5.0),
+            Step::Do("activate the cath lab".into()),
+            Step::Tick(190.0), // door-to-balloon runs; muscle mostly intact → win_discharge
+        ];
+        let (s, m, _) = det_for_run(&sce, &tape, &rubric_json).unwrap();
+        assert_eq!((s, m), (40, 40));
+        // Cath lab on a hunch, no ECG ever: the reperfusion flag never sets, the ten-minute harm
+        // fires, the infarct completes. The action_any credit alone cannot reach the bar.
+        let hunch = vec![
+            Step::Do("activate the cath lab".into()),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+        ];
+        let (s, m, _) = det_for_run(&sce, &hunch, &rubric_json).unwrap();
+        let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
+        let det = DetResult { earned: s, max: m, items: vec![] };
+        assert!(!det.cleared(&r), "reperfusion credit without the ECG must not clear: {s}/{m}");
+    }
+
     #[test]
     fn every_rubric_uses_the_canonical_star_bar() {
         // Enforce-equal: a rubric whose pass_bps drifts from the one global bar is a failing test,

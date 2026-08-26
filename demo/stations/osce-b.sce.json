@@ -1,0 +1,194 @@
+{
+ "_note": "OSCE station B — converted from embla-cases ddx-possible-nstemi-stemi-2 v1.0.0 (sha256:a06bc90eb52b39fd). Presentation follows the deploy-safe form; the hidden block informed only the rubric (demo/rubrics/osce-b.json). Clinically shaped, not clinically reviewed. The teaching is EP2's core loop: chest pain → ECG inside ten minutes → a reperfusion decision. Reperfusion is gated on the ECG being done — the lab will not spin up on a hunch.",
+ "setting": "ED",
+ "tick_seconds": 1.0,
+ "vitals0": { "hr": 108, "sbp": 145, "dbp": 92, "spo2": 96, "rr": 22, "temp": 36.8, "gcs": 15 },
+ "variables": {
+  "myocardium": { "init": 1.0, "min": 0.0, "max": 1.0 }
+ },
+ "initial_state": "consult",
+ "states": [
+  {
+   "id": "consult",
+   "status": "deteriorating",
+   "dynamics": [
+    { "var": "myocardium", "rate_per_min": -0.05, "floor": 0.0, "when": { "flag": "reperfused", "is": false } },
+    { "var": "hr", "rate_per_min": 1.5, "ceil": 150, "when": { "flag": "reperfused", "is": false } }
+   ],
+   "bands": [
+    { "status": "critical", "when": { "var": "myocardium", "op": "lt", "value": 0.45 } }
+   ],
+   "transitions": [
+    { "to_state": "reperfused", "when": { "flag": "reperfused" } },
+    { "outcome": "death_arrest", "when": { "var": "myocardium", "op": "lt", "value": 0.22 } }
+   ]
+  },
+  {
+   "id": "reperfused",
+   "status": "improving",
+   "dynamics": [
+    { "var": "hr", "rate_per_min": -5, "floor": 84 }
+   ],
+   "bands": [],
+   "transitions": []
+  }
+ ],
+ "interventions": [
+  {
+   "id": "ask_pain",
+   "label": "Ask about the pain",
+   "match": { "any_kw": ["pain", "hurt", "go anywhere", "radiat", "ปวด", "เจ็บ"] },
+   "effects": [ { "beat": "— \"Like something sitting on my chest. It shoots down both arms, up to my throat.\" Six out of ten, sudden." } ]
+  },
+  {
+   "id": "ask_risk",
+   "label": "Ask the risk factors",
+   "match": { "any_kw": ["smoke", "risk", "sugar", "diabet", "cholesterol", "pressure", "family"] },
+   "effects": [ { "beat": "— \"I smoke a lot. Sugar, cholesterol, pressure — all of it. My father's heart gave out.\"" } ]
+  },
+  {
+   "id": "exam_heart",
+   "label": "Listen to the heart",
+   "match": { "any_kw": ["listen", "auscult", "heart sound"] },
+   "effects": [ { "beat": "normal s1 s2 — a clean exam clears nothing here" } ]
+  },
+  {
+   "id": "exam_pulse",
+   "label": "Check the pulses",
+   "match": { "any_kw": ["pulse", "perfusion", "cap refill"] },
+   "effects": [ { "beat": "fast, regular, equal both sides" } ]
+  },
+  {
+   "id": "ecg",
+   "label": "12-lead ECG",
+   "match": { "any_kw": ["ecg", "ekg", "12-lead"] },
+   "effects": [
+    { "flag": "ecg_done" },
+    { "beat": "st elevation on the screen — the ecg tells the truth" }
+   ]
+  },
+  {
+   "id": "troponin",
+   "label": "Cardiac troponin",
+   "match": { "any_kw": ["troponin", "cardiac enzyme"] },
+   "effects": [ { "beat": "troponin drawn — treat the ecg, not the lab clock" } ]
+  },
+  {
+   "id": "cxr",
+   "label": "Chest X-ray",
+   "match": { "any_kw": ["x-ray", "cxr", "chest film"] },
+   "effects": [ { "beat": "unremarkable film — nothing else to blame" } ]
+  },
+  {
+   "id": "aspirin",
+   "label": "Aspirin 300 mg chewed",
+   "match": { "any_kw": ["aspirin", "asa"] },
+   "effects": [
+    { "delta": { "myocardium": 0.03 }, "cap": 1.0 },
+    { "flag": "antiplatelet" },
+    { "beat": "300 mg chewed — cheap minutes of muscle" }
+   ]
+  },
+  {
+   "id": "oxygen",
+   "label": "Oxygen",
+   "match": { "any_kw": ["oxygen", "o2", "mask"] },
+   "effects": [ { "delta": { "spo2": 2 }, "cap": 99 } ],
+   "equipment": "o2",
+   "equipment_setting": 6
+  },
+  {
+   "id": "iv_access",
+   "label": "IV access",
+   "match": { "any_kw": ["iv access", "iv line", "drip", "cannula"] },
+   "effects": [ { "beat": "line in" } ],
+   "equipment": "iv",
+   "equipment_setting": 80
+  },
+  {
+   "id": "cath_lab",
+   "label": "Activate the cath lab — primary PCI",
+   "match": { "any_kw": ["cath", "pci", "angioplast", "reperfus", "activate"] },
+   "effects": [
+    { "branch": [
+      { "if": { "flag": "ecg_done" },
+        "then": [
+         { "flag": "reperfused" },
+         { "beat": "cath lab activated — door-to-balloon clock running" }
+        ] }
+     ],
+     "else": [ { "beat": "the lab wants an ecg before it spins up" } ] }
+   ]
+  },
+  {
+   "id": "thrombolysis",
+   "label": "Thrombolysis when PCI is out of reach",
+   "match": { "any_kw": ["thrombolys", "lytic", "alteplase", "tenecteplase", "streptokin"] },
+   "effects": [
+    { "branch": [
+      { "if": { "flag": "ecg_done" },
+        "then": [
+         { "flag": "reperfused" },
+         { "delta": { "myocardium": -0.03 }, "floor": 0.0 },
+         { "beat": "lytic running — reperfusion, the second-best way" }
+        ] }
+     ],
+     "else": [ { "beat": "you cannot lyse what you have not proven" } ] }
+   ]
+  },
+  {
+   "id": "dx_stemi",
+   "label": "Name the diagnosis",
+   "match": { "any_kw": ["stemi", "infarct", "acs", "heart attack", "coronary occlusion"] },
+   "effects": [ { "flag": "dx_named" }, { "beat": "acute st-elevation mi — named" } ]
+  },
+  {
+   "id": "reassure_discharge",
+   "label": "Reassure and discharge (HARM)",
+   "match": { "any_kw": ["reassure", "discharge", "panic attack", "home"] },
+   "harm": "discharged an evolving infarct — the arm pain was never anxiety",
+   "effects": []
+  },
+  {
+   "id": "admit",
+   "label": "Admit to coronary care",
+   "match": { "any_kw": ["admit", "ccu", "coronary care", "ward"] },
+   "effects": [ { "flag": "observed" }, { "beat": "admitted to coronary care" } ]
+  }
+ ],
+ "triggers": [
+  {
+   "id": "ecg_delayed",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "consult" },
+    { "var": "t_elapsed", "op": "ge", "value": 600 },
+    { "not": { "done": "ecg" } }
+   ] },
+   "do": [
+    { "harm": "ecg delayed beyond ten minutes — the infarct ran unseen" },
+    { "delta": { "myocardium": -0.2 }, "floor": 0.0 }
+   ]
+  },
+  {
+   "id": "muscle_saved",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "reperfused" },
+    { "var": "t_in_state", "op": "ge", "value": 180 }
+   ] },
+   "do": [
+    { "branch": [
+      { "if": { "var": "myocardium", "op": "gt", "value": 0.6 },
+        "then": [ { "outcome": "win_discharge" } ] }
+     ],
+     "else": [ { "outcome": "win_icu" } ] }
+   ]
+  }
+ ],
+ "outcomes": [
+  { "id": "win_discharge", "kind": "win",   "label": "Ten minutes beaten — reperfused, muscle saved" },
+  { "id": "win_icu",       "kind": "win",   "label": "Reperfused late — alive, ventricle scarred" },
+  { "id": "death_arrest",  "kind": "death", "label": "The clock won — reperfusion never came" }
+ ]
+}

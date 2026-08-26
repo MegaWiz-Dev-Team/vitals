@@ -1,0 +1,17 @@
+{
+  "case": "osce-b",
+  "pass_bps": 7000,
+  "status": "provisional — converted from embla-cases ddx-possible-nstemi-stemi-2 v1.0.0 (sha256:a06bc90eb52b39fd): hidden.expected_workup→action/action_by, hidden.red_flags→no_harm, hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "items": [
+    { "label": "Asked about the pain — character and radiation", "type": "action",     "needle": "ask_pain",         "points": 2 },
+    { "label": "Asked the risk factors",                         "type": "action",     "needle": "ask_risk",         "points": 2 },
+    { "label": "12-lead ECG within ten minutes of the door",     "type": "action_by",  "needle": "ecg", "by_sec": 600, "points": 8 },
+    { "label": "Troponin sent — without waiting on it",          "type": "action",     "needle": "troponin",         "points": 2 },
+    { "label": "Aspirin given",                                  "type": "action",     "needle": "aspirin",          "points": 4 },
+    { "label": "Reperfusion decision — cath lab or lytics",      "type": "action_any", "any_of": ["cath", "thrombolys"], "points": 10 },
+    { "label": "The ECG never waited past ten minutes",          "type": "no_harm",    "needle": "ecg delayed",      "points": 3 },
+    { "label": "Did not reassure-and-discharge an infarct",      "type": "no_harm",    "needle": "evolving infarct", "points": 3 },
+    { "label": "Named it — an acute coronary occlusion",         "type": "action",     "needle": "dx_stemi",         "points": 3 },
+    { "label": "Muscle saved — patient survives",                "type": "outcome",    "any_of": ["win_discharge", "win_icu"], "points": 3 }
+  ]
+}
