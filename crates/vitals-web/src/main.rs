@@ -383,6 +383,20 @@ fn scenario_path(id: &str) -> std::path::PathBuf {
     }
 }
 
+/// Where a case's rubric lives — the scorer's inputs, pinned separately from the scenario.
+///
+/// `None` is a fact, not a fallback: a case with no rubric cannot host an exam, and both the
+/// commit gate and the anchor scoring ask this same function, so they cannot disagree about
+/// which cases those are.
+fn rubric_path(id: &str) -> Option<std::path::PathBuf> {
+    let file = match id {
+        "ep2" => "demo/rubrics/ep2-stemi.json",
+        _ => return None,
+    };
+    let p = scenario_root().join(file);
+    p.exists().then_some(p)
+}
+
 fn title(id: &str) -> &'static str {
     match id {
         "ep2" => "EP2 · Time Is Muscle",
@@ -1071,14 +1085,14 @@ fn main() {
                     continue;
                 };
                 let person = param(&url, "account").and_then(|p| pubkey(&p)).unwrap_or(who);
-                let case = {
+                let (case, ep) = {
                     let map = sessions.lock().unwrap();
                     let Some(s) = map.get(&id) else {
                         drop(map);
                         let _ = req.respond(no_such_session());
                         continue;
                     };
-                    sce_hash(&s.sce_json)
+                    (sce_hash(&s.sce_json), s.ep.clone())
                 };
                 // The nonce is what keeps the case hidden from chain observers until reveal. It
                 // never leaves this process except inside a debrief the player asks for.
@@ -1089,6 +1103,14 @@ fn main() {
                 // Exam-ness is part of the declaration, bound into the hash the chain stamps —
                 // decided here, before play, and never re-chosen after the outcome is known.
                 let mode: u8 = param(&url, "exam").map(|v| v == "1").unwrap_or(false) as u8;
+                // Refused before anything binds: letting a player commit "exam" on a station
+                // with no rubric would promise a star that can never be scored into existence.
+                if mode == 1 && rubric_path(&ep).is_none() {
+                    let _ = req.respond(json(serde_json::json!({
+                        "error": "this station has no rubric yet — an exam here could never be scored; play it as practice"
+                    })));
+                    continue;
+                }
                 let hash = vitals_progress::record::commitment_hash(&case, &person.to_bytes(), &nonce, mode);
                 match c.prepare_commit(&who, &person, hash) {
                     Ok(p) => {
@@ -1154,7 +1176,7 @@ fn main() {
                     })));
                     continue;
                 };
-                let rec: AttemptRecord =
+                let mut rec: AttemptRecord =
                     match record_for(person.to_bytes(), sce, sce, s.difficulty, s.exam_mode, &s.tape, &r, chash, cslot) {
                         Ok(rec) => rec,
                         Err(e) => {
@@ -1162,6 +1184,28 @@ fn main() {
                             continue;
                         }
                     };
+                // An exam run is marked by the pinned rubric, recomputed here from the same tape
+                // the leaf commits to — never accepted from a client. Practice runs stay zero:
+                // det_score only means something for an exam. The rubric gate at commit means an
+                // exam without a rubric cannot reach this line; the error path guards the seam
+                // anyway, because "cannot happen" is a claim, not a property.
+                if s.exam_mode {
+                    let scored = rubric_path(&s.ep)
+                        .ok_or_else(|| "this station has no rubric — the exam cannot be scored".to_string())
+                        .and_then(|p| std::fs::read_to_string(&p).map_err(|e| e.to_string()))
+                        .and_then(|rj| vitals_osce::det_for_run(&s.sce_json, &s.tape, &rj));
+                    match scored {
+                        Ok((det, max, rh)) => {
+                            rec.det_score = det;
+                            rec.det_max = max;
+                            rec.rubric_hash = rh;
+                        }
+                        Err(e) => {
+                            let _ = req.respond(json(serde_json::json!({ "error": e })));
+                            continue;
+                        }
+                    }
+                }
                 let mut t = tree.lock().unwrap();
                 t.leaves.push(rec.leaf());
                 let tree_id = t.tree_id;
@@ -1751,6 +1795,16 @@ mod tests {
         assert_eq!(difficulty("ep1"), Difficulty::Student);
         assert_eq!(difficulty("ep2"), Difficulty::Intern);
         assert_eq!(difficulty("ep5"), Difficulty::Resident);
+    }
+
+    /// The commit gate and the anchor scorer both ask this function, so the set of cases that
+    /// can host an exam has exactly one definition.
+    #[test]
+    fn only_rubricd_cases_can_host_exams() {
+        assert!(rubric_path("ep2").is_some(), "ep2 has an authored rubric");
+        for ep in ["ep1", "ep3", "ep4", "ep5", "nonsense"] {
+            assert!(rubric_path(ep).is_none(), "{ep} has no rubric yet");
+        }
     }
 
     #[test]
