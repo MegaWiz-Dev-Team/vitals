@@ -277,7 +277,7 @@ body{margin:0;background:var(--room);color:var(--ink);
   font-family:"IBM Plex Sans",system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
 .app{max-width:96rem;margin:0 auto;padding:.9rem 1rem 3rem;display:grid;gap:.9rem;
   grid-template-columns:1fr}
-@media(min-width:72rem){.app{grid-template-columns:minmax(0,1.55fr) minmax(20rem,.82fr);align-items:start}}
+@media(min-width:69rem){.app{grid-template-columns:minmax(0,1.55fr) minmax(20rem,.82fr);align-items:start}}
 
 .bar{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.5rem .7rem;align-items:center;
   background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.55rem .8rem}
@@ -640,6 +640,37 @@ a.give:hover{filter:brightness(1.06)}
 .epi-s2{font-family:Archivo,sans-serif;font-weight:800;text-transform:uppercase;line-height:1.1;
   font-size:clamp(1rem,4.2vw,1.4rem);letter-spacing:.14em;color:#8aa0a4;margin-bottom:1.1rem}
 .epi-s2 span{display:block;font-size:clamp(1.7rem,7vw,2.7rem);letter-spacing:.04em;color:#fff;margin-top:.15rem}
+
+/* ── the fit ──────────────────────────────────────────────────────────────────
+   On a desktop the bay is a cockpit, not a page: one viewport, no page scroll
+   while a case runs. The film gives up height first — letterboxed whole rather
+   than cropped, because a cutscene with the heads cut off is not a cutscene.
+   The transcript and the rail each scroll inside themselves; the monitor's
+   numbers get bigger, not smaller, because they are what the room is watching.
+   Below this width or height, the stacked scrolling layout above still stands.
+   The gate matches the two-column breakpoint on purpose: a single column can
+   never fit a viewport, so the fit and the columns arrive together. */
+@media (min-width:69rem) and (min-height:40rem){
+  body:has(#game:not(.hide)){overflow:hidden}
+  .app{height:100vh;height:100dvh;overflow:hidden;padding:.7rem 1rem;
+    grid-template-rows:auto minmax(0,1fr);gap:.7rem .9rem;align-items:stretch}
+  .stage{min-height:0;overflow-y:auto;overscroll-behavior:contain;gap:.6rem}
+  .pt{display:flex;flex-direction:column;min-height:0;flex:2.2 1 0;padding-bottom:.55rem}
+  .pt-art{aspect-ratio:auto;flex:1 1 auto;min-height:7rem}
+  .pt-art video,.pt-art img{object-fit:contain}
+  .pt-name,.pt-status,.pt-line{flex:none}
+  .pt-name{margin-top:.4rem}
+  .chat{flex:1 1 0;min-height:6rem;max-height:none;overscroll-behavior:contain}
+  .acts{flex:none}
+  .rail{min-height:0;overflow-y:auto;overscroll-behavior:contain;gap:.55rem}
+  .panel{padding:.6rem .7rem}
+  .device{height:12.5rem}
+  .mini-g b{font-size:1.3rem}
+  .chart{max-height:8.5rem}
+  /* The debrief joins the same screen when the run ends: capped and scrolling
+     inside itself, so the verdict never pushes the bay off the bottom. */
+  .result{max-height:34vh;overflow:auto}
+}
 </style>
 </head>
 <body>
