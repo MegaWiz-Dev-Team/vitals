@@ -639,6 +639,121 @@ mod tests {
         assert!(!det.cleared(&r), "antibiotics-and-home must not clear the bar: {s}/{m}");
     }
 
+    /// Station C2 (osce-c2, from embla-cases ddx-bronchospasm-acute-asthma-exacerbation-2): the
+    /// bronchodilator ladder with its feet on a number — peak flow, salbutamol, ipratropium,
+    /// peak flow again, and a systemic steroid behind the neb. The failing tape reads her fear
+    /// as panic and sedates the only drive that was holding her.
+    #[test]
+    fn station_c2_competent_run_clears_and_the_sedative_fails() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/");
+        let sce = std::fs::read_to_string(format!("{root}stations/osce-c2.sce.json")).unwrap();
+        let rubric_json = std::fs::read_to_string(format!("{root}rubrics/osce-c2.json")).unwrap();
+        let parsed = vitals_sce::Sce::from_json(&sce).unwrap();
+        assert!(parsed.validate().is_empty(), "osce-c2: {:?}", parsed.validate());
+        let tape = vec![
+            Step::Do("how often does this happen?".into()),
+            Step::Tick(10.0),
+            Step::Do("can you finish a sentence?".into()),
+            Step::Tick(10.0),
+            Step::Do("listen to the chest".into()),
+            Step::Tick(10.0),
+            Step::Do("peak flow — measure it".into()), // the baseline number
+            Step::Tick(10.0),
+            Step::Do("oxygen".into()),
+            Step::Tick(10.0),
+            Step::Do("salbutamol neb".into()), // t=50 — the first rung
+            Step::Tick(10.0),
+            Step::Do("prednisolone 40 mg".into()), // t=60 — the steroid behind the neb, early
+            Step::Tick(10.0),
+            Step::Do("ipratropium".into()), // the second rung
+            Step::Tick(10.0),
+            Step::Do("peak flow again".into()), // reassess — the ladder answers in numbers
+            Step::Tick(10.0),
+            Step::Do("inhaled steroid + action plan".into()),
+            Step::Tick(5.0),
+            Step::Do("acute asthma exacerbation".into()),
+            Step::Tick(250.0), // settled, rechecked, steroid on board → home with a plan
+        ];
+        let (s, m, rhash) = det_for_run(&sce, &tape, &rubric_json).unwrap();
+        assert_eq!((s, m), (40, 40));
+        assert_eq!(rhash, vitals_progress::record::rubric_hash(rubric_json.as_bytes()));
+        // One neb, then diazepam for the "panic", twice more when she keeps fighting it: the
+        // respiratory drive goes, the saturation follows, and the run must not clear.
+        let sedated = vec![
+            Step::Do("salbutamol neb".into()),
+            Step::Tick(30.0),
+            Step::Do("diazepam for the panic".into()),
+            Step::Tick(30.0),
+            Step::Do("more diazepam".into()),
+            Step::Tick(30.0),
+            Step::Do("more diazepam".into()),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+        ];
+        let (s, m, _) = det_for_run(&sce, &sedated, &rubric_json).unwrap();
+        let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
+        let det = DetResult { earned: s, max: m, items: vec![] };
+        assert!(!det.cleared(&r), "the sedative must not clear the bar: {s}/{m}");
+    }
+
+    /// Station C3 (osce-c3, from embla-cases ddx-pneumonia-2): the diagnosis is the easy half —
+    /// the station is disposition. CURB-65 of zero on a woman saturating 93%: score her, dose
+    /// her inside the hour, and let the oximeter outvote the arithmetic. The failing tape trusts
+    /// the score and sends the lobe home untreated.
+    #[test]
+    fn station_c3_competent_run_clears_and_the_score_says_home_fails() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/");
+        let sce = std::fs::read_to_string(format!("{root}stations/osce-c3.sce.json")).unwrap();
+        let rubric_json = std::fs::read_to_string(format!("{root}rubrics/osce-c3.json")).unwrap();
+        let parsed = vitals_sce::Sce::from_json(&sce).unwrap();
+        assert!(parsed.validate().is_empty(), "osce-c3: {:?}", parsed.validate());
+        let tape = vec![
+            Step::Do("tell me about the cough".into()),
+            Step::Tick(10.0),
+            Step::Do("any illnesses? do you smoke?".into()),
+            Step::Tick(10.0),
+            Step::Do("listen to the chest".into()),
+            Step::Tick(10.0),
+            Step::Do("count the breathing".into()),
+            Step::Tick(10.0),
+            Step::Do("chest x-ray".into()),
+            Step::Tick(10.0),
+            Step::Do("full blood count".into()),
+            Step::Tick(10.0),
+            Step::Do("sputum and blood cultures".into()),
+            Step::Tick(10.0),
+            Step::Do("curb-65 — score her".into()),
+            Step::Tick(10.0),
+            Step::Do("co-amoxiclav plus macrolide — first dose now".into()), // t=80, inside the hour
+            Step::Tick(10.0),
+            Step::Do("oxygen".into()),
+            Step::Tick(10.0),
+            Step::Do("pneumonia".into()),
+            Step::Tick(5.0),
+            Step::Do("admit to a short-stay bed".into()),
+            Step::Tick(160.0), // the ward takes her, first dose already running
+        ];
+        let (s, m, rhash) = det_for_run(&sce, &tape, &rubric_json).unwrap();
+        assert_eq!((s, m), (40, 40));
+        assert_eq!(rhash, vitals_progress::record::rubric_hash(rubric_json.as_bytes()));
+        // "She scored zero": the score is right, the disposition is wrong. Home untreated, the
+        // hour slides past, the lobe keeps growing — the harm and the missing dose sink it.
+        let arithmetic = vec![
+            Step::Do("curb-65 — score her".into()),
+            Step::Tick(10.0),
+            Step::Do("pneumonia".into()),
+            Step::Tick(10.0),
+            Step::Do("home with tablets".into()),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+        ];
+        let (s, m, _) = det_for_run(&sce, &arithmetic, &rubric_json).unwrap();
+        let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
+        let det = DetResult { earned: s, max: m, items: vec![] };
+        assert!(!det.cleared(&r), "score-says-home must not clear the bar: {s}/{m}");
+    }
+
     #[test]
     fn every_rubric_uses_the_canonical_star_bar() {
         // Enforce-equal: a rubric whose pass_bps drifts from the one global bar is a failing test,

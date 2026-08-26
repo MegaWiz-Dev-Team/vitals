@@ -1,0 +1,174 @@
+{
+ "_note": "OSCE station C3 — converted from embla-cases ddx-pneumonia-2 v1.0.0 (sha256:14fdb9aecdc39ece). Presentation follows the deploy-safe form; the hidden block informed only the rubric (demo/rubrics/osce-c3.json). Clinically shaped, not clinically reviewed. The teaching is disposition: diagnosing the lobe is the easy half — the station is about what you do with a CURB-65 of zero on a woman saturating 93%. Score her, treat her inside the hour, and let the oximeter outvote the score: a short-stay bed, not the door. The trap is trusting arithmetic over oxygen — 'she scored zero' has sent people home to deteriorate on their own sofas.",
+ "setting": "ER",
+ "tick_seconds": 1.0,
+ "vitals0": { "hr": 105, "sbp": 110, "dbp": 70, "spo2": 93, "rr": 24, "temp": 38.5, "gcs": 15 },
+ "initial_state": "consult",
+ "states": [
+  {
+   "id": "consult",
+   "status": "deteriorating",
+   "dynamics": [
+    { "var": "spo2", "rate_per_min": -0.5, "floor": 84, "when": { "flag": "abx_given", "is": false } },
+    { "var": "temp", "rate_per_min": 0.02, "ceil": 39.6, "when": { "flag": "abx_given", "is": false } },
+    { "var": "hr",   "rate_per_min": 1.5,  "ceil": 150, "when": { "flag": "abx_given", "is": false } }
+   ],
+   "bands": [
+    { "status": "critical", "when": { "var": "spo2", "op": "lt", "value": 90 } }
+   ],
+   "transitions": [
+    { "to_state": "treated",
+      "when": { "all": [ { "flag": "abx_given" }, { "flag": "admitted" } ] } },
+    { "outcome": "death_arrest", "when": { "var": "spo2", "op": "lt", "value": 86 } }
+   ]
+  },
+  {
+   "id": "treated",
+   "status": "improving",
+   "dynamics": [
+    { "var": "spo2", "rate_per_min": 0.5,  "ceil": 96 },
+    { "var": "temp", "rate_per_min": -0.1, "floor": 37.4 },
+    { "var": "hr",   "rate_per_min": -3,   "floor": 92 }
+   ],
+   "bands": [],
+   "transitions": []
+  }
+ ],
+ "interventions": [
+  {
+   "id": "ask_cough",
+   "label": "Ask about the cough",
+   "match": { "any_kw": ["cough", "phlegm", "rusty", "ไอ"] },
+   "effects": [ { "beat": "— \"A week of coughing, and since yesterday it comes up rusty — and this stab when I breathe in.\" Rust is a lobe talking." } ]
+  },
+  {
+   "id": "ask_baseline",
+   "label": "Ask her background",
+   "match": { "any_kw": ["smoke", "illness", "healthy", "medication", "pills", "condition"] },
+   "effects": [ { "beat": "— \"Healthy. No pills, I don't smoke.\" Twenty-five, with nothing on the chart — which is what makes the oximeter interesting." } ]
+  },
+  {
+   "id": "exam_chest",
+   "label": "Listen to the chest",
+   "match": { "any_kw": ["listen", "auscult"] },
+   "effects": [ { "beat": "quiet at the right base, dull to the tap, crackles above the dullness — a lobe full of the wrong thing" } ]
+  },
+  {
+   "id": "cbc",
+   "label": "Full blood count",
+   "match": { "any_kw": ["cbc", "blood count", "full blood"] },
+   "effects": [ { "beat": "wbc 15.4, neutrophils marching — the marrow agrees with the stethoscope" } ]
+  },
+  {
+   "id": "exam_rr",
+   "label": "Count the breathing",
+   "match": { "any_kw": ["count the", "breathing", "respiratory rate"] },
+   "effects": [ { "beat": "24 a minute, shallow on the right — she is splinting the stab" } ]
+  },
+  {
+   "id": "cxr",
+   "label": "Chest X-ray",
+   "match": { "any_kw": ["x-ray", "xray", "cxr", "chest film"] },
+   "effects": [
+    { "flag": "cxr_done" },
+    { "beat": "a wedge of white in the right lower lobe, air bronchograms threading through — consolidation, signed" }
+   ]
+  },
+  {
+   "id": "cultures",
+   "label": "Sputum and blood cultures",
+   "match": { "any_kw": ["culture", "sputum sample"] },
+   "effects": [ { "beat": "sputum potted and blood away before the first dose — the lab gets its chance to name it" } ]
+  },
+  {
+   "id": "curb_score",
+   "label": "CURB-65",
+   "match": { "any_kw": ["curb", "severity", "score her", "sixty-five"] },
+   "effects": [
+    { "flag": "scored" },
+    { "beat": "confusion none, urea pending, rr 24, bp fine, age 25 — curb-65 zero, maybe one. the score says street; the oximeter, at 93, gets a vote too." }
+   ]
+  },
+  {
+   "id": "antibiotics",
+   "label": "First-dose antibiotics",
+   "match": { "any_kw": ["antibiotic", "co-amoxiclav", "amoxicillin", "augmentin", "macrolide", "azithro", "ceftriax", "levofloxacin"] },
+   "effects": [
+    { "flag": "abx_given" },
+    { "beat": "co-amoxiclav plus a macrolide, first dose in her arm — the wall clock approves" }
+   ]
+  },
+  {
+   "id": "oxygen",
+   "label": "Oxygen by nasal cannula",
+   "match": { "any_kw": ["oxygen", "o2", "cannula", "mask"] },
+   "effects": [ { "delta": { "spo2": 3 }, "cap": 97 } ],
+   "equipment": "o2",
+   "equipment_setting": 2
+  },
+  {
+   "id": "analgesia",
+   "label": "Paracetamol",
+   "match": { "any_kw": ["paracetamol", "analges", "antipyret"] },
+   "effects": [
+    { "delta": { "temp": -0.4 }, "floor": 37.6 },
+    { "beat": "paracetamol for the fever and the stab — she takes a deeper breath without the knife in it" }
+   ]
+  },
+  {
+   "id": "admit_ward",
+   "label": "A short-stay bed",
+   "match": { "any_kw": ["admit", "short stay", "short-stay", "ward"] },
+   "effects": [
+    { "flag": "admitted" },
+    { "beat": "a short-stay bed with the probe on — the score walked, the sats stayed" }
+   ]
+  },
+  {
+   "id": "icu_refer",
+   "label": "Refer to ICU",
+   "match": { "any_kw": ["icu", "intensive care"] },
+   "effects": [ { "beat": "icu, for this? save the bed — she needs a ward, two litres of oxygen and the first dose" } ]
+  },
+  {
+   "id": "dx_pneumonia",
+   "label": "Name the diagnosis",
+   "match": { "any_kw": ["pneumonia", "lobar", " cap "] },
+   "effects": [ { "flag": "dx_named" }, { "beat": "community-acquired pneumonia, right lower lobe — named with its severity beside it" } ]
+  },
+  {
+   "id": "discharge_home",
+   "label": "Home with tablets (HARM)",
+   "match": { "any_kw": ["home", "discharge", "outpatient"] },
+   "harm": "sent home saturating 93 — the score never listened to the oximeter",
+   "effects": []
+  }
+ ],
+ "triggers": [
+  {
+   "id": "first_dose_late",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "consult" },
+    { "var": "t_elapsed", "op": "ge", "value": 600 },
+    { "not": { "done": "antibiotics" } }
+   ] },
+   "do": [
+    { "harm": "the first dose slid past the hour — mortality climbs with the clock on untreated pneumonia" }
+   ]
+  },
+  {
+   "id": "ward_takes_her",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "treated" },
+    { "var": "t_in_state", "op": "ge", "value": 150 }
+   ] },
+   "do": [ { "outcome": "win_icu" } ]
+  }
+ ],
+ "outcomes": [
+  { "id": "win_icu",      "kind": "win",   "label": "Scored, dosed inside the hour, admitted on oxygen — the lobe clears by Friday" },
+  { "id": "death_arrest", "kind": "death", "label": "An untreated lobe, and the quiet arithmetic that excused it" }
+ ]
+}

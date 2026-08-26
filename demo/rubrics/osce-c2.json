@@ -1,0 +1,21 @@
+{
+  "case": "osce-c2",
+  "pass_bps": 7000,
+  "status": "provisional — converted from embla-cases ddx-bronchospasm-acute-asthma-exacerbation-2 v1.0.0 (sha256:0824a0babe759093): hidden.expected_workup→action (PEFR, oximetry, CXR), hidden.red_flags→no_harm (sedation on a tiring asthmatic; a neb left unbacked by steroid), hidden.management_plan→SABA ladder + early systemic steroid + ICS controller and action plan; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "items": [
+    { "label": "Asked the pattern — three attacks, no controller",     "type": "action",    "needle": "ask_attacks",   "points": 3 },
+    { "label": "Graded her breath by her sentences",                   "type": "action",    "needle": "ask_speech",    "points": 1 },
+    { "label": "Listened to the chest",                                "type": "action",    "needle": "exam_chest",    "points": 2 },
+    { "label": "Peak flow measured — the ladder got a number",         "type": "action",    "needle": "pefr",          "points": 3 },
+    { "label": "Oxygen titrated on",                                   "type": "action",    "needle": "oxygen",        "points": 1 },
+    { "label": "Salbutamol neb — the first rung",                      "type": "action",    "needle": "neb_salbutamol", "points": 6 },
+    { "label": "Ipratropium — the second rung",                        "type": "action",    "needle": "ipratropium",   "points": 2 },
+    { "label": "Systemic steroid behind the neb",                      "type": "action",    "needle": "prednisolone",  "points": 6 },
+    { "label": "…and inside ten minutes",                              "type": "action_by", "needle": "prednisolone", "by_sec": 600, "points": 4 },
+    { "label": "No sedative on a tiring chest",                        "type": "no_harm",   "needle": "only thing holding her", "points": 5 },
+    { "label": "The neb never wore off unbacked",                      "type": "no_harm",   "needle": "walks back in", "points": 2 },
+    { "label": "Controller started — a plan against the fourth visit", "type": "action",    "needle": "ics_controller", "points": 1 },
+    { "label": "Named it, with its grade",                             "type": "action",    "needle": "dx_asthma",     "points": 1 },
+    { "label": "Home with a plan — reassessed, steroid on board",      "type": "outcome",   "any_of": ["win_discharge"], "points": 3 }
+  ]
+}

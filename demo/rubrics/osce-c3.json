@@ -1,0 +1,21 @@
+{
+  "case": "osce-c3",
+  "pass_bps": 7000,
+  "status": "provisional — converted from embla-cases ddx-pneumonia-2 v1.0.0 (sha256:14fdb9aecdc39ece): hidden.expected_workup→action (CXR, CBC, cultures), hidden.red_flags→no_harm (hypoxia sent home on a reassuring score; the first dose sliding past the hour), hidden.management_plan→antibiotics + oxygen + monitored disposition, hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "items": [
+    { "label": "Asked the cough — rusty sputum, a pleuritic stab",   "type": "action",    "needle": "ask_cough",    "points": 2 },
+    { "label": "Asked her background",                               "type": "action",    "needle": "ask_baseline", "points": 1 },
+    { "label": "Found the quiet right base",                         "type": "action",    "needle": "exam_chest",   "points": 2 },
+    { "label": "Counted the breathing herself",                      "type": "action",    "needle": "exam_rr",      "points": 1 },
+    { "label": "Chest film — the lobe, signed",                      "type": "action",    "needle": "cxr",          "points": 4 },
+    { "label": "Blood count sent",                                   "type": "action",    "needle": "cbc",          "points": 1 },
+    { "label": "Cultures before the first dose",                     "type": "action",    "needle": "cultures",     "points": 1 },
+    { "label": "Scored the severity — CURB-65, out loud",            "type": "action",    "needle": "curb_score",   "points": 4 },
+    { "label": "First-dose antibiotics inside the hour",             "type": "action_by", "needle": "antibiotics", "by_sec": 600, "points": 9 },
+    { "label": "Oxygen for the 93%",                                 "type": "action",    "needle": "oxygen",       "points": 1 },
+    { "label": "Never let the score outvote the oximeter",           "type": "no_harm",   "needle": "never listened to the oximeter", "points": 5 },
+    { "label": "The first dose never slid past the hour",            "type": "no_harm",   "needle": "slid past the hour", "points": 2 },
+    { "label": "Named it, severity beside it",                       "type": "action",    "needle": "dx_pneumonia", "points": 2 },
+    { "label": "Admitted on oxygen — the safe disposition",          "type": "outcome",   "any_of": ["win_icu"],    "points": 5 }
+  ]
+}
