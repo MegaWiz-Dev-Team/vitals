@@ -4,16 +4,37 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Vitals — the resus bay</title>
-<!-- Google Analytics 4 · production hostnames only (dev / localhost / *.run.app do not report) -->
+<!-- Google Analytics 4 · production-only, consent mode (analytics denied until accepted) -->
 <script>
 window.dataLayer=window.dataLayer||[];
 function gtag(){dataLayer.push(arguments);}
 if(location.hostname.endsWith('vitals.academy')){
+  gtag('consent','default',{analytics_storage:'denied',ad_storage:'denied'});
   var s=document.createElement('script');s.async=true;
   s.src='https://www.googletagmanager.com/gtag/js?id=G-LH5JSMQBSL';
   document.head.appendChild(s);
   gtag('js',new Date());
   gtag('config','G-LH5JSMQBSL');
+  (function(){
+    var KEY='vitals-analytics-consent',c=null;
+    try{c=localStorage.getItem(KEY)}catch(e){}
+    if(c==='granted'){gtag('consent','update',{analytics_storage:'granted'});return;}
+    if(c==='denied'){return;}
+    function show(){
+      if(document.getElementById('va-consent'))return;
+      var b=document.createElement('div');b.id='va-consent';
+      b.setAttribute('style','position:fixed;left:0;right:0;bottom:0;z-index:2147483647;background:#0F1719;color:#E9F0F0;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;padding:13px 18px;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:center;box-shadow:0 -1px 0 rgba(255,255,255,.09)');
+      var t=document.createElement('span');t.setAttribute('style','max-width:44em');
+      t.textContent='We use privacy-respecting analytics to see how the site is used. No cookies are set until you accept.';
+      b.appendChild(t);
+      function btn(txt,bg,fg,bd){var x=document.createElement('button');x.textContent=txt;x.setAttribute('style','cursor:pointer;font:600 14px inherit;padding:.5em 1.25em;border-radius:7px;border:'+bd+';background:'+bg+';color:'+fg);return x;}
+      var yes=btn('Accept','#0B6E58','#fff','none'),no=btn('Decline','transparent','#E9F0F0','1px solid rgba(255,255,255,.35)');
+      yes.onclick=function(){try{localStorage.setItem(KEY,'granted')}catch(e){}gtag('consent','update',{analytics_storage:'granted'});b.remove();};
+      no.onclick=function(){try{localStorage.setItem(KEY,'denied')}catch(e){}b.remove();};
+      b.appendChild(yes);b.appendChild(no);document.body.appendChild(b);
+    }
+    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',show);else show();
+  })();
 }
 /* Every button, link, tile, and [data-ga] click reports once — delegated, so new
    controls are covered without hand-tagging. gtag() is a harmless no-op off production. */
@@ -969,11 +990,11 @@ function openPicker(){
   const on=new Set(kitNow.map(k=>k.id));
   $('#sheet').innerHTML=`
     <div class="sheet-h"><b>Choose a device</b><span class="sp"></span>
-      <button class="btn" data-close>close</button></div>
+      <button class="btn" data-close data-ga="sheet-close">close</button></div>
     <div class="sheet-b">`+GROUPS.map(([title,g])=>{
       const rows=KIT.filter(k=>k.group===g); if(!rows.length)return '';
       return `<div><div class="grp-h">${title}</div>`+rows.map(k=>`
-        <button class="dev-row" data-dev="${k.id}">
+        <button class="dev-row" data-dev="${k.id}" data-ga="dev:${k.id}">
           <span><span class="n">${k.label}</span><span class="d">${k.detail}</span></span>
           ${on.has(k.id)?'<span class="on">✓ on</span>':''}
         </button>`).join('')+`</div>`;
@@ -992,7 +1013,7 @@ function openSetting(devId){
   const val=cur&&cur.setting!=null?cur.setting:k.def;
   $('#sheet').innerHTML=`
     <div class="sheet-h"><b>${k.label}</b><span class="sp"></span>
-      <button class="btn" data-back>← back</button></div>
+      <button class="btn" data-back data-ga="sheet-back">← back</button></div>
     <div class="sheet-b">
       <div class="set-top">
         ${ART[devId]?`<div class="art">${ART[devId]}</div>`:''}
@@ -1001,13 +1022,13 @@ function openSetting(devId){
         </div>
       </div>
       ${k.presets.length?`<div><div class="grp-h">${k.unit}</div><div class="presets">`+
-        k.presets.map(v=>`<button class="btn${v===val?' on':''}" data-v="${v}">${v}${v===999?' · wide open':''}</button>`).join('')+
+        k.presets.map(v=>`<button class="btn${v===val?' on':''}" data-v="${v}" data-ga="set:${devId}:${v}">${v}${v===999?' · wide open':''}</button>`).join('')+
         `</div></div>`:''}
     </div>
     <div class="sheet-f">
-      ${cur&&k.detach?`<button class="btn danger" data-off>take it off</button>`:''}
+      ${cur&&k.detach?`<button class="btn danger" data-off data-ga="sheet-takeoff">take it off</button>`:''}
       <span class="sp"></span>
-      <button class="btn go" data-apply>${cur?'apply':'attach'}</button>
+      <button class="btn go" data-apply data-ga="sheet-apply">${cur?'apply':'attach'}</button>
     </div>`;
   let chosen=val;
   const S=$('#sheet');
@@ -1099,13 +1120,13 @@ function direct(newBeats,outcome){
   }
 }
 function renderModes(){
-  $('#modes').innerHTML=MODES.map(m=>`<button class="btn${m.id===mode?' on':''}" data-m="${m.id}">${m.icon} ${m.label}</button>`).join('');
+  $('#modes').innerHTML=MODES.map(m=>`<button class="btn${m.id===mode?' on':''}" data-m="${m.id}" data-ga="mode:${m.id}">${m.icon} ${m.label}</button>`).join('');
   $('#modes').querySelectorAll('button').forEach(b=>b.onclick=()=>{mode=b.dataset.m;renderModes();renderChips();});
   document.querySelector('.acts').classList.toggle('order-mode', mode!=='ask');
 }
 function renderChips(){
   const c=(CHIPS[ep().id]||{})[mode]||[];
-  $('#chips').innerHTML=c.map(x=>`<button class="btn" data-x="${x}">${x}</button>`).join('');
+  $('#chips').innerHTML=c.map(x=>`<button class="btn" data-x="${x}" data-ga="chip:${x}">${x}</button>`).join('');
   $('#chips').querySelectorAll('button').forEach(b=>b.onclick=()=>fire(b.dataset.x));
   $('#cmd').placeholder = mode==='ask' ? 'ask her anything…' : 'or type the order yourself…';
 }
@@ -1152,7 +1173,7 @@ function paint(v){
   $('#kit').innerHTML = v.equipment.length
     ? v.equipment.map(k=>{ const d=KITLBL[k.id];
         const val = k.setting!=null ? `${k.setting}${d&&d.unit?' '+d.unit:''}` : '';
-        const x = (!d||d.detach) ? `<button class="t-x" data-off="${k.id}" title="take it off">remove</button>` : '';
+        const x = (!d||d.detach) ? `<button class="t-x" data-off="${k.id}" data-ga="kit-remove:${k.id}" title="take it off">remove</button>` : '';
         const since = fmt(Math.max(0, v.elapsed - (k.since||0)));
         return `<div class="t-row"><span class="t-dot"></span>
           <span class="t-n">${d?(d.device||d.label):k.id}</span>
@@ -1413,7 +1434,7 @@ function paintSeason(){
       ? `claim ${LVNAME[need]||'a level'} to open`
       : `clear ${SEASON[i-1]?SEASON[i-1].n:''} to open`;
     const claimable = !un && CHAINLV!=null;
-    return `<button class="tile ${un?'':'lock'}" data-ep="${e.id}"
+    return `<button class="tile ${un?'':'lock'}" data-ep="${e.id}" data-ga="tile:${e.id}"
       ${claimable?`data-claim="${need}"`:''} ${un||claimable?'':'disabled'}>
       <div class="art">${art}<span class="no">${e.n}${star?' <span title="anchored on chain">★</span>':''}${done?' · cleared':''}</span><span class="tier">${e.tier}</span></div>
       <div class="body"><h3>${e.t}</h3><p>${e.d}</p>
