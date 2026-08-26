@@ -1,0 +1,14 @@
+{
+  "case": "ep3-epiglottitis",
+  "pass_bps": 7000,
+  "status": "provisional — needles derived from the ep3-epiglottitis automaton (intervention ids, harm names, outcome ids); point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "items": [
+    { "label": "Called the airway team (ENT / anaesthesia) early", "type": "action",  "needle": "call_airway_team",     "points": 8 },
+    { "label": "Kept the child in a position of comfort",          "type": "action",  "needle": "position_of_comfort",  "points": 6 },
+    { "label": "Ceftriaxone given",                                "type": "action",  "needle": "ceftriaxone",          "points": 5 },
+    { "label": "Non-threatening blow-by oxygen",                   "type": "action",  "needle": "blow_by",              "points": 4 },
+    { "label": "Did not examine the throat",                       "type": "no_harm", "needle": "throat examination",   "points": 6 },
+    { "label": "Did not distress the child (no forced cannulation)","type": "no_harm", "needle": "distressed the child", "points": 4 },
+    { "label": "Child survives",                                   "type": "outcome", "any_of": ["win_discharge", "win_icu"], "points": 7 }
+  ]
+}

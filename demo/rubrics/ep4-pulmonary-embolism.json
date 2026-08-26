@@ -1,0 +1,14 @@
+{
+  "case": "ep4-pulmonary-embolism",
+  "pass_bps": 7000,
+  "status": "provisional — needles derived from the ep4-pulmonary-embolism automaton (intervention ids, harm names, outcome ids); point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "items": [
+    { "label": "Anticoagulated",                                "type": "action",  "needle": "anticoagulate",                 "points": 10 },
+    { "label": "Confirmed the diagnosis (CTPA)",                "type": "action",  "needle": "ctpa",                          "points": 7 },
+    { "label": "Risk-stratified (Wells / PERC)",               "type": "action",  "needle": "risk_score",                    "points": 4 },
+    { "label": "Oxygen",                                        "type": "action",  "needle": "oxygen",                        "points": 3 },
+    { "label": "Did not discharge an undiagnosed PE",          "type": "no_harm", "needle": "undiagnosed pulmonary embolism","points": 6 },
+    { "label": "No thrombolysis without a haemodynamic indication","type": "no_harm","needle": "thrombolysis without haemodynamic","points": 4 },
+    { "label": "Patient survives",                              "type": "outcome", "any_of": ["win_discharge", "win_icu"],    "points": 6 }
+  ]
+}
