@@ -81,6 +81,11 @@ fn main() {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or_else(|| rpc.get_slot().expect("slot"));
+    // VITALS_EXAM turns the rubric'd cases (ep2/3/4) into OSCE exams — mode bound into the
+    // commitment, det scored at anchor — so a scripted run can verify the whole star loop end to
+    // end against the deployed program, no browser needed. Unset, every run is practice as before.
+    let exam = std::env::var("VITALS_EXAM").is_ok();
+    println!("mode      {}", if exam { "OSCE exam (rubric'd cases)" } else { "practice" });
     println!("tree      #{tree_id}\n");
 
     // The person has to exist before anything can be recorded against them. Opening twice is a
@@ -106,8 +111,24 @@ fn main() {
             n[8..16].copy_from_slice(&(records.len() as u64).to_le_bytes());
             n
         };
-        // Mode 0: the CLI demo plays practice runs. Exam-ness is bound into the commitment.
-        let chash = vitals_progress::record::commitment_hash(&sce, &player.pubkey().to_bytes(), &nonce, 0);
+        // With VITALS_EXAM set, a case that has a rubric is sat as an OSCE exam: the mode (1) is
+        // bound into the commitment, so it cannot be relabelled practice↔exam after the outcome is
+        // known; a case with no rubric stays practice (mode 0). Exam-ness is bound before the run.
+        let rubric = if exam {
+            let rp = file.replace("scenarios/", "rubrics/");
+            // Only when the path actually changed does a rubric exist to look for; otherwise (a
+            // case that does not live under scenarios/, like the ep1 intro) we'd re-read the
+            // scenario itself as if it were a rubric.
+            if rp != *file {
+                std::fs::read_to_string(repo().join(rp)).ok()
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        let mode: u8 = u8::from(rubric.is_some());
+        let chash = vitals_progress::record::commitment_hash(&sce, &player.pubkey().to_bytes(), &nonce, mode);
         let commit_acct = vitals_program::commitment_pda(&program_id, &player.pubkey().to_bytes()).0;
         send(&rpc, &player, &program_id, Instruction::Commit { hash: chash },
              vec![acct, commit_acct], true);
@@ -117,13 +138,24 @@ fn main() {
         let r: Replay = replay(&json, tape).expect("replay");
         // The scenario hash is the case identity: replaying one episode is one case, however
         // many times you do it.
-        let rec = record_for(player.pubkey().to_bytes(), sce, sce, *difficulty, false, tape, &r, cm.hash, cm.slot)
+        let mut rec = record_for(player.pubkey().to_bytes(), sce, sce, *difficulty, rubric.is_some(), tape, &r, cm.hash, cm.slot)
             .expect("record");
+        // The det score is re-derived here, server-side, exactly as the web anchor does — never
+        // trusted from anywhere. Stamped after record_for, before the leaf is hashed.
+        if let Some(rj) = &rubric {
+            let (ds, dm, rh) = vitals_osce::det_for_run(&json, tape, rj).expect("det_for_run");
+            rec.det_score = ds;
+            rec.det_max = dm;
+            rec.rubric_hash = rh;
+        }
         println!(
-            "  {title:<30} {:<14} harm {}  score {:>3}   leaf {}",
+            "  {title:<30} {:<12} harm {}  outcome {:>3}  det {:>3}/{:<3} {}  leaf {}",
             r.outcome.clone().unwrap_or_else(|| "—".into()),
             r.harm_events.len(),
             rec.score(),
+            rec.det_score,
+            rec.det_max,
+            if rec.exam_mode { "EXAM" } else { "prac" },
             &hex(&rec.leaf())[..12]
         );
         send(&rpc, &player, &program_id, Instruction::AnchorReplay { tree_id, record: wire(&rec) },
