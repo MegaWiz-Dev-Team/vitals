@@ -41,8 +41,11 @@ if(location.hostname.endsWith('vitals.academy')){
 addEventListener('click',function(e){
   var el=e.target.closest('button,a,[role="button"],[data-ga],.tile');
   if(!el)return;
+  /* No textContent fallback, structurally: a control that could ever render learner-typed
+     text must never name itself by it. Anything wanting a readable label opts in via
+     data-ga / id / aria-label; the rest report their href or bare tag. */
   var label=el.getAttribute('data-ga')||el.id||el.getAttribute('aria-label')
-    ||(el.textContent||'').trim().replace(/\s+/g,' ').slice(0,60)||el.getAttribute('href')||'control';
+    ||el.getAttribute('href')||el.tagName.toLowerCase();
   gtag('event','ui_click',{control:label,page:location.pathname});
 },true);
 </script>
