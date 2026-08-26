@@ -691,8 +691,8 @@ a.give:hover{filter:brightness(1.06)}
     <span class="ep" id="ep-name">the resus bay</span>
     <select id="ep" class="hide">
       <option value="ep1">EP1</option><option value="osce-a">OSCE A</option><option value="ep2">EP2</option>
-      <option value="osce-b">OSCE B</option><option value="ep3">EP3</option><option value="ep4">EP4</option>
-      <option value="ep5">EP5</option>
+      <option value="osce-b">OSCE B</option><option value="ep3">EP3</option><option value="osce-c">OSCE C</option>
+      <option value="ep4">EP4</option><option value="osce-d">OSCE D</option><option value="ep5">EP5</option>
     </select>
     <button class="btn" id="back">← episodes</button>
     <button class="btn go" id="start">restart</button>
@@ -1028,10 +1028,20 @@ const SEASON=[
   who:'Khaopun · M 5', line:'tripod, drooling, muffled voice, will not lie down',
   place:'Paediatric bay · evening', key:{drug:'the airway team',match:'ent'},
   d:'Carried in by a grandfather you have met before. A five-year-old sitting very still — the stillness is the frightening part.'},
+ {id:'osce-c',n:'OSCE C',sn:'S1 · OSCE C',t:'The Bark at Midnight',tier:'resident',station:true,
+  rt:'a 10-minute station',mins:10,
+  who:'Fon · F 6', line:'barking cough, drooling on her mother’s shoulder, worse every night',
+  place:'OSCE station · Nurse Mali marking, sixteen hours in', key:{drug:'Dexamethasone',match:'dexameth'},
+  d:'Drooling like the boy who nearly died — but this one is loud, and loud is information. EP3 taught you the difference; prove it without one tear.'},
  {id:'ep4',n:'EP4',sn:'S1:E4',t:'The Masquerader',tier:'resident',rt:'a 12-minute shift',mins:12,
   who:'Mali · F 34', line:'breathless, pleuritic pain, looks anxious',
   place:'Emergency department · afternoon', key:{drug:'anticoagulation',match:'hepar'},
   d:'One of your own nurses, still in uniform. Everything looks normal — the oxygen is quietly low and the heart is too fast.'},
+ {id:'osce-d',n:'OSCE D',sn:'S1 · OSCE D',t:'A Glass of Blood',tier:'intern',station:true,
+  rt:'a 12-minute station',mins:12,
+  who:'Somchai Jaiman · M 62', line:'vomited a glass of fresh blood, black stool since morning, cold to the wrist',
+  place:'OSCE station · Nurse Mali marking from a chair — doctor’s orders', key:{drug:'two large-bore lines',match:'two_lines'},
+  d:'A heart patient bleeding from the other end of his aspirin. Find the shock while he can still hide it — the last night will ask for this at scale.'},
  {id:'ep5',n:'EP5',sn:'S1:E5',t:'The Night the Stars Fell',tier:'resident',rt:'an 18-minute shift',mins:18,
   who:'Boonsong · M 47', line:'the fireworks foreman — bleeding, chest not moving well, six more waiting',
   place:'Resus · mass casualty', key:{drug:'haemostasis',match:'tourniquet'},
@@ -1117,6 +1127,18 @@ const CHIPS={
       drug:['aspirin 300 chewed','oxygen'],
       proc:['activate the cath lab','thrombolysis','iv access'],
       dx:['acute stemi','admit','reassure and discharge']},
+ 'osce-c':{ask:['has she had this before?','any fever?','are her shots up to date?','when is it worse?'],
+      exam:['score her from the doorway','check the saturations','listen to the chest'],
+      lab:['neck and chest films'],
+      drug:['dexamethasone syrup','nebulised adrenaline'],
+      proc:['keep her on mum’s lap','watch her for two hours','look in the throat','a drip and bloods first'],
+      dx:['croup','epiglottitis — call the airway team']},
+ 'osce-d':{ask:['what pills do you take every day?','how much blood — what colour?','any dizziness standing up?'],
+      exam:['feel his hands, look at his eyes','press on the belly','rectal exam'],
+      lab:['group and crossmatch four units','full blood count','coagulogram'],
+      drug:['warmed crystalloid, wide open','transfuse packed cells','pantoprazole bolus and infusion','aspirin 300 chewed'],
+      proc:['two large-bore lines','hold the aspirin and clopidogrel','call gi — urgent endoscopy'],
+      dx:['upper gi bleed','acute coronary syndrome']},
  ep5:{ask:['what happened?','where does it hurt?','can you feel your legs?'],
       exam:['primary survey','check the chest','check for bleeding'],
       lab:['blood gas','crossmatch'],
@@ -1655,7 +1677,7 @@ const starred=()=>JSON.parse(localStorage.getItem('vitals.starred')||'[]');
    opened because the record earned it. Count-based on purpose: a star from an episode's own
    exam counts the same as a station's, so a strong player never dead-ends. The mainline is
    EP1 → OSCE A → ★ → EP2 → OSCE B → ★★ → EP3, with EP4/EP5 behind three and four. */
-const NEED={ep1:0,'osce-a':0,ep2:1,'osce-b':1,ep3:2,ep4:3,ep5:4};
+const NEED={ep1:0,'osce-a':0,ep2:1,'osce-b':1,ep3:2,'osce-c':2,ep4:3,'osce-d':3,ep5:4};
 let STARS=null;   /* last count the chain certified — null until it answers */
 let STARBAR=7000; /* the pass bar in bps; refreshed from /api/stars so the two cannot drift */
 /* Stars this browser watched being earned — exam runs anchored here that cleared the bar.
