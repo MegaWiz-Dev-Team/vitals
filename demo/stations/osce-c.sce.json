@@ -1,0 +1,200 @@
+{
+ "_note": "OSCE station C — converted from embla-cases ddx-croup-2 v1.0.0 (sha256:00e1b0511b1359e0). Presentation follows the deploy-safe form; the hidden block informed only the rubric (demo/rubrics/osce-c.json). Clinically shaped, not clinically reviewed. The teaching is EP3's lesson run in reverse: a drooling child who looks like the boy who nearly died — but this one is loud, afebrile, vaccinated, barking. Croup, not epiglottitis. The station's whole trap is restraint: the tongue depressor and the needle hunt are the two orders that fail you, because a frightened airway is the one that closes.",
+ "setting": "OPD",
+ "tick_seconds": 1.0,
+ "vitals0": { "hr": 105, "sbp": 100, "dbp": 64, "spo2": 99, "rr": 22, "temp": 37.0, "gcs": 15 },
+ "initial_state": "consult",
+ "states": [
+  {
+   "id": "consult",
+   "status": "stable",
+   "dynamics": [],
+   "bands": [],
+   "transitions": [
+    { "to_state": "agitated", "when": { "flag": "child_crying" } }
+   ]
+  },
+  {
+   "id": "agitated",
+   "status": "deteriorating",
+   "dynamics": [
+    { "var": "spo2", "rate_per_min": -2.5, "floor": 80 },
+    { "var": "hr",   "rate_per_min": 8,    "ceil": 175 },
+    { "var": "rr",   "rate_per_min": 3,    "ceil": 60 }
+   ],
+   "bands": [
+    { "status": "critical", "when": { "var": "spo2", "op": "lt", "value": 90 } }
+   ],
+   "transitions": [
+    { "to_state": "settling", "when": { "flag": "neb_given" } },
+    { "outcome": "death_arrest", "when": { "var": "spo2", "op": "lt", "value": 85 } }
+   ]
+  },
+  {
+   "id": "settling",
+   "status": "improving",
+   "dynamics": [
+    { "var": "spo2", "rate_per_min": 2,  "ceil": 99 },
+    { "var": "hr",   "rate_per_min": -8, "floor": 104 },
+    { "var": "rr",   "rate_per_min": -2, "floor": 24 }
+   ],
+   "bands": [],
+   "transitions": []
+  }
+ ],
+ "interventions": [
+  {
+   "id": "ask_history",
+   "label": "Ask if this has happened before",
+   "match": { "any_kw": ["before", "last time", "again", "sister", "เคยเป็น"] },
+   "effects": [ { "beat": "— \"Last year. The same bark, the same bad night. Her sister had it at this age too.\" The family knows this illness by name." } ]
+  },
+  {
+   "id": "ask_fever",
+   "label": "Ask about fever",
+   "match": { "any_kw": ["fever", "temperatur", "ไข้"] },
+   "effects": [ { "beat": "— \"No fever. I checked twice — she runs cool.\" Afebrile: the first door away from epiglottitis." } ]
+  },
+  {
+   "id": "ask_vaccines",
+   "label": "Ask the immunisations",
+   "match": { "any_kw": ["vaccin", "immunis", "immuniz", "shots", "วัคซีน"] },
+   "effects": [ { "beat": "— \"Every shot, on schedule, since she was born.\" Hib among them — the odds move further still." } ]
+  },
+  {
+   "id": "ask_night",
+   "label": "Ask when it is worse",
+   "match": { "any_kw": ["worse", "night", "when does", "กลางคืน"] },
+   "effects": [ { "beat": "— \"Nights. She sleeps, then sits up barking. By day she is almost herself.\" The croup pattern, word for word." } ]
+  },
+  {
+   "id": "severity_score",
+   "label": "Score the severity from the doorway",
+   "match": { "any_kw": ["doorway", "westley", "severity", "score her", "from the door", "work of breathing"] },
+   "effects": [ { "beat": "watched from the doorway, on her mother's lap: no stridor at rest, no retractions, colour good, drooling but chatting between coughs — westley 1, mild" } ]
+  },
+  {
+   "id": "exam_sats",
+   "label": "Check the saturations",
+   "match": { "any_kw": ["sat", "spo2", "oximet"] },
+   "effects": [ { "beat": "spo2 99 on air, the probe clipped to a toe mid-story — she barely noticed" } ]
+  },
+  {
+   "id": "exam_chest",
+   "label": "Listen to the chest",
+   "match": { "any_kw": ["listen", "auscult"] },
+   "effects": [ { "beat": "clear entry both sides — the bark lives higher up, transmitted from the subglottis" } ]
+  },
+  {
+   "id": "xray_neck",
+   "label": "Neck and chest films",
+   "match": { "any_kw": ["x-ray", "xray", "film", "steeple", "cxr"] },
+   "effects": [ { "beat": "portable films with mum holding her still: the steeple sign on the ap neck, a normal epiglottis on the lateral, chest clear" } ]
+  },
+  {
+   "id": "dexamethasone",
+   "label": "Dexamethasone by mouth",
+   "match": { "any_kw": ["dexameth", "steroid", "budeson"] },
+   "effects": [
+    { "flag": "dex_given" },
+    { "beat": "dexamethasone 0.15 mg/kg in syrup, taken from her mother's hand — an hour from now the night gets quieter" }
+   ]
+  },
+  {
+   "id": "neb_adrenaline",
+   "label": "Nebulised adrenaline",
+   "match": { "any_kw": ["nebulis", "nebuliz", "adren", "epinep"] },
+   "effects": [
+    { "flag": "neb_given" },
+    { "delta": { "spo2": 2 }, "cap": 99 },
+    { "beat": "nebulised adrenaline through a soft mask her mother holds — mist for the swollen subglottis" }
+   ]
+  },
+  {
+   "id": "keep_calm",
+   "label": "Keep her on mum's lap",
+   "match": { "any_kw": ["calm", "lap", "mum", "mother", "settle"] },
+   "effects": [ { "beat": "nothing touches her that does not need to — she stays on the lap, and breathes the easier for it" } ]
+  },
+  {
+   "id": "observe_child",
+   "label": "Watch her for two hours",
+   "match": { "any_kw": ["observ", "watch her", "two hours", "monitor"] },
+   "effects": [
+    { "flag": "observed" },
+    { "beat": "two quiet hours by the nurses' station, saturation probe on, mum in the chair — the bark is already softer" }
+   ]
+  },
+  {
+   "id": "dx_croup",
+   "label": "Name the diagnosis",
+   "match": { "any_kw": ["croup", "laryngotracheo"] },
+   "effects": [ { "flag": "dx_named" }, { "beat": "croup — loud, barking, mild, and named for what it is" } ]
+  },
+  {
+   "id": "dx_epiglottitis",
+   "label": "Call it epiglottitis",
+   "match": { "any_kw": ["epiglott"] },
+   "effects": [ { "beat": "epiglottitis? — she is vaccinated, afebrile, barking loudly and unafraid to cry. the drool misled you once. look again." } ]
+  },
+  {
+   "id": "exam_throat",
+   "label": "Look in the throat (HARM)",
+   "match": { "any_kw": ["throat", "depressor", "tongue", "open your mouth", "laryngoscop"], "not_kw": ["sore", "hurt", "painful"] },
+   "harm": "the tongue depressor goes in — she screams, and the airway she was protecting clamps down",
+   "effects": [
+    { "flag": "child_crying" },
+    { "delta": { "spo2": -2 }, "floor": 88 }
+   ]
+  },
+  {
+   "id": "iv_stick",
+   "label": "A drip and bloods first (HARM)",
+   "match": { "any_kw": [" iv", "iv access", "cannula", "drip", "needle", "venepunct", "venipunct", "blood draw", "blood test"] },
+   "harm": "a needle hunt before the steroid — she fights, shrieking, and the stridor you did not have is here now",
+   "effects": [
+    { "flag": "child_crying" },
+    { "delta": { "spo2": -2 }, "floor": 88 }
+   ]
+  }
+ ],
+ "triggers": [
+  {
+   "id": "dex_delayed",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "consult" },
+    { "var": "t_elapsed", "op": "ge", "value": 420 },
+    { "not": { "done": "dexamethasone" } }
+   ] },
+   "do": [
+    { "harm": "seven minutes and no steroid — dexamethasone is the whole visit" }
+   ]
+  },
+  {
+   "id": "home_after_watch",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "consult" },
+    { "done": "dexamethasone" },
+    { "done": "observe_child" },
+    { "var": "t_elapsed", "op": "ge", "value": 240 }
+   ] },
+   "do": [ { "outcome": "win_discharge" } ]
+  },
+  {
+   "id": "settled_admit",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "settling" },
+    { "var": "t_in_state", "op": "ge", "value": 120 }
+   ] },
+   "do": [ { "outcome": "win_icu" } ]
+  }
+ ],
+ "outcomes": [
+  { "id": "win_discharge", "kind": "win",   "label": "Steroid, stillness, two quiet hours — home before midnight" },
+  { "id": "win_icu",       "kind": "win",   "label": "Rescued by the mist — admitted overnight; the fright was avoidable" },
+  { "id": "death_arrest",  "kind": "death", "label": "A frightened airway closed — it was mild when she arrived" }
+ ]
+}

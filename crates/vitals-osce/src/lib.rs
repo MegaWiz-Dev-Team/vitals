@@ -355,6 +355,132 @@ mod tests {
         assert!(!det.cleared(&r), "reperfusion credit without the ECG must not clear: {s}/{m}");
     }
 
+    /// Station C (osce-c, from embla-cases ddx-croup-2): a drooling child who looks like EP3's
+    /// boy but is loud, afebrile, vaccinated and barking — croup, not epiglottitis. The competent
+    /// tape scores the severity from the doorway, gives the steroid, and touches nothing that
+    /// does not need touching. The tongue-depressor tape does everything else right — including
+    /// the nebulised-adrenaline rescue — and still lands under the bar, because the one
+    /// invasive exam is the station's whole lesson.
+    #[test]
+    fn station_c_competent_run_clears_and_the_tongue_depressor_fails() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/");
+        let sce = std::fs::read_to_string(format!("{root}stations/osce-c.sce.json")).unwrap();
+        let rubric_json = std::fs::read_to_string(format!("{root}rubrics/osce-c.json")).unwrap();
+        let parsed = vitals_sce::Sce::from_json(&sce).unwrap();
+        assert!(parsed.validate().is_empty(), "osce-c: {:?}", parsed.validate());
+        let tape = vec![
+            Step::Do("has she had this before?".into()),
+            Step::Tick(10.0),
+            Step::Do("any fever?".into()),
+            Step::Tick(10.0),
+            Step::Do("are her shots up to date?".into()),
+            Step::Tick(10.0),
+            Step::Do("score her from the doorway".into()),
+            Step::Tick(10.0),
+            Step::Do("check the saturations".into()),
+            Step::Tick(10.0),
+            Step::Do("neck and chest films".into()),
+            Step::Tick(10.0),
+            Step::Do("dexamethasone syrup".into()), // t=60 — the whole visit, given early
+            Step::Tick(10.0),
+            Step::Do("keep her on mum's lap".into()),
+            Step::Tick(10.0),
+            Step::Do("watch her for two hours".into()),
+            Step::Tick(10.0),
+            Step::Do("croup".into()),
+            Step::Tick(160.0), // the observation runs out to a discharge before midnight
+        ];
+        let (s, m, rhash) = det_for_run(&sce, &tape, &rubric_json).unwrap();
+        assert_eq!((s, m), (40, 40));
+        assert_eq!(rhash, vitals_progress::record::rubric_hash(rubric_json.as_bytes()));
+        // The depressor goes in early; the child cries herself into stridor; the rescue and
+        // every other mark are earned — and the run must still fail on the harm it caused.
+        let depressor = vec![
+            Step::Do("any fever?".into()),
+            Step::Tick(5.0),
+            Step::Do("score her from the doorway".into()),
+            Step::Tick(5.0),
+            Step::Do("look in the throat".into()), // the one forbidden exam
+            Step::Tick(5.0),
+            Step::Do("nebulised adrenaline".into()), // competent rescue, too late to matter
+            Step::Tick(5.0),
+            Step::Do("has she had this before?".into()),
+            Step::Tick(5.0),
+            Step::Do("are her shots up to date?".into()),
+            Step::Tick(5.0),
+            Step::Do("check the saturations".into()),
+            Step::Tick(5.0),
+            Step::Do("neck and chest films".into()),
+            Step::Tick(5.0),
+            Step::Do("dexamethasone syrup".into()),
+            Step::Tick(5.0),
+            Step::Do("watch her for two hours".into()),
+            Step::Tick(5.0),
+            Step::Do("croup".into()),
+            Step::Tick(130.0), // she settles — into an admission, not a discharge
+        ];
+        let (s, m, _) = det_for_run(&sce, &depressor, &rubric_json).unwrap();
+        let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
+        let det = DetResult { earned: s, max: m, items: vec![] };
+        assert!(!det.cleared(&r), "the tongue depressor must not clear the bar: {s}/{m}");
+    }
+
+    /// Station D (osce-d, from embla-cases embla-upper-gastrointestinal-bleeding-intern): call
+    /// the shock while he compensates, two big lines, crystalloid AND blood, then the scope.
+    /// GI is gated like B's cath lab — no resuscitation, no endoscopy. The failing tape is the
+    /// chest-pain reflex: aspirin for a CAD history, one bag of fluid through a thin line, hope.
+    #[test]
+    fn station_d_competent_run_clears_and_the_chest_pain_reflex_fails() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/");
+        let sce = std::fs::read_to_string(format!("{root}stations/osce-d.sce.json")).unwrap();
+        let rubric_json = std::fs::read_to_string(format!("{root}rubrics/osce-d.json")).unwrap();
+        let parsed = vitals_sce::Sce::from_json(&sce).unwrap();
+        assert!(parsed.validate().is_empty(), "osce-d: {:?}", parsed.validate());
+        let tape = vec![
+            Step::Do("what pills do you take every day?".into()),
+            Step::Tick(10.0),
+            Step::Do("how much blood — what colour?".into()),
+            Step::Tick(10.0),
+            Step::Do("feel his hands, look at his eyes".into()),
+            Step::Tick(10.0),
+            Step::Do("two large-bore lines".into()), // t=30 — access before the fourth minute
+            Step::Tick(10.0),
+            Step::Do("group and crossmatch four units".into()),
+            Step::Tick(10.0),
+            Step::Do("warmed crystalloid, wide open".into()),
+            Step::Tick(10.0),
+            Step::Do("transfuse packed cells".into()),
+            Step::Tick(10.0),
+            Step::Do("pantoprazole bolus and infusion".into()),
+            Step::Tick(10.0),
+            Step::Do("hold the aspirin and clopidogrel".into()),
+            Step::Tick(10.0),
+            Step::Do("rectal exam".into()),
+            Step::Tick(10.0),
+            Step::Do("upper gi bleed".into()),
+            Step::Tick(10.0),
+            Step::Do("call gi — urgent endoscopy".into()), // tank full — GI takes the call
+            Step::Tick(160.0), // clipped, dry, and up to the unit
+        ];
+        let (s, m, rhash) = det_for_run(&sce, &tape, &rubric_json).unwrap();
+        assert_eq!((s, m), (40, 40));
+        assert_eq!(rhash, vitals_progress::record::rubric_hash(rubric_json.as_bytes()));
+        // Aspirin for the stent, one bag through a thin line, and waiting: the access harm
+        // fires at four minutes, the re-bleed at five finds an empty tank, and he exsanguinates.
+        let reflex = vec![
+            Step::Do("aspirin 300 chewed".into()),
+            Step::Tick(20.0),
+            Step::Do("warmed crystalloid, wide open".into()),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+        ];
+        let (s, m, _) = det_for_run(&sce, &reflex, &rubric_json).unwrap();
+        let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
+        let det = DetResult { earned: s, max: m, items: vec![] };
+        assert!(!det.cleared(&r), "the chest-pain reflex must not clear the bar: {s}/{m}");
+    }
+
     #[test]
     fn every_rubric_uses_the_canonical_star_bar() {
         // Enforce-equal: a rubric whose pass_bps drifts from the one global bar is a failing test,

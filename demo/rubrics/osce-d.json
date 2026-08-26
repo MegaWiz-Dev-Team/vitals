@@ -1,0 +1,21 @@
+{
+  "case": "osce-d",
+  "pass_bps": 7000,
+  "status": "provisional — converted from embla-cases embla-upper-gastrointestinal-bleeding-intern v1.0.0 (sha256:26ee2d8fd7027261): hidden.expected_workup→action (type&screen, PPI, urgent EGD), hidden.red_flags→no_harm (haemodynamic instability answered late, the aspirin reflex), hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "items": [
+    { "label": "Asked the medications — found the two antiplatelets",  "type": "action",    "needle": "ask_meds",         "points": 2 },
+    { "label": "Asked what came up, and what came out",                "type": "action",    "needle": "ask_blood",        "points": 1 },
+    { "label": "Read the shock off his hands and eyes",                "type": "action",    "needle": "exam_shock",       "points": 2 },
+    { "label": "Rectal exam — melena confirmed",                       "type": "action",    "needle": "exam_dre",         "points": 1 },
+    { "label": "Two large-bore lines inside four minutes",             "type": "action_by", "needle": "two_lines", "by_sec": 240, "points": 4 },
+    { "label": "The access never lagged the shock",                    "type": "no_harm",   "needle": "thin green line",  "points": 3 },
+    { "label": "Crystalloid running",                                  "type": "action",    "needle": "crystalloid",      "points": 4 },
+    { "label": "Group and crossmatch sent",                            "type": "action",    "needle": "type_screen",      "points": 2 },
+    { "label": "Blood on the pole, not just salt water",               "type": "action",    "needle": "transfuse",        "points": 4 },
+    { "label": "PPI started",                                          "type": "action",    "needle": "ppi",              "points": 1 },
+    { "label": "Called GI — endoscopy is the source control",          "type": "action",    "needle": "endoscopy",        "points": 4 },
+    { "label": "Never fed aspirin to a bleeding stomach",              "type": "no_harm",   "needle": "bleeding stomach", "points": 2 },
+    { "label": "Named it — an upper GI bleed",                         "type": "action",    "needle": "dx_ugib",          "points": 1 },
+    { "label": "Resuscitated, scoped, alive — the ICU takes him",      "type": "outcome",   "any_of": ["win_icu"],        "points": 9 }
+  ]
+}

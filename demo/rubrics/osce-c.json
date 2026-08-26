@@ -1,0 +1,19 @@
+{
+  "case": "osce-c",
+  "pass_bps": 7000,
+  "status": "provisional — converted from embla-cases ddx-croup-2 v1.0.0 (sha256:00e1b0511b1359e0): hidden.expected_workup→action, hidden.red_flags→no_harm (the epiglottitis-scare exam, the needle hunt, the steroid delay), hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "items": [
+    { "label": "Asked about fever — the first door away from epiglottitis", "type": "action",  "needle": "ask_fever",        "points": 2 },
+    { "label": "Asked if it has happened before — the family knows croup",  "type": "action",  "needle": "ask_history",      "points": 1 },
+    { "label": "Asked the immunisations — Hib changes the odds",            "type": "action",  "needle": "ask_vaccines",     "points": 1 },
+    { "label": "Scored the severity from the doorway, hands off",           "type": "action",  "needle": "severity_score",   "points": 3 },
+    { "label": "Saturations checked",                                       "type": "action",  "needle": "exam_sats",        "points": 1 },
+    { "label": "Films for the steeple sign, not a spatula for the throat",  "type": "action",  "needle": "xray_neck",        "points": 1 },
+    { "label": "Dexamethasone given",                                       "type": "action",  "needle": "dexamethasone",    "points": 6 },
+    { "label": "The steroid never waited past seven minutes",               "type": "no_harm", "needle": "no steroid",       "points": 2 },
+    { "label": "No tongue depressor near that airway",                      "type": "no_harm", "needle": "tongue depressor", "points": 8 },
+    { "label": "No needle hunt on a calm child",                            "type": "no_harm", "needle": "needle hunt",      "points": 8 },
+    { "label": "Named it — croup, not epiglottitis",                        "type": "action",  "needle": "dx_croup",         "points": 2 },
+    { "label": "Watched, settled, home before midnight",                    "type": "outcome", "any_of": ["win_discharge"],  "points": 5 }
+  ]
+}
