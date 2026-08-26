@@ -5,14 +5,24 @@
 <title>Donate — Vitals</title>
 <!-- Google Analytics 4 · production hostnames only (dev / localhost / *.run.app do not report) -->
 <script>
+window.dataLayer=window.dataLayer||[];
+function gtag(){dataLayer.push(arguments);}
 if(location.hostname.endsWith('vitals.academy')){
   var s=document.createElement('script');s.async=true;
   s.src='https://www.googletagmanager.com/gtag/js?id=G-LH5JSMQBSL';
   document.head.appendChild(s);
-  window.dataLayer=window.dataLayer||[];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js',new Date());gtag('config','G-LH5JSMQBSL');
+  gtag('js',new Date());
+  gtag('config','G-LH5JSMQBSL');
 }
+/* Every button, link, tile, and [data-ga] click reports once — delegated, so new
+   controls are covered without hand-tagging. gtag() is a harmless no-op off production. */
+addEventListener('click',function(e){
+  var el=e.target.closest('button,a,[role="button"],[data-ga],.tile');
+  if(!el)return;
+  var label=el.getAttribute('data-ga')||el.id||el.getAttribute('aria-label')
+    ||(el.textContent||'').trim().replace(/\s+/g,' ').slice(0,60)||el.getAttribute('href')||'control';
+  gtag('event','ui_click',{control:label,page:location.pathname});
+},true);
 </script>
 <meta name="description" content="Fund free clinical training. Donations are held in an on-chain treasury anyone can audit.">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
