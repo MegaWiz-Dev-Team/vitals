@@ -581,6 +581,13 @@ fn main() {
     let mut meter = meter::Meter::open(&store);
     println!("meter      {}", meter.describe());
 
+    // The star bar: an exam-mode case counts as cleared at or above this fraction of the
+    // deterministic rubric, in basis points. One number, visible in every /api/stars reply.
+    let star_pass_bps: u32 = std::env::var("VITALS_STAR_PASS_BPS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(6_500);
+
     // Through the same root as the scenarios. This was the other baked-in build path, and it is
     // why the container had a patient who could not speak even with a gateway to speak through.
     let story = scenario_root().join("demo/ep1-en.json");
@@ -1257,6 +1264,28 @@ fn main() {
                     })),
                 }
             }
+            // Stars — distinct exam-mode cases cleared at or above the pass bar. Read-only and
+            // additive: the level path never consults this. The bar rides in the reply, so what
+            // was asked sits next to what was answered and a verifier can re-derive the count.
+            (Method::Get, "/api/stars") => {
+                let Some(c) = chain.as_ref() else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    continue;
+                };
+                let Some(person) = param(&url, "account")
+                    .or_else(|| param(&url, "player"))
+                    .and_then(|p| pubkey(&p))
+                else {
+                    let _ = req.respond(json(serde_json::json!({ "error": "no account" })));
+                    continue;
+                };
+                let tree_id = tree.lock().unwrap().tree_id;
+                json(serde_json::json!({
+                    "account": person.to_string(),
+                    "stars": c.star_count(&person, tree_id, star_pass_bps),
+                    "pass_bps": star_pass_bps,
+                }))
+            }
             // Link or unlink a machine. Signed by one that is already trusted.
             (Method::Get, "/api/link") => {
                 let Some(c) = chain.as_ref() else {
@@ -1692,7 +1721,7 @@ mod tests {
             assert!(guarded(p), "{p} makes the server sign or spend");
         }
         for p in ["/", "/play", "/api/new", "/api/step", "/api/kit", "/api/tape", "/api/chain",
-                  "/api/meter", "/donate"] {
+                  "/api/meter", "/api/stars", "/donate"] {
             assert!(!guarded(p), "{p} is play, and a kiosk must not need a token to play");
         }
     }
