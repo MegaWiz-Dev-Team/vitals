@@ -47,7 +47,7 @@
   {
    "id": "ask_exposure",
    "label": "Ask what she ate",
-   "match": { "any_kw": ["what did you eat", "food", "eaten", "eat today", "meal", "กิน"] },
+   "match": { "any_kw": ["what did you eat", "eaten", "eat today", "meal", "กิน"] },
    "effects": [ { "beat": "— \"Somtam from my daughter's stall. There could have been ground peanut on top — it all started so fast after.\"" } ]
   },
   {
