@@ -621,6 +621,25 @@ a.give:hover{filter:brightness(1.06)}
 .trailer{cursor:default;width:min(38rem,94vw);display:flex;flex-direction:column;gap:.7rem;align-items:center}
 .trailer video{width:100%;border-radius:10px;background:#000;max-height:70vh}
 .tr-h{font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.2em;color:#7fe7d2;text-transform:uppercase}
+/* ── the season 1 epilogue ── paper on black, because a transfer order is a prop.
+   The wrinkle card borrows .sting; only the letter and the season-2 title are new. */
+.epi{cursor:default;max-width:26rem;width:100%;animation:cinein .8s ease}
+.epi-k{font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.26em;
+  text-transform:uppercase;color:#7fe7d2;margin-bottom:1rem}
+.epi .sting{margin:0 auto}
+.epi-letter{background:#f2eee2;color:#22302f;text-align:left;border-radius:3px;
+  padding:1.2rem 1.3rem;font-family:"IBM Plex Mono",monospace;font-size:.76rem;line-height:1.65;
+  box-shadow:0 24px 70px rgba(0,0,0,.65);transform:rotate(-.4deg)}
+.epi-letter p{margin:.7rem 0 0}
+.epi-lh{font-size:.62rem;letter-spacing:.18em;text-transform:uppercase;color:#5d6a66;
+  border-bottom:1px solid #d8d2bf;padding-bottom:.55rem}
+.epi-punch{margin-top:1.3rem;font-family:Archivo,sans-serif;font-weight:600;
+  font-size:clamp(.95rem,3.8vw,1.25rem);line-height:1.5;color:#e7efee;text-wrap:balance}
+.epi-punch b{color:#fff;font-weight:800}
+.epi-ret{font-family:Archivo,sans-serif;font-size:.95rem;color:#cfe4de;margin:.2rem 0 .9rem}
+.epi-s2{font-family:Archivo,sans-serif;font-weight:800;text-transform:uppercase;line-height:1.1;
+  font-size:clamp(1rem,4.2vw,1.4rem);letter-spacing:.14em;color:#8aa0a4;margin-bottom:1.1rem}
+.epi-s2 span{display:block;font-size:clamp(1.7rem,7vw,2.7rem);letter-spacing:.04em;color:#fff;margin-top:.15rem}
 </style>
 </head>
 <body>
@@ -994,27 +1013,27 @@ const SEASON=[
  {id:'osce-a',n:'OSCE A',sn:'S1 · OSCE A',t:'Rash After the Buffet',tier:'student',station:true,
   rt:'an 8-minute station',mins:8,
   who:'Somchai · M 71', line:'urticaria head to toe, face swelling, cramping belly pain',
-  place:'OSCE station · examiner watching', key:{drug:'Adrenaline',match:'adren'},
-  d:'Thirty minutes after a meal he will not talk about. You saw this in EP1 — prove it.'},
+  place:'OSCE station · Nurse Mali examining', key:{drug:'Adrenaline',match:'adren'},
+  d:'Thirty minutes after a meal he will not talk about. You saw this in EP1 — prove it. Nurse Mali is marking.'},
  {id:'ep2',n:'EP2',sn:'S1:E2',t:'Time Is Muscle',tier:'intern',rt:'a 12-minute shift',mins:12,
   who:'Prasit · M 58', line:'crushing chest pain to the jaw, sweating',
   place:'Emergency department · evening', key:{drug:'reperfusion',match:'cath'},
-  d:'A taxi driver, chest pain to the jaw. The ECG tells the truth in ten minutes.'},
+  d:'Thirty years driving patients to this door — tonight Prasit arrives as one. The ECG tells the truth in ten minutes.'},
  {id:'osce-b',n:'OSCE B',sn:'S1 · OSCE B',t:'Ten Minutes to Prove It',tier:'intern',station:true,
   rt:'a 10-minute station',mins:10,
   who:'Somchai Jaidee · M 25', line:'crushing chest pain to both arms, nauseous, terrified',
-  place:'OSCE station · examiner watching', key:{drug:'the ECG',match:'ecg'},
+  place:'OSCE station · Nurse Mali on the stopwatch', key:{drug:'the ECG',match:'ecg'},
   d:'A young smoker certain he is dying. The wall clock says ten minutes — beat it.'},
  {id:'ep3',n:'EP3',sn:'S1:E3',t:"Don't Make Him Cry",tier:'resident',rt:'a 14-minute shift',mins:14,
   who:'Khaopun · M 5', line:'tripod, drooling, muffled voice, will not lie down',
   place:'Paediatric bay · evening', key:{drug:'the airway team',match:'ent'},
-  d:'A five-year-old sitting very still. His stillness is the frightening part.'},
+  d:'Carried in by a grandfather you have met before. A five-year-old sitting very still — the stillness is the frightening part.'},
  {id:'ep4',n:'EP4',sn:'S1:E4',t:'The Masquerader',tier:'resident',rt:'a 12-minute shift',mins:12,
   who:'Mali · F 34', line:'breathless, pleuritic pain, looks anxious',
   place:'Emergency department · afternoon', key:{drug:'anticoagulation',match:'hepar'},
-  d:'Everything looks normal. The oxygen is quietly low and the heart is too fast.'},
+  d:'One of your own nurses, still in uniform. Everything looks normal — the oxygen is quietly low and the heart is too fast.'},
  {id:'ep5',n:'EP5',sn:'S1:E5',t:'The Night the Stars Fell',tier:'resident',rt:'an 18-minute shift',mins:18,
-  who:'blast casualty · M 40s', line:'bleeding, chest not moving well, six more waiting',
+  who:'Boonsong · M 47', line:'the fireworks foreman — bleeding, chest not moving well, six more waiting',
   place:'Resus · mass casualty', key:{drug:'haemostasis',match:'tourniquet'},
   d:'Everyone you have met, in one room, on the worst night of the year.'},
 ];
@@ -1026,17 +1045,17 @@ const ep=()=>SEASON.find(e=>e.id===$('#ep').value)||SEASON[0];
    their episodes have art — a wrong face is worse than no face. Phase 3 (narrative
    prose pass) owns this copy: polish the lines here and in STINGER, nowhere else. */
 const RECAP={
- ep2:[['/img/critical.jpg','Nineteen years old. The wrong salad. Her throat closed in minutes.'],
-      ['/img/recovered.jpg','Adrenaline, first and fast — Ing walked out of this bay alive.'],
+ ep2:[['/img/critical.jpg','Ing, nineteen. The wrong salad, and her throat closing in minutes.'],
+      ['/img/recovered.jpg','Adrenaline, first and fast. She walked out of this bay alive.'],
       ['/img/stable.jpg','\u201cOne day I\u2019m coming back here. To help.\u201d She meant it.']],
- ep3:[[null,'Prasit, 58. A taxi driver with an artery closing on the clock.'],
-      [null,'The cath lab beat the clock. Time is muscle — you spent it well.'],
-      [null,'He taped his radio channel to the desk: \u201cThe day you need a car, call.\u201d']],
- ep4:[[null,'A five-year-old who would not cry. Khaopun — Prasit\u2019s grandson.'],
-      [null,'You kept him calm and the airway held. His stillness was the emergency.'],
-      [null,'His mother watched it all. Mali — one of ours, a nurse on this ward.']],
- ep5:[[null,'Mali. Nurse, mother, patient — the clot nobody saw coming.'],
-      [null,'Heparin bought her back. The system is stretched past its people.'],
+ ep3:[[null,'Prasit, 58. Thirty years driving the sick to this door — then the pain hit his jaw at the wheel.'],
+      [null,'The ECG told the truth and the cath lab beat the clock. Time is muscle — you spent it well.'],
+      [null,'He taped a radio channel to the triage desk: \u201cThe day you need a car — radio me.\u201d']],
+ ep4:[[null,'Prasit, back through the doors at a run — his grandson in his arms. Khaopun, five years old, far too quiet.'],
+      [null,'The boy would not cry, and the stillness was the emergency. You kept him calm; the airway held.'],
+      [null,'His mother watched from the doorway in uniform — a nurse on this ward, sixteen hours into her own shift.']],
+ ep5:[[null,'Mali — Khaopun\u2019s mother. The nurse who held everyone else up, brought down by a clot grown on double shifts.'],
+      [null,'The masquerader nearly took her. Heparin bought her back — but the system is stretched past its people.'],
       [null,'Tonight is the new year festival. The fireworks factory is running late.']],
 };
 /* ── B8 · stingers ── the black card after the outcome: one line that makes the next
@@ -1947,14 +1966,7 @@ function upNext(win,exam,eId){
     nxt=SEASON.slice(i+1).find(x=>!x.station)||null;
     note='Anchor this run first — the star is what opens this door.';
   }
-  if(!nxt){
-    /* Past the finale. Phase 3's epilogue (the transfer letter) replaces this card. */
-    return cineShow([{skip:false,html:'<div class="un"><div class="un-k">end of season 1</div>'
-      +'<div class="un-t" style="font-size:1.5rem">The Resus Bay</div>'
-      +'<p class="un-note">VITALS will return.</p>'
-      +'<div class="un-acts"><button class="btn go" data-un-x data-ga="upnext:shelf">back to the shelf</button></div></div>',
-      wire:r=>{r.querySelector('[data-un-x]').onclick=()=>{cineHide();$('#back').click();};}}]);
-  }
+  if(!nxt)return epilogue(exam);
   const auto=win&&!exam;
   cineShow([{skip:false,html:'<div class="un"><div class="un-k">'+(win?'up next':'run it back')+'</div>'
     +'<div class="un-card">'+(nxt.art?'<img src="'+nxt.art+'" alt="">':'<div class="un-ph"></div>')
@@ -1976,6 +1988,38 @@ function upNext(win,exam,eId){
         if(!el||!cineQ){clearInterval(tid);return;}
         if(--n<=0){clearInterval(tid);go();}else el.textContent=n;},1000);
         cineQ.timer=tid;}
+    }}]);
+}
+/* ── the season 1 epilogue (Phase 3 owns this copy) ───────────────────────────
+   Three cards past the finale stinger, playable only after an EP5 win: the wrinkle
+   Ing leaves in the queue log (season 2's buried fuse), the transfer letter on the
+   desk (season 2's front door), and the title that promises it. Prose layer only —
+   nothing here touches the run, the star, or the record; the anchor door on the
+   last card is the same scroll-to-result the up-next card already offers. */
+function epilogue(exam){
+  cineShow([
+   {html:'<div class="epi"><div class="epi-k">later \u00b7 the queue log</div>'
+    +'<div class="sting">Ing signs off her first volunteer shift and leaves one note on the queue log: '
+    +'three of tonight\u2019s patients came in fighting for breath \u2014 and not a burn on any of them. '
+    +'\u201cStrange, isn\u2019t it?\u201d Nobody has time to think about it.</div></div>'
+    +'<span class="cine-skip">tap to continue</span>'},
+   {html:'<div class="epi"><div class="epi-k">the morning after \u00b7 one letter on the desk</div>'
+    +'<div class="epi-letter"><div class="epi-lh">office of the provincial health board<br>re: second-year posting</div>'
+    +'<p>Your residency year is complete. Effective the first of the month, you are transferred to a district hospital, four hours upcountry.</p>'
+    +'<p>Thirty beds. One ambulance. One doctor on the roster.</p></div>'
+    +'<div class="epi-punch">There is no resus bay there.<br>There is no next shift coming to take over.<br><b>There is you.</b></div></div>'
+    +'<span class="cine-skip">tap to continue</span>'},
+   {skip:false,html:'<div class="un"><div class="un-k">end of season 1 \u00b7 the resus bay</div>'
+    +'<div class="epi-ret">VITALS will return</div>'
+    +'<div class="epi-s2">Season 2<span>The District</span></div>'
+    +(exam?'<p class="un-note">Anchor this run \u2014 the finale star belongs on the record.</p>':'')
+    +'<div class="un-acts">'
+    +(exam?'<button class="btn go" data-epi-anchor data-ga="epilogue:anchor">review &amp; anchor</button>':'')
+    +'<button class="btn'+(exam?'':' go')+'" data-epi-x data-ga="epilogue:shelf">back to the shelf</button></div></div>',
+    wire:r=>{
+      const a=r.querySelector('[data-epi-anchor]');
+      if(a)a.onclick=()=>{cineHide();$('#result').scrollIntoView({behavior:'smooth',block:'nearest'});};
+      r.querySelector('[data-epi-x]').onclick=()=>{cineHide();$('#back').click();};
     }}]);
 }
 renderSeason(); renderModes();
