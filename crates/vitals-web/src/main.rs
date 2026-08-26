@@ -98,6 +98,10 @@ struct Session {
     /// leaf list forks from the tree on chain and every later proof fails. The nonce stays
     /// here so the run can be revealed later; it never reaches the chain.
     commit: Option<([u8; 32], u64, [u8; 32])>,
+    /// Whether this run was declared an exam — bound into the commitment hash before play, so
+    /// it is carried from commit to anchor and stamped into the record from here, never
+    /// re-chosen after the outcome is known.
+    exam_mode: bool,
     /// The conversation, kept only so she remembers what she already told you. It is never
     /// hashed, never anchored, and never leaves this process.
     said: Vec<(String, String)>,
@@ -126,6 +130,8 @@ struct Saved {
     anchored: bool,
     #[serde(default)]
     commit: Option<([u8; 32], u64, [u8; 32])>,
+    #[serde(default)]
+    exam_mode: bool,
 }
 
 const SESSIONS: &str = "sessions";
@@ -171,6 +177,7 @@ impl Session {
             said: self.said.clone(),
             anchored: self.anchored,
             commit: self.commit,
+            exam_mode: self.exam_mode,
         }
     }
 
@@ -193,6 +200,7 @@ impl Session {
             difficulty: difficulty(&saved.ep),
             anchored: saved.anchored,
             commit: saved.commit,
+            exam_mode: saved.exam_mode,
             said: saved.said,
             saved_at: Some(std::time::Instant::now()),
         })
@@ -409,6 +417,7 @@ fn new_session(ep: &str) -> Result<Session, String> {
         said: Vec::new(),
         saved_at: None,
         commit: None,
+        exam_mode: false,
         })
 }
 
@@ -1070,14 +1079,17 @@ fn main() {
                     use solana_sdk::signature::Signer;
                     solana_sdk::signature::Keypair::new().pubkey().to_bytes()
                 };
-                let hash = vitals_progress::record::commitment_hash(&case, &person.to_bytes(), &nonce);
+                // Exam-ness is part of the declaration, bound into the hash the chain stamps —
+                // decided here, before play, and never re-chosen after the outcome is known.
+                let mode: u8 = param(&url, "exam").map(|v| v == "1").unwrap_or(false) as u8;
+                let hash = vitals_progress::record::commitment_hash(&case, &person.to_bytes(), &nonce, mode);
                 match c.prepare_commit(&who, &person, hash) {
                     Ok(p) => {
                         let msg = hex_bytes(&p.message());
                         pendings.lock().unwrap().insert(
                             who.to_string(),
                             PendingWork { pending: p, session: id.clone(), account: person,
-                                          prove: None, commit: Some((hash, nonce)),
+                                          prove: None, commit: Some((hash, nonce, mode)),
                                           index: 0, score: 0, level: None, link: false },
                         );
                         json(serde_json::json!({ "sign": msg }))
@@ -1136,7 +1148,7 @@ fn main() {
                     continue;
                 };
                 let rec: AttemptRecord =
-                    match record_for(person.to_bytes(), sce, sce, s.difficulty, false, &s.tape, &r, chash, cslot) {
+                    match record_for(person.to_bytes(), sce, sce, s.difficulty, s.exam_mode, &s.tape, &r, chash, cslot) {
                         Ok(rec) => rec,
                         Err(e) => {
                             let _ = req.respond(json(serde_json::json!({ "error": e })));
@@ -1308,7 +1320,7 @@ fn main() {
                     }
                 };
                 let id = work.account;
-                if let Some((hash, nonce)) = work.commit {
+                if let Some((hash, nonce, mode)) = work.commit {
                     let _ = req.respond(match c.submit(&tx) {
                         Ok(()) => match c.commitment(&id) {
                             // Read back rather than assumed: the slot was assigned on chain, and
@@ -1319,9 +1331,12 @@ fn main() {
                                 let mut map = sessions.lock().unwrap();
                                 if let Some(s) = map.get_mut(&work.session) {
                                     s.commit = Some((hash, cm.slot, nonce));
+                                    // From the landed commitment, never re-chosen later: the
+                                    // anchor stamps the record's exam flag from this field.
+                                    s.exam_mode = mode == 1;
                                     persist(&store, &work.session, s, true);
                                 }
-                                json(serde_json::json!({ "committed": true, "started": cm.started }))
+                                json(serde_json::json!({ "committed": true, "started": cm.started, "exam": mode == 1 }))
                             }
                             _ => json(serde_json::json!({
                                 "error": "the commit landed but could not be read back — try again"
@@ -1412,10 +1427,11 @@ struct PendingWork {
     prove: Option<chain::Pending>,
     /// Which run this anchors. Empty for a claim.
     session: String,
-    /// Set when this transaction is a pre-run commitment: (hash, nonce). On success the slot is
-    /// read back from the account — the program assigned it, so only the chain knows it — and
-    /// all three land in the session for the record to use at anchor time.
-    commit: Option<([u8; 32], [u8; 32])>,
+    /// Set when this transaction is a pre-run commitment: (hash, nonce, mode). On success the
+    /// slot is read back from the account — the program assigned it, so only the chain knows
+    /// it — and everything lands in the session for the record to use at anchor time. The mode
+    /// rides here so the session's exam flag is written only when the commitment actually lands.
+    commit: Option<([u8; 32], [u8; 32], u8)>,
     /// Whose record this lands on — not necessarily the key that signs it.
     account: solana_sdk::pubkey::Pubkey,
     index: u64,

@@ -782,10 +782,14 @@ function showTally(){
   if(TALLY.started==null && !TALLY.anchored) return;
   $('#tally').textContent=`started ${TALLY.started??0} · anchored ${TALLY.anchored}`;
 }
-async function commitRun(){
+/* The mode is part of the declaration — bound into the commitment hash before play — so the
+   ceremony says it out loud: the player sees the label they are binding. Practice until the
+   OSCE stations open; entering one will pass exam=true. */
+async function commitRun(exam){
   runCommitted=false;
-  const r=await chainDo('/api/commit?id='+id);
-  if(r&&r.committed){runCommitted=true; ev('note','—','committed — attempt #'+r.started+' on the record');
+  const r=await chainDo('/api/commit?id='+id+'&exam='+(exam?1:0));
+  if(r&&r.committed){runCommitted=true;
+    ev('note','—','committed — attempt #'+r.started+' on the record · '+(r.exam?'OSCE exam':'practice'));
     if(r.started!=null){TALLY.started=r.started; showTally();}}
   else if(r&&r.error&&!/no chain/.test(r.error)) ev('note','—','commit failed: '+r.error);
   return r;
