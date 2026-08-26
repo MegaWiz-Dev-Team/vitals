@@ -66,13 +66,77 @@ addEventListener('click',function(e){
 .coin{background:rgba(255,255,255,.18);padding:.25rem .65rem;border-radius:999px;
   font-family:"IBM Plex Mono",monospace;font-size:.72rem;font-weight:600}
 .lb-wrap{max-width:66rem;margin:0 auto;padding:2rem 1.1rem 4rem}
-.lb-hero{text-align:center;margin-bottom:1.8rem}
 .lb-eyebrow{font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.16em;
   text-transform:uppercase;color:var(--mint-d);font-weight:600}
-.lb-hero h1{font-family:Archivo,sans-serif;font-size:clamp(1.7rem,4.4vw,2.9rem);font-weight:800;
-  letter-spacing:-.03em;line-height:1.1;margin:.5rem 0 .6rem;color:#12262c;text-wrap:balance}
-.lb-hero p{max-width:38em;margin:0 auto;color:#5b6b70;font-size:.98rem}
-.lb-grid{display:grid;gap:.9rem;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr))}
+
+/* ── A1 · the billboard ───────────────────────────────────────────────────────
+   The top of the shelf is your next episode, the way a streaming home screen leads
+   with the thing you were watching. One button, full-bleed art, the progress bar
+   where the thumb expects it. */
+.hero{display:block;width:100%;border:0;padding:0;margin:0 0 1.7rem;cursor:pointer;text-align:left;
+  border-radius:18px;overflow:hidden;position:relative;background:var(--navy);color:#fff;
+  box-shadow:0 14px 34px rgba(15,45,58,.28);font-family:inherit}
+.hero:focus-visible{outline:3px solid var(--mint);outline-offset:2px}
+.hero-art{position:absolute;inset:0;overflow:hidden}
+.hero-art img{width:100%;height:100%;object-fit:cover;display:block}
+.hero-void{width:100%;height:100%;display:grid;place-items:center;
+  background:linear-gradient(150deg,#0f2d3a,#1f9d86)}
+.hero-void span{font-family:Archivo,sans-serif;font-weight:800;font-size:clamp(3rem,15vw,6rem);
+  color:rgba(255,255,255,.13);letter-spacing:-.04em;white-space:nowrap}
+.hero-shade{position:absolute;inset:0;
+  background:linear-gradient(to top,rgba(6,18,22,.93) 0%,rgba(6,18,22,.5) 45%,rgba(6,18,22,.06) 78%)}
+.hero-txt{position:relative;padding:5.5rem 1.15rem 1.2rem;max-width:36rem}
+@media(min-width:640px){.hero-txt{padding:8rem 1.6rem 1.5rem}}
+.hero-eye{font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.18em;
+  text-transform:uppercase;color:#7fe7d2;font-weight:600}
+.hero-txt h1{font-family:Archivo,sans-serif;font-size:clamp(1.5rem,5.4vw,2.5rem);font-weight:800;
+  letter-spacing:-.03em;line-height:1.08;margin:.4rem 0 .45rem;text-wrap:balance}
+.hero-txt p{margin:0 0 .85rem;font-size:.9rem;color:rgba(255,255,255,.82);max-width:36em}
+.hero-act{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap}
+.hero-play{display:inline-block;background:#fff;color:#0f2d3a;font-weight:700;font-size:.9rem;
+  padding:.55rem 1.1rem;border-radius:10px;font-family:Archivo,sans-serif}
+.hero:hover .hero-play{background:var(--mint);color:#06231d}
+.hero-rt{font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.1em;
+  text-transform:uppercase;color:rgba(255,255,255,.65)}
+.hero-prog{margin-top:.85rem;height:.28rem;border-radius:999px;background:rgba(255,255,255,.25);
+  overflow:hidden;max-width:22rem}
+.hero-prog i{display:block;height:100%;background:var(--mint)}
+
+/* ── A2 · the row ─────────────────────────────────────────────────────────────
+   One season, one shelf, thumbed sideways. A grid reads as a menu; a row you swipe
+   reads as a season. It bleeds to the screen edge on a phone, the way shelves do. */
+.row-h{display:flex;align-items:flex-end;gap:.8rem;margin:0 0 .7rem}
+.row-t h2{font-family:Archivo,sans-serif;font-size:1.3rem;font-weight:800;letter-spacing:-.02em;
+  margin:.15rem 0 0;color:#12262c}
+.lb-row{display:flex;gap:.75rem;overflow-x:auto;padding:.25rem 1.1rem 1.05rem;margin:0 -1.1rem;
+  scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
+.lb-row .tile{flex:0 0 clamp(13.5rem,64vw,15.5rem);scroll-snap-align:start}
+/* A3 · the interlude tile: the OSCE stations sit on the same shelf but are not
+   episodes — smaller, scrub-green edge, wearing their own banner. */
+.lb-row .tile.st{flex-basis:clamp(10.5rem,46vw,12rem);align-self:center;
+  border:2px solid var(--mint-d);box-shadow:0 4px 14px rgba(31,157,134,.2)}
+.tile.st .art{aspect-ratio:16/9}
+.st-k{position:absolute;top:0;left:0;right:0;z-index:1;text-align:center;
+  font-family:"IBM Plex Mono",monospace;font-size:.5rem;letter-spacing:.22em;
+  text-transform:uppercase;color:#062019;font-weight:700;padding:.24rem 0;
+  background:linear-gradient(90deg,#2ed3b4,#7fe7d2)}
+.tile.st .no{top:1.45rem}
+.tile .rt{display:block;font-family:"IBM Plex Mono",monospace;font-size:.62rem;letter-spacing:.1em;
+  text-transform:uppercase;color:#8aa0a4;margin:0 0 .15rem}
+.prog{position:absolute;left:0;right:0;bottom:0;height:.26rem;background:rgba(6,20,24,.5)}
+.prog i{display:block;height:100%;background:var(--mint)}
+
+/* ── C10 · the season ring ── how far through the season, and the stars that open
+   its doors, in one glance beside the season title. */
+.ring{display:flex;align-items:center;gap:.5rem;margin-left:auto;flex:none}
+.ring svg{width:2.6rem;height:2.6rem;transform:rotate(-90deg)}
+.ring-bg{fill:none;stroke:#d7e2e1;stroke-width:3}
+.ring-fg{fill:none;stroke:var(--mint-d);stroke-width:3;stroke-linecap:round}
+.ring-n{transform:rotate(90deg);transform-origin:18px 18px;font-family:Archivo,sans-serif;
+  font-size:.72rem;font-weight:800;fill:#12262c;text-anchor:middle}
+.ring-t{font-family:"IBM Plex Mono",monospace;font-size:.6rem;line-height:1.55;color:#5b6b70;
+  letter-spacing:.06em;text-transform:uppercase}
+.ring-t b{color:#12262c}
 .tile{background:#fff;border:1px solid var(--border);border-radius:16px;overflow:hidden;
   box-shadow:0 6px 20px rgba(15,45,58,.07);cursor:pointer;text-align:left;padding:0;
   display:flex;flex-direction:column;transition:transform .08s,box-shadow .12s}
@@ -505,14 +569,20 @@ a.give:hover{filter:brightness(1.06)}
   </div>
 
   <div class="lb-wrap">
-    <div class="lb-hero">
-      <div class="lb-eyebrow">5 episodes · one season · every run anchored</div>
-      <h1>A patient is dying on a clock<br>and you decide what happens next</h1>
-      <p>Talk to her, treat her, and watch the monitor tell you whether you were right.
-         Anyone can play. Nobody can fake the replay.</p>
-    </div>
+    <!-- A1 · the billboard: your next episode, not a poster for the product. renderHero()
+         fills it — a new player sees EP1 wearing the marketing line, a returning one sees
+         the shift they left half-done, with the bar to prove it. -->
+    <button class="hero" id="hero" data-ga="hero"></button>
 
-    <div class="lb-grid" id="eps"></div>
+    <div class="row-h">
+      <div class="row-t">
+        <div class="lb-eyebrow">Season 1</div>
+        <h2>The Resus Bay</h2>
+      </div>
+      <!-- C10 · the season at a glance: episodes watched, stars banked -->
+      <div class="ring" id="ring"></div>
+    </div>
+    <div class="lb-row" id="eps"></div>
 
     <p class="lb-foot">Episodes open as you clear the one before — skill unlocks the story.
        A sponsor can open one for the whole bay; nothing you pay ever changes your standing.</p>
@@ -833,33 +903,36 @@ const asMe=()=>ME?'&player='+ME.pub:'';
 
 /* ─── the season ───────────────────────────────────────────────────────────── */
 const SEASON=[
- {id:'ep1',n:'EP1',t:'The Last Bite',tier:'student',art:'/img/stable.jpg',
+ {id:'ep1',n:'EP1',sn:'S1:E1',t:'The Last Bite',tier:'student',art:'/img/stable.jpg',
+  rt:'a 12-minute shift',mins:12,preview:'ep1_cold_open',
   who:'Ing · F 19', line:'breathless, urticaria all over, lips swelling',
   place:'Emergency department · night', key:{drug:'Adrenaline',match:'adren'},
   d:'A nineteen-year-old, ten minutes after the wrong salad. Her throat is closing.'},
  /* The stations are exam-only interludes — same bay, same engine, but the card commits
     exam-ness before the first order, and the star it earns is what opens the next episode. */
- {id:'osce-a',n:'OSCE A',t:'Rash After the Buffet',tier:'student',station:true,
+ {id:'osce-a',n:'OSCE A',sn:'S1 · OSCE A',t:'Rash After the Buffet',tier:'student',station:true,
+  rt:'an 8-minute station',mins:8,
   who:'Somchai · M 71', line:'urticaria head to toe, face swelling, cramping belly pain',
   place:'OSCE station · examiner watching', key:{drug:'Adrenaline',match:'adren'},
   d:'Thirty minutes after a meal he will not talk about. You saw this in EP1 — prove it.'},
- {id:'ep2',n:'EP2',t:'Time Is Muscle',tier:'intern',
+ {id:'ep2',n:'EP2',sn:'S1:E2',t:'Time Is Muscle',tier:'intern',rt:'a 12-minute shift',mins:12,
   who:'Prasit · M 58', line:'crushing chest pain to the jaw, sweating',
   place:'Emergency department · evening', key:{drug:'reperfusion',match:'cath'},
   d:'A taxi driver, chest pain to the jaw. The ECG tells the truth in ten minutes.'},
- {id:'osce-b',n:'OSCE B',t:'Ten Minutes to Prove It',tier:'intern',station:true,
+ {id:'osce-b',n:'OSCE B',sn:'S1 · OSCE B',t:'Ten Minutes to Prove It',tier:'intern',station:true,
+  rt:'a 10-minute station',mins:10,
   who:'Somchai Jaidee · M 25', line:'crushing chest pain to both arms, nauseous, terrified',
   place:'OSCE station · examiner watching', key:{drug:'the ECG',match:'ecg'},
   d:'A young smoker certain he is dying. The wall clock says ten minutes — beat it.'},
- {id:'ep3',n:'EP3',t:"Don't Make Him Cry",tier:'resident',
+ {id:'ep3',n:'EP3',sn:'S1:E3',t:"Don't Make Him Cry",tier:'resident',rt:'a 14-minute shift',mins:14,
   who:'Khaopun · M 5', line:'tripod, drooling, muffled voice, will not lie down',
   place:'Paediatric bay · evening', key:{drug:'the airway team',match:'ent'},
   d:'A five-year-old sitting very still. His stillness is the frightening part.'},
- {id:'ep4',n:'EP4',t:'The Masquerader',tier:'resident',
+ {id:'ep4',n:'EP4',sn:'S1:E4',t:'The Masquerader',tier:'resident',rt:'a 12-minute shift',mins:12,
   who:'Mali · F 34', line:'breathless, pleuritic pain, looks anxious',
   place:'Emergency department · afternoon', key:{drug:'anticoagulation',match:'hepar'},
   d:'Everything looks normal. The oxygen is quietly low and the heart is too fast.'},
- {id:'ep5',n:'EP5',t:'The Night the Stars Fell',tier:'resident',
+ {id:'ep5',n:'EP5',sn:'S1:E5',t:'The Night the Stars Fell',tier:'resident',rt:'an 18-minute shift',mins:18,
   who:'blast casualty · M 40s', line:'bleeding, chest not moving well, six more waiting',
   place:'Resus · mass casualty', key:{drug:'haemostasis',match:'tourniquet'},
   d:'Everyone you have met, in one room, on the worst night of the year.'},
@@ -1181,6 +1254,11 @@ function paint(v){
   $('#mini-status').textContent=v.status;
   $('#clock').textContent=fmt(v.elapsed); clockNow=v.elapsed;
 
+  /* A2 · the shelf remembers where you left the shift: vitals.seen drives the hero's
+     Continue and each card's bar. Throttled to one write per 10s of case time. */
+  if(v.elapsed<seenMark)seenMark=-1e9;
+  if(v.elapsed-seenMark>=10||v.outcome){seenMark=v.elapsed;markSeen($('#ep').value,v.elapsed);}
+
   /* NEWS2 — the score a ward escalates on. It is a total out of 20 rather than a percentage,
      and it does not average: one observation scoring 3 raises the band on its own, which is the
      whole reason the invented "stability" meter had to go. */
@@ -1497,17 +1575,20 @@ function paintSeason(){
   $('#eps').innerHTML=SEASON.map((e,i)=>{
     const un=open_(i), done=cleared().includes(e.id), star=starred().includes(e.id);
     const need=NEED[e.id];
-    const art=e.art?`<img src="${e.art}" alt="">`:`<div class="art-ph">art in production</div>`;
+    const pr=progOf(e);
+    const art=e.art?`<img src="${e.art}" alt="">`:`<div class="art-ph">${e.sn||e.n}</div>`;
     /* A locked door names its price in stars, and stars come only from passed exams — no
        claim button here: the count moves when an anchored exam clears the bar, so the door
        opens the moment the record earns it and not a click sooner. */
     const lockGo = (STARS!=null||localStars().length)
       ? `${need===1?'1 star':need+' stars'} to open — pass the OSCE stations`
       : `clear ${SEASON[i-1]?SEASON[i-1].n:''} to open`;
-    return `<button class="tile ${un?'':'lock'}" data-ep="${e.id}" data-ga="tile:${e.id}" ${un?'':'disabled'}>
-      <div class="art">${art}<span class="no">${e.n}${star?' <span title="anchored on chain">★</span>':''}${done?' · cleared':''}</span><span class="tier">${e.tier}</span></div>
-      <div class="body"><h3>${e.t}</h3><p>${e.d}</p>
-      <span class="go">${un?(e.station?'\u2605 sit the station — exam conditions':'enter the bay'):lockGo}</span>${un&&!e.station&&EXAM_EPS.includes(e.id)?`<span class="go exam" data-exam="${e.id}" data-ga="exam:${e.id}">\u2605 sit the OSCE exam</span>`:''}</div></button>`;
+    const badge=e.station?`<span class="st-k">night shift training</span>`:'';
+    const bar=(!e.station&&pr>0)?`<span class="prog"><i style="width:${Math.round(pr*100)}%"></i></span>`:'';
+    return `<button class="tile${e.station?' st':''}${un?'':' lock'}" data-ep="${e.id}" data-ga="tile:${e.id}" ${un?'':'disabled'}>
+      <div class="art">${art}${badge}<span class="no">${e.sn||e.n}${star?' <span title="anchored on chain">★</span>':''}${done?' · watched':''}</span><span class="tier">${e.tier}</span>${bar}</div>
+      <div class="body"><h3>${e.t}</h3><span class="rt">${e.rt||''}</span><p>${e.d}</p>
+      <span class="go">${un?(e.station?'\u2605 sit the station — exam conditions':(done?'watch again':'enter the bay')):lockGo}</span>${un&&!e.station&&EXAM_EPS.includes(e.id)?`<span class="go exam" data-exam="${e.id}" data-ga="exam:${e.id}">\u2605 sit the OSCE exam</span>`:''}</div></button>`;
   }).join('');
   $('#eps').querySelectorAll('.tile:not(.lock)').forEach(b=>b.onclick=()=>{
     /* A station card is only ever an exam — that is what a station is. Episodes enter as
@@ -1523,6 +1604,77 @@ function paintSeason(){
     $('#ep').value=x.dataset.exam; $('#lobby').classList.add('hide');
     $('#game').classList.remove('hide'); $('#start').click(); });
   $('#coin-n').textContent=cleared().length;
+  renderHero(); paintRing();
+}
+
+/* ── A1/A2 · what the shelf remembers ─────────────────────────────────────────
+   vitals.seen: per entry, the furthest the case clock ever ran here and when it last
+   did. Written by paint(), read by the hero and the per-card bars. A convenience
+   cache like vitals.cleared, never an authority on anything the chain certifies. */
+const seenMap=()=>{try{return JSON.parse(localStorage.getItem('vitals.seen')||'{}')}catch(e){return{}}};
+let seenMark=-1e9;
+function markSeen(epId,t){
+  const m=seenMap(), cur=m[epId]||{t:0};
+  m[epId]={t:Math.max(t,cur.t||0),at:Date.now()};
+  try{localStorage.setItem('vitals.seen',JSON.stringify(m))}catch(e){}
+}
+/* How much of the card's bar to fill: watched fills it, a part-run shows where it
+   stands against the shift's runtime, and a run that never really began shows nothing. */
+const progOf=e=>{
+  if(cleared().includes(e.id))return 1;
+  const s=seenMap()[e.id];
+  if(!s||!e.mins)return 0;
+  const f=s.t/(e.mins*60);
+  return f>0?Math.min(.94,Math.max(.06,f)):0;
+};
+/* Which entry the billboard wears. A part-watched shift wins; failing that, the next
+   open door on the mainline — stations included, because the mainline runs through
+   them; a spotless browser gets EP1 wearing the marketing line. */
+function heroPick(){
+  const m=seenMap(), cl=cleared();
+  let cont=null;
+  for(const e of SEASON){ const x=m[e.id];
+    if(x&&!cl.includes(e.id)&&(!cont||x.at>(m[cont.id]||{}).at)) cont=e; }
+  if(cont)return{e:cont,mode:'continue'};
+  const nxt=SEASON.find((e,i)=>!cl.includes(e.id)&&open_(i));
+  if(nxt)return{e:nxt,mode:(cl.length||Object.keys(m).length)?'next':'new'};
+  return{e:SEASON[SEASON.length-1],mode:'rewatch'};
+}
+function renderHero(){
+  const p=heroPick(), e=p.e, pr=progOf(e);
+  const art=e.art?`<img src="${e.art}" alt="">`
+    :`<div class="hero-void"><span>${e.sn||e.n}</span></div>`;
+  const eye = p.mode==='continue'?`Continue watching · ${e.sn||e.n}`
+    : p.mode==='next'?`Up next · ${e.sn||e.n}`
+    : p.mode==='rewatch'?`Watch again · ${e.sn||e.n}`
+    : `${e.sn} · ${e.t}`;
+  const h1 = p.mode==='new'
+    ? 'A patient is dying on a clock<br>and you decide what happens next' : e.t;
+  const line = p.mode==='new'
+    ? 'Talk to her, treat her, and watch the monitor tell you whether you were right. Anyone can play. Nobody can fake the replay.'
+    : e.d;
+  const play = p.mode==='continue'?`▶ Continue ${e.sn||e.n}`
+    : p.mode==='new'?'▶ Play S1:E1':`▶ Play ${e.sn||e.n}`;
+  $('#hero').innerHTML=`<div class="hero-art">${art}<div class="hero-shade"></div></div>
+    <div class="hero-txt"><div class="hero-eye">${eye}</div><h1>${h1}</h1><p>${line}</p>
+      <div class="hero-act"><span class="hero-play">${play}</span><span class="hero-rt">${e.rt||''}</span></div>
+      ${pr>0&&pr<1?`<div class="hero-prog"><i style="width:${Math.round(pr*100)}%"></i></div>`:''}</div>`;
+  $('#hero').onclick=()=>{
+    EXAMRUN=!!e.station;
+    $('#ep').value=e.id; $('#lobby').classList.add('hide');
+    $('#game').classList.remove('hide'); $('#start').click(); };
+}
+/* C10 · the ring: five episodes round the dial, stars under it. Stations are the
+   season's interludes, so only the five shifts count toward the circle. */
+function paintRing(){
+  const n=SEASON.filter(e=>!e.station&&cleared().includes(e.id)).length;
+  const st=starsKnown();
+  const C=97.4;
+  $('#ring').innerHTML=`<svg viewBox="0 0 36 36" aria-hidden="true">
+      <circle cx="18" cy="18" r="15.5" class="ring-bg"/>
+      <circle cx="18" cy="18" r="15.5" class="ring-fg" stroke-dasharray="${(C*n/5).toFixed(1)} ${C}"/>
+      <text x="18" y="21.5" class="ring-n">${n}</text></svg>
+    <span class="ring-t"><b>${n} of 5</b> episodes<br>\u2b50 ${st} star${st===1?'':'s'}</span>`;
 }
 renderSeason(); renderModes();
 /* The panel does three different jobs for three different situations. Showing all three at
