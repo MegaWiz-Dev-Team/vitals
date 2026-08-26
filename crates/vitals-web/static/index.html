@@ -158,12 +158,30 @@ addEventListener('click',function(e){
   box-shadow:0 4px 0 #178b76;transition:transform .06s,box-shadow .06s}
 .tile:active .go{transform:translateY(3px);box-shadow:0 1px 0 #178b76}
 .tile .go.exam{background:linear-gradient(180deg,#ffd766,#f0b429);box-shadow:0 4px 0 #c68f1f;color:#4a3403;margin-left:.45rem}
-.tile.lock{cursor:not-allowed}
-.tile.lock .art{filter:grayscale(.92);opacity:.62}
-.tile.lock .art::after{content:'🔒';position:absolute;inset:0;display:grid;place-items:center;
-  font-size:1.9rem;filter:none}
-.tile.lock h3,.tile.lock p{color:var(--lock)}
+/* ── A3+A5 · a locked episode is a teaser, not a wall ─────────────────────────
+   The art stays, blurred; the price is named in stars on the art; and when a teaser
+   clip exists on the volume the trailer door appears — absent asset, absent button. */
+.tile.lock{cursor:default}
+.tile.lock .art img{filter:blur(7px) saturate(.7) brightness(.82);transform:scale(1.08)}
+.tile.lock .art-ph{filter:blur(2px);opacity:.55}
+.tile.lock h3{color:#3d5257}
+.tile.lock p{color:#7c8f93}
 .tile.lock .go{background:#fff;color:var(--lock);border:1px solid var(--border);box-shadow:0 3px 0 #cfdcdc}
+.tease{position:absolute;left:.6rem;bottom:.55rem;z-index:1;font-family:"IBM Plex Mono",monospace;
+  font-size:.62rem;letter-spacing:.1em;color:#fff;background:rgba(6,20,24,.72);
+  padding:.2rem .55rem;border-radius:999px;backdrop-filter:blur(4px)}
+.tile .go.trail{background:linear-gradient(180deg,#3a5560,#22333b);color:#fff;border:0;
+  box-shadow:0 4px 0 #101b20;cursor:pointer;font-family:inherit;margin-left:.45rem}
+
+/* ── A4 · motion ──────────────────────────────────────────────────────────────
+   Hover (or first touch) puts a card in motion: the episode's clip, streamed from
+   /clip/ where the volume serves it, else a CSS-only Ken Burns drift on the still.
+   Nothing is embedded — the clip streams or the still simply moves. */
+.pv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+@keyframes kburns{from{transform:scale(1.02)}to{transform:scale(1.14) translate(-2.2%,-1.4%)}}
+.art img.kb{animation:kburns 6.5s ease-in-out infinite alternate}
+.hero-art img{animation:kburns 14s ease-in-out infinite alternate}
+@media (prefers-reduced-motion:reduce){.art img.kb,.hero-art img{animation:none}}
 .art-ph{position:absolute;inset:0;display:grid;place-items:center;color:rgba(255,255,255,.5);
   font-family:"IBM Plex Mono",monospace;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase}
 .lb-foot{margin-top:1.6rem;text-align:center;font-size:.82rem;color:#6b7d82;max-width:44em;
@@ -588,6 +606,9 @@ a.give:hover{filter:brightness(1.06)}
 .un-note{font-size:.8rem;color:#ffd766;margin:0 0 .8rem}
 .un-acts{display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap}
 .un-count{margin-top:.8rem;font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:#8aa0a4}
+.trailer{cursor:default;width:min(38rem,94vw);display:flex;flex-direction:column;gap:.7rem;align-items:center}
+.trailer video{width:100%;border-radius:10px;background:#000;max-height:70vh}
+.tr-h{font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.2em;color:#7fe7d2;text-transform:uppercase}
 </style>
 </head>
 <body>
@@ -1663,10 +1684,16 @@ function paintSeason(){
       : `clear ${SEASON[i-1]?SEASON[i-1].n:''} to open`;
     const badge=e.station?`<span class="st-k">night shift training</span>`:'';
     const bar=(!e.station&&pr>0)?`<span class="prog"><i style="width:${Math.round(pr*100)}%"></i></span>`:'';
-    return `<button class="tile${e.station?' st':''}${un?'':' lock'}" data-ep="${e.id}" data-ga="tile:${e.id}" ${un?'':'disabled'}>
+    /* A locked card is a <div>, not a disabled <button>: a disabled button swallows
+       its children's clicks, and the trailer door inside has to stay clickable. */
+    if(!un) return `<div class="tile lock${e.station?' st':''}" data-ep="${e.id}">
+      <div class="art">${art}${badge}<span class="no">${e.sn||e.n}</span><span class="tier">${e.tier}</span><span class="tease">unlocks at \u2b50${need}</span></div>
+      <div class="body"><h3>${e.t}</h3><span class="rt">${e.rt||''}</span><p>${e.d}</p>
+      <span class="go">${lockGo}</span>${TRAILER[e.id]?`<button class="go trail" data-trailer="${e.id}" data-ga="trailer:${e.id}">▶ watch trailer</button>`:''}</div></div>`;
+    return `<button class="tile${e.station?' st':''}" data-ep="${e.id}" data-ga="tile:${e.id}">
       <div class="art">${art}${badge}<span class="no">${e.sn||e.n}${star?' <span title="anchored on chain">★</span>':''}${done?' · watched':''}</span><span class="tier">${e.tier}</span>${bar}</div>
       <div class="body"><h3>${e.t}</h3><span class="rt">${e.rt||''}</span><p>${e.d}</p>
-      <span class="go">${un?(e.station?'\u2605 sit the station — exam conditions':(done?'watch again':'enter the bay')):lockGo}</span>${un&&!e.station&&EXAM_EPS.includes(e.id)?`<span class="go exam" data-exam="${e.id}" data-ga="exam:${e.id}">\u2605 sit the OSCE exam</span>`:''}</div></button>`;
+      <span class="go">${e.station?'\u2605 sit the station — exam conditions':(done?'watch again':'enter the bay')}</span>${!e.station&&EXAM_EPS.includes(e.id)?`<span class="go exam" data-exam="${e.id}" data-ga="exam:${e.id}">\u2605 sit the OSCE exam</span>`:''}</div></button>`;
   }).join('');
   $('#eps').querySelectorAll('.tile:not(.lock)').forEach(b=>b.onclick=()=>{
     /* A station card is only ever an exam — that is what a station is. Episodes enter as
@@ -1677,8 +1704,18 @@ function paintSeason(){
      commitment before the first order is possible. */
   $('#eps').querySelectorAll('[data-exam]').forEach(x=>x.onclick=(ev)=>{
     ev.stopPropagation(); enterEpisode(x.dataset.exam,true); });
+  /* A5 · the trailer door on a locked card. */
+  $('#eps').querySelectorAll('[data-trailer]').forEach(x=>x.onclick=(ev)=>{
+    ev.stopPropagation(); playTrailer(x.dataset.trailer); });
+  /* A4 · motion on the open cards: hover on a pointer, first touch on a phone —
+     the touch starts the loop and the tap still enters, so nothing costs a second tap. */
+  $('#eps').querySelectorAll('.tile:not(.lock)').forEach(b=>{
+    b.addEventListener('pointerenter',()=>motionOn(b),{passive:true});
+    b.addEventListener('pointerleave',()=>motionOff(b));
+    b.addEventListener('touchstart',()=>motionOn(b),{passive:true});
+  });
   $('#coin-n').textContent=cleared().length;
-  renderHero(); paintRing();
+  renderHero(); paintRing(); probeTrailers();
 }
 
 /* ── A1/A2 · what the shelf remembers ─────────────────────────────────────────
@@ -1746,6 +1783,61 @@ function paintRing(){
       <circle cx="18" cy="18" r="15.5" class="ring-fg" stroke-dasharray="${(C*n/5).toFixed(1)} ${C}"/>
       <text x="18" y="21.5" class="ring-n">${n}</text></svg>
     <span class="ring-t"><b>${n} of 5</b> episodes<br>\u2b50 ${st} star${st===1?'':'s'}</span>`;
+}
+
+/* ── A4 · motion previews ─────────────────────────────────────────────────────
+   One failed clip turns previews off for the visit, the way the film flag does —
+   every later hover takes the Ken Burns path instead of re-requesting missing files. */
+let PVOK=true;
+function motionOn(tile){
+  if(tile.dataset.pv)return; tile.dataset.pv='1';
+  const e=SEASON.find(x=>x.id===tile.dataset.ep)||{};
+  const img=tile.querySelector('.art img');
+  if(e.preview&&PVOK){
+    const v=document.createElement('video');
+    v.className='pv'; v.muted=true; v.loop=true; v.playsInline=true; v.autoplay=true;
+    const dead=()=>{ if(!v.isConnected)return; PVOK=false; v.remove(); if(img)img.classList.add('kb'); };
+    v.onerror=dead;
+    const t=setTimeout(()=>{ if(v.readyState<2)dead(); },1500);
+    v.addEventListener('playing',()=>clearTimeout(t),{once:true});
+    v.src='/clip/'+e.preview+'.mp4';
+    tile.querySelector('.art').appendChild(v);
+    v.play().catch(()=>{});
+  } else if(img) img.classList.add('kb');
+}
+function motionOff(tile){
+  delete tile.dataset.pv;
+  const v=tile.querySelector('.pv'); if(v)v.remove();
+  const img=tile.querySelector('.art img'); if(img)img.classList.remove('kb');
+}
+
+/* ── A5 · the trailer flag ────────────────────────────────────────────────────
+   The Watch-trailer door exists only when the asset does: each locked entry is
+   probed once per visit for /clip/<id>_teaser.mp4, and the fetch is aborted the
+   moment the verdict is in, so a probe never downloads a film. When the T2 teasers
+   land on the volume (EP5 first, per SERIES_UX D) the buttons appear by themselves. */
+const TRAILER={};
+async function probeTrailers(){
+  let hit=false;
+  for(const[i,e]of SEASON.entries()){
+    if(open_(i)||TRAILER[e.id]!==undefined)continue;
+    try{
+      const ctl=new AbortController();
+      const r=await fetch('/clip/'+e.id+'_teaser.mp4',{signal:ctl.signal});
+      TRAILER[e.id]=r.ok; ctl.abort();
+    }catch(err){ TRAILER[e.id]=false; }
+    if(TRAILER[e.id])hit=true;
+  }
+  if(hit)paintSeason();
+}
+function playTrailer(epId){
+  const e=SEASON.find(x=>x.id===epId)||{};
+  cineShow([{skip:false,html:'<div class="trailer"><div class="tr-h">'+(e.sn||e.n||'')
+    +' · '+(e.t||'').toUpperCase()+' — teaser</div>'
+    +'<video src="/clip/'+epId+'_teaser.mp4" controls autoplay playsinline></video>'
+    +'<button class="btn" data-tr-x data-ga="trailer-close">close</button></div>',
+    wire:r=>{ r.querySelector('[data-tr-x]').onclick=()=>cineHide();
+      const v=r.querySelector('video'); v.onended=()=>cineHide(); v.onerror=()=>cineHide(); }}]);
 }
 
 /* ── B6-B8 · the cinema layer ─────────────────────────────────────────────────
