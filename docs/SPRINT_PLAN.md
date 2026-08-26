@@ -49,7 +49,7 @@ domain, thresholds untuned. An institutional credential needs an institution on 
 anything; progression does not. Cut recorded deliberately, stated in the submission.
 
 - [ ] SAS schema + issuance path for one domain
-- [ ] Mainnet-beta deploy
+- ~~Mainnet-beta deploy~~ — ตัดโดยมติ 26 ส.ค. (DECISIONS.md): ส่งแข่งบน devnet; mainnet trigger = เส้นเงินจริง เหมือนเดิม
 - [ ] `proof-check` public verify page
 - [ ] Demo video (see below)
 - [ ] Open-source release: AGPL-3.0 program + SDK + published case schema
