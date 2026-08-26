@@ -112,15 +112,35 @@ addEventListener('click',function(e){
   scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
 .lb-row .tile{flex:0 0 clamp(13.5rem,64vw,15.5rem);scroll-snap-align:start}
 /* A3 · the interlude tile: the OSCE stations sit on the same shelf but are not
-   episodes — smaller, scrub-green edge, wearing their own banner. */
+   episodes — smaller, scrub-green edge, wearing their own banner. Station Sets v2:
+   the face is a clinic card, Embla's language — real case name, specialty chip,
+   the two-tier star — not a drama poster. */
 .lb-row .tile.st{flex-basis:clamp(10.5rem,46vw,12rem);align-self:center;
   border:2px solid var(--mint-d);box-shadow:0 4px 14px rgba(31,157,134,.2)}
 .tile.st .art{aspect-ratio:16/9}
 .st-k{position:absolute;top:0;left:0;right:0;z-index:1;text-align:center;
-  font-family:"IBM Plex Mono",monospace;font-size:.5rem;letter-spacing:.22em;
+  font-family:"IBM Plex Mono",monospace;font-size:.5rem;letter-spacing:.12em;
   text-transform:uppercase;color:#062019;font-weight:700;padding:.24rem 0;
   background:linear-gradient(90deg,#2ed3b4,#7fe7d2)}
-.tile.st .no{top:1.45rem}
+/* clear of the banner — the header pills used to sit on its hem and read as one smudge */
+.tile.st .no{top:1.65rem}
+/* the case's stars, worn on the art: ☆☆ / ★☆ / ★★ — the best this account has proven */
+.st-stars{position:absolute;bottom:.5rem;right:.55rem;z-index:1;font-size:.86rem;
+  letter-spacing:.08em;color:var(--gold);background:rgba(6,20,24,.62);border-radius:999px;
+  padding:.14rem .5rem;backdrop-filter:blur(4px)}
+/* the clinic art: no drama still — the specialty, set in big quiet type on scrubs green */
+.art-cl{background:linear-gradient(155deg,#0e3230 0%,#0f2d3a 82%)}
+.art-cl span{font-family:Archivo,sans-serif;font-weight:800;font-size:1.05rem;
+  letter-spacing:.3em;color:rgba(127,231,210,.32)}
+.chiprow{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;margin:0 0 .15rem}
+.spec{font-family:"IBM Plex Mono",monospace;font-size:.58rem;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--mint-d);background:#e4f5f0;border-radius:999px;
+  padding:.16rem .5rem;font-weight:600}
+.chiprow .rt{margin:0}
+/* a declared member whose files are still being fitted: a quieter card, never an error */
+.tile.cs{cursor:default;border-style:dashed;opacity:.85}
+.tile.cs .go{background:#fff;color:var(--lock);border:1px solid var(--border);
+  box-shadow:0 3px 0 #cfdcdc;cursor:default}
 .tile .rt{display:block;font-family:"IBM Plex Mono",monospace;font-size:.62rem;letter-spacing:.1em;
   text-transform:uppercase;color:#8aa0a4;margin:0 0 .15rem}
 .prog{position:absolute;left:0;right:0;bottom:0;height:.26rem;background:rgba(6,20,24,.5)}
@@ -184,6 +204,20 @@ addEventListener('click',function(e){
 @media (prefers-reduced-motion:reduce){.art img.kb,.hero-art img{animation:none}}
 .art-ph{position:absolute;inset:0;display:grid;place-items:center;color:rgba(255,255,255,.5);
   font-family:"IBM Plex Mono",monospace;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase}
+/* An episode still nobody has shot yet is not an empty black box: each unphotographed
+   episode wears its own gradient and its title set with intent, until the real art lands. */
+.art-ph.ph-t-wrap{display:flex;flex-direction:column;justify-content:center;align-items:flex-start;
+  padding:1.6rem 3.4rem .65rem .7rem;text-align:left}
+.ph-t{font-family:Archivo,sans-serif;font-weight:800;font-size:1.06rem;line-height:1.04;
+  letter-spacing:-.02em;color:rgba(255,255,255,.94);text-transform:none;text-wrap:balance}
+.ph-ep2{background:linear-gradient(160deg,#4a1220 0%,#251031 55%,#0f2d3a 100%)}
+.ph-ep3{background:linear-gradient(160deg,#0e3a33 0%,#122c3c 60%,#0a1a26 100%)}
+.ph-ep4{background:linear-gradient(160deg,#33204c 0%,#1c2547 55%,#0f2d3a 100%)}
+.ph-ep5{background:radial-gradient(1px 1px at 18% 22%,rgba(255,200,61,.9) 50%,transparent 51%),
+  radial-gradient(1px 1px at 62% 12%,rgba(255,200,61,.7) 50%,transparent 51%),
+  radial-gradient(1.5px 1.5px at 83% 34%,rgba(255,220,120,.8) 50%,transparent 51%),
+  radial-gradient(1px 1px at 38% 45%,rgba(255,200,61,.5) 50%,transparent 51%),
+  linear-gradient(160deg,#132c46 0%,#0a1726 55%,#05090f 100%)}
 .lb-foot{margin-top:1.6rem;text-align:center;font-size:.82rem;color:#6b7d82;max-width:44em;
   margin-left:auto;margin-right:auto}
 .backbtn{font-family:"IBM Plex Mono",monospace;font-size:.7rem}
@@ -532,9 +566,12 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
 .dev-row .d{font-size:.72rem;color:var(--ink-3);display:block}
 .dev-row .on{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:.65rem;color:var(--act);
   white-space:nowrap}
-.art{width:5.5rem;height:6.2rem;flex:none;background:var(--card-2);border:1px solid var(--line);
+/* Scoped to the device sheet: a bare `.art` here used to reach across the page and shrink
+   every shelf card's art to an 88px kit-icon box — the crowded headers and the "empty black
+   box" the CEO called out were this one selector leaking. */
+.set-top .art{width:5.5rem;height:6.2rem;flex:none;background:var(--card-2);border:1px solid var(--line);
   border-radius:9px;display:grid;place-items:center}
-.art svg{width:100%;height:100%}
+.set-top .art svg{width:100%;height:100%}
 .set-top{display:flex;gap:.85rem;align-items:flex-start}
 .set-top .meta .n{font-family:Archivo,sans-serif;font-weight:700;font-size:1rem}
 .set-top .meta .d{font-size:.78rem;color:var(--ink-3)}
@@ -710,8 +747,9 @@ a.give:hover{filter:brightness(1.06)}
     </div>
     <div class="lb-row" id="eps"></div>
 
-    <p class="lb-foot">Episodes open as you clear the one before — skill unlocks the story.
-       A sponsor can open one for the whole bay; nothing you pay ever changes your standing.</p>
+    <p class="lb-foot">Every episode door is opened by stars from its own OSCE stations —
+       real cases from the Embla bank, ★ for a pass, ★★ for excellence. Skill unlocks the
+       story; nothing you pay ever changes your standing.</p>
   </div>
 </div>
 
@@ -1040,9 +1078,11 @@ const SEASON=[
   place:'Emergency department · night', key:{drug:'Adrenaline',match:'adren'},
   d:'A nineteen-year-old, ten minutes after the wrong salad. Her throat is closing.'},
  /* The stations are exam-only interludes — same bay, same engine, but the card commits
-    exam-ness before the first order, and the star it earns is what opens the next episode. */
- {id:'osce-a',n:'OSCE A',sn:'S1 · OSCE A',t:'Rash After the Buffet',tier:'student',station:true,
-  rt:'an 8-minute station',mins:8,
+    exam-ness before the first order, and the stars it earns open its set's episode door.
+    Station Sets v2: the shelf face is a clinic card — t is the real case name (the server's
+    set table is the authority; these are the instant-paint copies), spec the Eir specialty. */
+ {id:'osce-a',n:'OSCE A',sn:'S1 · OSCE A',t:'Anaphylaxis — adult, first presentation',tier:'student',station:true,
+  spec:'eir-emergency',rt:'an 8-minute station',mins:8,
   who:'Somchai · M 71', line:'urticaria head to toe, face swelling, cramping belly pain',
   place:'OSCE station · Nurse Mali examining', key:{drug:'Adrenaline',match:'adren'},
   d:'Thirty minutes after a meal he will not talk about. You saw this in EP1 — prove it. Nurse Mali is marking.'},
@@ -1050,8 +1090,8 @@ const SEASON=[
   who:'Prasit · M 58', line:'crushing chest pain to the jaw, sweating',
   place:'Emergency department · evening', key:{drug:'reperfusion',match:'cath'},
   d:'Thirty years driving patients to this door — tonight Prasit arrives as one. The ECG tells the truth in ten minutes.'},
- {id:'osce-b',n:'OSCE B',sn:'S1 · OSCE B',t:'Ten Minutes to Prove It',tier:'intern',station:true,
-  rt:'a 10-minute station',mins:10,
+ {id:'osce-b',n:'OSCE B',sn:'S1 · OSCE B',t:'Acute chest pain — possible NSTEMI / STEMI',tier:'intern',station:true,
+  spec:'eir-cardio',rt:'a 10-minute station',mins:10,
   who:'Somchai Jaidee · M 25', line:'crushing chest pain to both arms, nauseous, terrified',
   place:'OSCE station · Nurse Mali on the stopwatch', key:{drug:'the ECG',match:'ecg'},
   d:'A young smoker certain he is dying. The wall clock says ten minutes — beat it.'},
@@ -1059,8 +1099,8 @@ const SEASON=[
   who:'Khaopun · M 5', line:'tripod, drooling, muffled voice, will not lie down',
   place:'Paediatric bay · evening', key:{drug:'the airway team',match:'ent'},
   d:'Carried in by a grandfather you have met before. A five-year-old sitting very still — the stillness is the frightening part.'},
- {id:'osce-c',n:'OSCE C',sn:'S1 · OSCE C',t:'The Bark at Midnight',tier:'resident',station:true,
-  rt:'a 10-minute station',mins:10,
+ {id:'osce-c',n:'OSCE C',sn:'S1 · OSCE C',t:'Croup — child, worse every night',tier:'resident',station:true,
+  spec:'eir-ent',rt:'a 10-minute station',mins:10,
   who:'Fon · F 6', line:'barking cough, drooling on her mother’s shoulder, worse every night',
   place:'OSCE station · Nurse Mali marking, sixteen hours in', key:{drug:'Dexamethasone',match:'dexameth'},
   d:'Drooling like the boy who nearly died — but this one is loud, and loud is information. EP3 taught you the difference; prove it without one tear.'},
@@ -1068,8 +1108,8 @@ const SEASON=[
   who:'Mali · F 34', line:'breathless, pleuritic pain, looks anxious',
   place:'Emergency department · afternoon', key:{drug:'anticoagulation',match:'hepar'},
   d:'One of your own nurses, still in uniform. Everything looks normal — the oxygen is quietly low and the heart is too fast.'},
- {id:'osce-d',n:'OSCE D',sn:'S1 · OSCE D',t:'A Glass of Blood',tier:'intern',station:true,
-  rt:'a 12-minute station',mins:12,
+ {id:'osce-d',n:'OSCE D',sn:'S1 · OSCE D',t:'Upper GI bleeding — adult, full case',tier:'intern',station:true,
+  spec:'eir-gastroenterology',rt:'a 12-minute station',mins:12,
   who:'Somchai Jaiman · M 62', line:'vomited a glass of fresh blood, black stool since morning, cold to the wrist',
   place:'OSCE station · Nurse Mali marking from a chair — doctor’s orders', key:{drug:'two large-bore lines',match:'two_lines'},
   d:'A heart patient bleeding from the other end of his aspirin. Find the shock while he can still hide it — the last night will ask for this at scale.'},
@@ -1630,12 +1670,19 @@ $('#anchor').onclick=async()=>{
   /* The star the station card wears: earned here, by an anchor that really landed. */
   const st=starred(), e=$('#ep').value;
   if(!st.includes(e)){st.push(e);localStorage.setItem('vitals.starred',JSON.stringify(st));}
-  /* An exam that cleared the bar is a star the chain will certify in a moment. Floor the
-     count locally now — a door must not stand shut in front of the room while two
-     signatures land — then ask /api/stars until the chain's answer catches up. */
-  if(EXAMLIVE&&r.det&&r.det.max>0&&r.det.score*10000>=STARBAR*r.det.max){
-    const ls=localStars();
-    if(!ls.includes(e)){ls.push(e);localStorage.setItem('vitals.stars',JSON.stringify(ls));}
+  /* An exam that cleared a bar is a star the chain will certify in a moment. Floor the
+     tier locally now — a door must not stand shut in front of the room while two
+     signatures land — then ask /api/stars until the chain's answer catches up. Two-tier:
+     ≥85% of the rubric floors ★★, ≥70% floors ★; only ever upward. */
+  if(EXAMLIVE&&r.det&&r.det.max>0){
+    const bps=r.det.score*10000/r.det.max;
+    const t=bps>=EXBAR?2:bps>=STARBAR?1:0;
+    if(t){
+      const ls=localStars();
+      if(!ls.includes(e)){ls.push(e);localStorage.setItem('vitals.stars',JSON.stringify(ls));}
+      const m=localTiers();
+      if((m[e]||0)<t){m[e]=t;localStorage.setItem('vitals.tiers',JSON.stringify(m));}
+    }
   }
   refreshStars();
   $('#anchor').textContent='anchored'; ['#c1','#c2','#c3','#c4'].forEach(s=>$(s).disabled=false); chainState();
@@ -1703,20 +1750,40 @@ const cleared=()=>JSON.parse(localStorage.getItem('vitals.cleared')||'[]');
 const starred=()=>JSON.parse(localStorage.getItem('vitals.starred')||'[]');
 
 /* ─── what opens a door ────────────────────────────────────────────────────────
-   Stars, counted — not levels. A star is an exam run anchored at or above the rubric bar,
-   and the server counts them from proven attempts (/api/stars), so a door that opens here
-   opened because the record earned it. Count-based on purpose: a star from an episode's own
-   exam counts the same as a station's, so a strong player never dead-ends. The mainline is
-   EP1 → OSCE A → ★ → EP2 → OSCE B → ★★ → EP3, with EP4/EP5 behind three and four. */
-const NEED={ep1:0,'osce-a':0,ep2:1,'osce-b':1,ep3:2,'osce-c':2,ep4:3,'osce-d':3,ep5:4};
-let STARS=null;   /* last count the chain certified — null until it answers */
-let STARBAR=7000; /* the pass bar in bps; refreshed from /api/stars so the two cannot drift */
-/* Stars this browser watched being earned — exam runs anchored here that cleared the bar.
-   Optimistic on purpose: the chain's count lands only after two signatures land, and a demo
-   must not stand in front of a shut door waiting for finality. Only ever a floor under the
-   chain's answer, never a substitute — a fresh browser starts from what the chain says. */
+   Station Sets v2: from EP2 on, an episode door is priced in the stars of ITS OWN set of
+   stations and nothing else's. A case's star is two-tier — best proven det ≥70% is ★,
+   ≥85% is ★★ — and the server computes it from proven attempts (/api/stars), so a door
+   that opens here opened because the record earned it. The set table itself (members,
+   needs) lives on the server (/api/chain) and is only cached here; an episode's own exam
+   is a replay for the record — XP and the chain, never a key to a door. */
+let SETSRV=null;   /* the set table, from /api/chain — cached so a revisit paints doors instantly */
+try{SETSRV=JSON.parse(localStorage.getItem('vitals.sets')||'null')}catch(e){}
+let SETSTARS=null; /* {station: 0|1|2} — the tiers the chain has certified */
+let STARS=null;    /* the legacy flat count — kept for the pre-set fallback paths */
+let STARBAR=7000;  /* pass bar in bps; refreshed from /api/stars so the two cannot drift */
+let EXBAR=8500;    /* the ★★ bar, same discipline */
+/* Stars this browser watched being earned — optimistic floors under the chain's answer,
+   never substitutes: the anchor takes two signatures to land, and a demo must not stand
+   in front of a shut door waiting for finality. vitals.tiers is the two-tier floor;
+   vitals.stars is the older one-tier list, still read so nobody's door slams shut. */
 const localStars=()=>JSON.parse(localStorage.getItem('vitals.stars')||'[]');
-const starsKnown=()=>Math.max(STARS??0, localStars().length);
+const localTiers=()=>{try{return JSON.parse(localStorage.getItem('vitals.tiers')||'{}')}catch(e){return{}}};
+/* One station's effective tier: the best of what the chain certifies and what this browser
+   watched land. Only ever asked about set members, so an episode's exam cannot leak in. */
+const tierOf=id=>Math.max((SETSTARS&&SETSTARS[id])||0, localTiers()[id]||0, localStars().includes(id)?1:0);
+const setTotal=s=>s.members.reduce((n,m)=>n+tierOf(m.id),0);
+/* Which set an id belongs to, and which gate an id stands behind: an episode is opened by
+   its own set; a station opens alongside the episode it follows (its set's teaching just
+   happened), so gate2's stations are free and gate3's wait on gate2 — the old ladder, in
+   set language. */
+const memberOf=id=>{ if(!SETSRV)return null;
+  for(const s of SETSRV){const m=s.members.find(x=>x.id===id);if(m)return{set:s,m};} return null; };
+const gateReq=id=>{ if(!SETSRV)return null;
+  const own=SETSRV.find(s=>s.opens===id); if(own)return own;
+  const gi=SETSRV.findIndex(s=>s.members.some(m=>m.id===id));
+  return gi>0?SETSRV[gi-1]:null; };
+const starsKnown=()=>SETSRV?SETSRV.reduce((n,s)=>n+setTotal(s),0)
+  :Math.max(STARS??0, localStars().length);
 /* Which stations can sit an exam — served by /api/chain from the server's rubric map, never
    copied here; and whether the run being started is one. The mode chosen here is what the
    ceremony binds into the commitment. */
@@ -1727,64 +1794,134 @@ async function fetchStars(){
     const r=await (await fetch('/api/stars?account='+acctOf())).json();
     if(r.error||r.stars==null)return null;
     if(r.pass_bps)STARBAR=r.pass_bps;
+    if(r.excellent_bps)EXBAR=r.excellent_bps;
+    if(r.sets){const t={};for(const s of r.sets)Object.assign(t,s.tiers);SETSTARS=t;}
     return r.stars;
   }catch(e){ return null }
 }
-/* Ask again a few times after an anchor: the count is computed from what has landed, and
-   landing takes seconds. Retries stop once the chain has caught up with the local floor. */
+/* Ask again a few times after an anchor: the tiers are computed from what has landed, and
+   landing takes seconds. Retries stop once the chain has caught up with every local floor. */
 function refreshStars(tries=4){
   fetchStars().then(s=>{
-    if(s!=null&&s!==STARS){ STARS=s; paintSeason(); }
-    if(tries>0&&(s==null||s<localStars().length)) setTimeout(()=>refreshStars(tries-1),2500);
+    if(s!=null){ STARS=s; paintSeason(); }
+    const lag=()=>{const m=localTiers();
+      return Object.keys(m).some(k=>((SETSTARS&&SETSTARS[k])||0)<m[k])
+        || localStars().some(k=>memberOf(k)&&(((SETSTARS&&SETSTARS[k])||0)<1));};
+    if(tries>0&&(s==null||lag())) setTimeout(()=>refreshStars(tries-1),2500);
   });
 }
 const open_=i=>{
-  const need=NEED[SEASON[i].id]||0;
-  if(!need)return true;
-  if(STARS!=null||localStars().length)return starsKnown()>=need;
-  /* No chain and no star ever earned here: the offline kiosk ladder — clear the previous
-     card (which, with the stations in the row, still walks EP1 → OSCE A → EP2 → …). */
-  return cleared().includes(SEASON[i-1].id);
+  const e=SEASON[i];
+  if(SETSRV){
+    const g=gateReq(e.id);
+    return !g || setTotal(g)>=g.need_now;
+  }
+  /* The set table has not arrived yet (very first paint on a fresh browser, or an offline
+     kiosk): the ladder — clear the previous card to open the next, which still walks
+     EP1 → OSCE A → EP2 → … left to right. */
+  return i===0 || cleared().includes(SEASON[i-1].id);
 };
 /* Paint now, ask the chain after: a stranger's first click must never wait on an RPC. The
    lobby appears instantly under whatever was last known, and repaints only if the chain's
-   answer changes a door. */
+   answer changes a door or a star. */
 async function renderSeason(){
   paintSeason();
-  const s=await fetchStars();
-  let repaint = s!=null && s!==STARS; if(s!=null)STARS=s;
-  if(!EXAM_EPS.length){
+  const before=JSON.stringify([STARS,SETSTARS]);
+  const s=await fetchStars(); if(s!=null)STARS=s;
+  let repaint = JSON.stringify([STARS,SETSTARS])!==before;
+  if(!EXAM_EPS.length||!SETSRV){
     try{ const c=await (await fetch('/api/chain')).json();
-      if(c.exam_eps&&c.exam_eps.length){ EXAM_EPS=c.exam_eps; repaint=true; } }catch(e){}
+      if(c.exam_eps&&c.exam_eps.length){ EXAM_EPS=c.exam_eps; repaint=true; }
+      if(c.sets&&c.sets.length){ SETSRV=c.sets; repaint=true;
+        try{localStorage.setItem('vitals.sets',JSON.stringify(c.sets))}catch(e){} } }catch(e){}
   }
   if(repaint) paintSeason();
 }
+/* the two-tier star as a card wears it, and the specialty as the art monogram */
+const starGlyph=t=>t>=2?'★★':t>=1?'★☆':'☆☆';
+const specShort=sp=>(sp||'').replace(/^eir-/,'').replace('gastroenterology','gastro')
+  .replace('pulmonology','pulmo').toUpperCase();
 function paintSeason(){
-  $('#eps').innerHTML=SEASON.map((e,i)=>{
+  const seasonIds=new Set(SEASON.map(x=>x.id));
+  /* One shut door explains itself; every later one just wears the count — the same lock
+     sentence used to repeat on every card down the shelf. */
+  let lockNamed=false;
+  const card=(e,i)=>{
     const un=open_(i), done=cleared().includes(e.id), star=starred().includes(e.id);
-    const need=NEED[e.id];
+    /* A station's face is a clinic card in Embla's language: the server's set table names
+       the case, the specialty and the tier; the SEASON entry is only the instant-paint
+       copy, so the server copy wins the moment it arrives. */
+    const info=e.station?memberOf(e.id):null;
+    const title=info?info.m.title:e.t, spec=info?info.m.specialty:e.spec;
+    const tierName=info?info.m.tier:e.tier;
     const pr=progOf(e);
-    const art=e.art?`<img src="${e.art}" alt="">`:`<div class="art-ph">${e.sn||e.n}</div>`;
-    /* A locked door names its price in stars, and stars come only from passed exams — no
-       claim button here: the count moves when an anchored exam clears the bar, so the door
-       opens the moment the record earns it and not a click sooner. */
-    const lockGo = (STARS!=null||localStars().length)
-      ? `${need===1?'1 star':need+' stars'} to open — pass the OSCE stations`
-      : `clear ${SEASON[i-1]?SEASON[i-1].n:''} to open`;
-    const badge=e.station?`<span class="st-k">night shift training</span>`:'';
+    const art=e.art?`<img src="${e.art}" alt="">`
+      :e.station?`<div class="art-ph art-cl"><span>${specShort(spec)}</span></div>`
+      :`<div class="art-ph ph-t-wrap ph-${e.id}"><span class="ph-t">${e.t}</span></div>`;
+    const badge=e.station?`<span class="st-k">from the Embla case bank</span>`:'';
+    const chip=e.station
+      ?`<span class="st-stars" title="your best exam here — ★ ≥70% · ★★ ≥85%">${starGlyph(tierOf(e.id))}</span>`
+      :`<span class="tier">${e.tier}</span>`;
+    const chips=e.station
+      ?`<span class="chiprow"><span class="spec">${spec||''}</span><span class="rt">${tierName} · ${e.rt||''}</span></span>`
+      :`<span class="rt">${e.rt||''}</span>`;
+    const no=e.station?e.n:(e.sn||e.n);
     const bar=(!e.station&&pr>0)?`<span class="prog"><i style="width:${Math.round(pr*100)}%"></i></span>`:'';
     /* A locked card is a <div>, not a disabled <button>: a disabled button swallows
-       its children's clicks, and the trailer door inside has to stay clickable. */
-    if(!un) return `<div class="tile lock${e.station?' st':''}" data-ep="${e.id}">
-      <div class="art">${art}${badge}<span class="no">${e.sn||e.n}</span><span class="tier">${e.tier}</span><span class="tease">unlocks at \u2b50${need}</span></div>
-      <div class="body"><h3>${e.t}</h3><span class="rt">${e.rt||''}</span><p>${e.d}</p>
-      <span class="go">${lockGo}</span>${TRAILER[e.id]?`<button class="go trail" data-trailer="${e.id}" data-ga="trailer:${e.id}">▶ watch trailer</button>`:''}</div></div>`;
+       its children's clicks, and the trailer door inside has to stay clickable. A door's
+       price is its own set's stars — no claim button here: the count moves when an
+       anchored exam clears a bar, so the door opens the moment the record earns it and
+       not a click sooner. */
+    if(!un){
+      const g=gateReq(e.id);
+      const tease=g?`⭐${setTotal(g)}/${g.need_now}`:'locked';
+      let go='';
+      if(!lockNamed){
+        lockNamed=true;
+        go=`<span class="go">${g
+          ?`open at ⭐${g.need_now} from its stations — you have ${setTotal(g)}${g.need_now<g.need?' · full set coming':''}`
+          :`clear ${SEASON[i-1]?SEASON[i-1].n:''} to open`}</span>`;
+      }
+      return `<div class="tile lock${e.station?' st':''}" data-ep="${e.id}">
+      <div class="art">${art}${badge}<span class="no">${no}</span>${chip}<span class="tease">${tease}</span></div>
+      <div class="body"><h3>${title}</h3>${chips}<p>${e.d}</p>
+      ${go}${TRAILER[e.id]?`<button class="go trail" data-trailer="${e.id}" data-ga="trailer:${e.id}">▶ watch trailer</button>`:''}</div></div>`;
+    }
+    /* The exam door on an open episode is a replay for the record — XP and the anchored
+       tape, never a key: doors are priced in station stars alone. */
+    const replay=!e.station&&EXAM_EPS.includes(e.id)
+      ?`<span class="go exam" data-exam="${e.id}" data-ga="exam:${e.id}" title="an exam replay for XP and the record — doors open on station stars">↻ replay for the record</span>`:'';
     return `<button class="tile${e.station?' st':''}" data-ep="${e.id}" data-ga="tile:${e.id}">
-      <div class="art">${art}${badge}<span class="no">${e.sn||e.n}${star?' <span title="anchored on chain">★</span>':''}${done?' · watched':''}</span><span class="tier">${e.tier}</span>${bar}</div>
-      <div class="body"><h3>${e.t}</h3><span class="rt">${e.rt||''}</span><p>${e.d}</p>
-      <span class="go">${e.station?'\u2605 sit the station — exam conditions':(done?'watch again':'enter the bay')}</span>${!e.station&&EXAM_EPS.includes(e.id)?`<span class="go exam" data-exam="${e.id}" data-ga="exam:${e.id}">\u2605 sit the OSCE exam</span>`:''}</div></button>`;
-  }).join('');
-  $('#eps').querySelectorAll('.tile:not(.lock)').forEach(b=>b.onclick=()=>{
+      <div class="art">${art}${badge}<span class="no">${no}${star?' <span title="anchored on chain">★</span>':''}${done?' · watched':''}</span>${chip}${bar}</div>
+      <div class="body"><h3>${title}</h3>${chips}<p>${e.d}</p>
+      <span class="go">${e.station?'★ sit the station — exam conditions':(done?'watch again':'enter the bay')}</span>${replay}</div></button>`;
+  };
+  /* A declared member whose files are still being fitted (Phase 5b) is a card, not an
+     error — it sits with its set and says what it will be. */
+  const comingCard=(m,s)=>`<div class="tile st cs" data-ga="coming:${m.id}">
+      <div class="art"><div class="art-ph art-cl"><span>${specShort(m.specialty)}</span></div>
+        <span class="st-k">from the Embla case bank</span><span class="no">${m.id.replace('osce-','OSCE ').toUpperCase()}</span>
+        <span class="st-stars">☆☆</span></div>
+      <div class="body"><h3>${m.title}</h3>
+        <span class="chiprow"><span class="spec">${m.specialty}</span><span class="rt">${m.tier}</span></span>
+        <p>Being fitted for the bay now.</p>
+        <span class="go">coming soon${s.need_now<s.need?` · door opens at ⭐${s.need_now} until the full set lands`:''}</span></div></div>`;
+  const cards=[];
+  for(const [i,e] of SEASON.entries()){
+    cards.push(card(e,i));
+    /* after a set's last on-shelf station, its declared-but-unpublished members follow */
+    if(e.station&&SETSRV){
+      const info=memberOf(e.id);
+      if(info){
+        const onShelf=info.set.members.filter(m=>seasonIds.has(m.id));
+        if(onShelf.length&&onShelf[onShelf.length-1].id===e.id)
+          for(const m of info.set.members.filter(x=>!seasonIds.has(x.id)))
+            cards.push(comingCard(m,info.set));
+      }
+    }
+  }
+  $('#eps').innerHTML=cards.join('');
+  $('#eps').querySelectorAll('.tile:not(.lock):not(.cs)').forEach(b=>b.onclick=()=>{
     /* A station card is only ever an exam — that is what a station is. Episodes enter as
        practice unless the exam door below is the thing clicked. */
     const entry=SEASON.find(x=>x.id===b.dataset.ep);
@@ -1798,7 +1935,7 @@ function paintSeason(){
     ev.stopPropagation(); playTrailer(x.dataset.trailer); });
   /* A4 · motion on the open cards: hover on a pointer, first touch on a phone —
      the touch starts the loop and the tap still enters, so nothing costs a second tap. */
-  $('#eps').querySelectorAll('.tile:not(.lock)').forEach(b=>{
+  $('#eps').querySelectorAll('.tile:not(.lock):not(.cs)').forEach(b=>{
     b.addEventListener('pointerenter',()=>motionOn(b),{passive:true});
     b.addEventListener('pointerleave',()=>motionOff(b));
     b.addEventListener('touchstart',()=>motionOn(b),{passive:true});
@@ -1843,7 +1980,7 @@ function heroPick(){
 function renderHero(){
   const p=heroPick(), e=p.e, pr=progOf(e);
   const art=e.art?`<img src="${e.art}" alt="">`
-    :`<div class="hero-void"><span>${e.sn||e.n}</span></div>`;
+    :`<div class="hero-void ph-${e.id}"><span>${e.sn||e.n}</span></div>`;
   const eye = p.mode==='continue'?`Continue watching · ${e.sn||e.n}`
     : p.mode==='next'?`Up next · ${e.sn||e.n}`
     : p.mode==='rewatch'?`Watch again · ${e.sn||e.n}`
@@ -2015,14 +2152,18 @@ function upNext(win,exam,eId){
   if(win&&exam&&!nxt){
     /* The star is not banked until the anchor lands, so the door it opens still reads
        shut here — show the door anyway and say what opens it. No auto-advance: leaving
-       an exam un-anchored by countdown would cost the star the run just earned. */
+       an exam un-anchored by countdown would cost the star the run just earned. Only a
+       station's star prices a door; an episode's exam replay banks XP and the record. */
     nxt=SEASON.slice(i+1).find(x=>!x.station)||null;
-    note='Anchor this run first — the star is what opens this door.';
+    const ent=SEASON[i];
+    note=ent&&ent.station
+      ?'Anchor this run first — its stars are what open this door.'
+      :'Anchor this run to bank it — doors open on station stars.';
   }
   if(!nxt)return epilogue(exam);
   const auto=win&&!exam;
   cineShow([{skip:false,html:'<div class="un"><div class="un-k">'+(win?'up next':'run it back')+'</div>'
-    +'<div class="un-card">'+(nxt.art?'<img src="'+nxt.art+'" alt="">':'<div class="un-ph"></div>')
+    +'<div class="un-card">'+(nxt.art?'<img src="'+nxt.art+'" alt="">':'<div class="un-ph ph-'+nxt.id+'"></div>')
     +'<div><div class="un-n">'+(nxt.sn||nxt.n)+(nxt.station?' · night shift training':'')+'</div>'
     +'<div class="un-t">'+nxt.t+'</div><div class="un-rt">'+(nxt.rt||'')+'</div></div></div>'
     +(note?'<p class="un-note">'+note+'</p>':'')
