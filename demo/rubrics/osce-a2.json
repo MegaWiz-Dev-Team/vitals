@@ -1,0 +1,19 @@
+{
+  "case": "osce-a2",
+  "pass_bps": 7000,
+  "status": "provisional — converted from embla-cases ddx-anaphylaxis-2 v1.0.0 (sha256:57f50cb87ca01014): hidden.expected_workup→action/action_any, hidden.red_flags→no_harm (shock treated late, the antihistamine-first reflex, the observation window), hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "items": [
+    { "label": "Asked about known allergies",                     "type": "action",     "needle": "ask_allergy",       "points": 3 },
+    { "label": "Asked what she ate — found the exposure",         "type": "action",     "needle": "ask_exposure",      "points": 3 },
+    { "label": "Dug out the collapse she would not volunteer",    "type": "action",     "needle": "ask_faint",         "points": 3 },
+    { "label": "Adrenaline IM within five minutes",               "type": "action_by",  "needle": "adrenaline_im", "by_sec": 300, "points": 10 },
+    { "label": "Never let the adrenaline window close",           "type": "no_harm",    "needle": "adrenaline delayed", "points": 2 },
+    { "label": "Did not treat the itch while the shock ran",      "type": "no_harm",    "needle": "the itch was never the emergency", "points": 4 },
+    { "label": "Fluids for the falling pressure",                 "type": "action",     "needle": "saline",            "points": 3 },
+    { "label": "Oxygen on",                                       "type": "action",     "needle": "oxygen",            "points": 1 },
+    { "label": "Supporting workup — tryptase, glucose or ECG",    "type": "action_any", "any_of": ["tryptase", "glucose", "ecg"], "points": 2 },
+    { "label": "Named it — anaphylaxis behind the gut story",     "type": "action",     "needle": "dx_anaphylaxis",    "points": 3 },
+    { "label": "Did not discharge inside the observation window", "type": "no_harm",    "needle": "observation window", "points": 2 },
+    { "label": "Patient survives to discharge",                   "type": "outcome",    "any_of": ["win_discharge"],   "points": 4 }
+  ]
+}

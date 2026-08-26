@@ -481,6 +481,54 @@ mod tests {
         assert!(!det.cleared(&r), "the chest-pain reflex must not clear the bar: {s}/{m}");
     }
 
+    /// Station A2 (osce-a2, from embla-cases ddx-anaphylaxis-2): anaphylaxis in a gut disguise —
+    /// cramps, diarrhoea, a blackout she calls sitting down, and a pressure already at 86. The
+    /// competent tape digs the collapse out of an evasive history and treats the shock, not the
+    /// itch. The failing tape is the antihistamine-first reflex: chlorpheniramine, then waiting,
+    /// while both the reflex harm and the five-minute window fire and the pressure runs out.
+    #[test]
+    fn station_a2_competent_run_clears_and_the_antihistamine_reflex_fails() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/");
+        let sce = std::fs::read_to_string(format!("{root}stations/osce-a2.sce.json")).unwrap();
+        let rubric_json = std::fs::read_to_string(format!("{root}rubrics/osce-a2.json")).unwrap();
+        let parsed = vitals_sce::Sce::from_json(&sce).unwrap();
+        assert!(parsed.validate().is_empty(), "osce-a2: {:?}", parsed.validate());
+        let tape = vec![
+            Step::Do("any allergies?".into()),
+            Step::Tick(10.0),
+            Step::Do("what did you eat today?".into()),
+            Step::Tick(10.0),
+            Step::Do("did you faint — even for a moment?".into()),
+            Step::Tick(10.0),
+            Step::Do("adrenaline im".into()), // t=30 — well inside the five-minute window
+            Step::Tick(10.0),
+            Step::Do("oxygen mask".into()),
+            Step::Tick(5.0),
+            Step::Do("normal saline bolus".into()),
+            Step::Tick(5.0),
+            Step::Do("serum tryptase".into()),
+            Step::Tick(5.0),
+            Step::Do("anaphylaxis".into()),
+            Step::Tick(160.0), // the observation window runs out to discharge
+        ];
+        let (s, m, rhash) = det_for_run(&sce, &tape, &rubric_json).unwrap();
+        assert_eq!((s, m), (40, 40));
+        assert_eq!(rhash, vitals_progress::record::rubric_hash(rubric_json.as_bytes()));
+        // Chlorpheniramine for the itch, then waiting: the antihistamine-first harm fires at two
+        // minutes, the window harm at five, and she arrests — nowhere near the bar.
+        let reflex = vec![
+            Step::Do("chlorpheniramine".into()),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+            Step::Tick(200.0),
+        ];
+        let (s, m, _) = det_for_run(&sce, &reflex, &rubric_json).unwrap();
+        let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
+        let det = DetResult { earned: s, max: m, items: vec![] };
+        assert!(!det.cleared(&r), "the antihistamine reflex must not clear the bar: {s}/{m}");
+    }
+
     #[test]
     fn every_rubric_uses_the_canonical_star_bar() {
         // Enforce-equal: a rubric whose pass_bps drifts from the one global bar is a failing test,
