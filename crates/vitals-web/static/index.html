@@ -285,6 +285,18 @@ body{margin:0;background:var(--room);color:var(--ink);
 .brand span{color:var(--act)}
 .ep{font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.12em;
   text-transform:uppercase;color:var(--ink-3)}
+/* ── B9 · the player bar ── while the case runs the header reads as a broadcast:
+   S1:E2 · Time Is Muscle · LIVE. The scenario hash still travels, in the tooltip,
+   which is where a verifier goes looking for it. */
+.live{display:inline-block;font-weight:700;color:#fff;background:var(--alarm);border-radius:4px;
+  padding:.05rem .4rem;letter-spacing:.14em}
+.live::before{content:'●';margin-right:.3rem;animation:pulse 1.6s ease-in-out infinite}
+.live.end{background:var(--ink-3)}
+.live.end::before{animation:none}
+.live.exam{background:#c68f1f}
+.live.exam::before{content:'\2605';animation:none}
+@keyframes pulse{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.live::before{animation:none}}
 .spacer{margin-left:auto}
 select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:var(--card-2);
   color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:.4rem .65rem;cursor:pointer;
@@ -1343,7 +1355,12 @@ function fire(text){ (mode==='ask' && !ep().station) ? askHer(text) : doOrder(te
 
 function paint(v){
   const E=ep();
-  $('#ep-name').textContent=E.n+' · '+E.t+' · '+v.sce_hash.slice(0,10)+(EXAMLIVE?' · OSCE EXAM':'');
+  /* B9 · the player bar: on air while the case runs, ended when it is over. */
+  const onAir=!over&&!v.outcome;
+  $('#ep-name').innerHTML=(E.sn||E.n)+' · '+E.t
+    +' · <span class="live'+(onAir?'':' end')+'">'+(onAir?'LIVE':'ENDED')+'</span>'
+    +(EXAMLIVE?' <span class="live exam">OSCE EXAM</span>':'');
+  $('#ep-name').title='scenario '+v.sce_hash;
   $('#pt-name').textContent=E.who; $('#pt-line').textContent=E.line; $('#place').textContent='📷 '+E.place;
   $('#pt-status').textContent=v.status; $('#pt-status').className='pt-status '+v.status;
   show(v.status, v.equipment);
