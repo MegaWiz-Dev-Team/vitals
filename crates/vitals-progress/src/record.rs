@@ -84,6 +84,14 @@ pub fn commitment_hash(case: &[u8; 32], player: &[u8; 32], nonce: &[u8; 32], mod
     crate::merkle::sha256(&[b"vitals.commit.v2\n", case, player, nonce, &[mode]])
 }
 
+/// The hash pinned in a leaf so a verifier picks the exact rubric that marked a run, not whatever
+/// version HEAD happens to hold. Over the rubric's authored bytes, domain-separated like
+/// `commitment_hash` — reword the rubric and old leaves stop validating against it, which is the
+/// correct behaviour: a re-marked run is a different claim.
+pub fn rubric_hash(rubric: &[u8]) -> [u8; 32] {
+    crate::merkle::sha256(&[b"vitals.rubric.v1\n", rubric])
+}
+
 pub const HARM_PENALTY: u32 = 15;
 
 pub const MAX_SCORE: u32 = 100;
