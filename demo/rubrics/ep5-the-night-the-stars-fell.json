@@ -1,0 +1,15 @@
+{
+  "case": "ep5-the-night-the-stars-fell",
+  "pass_bps": 7000,
+  "status": "provisional — needles derived from the ep5 automaton (intervention ids, harm names, outcome ids); point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "items": [
+    { "label": "Haemorrhage control first (tourniquet / pressure)", "type": "action",  "needle": "tourniquet",                        "points": 10 },
+    { "label": "Transfused blood (not crystalloid)",               "type": "action",  "needle": "transfuse",                         "points": 7 },
+    { "label": "Decompressed the chest (tension pneumothorax)",    "type": "action",  "needle": "chest_decompression",               "points": 4 },
+    { "label": "Triaged the casualties",                           "type": "action",  "needle": "triage",                            "points": 3 },
+    { "label": "Damage-control surgery",                           "type": "action",  "needle": "damage_control",                    "points": 3 },
+    { "label": "Avoided crystalloid flood in haemorrhagic shock",  "type": "no_harm", "needle": "crystalloid resuscitation",         "points": 5 },
+    { "label": "Did not go to theatre before controlling bleeding","type": "no_harm", "needle": "moved to theatre without controlling","points": 4 },
+    { "label": "Patient survives",                                 "type": "outcome", "any_of": ["win_discharge", "win_icu"],        "points": 4 }
+  ]
+}
