@@ -26,6 +26,7 @@ COPY --from=build /usr/local/bin/vitals-web /usr/local/bin/vitals-web
 # Read at runtime, so they are files rather than something baked into the binary.
 COPY conformance /app/conformance
 COPY demo/scenarios /app/demo/scenarios
+COPY demo/stations /app/demo/stations
 COPY demo/rubrics /app/demo/rubrics
 COPY demo/ep1-en.json /app/demo/ep1-en.json
 USER vitals
