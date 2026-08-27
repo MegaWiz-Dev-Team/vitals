@@ -83,12 +83,44 @@ a{color:var(--proven)}
 .rail{border-bottom:1px solid var(--rule-soft);padding:.8rem 0;display:flex;gap:1rem;align-items:baseline;
   font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.08em;color:var(--ink-3)}
 .rail b{color:var(--ink);letter-spacing:.14em}
-.hero{padding:clamp(3rem,8vw,5.5rem) 0 clamp(2rem,5vw,3rem)}
+.hero{padding:clamp(2rem,7vw,5.5rem) 0 clamp(2rem,5vw,3rem)}
 .hero h1{font-size:clamp(2.1rem,5.5vw,3.6rem);line-height:1.08;font-weight:800}
-.hero .sub{font-size:clamp(1.02rem,2vw,1.25rem);color:var(--ink-2);max-width:38em;margin:1.1rem 0 1.6rem}
+.hero .sub{font-size:clamp(1.02rem,2vw,1.25rem);color:var(--ink-2);max-width:38em;margin:1.05rem 0 1.35rem}
 .cta{display:inline-block;background:var(--proven);color:#fff;text-decoration:none;font-weight:700;
-  font-family:Archivo,Arial,sans-serif;padding:.85rem 1.7rem;border-radius:8px;font-size:1.05rem}
-.cta.ghost{background:transparent;color:var(--proven);border:2px solid var(--proven);margin-left:.6rem}
+  font-family:Archivo,Arial,sans-serif;padding:.85rem 1.7rem;border-radius:8px;font-size:1.05rem;
+  border:2px solid var(--proven);line-height:1.3;text-align:center}
+.cta.ghost{background:transparent;color:var(--proven)}
+/* The two calls sit in a wrapping row instead of leaning on a left margin, so a
+   narrow screen stacks them rather than pushing the second one past the edge. */
+.cta-row{display:flex;flex-wrap:wrap;gap:.6rem;margin:0 0 .85rem}
+.whyfree{font-size:.86rem;color:var(--ink-2);max-width:34em;margin:.3rem 0 .95rem}
+
+/* --- the patient who is already waiting ------------------------------------
+   A real frame of EP1's own patient, sized down to a strip. She is what the
+   button opens, so she sits directly under it — and stays short enough that a
+   375px screen still shows the button above the fold. */
+.patient{display:flex;align-items:stretch;overflow:hidden;text-decoration:none;color:inherit;
+  background:var(--surface);border:1px solid var(--rule);border-radius:10px;
+  max-width:34rem;margin:0 0 .85rem}
+.patient:hover,.patient:focus-visible{border-color:var(--proven)}
+.patient img{flex:none;width:88px;height:auto;align-self:stretch;object-fit:cover;
+  object-position:57% 40%;background:var(--surface-2)}
+.patient .pt{padding:.6rem .85rem;min-width:0}
+.patient .ep{display:flex;align-items:center;gap:.42rem;margin:0;font-weight:600;
+  font-family:"IBM Plex Mono",monospace;font-size:.64rem;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--attested)}
+.patient .ep::before{content:"";flex:none;width:.44rem;height:.44rem;border-radius:50%;
+  background:currentColor;animation:pt-wait 1.7s ease-in-out infinite}
+@keyframes pt-wait{0%,100%{opacity:1}50%{opacity:.25}}
+.patient .nm{font-family:Archivo,Arial,sans-serif;font-weight:700;font-size:1rem;
+  line-height:1.2;color:var(--ink);margin:.2rem 0 .12rem}
+.patient .ln{margin:0;font-size:.84rem;line-height:1.4;color:var(--ink-2)}
+@media(min-width:760px){.patient img{width:112px}}
+.reassure{font-size:.9rem;color:var(--ink-2);max-width:34em;margin:0 0 .5rem}
+.proof{font-size:.82rem;color:var(--ink-2);max-width:38em;margin:0}
+.proof b{color:var(--ink);font-weight:600}
+.stack{font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.08em;
+  color:var(--ink-3);margin:-.55rem 0 1.05rem}
 .tag{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;
   color:var(--proven);font-weight:600}
 section{padding:clamp(1.8rem,4vw,2.8rem) 0;border-top:1px solid var(--rule-soft)}
@@ -170,25 +202,44 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
 @media(max-width:640px){.cf{--cf-w:230px;--cf-h:216px}
   .cf-meta{padding:.5rem .7rem}.cf-meta h3{font-size:.95rem}
   .cf-who{font-size:.62rem;letter-spacing:.04em}}
-@media (prefers-reduced-motion: reduce){.cf-card,.cf-shade{transition:none}}
+@media (prefers-reduced-motion: reduce){.cf-card,.cf-shade{transition:none}
+  .patient .ep::before{animation:none}}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="rail"><b>VITALS</b><span>verifiable clinical replay</span><span style="margin-left:auto">RUST · SOLANA · AGPL-3.0</span></div>
+  <div class="rail"><b>VITALS</b><span>free clinical simulation for medical students</span></div>
 
   <div class="hero">
     <span class="tag">Free for every learner, in every country, forever</span>
+    <p class="whyfree">Free because the people who need a result they can verify are the ones who pay
+    for it &mdash; never the learner.</p>
     <h1>A patient is dying on a clock.<br>You decide what happens next.</h1>
-    <p class="sub"><strong>Anyone can play. Nobody can fake the replay.</strong> Talk to her, treat her — a
-    deterministic physiology engine decides if she lives. Every run reduces to one hash anchored on
-    Solana, so anyone can replay the tape and get the same answer, without asking us.</p>
-    <a class="cta" href="/play">▶ Play — no signup, ~60 seconds to your first patient</a>
-    <a class="cta ghost" href="https://github.com/MegaWiz-Dev-Team/vitals">Source (AGPL)</a>
+    <p class="sub">Ask her what happened. Examine her. Order the tests, give the drug you think she
+    needs &mdash; and the monitor beside the bed tells you, second by second, whether you were right.</p>
+    <div class="cta-row">
+      <a class="cta" href="/play" data-ga="landing_cta_play">▶ Meet your first patient &mdash; 60 seconds, no signup</a>
+      <a class="cta ghost" href="https://github.com/MegaWiz-Dev-Team/vitals" data-ga="landing_cta_source">Source (AGPL)</a>
+    </div>
+    <a class="patient" href="/play" data-ga="landing_patient_ep1">
+      <img src="img/deteriorating.jpg" alt="Ing, nineteen, lying on an emergency-department trolley with the monitor beside her, watching for someone to come.">
+      <div class="pt">
+        <p class="ep">EP1 &middot; The Last Bite &middot; waiting</p>
+        <p class="nm">Ing &middot; F 19</p>
+        <p class="ln">Ten minutes after the wrong salad, and her throat is closing.</p>
+      </div>
+    </a>
+    <p class="reassure">You will probably lose her the first time. Almost everyone does &mdash; then you
+    run it back. Nobody sees it but you.</p>
+    <p class="proof">Students from <b>18 of Thailand's 29 medical faculties</b> already train on the
+    engine underneath this.</p>
   </div>
 
   <section>
     <h2>One run, four facts</h2>
+    <p class="lede"><b>Anyone can play. Nobody can fake the replay.</b> A deterministic physiology
+    engine decides whether she lives, and every run reduces to one hash anchored on Solana &mdash; so
+    anyone can replay the tape and get the same answer, without asking us.</p>
     <div class="grid g4">
       <div class="card"><span class="k">Talk to her</span><p>She answers in her own words. She can be wrong, and she can be too breathless to answer.</p></div>
       <div class="card"><span class="k">Treat her</span><p>Orders, drugs, airway, fluids — a live bedside monitor moves the way the physiology moves.</p></div>
@@ -304,6 +355,7 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
 
   <section>
     <h2>Why a chain is load-bearing here</h2>
+    <p class="stack">RUST &middot; SOLANA &middot; AGPL-3.0 &mdash; engine, program and client, open end to end</p>
     <div class="grid g3">
       <div class="card"><span class="k">The program refuses its own user</span><p>Progression is recomputed on-chain from Merkle proofs. Claim a level you didn't earn and the program rejects it — no issuer key, no oracle.</p></div>
       <div class="card"><span class="k">Proof that crosses borders</span><p>A residency programme in another country can verify a record without trusting us or the school that produced it.</p></div>
