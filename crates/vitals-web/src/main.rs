@@ -8,7 +8,7 @@
 //! and sessions in a map. The point is to make the automaton playable, not to ship a platform.
 
 mod chain;
-use vitals_web::{meter, news2, patient, store};
+use vitals_web::{lang, meter, news2, patient, store};
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -277,6 +277,20 @@ struct View {
     gcs: u8,
     status: String,
     beats: Vec<String>,
+    /// The display line for each beat above, in the language the page asked for — the language
+    /// layer's half of [`View::beats`], and the only part of it a reader ever sees.
+    ///
+    /// Keyed by the canonical beat, so the page keeps doing all of its *thinking* on `beats`
+    /// (which cutscene to roll, which line is a harm, which one to unseal) and uses this only for
+    /// the words. That separation is what makes a language switch unable to reach the Director,
+    /// the exam seal, or anything else that matters.
+    ///
+    /// **Only beats this run has already earned appear here.** A pack containing every beat of
+    /// every case would be an answer key one devtools tab away — a harm line names the drug, the
+    /// disease and the deadline the rubric is paying for. Absent for the default language, where
+    /// the page already holds the wording: see [`lang::pack`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tr: Option<std::collections::BTreeMap<String, &'static str>>,
     /// The films ordered so far. Never on the tape, never in the leaf — the page draws a
     /// thumbnail strip from this and nothing else reads it.
     films: Vec<&'static Film>,
@@ -325,7 +339,13 @@ struct Note {
 
 
 impl Session {
-    fn view(&self) -> View {
+    /// A full snapshot of the run, in the language the page asked for.
+    ///
+    /// `lang` reaches exactly one field ([`View::tr`]) and nothing else. Every number, every id,
+    /// every beat and the leaf itself are computed before it is consulted and are identical
+    /// whichever language is passed — which is the property `a_language_never_reaches_the_leaf`
+    /// pins, and the reason a Thai run and an English run of the same case can be compared at all.
+    fn view(&self, lang: &lang::Language) -> View {
         let v = self.state.vitals;
         let elapsed: f64 = self
             .tape
@@ -362,6 +382,7 @@ impl Session {
             gcs: v.gcs,
             status: format!("{:?}", self.state.status),
             beats: self.beats.clone(),
+            tr: beat_lines(lang, &self.beats),
             films: self.films.clone(),
             harm: self.state.harm_events.clone(),
             outcome,
@@ -541,6 +562,32 @@ fn films_from_tape(station: &str, tape: &[Step]) -> Vec<&'static Film> {
     out
 }
 
+/// ── the language a beat is read in ──────────────────────────────────────────
+///
+/// The same idea as [`FILMS`], one shelf along: a table hanging off a key the engine already
+/// produces, consulted on the way to the screen and nowhere else. A film hangs off the resolved
+/// intervention id; a translated beat hangs off the canonical beat string that
+/// `vitals_sce::render_beat` emits and the leaf hashes.
+///
+/// **Presentation only, and by the same argument.** A verifier replaying this tape on a build
+/// that has never heard of Thai must reach the identical leaf, so the table below is read *from*
+/// `beats` and never written *to* it. The table itself lives in [`lang`], because a language is a
+/// list of strings a translator edits and not something a web server should have opinions about.
+///
+/// `None` for the default language and for a run whose beats have no rows yet — the field is
+/// skipped on the wire and the page shows the original, which is what a case with no translation
+/// is supposed to look like.
+fn beat_lines(
+    l: &lang::Language,
+    beats: &[String],
+) -> Option<std::collections::BTreeMap<String, &'static str>> {
+    let m: std::collections::BTreeMap<String, &'static str> = beats
+        .iter()
+        .filter_map(|b| lang::beat(l, b).map(|t| (b.clone(), t)))
+        .collect();
+    (!m.is_empty()).then_some(m)
+}
+
 /// The clinical images, compiled in the way [`STILLS`] is, keyed by their path under
 /// `/img/cases/`. Content-Type comes from this table rather than from a suffix trim, because the
 /// directory mixes PNG and JPEG.
@@ -554,6 +601,25 @@ const CASE_IMG: &[(&str, &[u8], &str)] = &[
     ("cxr-normal-3.png", include_bytes!("../static/img/cases/cxr-normal-3.png"), "image/png"),
     ("cxr-normal-4.png", include_bytes!("../static/img/cases/cxr-normal-4.png"), "image/png"),
 ];
+
+/// Which intervention an order names — the scenario first, then the language layer.
+///
+/// Two readers, in a fixed order, and the order is the whole safety argument:
+///
+///   1. **The scenario's own matcher.** Its answer is final. Every keyword a case author wrote,
+///      in whatever language they wrote it in, decides what happens on their own case.
+///   2. **Only if that declined**, [`lang::canonical_order`] offers the English order a
+///      non-English phrase names — and the same matcher rules on *that*. So a translation can
+///      add recognition and can never redirect, shadow or override an order a case already
+///      understood, and a station with no such intervention still does nothing, exactly as today.
+///
+/// The empty string means nobody understood it, which is a real answer and goes on the tape as
+/// one: replay must stay faithful to a run in which nothing happened.
+fn resolve_order(st: &SceState, act: &str) -> String {
+    st.resolve(act)
+        .or_else(|| lang::canonical_order(act).and_then(|en| st.resolve(en)))
+        .unwrap_or_default()
+}
 
 /// ── the patient stills a station is shot in ──────────────────────────────────
 ///
@@ -856,35 +922,50 @@ fn param(url: &str, key: &str) -> Option<String> {
 }
 
 /// Enough percent-decoding for a typed clinical order. No dependency for this.
+///
+/// **Bytes first, then one UTF-8 decode at the end.** Percent-encoding escapes *octets*, and a
+/// character outside ASCII is several of them — `แพ้` arrives as nine `%XX` groups. Pushing each
+/// decoded octet as a `char` reads those octets as Latin-1 and produces mojibake: the order the
+/// learner typed never matches a keyword, never resolves to an intervention, and lands on the
+/// tape as garbage that a verifier will faithfully reproduce forever.
+///
+/// That mattered from the moment a case author wrote a Thai keyword into a scenario — several
+/// already have — and it is the whole ballgame now that the page can be played in Thai. ASCII is
+/// unaffected either way, which is why every tape already anchored still decodes to exactly what
+/// it decoded to before.
+///
+/// `from_utf8_lossy` rather than a refusal: this is a query parameter from a browser, and the
+/// answer to a malformed one is a replacement character in a clinical order nobody will match,
+/// not a 500 in the middle of a resuscitation.
 fn percent_decode(s: &str) -> String {
     let b = s.as_bytes();
-    let mut out = String::with_capacity(b.len());
+    let mut out: Vec<u8> = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
         match b[i] {
             b'+' => {
-                out.push(' ');
+                out.push(b' ');
                 i += 1;
             }
             b'%' if i + 2 < b.len() => {
                 match u8::from_str_radix(std::str::from_utf8(&b[i + 1..i + 3]).unwrap_or("zz"), 16) {
                     Ok(c) => {
-                        out.push(c as char);
+                        out.push(c);
                         i += 3;
                     }
                     Err(_) => {
-                        out.push('%');
+                        out.push(b'%');
                         i += 1;
                     }
                 }
             }
             c => {
-                out.push(c as char);
+                out.push(c);
                 i += 1;
             }
         }
     }
-    out
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// Endpoints that spend something — the server's signature, or the GPU.
@@ -1285,7 +1366,7 @@ fn main() {
                     Ok(mut s) => {
                         s.owner = param(&url, "player").and_then(|p| pubkey(&p)).map(|k| k.to_string());
                         let id = fresh_id();
-                        let view = s.view();
+                        let view = s.view(lang::language(param(&url, "lang").as_deref()));
                         let mut map = sessions.lock().unwrap();
                         map.insert(id.clone(), s);
                         persist(&store, &id, map.get_mut(&id).expect("just inserted"), true);
@@ -1304,13 +1385,26 @@ fn main() {
                     Some(s) => {
                         let acted = param(&url, "do").is_some();
                         if let Some(act) = param(&url, "do") {
-                            let emitted = s.state.apply(&act);
-                            s.beats.extend(emitted.iter().map(render_beat));
                             // Recognition happens here, once, and its answer goes on the tape beside the
                             // words. An order nobody understood is recorded as exactly that — an
                             // empty resolution — so replay stays faithful to a run in which nothing
                             // happened, even after the matcher learns the phrase.
-                            let id = s.state.resolve(&act).unwrap_or_default();
+                            //
+                            // The scenario's own matcher answers first and its answer is final. Only
+                            // when *it* declines does the language layer get a turn, and all it may do
+                            // is offer the English order a non-English phrase names — which the same
+                            // matcher then rules on. So a translation can add recognition and can
+                            // never redirect an order a case author already spelled out.
+                            let id = resolve_order(&s.state, &act);
+                            // By id, not by text: the id is what the tape carries and what replay
+                            // re-runs, so the run on screen and the run a verifier recomputes are the
+                            // same run even when the words that started it were in another language.
+                            let emitted = if id.is_empty() {
+                                s.state.apply(&act)
+                            } else {
+                                s.state.apply_id(&id)
+                            };
+                            s.beats.extend(emitted.iter().map(render_beat));
                             s.tape.push(Step::acted(&act, &id));
                             // The picture the order asked for, if this station has one. It hangs
                             // off the id the tape already carries and goes nowhere near it — the
@@ -1326,7 +1420,7 @@ fn main() {
                             s.beats.extend(emitted.iter().map(render_beat));
                             s.tape.push(Step::Tick(dt));
                         }
-                        let v = s.view();
+                        let v = s.view(lang::language(param(&url, "lang").as_deref()));
                         persist(&store, &id, s, acted);
                         json(v)
                     }
@@ -1381,7 +1475,7 @@ fn main() {
                                 }
                             }
                         }
-                        let v = s.view();
+                        let v = s.view(lang::language(param(&url, "lang").as_deref()));
                         persist(&store, &id, s, true);
                         json(v)
                     }
@@ -1540,7 +1634,8 @@ fn main() {
                     (s.said.clone(), format!("{:?}", s.state.status), s.state.vitals.spo2)
                 };
                 // No hint on this path yet — the reveal-gate wiring passes one when it lands.
-                match pt.say(&q, &hist, &status, spo2, None) {
+                let want = lang::language(param(&url, "lang").as_deref());
+                match pt.say(&q, &hist, &status, spo2, None, want) {
                     Ok(reply) => {
                         // Counted only when she actually answered — a failed call is not billed
                         // to the month or to the visitor.
@@ -1551,11 +1646,34 @@ fn main() {
                             s.said.push(("assistant".into(), reply.clone()));
                             persist(&store, &id, s, true);
                         }
-                        json(serde_json::json!({ "reply": reply, "who": pt.name() }))
+                        // She was asked for Thai and answered in English. The answer is still her
+                        // answer and it is still true about the case, so it is shown — with a note
+                        // beside it, because a learner who chose a language deserves to be told
+                        // when the model did not hold to it rather than left wondering. Swallowing
+                        // it or retrying would cost the learner her only reply, or the bay a second
+                        // inference, to fix a wording problem the learner can already see.
+                        let off = !lang::reply_is_in(want, &reply);
+                        json(serde_json::json!({
+                            "reply": reply,
+                            "who": pt.name(),
+                            "off_language": off,
+                        }))
                     }
                     Err(e) => json(serde_json::json!({ "error": e })),
                 }
             }
+            // ── the language layer ──────────────────────────────────────────────
+            // What languages the bay speaks, and the pack of strings for one of them. Unguarded
+            // and cacheable: it is a table compiled into the binary, the same for every visitor,
+            // and it carries no case content — a station's own beats reach the page one at a time
+            // through the view, as the run earns them, so this endpoint is not an answer key even
+            // during an exam. Absent or unknown `lang` ⇒ the language the cases are written in.
+            (Method::Get, "/api/lang") => json(lang::pack(lang::language(
+                param(&url, "lang").as_deref(),
+            )))
+            .with_header(
+                Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=300"[..]).unwrap(),
+            ),
             // The month's spend, the ceiling and where donations go — public, because the
             // ceiling being visible is the point. Anyone can check what the bay has left.
             (Method::Get, "/api/meter") => json(meter.view()),
@@ -2326,6 +2444,24 @@ mod tests {
         assert_eq!(param(u, "missing"), None);
     }
 
+    /// A percent-escape is an octet, and a Thai character is three of them. Decoding each octet
+    /// as a `char` reads them as Latin-1 and hands the matcher mojibake — so a Thai order matches
+    /// nothing, resolves to nothing, and is written to the tape as rubbish a verifier then
+    /// reproduces forever. Several scenarios have carried Thai keywords since before the language
+    /// layer existed; none of them could ever have fired.
+    #[test]
+    fn a_typed_order_survives_the_url_in_any_alphabet() {
+        let u = "/api/step?id=s1&do=%E0%B8%9F%E0%B8%B1%E0%B8%87%E0%B8%9B%E0%B8%AD%E0%B8%94";
+        assert_eq!(param(u, "do").as_deref(), Some("ฟังปอด"));
+        // And the whole point of getting it right: it now names an order a station understands.
+        assert_eq!(lang::canonical_order(&param(u, "do").unwrap()), Some("listen to the chest"));
+        // ASCII decodes exactly as it always did — every tape already anchored still reads the
+        // same, which is the property that makes this safe to change at all.
+        let a = "/api/step?do=oxygen%20face%20mask+15+lpm&x=100%25";
+        assert_eq!(param(a, "do").as_deref(), Some("oxygen face mask 15 lpm"));
+        assert_eq!(param(a, "x").as_deref(), Some("100%"));
+    }
+
     #[test]
     fn param_does_not_match_a_key_that_merely_ends_with_the_one_asked_for() {
         // `account` must not be answered by `subaccount`, or a caller can aim a request at
@@ -2375,7 +2511,7 @@ mod tests {
             assert!(guarded(p), "{p} makes the server sign or spend");
         }
         for p in ["/", "/play", "/api/new", "/api/step", "/api/kit", "/api/tape", "/api/chain",
-                  "/api/meter", "/api/stars", "/donate"] {
+                  "/api/meter", "/api/stars", "/api/lang", "/donate"] {
             assert!(!guarded(p), "{p} is play, and a kiosk must not need a token to play");
         }
     }
@@ -2615,6 +2751,168 @@ mod tests {
         // A station with no table entry stays exactly as it was before FILMS existed.
         assert!(films_from_tape("osce-d", &tape).is_empty());
         assert!(film_for("osce-a", "").is_none(), "an unresolved order shows nothing");
+    }
+
+    // ── the language layer ──────────────────────────────────────────────────
+
+    /// Drive a run the way `/api/step` does, so these tests exercise the real path rather than a
+    /// convenient one: recognise, apply by id, record text *and* id, advance the clock.
+    fn play(s: &mut Session, orders: &[&str], tick: f64) {
+        for act in orders {
+            let id = resolve_order(&s.state, act);
+            let emitted = if id.is_empty() { s.state.apply(act) } else { s.state.apply_id(&id) };
+            s.beats.extend(emitted.iter().map(render_beat));
+            s.tape.push(Step::acted(act, &id));
+            let emitted = s.state.tick(tick);
+            s.beats.extend(emitted.iter().map(render_beat));
+            s.tape.push(Step::Tick(tick));
+        }
+    }
+
+    /// Long enough for a scenario to reach a terminal state if it is going to — the same drift
+    /// `vitals-replay`'s own liveness tests use.
+    fn drift(s: &mut Session) {
+        for _ in 0..6 {
+            let emitted = s.state.tick(300.0);
+            s.beats.extend(emitted.iter().map(render_beat));
+            s.tape.push(Step::Tick(300.0));
+        }
+    }
+
+    /// **The load-bearing test of the whole language layer.**
+    ///
+    /// A case's identity on chain is the sha256 of its file, and its run's identity is the leaf
+    /// over the tape. If choosing Thai could move either of those, a Thai learner would be
+    /// playing a different case from an English one — the stars would not be comparable, the
+    /// cohort statistics would be meaningless, and "anybody can re-verify this run" would become
+    /// "anybody holding the same translation can". So: same session, two languages, and the only
+    /// thing on the wire that may differ is the line the beats are *read* in.
+    #[test]
+    fn a_language_never_reaches_the_leaf() {
+        let mut s = new_session("ep1").expect("ep1 is the case the season opens on");
+        play(&mut s, &["adrenaline im", "oxygen", "supine", "admit"], 30.0);
+        drift(&mut s);
+
+        let en = s.view(lang::language(Some("en")));
+        let th = s.view(lang::language(Some("th")));
+
+        assert_eq!(en.sce_hash, th.sce_hash, "the case changed identity when the page changed language");
+        assert_eq!(en.leaf, th.leaf, "the run changed identity when the page changed language");
+        assert!(en.leaf.is_some(), "the run has to have ended for the leaf to prove anything");
+        assert_eq!(en.beats, th.beats, "the canonical beats are the leaf's own input");
+        assert_eq!(en.harm, th.harm);
+        assert_eq!(en.status, th.status);
+        assert_eq!(en.outcome, th.outcome);
+
+        // And on the wire: byte-identical apart from the one presentation field.
+        let a = serde_json::to_value(&en).expect("view serialises");
+        let mut b = serde_json::to_value(&th).expect("view serialises");
+        assert!(a.get("tr").is_none(), "the default language sends no translation at all");
+        assert!(b.get("tr").is_some(), "Thai asked for a translation and got none");
+        b.as_object_mut().expect("an object").remove("tr");
+        assert_eq!(a, b, "language reached something other than the beat lines");
+
+        // The tape is the evidence, and it never learned what language anybody was reading in.
+        let tape = serde_json::to_string(&s.tape).expect("the tape serialises");
+        for l in lang::LANGUAGES {
+            assert!(!tape.contains(&format!("\"{}\"", l.id)), "{} is on the tape", l.id);
+        }
+        assert!(!tape.contains("lang"), "the tape carries a language field");
+    }
+
+    /// Only beats the run has actually earned are translated, and only for a language that has
+    /// rows. This is the exam seal's problem restated: a table of every beat in the case, handed
+    /// to the page up front, would name the drug and the deadline the rubric is about to pay for.
+    #[test]
+    fn a_translation_carries_only_what_the_run_has_already_seen() {
+        let th = lang::language(Some("th"));
+        let mut s = new_session("ep1").expect("ep1");
+        assert!(beat_lines(th, &s.beats).is_none(), "a run that has done nothing has nothing to read");
+
+        play(&mut s, &["stand up and walk to the toilet"], 5.0);
+        let lines = beat_lines(th, &s.beats).expect("standing a hypotensive patient up is a harm");
+        for k in lines.keys() {
+            assert!(s.beats.contains(k), "{k} was translated and never happened");
+        }
+        assert!(
+            !lines.contains_key("terminal:DeathBiphasic"),
+            "an ending this run has not reached was sent to the page",
+        );
+    }
+
+    /// A case with no rows in the table reads exactly as it did before the table existed. Every
+    /// station is in this state today and none of them may break because of it.
+    #[test]
+    fn a_case_with_no_translation_still_plays() {
+        let th = lang::language(Some("th"));
+        let mut s = new_session("osce-b3").expect("a station with no rows of its own");
+        play(&mut s, &["dexamethasone syrup", "score her from the doorway"], 30.0);
+        let v = s.view(th);
+        assert!(!v.beats.is_empty(), "the station still speaks");
+        // Its scripted lines are untranslated, so what the page shows is the English the case
+        // author wrote — which is the designed state, not a hole.
+        for b in &v.beats {
+            if b.starts_with("threshold:") {
+                assert!(
+                    v.tr.as_ref().is_none_or(|t| !t.contains_key(b)),
+                    "{b} claims a translation this round did not write",
+                );
+            }
+        }
+        assert_eq!(v.leaf, s.view(lang::language(Some("en"))).leaf);
+    }
+
+    /// A learner who reads Thai buttons types Thai orders. Those must reach the same intervention
+    /// the English words reach — on the episodes *and* on the stations, whose keyword lists carry
+    /// only a scattering of Thai.
+    #[test]
+    fn a_thai_order_reaches_the_intervention_the_english_one_does() {
+        let ep1 = new_session("ep1").expect("ep1").state;
+        assert_eq!(resolve_order(&ep1, "ฉีดอะดรีนาลีนเข้ากล้าม"), "adrenaline_im");
+        assert_eq!(resolve_order(&ep1, "ให้ออกซิเจน"), resolve_order(&ep1, "oxygen"));
+        // The harmful route stays its own order — a translation that collapsed the two would put
+        // a learner's IV push on the record as the rescue dose.
+        assert_eq!(resolve_order(&ep1, "อะดรีนาลีนเข้าเส้น 1:1000"), "adrenaline_iv_push");
+
+        let a = new_session("osce-a").expect("osce-a").state;
+        assert_eq!(resolve_order(&a, "ฟังปอด"), resolve_order(&a, "listen to the chest"));
+        assert_ne!(resolve_order(&a, "ฟังปอด"), "", "the station heard nothing");
+
+        // Nobody understood it: still the empty answer the tape is entitled to.
+        assert_eq!(resolve_order(&ep1, "ยาหอมสักซอง"), "");
+    }
+
+    /// The same case, played identically, once through English chips and once by typing Thai.
+    /// The words on the tape are the learner's own and differ; everything the score, the debrief
+    /// and the chain are computed from is the same run.
+    #[test]
+    fn the_same_care_in_two_languages_is_the_same_run() {
+        let mut en = new_session("ep1").expect("ep1");
+        let mut th = new_session("ep1").expect("ep1");
+        play(&mut en, &["adrenaline im", "oxygen", "supine", "admit"], 30.0);
+        play(&mut th, &["ฉีดอะดรีนาลีน", "ให้ออกซิเจน", "นอนราบยกขาสูง", "admit"], 30.0);
+        drift(&mut en);
+        drift(&mut th);
+
+        let ids = |s: &Session| -> Vec<String> {
+            s.tape
+                .iter()
+                .filter_map(|x| match x {
+                    Step::Act { id, .. } => Some(id.clone()),
+                    _ => None,
+                })
+                .collect()
+        };
+        assert_eq!(ids(&en), ids(&th), "the same care resolved to different interventions");
+
+        let a = en.view(lang::language(Some("en")));
+        let b = th.view(lang::language(Some("th")));
+        assert_eq!(a.outcome, b.outcome);
+        assert_eq!(a.beats, b.beats);
+        // The leaf hashes the tape, and the tape keeps the words the learner actually typed — so
+        // these two leaves are *not* equal, and that is correct. What must be equal is everything
+        // the rubric and the debrief read, which is the ids above and the beats here.
+        assert_eq!(a.sce_hash, b.sce_hash, "they played the same case");
     }
 
     // ── the stations' own patient stills ────────────────────────────────────

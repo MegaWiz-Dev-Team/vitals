@@ -134,8 +134,12 @@ fn main() {
 
 /// One question, empty history, a stable patient. Errors become an empty reply — a model that
 /// fails to answer has not leaked, which is the safe direction for this measurement.
+///
+/// Always in the language the case notes are written in. This corpus is an English jailbreak
+/// stress test scored against English dialogue nodes; running it through a translation would
+/// measure the translation, not the gate.
 fn ask(p: &vitals_web::patient::Patient, q: &str, hint: Option<&str>) -> String {
-    p.say(q, &[], "stable", 98.0, hint).unwrap_or_default()
+    p.say(q, &[], "stable", 98.0, hint, vitals_web::lang::default_language()).unwrap_or_default()
 }
 
 /// The story's dialogue nodes, as the gate needs them.

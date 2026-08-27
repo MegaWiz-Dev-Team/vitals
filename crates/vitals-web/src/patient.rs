@@ -11,6 +11,7 @@
 //! care. It is an exception, not an oversight — the rule still holds everywhere a real patient's
 //! data could appear, which is why the local gateway stays preferred whenever it is reachable.
 
+use crate::lang::Language;
 use serde_json::{json, Value};
 
 /// Which model is speaking for her.
@@ -106,38 +107,8 @@ impl Patient {
     /// The dialogue nodes are the truth of what she knows — including what she will only say if
     /// asked directly. Handing the model the authored lines keeps it anchored to the case instead
     /// of inventing a different allergy, which it does within one turn if you let it.
-    fn system(&self, status: &str, spo2: f64) -> String {
-        let p = &self.persona["patient"];
-        let mut s = format!(
-            "You are {}, {} years old, in an emergency department right now. \
-             You are frightened and short of breath. Speak ONLY as her, in first person, in \
-             English, in one or two short sentences. Broken, breathless phrasing. Never narrate, \
-             never describe yourself from outside, never mention being an AI, never give medical \
-             advice or diagnose yourself.\n\n",
-            p["name"].as_str().unwrap_or("Ing"),
-            p["age"].as_i64().unwrap_or(19)
-        );
-        s.push_str("What is true about you, and what you say if asked:\n");
-        if let Some(d) = self.persona["dialogue"].as_array() {
-            for node in d {
-                let reveal = node["reveal"].as_str().unwrap_or("on_ask");
-                let line = node["patient"].as_str().unwrap_or("");
-                let id = node["id"].as_str().unwrap_or("");
-                s.push_str(&format!("- {id} ({reveal}): \"{line}\"\n"));
-            }
-        }
-        s.push_str(&format!(
-            "\nUse those as the truth. Paraphrase them naturally; do not invent a different \
-             allergy, a different timeline, or symptoms not listed. Anything marked \
-             on_direct_ask you volunteer only when asked about that exact thing.\n\
-             \nRight now you are {status} and your oxygen saturation is {spo2:.0} percent. \
-             The worse that is, the shorter and more broken your sentences get. If you are \
-             critical or arrested you can barely speak at all.\n\
-             If asked something you would not know, say you don't know.\n\
-             Fallback if you cannot answer: \"{}\"",
-            self.persona["fallback"].as_str().unwrap_or("I can't really talk any more.")
-        ));
-        s
+    fn system(&self, status: &str, spo2: f64, lang: &Language) -> String {
+        brief(&self.persona, status, spo2, lang)
     }
 
     /// Ask her something. `history` is the conversation so far as (role, content) pairs.
@@ -146,6 +117,12 @@ impl Patient {
     /// verbatim into her brief for a regenerate. Opaque here on purpose: the gate owns what a
     /// hint says and the patient only promises to hear it — that separation is the contract
     /// between the two, and it is what lets the gate evolve without this file knowing.
+    ///
+    /// `lang` is the language she answers in. It is a *presentation* argument and nothing more:
+    /// the case notes handed to the model are the English the author wrote, the model is asked to
+    /// carry them across without changing a fact, and none of it — question, answer or language —
+    /// is an input to a leaf. The question goes on the tape exactly as the learner typed it,
+    /// which is what it did before this argument existed.
     pub fn say(
         &self,
         question: &str,
@@ -153,8 +130,9 @@ impl Patient {
         status: &str,
         spo2: f64,
         retry_hint: Option<&str>,
+        lang: &Language,
     ) -> Result<String, String> {
-        let mut system = self.system(status, spo2);
+        let mut system = self.system(status, spo2, lang);
         if let Some(h) = retry_hint {
             system.push_str("\n\n");
             system.push_str(h);
@@ -188,6 +166,73 @@ impl Patient {
             .filter(|s| !s.is_empty())
             .ok_or_else(|| "the gateway returned nothing".to_string())
     }
+}
+
+/// The character brief, built from the authored story and the language the learner chose.
+///
+/// A free function rather than a method so it can be read — and tested — without a gateway: the
+/// one thing that must be true of a language layer is that the *right instruction leaves the
+/// building*, and that has to be checkable on a laptop with no model running. `tests/patient.rs`
+/// asserts exactly that against `demo/ep1-en.json`.
+///
+/// # Why the case notes stay in English
+///
+/// The notes below are the case, and the case is a file whose sha256 is its identity on chain.
+/// Translating the file would mint a different case. So the model is handed the English the
+/// author wrote and asked to *carry it across* — the facts are fixed, the language is not. That
+/// is also the honest division of labour: paraphrasing a fixed set of facts into a patient's own
+/// words is what this model is for, and it is doing it in English already.
+pub fn brief(persona: &Value, status: &str, spo2: f64, lang: &Language) -> String {
+    let p = &persona["patient"];
+    let mut s = format!(
+        "You are {}, {} years old, in an emergency department right now. \
+         You are frightened and short of breath. Speak ONLY as her, in first person, in \
+         {}, in one or two short sentences. Broken, breathless phrasing. Never narrate, \
+         never describe yourself from outside, never mention being an AI, never give medical \
+         advice or diagnose yourself.\n\n",
+        p["name"].as_str().unwrap_or("Ing"),
+        p["age"].as_i64().unwrap_or(19),
+        lang.speaks,
+    );
+    s.push_str("What is true about you, and what you say if asked:\n");
+    if let Some(d) = persona["dialogue"].as_array() {
+        for node in d {
+            let reveal = node["reveal"].as_str().unwrap_or("on_ask");
+            let line = node["patient"].as_str().unwrap_or("");
+            let id = node["id"].as_str().unwrap_or("");
+            s.push_str(&format!("- {id} ({reveal}): \"{line}\"\n"));
+        }
+    }
+    s.push_str(&format!(
+        "\nUse those as the truth. Paraphrase them naturally; do not invent a different \
+         allergy, a different timeline, or symptoms not listed. Anything marked \
+         on_direct_ask you volunteer only when asked about that exact thing.\n\
+         \nRight now you are {status} and your oxygen saturation is {spo2:.0} percent. \
+         The worse that is, the shorter and more broken your sentences get. If you are \
+         critical or arrested you can barely speak at all.\n\
+         If asked something you would not know, say you don't know.\n\
+         Fallback if you cannot answer: \"{}\"",
+        persona["fallback"].as_str().unwrap_or("I can't really talk any more.")
+    ));
+    // Only when she is not speaking the language the notes are written in. The English brief is
+    // left exactly as it was, so nothing about the default encounter changed when this landed.
+    if lang.id != crate::lang::default_language().id {
+        s.push_str(&format!(
+            "\n\nLANGUAGE. The notes above are the medical record and are written in English. \
+             That is the language of the chart, not of this patient. You speak {0}. Every reply \
+             you give is in {0} and only in {0} — including your fallback line, and including \
+             when the doctor speaks to you in English. \
+             Carry the notes across; do not change them. The same allergy, the same food, the \
+             same timing, the same symptoms, the same numbers, the same things you will only say \
+             if you are asked. Do not add a detail that is not in the notes and do not leave one \
+             out because it is awkward to say in {0}. \
+             Speak the way this patient would speak — a frightened teenager, not a doctor. Where \
+             {0} has an everyday word for something, use the everyday word; where the only word \
+             she would have is the borrowed medical one, use that.",
+            lang.speaks
+        ));
+    }
+    s
 }
 
 /// A cheap check that a model endpoint will answer before an encounter commits to it.

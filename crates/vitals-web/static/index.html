@@ -116,6 +116,20 @@ addEventListener('click',function(e){
 .lb-bar .sp{margin-left:auto}
 .coin{background:rgba(255,255,255,.18);padding:.25rem .65rem;border-radius:999px;
   font-family:"IBM Plex Mono",monospace;font-size:.72rem;font-weight:600}
+/* ── the language the patient speaks ──────────────────────────────────────────
+   A pill in the bar, not a settings page: it is the first decision a learner in Bangkok or
+   Jakarta makes and the last one anybody else thinks about, so it sits where the eye already
+   goes and takes up the room of one word. It reads light-on-dark in the lobby and picks up the
+   bay's own control styling in the game — the two bars are different rooms and it belongs to
+   whichever one it is standing in. */
+.langpill{display:inline-flex;align-items:center;gap:.3rem;background:rgba(255,255,255,.18);
+  border-radius:999px;padding:.1rem .5rem .1rem .55rem;font-size:.72rem}
+.langpill select{background:transparent;border:0;color:#fff;font-family:"IBM Plex Mono",monospace;
+  font-size:.72rem;font-weight:600;padding:.15rem .1rem;cursor:pointer}
+.langpill select option{color:var(--ink);background:var(--card)}
+.bar .langpill{background:var(--card-2);border:1px solid var(--line);border-radius:7px;
+  padding:.1rem .45rem}
+.bar .langpill select{color:var(--ink)}
 .lb-wrap{max-width:66rem;margin:0 auto;padding:2rem 1.1rem 4rem}
 .lb-eyebrow{font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.16em;
   text-transform:uppercase;color:var(--mint-d);font-weight:600}
@@ -1351,6 +1365,13 @@ a.give:hover{filter:brightness(1.06)}
     <a class="coin give hide" id="donate" href="/donate" target="_blank" rel="noopener"
        title="the bay is free — donations pay for its compute">♥ keep it running</a>
     <span class="coin" id="lb-chain">—</span>
+    <!-- Which language the patient answers in. The chart, the drugs and the mark sheet stay in
+         professional English on purpose — a doctor takes the history in the patient's language
+         and writes the record in the profession's. See docs/internal/LANGUAGE_LAYER.md. -->
+    <span class="langpill" title="the language the patient speaks — the chart and the mark sheet stay in English">
+      <span aria-hidden="true">🌐</span>
+      <select id="lang-lb" aria-label="the language the patient speaks"></select>
+    </span>
     <!-- Identity belongs where it always is, not in a card you scroll to find. This is the
          wallet button: the level and who you are, at a glance, opening the rest on demand. -->
     <button class="me" id="me" data-state="none">
@@ -1433,6 +1454,12 @@ a.give:hover{filter:brightness(1.06)}
     <button class="btn" id="pause" disabled>hold</button>
     <span class="spacer"></span>
     <button class="btn" id="diff" data-d="easy">easy</button>
+    <!-- The same choice, reachable without leaving the bay: a learner finds out they wanted
+         Thai when the patient's first answer arrives, not on the shelf. -->
+    <span class="langpill" title="the language the patient speaks">
+      <span aria-hidden="true">🌐</span>
+      <select id="lang-gm" aria-label="the language the patient speaks"></select>
+    </span>
     <span class="ep" id="chainstate">—</span>
     <!-- The design's point, on screen: the chain knows how many times you started. Five
          practice runs need five visible commitments, and this is where they are visible. -->
@@ -2100,7 +2127,70 @@ const SAY={
  "terminal:WinDischarge":"she goes home","terminal:WinIcu":"she lives — ICU",
  "terminal:DeathArrest":"she dies","terminal:DeathBiphasic":"she dies at home"
 };
-const say=b=>SAY[b] || (b.startsWith("harm:") ? "harm — "+b.slice(5) : b.replace(/^[a-z]+:/,""));
+/* The line a beat is read in: the run's own translation first, then the page's English, then the
+   raw beat with its kind stripped. Three fallbacks deep and none of them can be empty, because a
+   case with no translation must read exactly as it did before any of this existed. */
+const say=b=>TR[b] || SAY[b] || (b.startsWith("harm:") ? "harm — "+b.slice(5) : b.replace(/^[a-z]+:/,""));
+
+/* ─── the language the patient speaks ─────────────────────────────────────────
+   Presentation, all of it. Nothing below reaches the tape, the leaf or the mark sheet: the chips
+   keep firing the English phrase they always fired, the beats keep their canonical form for
+   everything the page *thinks* with (which cutscene to roll, which line is a harm, which one to
+   unseal), and only the words a human reads change. `docs/internal/LANGUAGE_LAYER.md` is the
+   argument in full; the tests in main.rs are the argument as an assertion.
+
+   The server owns the tables — one file to edit to add Bahasa Indonesia — so the page holds no
+   list of languages of its own. Until /api/lang answers, LANG is empty and every request simply
+   omits the parameter, which the API reads as "the language the cases are written in". */
+let LANG='', LANGS=[], PACK={asks:{},ui:{}};
+/* Beat → the line to read it in, for this run. Filled from each view, which carries only the
+   beats the run has already earned — never the ones it has not, because a harm line names the
+   drug and the deadline the rubric is about to pay for. */
+let TR={};
+const langQ=()=>LANG?'&lang='+encodeURIComponent(LANG):'';
+
+function renderLangPickers(){
+  for(const sel of ['#lang-lb','#lang-gm']){
+    const n=$(sel); if(!n) continue;
+    n.innerHTML=LANGS.map(l=>`<option value="${l.id}">${l.native}</option>`).join('');
+    n.value=LANG;
+    n.onchange=()=>setLang(n.value,true);
+  }
+}
+/* Switching is a fetch and a repaint, never a reload: a case in progress is a patient in
+   progress, and dropping a live run to change a label would be its own kind of harm. Lines
+   already in the transcript keep the words they were said in — a transcript is a record of what
+   was said — and everything from here on arrives in the new language. */
+async function setLang(id,remember){
+  LANG=id||'';
+  if(remember) { try{localStorage.setItem('vitals.lang',LANG)}catch(e){} }
+  PACK={asks:{},ui:{}};
+  try{
+    const d=await (await fetch('/api/lang'+(LANG?'?lang='+encodeURIComponent(LANG):''))).json();
+    if(d.languages&&d.languages.length) LANGS=d.languages;
+    PACK={asks:d.asks||{},ui:d.ui||{}};
+    if(d.lang) LANG=d.lang;
+  }catch(e){ /* no pack is the English pack: every string below falls back to the original */ }
+  HARM_SEALED = PACK.ui.harm_sealed || '⚠ harm recorded';
+  TR={};
+  renderLangPickers();
+  if($('#chips')) renderChips();
+}
+/* On boot: what you chose last, else what your browser is already set to if we speak it, else
+   the language the cases are written in. A browser default is not a choice, so it is not written
+   to storage — pick from the menu once and that sticks instead. */
+async function bootLang(){
+  let want=null; try{want=localStorage.getItem('vitals.lang')}catch(e){}
+  if(!want){
+    try{
+      const d=await (await fetch('/api/lang')).json();
+      if(d.languages) LANGS=d.languages;
+    }catch(e){}
+    const nav=(navigator.language||'').slice(0,2).toLowerCase();
+    if(LANGS.some(l=>l.id===nav)) want=nav;
+  }
+  await setLang(want||'', false);
+}
 
 /* A harm beat is written to teach: "no steroid by the seventh minute — croup is a steroid
    disease" names the drug, the disease and the deadline in one line, and the scenario fires it
@@ -2115,7 +2205,7 @@ const say=b=>SAY[b] || (b.startsWith("harm:") ? "harm — "+b.slice(5) : b.repla
    the after picture.
    The scenario files themselves are never touched: demo/ is the case, and a case must read the
    same to the engine, the replayer and the chain no matter who is looking at the screen. */
-const HARM_SEALED='⚠ harm recorded';
+let HARM_SEALED='⚠ harm recorded';   /* the pack replaces it — see setLang() */
 const harmShown=(text,ended)=>(examMode()&&!ended)?HARM_SEALED:text;
 
 /* Why this patient is kept in — the line under the disposition box. Practice only, and only
@@ -2284,13 +2374,13 @@ async function commit(k, value){
   // Support that can only ever be added teaches that nothing you attach can be got wrong, so the
   // two that cannot be undone ask first.
   if(k.confirm && !confirm(k.confirm)) return;
-  const v=await (await fetch(`/api/kit?id=${id}&dev=${k.id}`+(value!=null?`&set=${value}`:'')+asMe())).json();
+  const v=await (await fetch(`/api/kit?id=${id}&dev=${k.id}`+(value!=null?`&set=${value}`:'')+asMe()+langQ())).json();
   if(v.error) return ev('note','—',v.error);
   ev('order','▸', k.label+(value!=null?` · ${value} ${k.unit}`:''));
   paint(v);
 }
 async function detach(devId){
-  const v=await (await fetch(`/api/kit?id=${id}&dev=${devId}&off=1`+asMe())).json();
+  const v=await (await fetch(`/api/kit?id=${id}&dev=${devId}&off=1`+asMe()+langQ())).json();
   if(v.error) return; ev('order','✕','remove '+KITLBL[devId].label); paint(v);
 }
 
@@ -2450,12 +2540,22 @@ const seedOf=s=>{let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i)
 const shuffled=(list,seed)=>{const a=list.slice();let s=seed||1;
   for(let i=a.length-1;i>0;i--){s=(Math.imul(s,1664525)+1013904223)>>>0;const j=s%(i+1);[a[i],a[j]]=[a[j],a[i]];}
   return a;};
+/* The label is a coat over the button. `data-x` — what the chip fires, what lands on the tape,
+   what the matcher resolves to an intervention id — is untouched, so a Thai learner and an
+   English one who press the same chip write byte-identical tapes and earn the same marks. The
+   analytics id stays English for the same reason: it is the same button.
+   Only the `ask` row translates. The drugs, the labs, the procedures and the differential stay in
+   professional English because that is the language the order is written in and the language the
+   rubric pays for — you ask the patient in her language and you write the chart in yours. */
+const chipLabel=x=>PACK.asks[x]||x;
 function renderChips(){
   const c0=(CHIPS[ep().id]||{})[mode]||[];
   const c=examMode()?shuffled(c0,seedOf((id||'')+':'+ep().id+':'+mode)):c0;
-  $('#chips').innerHTML=c.map(x=>`<button class="btn" data-x="${x}" data-ga="chip:${x}">${x}</button>`).join('');
+  $('#chips').innerHTML=c.map(x=>`<button class="btn" data-x="${x}" data-ga="chip:${x}">${chipLabel(x)}</button>`).join('');
   $('#chips').querySelectorAll('button').forEach(b=>b.onclick=()=>fire(b.dataset.x));
-  $('#cmd').placeholder = mode==='ask' ? 'ask her anything…' : 'or type the order yourself…';
+  $('#cmd').placeholder = mode==='ask'
+    ? (PACK.ui.ask_placeholder || 'ask her anything…')
+    : (PACK.ui.order_placeholder || 'or type the order yourself…');
 }
 /* At a station every chip is an order — the asks included. Step::Ask never reaches the tape
    (vitals-replay treats it as inert), so an ask routed through /api/say would leave the
@@ -2464,6 +2564,10 @@ function fire(text){ (mode==='ask' && !ep().station) ? askHer(text) : doOrder(te
 
 function paint(v){
   const E=ep();
+  /* The lines this run has earned, in the chosen language. Merged rather than replaced: beats
+     only ever accumulate, and a view is a full snapshot. Absent for English, and absent for a
+     case with no translation — both of which mean "show what the case author wrote". */
+  if(v.tr) Object.assign(TR, v.tr);
   /* B9 · the player bar: on air while the case runs, ended when it is over. */
   const onAir=!over&&!v.outcome;
   $('#ep-name').innerHTML=(E.sn||E.n)+' · '+E.t
@@ -2851,7 +2955,7 @@ function unsealHarm(v){
 }
 async function step(q){
   if(!id)return;
-  const v=await (await fetch('/api/step?id='+id+q+asMe())).json();
+  const v=await (await fetch('/api/step?id='+id+q+asMe()+langQ())).json();
   if(v.error)return ev('note','—',v.error);
   paint(v);
 }
@@ -2861,10 +2965,15 @@ async function askHer(q){
   turn('you','you',q);
   const d=turn('her think', ep().who.split(' · ')[0], '…');
   step('&tick=5');                                   // talking costs time
-  const r=await (await fetch('/api/say?id='+id+'&q='+encodeURIComponent(q)+asMe())).json();
+  const r=await (await fetch('/api/say?id='+id+'&q='+encodeURIComponent(q)+asMe()+langQ())).json();
   d.classList.remove('think');
   d.querySelector('.say').textContent = r.reply || ('— '+(r.error||'no answer'));
   if(!r.reply) d.classList.add('think');
+  /* She was asked for one language and answered in another. Her answer still stands — it is
+     still true about the case, and swallowing it would cost the learner the only reply the
+     month's compute paid for. A note beside it, so a learner who chose Thai is told rather than
+     left wondering whether the setting did anything. */
+  if(r.reply && r.off_language) ev('note','·', PACK.ui.off_language || '— she answered in another language');
   /* The month is spent: the reply carries the whole meter, and the card takes it from here. */
   if(r.ceiling) showCeiling(r.ceiling);
   $('#chat').scrollTop=1e6; asking=false; $('#send').disabled=false; $('#cmd').focus();
@@ -2892,12 +3001,12 @@ $('#start').onclick=async()=>{
   // Before the case exists, not after. A case opened while the key was still being generated
   // would belong to nobody, and a case that belongs to nobody answers to anyone holding its id.
   await identity();
-  stop(); over=false; seen=0; clockNow=0; emptyState(); $('#result').style.display='none';
+  stop(); over=false; seen=0; clockNow=0; TR={}; emptyState(); $('#result').style.display='none';
   /* Wiped, not just hidden: a mark sheet left in the DOM from the previous run is the answer
      key one devtools inspection away, and #result is display:none rather than gone. */
   $('#marks').innerHTML=''; $('#db').innerHTML=''; $('#reveal').textContent=''; $('#verdict').innerHTML='';
   const e=$('#ep').value;
-  const r=await (await fetch('/api/new?ep='+e+asMe())).json();
+  const r=await (await fetch('/api/new?ep='+e+asMe()+langQ())).json();
   if(r.error)return ev('note','—',r.error);
   gtag('event','case_start',{ep:e,difficulty:$('#diff').dataset.d});
   id=r.id; mode='ask'; loopNow=''; cutting=false; $('#cut').classList.remove('on');
@@ -4402,6 +4511,10 @@ async function meterState(){
   }
 }
 meterState();
+/* Before anything paints: the picker has to be filled and the chips have to know what language
+   they are wearing. It is one small fetch and everything downstream degrades to English if it
+   never answers. */
+bootLang();
 
 refreshRecord();
 if(location.hash.startsWith('#play')){
