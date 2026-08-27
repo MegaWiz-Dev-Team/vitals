@@ -221,7 +221,7 @@ impl Session {
             films: films_from_tape(&saved.ep, &saved.tape),
             tape: saved.tape,
             sce_json,
-            scenario: title(&saved.ep).to_string(),
+            scenario: title(&saved.ep),
             difficulty: difficulty(&saved.ep),
             anchored: saved.anchored,
             commit: saved.commit,
@@ -877,21 +877,32 @@ fn rubric_path(id: &str) -> Option<std::path::PathBuf> {
     p.exists().then_some(p)
 }
 
-fn title(id: &str) -> &'static str {
+/// The name a case wears in the player bar and in the save list.
+///
+/// Stations wear the stem, not a drama title and not the answer (see [`SetMember::title`]: this
+/// string rides the player bar for the whole exam). The `OSCE-x ·` prefix is **built** from the
+/// id rather than written out per station, which is why every station has one: four of the twelve
+/// were spelled out by hand here and the other eight fell through to the bare stem, so a save
+/// list read "Barking cough on the second night — F 3" with nothing to say which station that
+/// was, next to three other cases that also start with a cough.
+///
+/// Display only — no hash is derived from any of this.
+fn title(id: &str) -> String {
     match id {
-        "ep2" => "EP2 · Time Is Muscle",
-        "ep3" => "EP3 · Don't Make Him Cry",
-        "ep4" => "EP4 · The Masquerader",
-        "ep5" => "EP5 · The Night the Stars Fell",
-        // Stations wear the stem, not a drama title and not the answer (see [`SetMember::title`]:
-        // this string rides the player bar for the whole exam). The prefix keeps the station id
-        // readable in the save list. Display only — hashes never move from here.
-        "osce-a" => "OSCE-A · Rash and facial swelling after a meal — M 71",
-        "osce-b" => "OSCE-B · Crushing chest pain into both arms — M 25",
-        "osce-c" => "OSCE-C · Barking cough and drooling, worse at night — F 6",
-        "osce-d" => "OSCE-D · Vomited blood, black stool since morning — M 62",
-        _ => set_member(id).map(|m| m.title).unwrap_or("EP1 · The Last Bite"),
+        "ep2" => "EP2 · Time Is Muscle".into(),
+        "ep3" => "EP3 · Don't Make Him Cry".into(),
+        "ep4" => "EP4 · The Masquerader".into(),
+        "ep5" => "EP5 · The Night the Stars Fell".into(),
+        _ => match set_member(id) {
+            Some(m) => format!("{} · {}", station_label(id), m.title),
+            None => "EP1 · The Last Bite".into(),
+        },
     }
+}
+
+/// `osce-b3` → `OSCE-B3`. The station's own id, in the shape the shelf and the title card print it.
+fn station_label(id: &str) -> String {
+    id.to_uppercase()
 }
 
 fn difficulty(ep: &str) -> Difficulty {
@@ -918,7 +929,7 @@ fn new_session(ep: &str) -> Result<Session, String> {
         beats: Vec::new(),
         films: Vec::new(),
         sce_json,
-        scenario: title(ep).to_string(),
+        scenario: title(ep),
         difficulty: difficulty(ep),
         anchored: false,
         said: Vec::new(),
@@ -2632,6 +2643,29 @@ mod tests {
         assert_eq!(difficulty("osce-d"), Difficulty::Intern);
     }
 
+    /// Every station is nameable in the save list, not just the four somebody typed out.
+    ///
+    /// `title()` used to spell the `OSCE-x ·` prefix by hand for A, B, C and D, and the other
+    /// eight fell through to the bare stem. A save list then read "Barking cough on the second
+    /// night — F 3" with nothing to say whether that was B3, C, or one of the other coughs, which
+    /// is the one thing the save list exists to tell you.
+    #[test]
+    fn every_station_wears_its_own_name_in_the_save_list() {
+        for m in SETS.iter().flat_map(|s| s.members.iter()) {
+            let t = title(m.id);
+            let want = format!("{} · ", m.id.to_uppercase());
+            assert!(t.starts_with(&want), "{} is saved as {t:?} — no station id in front", m.id);
+            assert!(t.ends_with(m.title), "{}: the stem was dropped or rewritten: {t:?}", m.id);
+        }
+        // Episodes are unchanged: they have drama titles, not station ids.
+        assert_eq!(title("ep1"), "EP1 · The Last Bite");
+        assert_eq!(title("ep3"), "EP3 · Don't Make Him Cry");
+        // Twelve distinct names, which is the property that failed.
+        let names: std::collections::BTreeSet<String> =
+            SETS.iter().flat_map(|s| s.members.iter()).map(|m| title(m.id)).collect();
+        assert_eq!(names.len(), 12, "two stations save under the same name");
+    }
+
     /// A station title is on screen from the shelf card through the title card and then in the
     /// player bar for every minute of the exam — while the mark sheet is paying 2–4 points for
     /// naming the diagnosis. So the rule is mechanical, and so is the check: no station's display
@@ -2652,7 +2686,7 @@ mod tests {
             .flat_map(|s| s.members.iter())
             .map(|m| (m.id, m.title.to_string()))
             // The save-list copy is the same string with an id in front of it; it leaks the same.
-            .chain(SETS.iter().flat_map(|s| s.members.iter()).map(|m| (m.id, title(m.id).to_string())));
+            .chain(SETS.iter().flat_map(|s| s.members.iter()).map(|m| (m.id, title(m.id))));
         for (id, t) in titles {
             let low = t.to_lowercase();
             for bad in GIVEAWAYS {
