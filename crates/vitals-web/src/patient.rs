@@ -50,19 +50,24 @@ struct Wire {
     key: Option<String>,
 }
 
+/// The gateway a case can be played through — **not** a character.
+///
+/// This used to hold one persona, loaded once at boot from `demo/ep1-en.json`, and every station
+/// in the season borrowed it: ask the seventy-one-year-old man in OSCE A a question and a
+/// nineteen-year-old woman with a shrimp allergy answered, in her name, about her salad. It made
+/// the per-case `sex` field meaningless too — the brief was correct about a patient nobody in the
+/// room was playing. The persona is an argument to [`Patient::say`] now, chosen per session, and
+/// a case with no persona file gets no voice at all rather than somebody else's.
 pub struct Patient {
     /// The endpoint chosen for this encounter, and which kind it is.
     wire: Wire,
     backend: Backend,
-    persona: Value,
 }
 
 impl Patient {
     /// `None` when the gateway is unreachable or unconfigured. The app then plays without a
     /// voice and says so, rather than blocking on a service the demo does not require.
-    pub fn connect(story_path: &std::path::Path) -> Option<Patient> {
-        let persona: Value = serde_json::from_str(&std::fs::read_to_string(story_path).ok()?).ok()?;
-
+    pub fn connect() -> Option<Patient> {
         // The local gateway: preferred, requires its key. Absent key ⇒ no local voice.
         let local = std::env::var("HEIMDALL_API_KEY").ok().map(|key| Wire {
             url: std::env::var("HEIMDALL_API_URL")
@@ -90,7 +95,7 @@ impl Patient {
             Backend::Local => local?,
             Backend::Cloud => cloud?,
         };
-        Some(Patient { wire, backend, persona })
+        Some(Patient { wire, backend })
     }
 
     /// Which model is speaking this encounter — for the status line and the debrief.
@@ -98,20 +103,11 @@ impl Patient {
         self.backend
     }
 
-    pub fn name(&self) -> String {
-        self.persona["patient"]["name"].as_str().unwrap_or("the patient").to_string()
-    }
-
-    /// Build the character brief from the authored story, not from a prompt written here.
+    /// Ask the patient in `persona` something. `history` is the conversation so far as
+    /// (role, content) pairs.
     ///
-    /// The dialogue nodes are the truth of what she knows — including what she will only say if
-    /// asked directly. Handing the model the authored lines keeps it anchored to the case instead
-    /// of inventing a different allergy, which it does within one turn if you let it.
-    fn system(&self, status: &str, spo2: f64, lang: &Language) -> String {
-        brief(&self.persona, status, spo2, lang)
-    }
-
-    /// Ask her something. `history` is the conversation so far as (role, content) pairs.
+    /// The persona is passed in rather than held, because *which* patient is being asked is a
+    /// fact about the session, not about the gateway. One server plays seventeen cases.
     ///
     /// `retry_hint` is the reveal gate's word on what a previous attempt gave away, carried
     /// verbatim into her brief for a regenerate. Opaque here on purpose: the gate owns what a
@@ -123,8 +119,10 @@ impl Patient {
     /// carry them across without changing a fact, and none of it — question, answer or language —
     /// is an input to a leaf. The question goes on the tape exactly as the learner typed it,
     /// which is what it did before this argument existed.
+    #[allow(clippy::too_many_arguments)]
     pub fn say(
         &self,
+        persona: &Value,
         question: &str,
         history: &[(String, String)],
         status: &str,
@@ -132,7 +130,7 @@ impl Patient {
         retry_hint: Option<&str>,
         lang: &Language,
     ) -> Result<String, String> {
-        let mut system = self.system(status, spo2, lang);
+        let mut system = brief(persona, status, spo2, lang);
         if let Some(h) = retry_hint {
             system.push_str("\n\n");
             system.push_str(h);
@@ -182,6 +180,19 @@ fn pronouns(sex: Option<&str>) -> (&'static str, &'static str) {
     }
 }
 
+/// The possessive, read the same forgiving way and declining the same way when the case is silent.
+///
+/// Separate from [`pronouns`] rather than a third slot in its tuple, because that tuple is pinned
+/// by a test and this is only needed where somebody else is doing the talking — "her oxygen
+/// saturation", said by a mother about her daughter.
+fn possessive(sex: Option<&str>) -> &'static str {
+    match sex.map(str::trim).unwrap_or_default().to_ascii_uppercase().as_str() {
+        "M" | "MALE" => "his",
+        "F" | "FEMALE" => "her",
+        _ => "their",
+    }
+}
+
 /// The character brief, built from the authored story and the language the learner chose.
 ///
 /// A free function rather than a method so it can be read — and tested — without a gateway: the
@@ -203,18 +214,51 @@ pub fn brief(persona: &Value, status: &str, spo2: f64, lang: &Language) -> Strin
     // and a brief that calls every one of them "her" is a prompt telling the model something the
     // case says is false. `sex` is a field the persona has always carried.
     let (obj, subj) = pronouns(p["sex"].as_str());
-    let mut s = format!(
-        "You are {}, {} years old, in an emergency department right now. \
-         You are frightened and short of breath. Speak ONLY as {}, in first person, in \
-         {}, in one or two short sentences. Broken, breathless phrasing. Never narrate, \
-         never describe yourself from outside, never mention being an AI, never give medical \
-         advice or diagnose yourself.\n\n",
-        p["name"].as_str().unwrap_or("Ing"),
-        p["age"].as_i64().unwrap_or(19),
-        obj,
-        lang.speaks,
-    );
-    s.push_str("What is true about you, and what you say if asked:\n");
+    let poss = possessive(p["sex"].as_str());
+    let name = p["name"].as_str().unwrap_or("Ing");
+    let age = p["age"].as_i64().unwrap_or(19);
+    // Everything below defaults to the sentence EP1 has always produced, so the case that was
+    // right before this file learned about seventeen patients is still byte-for-byte right.
+    let room = persona["room"].as_str().unwrap_or("an emergency department");
+    let presenting = persona["presenting"].as_str().unwrap_or("frightened and short of breath");
+    let cadence = persona["cadence"].as_str().unwrap_or("Broken, breathless phrasing.");
+
+    // Who is doing the talking. Three of the season's stations are children — a three-year-old
+    // with a bark, a six-year-old asleep on her mother's shoulder, twenty kilograms of anaphylaxis
+    // with her teacher in the ambulance — and a three-year-old does not give a history. The
+    // person who does is named in the case, and the brief is written for *them*: their pronouns,
+    // their fear, their sentences about somebody else's body.
+    let speaker = persona["speaker"].as_object();
+    let (voice, voice_subj) = match speaker {
+        Some(sp) => (
+            sp.get("name").and_then(Value::as_str).unwrap_or("the person who came in with them"),
+            pronouns(sp.get("sex").and_then(Value::as_str)).1,
+        ),
+        None => (obj, subj),
+    };
+    let mut s = match speaker {
+        None => format!(
+            "You are {name}, {age} years old, in {room} right now. \
+             You are {presenting}. Speak ONLY as {voice}, in first person, in \
+             {}, in one or two short sentences. {cadence} Never narrate, \
+             never describe yourself from outside, never mention being an AI, never give medical \
+             advice or diagnose yourself.\n\n",
+            lang.speaks,
+        ),
+        Some(sp) => format!(
+            "{} You are with {name}, {age} years old, in {room} right now, and {subj} is \
+             {presenting}. Speak ONLY as {voice} — never as {name}, who is not the one talking \
+             — in first person, in {}, in one or two short sentences. {cadence} Never narrate, \
+             never describe yourself from outside, never mention being an AI, never give medical \
+             advice or diagnose {obj}.\n\n",
+            sp.get("intro").and_then(Value::as_str).unwrap_or("You are speaking for the patient."),
+            lang.speaks,
+        ),
+    };
+    s.push_str(match speaker {
+        None => "What is true about you, and what you say if asked:\n",
+        Some(_) => "What is true, and what you say if asked:\n",
+    });
     if let Some(d) = persona["dialogue"].as_array() {
         for node in d {
             let reveal = node["reveal"].as_str().unwrap_or("on_ask");
@@ -223,17 +267,31 @@ pub fn brief(persona: &Value, status: &str, spo2: f64, lang: &Language) -> Strin
             s.push_str(&format!("- {id} ({reveal}): \"{line}\"\n"));
         }
     }
-    s.push_str(&format!(
+    let fallback = persona["fallback"].as_str().unwrap_or("I can't really talk any more.");
+    s.push_str(
         "\nUse those as the truth. Paraphrase them naturally; do not invent a different \
          allergy, a different timeline, or symptoms not listed. Anything marked \
-         on_direct_ask you volunteer only when asked about that exact thing.\n\
-         \nRight now you are {status} and your oxygen saturation is {spo2:.0} percent. \
-         The worse that is, the shorter and more broken your sentences get. If you are \
-         critical or arrested you can barely speak at all.\n\
-         If asked something you would not know, say you don't know.\n\
-         Fallback if you cannot answer: \"{}\"",
-        persona["fallback"].as_str().unwrap_or("I can't really talk any more.")
-    ));
+         on_direct_ask you volunteer only when asked about that exact thing.\n",
+    );
+    s.push_str(&match speaker {
+        None => format!(
+            "\nRight now you are {status} and your oxygen saturation is {spo2:.0} percent. \
+             The worse that is, the shorter and more broken your sentences get. If you are \
+             critical or arrested you can barely speak at all.\n\
+             If asked something you would not know, say you don't know.\n\
+             Fallback if you cannot answer: \"{fallback}\""
+        ),
+        // The carer is not the one desaturating, so the observation is about the patient and
+        // what it costs is the carer's composure, not their breath.
+        Some(_) => format!(
+            "\nRight now {name} is {status} and {poss} oxygen saturation is {spo2:.0} percent. \
+             The worse that is, the more frightened and clipped you get, and the more you \
+             interrupt to ask what is happening. If {subj} is critical or arrested you can \
+             barely hold yourself together.\n\
+             If asked something you would not know, say you don't know.\n\
+             Fallback if you cannot answer: \"{fallback}\""
+        ),
+    });
     // Only when she is not speaking the language the notes are written in. The English brief is
     // left exactly as it was, so nothing about the default encounter changed when this landed.
     if lang.id != crate::lang::default_language().id {
@@ -249,7 +307,7 @@ pub fn brief(persona: &Value, status: &str, spo2: f64, lang: &Language) -> Strin
              Speak the way this patient would speak — a frightened patient, not a doctor. Where \
              {0} has an everyday word for something, use the everyday word; where the only word \
              {1} would have is the borrowed medical one, use that.",
-            lang.speaks, subj
+            lang.speaks, voice_subj
         ));
     }
     s

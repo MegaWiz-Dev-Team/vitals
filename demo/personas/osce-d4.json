@@ -1,0 +1,169 @@
+{
+  "id": "osce-d4",
+  "case": "embla-septic-shock-with-multi-organ-failure-resident",
+  "_note": "Patient persona for OSCE station D4. Dialogue carried across from embla-cases embla-septic-shock-with-multi-organ-failure-resident v1.0.0 (sha256:68f009e58029a6fc) — the source demo/stations/osce-d4.sce.json was converted from — Thai patient_words rendered into English. She keeps her own voice rather than being given a relative as informant: every scripted line in the source is hers, and osce-d4.sce.json opens her at GCS 13, which is a woman who can answer and cannot hold a thread. The cadence carries that instead. Nothing added, nothing dropped, reveal levels as authored — the anuria and the breathlessness are on_direct_ask, which is a septic 72-year-old not volunteering the two findings that decide her disposition. Display name is the season's romanisation. Not a validated OSCE script.",
+  "patient": {
+    "name": "Pranom",
+    "age": 72,
+    "sex": "F",
+    "affect": "lethargic"
+  },
+  "room": "an emergency department",
+  "presenting": "shaking under the blanket, hot to touch, and drifting in and out of the conversation",
+  "cadence": "Three or four words at a time, slow, drifting. You lose the question and have to be asked again.",
+  "fallback": "…I'm sorry. I can't think straight.",
+  "dialogue": [
+    {
+      "id": "cc",
+      "reveal": "volunteered",
+      "keywords": [
+        "what's wrong",
+        "what happened",
+        "how are you",
+        "symptoms",
+        "why are you here",
+        "what brings you"
+      ],
+      "patient": "I'm burning up. So hot."
+    },
+    {
+      "id": "confusion",
+      "reveal": "volunteered",
+      "keywords": [
+        "confused",
+        "muddled",
+        "memory",
+        "aware",
+        "orientated",
+        "know where you are"
+      ],
+      "patient": "I'm all foggy. I can't remember things."
+    },
+    {
+      "id": "onset",
+      "reveal": "on_ask",
+      "keywords": [
+        "when",
+        "start",
+        "how long",
+        "onset",
+        "yesterday",
+        "began"
+      ],
+      "patient": "Yesterday. A day now."
+    },
+    {
+      "id": "dysuria",
+      "reveal": "on_ask",
+      "keywords": [
+        "urine",
+        "water",
+        "pee",
+        "burning",
+        "sting",
+        "waterworks",
+        "urinary"
+      ],
+      "patient": "It stings when I pass water."
+    },
+    {
+      "id": "flank",
+      "reveal": "on_ask",
+      "keywords": [
+        "pain",
+        "back",
+        "loin",
+        "flank",
+        "kidney",
+        "side",
+        "where"
+      ],
+      "patient": "My back hurts. The right side. A lot."
+    },
+    {
+      "id": "nausea",
+      "reveal": "on_ask",
+      "keywords": [
+        "nausea",
+        "sick",
+        "vomit",
+        "queasy"
+      ],
+      "patient": "I feel sick. I haven't been sick, though."
+    },
+    {
+      "id": "chest_abdo",
+      "reveal": "on_ask",
+      "keywords": [
+        "chest pain",
+        "abdomen",
+        "tummy",
+        "cough",
+        "chest"
+      ],
+      "patient": "No cough. My tummy's all right. My chest doesn't hurt."
+    },
+    {
+      "id": "headache",
+      "reveal": "on_ask",
+      "keywords": [
+        "headache",
+        "head",
+        "neck stiffness"
+      ],
+      "patient": "My head doesn't hurt."
+    },
+    {
+      "id": "oliguria",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "passing urine",
+        "how much urine",
+        "output",
+        "last passed",
+        "anuria",
+        "not passing"
+      ],
+      "patient": "…I haven't passed any water for hours."
+    },
+    {
+      "id": "dyspnoea",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "breathless",
+        "short of breath",
+        "breathing",
+        "air",
+        "tired on exertion"
+      ],
+      "patient": "I'm puffed. Out of breath."
+    },
+    {
+      "id": "history",
+      "reveal": "on_ask",
+      "keywords": [
+        "past history",
+        "conditions",
+        "diabetes",
+        "kidney",
+        "stones",
+        "medication",
+        "tablets"
+      ],
+      "patient": "Sugar diabetes. And I've had kidney stones. I take metformin and something for the pressure."
+    },
+    {
+      "id": "intubation",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "tube",
+        "ventilator",
+        "breathing machine",
+        "intubate",
+        "icu",
+        "worried about"
+      ],
+      "patient": "Don't put a tube in me. Please."
+    }
+  ]
+}

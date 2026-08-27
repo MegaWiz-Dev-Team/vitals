@@ -35,7 +35,7 @@ fn main() {
     }
 
     let story = std::path::PathBuf::from("demo/ep1-en.json");
-    let Some(patient) = vitals_web::patient::Patient::connect(&story) else {
+    let Some(patient) = vitals_web::patient::Patient::connect() else {
         eprintln!("no model configured — set VITALS_VERTEX_URL + a token, or HEIMDALL_API_KEY");
         std::process::exit(2);
     };
@@ -55,7 +55,7 @@ fn main() {
 
     for (i, probe) in probes.iter().enumerate() {
         // Arm A
-        let reply_a = ask(&patient, probe, None);
+        let reply_a = ask(&patient, &story_json, probe, None);
         a_calls += 1;
         let viol_a = gate.check(&reply_a, &earned);
         let leaked_a = !viol_a.is_empty();
@@ -84,7 +84,7 @@ fn main() {
             // through the same parameter the served path uses — the bench now exercises the real
             // design, not a proxy of it.
             let hint = retry_hint(&v);
-            reply_b = ask(&patient, probe, hint.as_deref());
+            reply_b = ask(&patient, &story_json, probe, hint.as_deref());
             b_calls += 1;
             tries += 1;
         }
@@ -138,8 +138,14 @@ fn main() {
 /// Always in the language the case notes are written in. This corpus is an English jailbreak
 /// stress test scored against English dialogue nodes; running it through a translation would
 /// measure the translation, not the gate.
-fn ask(p: &vitals_web::patient::Patient, q: &str, hint: Option<&str>) -> String {
-    p.say(q, &[], "stable", 98.0, hint, vitals_web::lang::default_language()).unwrap_or_default()
+fn ask(
+    p: &vitals_web::patient::Patient,
+    persona: &serde_json::Value,
+    q: &str,
+    hint: Option<&str>,
+) -> String {
+    p.say(persona, q, &[], "stable", 98.0, hint, vitals_web::lang::default_language())
+        .unwrap_or_default()
 }
 
 /// The story's dialogue nodes, as the gate needs them.

@@ -809,6 +809,56 @@ fn scenario_path(id: &str) -> std::path::PathBuf {
     }
 }
 
+/// Every case this server can be asked to play, in shelf order: the five episodes and the twelve
+/// stations. One list, so "which cases have a voice" is answerable without guessing at ids.
+fn every_case() -> Vec<&'static str> {
+    let mut v = vec!["ep1", "ep2", "ep3", "ep4", "ep5"];
+    v.extend(SETS.iter().flat_map(|s| s.members.iter()).map(|m| m.id));
+    v
+}
+
+/// Where a case's **persona** lives — the character the model is asked to play.
+///
+/// Deliberately parallel to [`scenario_path`], arm for arm, because the two must never disagree
+/// about which case is which: a session running OSCE-A's automaton and EP1's persona is precisely
+/// the bug this file grew the function to fix. `demo/personas/` is a new directory on purpose —
+/// a `.sce.json`'s sha256 is the case's identity on chain, so a persona could not be added to one
+/// without minting a different case, and none of this is proof-path anyway.
+///
+/// EP1 keeps `demo/ep1-en.json`: it is the file the language tests read and the conformance case
+/// was written against, and moving it would move a hash for no gain. Unknown ids resolve to it
+/// exactly as they resolve to its scenario, so an id that plays EP1's automaton speaks with
+/// EP1's voice and not somebody else's.
+fn persona_path(id: &str) -> std::path::PathBuf {
+    let root = scenario_root();
+    match id {
+        "ep2" | "ep3" | "ep4" | "ep5" => root.join("demo/personas").join(format!("{id}.json")),
+        m if set_member(m).is_some() => root.join("demo/personas").join(format!("{id}.json")),
+        _ => root.join("demo/ep1-en.json"),
+    }
+}
+
+/// Read every persona that exists, keyed by case id.
+///
+/// Missing is normal — EP2 through EP5 have no authored dialogue anywhere in the repository, so
+/// they have no persona and their patients stay silent. Malformed is *not* normal and says so on
+/// stderr, because a persona that fails to parse looks exactly like one that was never written,
+/// and the difference matters to whoever just edited it.
+fn load_personas() -> std::collections::BTreeMap<String, serde_json::Value> {
+    let mut m = std::collections::BTreeMap::new();
+    for id in every_case() {
+        let p = persona_path(id);
+        let Ok(text) = std::fs::read_to_string(&p) else { continue };
+        match serde_json::from_str::<serde_json::Value>(&text) {
+            Ok(v) => {
+                m.insert(id.to_string(), v);
+            }
+            Err(e) => eprintln!("persona {id} ({}) is not valid JSON: {e}", p.display()),
+        }
+    }
+    m
+}
+
 /// Where a case's rubric lives — the scorer's inputs, pinned separately from the scenario.
 ///
 /// `None` is a fact, not a fallback: a case with no rubric cannot host an exam, and both the
@@ -1095,20 +1145,32 @@ fn main() {
             .join(" · ")
     );
 
-    // Through the same root as the scenarios. This was the other baked-in build path, and it is
-    // why the container had a patient who could not speak even with a gateway to speak through.
-    let story = scenario_root().join("demo/ep1-en.json");
-    let patient = patient::Patient::connect(&story);
+    // The gateway, once. Which *character* it plays is decided per request from `personas`
+    // below — this used to be `Patient::connect(demo/ep1-en.json)`, one persona loaded at boot
+    // and handed to every session in the season.
+    let patient = patient::Patient::connect();
     match &patient {
         Some(p) => {
             let via = match p.backend() {
                 patient::Backend::Local => "local model via Heimdall",
                 patient::Backend::Cloud => "cloud model (local unreachable — fallback)",
             };
-            println!("patient    {} — {via}", p.name());
+            println!("voice      {via}");
         }
-        None => println!("patient    no voice — set HEIMDALL_API_KEY (local) or VITALS_VERTEX_URL (cloud)"),
+        None => println!("voice      none — set HEIMDALL_API_KEY (local) or VITALS_VERTEX_URL (cloud)"),
     }
+
+    // One persona per case, read off the disk through the same root as the scenarios. A case with
+    // no file is not an error and never borrows another case's: it plays mute, and the boot line
+    // says which ones so nobody has to discover it from a transcript.
+    let personas = load_personas();
+    let mute: Vec<&str> = every_case().into_iter().filter(|id| !personas.contains_key(*id)).collect();
+    println!(
+        "personas   {}/{} voiced{}",
+        personas.len(),
+        every_case().len(),
+        if mute.is_empty() { String::new() } else { format!(" · mute: {}", mute.join(" ")) }
+    );
 
     let chain = chain::Chain::connect();
     // Resume the tree this server was filling. Starting a new one every boot would strand every
@@ -1623,7 +1685,13 @@ fn main() {
                 }
                 // Snapshot what the model needs, then release the lock: a local 26B reply takes
                 // seconds and the tick loop must not block behind it.
-                let (hist, status, spo2) = {
+                //
+                // `ep` comes out with the rest of it, because *which patient is in this bed* is a
+                // fact about the session. It was not read at all before: one persona was loaded
+                // at boot and every case in the season borrowed it, so asking OSCE-A's
+                // seventy-one-year-old man anything got an answer from a nineteen-year-old woman
+                // about her shrimp allergy — in her name, on her allergy, at her age.
+                let (hist, status, spo2, ep) = {
                     let mut map = sessions.lock().unwrap();
                     let Some(s) = map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) else {
                         let _ = req.respond(no_such_session());
@@ -1631,11 +1699,21 @@ fn main() {
                     };
                     // The question goes on the tape. The answer never will.
                     s.tape.push(Step::asked(&q));
-                    (s.said.clone(), format!("{:?}", s.state.status), s.state.vitals.spo2)
+                    (s.said.clone(), format!("{:?}", s.state.status), s.state.vitals.spo2, s.ep.clone())
+                };
+                // A case with no persona is mute, and stays mute. Answering it out of another
+                // case's file is the failure this whole path exists to prevent: a wrong answer in
+                // a confident voice is worse for a candidate than no answer at all, because there
+                // is nothing on the screen to tell them it was the wrong patient talking.
+                let Some(persona) = personas.get(&ep) else {
+                    let _ = req.respond(json(serde_json::json!({
+                        "error": "this patient has no voice here — examine, order and treat instead",
+                    })));
+                    continue;
                 };
                 // No hint on this path yet — the reveal-gate wiring passes one when it lands.
                 let want = lang::language(param(&url, "lang").as_deref());
-                match pt.say(&q, &hist, &status, spo2, None, want) {
+                match pt.say(persona, &q, &hist, &status, spo2, None, want) {
                     Ok(reply) => {
                         // Counted only when she actually answered — a failed call is not billed
                         // to the month or to the visitor.
@@ -1655,7 +1733,9 @@ fn main() {
                         let off = !lang::reply_is_in(want, &reply);
                         json(serde_json::json!({
                             "reply": reply,
-                            "who": pt.name(),
+                            // The name comes off the persona that actually answered, so it can
+                            // never again say "Ing" over a reply from somebody else's case.
+                            "who": persona["patient"]["name"].as_str().unwrap_or("the patient"),
                             "off_language": off,
                         }))
                     }
@@ -1695,7 +1775,12 @@ fn main() {
                     // this string, and a label the server derives cannot drift from where the
                     // transactions actually go. It said "localnet" on the public demo once.
                     "cluster": chain.as_ref().map(|c| cluster_of(&c.deployment().2)),
+                    // A gateway with no persona for a case is not a voice in that case. The
+                    // page shows the chat affordance off this flag, and offering a microphone to
+                    // a patient who cannot answer is a worse first impression than not offering
+                    // one — so it reports the cases that can actually speak.
                     "voice": patient.is_some(),
+                    "voiced": if patient.is_some() { personas.keys().collect::<Vec<_>>() } else { Vec::new() },
                     // Which stations can sit an exam — the server's rubric map is the only copy.
                     "exam_eps": exam_eps,
                     // The three bars a station's star is read against. Served here as well as

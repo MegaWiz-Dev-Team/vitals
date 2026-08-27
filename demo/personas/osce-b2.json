@@ -1,0 +1,168 @@
+{
+  "id": "osce-b2",
+  "case": "ddx-pericarditis-1",
+  "_note": "Patient persona for OSCE station B2. Dialogue carried across from embla-cases ddx-pericarditis-1 v1.0.0 (sha256:405ae47a26a67ddc) — the source demo/stations/osce-b2.sce.json was converted from — Thai patient_words rendered into English. One node reconciled with the station rather than the source: the source's script is silent about fever while osce-b2.sce.json opens him at 38.2 and the shelf card says 'febrile', so he answers a question about fever the way his own temperature does. That is read off the station file, not invented, and it is the only such node. Nothing dropped. Display name is the season's romanisation. Not a validated OSCE script.",
+  "patient": {
+    "name": "Tan",
+    "age": 14,
+    "sex": "M",
+    "affect": "in_pain"
+  },
+  "room": "an emergency department",
+  "presenting": "sore, hot, and sitting forward on the trolley because lying back is worse",
+  "cadence": "Polite and careful. You call the doctor khun mor and you answer exactly what you are asked.",
+  "fallback": "…sorry, doctor. It hurts too much to talk.",
+  "dialogue": [
+    {
+      "id": "cc",
+      "reveal": "volunteered",
+      "keywords": [
+        "what's wrong",
+        "what happened",
+        "how are you",
+        "symptoms",
+        "why are you here",
+        "what brings you"
+      ],
+      "patient": "My chest hurts, doctor."
+    },
+    {
+      "id": "character",
+      "reveal": "on_ask",
+      "keywords": [
+        "describe",
+        "character",
+        "sharp",
+        "stabbing",
+        "kind of pain"
+      ],
+      "patient": "It's sharp — like being stabbed."
+    },
+    {
+      "id": "site",
+      "reveal": "on_ask",
+      "keywords": [
+        "where",
+        "site",
+        "location",
+        "point",
+        "which part"
+      ],
+      "patient": "Up here, in the middle of my chest at the top. I can't point at one spot exactly, it's spread out."
+    },
+    {
+      "id": "score",
+      "reveal": "on_ask",
+      "keywords": [
+        "how bad",
+        "score",
+        "out of ten",
+        "severity",
+        "rate"
+      ],
+      "patient": "Eight out of ten. It's a lot."
+    },
+    {
+      "id": "radiation",
+      "reveal": "on_ask",
+      "keywords": [
+        "radiate",
+        "spread",
+        "back",
+        "shoulder",
+        "arm",
+        "travel"
+      ],
+      "patient": "Sometimes it goes through to the middle of my back."
+    },
+    {
+      "id": "onset",
+      "reveal": "on_ask",
+      "keywords": [
+        "when",
+        "start",
+        "how long",
+        "onset",
+        "sudden",
+        "began"
+      ],
+      "patient": "It just started, all of a sudden."
+    },
+    {
+      "id": "posture",
+      "reveal": "on_ask",
+      "keywords": [
+        "lying",
+        "lie down",
+        "sit up",
+        "lean forward",
+        "position",
+        "better",
+        "worse"
+      ],
+      "patient": "If I lie flat it's much worse. Sitting up straight or leaning forward makes it better."
+    },
+    {
+      "id": "breathing",
+      "reveal": "on_ask",
+      "keywords": [
+        "breathe",
+        "breathing",
+        "deep breath",
+        "inspiration",
+        "cough"
+      ],
+      "patient": "Taking a deep breath in makes it stab. But I'm not breathless."
+    },
+    {
+      "id": "palpitations",
+      "reveal": "on_ask",
+      "keywords": [
+        "palpitations",
+        "heart racing",
+        "fast",
+        "fluttering",
+        "skip"
+      ],
+      "patient": "Sometimes my heart feels like it's going fast and fluttering."
+    },
+    {
+      "id": "viral",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "cold",
+        "flu",
+        "virus",
+        "infection",
+        "unwell",
+        "last week",
+        "recently ill"
+      ],
+      "patient": "I had a cold last week — blocked nose, that sort of thing."
+    },
+    {
+      "id": "fever",
+      "reveal": "on_ask",
+      "keywords": [
+        "fever",
+        "temperature",
+        "hot",
+        "chills",
+        "shivering"
+      ],
+      "patient": "I've been hot since yesterday. I feel shivery."
+    },
+    {
+      "id": "travel",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "travel",
+        "abroad",
+        "overseas",
+        "trip",
+        "out of the country"
+      ],
+      "patient": "No, I haven't been abroad."
+    }
+  ]
+}

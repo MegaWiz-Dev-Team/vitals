@@ -1,0 +1,165 @@
+{
+  "id": "osce-d",
+  "case": "embla-upper-gastrointestinal-bleeding-intern",
+  "_note": "Patient persona for OSCE station D. Dialogue carried across from embla-cases embla-upper-gastrointestinal-bleeding-intern v1.0.0 (sha256:26ee2d8fd7027261) — the source demo/stations/osce-d.sce.json was converted from — Thai patient_words rendered into English. Nothing added, nothing dropped, reveal levels as authored. The antiplatelets are in the source's medication list and not in its script; they are given a node here because the station's named trap is the chest-pain reflex feeding aspirin to a bleeding stomach, and a candidate who asks what he takes must be told what he takes. Display name is the season's romanisation. Not a validated OSCE script.",
+  "patient": {
+    "name": "Somchai Jaiman",
+    "age": 62,
+    "sex": "M",
+    "affect": "anxious"
+  },
+  "room": "an emergency department",
+  "presenting": "cold, grey, and apologising for the mess",
+  "cadence": "Short and impatient, and embarrassed to be causing trouble.",
+  "fallback": "…sorry, doctor. I can't right now.",
+  "dialogue": [
+    {
+      "id": "cc",
+      "reveal": "volunteered",
+      "keywords": [
+        "what's wrong",
+        "what happened",
+        "how are you",
+        "symptoms",
+        "why are you here",
+        "what brings you"
+      ],
+      "patient": "I vomited blood, doctor — bright red. And I've been passing black stools like tar."
+    },
+    {
+      "id": "onset",
+      "reveal": "on_ask",
+      "keywords": [
+        "when",
+        "start",
+        "how long",
+        "onset",
+        "this morning",
+        "began"
+      ],
+      "patient": "The blood was about two hours ago. The black stool was once, this morning."
+    },
+    {
+      "id": "dizzy",
+      "reveal": "on_ask",
+      "keywords": [
+        "dizzy",
+        "lightheaded",
+        "standing",
+        "faint",
+        "black out",
+        "weak"
+      ],
+      "patient": "I go grey when I stand up. The room tipped over on me this morning."
+    },
+    {
+      "id": "syncope",
+      "reveal": "on_ask",
+      "keywords": [
+        "pass out",
+        "collapse",
+        "fainted",
+        "lost consciousness"
+      ],
+      "patient": "I haven't actually passed out."
+    },
+    {
+      "id": "epigastric",
+      "reveal": "on_ask",
+      "keywords": [
+        "pain",
+        "stomach",
+        "tummy",
+        "abdomen",
+        "epigastric",
+        "burning",
+        "hurt"
+      ],
+      "patient": "There's a gnawing pain at the pit of my stomach. It's been there a while now."
+    },
+    {
+      "id": "chest",
+      "reveal": "on_ask",
+      "keywords": [
+        "chest pain",
+        "chest",
+        "heart",
+        "angina"
+      ],
+      "patient": "No chest pain right now."
+    },
+    {
+      "id": "meds",
+      "reveal": "on_ask",
+      "keywords": [
+        "medication",
+        "medicine",
+        "tablets",
+        "regular",
+        "aspirin",
+        "blood thinner",
+        "past history",
+        "heart"
+      ],
+      "patient": "I'm on aspirin and clopidogrel — for my heart. And blood pressure tablets."
+    },
+    {
+      "id": "nsaids",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "painkiller",
+        "nsaid",
+        "ibuprofen",
+        "anti-inflammatory",
+        "other painkillers"
+      ],
+      "patient": "No, I don't take any other painkillers."
+    },
+    {
+      "id": "swallow",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "swallow",
+        "swallowing",
+        "dysphagia",
+        "food sticking"
+      ],
+      "patient": "No trouble swallowing."
+    },
+    {
+      "id": "weight",
+      "reveal": "on_ask",
+      "keywords": [
+        "weight",
+        "weight loss",
+        "appetite",
+        "losing weight"
+      ],
+      "patient": "My weight's the same as always."
+    },
+    {
+      "id": "fever",
+      "reveal": "on_ask",
+      "keywords": [
+        "fever",
+        "temperature",
+        "hot",
+        "chills"
+      ],
+      "patient": "No fever."
+    },
+    {
+      "id": "liver",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "belly swelling",
+        "distension",
+        "jaundice",
+        "yellow",
+        "liver",
+        "alcohol"
+      ],
+      "patient": "My belly isn't swollen. My eyes aren't yellow."
+    }
+  ]
+}

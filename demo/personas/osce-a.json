@@ -1,0 +1,197 @@
+{
+  "id": "osce-a",
+  "case": "ddx-anaphylaxis-1",
+  "_note": "Patient persona for OSCE station A. Dialogue carried across from embla-cases ddx-anaphylaxis-1 v1.0.0 (sha256:a744574cee3040da) — the same source demo/stations/osce-a.sce.json was converted from — with the Thai patient_words rendered into the English the case notes are written in, and DDXPlus's one-finding-per-node shotgun consolidated into lines a person would actually say (the rash is one sentence about five places, not five sentences). No finding added, none dropped, and every authored reveal level kept: the buffet he will not talk about stays on_ask, the allergy he has known since childhood stays on_direct_ask. Display name is the season's romanisation (SEASON, static/index.html) so the bed label and the man in it agree. Not a validated OSCE script.",
+  "patient": {
+    "name": "Somchai",
+    "age": 71,
+    "sex": "M",
+    "affect": "distressed"
+  },
+  "room": "an emergency department",
+  "presenting": "in pain, itching all over, and embarrassed about how you got here",
+  "cadence": "Blunt, impatient, short. You do not explain yourself twice.",
+  "fallback": "…I can't talk right now. It hurts.",
+  "dialogue": [
+    {
+      "id": "cc",
+      "reveal": "volunteered",
+      "keywords": [
+        "what's wrong",
+        "what happened",
+        "how are you",
+        "symptoms",
+        "why are you here",
+        "what brings you"
+      ],
+      "patient": "My stomach — it's cramping, doubling me over. And I've come out in a rash everywhere."
+    },
+    {
+      "id": "onset",
+      "reveal": "on_ask",
+      "keywords": [
+        "when",
+        "start",
+        "how long",
+        "onset",
+        "began",
+        "after"
+      ],
+      "patient": "About half an hour after I ate. It came on all at once — I didn't see it coming."
+    },
+    {
+      "id": "exposure",
+      "reveal": "on_ask",
+      "keywords": [
+        "eat",
+        "ate",
+        "food",
+        "meal",
+        "dinner",
+        "buffet",
+        "restaurant",
+        "seafood"
+      ],
+      "patient": "I had a bit of a buffet. Then I started feeling bad."
+    },
+    {
+      "id": "allergy",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "allergy",
+        "allergic",
+        "shrimp",
+        "prawn",
+        "seafood allergy",
+        "react"
+      ],
+      "patient": "I've been allergic to shrimp since I was a boy."
+    },
+    {
+      "id": "pain_site",
+      "reveal": "on_ask",
+      "keywords": [
+        "where",
+        "site",
+        "location",
+        "flank",
+        "side",
+        "ribs",
+        "point"
+      ],
+      "patient": "Left side, and under the right ribs a bit. I can't put a finger on it — it's all over."
+    },
+    {
+      "id": "pain_character",
+      "reveal": "on_ask",
+      "keywords": [
+        "describe",
+        "character",
+        "cramp",
+        "sharp",
+        "dull",
+        "kind of pain"
+      ],
+      "patient": "Like a cramp gripping me. It doesn't go anywhere else, it just sits there."
+    },
+    {
+      "id": "pain_score",
+      "reveal": "on_ask",
+      "keywords": [
+        "how bad",
+        "score",
+        "out of ten",
+        "severity",
+        "rate the pain"
+      ],
+      "patient": "Seven out of ten, if you want a number."
+    },
+    {
+      "id": "rash",
+      "reveal": "on_ask",
+      "keywords": [
+        "rash",
+        "hives",
+        "welts",
+        "skin",
+        "wheals",
+        "urticaria",
+        "spots"
+      ],
+      "patient": "Pink welts, raised up, bigger than my thumbnail. Back of my neck, both upper arms, my throat here, my right ankle. They don't peel, they just swell."
+    },
+    {
+      "id": "itch",
+      "reveal": "on_ask",
+      "keywords": [
+        "itch",
+        "itchy",
+        "scratch"
+      ],
+      "patient": "The itching is the worst of it — eight out of ten. The rash itself only stings a little."
+    },
+    {
+      "id": "swelling",
+      "reveal": "on_ask",
+      "keywords": [
+        "swelling",
+        "swollen",
+        "face",
+        "lips",
+        "tight"
+      ],
+      "patient": "My face has come up. My forehead, and the right cheek. It feels tight."
+    },
+    {
+      "id": "wheeze",
+      "reveal": "on_ask",
+      "keywords": [
+        "breathing",
+        "breath",
+        "wheeze",
+        "chest",
+        "noise",
+        "whistle"
+      ],
+      "patient": "There's a whistle when I breathe out. I can still breathe — I'm not gasping."
+    },
+    {
+      "id": "dizzy",
+      "reveal": "on_ask",
+      "keywords": [
+        "dizzy",
+        "lightheaded",
+        "faint",
+        "black out",
+        "pass out",
+        "conscious"
+      ],
+      "patient": "No, I'm not dizzy. I haven't passed out. I know where I am."
+    },
+    {
+      "id": "travel",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "travel",
+        "abroad",
+        "overseas",
+        "trip",
+        "out of the country"
+      ],
+      "patient": "I haven't been abroad. Not lately."
+    },
+    {
+      "id": "meds",
+      "reveal": "on_ask",
+      "keywords": [
+        "medication",
+        "medicine",
+        "tablets",
+        "regular",
+        "past history",
+        "conditions"
+      ],
+      "patient": "Blood pressure tablets and something for my cholesterol. Amlodipine and simvastatin."
+    }
+  ]
+}

@@ -1,0 +1,186 @@
+{
+  "id": "osce-c3",
+  "case": "ddx-pneumonia-2",
+  "_note": "Patient persona for OSCE station C3. Dialogue carried across from embla-cases ddx-pneumonia-2 v1.0.0 (sha256:14fdb9aecdc39ece) — the source demo/stations/osce-c3.sce.json was converted from — Thai patient_words rendered into English. Two reconciliations against the station file, both recorded rather than hidden. (1) FEVER: the source script answers 'no fever'; osce-c3.sce.json opens her at 38.5 and the shelf card says febrile, so she answers about fever the way her own chart does — read off the station, not invented. (2) The source's DDXPlus co-morbidity block (heart failure, COPD, previous stroke) and its peeling rash are not carried across: they belong to a different body than the twenty-five-year-old this station was built as, and a peeling rash across the buttock and flank is a second unrelated illness in a station whose whole teaching is disposition. Her asthma and her smoking are kept — both sit in the source's own social history. Display name is the season's romanisation. Not a validated OSCE script.",
+  "patient": {
+    "name": "Waen",
+    "age": 25,
+    "sex": "F",
+    "affect": "distressed"
+  },
+  "room": "an emergency department",
+  "presenting": "hot, coughing, and stabbed in the right side every time you breathe in",
+  "cadence": "Ordinary and a little apologetic. You meant to ride this out at home.",
+  "fallback": "…sorry, I can't. It hurts when I breathe.",
+  "dialogue": [
+    {
+      "id": "cc",
+      "reveal": "volunteered",
+      "keywords": [
+        "what's wrong",
+        "what happened",
+        "how are you",
+        "symptoms",
+        "why are you here",
+        "what brings you"
+      ],
+      "patient": "I've had a cough for about a week, and now it stabs in my chest when I breathe in."
+    },
+    {
+      "id": "pain_site",
+      "reveal": "on_ask",
+      "keywords": [
+        "where",
+        "site",
+        "location",
+        "which side",
+        "point"
+      ],
+      "patient": "The right side. It goes through to my back on the right, and my left back feels tight too. I can point right at it."
+    },
+    {
+      "id": "pain_character",
+      "reveal": "on_ask",
+      "keywords": [
+        "describe",
+        "character",
+        "sharp",
+        "stabbing",
+        "kind of pain",
+        "score",
+        "how bad"
+      ],
+      "patient": "A sharp stab, like a knife. It's not that bad — a one out of ten. It doesn't spread anywhere."
+    },
+    {
+      "id": "onset",
+      "reveal": "on_ask",
+      "keywords": [
+        "when",
+        "start",
+        "how long",
+        "onset",
+        "sudden",
+        "began"
+      ],
+      "patient": "The cough's been a week. The stabbing came on all of a sudden."
+    },
+    {
+      "id": "deep_breath",
+      "reveal": "on_ask",
+      "keywords": [
+        "deep breath",
+        "breathe in",
+        "inspiration",
+        "worse when"
+      ],
+      "patient": "Breathing in deeply really hurts."
+    },
+    {
+      "id": "sputum",
+      "reveal": "on_ask",
+      "keywords": [
+        "cough",
+        "sputum",
+        "phlegm",
+        "colour",
+        "productive"
+      ],
+      "patient": "I'm coughing up a lot of phlegm."
+    },
+    {
+      "id": "haemoptysis",
+      "reveal": "on_ask",
+      "keywords": [
+        "blood",
+        "haemoptysis",
+        "coughing blood"
+      ],
+      "patient": "No blood, no."
+    },
+    {
+      "id": "dyspnoea",
+      "reveal": "on_ask",
+      "keywords": [
+        "breathless",
+        "short of breath",
+        "breathing",
+        "tired on exertion"
+      ],
+      "patient": "I'm breathless with it, yes."
+    },
+    {
+      "id": "fever",
+      "reveal": "on_ask",
+      "keywords": [
+        "fever",
+        "temperature",
+        "hot",
+        "chills",
+        "shivering",
+        "rigors"
+      ],
+      "patient": "I've been shivery and hot with it."
+    },
+    {
+      "id": "systemic",
+      "reveal": "on_ask",
+      "keywords": [
+        "appetite",
+        "eating",
+        "weight",
+        "nose",
+        "congestion",
+        "night",
+        "worse at night"
+      ],
+      "patient": "I've gone off my food. My nose is blocked with a clear runny nose. It's worse at night."
+    },
+    {
+      "id": "fatigue",
+      "reveal": "on_ask",
+      "keywords": [
+        "tired",
+        "fatigue",
+        "exhausted",
+        "energy"
+      ],
+      "patient": "I don't feel unusually tired, no."
+    },
+    {
+      "id": "smoking",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "smoke",
+        "smoking",
+        "cigarettes",
+        "tobacco"
+      ],
+      "patient": "I do smoke, yes."
+    },
+    {
+      "id": "asthma",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "asthma",
+        "inhaler",
+        "chest problems",
+        "past history",
+        "conditions"
+      ],
+      "patient": "I've got asthma."
+    },
+    {
+      "id": "travel",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "travel",
+        "abroad",
+        "overseas",
+        "trip",
+        "out of the country"
+      ],
+      "patient": "I haven't been anywhere."
+    }
+  ]
+}

@@ -1,0 +1,206 @@
+{
+  "id": "osce-d2",
+  "case": "ddx-pulmonary-embolism-2",
+  "_note": "Patient persona for OSCE station D2. Dialogue carried across from embla-cases ddx-pulmonary-embolism-2 v1.0.0 (sha256:b397a41f3ffa93fe) — the source demo/stations/osce-d2.sce.json was converted from — Thai patient_words rendered into English, DDXPlus's per-site pain nodes consolidated into speakable lines. Nothing added, nothing dropped. One reveal level moved, and it is the station's own teaching: the source marks the swollen ankle on_ask, and osce-d2.sce.json's header calls it 'a swollen calf nobody asked about', so it is on_direct_ask here. Every other Wells item — the cancer, the hormones, the old clot, the days off her feet, the surgery, the flight — is at the reveal level the case authored. The source's explicit negative on pain worsening with a deep breath is kept as authored, even though the shelf blurb calls the pain pleuritic. Display name is the season's romanisation. Not a validated OSCE script.",
+  "patient": {
+    "name": "Somsri Jaidee",
+    "age": 55,
+    "sex": "F",
+    "affect": "anxious"
+  },
+  "room": "an emergency department",
+  "presenting": "breathless, frightened by it, and still able to talk in full sentences",
+  "cadence": "Direct and worried. You want to be told what this is.",
+  "fallback": "…I can't, doctor. I can't get enough air.",
+  "dialogue": [
+    {
+      "id": "cc",
+      "reveal": "volunteered",
+      "keywords": [
+        "what's wrong",
+        "what happened",
+        "how are you",
+        "symptoms",
+        "why are you here",
+        "what brings you"
+      ],
+      "patient": "My chest hurts a lot, doctor, and I can't get my breath."
+    },
+    {
+      "id": "onset",
+      "reveal": "on_ask",
+      "keywords": [
+        "when",
+        "start",
+        "how long",
+        "onset",
+        "sudden",
+        "began",
+        "lunchtime"
+      ],
+      "patient": "It came on all of a sudden. One moment I was fine."
+    },
+    {
+      "id": "character",
+      "reveal": "on_ask",
+      "keywords": [
+        "describe",
+        "character",
+        "sharp",
+        "stabbing",
+        "kind of pain",
+        "score",
+        "how bad"
+      ],
+      "patient": "A prickling, stabbing sort of pain — like something going into me. About five out of ten. I can't pin the spot down exactly."
+    },
+    {
+      "id": "site",
+      "reveal": "on_ask",
+      "keywords": [
+        "where",
+        "site",
+        "location",
+        "which side",
+        "back",
+        "shoulder blade"
+      ],
+      "patient": "The right side of my chest, and it's spread to the left. It goes through to my right shoulder blade and round to my back on both sides."
+    },
+    {
+      "id": "dyspnoea",
+      "reveal": "on_ask",
+      "keywords": [
+        "breathless",
+        "short of breath",
+        "breathing",
+        "air",
+        "winded"
+      ],
+      "patient": "I'm short of breath. I can't get enough air in."
+    },
+    {
+      "id": "deep_breath",
+      "reveal": "on_ask",
+      "keywords": [
+        "deep breath",
+        "breathe in",
+        "inspiration",
+        "worse when"
+      ],
+      "patient": "No — breathing in deeply doesn't make it any worse."
+    },
+    {
+      "id": "haemoptysis",
+      "reveal": "on_ask",
+      "keywords": [
+        "blood",
+        "haemoptysis",
+        "coughing blood"
+      ],
+      "patient": "No, I haven't coughed up any blood."
+    },
+    {
+      "id": "syncope",
+      "reveal": "on_ask",
+      "keywords": [
+        "pass out",
+        "collapse",
+        "faint",
+        "lost consciousness",
+        "black out"
+      ],
+      "patient": "I've never lost consciousness."
+    },
+    {
+      "id": "cancer",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "cancer",
+        "tumour",
+        "malignancy",
+        "oncology",
+        "chemotherapy",
+        "breast"
+      ],
+      "patient": "I'm being treated for cancer at the moment."
+    },
+    {
+      "id": "hormones",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "hormone",
+        "tablets",
+        "medication",
+        "the pill",
+        "hrt",
+        "tamoxifen"
+      ],
+      "patient": "I'm on hormone tablets."
+    },
+    {
+      "id": "dvt",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "clot",
+        "dvt",
+        "thrombosis",
+        "leg clot",
+        "previous clot"
+      ],
+      "patient": "I've had a clot in my leg before."
+    },
+    {
+      "id": "immobility",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "immobile",
+        "bed",
+        "bedbound",
+        "off your feet",
+        "three days",
+        "rest"
+      ],
+      "patient": "I was in bed for days after the operation."
+    },
+    {
+      "id": "surgery",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "surgery",
+        "operation",
+        "procedure",
+        "last month",
+        "recently"
+      ],
+      "patient": "I had an operation not long ago."
+    },
+    {
+      "id": "travel",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "travel",
+        "abroad",
+        "overseas",
+        "flight",
+        "flew",
+        "long haul",
+        "out of the country"
+      ],
+      "patient": "I've just flown back from America."
+    },
+    {
+      "id": "swelling",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "swelling",
+        "swollen",
+        "leg",
+        "calf",
+        "ankle",
+        "foot"
+      ],
+      "patient": "My foot has been swollen. The back of my right ankle."
+    }
+  ]
+}

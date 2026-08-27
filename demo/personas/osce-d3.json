@@ -1,0 +1,179 @@
+{
+  "id": "osce-d3",
+  "case": "ddx-p-anaphylaxis-1",
+  "_note": "Patient persona for OSCE station D3. The reaction is carried across from embla-cases ddx-p-anaphylaxis-1 v1.0.0 (sha256:dae926c523d9caa9) — the source demo/stations/osce-d3.sce.json was converted from — Thai patient_words rendered into English and DDXPlus's per-site nodes consolidated. The re-voicing is the station's, not this file's: osce-d3.sce.json's own header records that the source case's adult frame does not carry the set's teaching point and the patient is re-aged to a six-year-old of twenty kilograms, and the shelf card says her teacher came in the ambulance and is doing all the talking. So the findings are the source's — the prawn, the cramping belly, the pink wheals over 1 cm on the back of the neck, both upper arms, the throat and the right ankle, the itch, the swollen forehead and cheek, the expiratory wheeze, no faint and no collapse — and the voice is the teacher's, because a six-year-old in shock does not give a history. The teacher is a witness, not a parent: she does not know the allergy history and says so, which is the station's own hazard and is why the weight comes from a scale and not from a story. Display name is the season's romanisation. Not a validated OSCE script.",
+  "patient": {
+    "name": "Beam",
+    "age": 6,
+    "sex": "F",
+    "affect": "distressed"
+  },
+  "speaker": {
+    "name": "Beam's teacher",
+    "sex": "F",
+    "intro": "You are a schoolteacher who came in the ambulance with a six-year-old girl from your class, and you are the one answering the doctor because she is six, she is frightened, and her parents are not here yet."
+  },
+  "room": "an emergency department",
+  "presenting": "covered in wheals, her lips swelling, wheezing, and going quiet in a way that frightens you",
+  "cadence": "Rushed and apologetic. You keep saying you are only her teacher.",
+  "fallback": "…I'm sorry, I don't know. I'm only her teacher — her parents are on their way.",
+  "dialogue": [
+    {
+      "id": "cc",
+      "reveal": "volunteered",
+      "keywords": [
+        "what's wrong",
+        "what happened",
+        "how is she",
+        "symptoms",
+        "why are you here",
+        "what brings you"
+      ],
+      "patient": "She's come out in wheals everywhere and her tummy hurts badly — she keeps doubling over."
+    },
+    {
+      "id": "exposure",
+      "reveal": "on_ask",
+      "keywords": [
+        "eat",
+        "ate",
+        "food",
+        "meal",
+        "trigger",
+        "prawn",
+        "shrimp",
+        "seafood",
+        "fair",
+        "school"
+      ],
+      "patient": "There were prawn fritters at the school fair. She ate some, and then she started with this."
+    },
+    {
+      "id": "onset",
+      "reveal": "on_ask",
+      "keywords": [
+        "when",
+        "start",
+        "how long",
+        "onset",
+        "began",
+        "after"
+      ],
+      "patient": "It came on a while after she ate — it's been building, not all at once."
+    },
+    {
+      "id": "allergy",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "allergy",
+        "allergic",
+        "known allergy",
+        "history",
+        "parents",
+        "epipen",
+        "pen"
+      ],
+      "patient": "I don't know if she's allergic to anything — I'm her teacher, not her mother. Nobody's told me she carries a pen."
+    },
+    {
+      "id": "weight",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "weight",
+        "how much does she weigh",
+        "kilos",
+        "kg"
+      ],
+      "patient": "I don't know what she weighs. She's small for six — you'd have to put her on the scale."
+    },
+    {
+      "id": "pain",
+      "reveal": "on_ask",
+      "keywords": [
+        "pain",
+        "tummy",
+        "abdomen",
+        "stomach",
+        "cramp",
+        "hurt",
+        "where"
+      ],
+      "patient": "She says her tummy really hurts — squeezing, she says. Left side and up under the right ribs. She can't point to one place."
+    },
+    {
+      "id": "rash",
+      "reveal": "on_ask",
+      "keywords": [
+        "rash",
+        "hives",
+        "welts",
+        "skin",
+        "wheals",
+        "urticaria",
+        "spots"
+      ],
+      "patient": "Pink wheals, raised, bigger than a thumb. The back of her neck, both her upper arms, her throat, her right ankle. They're not peeling, just swelling."
+    },
+    {
+      "id": "itch",
+      "reveal": "on_ask",
+      "keywords": [
+        "itch",
+        "itchy",
+        "scratch"
+      ],
+      "patient": "She won't stop scratching. She says it itches more than it hurts."
+    },
+    {
+      "id": "swelling",
+      "reveal": "on_ask",
+      "keywords": [
+        "swelling",
+        "swollen",
+        "face",
+        "lips",
+        "forehead",
+        "cheek"
+      ],
+      "patient": "Her face is puffing up — her forehead, her right cheek. Her lips too."
+    },
+    {
+      "id": "wheeze",
+      "reveal": "on_ask",
+      "keywords": [
+        "breathing",
+        "breath",
+        "wheeze",
+        "chest",
+        "noise",
+        "whistle"
+      ],
+      "patient": "There's a whistling when she breathes out. She's breathing, but I don't like the sound of it."
+    },
+    {
+      "id": "faint",
+      "reveal": "on_ask",
+      "keywords": [
+        "dizzy",
+        "lightheaded",
+        "faint",
+        "pass out",
+        "collapse",
+        "conscious"
+      ],
+      "patient": "She hasn't fainted and she hasn't passed out. She's awake — just quieter than she was."
+    },
+    {
+      "id": "travel",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "travel",
+        "abroad",
+        "overseas",
+        "trip",
+        "out of the country"
+      ],
+      "patient": "She hasn't been anywhere. She's been at school all week."
+    }
+  ]
+}

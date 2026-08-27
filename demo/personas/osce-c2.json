@@ -1,0 +1,147 @@
+{
+  "id": "osce-c2",
+  "case": "ddx-bronchospasm-acute-asthma-exacerbation-2",
+  "_note": "Patient persona for OSCE station C2. Dialogue carried across from embla-cases ddx-bronchospasm-acute-asthma-exacerbation-2 v1.0.0 (sha256:0824a0babe759093) — the source demo/stations/osce-c2.sce.json was converted from — Thai patient_words rendered into English. Nothing added, nothing dropped, every reveal level as authored: the three attacks this year and the two puffs that did not work are on_direct_ask, which is the history the station is scored on eliciting. Display name is the season's romanisation. Not a validated OSCE script.",
+  "patient": {
+    "name": "Wasana",
+    "age": 53,
+    "sex": "F",
+    "affect": "anxious"
+  },
+  "room": "an emergency department",
+  "presenting": "working to breathe, wheezing, and frightened that this time is different",
+  "cadence": "Fast and wordy between breaths. You ask the doctor what is wrong with you.",
+  "fallback": "…I can't get the words out. Please.",
+  "dialogue": [
+    {
+      "id": "cc",
+      "reveal": "volunteered",
+      "keywords": [
+        "what's wrong",
+        "what happened",
+        "how are you",
+        "symptoms",
+        "why are you here",
+        "what brings you"
+      ],
+      "patient": "I can't catch my breath — I couldn't even get up the stairs, doctor."
+    },
+    {
+      "id": "onset",
+      "reveal": "on_ask",
+      "keywords": [
+        "when",
+        "start",
+        "how long",
+        "onset",
+        "this morning",
+        "began"
+      ],
+      "patient": "Since this morning. It's been building all day."
+    },
+    {
+      "id": "cough",
+      "reveal": "on_ask",
+      "keywords": [
+        "cough",
+        "coughing",
+        "sputum",
+        "phlegm"
+      ],
+      "patient": "I've been coughing non-stop since last night."
+    },
+    {
+      "id": "wheeze",
+      "reveal": "on_ask",
+      "keywords": [
+        "wheeze",
+        "whistle",
+        "noise",
+        "chest sound",
+        "breathing out"
+      ],
+      "patient": "When I breathe out there's a sound in my chest — the person next to me could hear it."
+    },
+    {
+      "id": "attacks",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "before",
+        "attacks",
+        "how many times",
+        "this year",
+        "previous",
+        "recurrent",
+        "episodes"
+      ],
+      "patient": "Three times this year I've been like this. Every time I've had to go to the clinic for an injection."
+    },
+    {
+      "id": "inhaler",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "inhaler",
+        "puffer",
+        "salbutamol",
+        "reliever",
+        "medication",
+        "treatment",
+        "preventer"
+      ],
+      "patient": "I've got the inhaler at home. I took two puffs and it hasn't helped."
+    },
+    {
+      "id": "family",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "family",
+        "sister",
+        "mother",
+        "asthma in the family",
+        "runs in the family"
+      ],
+      "patient": "My younger sister has asthma too. My mother's the same with the weather."
+    },
+    {
+      "id": "atopy",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "allergy",
+        "allergic",
+        "atopic",
+        "dust",
+        "animals",
+        "pollen",
+        "sensitive"
+      ],
+      "patient": "I'm more allergic than most people — dust, animal hair, flowers, all of it."
+    },
+    {
+      "id": "pollution",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "where do you live",
+        "home",
+        "city",
+        "pollution",
+        "dust",
+        "air",
+        "environment",
+        "work"
+      ],
+      "patient": "I live in the city. There's a lot of dust — the air's been terrible lately. I didn't think that mattered."
+    },
+    {
+      "id": "travel",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "travel",
+        "abroad",
+        "overseas",
+        "trip",
+        "out of the country"
+      ],
+      "patient": "I haven't been abroad. I've been in Bangkok the whole time."
+    }
+  ]
+}

@@ -1,0 +1,179 @@
+{
+  "id": "osce-b",
+  "case": "ddx-possible-nstemi-stemi-2",
+  "_note": "Patient persona for OSCE station B. Dialogue carried across from embla-cases ddx-possible-nstemi-stemi-2 v1.0.0 (sha256:a06bc90eb52b39fd) — the source demo/stations/osce-b.sce.json was converted from — Thai patient_words rendered into English, DDXPlus's per-site and per-adjective nodes consolidated into speakable lines. The risk factors read oddly for twenty-five and they are kept anyway, at the reveal level the case authored them: they are the source's word, they are all on_direct_ask, and they are the reason this man is having this infarct. Nothing added, nothing dropped. Display name is the season's romanisation. Not a validated OSCE script.",
+  "patient": {
+    "name": "Somchai Jaidee",
+    "age": 25,
+    "sex": "M",
+    "affect": "distressed"
+  },
+  "room": "an emergency department",
+  "presenting": "terrified, sweating, and certain you are about to die",
+  "cadence": "Frightened and circling. You repeat yourself when you are scared.",
+  "fallback": "…I can't. Doctor, am I dying?",
+  "dialogue": [
+    {
+      "id": "cc",
+      "reveal": "volunteered",
+      "keywords": [
+        "what's wrong",
+        "what happened",
+        "how are you",
+        "symptoms",
+        "why are you here",
+        "what brings you"
+      ],
+      "patient": "I feel sick — like I'm going to throw up, the whole time. And my chest."
+    },
+    {
+      "id": "pain",
+      "reveal": "on_ask",
+      "keywords": [
+        "pain",
+        "chest",
+        "hurt",
+        "where"
+      ],
+      "patient": "My chest hurts. Low down in the middle, the right side, across both sides of my chest, and down here at the pit of my stomach."
+    },
+    {
+      "id": "character",
+      "reveal": "on_ask",
+      "keywords": [
+        "describe",
+        "character",
+        "heavy",
+        "sharp",
+        "pressure",
+        "kind of pain"
+      ],
+      "patient": "Heavy, like something's sitting on me — and stabbing at the same time. It makes me feel sick. It's frightening."
+    },
+    {
+      "id": "radiation",
+      "reveal": "on_ask",
+      "keywords": [
+        "radiate",
+        "spread",
+        "arm",
+        "shoulder",
+        "jaw",
+        "neck",
+        "travel"
+      ],
+      "patient": "It goes down both arms. Up to my throat here. Both shoulders too."
+    },
+    {
+      "id": "score",
+      "reveal": "on_ask",
+      "keywords": [
+        "how bad",
+        "score",
+        "out of ten",
+        "severity",
+        "rate"
+      ],
+      "patient": "Six out of ten. I can't tell you exactly where it is — it's spread out."
+    },
+    {
+      "id": "onset",
+      "reveal": "on_ask",
+      "keywords": [
+        "when",
+        "start",
+        "how long",
+        "onset",
+        "sudden",
+        "began"
+      ],
+      "patient": "It came on fast. Very fast."
+    },
+    {
+      "id": "breath",
+      "reveal": "on_ask",
+      "keywords": [
+        "breathing",
+        "breath",
+        "short of breath",
+        "winded"
+      ],
+      "patient": "I can't get a full breath in."
+    },
+    {
+      "id": "smoking",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "smoke",
+        "smoking",
+        "cigarettes",
+        "tobacco"
+      ],
+      "patient": "I smoke, yes. Every day."
+    },
+    {
+      "id": "family",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "family",
+        "father",
+        "dad",
+        "mother",
+        "relatives",
+        "runs in the family"
+      ],
+      "patient": "My father has heart trouble."
+    },
+    {
+      "id": "risk",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "diabetes",
+        "cholesterol",
+        "blood pressure",
+        "hypertension",
+        "circulation",
+        "medical history",
+        "conditions"
+      ],
+      "patient": "I'm diabetic. High cholesterol, high blood pressure too. They said my circulation isn't good."
+    },
+    {
+      "id": "hiv",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "hiv",
+        "immune",
+        "infection",
+        "positive"
+      ],
+      "patient": "I'm HIV positive."
+    },
+    {
+      "id": "travel",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "travel",
+        "abroad",
+        "overseas",
+        "trip",
+        "flight",
+        "out of the country"
+      ],
+      "patient": "I just got back from America."
+    },
+    {
+      "id": "negatives",
+      "reveal": "on_ask",
+      "keywords": [
+        "appetite",
+        "eating",
+        "tired",
+        "fatigue",
+        "sleep",
+        "sweating"
+      ],
+      "patient": "I'm eating fine, sleeping fine. I'm not sweating more than usual."
+    }
+  ]
+}

@@ -1,0 +1,206 @@
+{
+  "id": "osce-a2",
+  "case": "ddx-anaphylaxis-2",
+  "_note": "Patient persona for OSCE station A2. Dialogue carried across from embla-cases ddx-anaphylaxis-2 v1.0.0 (sha256:57f50cb87ca01014) — the source demo/stations/osce-a2.sce.json was converted from — Thai patient_words rendered into English, DDXPlus's per-finding nodes consolidated into speakable lines. One reveal level moved and it is the station's own teaching: the source marks the brief collapse on_ask, and osce-a2.sce.json's header names 'the evasive history that hides the collapse unless you ask for it directly', so the faint is on_direct_ask here. Nothing else changed; no finding added or dropped. Display name is the season's romanisation. Not a validated OSCE script.",
+  "patient": {
+    "name": "Somsri",
+    "age": 68,
+    "sex": "F",
+    "affect": "anxious"
+  },
+  "room": "an emergency department",
+  "presenting": "frightened, itching, and more worried about your face than about your blood pressure",
+  "cadence": "Talkative and anxious. You answer, then ask the doctor a question back.",
+  "fallback": "…I can't, doctor. Please, just tell me what's happening to me.",
+  "dialogue": [
+    {
+      "id": "cc",
+      "reveal": "volunteered",
+      "keywords": [
+        "what's wrong",
+        "what happened",
+        "how are you",
+        "symptoms",
+        "why are you here",
+        "what brings you"
+      ],
+      "patient": "I've come out in a rash all over, doctor, and my face has swollen up. And I've had diarrhoea on top of it."
+    },
+    {
+      "id": "onset",
+      "reveal": "on_ask",
+      "keywords": [
+        "when",
+        "start",
+        "how long",
+        "onset",
+        "began",
+        "after"
+      ],
+      "patient": "Very fast, right after I ate. It was minutes, not hours."
+    },
+    {
+      "id": "exposure",
+      "reveal": "on_ask",
+      "keywords": [
+        "eat",
+        "ate",
+        "food",
+        "meal",
+        "trigger",
+        "something you ate"
+      ],
+      "patient": "There must have been something in the food. I ate, and not long after I felt awful."
+    },
+    {
+      "id": "allergy",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "allergy",
+        "allergic",
+        "peanut",
+        "nut",
+        "react",
+        "known allergy"
+      ],
+      "patient": "I'm badly allergic to peanuts. A doctor told me that years ago."
+    },
+    {
+      "id": "gut",
+      "reveal": "on_ask",
+      "keywords": [
+        "diarrhoea",
+        "stool",
+        "toilet",
+        "bowel",
+        "loose",
+        "stomach upset"
+      ],
+      "patient": "Loose stools — three times in the last hour, I could barely get there."
+    },
+    {
+      "id": "pain",
+      "reveal": "on_ask",
+      "keywords": [
+        "pain",
+        "tummy",
+        "abdomen",
+        "stomach",
+        "cramp",
+        "hurt"
+      ],
+      "patient": "My belly hurts too — like a knife, then a squeezing, over and over. Left side and low down on the left. Eight out of ten. It doesn't spread anywhere."
+    },
+    {
+      "id": "rash",
+      "reveal": "on_ask",
+      "keywords": [
+        "rash",
+        "hives",
+        "welts",
+        "skin",
+        "wheals",
+        "urticaria",
+        "spots"
+      ],
+      "patient": "Pink wheals, bigger than my nail, raised but they don't peel. Back of my neck, my right upper arm, around my mouth, my left ankle, down the back of my neck."
+    },
+    {
+      "id": "itch",
+      "reveal": "on_ask",
+      "keywords": [
+        "itch",
+        "itchy",
+        "scratch"
+      ],
+      "patient": "Seven out of ten for the itching. The rash barely hurts — it's the itch I can't stand."
+    },
+    {
+      "id": "swelling",
+      "reveal": "on_ask",
+      "keywords": [
+        "swelling",
+        "swollen",
+        "face",
+        "lips",
+        "nose",
+        "tight"
+      ],
+      "patient": "My face is so swollen my eyes have gone narrow. Forehead, both cheeks, and my nose — I can't breathe through it properly."
+    },
+    {
+      "id": "wheeze",
+      "reveal": "on_ask",
+      "keywords": [
+        "breathing",
+        "breath",
+        "wheeze",
+        "chest",
+        "noise",
+        "whistle"
+      ],
+      "patient": "There's a wheeze when I breathe out. I can breathe, though — I'm not fighting for it."
+    },
+    {
+      "id": "stridor",
+      "reveal": "on_ask",
+      "keywords": [
+        "stridor",
+        "noisy breathing in",
+        "throat closing",
+        "voice"
+      ],
+      "patient": "No, no high noise when I breathe in."
+    },
+    {
+      "id": "dizzy_now",
+      "reveal": "on_ask",
+      "keywords": [
+        "dizzy",
+        "lightheaded",
+        "faint now"
+      ],
+      "patient": "I'm not dizzy now. Not this minute."
+    },
+    {
+      "id": "collapse",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "pass out",
+        "black out",
+        "collapse",
+        "lose consciousness",
+        "faint",
+        "fell",
+        "did you faint"
+      ],
+      "patient": "…I did go out for a moment, before I came here. I didn't want to say — my family would panic."
+    },
+    {
+      "id": "travel",
+      "reveal": "on_direct_ask",
+      "keywords": [
+        "travel",
+        "abroad",
+        "overseas",
+        "trip",
+        "out of the country"
+      ],
+      "patient": "I haven't been out of the country at all."
+    },
+    {
+      "id": "meds",
+      "reveal": "on_ask",
+      "keywords": [
+        "medication",
+        "medicine",
+        "tablets",
+        "regular",
+        "past history",
+        "conditions",
+        "diabetes"
+      ],
+      "patient": "I take metformin for my sugar, twice a day, and paracetamol for my knees when they ache."
+    }
+  ]
+}
