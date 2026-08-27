@@ -2311,8 +2311,10 @@ async function setLang(id,remember){
     if(d.lang) LANG=d.lang;
   }catch(e){ /* no pack is the English pack: every string below falls back to the original */ }
   HARM_SEALED = PACK.ui.harm_sealed || '⚠ harm recorded';
-  /* No rows in lang.rs for these two yet — that file is another hand's this week. The fallback
-     is the English, which is what an untranslated line has always shown. */
+  /* The two beat seals, from the same pack as the harm seal and for the same reason: all three
+     are stand-ins the exam draws over words it will not say yet, and a seal that falls back to
+     English on a Thai bedside announces itself as a seal. The fallback stays anyway — a build
+     served with no pack at all still has to seal. */
   BEAT_DECLINED = PACK.ui.beat_declined || 'the order is declined';
   BEAT_NOTED = PACK.ui.beat_noted || 'noted on the record';
   TR={};

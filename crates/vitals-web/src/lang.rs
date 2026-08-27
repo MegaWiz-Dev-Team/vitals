@@ -318,9 +318,17 @@ pub fn reply_is_in(lang: &Language, reply: &str) -> bool {
 
 /// ── the page's own furniture ─────────────────────────────────────────────────
 ///
-/// The few strings the page says *in the patient's voice or about her*: the two input
-/// placeholders, the seal that stands in for a harm line during an exam, and the note beside an
-/// answer that came back in the wrong language.
+/// The few strings the page says *in the patient's voice or about her*, plus the three seals an
+/// exam draws over words it will not say yet: the two input placeholders, the stand-in for a harm
+/// line, the two stand-ins for a beat the station is holding back until the bell, and the note
+/// beside an answer that came back in the wrong language.
+///
+/// The seals are here rather than left to the page's English fallback for the reason the harm
+/// seal already was: a seal is the one thing on screen during an exam where falling back to
+/// English is not a cosmetic loss. A candidate who has switched the whole bedside into Thai and
+/// then reads one line in English has been told, by the language change alone, that this line is
+/// not the case talking — which is a tell about what was sealed. All three translate together or
+/// the seal is its own signal.
 ///
 /// Everything else on screen — the chart, the mark sheet, the monitor, the debrief, the buttons —
 /// is deliberately absent. Translating the whole interface is a different project with a
@@ -330,6 +338,12 @@ const UI: &[Line] = &[
     Line { key: "ask_placeholder", tr: &[("th", "ถามคนไข้ได้เลย…")] },
     Line { key: "order_placeholder", tr: &[("th", "หรือพิมพ์คำสั่งเอง…")] },
     Line { key: "harm_sealed", tr: &[("th", "⚠ บันทึกเหตุไม่พึงประสงค์ไว้แล้ว")] },
+    // The two beat seals. Deliberately flat: "declined" and "noted" are facts about the
+    // record, and any warmer wording would begin explaining — which is the whole of what is
+    // being held back. They are the page's BEAT_DECLINED / BEAT_NOTED, which read them off
+    // PACK.ui and fell back to English because these two rows did not exist yet.
+    Line { key: "beat_declined", tr: &[("th", "คำสั่งนี้ถูกปฏิเสธ")] },
+    Line { key: "beat_noted", tr: &[("th", "บันทึกไว้ในระเบียนแล้ว")] },
     Line { key: "off_language", tr: &[("th", "— คนไข้ตอบกลับมาเป็นภาษาอื่น")] },
     Line { key: "picker_label", tr: &[("th", "ภาษาที่คนไข้พูด")] },
 ];
@@ -575,6 +589,61 @@ mod tests {
                 assert!(LANGUAGES.iter().any(|x| x.id == *l), "{} translates into no language", line.key);
                 assert!(!label.is_empty(), "{} has an empty {l} label", line.key);
             }
+        }
+    }
+
+    /// Every row in [`UI`] is a string the page actually asks for, and every string the page
+    /// asks for has a row.
+    ///
+    /// Both halves fail silently, which is why they are pinned rather than reviewed: a key
+    /// nobody reads is a translation that never appears, and a `PACK.ui.x` with no row shows the
+    /// English fallback for ever. That second one is exactly how `beat_declined` and
+    /// `beat_noted` shipped — the page was wired for them and this table had never heard of
+    /// them, so the Thai bedside sealed a beat in English and looked completely normal doing it.
+    #[test]
+    fn every_ui_string_is_one_the_page_asks_for_and_every_one_it_asks_for_is_here() {
+        // One row this table carries that nothing on screen reads: the language picker is two
+        // bare <select>s with no caption, in the lightbox and the game bar, so `picker_label` is
+        // a string translated for a label that was never drawn. Named here rather than deleted —
+        // deleting it is a decision about the picker's design, not about this table — so that it
+        // is a recorded hole and not a silent one, and so a *second* dead row cannot hide behind
+        // the first.
+        const UNWIRED: &[&str] = &["picker_label"];
+        let page = include_str!("../static/index.html");
+        for line in UI {
+            assert!(
+                page.contains(&format!("PACK.ui.{}", line.key))
+                    || UNWIRED.contains(&line.key),
+                "{} is translated and the page never reads it",
+                line.key
+            );
+            for (l, text) in line.tr {
+                assert!(LANGUAGES.iter().any(|x| x.id == *l), "{}: no such language {l}", line.key);
+                assert!(!text.is_empty(), "{} has an empty {l} line", line.key);
+            }
+        }
+        // The other direction, off the page itself, so a new `PACK.ui.` call site cannot be
+        // added without a row to answer it.
+        let mut asked: Vec<&str> = Vec::new();
+        for (i, _) in page.match_indices("PACK.ui.") {
+            let rest = &page[i + "PACK.ui.".len()..];
+            let n = rest.find(|c: char| !c.is_ascii_alphanumeric() && c != '_').unwrap_or(0);
+            if n > 0 && !asked.contains(&&rest[..n]) {
+                asked.push(&rest[..n]);
+            }
+        }
+        assert!(!asked.is_empty(), "the page stopped reading the pack at all");
+        for key in UNWIRED {
+            assert!(
+                !asked.contains(key),
+                "{key} is wired up now — take it out of UNWIRED so the guard is whole again"
+            );
+        }
+        for key in asked {
+            assert!(
+                UI.iter().any(|l| l.key == key),
+                "the page reads PACK.ui.{key} and no row answers it — it is English for ever"
+            );
         }
     }
 
