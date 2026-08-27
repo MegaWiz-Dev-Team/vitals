@@ -294,12 +294,13 @@ fn a_forged_signature_is_refused_and_the_tree_is_left_alone() {
     assert_eq!(before, after, "the refused leaf stayed on the tree");
 }
 
-/// Station Sets v2, end to end: an exam on OSCE-A anchored at full marks is a two-star case,
-/// and /api/stars prices gate2's door from exactly that — while every other set stays at
-/// zero, because a door is opened by its own set's stars and nothing else's.
+/// Station Sets v2, end to end: an exam on OSCE-A anchored at full marks is a three-star case
+/// (≥95% of the rubric is flawless), and /api/stars prices gate2's door from exactly that —
+/// while every other set stays at zero, because a door is opened by its own set's stars and
+/// nothing else's.
 #[test]
 #[ignore = "needs a validator and VITALS_PROGRAM_ID"]
-fn a_perfect_station_exam_is_two_stars_and_prices_only_its_own_gate() {
+fn a_perfect_station_exam_is_three_stars_and_prices_only_its_own_gate() {
     let s = Server::start().expect("VITALS_PROGRAM_ID");
     let p = Player::new();
     let me = p.pubkey();
@@ -327,11 +328,16 @@ fn a_perfect_station_exam_is_two_stars_and_prices_only_its_own_gate() {
 
     let stars = s.json(&format!("/api/stars?account={me}"));
     assert_eq!(stars["stars"], 1, "the legacy count still says one distinct case: {stars}");
+    assert_eq!(stars["pass_bps"], 7000);
     assert_eq!(stars["excellent_bps"], 8500);
+    assert_eq!(stars["flawless_bps"], 9500, "the third bar rides in the reply: {stars}");
+    assert_eq!(stars["tiers_max"], 3);
     let sets = stars["sets"].as_array().expect("sets");
     let gate2 = sets.iter().find(|g| g["gate"] == "gate2").expect("gate2");
-    assert_eq!(gate2["tiers"]["osce-a"], 2, "full marks is a two-star case: {gate2}");
-    assert_eq!(gate2["total"], 2);
+    assert_eq!(gate2["tiers"]["osce-a"], 3, "full marks is a three-star case: {gate2}");
+    assert_eq!(gate2["total"], 3);
+    assert_eq!(gate2["need_now"], 3, "gate2 is priced at three of its six: {gate2}");
+    assert_eq!(gate2["ceiling"], 6, "two playable members are worth six stars: {gate2}");
     assert!(
         gate2["total"].as_u64() >= gate2["need_now"].as_u64(),
         "gate2's door should stand open: {gate2}"
@@ -339,6 +345,52 @@ fn a_perfect_station_exam_is_two_stars_and_prices_only_its_own_gate() {
     for g in sets.iter().filter(|g| g["gate"] != "gate2") {
         assert_eq!(g["total"], 0, "a star must never leak into another set's gate: {g}");
     }
+}
+
+/// The other side of the three-star repricing: excellent is no longer enough on its own.
+///
+/// The same station, run well but not perfectly — the two send-off items are skipped, which is
+/// 36 of the rubric's 40 points, 90%: past the 85% excellence bar and short of the 95% flawless
+/// one. Two stars against a door priced at three, so it stays shut, and the debrief's job is to
+/// say how far short. This is the behaviour change the whole phase turns on, so it is pinned
+/// against a real validator rather than argued about.
+#[test]
+#[ignore = "needs a validator and VITALS_PROGRAM_ID"]
+fn an_excellent_but_not_flawless_run_is_two_stars_and_leaves_the_door_shut() {
+    let s = Server::start().expect("VITALS_PROGRAM_ID");
+    let p = Player::new();
+    let me = p.pubkey();
+
+    let id = s.json(&format!("/api/new?ep=osce-a&player={me}"))["id"]
+        .as_str()
+        .expect("session")
+        .to_string();
+    let c = s.signed(&p, &format!("/api/commit?id={id}&player={me}&account={me}&exam=1"));
+    assert_eq!(c["committed"], true, "commit failed: {c}");
+    // Everything the case asked for except the tryptase (2) and the supporting workup (2).
+    for o in ["any allergies?", "what did you eat before this?", "adrenaline im",
+              "oxygen face mask 10 lpm", "anaphylaxis", "admit for observation"] {
+        s.json(&format!("/api/step?id={id}&player={me}&do={}", enc(o)));
+    }
+    s.json(&format!("/api/step?id={id}&player={me}&tick=200"));
+
+    let a = s.signed(&p, &format!("/api/anchor?id={id}&player={me}&account={me}"));
+    assert_eq!(a["proven"], true, "anchor failed: {a}");
+    let (score, max) = (a["det"]["score"].as_u64().unwrap(), a["det"]["max"].as_u64().unwrap());
+    let bps = score * 10_000 / max;
+    assert!((8_500..9_500).contains(&bps), "this run must land between the bars, got {score}/{max}");
+
+    let stars = s.json(&format!("/api/stars?account={me}"));
+    let gate2 = stars["sets"].as_array().expect("sets").iter()
+        .find(|g| g["gate"] == "gate2").expect("gate2").clone();
+    assert_eq!(gate2["tiers"]["osce-a"], 2, "excellence is two stars, not three: {gate2}");
+    assert_eq!(gate2["total"], 2);
+    assert!(
+        gate2["total"].as_u64() < gate2["need_now"].as_u64(),
+        "two stars must no longer open a door priced at three: {gate2}"
+    );
+    // The legacy flat tally is unmoved by any of this: it still counts a cleared case as one.
+    assert_eq!(stars["stars"], 1, "the pass bar means what it always meant: {stars}");
 }
 
 /// Linking a machine before ever finishing a case.

@@ -278,22 +278,92 @@ pub fn stars(attempts: &[Attempt], pass_bps: u32) -> u32 {
     count
 }
 
-/// The excellence bar: 85% on the deterministic rubric, the second star of the two-tier star
+/// The excellence bar: 85% on the deterministic rubric, the second star of the three-tier star
 /// (Station Sets v2, DECISIONS.md 27 ส.ค.). Same scale and same discipline as [`STAR_PASS_BPS`]:
 /// one number for the whole system, measured only on the re-derivable det score. 8_500 bps also
 /// happens to be the Dreyfus expert bar — excellence here means the same thing it means there.
 pub const STAR_EXCELLENT_BPS: u32 = 8500;
 
-/// The two-tier star for one case: 2 at or above `excellent_bps`, 1 at or above `pass_bps`,
-/// else 0 — measured on the **best** deterministic score among this player's exam-mode attempts
-/// of that case, because a set gate asks "has this case ever been done this well", not "was the
-/// last run good". Practice runs never reach the comparison (same rule as [`stars`]), and a case
-/// never attempted scores 0 through the same arithmetic: the best of nothing is 0 bps.
+/// The flawless bar: 95% on the deterministic rubric, the third star (DECISIONS.md 27 ส.ค.,
+/// "ดาว 3 ขั้น" — supersedes the two-tier version above it). It is deliberately not 100%: a
+/// rubric is a list of things a clinician should have done, and demanding every single point
+/// makes the top star a lottery on the one item the tape happened not to catch. 95% says
+/// "nothing that mattered was missed" and stays reachable in a real run.
+pub const STAR_FLAWLESS_BPS: u32 = 9500;
+
+/// The most stars one case can be worth. The set ceilings, the door prices and the season ring
+/// are all `members × this` — one number rather than a 3 written in four places.
+pub const STAR_TIERS: u32 = 3;
+
+/// The three bars a case's star is measured against, in basis points.
 ///
-/// Server-side only for now — the chain's `stars` tally is untouched, so nothing about the
-/// deployed program changes. Allocation-free and `no_std` anyway, so the day the program wants
-/// it, it compiles in unchanged.
-pub fn star_tier(attempts: &[Attempt], case: &[u8; 32], pass_bps: u32, excellent_bps: u32) -> u32 {
+/// A struct rather than three `u32` arguments because they are the same type and the order is
+/// invisible at the call site: `(7000, 8500, 9500)` transposed is a silently wrong star, which is
+/// the failure this crate's module docs call the worst one this project has.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StarBars {
+    pub pass: u32,
+    pub excellent: u32,
+    pub flawless: u32,
+}
+
+impl StarBars {
+    /// The published bars — the ones a verifier re-derives from the pinned rubric.
+    pub const CANON: StarBars = StarBars {
+        pass: STAR_PASS_BPS,
+        excellent: STAR_EXCELLENT_BPS,
+        flawless: STAR_FLAWLESS_BPS,
+    };
+
+    /// The canonical bars with the pass mark moved — the server's one supported override
+    /// (`VITALS_STAR_PASS_BPS`). The upper two stay where they are published.
+    pub const fn with_pass(pass: u32) -> StarBars {
+        StarBars { pass, ..StarBars::CANON }
+    }
+
+    /// Which star a deterministic score in basis points earns: 3 / 2 / 1 / 0.
+    pub const fn tier(self, bps: u32) -> u32 {
+        if bps >= self.flawless {
+            3
+        } else if bps >= self.excellent {
+            2
+        } else if bps >= self.pass {
+            1
+        } else {
+            0
+        }
+    }
+
+    /// The bar the next star sits on, or `None` at the top. What a debrief needs to say "you
+    /// are N points short" without the page keeping its own copy of the ladder.
+    pub const fn next_bar(self, bps: u32) -> Option<u32> {
+        match self.tier(bps) {
+            0 => Some(self.pass),
+            1 => Some(self.excellent),
+            2 => Some(self.flawless),
+            _ => None,
+        }
+    }
+}
+
+/// The three-tier star for one case: 3 at or above `bars.flawless`, 2 at or above
+/// `bars.excellent`, 1 at or above `bars.pass`, else 0 — measured on the **best** deterministic
+/// score among this player's exam-mode attempts of that case, because a set gate asks "has this
+/// case ever been done this well", not "was the last run good". Practice runs never reach the
+/// comparison (same rule as [`stars`]), and a case never attempted scores 0 through the same
+/// arithmetic: the best of nothing is 0 bps.
+///
+/// Server-side only — the chain's `stars` tally is untouched, so nothing about the deployed
+/// program changes and no rubric moves: the upper stars are a reading of a score that was
+/// already anchored, not a new thing to score. Allocation-free and `no_std` anyway, so the day
+/// the program wants it, it compiles in unchanged.
+pub fn star_tier(attempts: &[Attempt], case: &[u8; 32], bars: StarBars) -> u32 {
+    bars.tier(best_det_bps(attempts, case))
+}
+
+/// The best deterministic score this player has ever posted on `case` in exam mode, in basis
+/// points. 0 when they have never sat it — the best of nothing.
+pub fn best_det_bps(attempts: &[Attempt], case: &[u8; 32]) -> u32 {
     let mut best: u32 = 0;
     for a in attempts {
         if a.exam_mode && a.case == *case {
@@ -303,13 +373,7 @@ pub fn star_tier(attempts: &[Attempt], case: &[u8; 32], pass_bps: u32, excellent
             }
         }
     }
-    if best >= excellent_bps {
-        2
-    } else if best >= pass_bps {
-        1
-    } else {
-        0
-    }
+    best
 }
 
 /// Verdict for a `claim_progress` instruction: the chain never grants what it cannot recompute.
@@ -407,46 +471,83 @@ mod tests {
         assert_eq!(stars(&[exam(1, 50), exam(1, 88)], 7000), 1);
     }
 
-    /// The two-tier star sits exactly on its published thresholds — 8499 is not excellent and
-    /// 6999 is not a pass, because a bar a student can argue with is not a bar.
+    /// The three-tier star sits exactly on its published thresholds — 9499 is not flawless,
+    /// 8499 is not excellent and 6999 is not a pass, because a bar a student can argue with is
+    /// not a bar.
     #[test]
     fn star_tier_exact_boundaries() {
         let c = case(1);
-        let t = |det: u16| star_tier(&[exam(1, det)], &c, STAR_PASS_BPS, STAR_EXCELLENT_BPS);
+        let t = |det: u16| star_tier(&[exam(1, det)], &c, StarBars::CANON);
         // det here is a percentage (det_max 100), so 84.99% is not expressible — pin the bps
         // boundary on a 10_000-max attempt instead, where one point is one basis point.
         let fine = |det: u16| {
             let a = Attempt { det_max: 10_000, ..exam(1, 0) };
             let a = Attempt { det_score: det, ..a };
-            star_tier(&[a], &c, STAR_PASS_BPS, STAR_EXCELLENT_BPS)
+            star_tier(&[a], &c, StarBars::CANON)
         };
+        assert_eq!(fine(9_499), 2); // one bps under flawless: still excellent
+        assert_eq!(fine(9_500), 3); // exactly flawless
         assert_eq!(fine(8_499), 1); // one bps under excellent: still just a pass
         assert_eq!(fine(8_500), 2); // exactly excellent
         assert_eq!(fine(6_999), 0); // one bps under the pass bar: nothing
         assert_eq!(fine(7_000), 1); // exactly the pass bar
+        assert_eq!(fine(10_000), 3); // full marks tops out at three, never four
         // and the coarse percentage path agrees where it can express the same points
+        assert_eq!(t(94), 2);
+        assert_eq!(t(95), 3);
         assert_eq!(t(84), 1);
         assert_eq!(t(85), 2);
         assert_eq!(t(69), 0);
         assert_eq!(t(70), 1);
     }
 
+    /// The same boundaries read straight off the bars, without an attempt in the way — the
+    /// arithmetic the page mirrors when it tells a player how far the next star is.
+    #[test]
+    fn star_bars_tier_and_next_bar_agree_on_the_ladder() {
+        let b = StarBars::CANON;
+        assert_eq!((b.pass, b.excellent, b.flawless), (7_000, 8_500, 9_500));
+        for (bps, want) in [(0, 0), (6_999, 0), (7_000, 1), (8_499, 1), (8_500, 2), (9_499, 2), (9_500, 3), (10_000, 3)] {
+            assert_eq!(b.tier(bps), want, "{bps} bps must be {want} star(s)");
+        }
+        assert_eq!(b.next_bar(0), Some(7_000));
+        assert_eq!(b.next_bar(7_000), Some(8_500));
+        assert_eq!(b.next_bar(8_500), Some(9_500));
+        assert_eq!(b.next_bar(9_500), None, "nothing is above the third star");
+        // The server's one supported override moves the pass mark and nothing else.
+        assert_eq!(StarBars::with_pass(6_000).tier(6_000), 1);
+        assert_eq!(StarBars::with_pass(6_000).flawless, STAR_FLAWLESS_BPS);
+    }
+
     #[test]
     fn star_tier_takes_the_best_attempt_not_the_last() {
-        // Failed, then excellent, then merely passed: the best run is what the tier reads.
-        let runs = [exam(1, 40), exam(1, 92), exam(1, 71)];
-        assert_eq!(star_tier(&runs, &case(1), STAR_PASS_BPS, STAR_EXCELLENT_BPS), 2);
+        // Failed, then flawless, then merely passed: the best run is what the tier reads.
+        let runs = [exam(1, 40), exam(1, 97), exam(1, 71)];
+        assert_eq!(star_tier(&runs, &case(1), StarBars::CANON), 3);
+        assert_eq!(best_det_bps(&runs, &case(1)), 9_700);
     }
 
     #[test]
     fn star_tier_ignores_practice_and_other_cases() {
-        // A perfect practice run and a stranger case's excellent exam: neither is this case's tier.
+        // A perfect practice run and a stranger case's flawless exam: neither is this case's tier.
         let mut practice = attempt(1, 0, Difficulty::Student);
         practice.det_score = 100; practice.det_max = 100; // even with a det on the tape
-        let runs = [practice, exam(2, 95)];
-        assert_eq!(star_tier(&runs, &case(1), STAR_PASS_BPS, STAR_EXCELLENT_BPS), 0);
+        let runs = [practice, exam(2, 96)];
+        assert_eq!(star_tier(&runs, &case(1), StarBars::CANON), 0);
+        assert_eq!(best_det_bps(&runs, &case(1)), 0);
         // and a case never attempted at all is 0, not an error
-        assert_eq!(star_tier(&[], &case(1), STAR_PASS_BPS, STAR_EXCELLENT_BPS), 0);
+        assert_eq!(star_tier(&[], &case(1), StarBars::CANON), 0);
+    }
+
+    /// The star a door counts and the star the chain tallies must never disagree about the
+    /// bottom rung: anything worth a tier is worth the legacy count, and nothing else is.
+    #[test]
+    fn the_pass_bar_means_the_same_thing_to_both_tallies() {
+        for det in [0u16, 69, 70, 84, 85, 94, 95, 100] {
+            let runs = [exam(1, det)];
+            let tiered = star_tier(&runs, &case(1), StarBars::CANON) > 0;
+            assert_eq!(tiered, stars(&runs, STAR_PASS_BPS) == 1, "{det}% disagrees across tallies");
+        }
     }
 
     /// Mirrors upstream `dreyfus_stages()` — same inputs, same expected stages.

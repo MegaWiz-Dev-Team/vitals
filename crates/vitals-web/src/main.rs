@@ -393,8 +393,16 @@ struct SetMember {
 
 /// The station sets (DECISIONS.md "Station Sets", 27 ส.ค.) — the one copy, server side.
 /// From EP2 on, an episode door is opened by **its own set's stars and nothing else's**:
-/// each member is worth 0–2 stars (best det ≥70% → 1, ≥85% → 2), and farming another
-/// gate's stations buys nothing here.
+/// each member is worth 0–3 stars (best det ≥70% → 1, ≥85% → 2, ≥95% → 3), and farming
+/// another gate's stations buys nothing here.
+///
+/// The needs below are the three-star repricing (27 ส.ค., supersedes 2/4/5/7): against a
+/// ceiling of `members × 3` they hold the same climb the two-star prices drew — 50% of the
+/// set, then 67%, 78%, 83%. What the third star changes is *how* the late doors are paid for:
+/// gate2 and gate3 are still reachable on passes and excellences alone, while gate4 cannot be
+/// opened without one flawless run and gate5 without two. That is the escalation, said in
+/// stars — and it is bounded, because a door that needed every member flawless would be a
+/// door one unlucky rubric item keeps shut.
 struct StationSet {
     gate: &'static str,
     /// The episode this gate opens.
@@ -406,21 +414,25 @@ struct StationSet {
 }
 
 const SETS: &[StationSet] = &[
-    StationSet { gate: "gate2", opens: "ep2", need: 2, members: &[
+    // gate2 · 2 cases · ceiling 6 · need 3 (50%)
+    StationSet { gate: "gate2", opens: "ep2", need: 3, members: &[
         SetMember { id: "osce-a",  case: "ddx-anaphylaxis-1", title: "Anaphylaxis — adult, first presentation", specialty: "eir-emergency", tier: Difficulty::Student },
         SetMember { id: "osce-a2", case: "ddx-anaphylaxis-2", title: "Anaphylaxis — adult, second presentation", specialty: "eir-emergency", tier: Difficulty::Student },
     ]},
-    StationSet { gate: "gate3", opens: "ep3", need: 4, members: &[
+    // gate3 · 3 cases · ceiling 9 · need 6 (67%)
+    StationSet { gate: "gate3", opens: "ep3", need: 6, members: &[
         SetMember { id: "osce-b",  case: "ddx-possible-nstemi-stemi-2", title: "Acute chest pain — possible NSTEMI / STEMI", specialty: "eir-cardio", tier: Difficulty::Intern },
         SetMember { id: "osce-b2", case: "ddx-pericarditis-1", title: "Pericarditis — acute chest pain", specialty: "eir-cardio", tier: Difficulty::Intern },
         SetMember { id: "osce-b3", case: "ddx-croup-1", title: "Croup — child, first presentation", specialty: "eir-ent", tier: Difficulty::Intern },
     ]},
-    StationSet { gate: "gate4", opens: "ep4", need: 5, members: &[
+    // gate4 · 3 cases · ceiling 9 · need 7 (78%)
+    StationSet { gate: "gate4", opens: "ep4", need: 7, members: &[
         SetMember { id: "osce-c",  case: "ddx-croup-2", title: "Croup — child, worse every night", specialty: "eir-ent", tier: Difficulty::Resident },
         SetMember { id: "osce-c2", case: "ddx-bronchospasm-acute-asthma-exacerbation-2", title: "Acute asthma exacerbation — bronchospasm", specialty: "eir-pulmonology", tier: Difficulty::Intern },
         SetMember { id: "osce-c3", case: "ddx-pneumonia-2", title: "Pneumonia — adult", specialty: "eir-pulmonology", tier: Difficulty::Intern },
     ]},
-    StationSet { gate: "gate5", opens: "ep5", need: 7, members: &[
+    // gate5 · 4 cases · ceiling 12 · need 10 (83%)
+    StationSet { gate: "gate5", opens: "ep5", need: 10, members: &[
         SetMember { id: "osce-d",  case: "embla-upper-gastrointestinal-bleeding-intern", title: "Upper GI bleeding — adult, full case", specialty: "eir-gastroenterology", tier: Difficulty::Intern },
         SetMember { id: "osce-d2", case: "ddx-pulmonary-embolism-2", title: "Pulmonary embolism — adult", specialty: "eir-pulmonology", tier: Difficulty::Resident },
         SetMember { id: "osce-d3", case: "ddx-p-anaphylaxis-1", title: "Anaphylaxis — paediatric", specialty: "eir-emergency", tier: Difficulty::Intern },
@@ -441,8 +453,8 @@ fn member_playable(id: &str) -> bool {
 
 /// A set as it stands on this disk today: which members are live, their on-chain case hashes,
 /// and the door's live price. While the roster is short the need is capped at what the
-/// published members can actually yield (2 stars each) — **a gate must never be impossible**,
-/// only cheaper until the full set ships and the cap stops binding.
+/// published members can actually yield (`STAR_TIERS` each) — **a gate must never be
+/// impossible**, only cheaper until the full set ships and the cap stops binding.
 struct SetState {
     set: &'static StationSet,
     need_now: u32,
@@ -450,6 +462,16 @@ struct SetState {
     /// commitment binds and the leaf carries, so /api/stars can translate proven attempts
     /// back into set members without a per-request file read.
     members: Vec<(&'static SetMember, Option<[u8; 32]>)>,
+}
+
+impl SetState {
+    /// The most this set can be worth today — what its *playable* members can yield. The
+    /// shelf shows progress against this ("6 / 9 ⭐"), so it must count what can actually be
+    /// earned rather than what is declared, or a coming-soon card would read as stars a
+    /// player is failing to collect.
+    fn ceiling(&self) -> u32 {
+        self.members.iter().filter(|(_, h)| h.is_some()).count() as u32 * vitals_progress::STAR_TIERS
+    }
 }
 
 fn resolve_sets() -> Vec<SetState> {
@@ -466,7 +488,7 @@ fn resolve_sets() -> Vec<SetState> {
                 })
                 .collect();
             let playable = members.iter().filter(|(_, h)| h.is_some()).count() as u32;
-            SetState { set: s, need_now: s.need.min(playable * 2), members }
+            SetState { set: s, need_now: s.need.min(playable * vitals_progress::STAR_TIERS), members }
         })
         .collect()
 }
@@ -732,6 +754,10 @@ fn main() {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(vitals_progress::STAR_PASS_BPS);
+    // The three bars a station's star is read against, carried as one value so the pass mark
+    // the env moves and the two published bars above it can never be passed in the wrong order.
+    // Only the pass mark is overridable: excellence and flawlessness are the published ladder.
+    let star_bars = vitals_progress::StarBars::with_pass(star_pass_bps);
 
     // Which stations can host an exam — asked once, from the same function the commit gate and
     // the anchor scorer ask, and served to the page so the UI never keeps its own copy. Shelf
@@ -755,7 +781,8 @@ fn main() {
             .iter()
             .map(|st| {
                 let p = st.members.iter().filter(|(_, h)| h.is_some()).count();
-                format!("{} {}/{} live · need {} (now {})", st.set.gate, p, st.members.len(), st.set.need, st.need_now)
+                format!("{} {}/{} live · need {} of {} (now {})",
+                        st.set.gate, p, st.members.len(), st.set.need, st.ceiling(), st.need_now)
             })
             .collect::<Vec<_>>()
             .join(" · ")
@@ -1218,6 +1245,12 @@ fn main() {
                     "voice": patient.is_some(),
                     // Which stations can sit an exam — the server's rubric map is the only copy.
                     "exam_eps": exam_eps,
+                    // The three bars a station's star is read against. Served here as well as
+                    // on /api/stars because the shelf must be able to *say* what a star costs
+                    // ("70% pass · 85% excellent · 95% flawless") to a visitor with no account
+                    // and no chain — a rule nobody can read is not a rule they can aim at.
+                    "star_bars": { "pass": star_bars.pass, "excellent": star_bars.excellent,
+                                   "flawless": star_bars.flawless, "tiers": vitals_progress::STAR_TIERS },
                     // Station Sets v2, the shape without the player: which sets exist, who is
                     // in them, what each door costs today. The page draws the shelf from this
                     // — declared-but-unpublished members become coming-soon cards — and joins
@@ -1227,6 +1260,10 @@ fn main() {
                         "opens": st.set.opens,
                         "need": st.set.need,
                         "need_now": st.need_now,
+                        // What this set is worth today (playable members × 3). The shelf's
+                        // "6 / 9 ⭐" strip and the season ring are drawn from this, so the
+                        // page never multiplies by a 3 of its own.
+                        "ceiling": st.ceiling(),
                         "complete": st.members.iter().all(|(_, h)| h.is_some()),
                         "members": st.members.iter().map(|(m, h)| serde_json::json!({
                             "id": m.id,
@@ -1506,7 +1543,7 @@ fn main() {
                     continue;
                 };
                 let tree_id = tree.lock().unwrap().tree_id;
-                // Station Sets v2: the two-tier star per member, from the best proven det of
+                // Station Sets v2: the three-tier star per member, from the best proven det of
                 // that case — one claim-buffer read answers every set. The playable members'
                 // hashes were resolved at boot; a declared-only member is tier 0 by definition,
                 // present in the reply so the shape never shifts when Phase 5b publishes it.
@@ -1514,7 +1551,7 @@ fn main() {
                     .iter()
                     .flat_map(|st| st.members.iter().filter_map(|(_, h)| *h))
                     .collect();
-                let tiers = c.star_tiers(&person, tree_id, &cases, star_pass_bps, vitals_progress::STAR_EXCELLENT_BPS);
+                let tiers = c.star_tiers(&person, tree_id, &cases, star_bars);
                 let mut next = tiers.iter().copied();
                 let sets: Vec<serde_json::Value> = set_states
                     .iter()
@@ -1534,6 +1571,7 @@ fn main() {
                             "opens": st.set.opens,
                             "need": st.set.need,
                             "need_now": st.need_now,
+                            "ceiling": st.ceiling(),
                             "total": total,
                             "tiers": members,
                         })
@@ -1545,7 +1583,12 @@ fn main() {
                     "account": person.to_string(),
                     "stars": c.star_count(&person, tree_id, star_pass_bps),
                     "pass_bps": star_pass_bps,
-                    "excellent_bps": vitals_progress::STAR_EXCELLENT_BPS,
+                    "excellent_bps": star_bars.excellent,
+                    // The third bar, added with the three-star repricing. The two above it keep
+                    // their names and their meanings, so a reader that predates this field sees
+                    // exactly what it saw before.
+                    "flawless_bps": star_bars.flawless,
+                    "tiers_max": vitals_progress::STAR_TIERS,
                     "sets": sets,
                 }))
             }
@@ -2053,7 +2096,8 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         for (s, opens) in SETS.iter().zip(["ep2", "ep3", "ep4", "ep5"]) {
             assert_eq!(s.opens, opens, "{} opens the wrong door", s.gate);
-            assert!(s.need >= 1 && s.need <= 2 * s.members.len() as u32,
+            let ceiling = vitals_progress::STAR_TIERS * s.members.len() as u32;
+            assert!(s.need >= 1 && s.need <= ceiling,
                 "{}: need {} can never be met by {} members", s.gate, s.need, s.members.len());
             for m in s.members {
                 assert!(seen.insert(m.id), "{} is declared in two sets", m.id);
@@ -2062,6 +2106,31 @@ mod tests {
             }
             assert!(member_playable(s.members[0].id),
                 "{}: lead member {} must be playable today", s.gate, s.members[0].id);
+        }
+    }
+
+    /// The repriced ladder, pinned as numbers rather than as a ratio: a gate whose price drifts
+    /// is a season whose difficulty drifts, and neither shows up in any other test.
+    #[test]
+    fn the_three_star_gate_prices_hold_the_published_climb() {
+        let priced: Vec<(&str, u32, u32)> = SETS
+            .iter()
+            .map(|s| (s.gate, s.need, vitals_progress::STAR_TIERS * s.members.len() as u32))
+            .collect();
+        assert_eq!(
+            priced,
+            vec![("gate2", 3, 6), ("gate3", 6, 9), ("gate4", 7, 9), ("gate5", 10, 12)],
+            "the doors are priced 3/6/7/10 against ceilings 6/9/9/12 (DECISIONS.md 27 ส.ค.)"
+        );
+        // The climb itself, as a fraction of each set's ceiling: 50% → 67% → 78% → 83%.
+        let pct: Vec<u32> = priced.iter().map(|(_, need, ceil)| need * 100 / ceil).collect();
+        assert_eq!(pct, vec![50, 66, 77, 83], "each door must ask for more of its set than the last");
+        assert!(pct.windows(2).all(|w| w[0] < w[1]), "the season must get harder, never easier");
+        // And no door may demand a flawless run of *every* member: one item a tape did not
+        // catch would then shut an episode for good, which is not a difficulty curve, it is a
+        // wall. Two stars per member is always enough to leave headroom somewhere.
+        for (gate, need, ceil) in &priced {
+            assert!(need < ceil, "{gate}: a door priced at its own ceiling can never forgive a slip");
         }
     }
 
@@ -2074,7 +2143,9 @@ mod tests {
         for st in resolve_sets() {
             let playable = st.members.iter().filter(|(_, h)| h.is_some()).count() as u32;
             assert!(playable >= 1, "{}: no playable member at all", st.set.gate);
-            assert_eq!(st.need_now, st.set.need.min(playable * 2));
+            assert_eq!(st.need_now, st.set.need.min(playable * vitals_progress::STAR_TIERS));
+            assert_eq!(st.ceiling(), playable * vitals_progress::STAR_TIERS);
+            assert!(st.need_now <= st.ceiling(), "{}: an unreachable door", st.set.gate);
             // every playable member carries the hash the chain will see for it
             for (m, h) in &st.members {
                 assert_eq!(h.is_some(), member_playable(m.id), "{} hash/playability disagree", m.id);

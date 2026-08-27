@@ -22,7 +22,7 @@ use solana_sdk::{
 use std::str::FromStr;
 use vitals_progress::merkle;
 use vitals_progress::record::AttemptRecord;
-use vitals_progress::Difficulty;
+use vitals_progress::{Difficulty, StarBars};
 use vitals_program::{
     commitment_pda, Account, ClaimAccount, Commitment, Instruction, Progress, RecordWire,
     TreeAccount, SEED_ACCOUNT, SEED_CLAIM, SEED_PROGRESS,
@@ -343,13 +343,14 @@ impl Chain {
         vitals_progress::stars(&self.proven_attempts(id, tree_id), pass_bps)
     }
 
-    /// The two-tier star for each of `cases` (Station Sets v2): 0, 1 (≥ pass) or 2 (≥ excellent),
-    /// from the **best** deterministic score among this player's proven exam attempts of that
-    /// case. One claim-buffer fetch answers the whole list — a set gate asks about every member
-    /// at once, and one RPC per member would turn a lobby paint into a fetch storm.
-    pub fn star_tiers(&self, id: &Pubkey, tree_id: u64, cases: &[[u8; 32]], pass_bps: u32, excellent_bps: u32) -> Vec<u32> {
+    /// The three-tier star for each of `cases` (Station Sets v2): 0, 1 (≥ pass), 2 (≥ excellent)
+    /// or 3 (≥ flawless), from the **best** deterministic score among this player's proven exam
+    /// attempts of that case. One claim-buffer fetch answers the whole list — a set gate asks
+    /// about every member at once, and one RPC per member would turn a lobby paint into a fetch
+    /// storm.
+    pub fn star_tiers(&self, id: &Pubkey, tree_id: u64, cases: &[[u8; 32]], bars: StarBars) -> Vec<u32> {
         let attempts = self.proven_attempts(id, tree_id);
-        cases.iter().map(|c| vitals_progress::star_tier(&attempts, c, pass_bps, excellent_bps)).collect()
+        cases.iter().map(|c| vitals_progress::star_tier(&attempts, c, bars)).collect()
     }
 
     fn fetch<T: borsh::BorshDeserialize>(&self, key: &Pubkey) -> Option<T> {
