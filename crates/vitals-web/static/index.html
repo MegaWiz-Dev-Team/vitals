@@ -118,12 +118,10 @@ addEventListener('click',function(e){
 .lb-row .tile.st{flex-basis:clamp(10.5rem,46vw,12rem);align-self:center;
   border:2px solid var(--mint-d);box-shadow:0 4px 14px rgba(31,157,134,.2)}
 .tile.st .art{aspect-ratio:16/9}
-.st-k{position:absolute;top:0;left:0;right:0;z-index:1;text-align:center;
-  font-family:"IBM Plex Mono",monospace;font-size:.5rem;letter-spacing:.12em;
-  text-transform:uppercase;color:#062019;font-weight:700;padding:.24rem 0;
-  background:linear-gradient(90deg,#2ed3b4,#7fe7d2)}
-/* clear of the banner — the header pills used to sit on its hem and read as one smudge */
-.tile.st .no{top:1.65rem}
+/* The provenance banner that used to run across the top of this art is gone — a player has
+   never heard of the case bank, and the credit now sits under the score instead (.prov). With
+   the banner went the 1.65rem the number pill was pushed down to clear it: it sits where every
+   other card's does again. */
 /* the case's stars, worn on the art: ☆☆ / ★☆ / ★★ — the best this account has proven */
 .st-stars{position:absolute;bottom:.5rem;right:.55rem;z-index:1;font-size:.86rem;
   letter-spacing:.08em;color:var(--gold);background:rgba(6,20,24,.62);border-radius:999px;
@@ -618,6 +616,9 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
   font-family:"IBM Plex Mono",monospace;font-size:.71rem}
 .verdict .g{color:var(--act)} .verdict .r{color:var(--warn)} .verdict .n{color:var(--ink-3)}
 .hint{font-size:.77rem;color:var(--ink-3)}
+/* where the case came from — a footnote under the score, not a badge on the shelf */
+.prov{margin-top:.35rem;font-family:"IBM Plex Mono",monospace;font-size:.67rem;color:var(--ink-3)}
+.prov:empty{display:none}
 
 /* ── the meter and the ceiling ────────────────────────────────────────────────
    The bay is free and the compute is donated, so the constraint is shown rather than hidden:
@@ -910,6 +911,9 @@ a.give:hover{filter:brightness(1.06)}
     <div class="db" id="db"></div>
     <div class="verdict" id="verdict"></div>
     <div class="hint" style="margin-top:.5rem">Hand the tape and the scenario to anyone — they recompute this leaf without asking us.</div>
+    <!-- Provenance belongs where it means something: after the score, not on the card of a case
+         you are about to sit. Filled by showProvenance() for stations; empty everywhere else. -->
+    <div class="prov" id="prov"></div>
   </section>
 </div>
 
@@ -1699,7 +1703,7 @@ function paint(v){
     over=true; stop();
     const win=v.outcome.startsWith('Win');
     $('#result').className='result '+(win?'win':'lose'); $('#result').style.display='block';
-    showDebrief();
+    showDebrief(); showProvenance();
     $('#outcome').textContent=say('terminal:'+v.outcome);
     $('#outnote').textContent=(v.harm.length?'Harm on the record: '+v.harm.join(', '):'No harm recorded.')+'  ·  '+v.outcome;
     $('#leaf').textContent=v.leaf;
@@ -1896,6 +1900,21 @@ async function showDebrief(){
   $('#db').innerHTML=h;
 }
 
+/* Where the case came from — printed once the score exists, which is the only moment it means
+   anything to the person reading it. The id is the server's own (the set table carries `case`
+   for every member), so the line cannot credit a bank the shelf is not actually drawing from,
+   and an episode — written for this season, not converted from anything — gets no line at all.
+   It says "deterministic", not "validated": the mark sheets in demo/rubrics still carry
+   `status: provisional … point weights pending clinical review`, and a screen that will be
+   filmed must not promise a sign-off nobody has given yet. */
+function showProvenance(){
+  const el=$('#prov'); if(!el)return;
+  const info=memberOf($('#ep').value);
+  el.textContent = info&&info.m&&info.m.case
+    ? `case ${info.m.case} · clinical case bank · deterministic score — anyone can re-derive it`
+    : '';
+}
+
 $('#copy').onclick=async()=>{ const t=await (await fetch('/api/tape?id='+id+asMe())).json();
   await navigator.clipboard.writeText(JSON.stringify(t,null,1)); $('#copy').textContent='tape copied'; };
 
@@ -2048,7 +2067,10 @@ function paintSeason(){
     const art=e.art?`<img src="${e.art}" alt="">`
       :e.station?`<div class="art-ph art-cl"><span>${specShort(spec)}</span></div>`
       :`<div class="art-ph ph-t-wrap ph-${e.id}"><span class="ph-t">${e.t}</span></div>`;
-    const badge=e.station?`<span class="st-k">from the Embla case bank</span>`:'';
+    /* No provenance badge on the face. In the game nobody has heard of the case bank — it read
+       as a second brand on a card that only has to say what the case is, who it is, and what
+       your star on it is. Where provenance actually buys credibility is under a score somebody
+       just earned (#prov, after the run) and on the landing page; both say it there. */
     const chip=e.station
       ?`<span class="st-stars" title="your best exam here — ${barRule()}">${starGlyph(tierOf(e.id))}</span>`
       :`<span class="tier">${e.tier}</span>`;
@@ -2073,7 +2095,7 @@ function paintSeason(){
           :`clear ${SEASON[i-1]?SEASON[i-1].n:''} to open`}</span>`;
       }
       return `<div class="tile lock${e.station?' st':''}" data-ep="${e.id}">
-      <div class="art">${art}${badge}<span class="no">${no}</span>${chip}<span class="tease">${tease}</span></div>
+      <div class="art">${art}<span class="no">${no}</span>${chip}<span class="tease">${tease}</span></div>
       <div class="body"><h3>${title}</h3>${chips}<p>${e.d}</p>
       ${go}${TRAILER[e.id]?`<button class="go trail" data-trailer="${e.id}" data-ga="trailer:${e.id}">▶ watch trailer</button>`:''}</div></div>`;
     }
@@ -2082,7 +2104,7 @@ function paintSeason(){
     const replay=!e.station&&EXAM_EPS.includes(e.id)
       ?`<span class="go exam" data-exam="${e.id}" data-ga="exam:${e.id}" title="an exam replay for XP and the record — doors open on station stars">↻ replay for the record</span>`:'';
     return `<button class="tile${e.station?' st':''}" data-ep="${e.id}" data-ga="tile:${e.id}">
-      <div class="art">${art}${badge}<span class="no">${no}${star?' <span title="anchored on chain">★</span>':''}${done?' · watched':''}</span>${chip}${bar}</div>
+      <div class="art">${art}<span class="no">${no}${star?' <span title="anchored on chain">★</span>':''}${done?' · watched':''}</span>${chip}${bar}</div>
       <div class="body"><h3>${title}</h3>${chips}<p>${e.d}</p>
       <span class="go">${e.station?'★ sit the station — exam conditions':(done?'watch again':'enter the bay')}</span>${replay}</div></button>`;
   };
@@ -2090,7 +2112,7 @@ function paintSeason(){
      error — it sits with its set and says what it will be. */
   const comingCard=(m,s)=>`<div class="tile st cs" data-ga="coming:${m.id}">
       <div class="art"><div class="art-ph art-cl"><span>${specShort(m.specialty)}</span></div>
-        <span class="st-k">from the Embla case bank</span><span class="no">${m.id.replace('osce-','OSCE ').toUpperCase()}</span>
+        <span class="no">${m.id.replace('osce-','OSCE ').toUpperCase()}</span>
         <span class="st-stars" title="${barRule()}">${starGlyph(0)}</span></div>
       <div class="body"><h3>${m.title}</h3>
         <span class="chiprow"><span class="spec">${m.specialty}</span><span class="rt">${m.tier}</span></span>
