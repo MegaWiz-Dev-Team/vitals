@@ -236,9 +236,17 @@ fn the_sheet_adds_up_to_the_det_score_the_chain_would_carry() {
         let items = m["items"].as_array().expect("items");
         let earned: u64 = items.iter().map(|i| i["earned"].as_u64().unwrap_or_default()).sum();
         let points: u64 = items.iter().map(|i| i["points"].as_u64().unwrap_or_default()).sum();
-        assert_eq!(earned, det as u64, "{name}: the items do not add up to the score ({m})");
+        // Items earned, minus what over-ordering took, is the score — the subtraction the sheet
+        // shows. `penalty` is zero on both these tapes; it is in the sum so that the day one of
+        // them starts ordering something station A does not need, the head and the rows still
+        // reconcile instead of the page quietly showing more ticks than marks.
+        let penalty = m["penalty"].as_u64().unwrap_or_default();
+        let charged: u64 = items.iter().map(|i| i["penalty"].as_u64().unwrap_or_default()).sum();
+        assert_eq!(charged, penalty, "{name}: the sheet's deductions ≠ the one that was taken ({m})");
+        assert_eq!(earned - penalty, det as u64, "{name}: the items do not add up to the score ({m})");
         assert_eq!(points, max as u64, "{name}: the item maxima do not add up to the max ({m})");
-        assert_eq!(items.len(), 10, "{name}: station A has ten rubric items");
+        // Ten clinical items and the deduction row that says nothing was over-ordered.
+        assert_eq!(items.len(), 11, "{name}: station A has ten rubric items and one deduction");
 
         // Worst first — the top of the sheet is what to practise.
         let lost: Vec<u64> = items.iter().map(|i| i["lost"].as_u64().unwrap_or_default()).collect();
@@ -288,7 +296,7 @@ fn a_practice_run_gets_the_same_sheet_as_an_exam() {
     let m = s.json(&format!("/api/marks?id={id}"));
     // Never committed, so the server never bound this run as an exam.
     assert_eq!(m["exam"], serde_json::json!(false), "this run was not declared an exam: {m}");
-    assert_eq!(m["items"].as_array().map(|a| a.len()), Some(10), "practice was refused a sheet: {m}");
+    assert_eq!(m["items"].as_array().map(|a| a.len()), Some(11), "practice was refused a sheet: {m}");
     assert_eq!(m["score"], m["max"], "the competent tape is full marks in practice too: {m}");
 }
 

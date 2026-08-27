@@ -16,6 +16,8 @@
     { "label": "The neb never wore off unbacked",                      "type": "no_harm",   "needle": "walks back in", "points": 2 },
     { "label": "Controller started — a plan against the fourth visit", "type": "action",    "needle": "ics_controller", "points": 1 },
     { "label": "Named it, with its grade",                             "type": "action",    "needle": "dx_asthma",     "points": 1 },
-    { "label": "Home with a plan — reassessed, steroid on board",      "type": "outcome",   "any_of": ["win_discharge"], "points": 3 }
+    { "label": "Home with a plan — reassessed, steroid on board",      "type": "outcome",   "any_of": ["win_discharge"], "points": 3 },
+    { "label": "Ordered nothing this attack did not need", "type": "no_unindicated", "per_item": 3, "max_penalty": 9,
+      "allow": ["sedative", "discharge"] }
   ]
 }

@@ -18,6 +18,8 @@
     { "label": "Vasoplegia never left to sag unanswered",          "type": "no_harm",   "needle": "vasoplegia",     "points": 2 },
     { "label": "Source control — a door for the pus",              "type": "action",    "needle": "source_control", "points": 2 },
     { "label": "Named it — septic shock, with its source",         "type": "action",    "needle": "dx_sepsis",      "points": 1 },
-    { "label": "The unit takes her warm",                          "type": "outcome",   "any_of": ["win_icu"],      "points": 5 }
+    { "label": "The unit takes her warm",                          "type": "outcome",   "any_of": ["win_icu"],      "points": 5 },
+    { "label": "Ordered nothing this sepsis did not need", "type": "no_unindicated", "per_item": 3, "max_penalty": 9,
+      "allow": ["two_lines", "oxygen", "catheter", "icu_bed"] }
   ]
 }

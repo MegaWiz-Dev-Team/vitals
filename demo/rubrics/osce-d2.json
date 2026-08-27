@@ -13,6 +13,8 @@
     { "label": "No lytics on a held pressure",                      "type": "no_harm", "needle": "intracranial bleed", "points": 4 },
     { "label": "Never reassured the mimic out the door",            "type": "no_harm", "needle": "favourite exit", "points": 3 },
     { "label": "Named it — pulmonary embolism",                     "type": "action",  "needle": "dx_pe",        "points": 2 },
-    { "label": "Anticoagulated and alive — the unit takes her",     "type": "outcome", "any_of": ["win_icu"],    "points": 7 }
+    { "label": "Anticoagulated and alive — the unit takes her",     "type": "outcome", "any_of": ["win_icu"],    "points": 7 },
+    { "label": "Ordered nothing this clot did not need", "type": "no_unindicated", "per_item": 3, "max_penalty": 9,
+      "allow": ["ecg", "cxr", "fluids", "thrombolysis", "reassure_discharge", "admit"] }
   ]
 }

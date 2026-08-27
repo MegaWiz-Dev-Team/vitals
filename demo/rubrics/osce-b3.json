@@ -15,6 +15,8 @@
     { "label": "The safety-net speech, said back word for word",              "type": "action",    "needle": "advise",         "points": 3 },
     { "label": "An hour of watching before the door",                         "type": "action",    "needle": "observe_child",  "points": 3 },
     { "label": "Named it — mild croup",                                       "type": "action",    "needle": "dx_croup",       "points": 2 },
-    { "label": "Home before the cartoon ends",                                "type": "outcome",   "any_of": ["win_discharge"], "points": 4 }
+    { "label": "Home before the cartoon ends",                                "type": "outcome",   "any_of": ["win_discharge"], "points": 4 },
+    { "label": "Ordered nothing this mild croup did not need", "type": "no_unindicated", "per_item": 3, "max_penalty": 9,
+      "allow": ["keep_calm", "antibiotics", "discharge"] }
   ]
 }

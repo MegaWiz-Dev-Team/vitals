@@ -12,6 +12,8 @@
     { "label": "Supporting workup — ECG, CBC or CXR",            "type": "action_any", "any_of": ["ecg", "cbc", "cxr"], "points": 2 },
     { "label": "Did not discharge inside the observation window","type": "no_harm",    "needle": "observation window", "points": 3 },
     { "label": "Named the diagnosis — anaphylaxis",              "type": "action",     "needle": "dx_anaphylaxis",     "points": 4 },
-    { "label": "Patient survives to discharge",                  "type": "outcome",    "any_of": ["win_discharge"],    "points": 4 }
+    { "label": "Patient survives to discharge",                  "type": "outcome",    "any_of": ["win_discharge"],    "points": 4 },
+    { "label": "Ordered nothing this reaction did not need", "type": "no_unindicated", "per_item": 3, "max_penalty": 9,
+      "allow": ["saline", "supine", "chlorpheniramine", "hydrocortisone", "observe", "discharge"] }
   ]
 }

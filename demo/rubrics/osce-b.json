@@ -12,6 +12,8 @@
     { "label": "The ECG never waited past ten minutes",          "type": "no_harm",    "needle": "ecg delayed",      "points": 3 },
     { "label": "Did not reassure-and-discharge an infarct",      "type": "no_harm",    "needle": "evolving infarct", "points": 3 },
     { "label": "Named it — an acute coronary occlusion",         "type": "action",     "needle": "dx_stemi",         "points": 3 },
-    { "label": "Muscle saved — patient survives",                "type": "outcome",    "any_of": ["win_discharge", "win_icu"], "points": 3 }
+    { "label": "Muscle saved — patient survives",                "type": "outcome",    "any_of": ["win_discharge", "win_icu"], "points": 3 },
+    { "label": "Ordered nothing this chest did not need", "type": "no_unindicated", "per_item": 3, "max_penalty": 9,
+      "allow": ["cxr", "iv_access", "reassure_discharge", "admit"] }
   ]
 }

@@ -33,6 +33,50 @@ pub enum Check {
     NoHarm { needle: String, points: u16 },
     /// The run reached a terminal `outcome` named in `any_of`.
     Outcome { any_of: Vec<String>, points: u16 },
+    /// ── the only check that can take marks away ──────────────────────────────
+    ///
+    /// **Orders this case had no indication for.** Counts the interventions the candidate
+    /// ordered which no other item on this sheet pays for and which `allow` does not clear,
+    /// and takes `per_item` marks for each, to a floor of `max_penalty`.
+    ///
+    /// It exists because ordering is not free. A candidate who presses every button on the
+    /// station scores full marks on a rubric made only of "did they do X" items — the audit
+    /// measured exactly that, twelve stations, and eleven of them came out at 40/40 for a tape
+    /// that ordered everything the case defines. Nothing in a checklist of positives can see
+    /// that, because everything the checklist asks for genuinely happened.
+    ///
+    /// **It never counts a question or an examination.** Asking more than the mark sheet lists
+    /// is normal and good practice, and an examiner does not deduct for it; ordering a drug, a
+    /// test or a procedure the patient did not need has a cost, a risk and a delay attached,
+    /// and a real mark sheet does deduct for it. So the two are treated differently, and the
+    /// split is structural rather than per-rubric: an intervention id beginning `ask_` or
+    /// `exam_` is history or examination and is never counted, on any station, without a rubric
+    /// author having to remember to say so. `every_station_sorts_its_chips_into_the_two_kinds`
+    /// is what keeps that convention true of the shipped cases.
+    ///
+    /// **What is exempt, and why it is derived rather than listed.** Anything this rubric's own
+    /// `action` / `action_by` / `action_any` needles match is exempt automatically: a sheet must
+    /// never take marks for an order it is simultaneously paying for. Only `no_harm` and
+    /// `outcome` needles are left out of that, because they match harm sentences and outcome
+    /// ids rather than intervention ids, and folding them in would exempt by accident.
+    ///
+    /// **`allow` is the clinical judgement, and it is per case.** It carries the orders a
+    /// clinician has cleared for *this* patient even though no item pays for them — fluids for
+    /// a pressure of 92, a steroid behind the adrenaline, the admission the rubric only marks
+    /// through a `no_harm` — and the orders another item on this sheet already prices, so that
+    /// a mistake the case flags as harm is charged once rather than twice. Everything not on it
+    /// and not exempt is counted, which is the safe direction: a chip nobody classified costs
+    /// marks rather than being silently free.
+    NoUnindicated {
+        /// Intervention ids this check must not count. See above: clinician-cleared, or already
+        /// marked by another item on this sheet.
+        #[serde(default)]
+        allow: Vec<String>,
+        /// What one unindicated order costs.
+        per_item: u16,
+        /// The most this check can take off, however many were ordered.
+        max_penalty: u16,
+    },
 }
 
 impl Check {
@@ -43,6 +87,9 @@ impl Check {
             | Check::ActionAny { points, .. }
             | Check::NoHarm { points, .. }
             | Check::Outcome { points, .. } => *points,
+            // A deduction is not worth anything. It adds nothing to the rubric's maximum — the
+            // station is still marked out of the same forty — it only takes.
+            Check::NoUnindicated { .. } => 0,
         }
     }
 
@@ -55,6 +102,7 @@ impl Check {
             Check::ActionAny { .. } => "action_any",
             Check::NoHarm { .. } => "no_harm",
             Check::Outcome { .. } => "outcome",
+            Check::NoUnindicated { .. } => "no_unindicated",
         }
     }
 }
@@ -124,6 +172,13 @@ pub struct ItemResult {
     pub at: Option<f64>,
     /// The window the item had to land inside. `Some` only for a timed check.
     pub within: Option<f64>,
+    /// What this item *took*, rather than failed to give. Zero for every check but
+    /// [`Check::NoUnindicated`], which is the only one that can deduct.
+    pub penalty: u16,
+    /// The orders this item charged for, by intervention id, in the order they were given.
+    /// Empty for every other check. The mark sheet names them — a deduction a candidate cannot
+    /// see the reason for teaches nothing, and an examiner who cannot see it cannot review it.
+    pub charged: Vec<String>,
 }
 
 impl ItemResult {
@@ -137,8 +192,9 @@ impl ItemResult {
         }
     }
     /// What it cost. The mark sheet is sorted on this — the biggest hole is the thing to fix.
+    /// A deduction costs what it took; every other item costs the points it did not earn.
     pub fn lost(&self) -> u16 {
-        self.points - self.earned_points()
+        (self.points - self.earned_points()).saturating_add(self.penalty)
     }
 }
 
@@ -153,6 +209,11 @@ pub struct DetResult {
     /// What the items added up to before the death cap, or `None` when no cap applied — which
     /// is every run the patient survived. See [`death_cap`].
     pub capped_from: Option<u16>,
+    /// What [`Check::NoUnindicated`] took off the items' own total, before the death cap. Zero
+    /// on a run that ordered nothing the case did not need — which is every competent tape in
+    /// this file. Kept separate from `earned` so the sheet can show the subtraction rather than
+    /// a total that does not add up.
+    pub penalty: u16,
 }
 
 /// ── the rule that outranks the arithmetic ────────────────────────────────────
@@ -199,7 +260,8 @@ impl DetResult {
         self.max > 0 && self.bps() >= rubric.pass_bps
     }
 
-    /// The items, read back as one number — always the items' own total, never the capped one.
+    /// The items, read back as one number — always the items' own total, never the capped one
+    /// and never the penalised one.
     /// `earned` is accumulated as the checks are walked and this re-adds the sheet the player is
     /// shown; they are two paths to the same total, which is exactly the property
     /// [`sheet_for_run`] refuses to publish a mark sheet without. When the death cap has bitten,
@@ -243,6 +305,76 @@ fn first_of(events: &[Event], kind: &str, needles: &[String]) -> Option<f64> {
     })
 }
 
+/// Does `needle` appear in `hay`, by the same rule [`hit`] uses on an event's text?
+///
+/// Factored out because [`Check::NoUnindicated`] has to ask it of an intervention *id* rather
+/// than of an event, and a second spelling of "matches" is a second answer to "did this rubric
+/// pay for this order" — which is exactly the disagreement that would let a sheet deduct for
+/// something it was also crediting.
+fn contains(hay: &str, needle: &str) -> bool {
+    canon(hay).to_lowercase().contains(&canon(needle).to_lowercase())
+}
+
+/// Whether an intervention id is history-taking or physical examination.
+///
+/// The convention is the case set's own — `ask_allergy`, `exam_chest` — and it is read here
+/// rather than declared per rubric because "asking more is not a fault" is a fact about
+/// clinical examinations in general, not about any one patient. A rubric author cannot forget
+/// it, and cannot get it wrong for one station.
+fn is_assessment(id: &str) -> bool {
+    let id = canon(id).to_lowercase();
+    id.starts_with("ask_") || id.starts_with("exam_")
+}
+
+/// Every order the run gave, by intervention id, first time each, in the order given.
+///
+/// `action_refused` counts. An order the case turned down still shows the judgement that made
+/// it — the needle aimed at a sac with nothing in it, the mist held out for a child who is
+/// settled — and the case refusing it is not the candidate deciding against it. The gated
+/// orders that are *right but early* (the cath lab before the ECG, heparin before the scan,
+/// GI before the resuscitation) are all paid for by an item on their own sheet, so the
+/// exemption below clears them without any of this needing to know they are special.
+fn ordered(events: &[Event]) -> Vec<(String, f64)> {
+    let mut seen: Vec<(String, f64)> = Vec::new();
+    for e in events.iter().filter(|e| e.kind == "action" || e.kind == "action_refused") {
+        if !seen.iter().any(|(id, _)| id == &e.text) {
+            seen.push((e.text.clone(), e.t_sec));
+        }
+    }
+    seen
+}
+
+/// The orders `rubric` pays for somewhere, as needles to test an id against.
+///
+/// Deliberately only the three action checks. A `no_harm` needle is a sentence out of a harm
+/// event ("the itch was never the emergency") and an `outcome` needle is a terminal id, and
+/// letting either exempt an intervention would clear orders by coincidence of wording.
+fn credited_needles(rubric: &Rubric) -> Vec<&str> {
+    let mut v = Vec::new();
+    for it in &rubric.items {
+        match &it.check {
+            Check::Action { needle, .. } | Check::ActionBy { needle, .. } => v.push(needle.as_str()),
+            Check::ActionAny { any_of, .. } => v.extend(any_of.iter().map(String::as_str)),
+            Check::NoHarm { .. } | Check::Outcome { .. } | Check::NoUnindicated { .. } => {}
+        }
+    }
+    v
+}
+
+/// The orders this run gave that `rubric` neither pays for nor clears — what
+/// [`Check::NoUnindicated`] charges for. Public because it is also the review surface: a
+/// clinician reading a station wants the list, not the arithmetic.
+pub fn unindicated(events: &[Event], rubric: &Rubric, allow: &[String]) -> Vec<String> {
+    let credited = credited_needles(rubric);
+    ordered(events)
+        .into_iter()
+        .map(|(id, _)| id)
+        .filter(|id| !is_assessment(id))
+        .filter(|id| !allow.iter().any(|a| canon(a).to_lowercase() == canon(id).to_lowercase()))
+        .filter(|id| !credited.iter().any(|n| contains(id, n)))
+        .collect()
+}
+
 /// Score a replayed run against a rubric. Pure and total: same events + same rubric + same
 /// terminal → same result, which is the property the claim path depends on.
 ///
@@ -264,6 +396,8 @@ pub fn score(events: &[Event], rubric: &Rubric, ended: Option<Outcome>) -> DetRe
         max = max.saturating_add(p);
         // `at` is the evidence, `ok` is the verdict, and both come off the same lookup — the
         // mark sheet quotes the very seconds the check was decided on.
+        let mut penalty = 0u16;
+        let mut charged: Vec<String> = Vec::new();
         let (ok, at, within) = match &it.check {
             Check::Action { needle, .. } => {
                 let at = hit(events, "action", needle);
@@ -287,6 +421,16 @@ pub fn score(events: &[Event], rubric: &Rubric, ended: Option<Outcome>) -> DetRe
                 let at = first_of(events, "outcome", any_of);
                 (at.is_some(), at, None)
             }
+            // The deduction. `at` is the second the first charged order was given, so the sheet
+            // can say when the over-ordering started; there is no window to quote.
+            Check::NoUnindicated { allow, per_item, max_penalty } => {
+                charged = unindicated(events, rubric, allow);
+                penalty = per_item
+                    .saturating_mul(charged.len().min(u16::MAX as usize) as u16)
+                    .min(*max_penalty);
+                let at = charged.first().and_then(|id| hit(events, "action", id));
+                (penalty == 0, at, None)
+            }
         };
         if ok {
             earned = earned.saturating_add(p);
@@ -305,8 +449,27 @@ pub fn score(events: &[Event], rubric: &Rubric, ended: Option<Outcome>) -> DetRe
             mark,
             at,
             within,
+            penalty,
+            charged,
         });
     }
+    // ── the deduction, taken off the items' own total ────────────────────────
+    // Before the death cap and after everything else, because it is arithmetic about the run's
+    // marks and the cap is a rule about the run's ending. `max` never moves: over-ordering does
+    // not make a station worth more, it makes this run worth less, and the forty a verifier
+    // re-derives has to be the same forty however the run went.
+    // A deduction cannot take a mark that was never earned: the floor is zero, and clamping is
+    // done on the sheet's own rows rather than only on the total, so what the candidate reads
+    // ("−6") and what came off the score are the same number. Without this a run that earned 4
+    // and over-ordered 6 would show a −6 against a −4 subtraction, and the sheet would stop
+    // adding up — which `sheet_for_run` refuses to publish.
+    let mut left = earned;
+    for it in items.iter_mut().filter(|i| i.penalty > 0) {
+        it.penalty = it.penalty.min(left);
+        left -= it.penalty;
+    }
+    let penalty = items.iter().map(|i| i.penalty).fold(0u16, u16::saturating_add);
+    earned -= penalty;
     // The floor, applied last and to the total rather than to any item — see [`death_cap`].
     let capped_from = ended.filter(|o| o.is_death()).and_then(|_| {
         let cap = death_cap(rubric.pass_bps, max);
@@ -316,9 +479,9 @@ pub fn score(events: &[Event], rubric: &Rubric, ended: Option<Outcome>) -> DetRe
             was
         })
     });
-    let det = DetResult { earned, max, items, capped_from };
+    let det = DetResult { earned, max, items, capped_from, penalty };
     debug_assert_eq!(
-        det.capped_from.unwrap_or(det.earned),
+        det.capped_from.unwrap_or(det.earned) + det.penalty,
         det.items_total(),
         "the mark sheet does not add up to the score"
     );
@@ -365,12 +528,17 @@ pub fn sheet_for_run(
     // returns rather than panics for the same reason — a bay must not die of a bad rubric.
     // The sheet reconciles against what the items earned, which is the score unless the death
     // cap took the rest — and then it reconciles against the pre-cap total, because the cap is
-    // a rule about the run and not an arithmetic error in the sheet.
-    if det.capped_from.unwrap_or(det.earned) != det.items_total() {
+    // a rule about the run and not an arithmetic error in the sheet. A `no_unindicated`
+    // deduction is on the sheet as its own row, so it is part of the sum rather than an
+    // exception to it.
+    // The deduction is part of the subtraction the sheet has to show: items earned, minus what
+    // over-ordering took, is the score — unless the death cap then took the rest.
+    if det.capped_from.unwrap_or(det.earned).saturating_add(det.penalty) != det.items_total() {
         return Err(format!(
-            "mark sheet does not add up: items total {} against a det score of {}",
+            "mark sheet does not add up: items total {} against a det score of {} and a penalty of {}",
             det.items_total(),
-            det.capped_from.unwrap_or(det.earned)
+            det.capped_from.unwrap_or(det.earned),
+            det.penalty
         ));
     }
     Ok((rubric, det))
@@ -453,7 +621,7 @@ mod tests {
 
     #[test]
     fn empty_rubric_proves_nothing() {
-        let r = DetResult { earned: 0, max: 0, items: vec![], capped_from: None };
+        let r = DetResult { earned: 0, max: 0, items: vec![], capped_from: None, penalty: 0 };
         assert_eq!(r.bps(), 0);
         assert!(!r.cleared(&rubric()));
     }
@@ -523,7 +691,7 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &hesitation, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None, penalty: 0 };
         assert!(!det.cleared(&r), "a run without adrenaline must not clear: {s}/{m}");
     }
 
@@ -741,7 +909,7 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &depressor, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None, penalty: 0 };
         assert!(!det.cleared(&r), "the tongue depressor must not clear the bar: {s}/{m}");
     }
 
@@ -797,7 +965,7 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &reflex, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None, penalty: 0 };
         assert!(!det.cleared(&r), "the chest-pain reflex must not clear the bar: {s}/{m}");
     }
 
@@ -845,7 +1013,7 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &reflex, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None, penalty: 0 };
         assert!(!det.cleared(&r), "the antihistamine reflex must not clear the bar: {s}/{m}");
     }
 
@@ -901,7 +1069,7 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &reflex, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None, penalty: 0 };
         assert!(!det.cleared(&r), "the stemi reflex must not clear the bar: {s}/{m}");
     }
 
@@ -955,7 +1123,7 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &bottle, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None, penalty: 0 };
         assert!(!det.cleared(&r), "antibiotics-and-home must not clear the bar: {s}/{m}");
     }
 
@@ -1012,7 +1180,7 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &sedated, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None, penalty: 0 };
         assert!(!det.cleared(&r), "the sedative must not clear the bar: {s}/{m}");
     }
 
@@ -1070,7 +1238,7 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &arithmetic, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None, penalty: 0 };
         assert!(!det.cleared(&r), "score-says-home must not clear the bar: {s}/{m}");
     }
 
@@ -1123,7 +1291,7 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &stall, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None, penalty: 0 };
         assert!(!det.cleared(&r), "the dimer stall must not clear the bar: {s}/{m}");
     }
 
@@ -1167,7 +1335,7 @@ mod tests {
         let adult = competent("adrenaline 0.5 mg im — the adult dose");
         let (s, m, _) = det_for_run(&sce, &adult, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None, penalty: 0 };
         assert!(!det.cleared(&r), "the adult dose must not clear the bar: {s}/{m}");
         assert!(s >= 20, "the adult dose still treats — the run fails on marks, not on death: {s}/{m}");
     }
@@ -1232,7 +1400,7 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &backwards, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None, penalty: 0 };
         assert!(!det.cleared(&r), "the backwards reflex must not clear the bar: {s}/{m}");
     }
 
@@ -1393,7 +1561,19 @@ mod tests {
                 let (_, det) = sheet_for_run(&sce, &tape, &rubric_json).unwrap();
                 let (s, m, _) = det_for_run(&sce, &tape, &rubric_json).unwrap();
                 assert_eq!((det.earned, det.max), (s, m), "{case}: sheet and det disagree");
-                assert_eq!(det.items_total(), s, "{case}: the items do not add up to the score");
+                // Items earned, minus what the deduction took, is the score. On a rubric with
+                // no `no_unindicated` item — and on every run that ordered nothing the case did
+                // not need — the penalty is zero and this is the identity it always was.
+                assert_eq!(
+                    det.items_total(),
+                    s.saturating_add(det.penalty),
+                    "{case}: the items do not add up to the score"
+                );
+                assert_eq!(
+                    det.penalty,
+                    det.items.iter().map(|i| i.penalty).sum::<u16>(),
+                    "{case}: the sheet's deductions do not add up to the one that was taken"
+                );
                 assert_eq!(
                     det.items.iter().map(|i| i.points).fold(0u16, u16::saturating_add),
                     m,

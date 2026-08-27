@@ -14,6 +14,8 @@
     { "label": "Supporting workup — tryptase, glucose or ECG",    "type": "action_any", "any_of": ["tryptase", "glucose", "ecg"], "points": 2 },
     { "label": "Named it — anaphylaxis behind the gut story",     "type": "action",     "needle": "dx_anaphylaxis",    "points": 3 },
     { "label": "Did not discharge inside the observation window", "type": "no_harm",    "needle": "observation window", "points": 2 },
-    { "label": "Patient survives to discharge",                   "type": "outcome",    "any_of": ["win_discharge"],   "points": 4 }
+    { "label": "Patient survives to discharge",                   "type": "outcome",    "any_of": ["win_discharge"],   "points": 4 },
+    { "label": "Ordered nothing this reaction did not need", "type": "no_unindicated", "per_item": 3, "max_penalty": 9,
+      "allow": ["supine", "chlorpheniramine", "hydrocortisone", "observe", "discharge"] }
   ]
 }

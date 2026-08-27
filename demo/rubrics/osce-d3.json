@@ -16,6 +16,8 @@
     { "label": "Admitted for the biphasic watch",                  "type": "action",    "needle": "observe",          "points": 2 },
     { "label": "Did not discharge inside the observation window",  "type": "no_harm",   "needle": "observation window", "points": 2 },
     { "label": "Named it — anaphylaxis",                           "type": "action",    "needle": "dx_anaphylaxis",   "points": 2 },
-    { "label": "Weighed, dosed, watched — she goes home",          "type": "outcome",   "any_of": ["win_discharge"],  "points": 5 }
+    { "label": "Weighed, dosed, watched — she goes home",          "type": "outcome",   "any_of": ["win_discharge"],  "points": 5 },
+    { "label": "Ordered nothing this child did not need", "type": "no_unindicated", "per_item": 3, "max_penalty": 9,
+      "allow": ["adrenaline_adult_dose", "adrenaline_iv_push", "adrenaline_undosed", "chlorpheniramine", "hydrocortisone", "discharge"] }
   ]
 }

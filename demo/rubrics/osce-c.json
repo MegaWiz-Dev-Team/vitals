@@ -14,6 +14,8 @@
     { "label": "No tongue depressor near that airway",                      "type": "no_harm", "needle": "tongue depressor", "points": 8 },
     { "label": "No needle hunt on a calm child",                            "type": "no_harm", "needle": "needle hunt",      "points": 8 },
     { "label": "Named it — croup, not epiglottitis",                        "type": "action",  "needle": "dx_croup",         "points": 2 },
-    { "label": "Watched, settled, home before midnight",                    "type": "outcome", "any_of": ["win_discharge"],  "points": 5 }
+    { "label": "Watched, settled, home before midnight",                    "type": "outcome", "any_of": ["win_discharge"],  "points": 5 },
+    { "label": "Ordered nothing this airway did not need", "type": "no_unindicated", "per_item": 3, "max_penalty": 9,
+      "allow": ["neb_adrenaline", "keep_calm", "observe_child", "iv_stick"] }
   ]
 }

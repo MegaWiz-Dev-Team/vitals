@@ -14,6 +14,8 @@
     { "label": "Never sent a rub to the cath lab",                      "type": "no_harm",   "needle": "no culprit artery", "points": 2 },
     { "label": "Never lysed an inflamed pericardium",                   "type": "no_harm",   "needle": "inflamed pericardium", "points": 6 },
     { "label": "Named it — pericarditis, not a STEMI",                  "type": "action",    "needle": "dx_pericarditis", "points": 2 },
-    { "label": "Home on tablets — the sac never filled",                "type": "outcome",   "any_of": ["win_discharge"], "points": 4 }
+    { "label": "Home on tablets — the sac never filled",                "type": "outcome",   "any_of": ["win_discharge"], "points": 4 },
+    { "label": "Ordered nothing this pericardium did not need", "type": "no_unindicated", "per_item": 3, "max_penalty": 9,
+      "allow": ["cxr", "colchicine", "cath_lab", "thrombolysis", "observe"] }
   ]
 }

@@ -16,6 +16,8 @@
     { "label": "Never let the score outvote the oximeter",           "type": "no_harm",   "needle": "never listened to the oximeter", "points": 5 },
     { "label": "The first dose never slid past the hour",            "type": "no_harm",   "needle": "slid past the hour", "points": 2 },
     { "label": "Named it, severity beside it",                       "type": "action",    "needle": "dx_pneumonia", "points": 2 },
-    { "label": "Admitted on oxygen — the safe disposition",          "type": "outcome",   "any_of": ["win_icu"],    "points": 5 }
+    { "label": "Admitted on oxygen — the safe disposition",          "type": "outcome",   "any_of": ["win_icu"],    "points": 5 },
+    { "label": "Ordered nothing this pneumonia did not need", "type": "no_unindicated", "per_item": 3, "max_penalty": 9,
+      "allow": ["analgesia", "admit_ward", "discharge_home"] }
   ]
 }

@@ -16,6 +16,8 @@
     { "label": "Called GI — endoscopy is the source control",          "type": "action",    "needle": "endoscopy",        "points": 4 },
     { "label": "Never fed aspirin to a bleeding stomach",              "type": "no_harm",   "needle": "bleeding stomach", "points": 2 },
     { "label": "Named it — an upper GI bleed",                         "type": "action",    "needle": "dx_ugib",          "points": 1 },
-    { "label": "Resuscitated, scoped, alive — the ICU takes him",      "type": "outcome",   "any_of": ["win_icu"],        "points": 9 }
+    { "label": "Resuscitated, scoped, alive — the ICU takes him",      "type": "outcome",   "any_of": ["win_icu"],        "points": 9 },
+    { "label": "Ordered nothing this bleed did not need", "type": "no_unindicated", "per_item": 3, "max_penalty": 9,
+      "allow": ["cbc", "coags", "hold_antiplatelets", "aspirin"] }
   ]
 }

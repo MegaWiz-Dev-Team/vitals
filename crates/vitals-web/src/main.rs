@@ -1739,12 +1739,33 @@ fn main() {
                                     // the player would be right to think the sheet was broken.
                                     // See `vitals_osce::death_cap`.
                                     "capped_from": det.capped_from,
+                                    // What over-ordering took off the items' own total, before
+                                    // the cap. The rows below carry every point that was
+                                    // earned, so a sheet that did not publish this would show a
+                                    // column of ticks adding to more than the score at the top
+                                    // — the same disagreement `capped_from` exists to prevent.
+                                    // See `vitals_osce::Check::NoUnindicated`.
+                                    "penalty": det.penalty,
                                     "exam": s.exam_mode,
                                     // Costliest first — the top of the sheet is what to fix
                                     // before sitting it again, which is the whole point of
                                     // showing it. Sorted here so every reader agrees.
                                     "items": det.by_loss().iter().map(|i| serde_json::json!({
-                                        "label": i.label,
+                                        // ── the deduction has to be readable on the page ────
+                                        // A row renders as `earned/points`, and a deduction has
+                                        // no points — it takes them. So a charged row would
+                                        // print "0/0" while the total at the head was three
+                                        // lower than the rows add to, which is the exact
+                                        // head-and-rows disagreement `capped_from` exists to
+                                        // stop. Until the page renders `penalty` and `charged`
+                                        // itself, the row says it in words. The structured
+                                        // fields below are the ones to build on; this suffix
+                                        // comes out the day they are used.
+                                        "label": if i.penalty > 0 {
+                                            format!("{} — {} marks off: {}", i.label, i.penalty, i.charged.join(", "))
+                                        } else {
+                                            i.label.clone()
+                                        },
                                         "kind": i.kind,
                                         "mark": i.mark.as_str(),
                                         "points": i.points,
@@ -1752,6 +1773,12 @@ fn main() {
                                         "lost": i.lost(),
                                         "at": i.at,
                                         "within": i.within,
+                                        // Non-zero only on the deduction row, with the orders
+                                        // it charged for named: a candidate who is told three
+                                        // marks went and not which order took them has been
+                                        // marked at, not taught.
+                                        "penalty": i.penalty,
+                                        "charged": i.charged,
                                     })).collect::<Vec<_>>(),
                                 })),
                             }
