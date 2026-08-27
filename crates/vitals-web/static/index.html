@@ -803,10 +803,10 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
    A decision about where the patient goes, which is not a preference and does not
    belong in a row with the mute button. */
 .dispo{display:flex;flex-direction:column;gap:.5rem}
-.dispo-row{display:flex;gap:.55rem;align-items:flex-start;cursor:pointer;font-size:.82rem}
-.dispo-row input{accent-color:var(--act);margin-top:.15rem}
-.dispo-row b{font-weight:600;display:block;color:var(--ink)}
-.dispo-row em{font-style:normal;font-size:.74rem;color:var(--ink-3)}
+.dispo-opts{display:flex;flex-wrap:wrap;gap:.3rem}
+.dispo-opts .btn{font-size:.74rem;padding:.35rem .5rem}
+.dispo-why{font-style:normal;font-size:.74rem;color:var(--ink-3)}
+.dispo-why:empty{display:none}
 
 /* ── the chart ────────────────────────────────────────────────────────────────
    Orders and events are different kinds of fact. The tag says which; the rule down
@@ -1575,14 +1575,25 @@ a.give:hover{filter:brightness(1.06)}
       <div class="chart" id="chart"><span class="muted">nothing recorded yet</span></div>
     </div>
 
-    <!-- A disposition is a clinical decision. It does not belong in a row with the mute button. -->
+    <!-- A disposition is a clinical decision. It does not belong in a row with the mute button.
+         It was one checkbox, and the checkbox said "Admit for observation" — the right answer,
+         in those words, on every one of the seventeen cases, worth the disposition mark on most
+         of the twelve mark sheets for a single click by a candidate who had decided nothing.
+         A decision with one option on the ballot is not a decision. Four now — four places a
+         patient can go, at least one of them wrong wherever you are standing, none of them
+         arguing for itself. Written at one level for the same reason the order chips are. -->
     <div class="panel dispo">
       <div class="k">disposition</div>
-      <!-- The reason under the box is a teaching line, and a teaching line during an exam is
+      <div class="dispo-opts" id="dispo-opts">
+        <button type="button" class="btn" data-dispo="discharge home" data-ga="dispo:discharge">discharge home</button>
+        <button type="button" class="btn" data-dispo="admit for observation" data-ga="dispo:observe">admit for observation</button>
+        <button type="button" class="btn" data-dispo="short-stay bed" data-ga="dispo:shortstay">short-stay bed</button>
+        <button type="button" class="btn" data-dispo="intensive care unit" data-ga="dispo:icu">intensive care unit</button>
+      </div>
+      <!-- The reason under the row is a teaching line, and a teaching line during an exam is
            the answer read off the wall. paint() fills it in practice and leaves it empty at a
            station — and only on the case it is actually true of. -->
-      <label class="dispo-row"><input type="checkbox" id="p-admit">
-        <span><b>Admit for observation</b><em id="dispo-why"></em></span></label>
+      <em id="dispo-why" class="dispo-why"></em>
       <button class="btn" id="sound" title="the clips carry their own room tone">🔇 sound off</button>
     </div>
   </aside>
@@ -1856,9 +1867,23 @@ const SEASON=[
     exam-ness before the first order, and the stars it earns open its set's episode door.
     Station Sets v2: the shelf face is a clinic card (the server's set table is the authority;
     these are the instant-paint copies).
-    Copy rule for a station's `t` AND `d` alike: they are a stem, not a plan. They may say who
-    walks in and what you can see from the door; they may not name anything the mark sheet
-    marks — and they may not point at another case either. Six of these blurbs used to
+    Copy rule for a station's `t`, `d`, `who` AND `line` alike: they are a stem, not a plan.
+    They may say who walks in and what you can see from the door; they may not name anything the
+    mark sheet marks — and they may not point at another case either.
+    `line` is the strictest of the four, because it is the one that never leaves the screen: it
+    is the "presents" row of the sheet, the label over the bed and the first sentence of the
+    empty transcript, so whatever it says sits in front of the candidate for the whole station.
+    Ten of the twelve used to answer their own mark sheet from that row, and between two and
+    eight marks a station were payable off it without touching the patient.
+    The test to apply to a candidate line is not "is it true" but "could I see it from the door
+    without asking a question or laying a hand on the patient". A symptom a relative reports, a
+    sound that needs a stethoscope, a weight that needs scales, a number that needs a machine
+    and a history that needs a question all fail it. A's and C's lines already passed and are
+    deliberately untouched.
+    `t` fails the same test on seven stations and is only half fixable from here: the shelf card
+    and the sheet's own headline take the server's set table when it has landed, and that table
+    is in vitals-web/src/main.rs. What is fixed from here is the player bar, which prints `t`
+    from this file and rides above the bay for the whole station. Six of these blurbs used to
     ("you saw this in EP1 — prove it", "the same disease in a different costume", "EP3 taught
     you the difference"), which hands a returning player the diagnosis on the card they click
     to be examined on it. A cross-reference is a hint with a story wrapped round it; the shelf
@@ -1879,9 +1904,9 @@ const SEASON=[
   d:'Thirty minutes after a meal he will not talk about. Seventy-one, sweating, and the swelling has not stopped moving. Nurse Mali is marking.'},
  {id:'osce-a2',n:'OSCE A2',sn:'S1 · OSCE A2',t:'Belly cramps, loose stools, swollen face — F 68',tier:'student',station:true,
   spec:'emergency',rt:'an 8-minute station',mins:8,
-  who:'Somsri · F 68', line:'wheals and a swelling face, cramping belly, three loose stools — and a faint she will not admit to',
+  who:'Somsri · F 68', line:'wheals and a swelling face, scratching as she talks',
   place:'OSCE station · Nurse Mali marking',
-  d:'She arrives looking like food poisoning: cramps, three trips to the toilet, and a face that has changed shape since breakfast. She has left the worst of the story out.'},
+  d:'She arrives looking like food poisoning. Sixty-eight, and her face has changed shape since breakfast.'},
  /* Key art, from EP2 on: `art` is the 16:9 billboard crop and `art2` the 3:2 one a narrow
     screen gets instead (artOf() builds the <picture>). EP1 keeps stable.jpg — a real frame of
     its own patient, which no generated portrait improves on. The faces are canon; the rules
@@ -1891,21 +1916,21 @@ const SEASON=[
   who:'Prasit · M 58', line:'crushing chest pain to the jaw, sweating',
   place:'Emergency department · evening',
   d:'Thirty years driving patients to this door — tonight Prasit arrives as one. The ECG tells the truth in ten minutes.'},
- {id:'osce-b',n:'OSCE B',sn:'S1 · OSCE B',t:'Crushing chest pain into both arms — M 25',tier:'intern',station:true,
+ {id:'osce-b',n:'OSCE B',sn:'S1 · OSCE B',t:'Chest pain — M 25',tier:'intern',station:true,
   spec:'emergency',rt:'a 10-minute station',mins:10,
-  who:'Somchai Jaidee · M 25', line:'crushing chest pain to both arms, nauseous, terrified',
+  who:'Somchai Jaidee · M 25', line:'chest pain, nauseous, and certain he is dying',
   place:'OSCE station · Nurse Mali on the stopwatch',
-  d:'A young smoker certain he is dying. Nurse Mali is on the stopwatch and will not say what it is counting.'},
- {id:'osce-b2',n:'OSCE B2',sn:'S1 · OSCE B2',t:'Chest pain that hates lying flat — M 14, febrile',tier:'intern',station:true,
+  d:'Twenty-five, on the trolley and frightened of it. Nurse Mali is on the stopwatch and will not say what it is counting.'},
+ {id:'osce-b2',n:'OSCE B2',sn:'S1 · OSCE B2',t:'Chest pain — M 14',tier:'intern',station:true,
   spec:'emergency',rt:'a 10-minute station',mins:10,
-  who:'Tan · M 14', line:'stabbing chest pain that hates lying down, a fever, a scratchy rub',
+  who:'Tan · M 14', line:'chest pain, brought in by his father',
   place:'OSCE station · Nurse Mali marking',
-  d:'Fourteen, febrile, and he will not lie back on the trolley. His father wants to know why a boy this age has chest pain at all.'},
- {id:'osce-b3',n:'OSCE B3',sn:'S1 · OSCE B3',t:'Barking cough on the second night — F 3',tier:'intern',station:true,
+  d:'Fourteen, on the trolley with chest pain. His father wants to know why a boy this age has chest pain at all.'},
+ {id:'osce-b3',n:'OSCE B3',sn:'S1 · OSCE B3',t:'Barking cough — F 3',tier:'intern',station:true,
   spec:'paediatrics',rt:'a 10-minute station',mins:10,
-  who:'Pim · F 3', line:'two days of a cold, then a barking cough tonight — loud, cool, drinking her milk',
+  who:'Pim · F 3', line:'a barking cough, awake on her mother’s lap',
   place:'OSCE station · Nurse Mali marking',
-  d:'Two days of a cold, then a bark that woke the house. She is loud, she is drinking, and the rest of the visit is yours.'},
+  d:'A bark that woke the house, and a three-year-old awake on her mother’s lap. The rest of the visit is yours.'},
  {id:'ep3',n:'EP3',sn:'S1:E3',t:"Don't Make Him Cry",tier:'resident',rt:'a 14-minute shift',mins:14,
   art:'/img/ep3_khaopun.jpg',art2:'/img/ep3_khaopun_3x2.jpg',
   who:'Khaopun · M 5', line:'tripod, drooling, muffled voice, will not lie down',
@@ -1916,39 +1941,39 @@ const SEASON=[
   who:'Fon · F 6', line:'barking cough, drooling on her mother’s shoulder, worse every night',
   place:'OSCE station · Nurse Mali marking, sixteen hours in',
   d:'Four nights of this, and her mother says tonight is the worst one. Six years old, awake in her mother’s arms, and out of patience with all of you.'},
- {id:'osce-c2',n:'OSCE C2',sn:'S1 · OSCE C2',t:'Wheeze and breathlessness — F 53, third attack',tier:'intern',station:true,
+ {id:'osce-c2',n:'OSCE C2',sn:'S1 · OSCE C2',t:'Wheeze and breathlessness — F 53',tier:'intern',station:true,
   spec:'emergency',rt:'a 10-minute station',mins:10,
-  who:'Wasana · F 53', line:'third attack this year on a blue inhaler alone — wheezing, 94%, frightened',
+  who:'Wasana · F 53', line:'breathless and wheezing, frightened',
   place:'OSCE station · Nurse Mali marking',
-  d:'Her third attack this year on a blue inhaler alone — wheezing, frightened, and out of her own answers.'},
- {id:'osce-c3',n:'OSCE C3',sn:'S1 · OSCE C3',t:'A week of cough turned rusty — F 25, febrile',tier:'intern',station:true,
+  d:'Fifty-three, wheezing, frightened, and out of her own answers.'},
+ {id:'osce-c3',n:'OSCE C3',sn:'S1 · OSCE C3',t:'A week of cough — F 25',tier:'intern',station:true,
   spec:'emergency',rt:'a 10-minute station',mins:10,
-  who:'Waen · F 25', line:'a week of cough turned rusty, a stab on breathing in, 38.5 and saturating 93',
+  who:'Waen · F 25', line:'coughing, flushed, and breathing fast',
   place:'OSCE station · Nurse Mali marking',
-  d:'A week of cough turned rusty, and a stab when she breathes in. Twenty-five, and she meant to ride the week out — the stab is what finally walked her through the door.'},
+  d:'Twenty-five, coughing, and she meant to ride the week out. Something last night finally walked her through the door.'},
  {id:'ep4',n:'EP4',sn:'S1:E4',t:'The Masquerader',tier:'resident',rt:'a 12-minute shift',mins:12,
   art:'/img/ep4_mali.jpg',art2:'/img/ep4_mali_3x2.jpg',
   who:'Mali · F 34', line:'breathless, pleuritic pain, looks anxious',
   place:'Emergency department · afternoon',
   d:'One of your own nurses, still in uniform. Everything looks normal — the oxygen is quietly low and the heart is too fast.'},
- {id:'osce-d',n:'OSCE D',sn:'S1 · OSCE D',t:'Vomited blood, black stool since morning — M 62',tier:'intern',station:true,
+ {id:'osce-d',n:'OSCE D',sn:'S1 · OSCE D',t:'Vomited blood — M 62',tier:'intern',station:true,
   spec:'emergency',rt:'a 12-minute station',mins:12,
-  who:'Somchai Jaiman · M 62', line:'vomited a glass of fresh blood, black stool since morning, cold to the wrist',
+  who:'Somchai Jaiman · M 62', line:'vomited blood, still apologising for the mess',
   place:'OSCE station · Nurse Mali marking from a chair — doctor’s orders',
-  d:'Sixty-two, on the trolley and still apologising for the mess. The room tipped over when he stood up this morning and put him down on his own bathroom floor.'},
+  d:'Sixty-two, on the trolley and apologetic about all of it. The room tipped over when he stood up this morning and put him down on his own bathroom floor.'},
  {id:'osce-d2',n:'OSCE D2',sn:'S1 · OSCE D2',t:'Sudden breathlessness, clear chest — F 55',tier:'resident',station:true,
   spec:'emergency',rt:'a 12-minute station',mins:12,
-  who:'Somsri Jaidee · F 55', line:'sudden pleuritic pain and real hypoxia on a clear chest — cancer, on hormone tablets',
+  who:'Somsri Jaidee · F 55', line:'breathless and frightened',
   place:'OSCE station · Nurse Mali marking',
   d:'Breathless since lunchtime and frightened by it. Fifty-five, and she walked into this bay on her own two feet. Nurse Mali is marking.'},
- {id:'osce-d3',n:'OSCE D3',sn:'S1 · OSCE D3',t:'Wheals, swollen lips and a wheeze — F 6, 20 kg',tier:'intern',station:true,
+ {id:'osce-d3',n:'OSCE D3',sn:'S1 · OSCE D3',t:'Wheals, swollen lips and a wheeze — F 6',tier:'intern',station:true,
   spec:'paediatrics',rt:'a 10-minute station',mins:10,
-  who:'Beam · F 6 · 20 kg', line:'prawn fritters at the school fair — wheals, swelling lips, a wheeze, a falling pressure',
+  who:'Beam · F 6', line:'wheals up her neck and arms, lips swelling as you watch',
   place:'OSCE station · Nurse Mali marking',
-  d:'Prawn fritters at the school fair, and twenty kilos of patient on the trolley. Her teacher came in the ambulance and is doing all the talking.'},
+  d:'Six years old on a trolley she is far too small for. Her teacher came in the ambulance and is doing all the talking.'},
  {id:'osce-d4',n:'OSCE D4',sn:'S1 · OSCE D4',t:'Fever, shaking, pressure of 80 — F 72',tier:'resident',station:true,
   spec:'emergency',rt:'a 14-minute station',mins:14,
-  who:'Pranom · F 72', line:'39.5 and shaking, pressure 80, lactate 5.6, a kidney stone history and a tender right loin',
+  who:'Pranom · F 72', line:'drowsy and shaking, her niece answering for her',
   place:'OSCE station · Nurse Mali marking, the finale a week away',
   d:'Seventy-two, shaking under the blanket and too far away to give you much of the story herself. Her niece came in with her and has the rest of it.'},
  {id:'ep5',n:'EP5',sn:'S1:E5',t:'The Night the Stars Fell',tier:'resident',rt:'an 18-minute shift',mins:18,
@@ -2119,6 +2144,59 @@ const CHIPS={
       proc:['triage','tourniquet','needle decompression','intubate','damage control'],
       dx:['haemorrhagic shock','to theatre']},
 };
+/* ── every option in a tab is written at the same level ───────────────────────
+   A tray of orders is a multiple choice whether it was meant to be one or not, and a
+   candidate reads it the way anybody reads a multiple choice: the option written differently
+   from its neighbours is the one the writer was thinking about. Half of these tabs told you
+   which button to press without knowing a thing about the patient.
+
+   Three shapes of tell, and the table below is the list of every one of them:
+
+     * the arithmetic printed on the button, on a station that marks the arithmetic. The two
+       doses stay — they are the choice — and the working-out comes off;
+     * a label that argues for or against its own option, so the differential reads as four
+       diagnoses and one editorial;
+     * the tail nobody else in the tab has. Length is a tell on its own: on a list of five
+       bare nouns the phrase with a clause after it is the one somebody thought hardest about.
+
+   What is left on every button is what a drug chart or a differential actually contains — a
+   name, a dose, a route — written the same way for the option that is right and the option
+   that is wrong, so that reading the tray tells you nothing that reading the patient would not.
+
+   The fix is a coat, exactly as the language layer's is. **`data-x` is untouched**: it is what
+   the button fires, what lands on the tape, and what the scenario's matcher resolves to an
+   intervention id — so a run played after this change writes the same tape as one played
+   before it, and every anchored leaf still replays. Only the words on the button move, and the
+   feed's echo of the order moves with them so the transcript says what the candidate read.
+   The ask row is not in here: it is translated, and `PACK.asks` wins ahead of this table. */
+const CHIP_SHOWN={
+ /* drugs and fluids: name, dose, route. No arithmetic, no indication, no verdict. */
+ 'adrenaline 0.2 mg im — 0.01 per kilo':'adrenaline 0.2 mg im',
+ 'adrenaline 0.5 mg im — the adult dose':'adrenaline 0.5 mg im',
+ 'amoxicillin for the throat':'amoxicillin',
+ 'diazepam for the panic':'diazepam',
+ 'inhaled steroid + action plan':'inhaled steroid',
+ 'co-amoxiclav plus macrolide — first dose now':'co-amoxiclav plus macrolide',
+ 'broad-spectrum antibiotics now':'broad-spectrum antibiotics',
+ 'thrombolysis — full-dose lytics':'thrombolysis',
+ /* labs and procedures: the thing done, not the reason for doing it. */
+ 'peak flow — measure it':'peak flow',
+ 'curb-65 — score her':'curb-65',
+ 'a drip and bloods first':'a drip and bloods',
+ 'a careful 500 of fluid':'500 ml of fluid',
+ 'urinary catheter — hourly output':'urinary catheter',
+ 'call gi — urgent endoscopy':'call gi — endoscopy',
+ 'call urology — unblock the kidney':'call urology',
+ 'admit and watch for the second wave':'admit for observation',
+ /* the differential: diagnoses, all of them bare, none of them argued for or against. */
+ 'call it a stemi':'acute stemi',
+ 'epiglottitis — call the airway team':'epiglottitis',
+ 'food poisoning — a stomach bug':'food poisoning',
+ 'reassure — anxiety attack':'anxiety attack',
+ 'septic shock — urosepsis':'septic shock',
+ 'admit for rest and observation':'admit for observation',
+ 'home with a plan':'discharge home',
+};
 
 /* ─── who the patient is ──────────────────────────────────────────────────────
    The season is not one woman. Seven of its seventeen patients are men — a seventy-one-year-old
@@ -2233,6 +2311,10 @@ async function setLang(id,remember){
     if(d.lang) LANG=d.lang;
   }catch(e){ /* no pack is the English pack: every string below falls back to the original */ }
   HARM_SEALED = PACK.ui.harm_sealed || '⚠ harm recorded';
+  /* No rows in lang.rs for these two yet — that file is another hand's this week. The fallback
+     is the English, which is what an untranslated line has always shown. */
+  BEAT_DECLINED = PACK.ui.beat_declined || 'the order is declined';
+  BEAT_NOTED = PACK.ui.beat_noted || 'noted on the record';
   TR={};
   renderLangPickers();
   if($('#chips')) renderChips();
@@ -2269,6 +2351,30 @@ async function bootLang(){
 let HARM_SEALED='⚠ harm recorded';   /* the pack replaces it — see setLang() */
 const harmShown=(text,ended)=>(examMode()&&!ended)?HARM_SEALED:text;
 
+/* ── the same rule, one step further: an exam does not tutor ──────────────────
+   A beat is the case talking back, and most of what it says is observation — what the film
+   showed, what the drug did, what the mother answered. Two kinds of talking back are not
+   observation but marking:
+
+     * the order the case declined, whose sentence explains the gate it failed and what has to
+       happen first. Read together, those refusals are the station's running order, handed over
+       one wrong guess at a time;
+     * the reply to a differential the candidate named, which is the reasoning that settles it
+       — the findings that rule the guess out, and an instruction to look again. A candidate
+       could walk down the whole list and be told, in turn, why each one is wrong.
+
+   Under exam, before the bell, both are facts without their sentence: the order was declined,
+   or the answer is on the record. Deferred, never deleted — `unsealBeats` rewrites every one of
+   them the moment the case ends, so the transcript a candidate reads afterwards is the whole
+   thing, in order, with the teaching in it. That is what a debrief is.
+
+   Note what is *not* held: a status change, a threshold the case named, the harm line (which
+   has its own seal, on the server) and every beat in practice mode. And nothing here touches
+   demo/ — the case says the same words to the engine, the replayer and the chain as it always
+   did; this is the last step before the screen, exactly like the chart's own translation. */
+let BEAT_DECLINED='the order is declined';
+let BEAT_NOTED='noted on the record';
+
 /* Why this patient is kept in — the line under the disposition box. Practice only, and only
    where it is true: the box is on screen for all seventeen cases and the reason is not. */
 const DISPO_WHY={ep1:'biphasic reactions come back hours later'};
@@ -2294,6 +2400,9 @@ const REVEAL={
 };
 
 let id=null,timer=null,over=false,seen=0,mode='ask',asking=false,hard=false;
+/* How far into the chart the feed has already looked — `seen`'s opposite number, and reset in
+   exactly the same places. Only drainBeats moves it. */
+let CHARTSEEN=0;
 const fmt=s=>`${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,'0')}`;
 
 let clockNow=0;
@@ -2314,7 +2423,7 @@ function ev(kind,icon,text,raw){
   d.innerHTML=`<span class="t">${fmt(clockNow)}</span><span class="ic">${icon}</span>`+
               `<span class="tx"></span><span class="rule"></span>`;
   d.querySelector('.tx').textContent=text; if(raw)d.title=raw;
-  $('#chat').appendChild(d); $('#chat').scrollTop=1e6;
+  $('#chat').appendChild(d); $('#chat').scrollTop=1e6; return d;
 }
 function emptyState(){
   const c=$('#chat'); c.innerHTML=''; c.classList.add('empty');
@@ -2631,12 +2740,17 @@ const shuffled=(list,seed)=>{const a=list.slice();let s=seed||1;
    Only the `ask` row translates. The drugs, the labs, the procedures and the differential stay in
    professional English because that is the language the order is written in and the language the
    rubric pays for — you ask the patient in her language and you write the chart in yours. */
-const chipLabel=x=>PACK.asks[x]||x;
+const chipLabel=x=>PACK.asks[x]||CHIP_SHOWN[x]||x;
 function renderChips(){
   const c0=(CHIPS[ep().id]||{})[mode]||[];
   const c=examMode()?shuffled(c0,seedOf((id||'')+':'+ep().id+':'+mode)):c0;
+  const m=mode;
   $('#chips').innerHTML=c.map(x=>`<button class="btn" data-x="${x}" data-ga="chip:${x}">${chipLabel(x)}</button>`).join('');
-  $('#chips').querySelectorAll('button').forEach(b=>b.onclick=()=>fire(b.dataset.x));
+  /* The label goes with the press for everything except the ask row, whose label is a
+     translation — the chart and its echo are English by design (docs/internal/LANGUAGE_LAYER.md),
+     and a Thai sentence in the order column would be this file quietly deciding otherwise. */
+  $('#chips').querySelectorAll('button').forEach(b=>b.onclick=()=>
+    fire(b.dataset.x, m==='ask'?null:chipLabel(b.dataset.x), m==='dx'));
   $('#cmd').placeholder = mode==='ask'
     ? (PACK.ui.ask_placeholder || `ask ${pro().o} anything…`)
     : (PACK.ui.order_placeholder || 'or type the order yourself…');
@@ -2644,9 +2758,16 @@ function renderChips(){
 /* At a station every chip is an order — the asks included. Step::Ask never reaches the tape
    (vitals-replay treats it as inert), so an ask routed through /api/say would leave the
    history-taking marks unearnable. The scenario answers with scripted patient words instead. */
-function fire(text){ (mode==='ask' && !ep().station) ? askHer(text) : doOrder(text); }
+function fire(text,shown,named){ (mode==='ask' && !ep().station) ? askHer(text) : doOrder(text,shown,named); }
+/* Is this order the candidate naming a diagnosis? The station's own differential is the list,
+   and a typed answer counts — "epiglottitis" in the order box is the same answer as the chip.
+   Used for one thing only: whether the case's reply to it is teaching, and therefore whether it
+   waits for the bell. It never reaches the tape, the matcher or the score. */
+const namesADiagnosis=t=>{ const l=String(t).trim().toLowerCase();
+  return l.length>2 && (((CHIPS[ep().id]||{}).dx)||[]).some(o=>{ const k=o.toLowerCase();
+    return l.indexOf(k)>=0 || k.indexOf(l)>=0; }); };
 
-function paint(v){
+function paint(v,named){
   const E=ep();
   /* The lines this run has earned, in the chosen language. Merged rather than replaced: beats
      only ever accumulate, and a view is a full snapshot. Absent for English, and absent for a
@@ -2748,7 +2869,7 @@ function paint(v){
   const ended = over || !!v.outcome;
   renderChart(v, ended);
   renderFilms(v);
-  const fresh = drainBeats(v, ended);
+  const fresh = drainBeats(v, ended, named);
   if(fresh.length) direct(fresh, v.outcome);
   finish(v);
 }
@@ -2966,15 +3087,31 @@ addEventListener('keydown',e=>{
 
 /* Everything the engine has said since the last look, as lines in the feed. Returns the new
    beats so the caller can decide whether the Director gets a turn. */
-function drainBeats(v,ended){
+function drainBeats(v,ended,named){
   const fresh=v.beats.slice(seen);
-  for(const b of fresh){
+  /* Whether the case declined the order these answer is not inferred from the sentence — it is
+     read off the chart, where the server already wrote it. An order the scenario answered with
+     words and changed nothing by is recorded `action_refused`; that judgement is made in
+     `EffectTrace::refused` and the rubric reads it too, so the screen and the mark sheet agree
+     about what happened. `CHARTSEEN` walks the same way `seen` walks the beats. */
+  const chart=v.chart||[];
+  const declined=chart.slice(CHARTSEEN).some(c=>c.kind==='action_refused');
+  CHARTSEEN=chart.length;
+  const quiet = examMode() && !ended && (declined || !!named);
+  fresh.forEach((b,n)=>{
     const k = b.startsWith('harm') ? 'harm' : b.startsWith('terminal') ? 'end' : 'beat';
     /* The raw beat is not passed as the tooltip for a sealed harm — a title attribute is one
-       hover away from being the answer key the seal exists to close. */
+       hover away from being the answer key the seal exists to close. Held beats keep the same
+       discipline: the index, which is a number, and never the sentence. */
     const sealed = k==='harm' && examMode() && !ended;
-    ev(k+(sealed?' sealed':''), k==='harm'?'⚠':k==='end'?'■':'·', sealed?HARM_SEALED:say(b), sealed?null:b);
-  }
+    /* A line the page has its own words for — a status change, a threshold the case named — is
+       a fact about the patient, not a mark, and it is never held. */
+    const held = k==='beat' && quiet && !SAY[b];
+    const node=ev(k+(sealed||held?' sealed':''), k==='harm'?'⚠':k==='end'?'■':'·',
+      sealed?HARM_SEALED : held?(declined?BEAT_DECLINED:BEAT_NOTED) : say(b),
+      (sealed||held)?null:b);
+    if(held)node.dataset.bi=seen+n;
+  });
   seen=v.beats.length;
   return fresh;
 }
@@ -2995,7 +3132,7 @@ function finish(v){
   $('#result').className='result '+(win?'win':'lose');
   /* Every sealed line in the feed now says what it was. Matched by position against the run's
      own harm beats, which is the order they were appended in. */
-  unsealHarm(v);
+  unsealHarm(v); unsealBeats(v);
   showDebrief(); showProvenance(null); showMarks(); showReveal();
   $('#outcome').textContent=say('terminal:'+v.outcome);
   $('#outnote').textContent=(v.harm.length?'Harm on the record: '+v.harm.join(', '):'No harm recorded.')+'  ·  '+v.outcome;
@@ -3037,13 +3174,31 @@ function unsealHarm(v){
     n.classList.remove('sealed');
   });
 }
-async function step(q){
+/* The same, for the lines the exam held back because they were teaching rather than observing.
+   By index rather than by position: these are interleaved with everything else the case said,
+   and the index is what the node was given when it was written. The sentence itself was never
+   in the DOM until now — which is the point of keeping a number there instead. */
+function unsealBeats(v){
+  const all=v.beats||[];
+  document.querySelectorAll('#chat .ev.beat.sealed[data-bi]').forEach(n=>{
+    const b=all[+n.dataset.bi];
+    if(b!=null){ n.querySelector('.tx').textContent=say(b); n.title=b; }
+    n.classList.remove('sealed'); delete n.dataset.bi;
+  });
+}
+async function step(q,named){
   if(!id)return;
   const v=await (await fetch('/api/step?id='+id+q+asMe()+langQ())).json();
   if(v.error)return ev('note','—',v.error);
-  paint(v);
+  paint(v,named);
 }
-function doOrder(text){ ev('order','▸',text); step('&do='+encodeURIComponent(text)); }
+/* `shown` is what the button said, when a button said it — the feed is a transcript of the
+   station and a transcript that quotes words the candidate never read is not one. The order
+   itself (`text`) is untouched: it is what the matcher reads and what the tape keeps.
+   `named` is threaded, not stashed in a module variable, because the tick loop paints too and a
+   flag set here would be consumed by whichever paint happened to land first. */
+function doOrder(text,shown,named){ ev('order','▸',shown||CHIP_SHOWN[text]||text);
+  step('&do='+encodeURIComponent(text), named===undefined?namesADiagnosis(text):named); }
 async function askHer(q){
   if(asking||!id)return; asking=true; $('#send').disabled=true;
   turn('you','you',q);
@@ -3112,7 +3267,7 @@ $('#start').onclick=async()=>{
   // Before the case exists, not after. A case opened while the key was still being generated
   // would belong to nobody, and a case that belongs to nobody answers to anyone holding its id.
   await identity();
-  stop(); over=false; seen=0; clockNow=0; TR={}; emptyState(); $('#result').style.display='none';
+  stop(); over=false; seen=0; CHARTSEEN=0; clockNow=0; TR={}; emptyState(); $('#result').style.display='none';
   /* Wiped, not just hidden: a mark sheet left in the DOM from the previous run is the answer
      key one devtools inspection away, and #result is display:none rather than gone. */
   $('#marks').innerHTML=''; $('#db').innerHTML=''; $('#reveal').textContent=''; $('#verdict').innerHTML='';
@@ -3187,7 +3342,11 @@ document.querySelectorAll('.dev').forEach(b=>b.onclick=()=>{
   if(id)$('#device').src=deviceSrc(b.dataset.dev);
 });
 $('#addkit').onclick=openPicker;
-$('#p-admit').onchange=e=>{ if(e.target.checked) doOrder('admit'); };
+/* One press, one order, exactly like a chip — and the same words on the button as in the order,
+   so the transcript and the tray agree. Which of the four a station can actually act on is the
+   station's own business: its matcher decides, and a station with no bed of that kind simply
+   does not have one, which was already true of the checkbox. */
+$('#dispo-opts').querySelectorAll('[data-dispo]').forEach(b=>b.onclick=()=>doOrder(b.dataset.dispo));
 /* Autoplay only survives while muted, so the loop stays silent and the cutscenes get the
    sound — which is where the room tone actually is. Off by default: a bay that starts
    making noise on load is a bay somebody closes. */
