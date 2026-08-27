@@ -2127,8 +2127,29 @@ const CHIPS={
    `who` is the authority — "Somchai · M 71", "Beam · F 6 · 20 kg" — because it is the same string
    the card prints and the bay captions, so the pronoun can never disagree with the name beside it.
    Presentation only: no beat key, no chip, no order and no tape entry changes with it. */
-const PRO_F={s:'she',o:'her',p:'her'}, PRO_M={s:'he',o:'him',p:'his'};
-const pro=e=>/·\s*M\b/.test(((e||ep()||{}).who)||'')?PRO_M:PRO_F;
+const PRO_F={s:'she',o:'her',p:'her'}, PRO_M={s:'he',o:'him',p:'his'},
+      PRO_N={s:'the patient',o:'the patient',p:"the patient's"};
+/* A `who` string that names neither M nor F gets `they`, not a coin flip weighted to EP1.
+
+   The default used to be PRO_F, which is a guess that is right about ten of seventeen patients
+   and silently wrong about the other seven — and wrong in the way that is hardest to see, because
+   a failure to match reads on screen exactly like a woman. A card added without a sex marker, a
+   `who` string edited into another shape, a case reached before SEASON loads: every one of those
+   printed "she goes home" over whoever was on the trolley and looked completely normal doing it.
+   "the patient" is not a claim about anybody, so a miss now looks like a miss — and it stays
+   grammatical, which bare "they" would not: thirteen lines in the table below read "{s} is
+   holding", "{s} goes home", "{s} dies", and singular they turns every one of them into a typo on
+   the frame that carries the hash. The server takes the same way out in patient.rs `pronouns()`,
+   which answers an unknown sex with "this patient" rather than guessing.
+
+   No shipped case reaches this branch — `every_case_on_the_shelf_states_a_sex` in tests/page.rs
+   is what keeps it that way, so the fallback is a smoke alarm and not a design. */
+const pro=e=>{
+  const who=((e||ep()||{}).who)||'';
+  if(/·\s*M\b/.test(who))return PRO_M;
+  if(/·\s*F\b/.test(who))return PRO_F;
+  return PRO_N;
+};
 /* How old the patient is, read off the same `who` string the bed label prints — "Somchai · M 71",
    "Beam · F 6 · 20 kg". The monitor needs it because alarm limits are a function of age and it
    had only the adult set: a three-year-old at 118 and 28 is a normal three-year-old, and the
@@ -4600,7 +4621,10 @@ if(location.hash.startsWith('#play')){
     await new Promise(r=>setTimeout(r,600));
     commit(KITLBL.o2, 15);
     await new Promise(r=>setTimeout(r,900));
-    doOrder('let her stand up');
+    /* Not "let her stand up": this canned opening runs against whichever case the #play hash
+       names, and seven of the seventeen are men. The scenario matchers key on "stand", so the
+       neutral phrasing reaches the same intervention in every case it reaches at all. */
+    doOrder('let the patient stand up');
   }, 2500);
   $('#lobby').classList.add('hide'); $('#game').classList.remove('hide');
   addEventListener('load',()=>$('#start').click());

@@ -348,6 +348,80 @@ fn a_normal_child_does_not_alarm_and_a_sick_one_does() {
     assert!(!out(96.0, a.hr) && !out(20.0, a.rr), "EP2 gained an alarm it never had");
 }
 
+/// The pronoun table declines to guess, and nothing on the shelf makes it.
+///
+/// `pro()` used to end `? PRO_M : PRO_F` — anything that failed to match "· M" was a woman. That
+/// is right about ten of the season's seventeen patients and silently wrong about the other seven,
+/// and wrong in the worst available way, because a *failed match* renders identically to a
+/// correct female match. A card added without a sex marker, or a `who` string edited into another
+/// shape, would print "she goes home" over a man on the one frame that carries the hash, the mark
+/// sheet and the anchor, and look completely normal doing it.
+///
+/// Two assertions, and the second is the one that matters: the fallback exists so a miss is
+/// visible, and no shipped case may ever reach it.
+#[test]
+fn every_case_on_the_shelf_states_a_sex() {
+    let html = page();
+    assert!(html.contains("PRO_N="), "the neutral fallback is gone — a miss reads as a woman again");
+    assert!(
+        !html.contains("?PRO_M:PRO_F") && !html.contains("? PRO_M : PRO_F"),
+        "pro() guesses female again on anything it cannot match"
+    );
+
+    // Every `who:` line in SEASON, checked against the marker pro() actually tests for.
+    let season = html
+        .split_once("const SEASON=[")
+        .expect("no season table")
+        .1
+        .split_once("\n];")
+        .expect("unterminated season table")
+        .0;
+    let whos: Vec<&str> = season
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("who:'"))
+        .filter_map(|l| l.split_once('\''))
+        .map(|(w, _)| w)
+        .collect();
+    assert_eq!(whos.len(), 17, "the season is not seventeen cases any more: {whos:?}");
+    for w in &whos {
+        assert!(
+            w.contains("· M ") || w.contains("· F "),
+            "{w:?} states no sex, so the bay would call this patient \"the patient\" all run"
+        );
+    }
+    // And the split is what the copy claims it is — seven men, ten women.
+    let men = whos.iter().filter(|w| w.contains("· M ")).count();
+    assert_eq!(men, 7, "the season's seven men moved: {whos:?}");
+}
+
+/// The landing sells the season, not one patient of it.
+///
+/// Every line of copy on the front door was written for EP1 and said "her" — "Talk to her", "she
+/// lives or she doesn't", "decides whether she lives" — while seven of the seventeen patients
+/// behind that door are men. The paragraphs that are *about* Ing keep her: the frame is hers, the
+/// alt text describes her, the card under the button is her card. What had to change is the copy
+/// that describes the product.
+#[test]
+fn the_landing_sells_a_season_and_not_one_woman() {
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/landing.html");
+    let html = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
+
+    for gendered in [
+        "Talk to her", "Treat her", "She lives or she doesn't",
+        "decides whether she lives", "give the drug you think she",
+    ] {
+        assert!(!html.contains(gendered), "the season-wide copy is EP1's again: {gendered:?}");
+    }
+    // EP1's own card is still EP1's — this is not a search-and-replace across the page.
+    assert!(html.contains("Ing &middot; F 19"), "EP1's card lost her name");
+    assert!(html.contains("her throat is closing"), "EP1's line was neutralised — it is about her");
+    assert!(html.contains("alt=\"Ing, nineteen,"), "the photograph's alt text stopped describing her");
+
+    // And the two things that must not move while copy is edited around them.
+    assert!(html.contains("class=\"cf\" id=\"cf\""), "the coverflow lost its root");
+    assert!(html.contains("class=\"patient\""), "the hero patient card is gone");
+}
+
 /// The bay sends the age, or the monitor cannot band anything. Read off the same `who` string the
 /// bed label prints, so the age on the screen and the age in the limits cannot disagree.
 #[test]
