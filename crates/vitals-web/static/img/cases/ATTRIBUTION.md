@@ -50,12 +50,19 @@ not a courtesy — see *What the licences require of us* at the bottom.
 | `cxr-normal-4.png` | `cxr/normal-4.png` | No finding | 325 KB |
 | `cxr-consolidation-pneumonia-1.png` | `cxr/pneumonia-1.png` | Pneumonia | 309 KB |
 
-## 3. `card/*.jpg` — shelf card art
+## 3. `card/*.jpg` — shelf card art · **not in use since Phase 15**
 
 Crops of the six images above, resized to 720×450 and saved as quality-82 JPEG for the clinic
 shelf. **Derivative works — they inherit the licence of the file they were cut from**, so the two
 `card/ecg-*.jpg` files are CC-BY 4.0 and carry the same obligation as the PNGs. Never present a
 card crop as a diagnostic image: it is deliberately partial.
+
+Nothing shows them today. A station card is typographic: it has to say who the patient is, and a
+12-lead says nothing about that — it is one investigation out of a case, put on the door before
+the candidate has decided to order it. None of these is compiled into the binary, so none of them
+is serveable; they are kept because they are cut, licensed and recorded, and re-cutting them
+would cost more than the 230 KB they take up. **Anything that puts one back on a screen owes the
+credit line above.**
 
 ---
 

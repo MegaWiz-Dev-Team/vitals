@@ -29,8 +29,13 @@ COPY demo/scenarios /app/demo/scenarios
 COPY demo/stations /app/demo/stations
 COPY demo/rubrics /app/demo/rubrics
 COPY demo/ep1-en.json /app/demo/ep1-en.json
+# The stations' patient stills. Read at request time rather than compiled in, because they are
+# shot per station and land after the wiring — a new frame is a file drop, not a rebuild. An
+# empty directory is a valid state of the world: every station falls back to its stem.
+COPY crates/vitals-web/static/img/cases/states /app/img/cases/states
 USER vitals
 ENV VITALS_SCENARIOS=/app \
+    VITALS_STATION_STILLS=/app/img/cases/states \
     VITALS_STATE_DIR=/state \
     VITALS_WEB_BIND=0.0.0.0:8474
 EXPOSE 8474

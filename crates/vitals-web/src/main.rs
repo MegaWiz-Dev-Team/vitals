@@ -434,13 +434,6 @@ struct SetMember {
     /// The tier the case plays at. [`difficulty`] reads this for every member, so adding a
     /// Phase-5b member here is the whole server arm: files land, the member goes live.
     tier: Difficulty,
-    /// Shelf art, as a key under `/img/cases/card/`. `None` keeps the plain clinic card.
-    ///
-    /// Given only where the picture *says* something. Six of the twelve source films are an
-    /// indistinguishable normal chest radiograph, and twelve near-identical grey rectangles down
-    /// one shelf is worse than no art at all — so the rule is say nothing rather than say
-    /// "normal chest" nine times (`docs/internal/CASE_MEDIA_WIRING.md` §2a).
-    card: Option<&'static str>,
 }
 
 /// A film a station reveals when a specific order is recognised.
@@ -560,11 +553,68 @@ const CASE_IMG: &[(&str, &[u8], &str)] = &[
     ("cxr-normal-1.png", include_bytes!("../static/img/cases/cxr-normal-1.png"), "image/png"),
     ("cxr-normal-3.png", include_bytes!("../static/img/cases/cxr-normal-3.png"), "image/png"),
     ("cxr-normal-4.png", include_bytes!("../static/img/cases/cxr-normal-4.png"), "image/png"),
-    // Shelf art. Only the crops actually assigned in SETS are carried — an unused 30 KB in every
-    // deploy is 30 KB of nothing.
-    ("card/ecg-sinus-tachycardia-04408-card.jpg",
-     include_bytes!("../static/img/cases/card/ecg-sinus-tachycardia-04408-card.jpg"), "image/jpeg"),
 ];
+
+/// ── the patient stills a station is shot in ──────────────────────────────────
+///
+/// EP1 has a frame of its own patient for every state the automaton can put her in, and the
+/// bay swaps it as she goes down. A station had nothing of the sort: the biggest panel on the
+/// screen carried the stem and then whatever film was ordered, and the patient herself was a
+/// name in a line of text. These are the same thing EP1 has, for the stations — one still per
+/// state, shot by the same Embla pipeline.
+///
+/// The four states are the four a station's still is worth shooting for. The automaton reports
+/// three more (`improving`, `recovered`, `dead`) and the page folds those onto their neighbours
+/// rather than asking the art team for seven shots per station — see `STATIONSTATE` in
+/// index.html.
+///
+/// **These are the one media surface in the build that is read off the disk rather than
+/// compiled in.** That is deliberate and it is the whole point: the files are being produced
+/// now, and the wiring had to be finished without them. Drop `osce-a_critical.jpg` into the
+/// directory, restart, and the station has it — no rebuild, no table to edit, no second list
+/// to keep in sync with the disk. It is the same arrangement `/clip/` has had since EP1, and
+/// the same rule holds: what is not there is not served, and the page has a stem to fall back
+/// to (`renderStage` in index.html), never a black frame.
+const STATION_STATES: &[&str] = &["stable", "deteriorating", "critical", "arrest"];
+
+/// Where those files live. `VITALS_STATION_STILLS` in a container (the Dockerfile sets it);
+/// the checkout's own `static/` tree in development, which is where the art team commits them.
+fn station_stills_dir() -> std::path::PathBuf {
+    std::env::var("VITALS_STATION_STILLS")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/img/cases/states")
+        })
+}
+
+/// The one path a patient still is ever read from — and the only place the name is spelled.
+///
+/// Both halves are whitelisted against tables the binary owns: `station` has to be a declared
+/// set member and `state` one of [`STATION_STATES`], so the filename this composes comes from a
+/// finite set of forty-eight strings. A request cannot name a file of its own choosing here,
+/// which is what keeps a disk-read route as narrow as the compiled ones beside it — no
+/// traversal, and nothing in the images directory above reachable through it either.
+fn station_still_path(station: &str, state: &str) -> Option<std::path::PathBuf> {
+    if set_member(station).is_none() || !STATION_STATES.contains(&state) {
+        return None;
+    }
+    let f = station_stills_dir().join(format!("{station}_{state}.jpg"));
+    f.is_file().then_some(f)
+}
+
+/// Which states this station has a still for, on this disk, today.
+///
+/// Sent with the set table so the page never asks for a picture that is not there: a broken
+/// `<img>` in the biggest panel of the bay is the black frame the stem exists to prevent, and
+/// the server already knows the answer. Playability is read the same way ([`member_playable`])
+/// — a fact about the disk, never a second list.
+fn station_states(station: &str) -> Vec<&'static str> {
+    STATION_STATES
+        .iter()
+        .copied()
+        .filter(|st| station_still_path(station, st).is_some())
+        .collect()
+}
 
 /// The station sets (DECISIONS.md "Station Sets", 27 ส.ค.) — the one copy, server side.
 /// From EP2 on, an episode door is opened by **its own set's stars and nothing else's**:
@@ -591,35 +641,27 @@ struct StationSet {
 const SETS: &[StationSet] = &[
     // gate2 · 2 cases · ceiling 6 · need 3 (50%)
     StationSet { gate: "gate2", opens: "ep2", need: 3, members: &[
-        // The one pair that earns art today: a real trace rather than a grey rectangle, and the
-        // two anaphylaxis stations stay siblings on the shelf.
-        SetMember { id: "osce-a",  case: "ddx-anaphylaxis-1", title: "Rash and facial swelling after a meal — M 71", specialty: "eir-emergency", band: "emergency", tier: Difficulty::Student, card: Some("ecg-sinus-tachycardia-04408-card.jpg") },
-        SetMember { id: "osce-a2", case: "ddx-anaphylaxis-2", title: "Belly cramps, loose stools, swollen face — F 68", specialty: "eir-emergency", band: "emergency", tier: Difficulty::Student, card: Some("ecg-sinus-tachycardia-04408-card.jpg") },
+        SetMember { id: "osce-a",  case: "ddx-anaphylaxis-1", title: "Rash and facial swelling after a meal — M 71", specialty: "eir-emergency", band: "emergency", tier: Difficulty::Student },
+        SetMember { id: "osce-a2", case: "ddx-anaphylaxis-2", title: "Belly cramps, loose stools, swollen face — F 68", specialty: "eir-emergency", band: "emergency", tier: Difficulty::Student },
     ]},
     // gate3 · 3 cases · ceiling 9 · need 6 (67%)
     StationSet { gate: "gate3", opens: "ep3", need: 6, members: &[
-        // osce-b's ST-elevation crop is the best image the bank holds and it stays off the shelf
-        // until a clinician has read it — see the HOLD note on FILMS.
-        SetMember { id: "osce-b",  case: "ddx-possible-nstemi-stemi-2", title: "Crushing chest pain into both arms — M 25", specialty: "eir-cardio", band: "emergency", tier: Difficulty::Intern, card: None },
-        SetMember { id: "osce-b2", case: "ddx-pericarditis-1", title: "Chest pain that hates lying flat — M 14, febrile", specialty: "eir-cardio", band: "emergency", tier: Difficulty::Intern, card: None },
-        SetMember { id: "osce-b3", case: "ddx-croup-1", title: "Barking cough on the second night — F 3", specialty: "eir-ent", band: "paediatrics", tier: Difficulty::Intern, card: None },
+        SetMember { id: "osce-b",  case: "ddx-possible-nstemi-stemi-2", title: "Crushing chest pain into both arms — M 25", specialty: "eir-cardio", band: "emergency", tier: Difficulty::Intern },
+        SetMember { id: "osce-b2", case: "ddx-pericarditis-1", title: "Chest pain that hates lying flat — M 14, febrile", specialty: "eir-cardio", band: "emergency", tier: Difficulty::Intern },
+        SetMember { id: "osce-b3", case: "ddx-croup-1", title: "Barking cough on the second night — F 3", specialty: "eir-ent", band: "paediatrics", tier: Difficulty::Intern },
     ]},
     // gate4 · 3 cases · ceiling 9 · need 7 (78%)
     StationSet { gate: "gate4", opens: "ep4", need: 7, members: &[
-        SetMember { id: "osce-c",  case: "ddx-croup-2", title: "Barking cough and drooling, worse at night — F 6", specialty: "eir-ent", band: "paediatrics", tier: Difficulty::Resident, card: None },
-        SetMember { id: "osce-c2", case: "ddx-bronchospasm-acute-asthma-exacerbation-2", title: "Wheeze and breathlessness — F 53, third attack", specialty: "eir-pulmonology", band: "emergency", tier: Difficulty::Intern, card: None },
-        // Likewise osce-c3: the only CXR card with a diagnosis attached, and the diagnosis is the
-        // part under review.
-        SetMember { id: "osce-c3", case: "ddx-pneumonia-2", title: "A week of cough turned rusty — F 25, febrile", specialty: "eir-pulmonology", band: "emergency", tier: Difficulty::Intern, card: None },
+        SetMember { id: "osce-c",  case: "ddx-croup-2", title: "Barking cough and drooling, worse at night — F 6", specialty: "eir-ent", band: "paediatrics", tier: Difficulty::Resident },
+        SetMember { id: "osce-c2", case: "ddx-bronchospasm-acute-asthma-exacerbation-2", title: "Wheeze and breathlessness — F 53, third attack", specialty: "eir-pulmonology", band: "emergency", tier: Difficulty::Intern },
+        SetMember { id: "osce-c3", case: "ddx-pneumonia-2", title: "A week of cough turned rusty — F 25, febrile", specialty: "eir-pulmonology", band: "emergency", tier: Difficulty::Intern },
     ]},
     // gate5 · 4 cases · ceiling 12 · need 10 (83%)
     StationSet { gate: "gate5", opens: "ep5", need: 10, members: &[
-        SetMember { id: "osce-d",  case: "embla-upper-gastrointestinal-bleeding-intern", title: "Vomited blood, black stool since morning — M 62", specialty: "eir-gastroenterology", band: "emergency", tier: Difficulty::Intern, card: None },
-        // A clear chest *is* this station's teaching point, but on a shelf a normal film reads as
-        // a blank one — and the stem already says "clear chest". Nothing gained, so nothing shown.
-        SetMember { id: "osce-d2", case: "ddx-pulmonary-embolism-2", title: "Sudden breathlessness, clear chest — F 55", specialty: "eir-pulmonology", band: "emergency", tier: Difficulty::Resident, card: None },
-        SetMember { id: "osce-d3", case: "ddx-p-anaphylaxis-1", title: "Wheals, swollen lips and a wheeze — F 6, 20 kg", specialty: "eir-emergency", band: "paediatrics", tier: Difficulty::Intern, card: None },
-        SetMember { id: "osce-d4", case: "embla-septic-shock-with-multi-organ-failure-resident", title: "Fever, shaking, pressure of 80 — F 72", specialty: "eir-emergency", band: "emergency", tier: Difficulty::Resident, card: None },
+        SetMember { id: "osce-d",  case: "embla-upper-gastrointestinal-bleeding-intern", title: "Vomited blood, black stool since morning — M 62", specialty: "eir-gastroenterology", band: "emergency", tier: Difficulty::Intern },
+        SetMember { id: "osce-d2", case: "ddx-pulmonary-embolism-2", title: "Sudden breathlessness, clear chest — F 55", specialty: "eir-pulmonology", band: "emergency", tier: Difficulty::Resident },
+        SetMember { id: "osce-d3", case: "ddx-p-anaphylaxis-1", title: "Wheals, swollen lips and a wheeze — F 6, 20 kg", specialty: "eir-emergency", band: "paediatrics", tier: Difficulty::Intern },
+        SetMember { id: "osce-d4", case: "embla-septic-shock-with-multi-organ-failure-resident", title: "Fever, shaking, pressure of 80 — F 72", specialty: "eir-emergency", band: "emergency", tier: Difficulty::Resident },
     ]},
 ];
 
@@ -1129,6 +1171,31 @@ fn main() {
                     None => Response::from_string("no such clip").with_status_code(404),
                 }
             }
+            // Above the `/img/cases/` arm for the same reason that one is above `/img/`: a longer
+            // prefix has to be tried first or the shorter one answers for it. This is the only
+            // image route that reads the disk — the files are shot per station and arrive after
+            // the wiring — and the name is whitelisted on both halves before anything is opened.
+            (Method::Get, p) if p.starts_with("/img/cases/states/") => {
+                let name = p.trim_start_matches("/img/cases/states/");
+                let hit = name
+                    .strip_suffix(".jpg")
+                    .and_then(|n| n.rsplit_once('_'))
+                    .and_then(|(station, state)| station_still_path(station, state))
+                    .and_then(|f| std::fs::read(f).ok());
+                match hit {
+                    Some(bytes) => {
+                        let _ = req.respond(
+                            Response::from_data(bytes)
+                                .with_header(Header::from_bytes(&b"Content-Type"[..], &b"image/jpeg"[..]).unwrap())
+                                .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=86400"[..]).unwrap()),
+                        );
+                        continue;
+                    }
+                    // Not shot yet, or not a name this build recognises. The bay's stem is the
+                    // answer to both, and it is already on the stage.
+                    None => Response::from_string("no such still").with_status_code(404),
+                }
+            }
             // Above the `/img/` arm on purpose, and it has to stay there. That arm strips `.jpg`
             // and searches STILLS only, so `/img/cases/cxr-normal-1.png` would match it first and
             // 404 with the files sitting right there in the binary. The Content-Type comes from
@@ -1543,9 +1610,11 @@ fn main() {
                             // organ name over a stem is a free rubric point (see SetMember).
                             "band": m.band,
                             "tier": tier_str(m.tier),
-                            // Shelf art, when the picture says something. `null` for most of the
-                            // roster and the card keeps its plain clinic face — see SetMember.
-                            "card": m.card,
+                            // Which patient stills this station has on disk right now. The bay
+                            // hangs one of these in the frame and swaps it as the patient goes
+                            // down; an empty list is a station whose art has not landed, and its
+                            // frame keeps the stem. See STATION_STATES.
+                            "states": station_states(m.id),
                             "playable": h.is_some(),
                         })).collect::<Vec<_>>(),
                     })).collect::<Vec<_>>(),
@@ -2491,42 +2560,34 @@ mod tests {
     /// Two images are held pending a clinician's read (`docs/internal/CASE_MEDIA_WIRING.md`):
     /// the ChestX-ray14 pneumonia film, whose label is NLP-mined and which does not obviously
     /// show the consolidation osce-c3's beat describes, and the PTB-XL anterior-ST trace, which
-    /// may be an old infarct on a station that teaches acute reperfusion. Neither may be named
-    /// by a film, worn as card art, or compiled into the binary — a route that cannot find the
-    /// bytes cannot serve them to somebody who guesses the URL.
+    /// may be an old infarct on a station that teaches acute reperfusion. Neither may be named by
+    /// a film or compiled into the binary — a route that cannot find the bytes cannot serve them
+    /// to somebody who guesses the URL. There is no third door to close: the shelf wears no
+    /// clinical image at all any more (a station card says who the patient is, not what one of
+    /// its investigations came back as), and the patient stills are read off the disk under a
+    /// name this table can never spell — see [`station_still_path`].
     #[test]
     fn the_films_under_clinical_hold_are_nowhere_in_the_build() {
         const HELD: &[&str] = &["cxr-consolidation-pneumonia-1", "ecg-st-elevation-anterior-01278"];
         for h in HELD {
             assert!(!FILMS.iter().any(|f| f.file.contains(h)), "{h} is wired to a station");
             assert!(!CASE_IMG.iter().any(|(k, _, _)| k.contains(h)), "{h} is compiled in and serveable");
-            assert!(
-                !SETS.iter().flat_map(|s| s.members.iter()).any(|m| m.card.is_some_and(|c| c.contains(h))),
-                "{h} is worn as card art"
-            );
+            assert!(station_still_path(h, "stable").is_none(), "{h} is reachable as a patient still");
         }
     }
 
-    /// Every film and every card names a file the route can actually serve, and every compiled
-    /// image is one something asks for. A caption over a 404 is worse than no picture.
+    /// Every film names a file the route can actually serve, and every compiled image is one
+    /// something asks for. A caption over a 404 is worse than no picture.
     #[test]
-    fn every_film_and_card_resolves_to_bytes_in_the_binary() {
+    fn every_film_resolves_to_bytes_in_the_binary() {
         for f in FILMS {
             assert!(CASE_IMG.iter().any(|(k, _, _)| *k == f.file), "{}: {} is not served", f.station, f.file);
             assert!(!f.caption.is_empty(), "{} has a picture and no read", f.station);
             assert!(set_member(f.station).is_some(), "{} is not a declared station", f.station);
         }
-        for m in SETS.iter().flat_map(|s| s.members.iter()) {
-            if let Some(c) = m.card {
-                let key = format!("card/{c}");
-                assert!(CASE_IMG.iter().any(|(k, _, _)| *k == key), "{}: {key} is not served", m.id);
-            }
-        }
         for (k, bytes, mime) in CASE_IMG {
             assert!(!bytes.is_empty(), "{k} is empty");
-            let used = FILMS.iter().any(|f| f.file == *k)
-                || SETS.iter().flat_map(|s| s.members.iter()).any(|m| m.card.is_some_and(|c| format!("card/{c}") == *k));
-            assert!(used, "{k} is compiled in and nothing shows it");
+            assert!(FILMS.iter().any(|f| f.file == *k), "{k} is compiled in and nothing shows it");
             // The mixed-suffix trap the route arm exists to avoid, pinned.
             let want = if k.ends_with(".png") { "image/png" } else { "image/jpeg" };
             assert_eq!(*mime, want, "{k} is served as the wrong type");
@@ -2554,6 +2615,47 @@ mod tests {
         // A station with no table entry stays exactly as it was before FILMS existed.
         assert!(films_from_tape("osce-d", &tape).is_empty());
         assert!(film_for("osce-a", "").is_none(), "an unresolved order shows nothing");
+    }
+
+    // ── the stations' own patient stills ────────────────────────────────────
+
+    /// The disk-read route is as narrow as the compiled ones beside it. Both halves of the name
+    /// are whitelisted before a path is composed, so nothing outside the forty-eight filenames
+    /// this build recognises can be asked for — no traversal, no neighbouring directory, and no
+    /// clinical image from the bank (whose names are not station ids).
+    #[test]
+    fn a_patient_still_can_only_ever_be_asked_for_by_a_name_the_binary_owns() {
+        for bad in ["../ecg-sinus-tachycardia-04408", "osce-zz", "ep1", "", "card/x"] {
+            assert!(station_still_path(bad, "stable").is_none(), "{bad} resolved to a path");
+        }
+        for bad in ["../../Cargo", "dead", "recovered", "improving", "stable.jpg", ""] {
+            assert!(station_still_path("osce-a", bad).is_none(), "state {bad} resolved to a path");
+        }
+        // And where a name *is* legal, the path it composes is the one file it is allowed to be.
+        for m in SETS.iter().flat_map(|s| s.members.iter()) {
+            for st in STATION_STATES {
+                let want = station_stills_dir().join(format!("{}_{st}.jpg", m.id));
+                assert_eq!(station_still_path(m.id, st), want.is_file().then_some(want));
+            }
+        }
+    }
+
+    /// What the set table advertises is what the route will actually serve. The page hangs a
+    /// still in the biggest panel of the bay on the strength of this list, and a name in it that
+    /// 404s is the black frame the stem exists to prevent.
+    #[test]
+    fn a_station_advertises_exactly_the_stills_it_has() {
+        for m in SETS.iter().flat_map(|s| s.members.iter()) {
+            let advertised = station_states(m.id);
+            for st in &advertised {
+                assert!(station_still_path(m.id, st).is_some(), "{} advertises a missing {st}", m.id);
+                assert!(STATION_STATES.contains(st));
+            }
+            // Order matters: the page walks this list to find a substitute when the exact state
+            // has not been shot, and "worse than asked for" is the wrong way to fall back.
+            let want: Vec<_> = STATION_STATES.iter().filter(|st| advertised.contains(st)).collect();
+            assert_eq!(advertised.iter().collect::<Vec<_>>(), want, "{} lists its states out of order", m.id);
+        }
     }
 
     /// The key art is reachable through the same arm the stills use, and both crops of each

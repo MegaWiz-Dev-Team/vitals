@@ -968,7 +968,7 @@ a.give:hover{filter:brightness(1.06)}
    modified — ours is modified twice, rendered then re-encoded. A viewer who never
    opens the repository still has to be able to read all four, so every film carries
    the line on the stage *and* in the light box, and the shelf carries "image credits"
-   for the card crops, which are derivatives under the same licence. */
+   for anyone who never orders one. */
 /* Centred by `margin:auto` on the child rather than by `align-items:center` on the box: a
    centred flex item taller than its container is clipped at the top with no way to scroll to
    it, and a portrait chest film on a short window is exactly that case. */
@@ -1292,8 +1292,9 @@ a.give:hover{filter:brightness(1.06)}
     <p class="lb-foot">Every episode door is opened by stars from its own OSCE stations —
        ★ for a pass, ★★ for excellence, ★★★ for a flawless run. Skill unlocks the story;
        nothing you pay ever changes your standing.<br>
-       <!-- Required, not courtesy: the ECG card crops on the shelf are CC-BY 4.0 derivatives,
-            and this is how a viewer who never opens the repository reaches the credit. -->
+       <!-- The shelf wears no clinical image of its own any more, so this is not the licence
+            condition it once was — it is still the only way a viewer who never enters a bay,
+            and never opens the repository, can find out where the films come from. -->
        The clinical films and ECGs are real, from open datasets —
        <button class="credit-link" id="credits" data-ga="credits">image credits</button>.</p>
   </div>
@@ -1510,8 +1511,7 @@ a.give:hover{filter:brightness(1.06)}
   <div class="flash hide" id="flash" aria-hidden="true"></div>
 
   <!-- The film, full size. Top level rather than inside #game, because the lobby opens it too
-       for the image credits — the shelf's card art is a CC-BY derivative and the licence does
-       not care which screen it is being shown on. -->
+       for the image credits, and the lobby is not inside #game. -->
   <div class="lightbox hide" id="lightbox" role="dialog" aria-modal="true" aria-label="film"></div>
 
   <!-- The visible ceiling: when the month's compute is spent this card says what the money did
@@ -1712,7 +1712,12 @@ const SEASON=[
     these are the instant-paint copies).
     Copy rule for a station's `t` AND `d` alike: they are a stem, not a plan. They may say who
     walks in and what you can see from the door; they may not name anything the mark sheet
-    marks. `t` used to be the case name — "Pericarditis — acute chest pain" — and that string
+    marks — and they may not point at another case either. Six of these blurbs used to
+    ("you saw this in EP1 — prove it", "the same disease in a different costume", "EP3 taught
+    you the difference"), which hands a returning player the diagnosis on the card they click
+    to be examined on it. A cross-reference is a hint with a story wrapped round it; the shelf
+    is outside the exam room and the exam has already started by the time it is read.
+    `t` used to be the case name — "Pericarditis — acute chest pain" — and that string
     rides the player bar for the whole exam while the rubric pays four points for naming the
     diagnosis. It is the stem now, and the answer is revealed after the outcome instead (REVEAL,
     below). Half of these blurbs used to read back demo/rubrics item for item — "cultures before
@@ -1725,12 +1730,12 @@ const SEASON=[
   spec:'emergency',rt:'an 8-minute station',mins:8,
   who:'Somchai · M 71', line:'urticaria head to toe, face swelling, cramping belly pain',
   place:'OSCE station · Nurse Mali examining',
-  d:'Thirty minutes after a meal he will not talk about. You saw this in EP1 — prove it. Nurse Mali is marking.'},
+  d:'Thirty minutes after a meal he will not talk about. Seventy-one, sweating, and the swelling has not stopped moving. Nurse Mali is marking.'},
  {id:'osce-a2',n:'OSCE A2',sn:'S1 · OSCE A2',t:'Belly cramps, loose stools, swollen face — F 68',tier:'student',station:true,
   spec:'emergency',rt:'an 8-minute station',mins:8,
   who:'Somsri · F 68', line:'wheals and a swelling face, cramping belly, three loose stools — and a faint she will not admit to',
   place:'OSCE station · Nurse Mali marking',
-  d:'The same disease in a different costume: she arrives looking like food poisoning — and she has left the worst of the story out.'},
+  d:'She arrives looking like food poisoning: cramps, three trips to the toilet, and a face that has changed shape since breakfast. She has left the worst of the story out.'},
  /* Key art, from EP2 on: `art` is the 16:9 billboard crop and `art2` the 3:2 one a narrow
     screen gets instead (artOf() builds the <picture>). EP1 keeps stable.jpg — a real frame of
     its own patient, which no generated portrait improves on. The faces are canon; the rules
@@ -1749,7 +1754,7 @@ const SEASON=[
   spec:'emergency',rt:'a 10-minute station',mins:10,
   who:'Tan · M 14', line:'stabbing chest pain that hates lying down, a fever, a scratchy rub',
   place:'OSCE station · Nurse Mali marking',
-  d:'ST elevation on the screen, a fourteen-year-old under it — and everything EP2 taught you to do about that.'},
+  d:'Fourteen, febrile, and he will not lie back on the trolley. His father wants to know why a boy this age has chest pain at all.'},
  {id:'osce-b3',n:'OSCE B3',sn:'S1 · OSCE B3',t:'Barking cough on the second night — F 3',tier:'intern',station:true,
   spec:'paediatrics',rt:'a 10-minute station',mins:10,
   who:'Pim · F 3', line:'two days of a cold, then a barking cough tonight — loud, cool, drinking her milk',
@@ -1764,7 +1769,7 @@ const SEASON=[
   spec:'paediatrics',rt:'a 10-minute station',mins:10,
   who:'Fon · F 6', line:'barking cough, drooling on her mother’s shoulder, worse every night',
   place:'OSCE station · Nurse Mali marking, sixteen hours in',
-  d:'Drooling like the boy who nearly died — but this one is loud, and loud is information. EP3 taught you the difference; the marks are in what you do with it.'},
+  d:'Four nights of this, and her mother says tonight is the worst one. Six years old, awake in her mother’s arms, and out of patience with all of you.'},
  {id:'osce-c2',n:'OSCE C2',sn:'S1 · OSCE C2',t:'Wheeze and breathlessness — F 53, third attack',tier:'intern',station:true,
   spec:'emergency',rt:'a 10-minute station',mins:10,
   who:'Wasana · F 53', line:'third attack this year on a blue inhaler alone — wheezing, 94%, frightened',
@@ -1789,12 +1794,12 @@ const SEASON=[
   spec:'emergency',rt:'a 12-minute station',mins:12,
   who:'Somsri Jaidee · F 55', line:'sudden pleuritic pain and real hypoxia on a clear chest — cancer, on hormone tablets',
   place:'OSCE station · Nurse Mali marking',
-  d:'Sudden pain, real hypoxia, and a chest film with nothing on it. EP4’s masquerader, with the mask half off.'},
+  d:'Breathless since lunchtime and frightened by it. Fifty-five, and she walked into this bay on her own two feet. Nurse Mali is marking.'},
  {id:'osce-d3',n:'OSCE D3',sn:'S1 · OSCE D3',t:'Wheals, swollen lips and a wheeze — F 6, 20 kg',tier:'intern',station:true,
   spec:'paediatrics',rt:'a 10-minute station',mins:10,
   who:'Beam · F 6 · 20 kg', line:'prawn fritters at the school fair — wheals, swelling lips, a wheeze, a falling pressure',
   place:'OSCE station · Nurse Mali marking',
-  d:'The season’s first disease, child-sized: prawn fritters at a school fair, and twenty kilos of patient on the trolley.'},
+  d:'Prawn fritters at the school fair, and twenty kilos of patient on the trolley. Her teacher came in the ambulance and is doing all the talking.'},
  {id:'osce-d4',n:'OSCE D4',sn:'S1 · OSCE D4',t:'Fever, shaking, pressure of 80 — F 72',tier:'resident',station:true,
   spec:'emergency',rt:'a 14-minute station',mins:14,
   who:'Pranom · F 72', line:'39.5 and shaking, pressure 80, lactate 5.6, a kidney stone history and a tender right loin',
@@ -2197,6 +2202,44 @@ function stateClip(status,kit){
    the states EP1 has a different still for: everything else is the shot as it was taken. */
 const STILLGRADE={deteriorating:'worse',critical:'worse',arrest:'gone',dead:'gone'};
 let stillNow='/img/stable.jpg', stillKey=false;
+
+/* ── the station's own patient ────────────────────────────────────────────────
+   What EP1 has had since the first build: a frame of *this* patient, in this bay, that
+   changes as she does. A station had a stem and then whatever film was ordered, and the
+   patient herself was two lines of text under an empty frame.
+
+   The files are `/img/cases/states/<station>_<state>.jpg`, shot per station by the same
+   Embla pipeline that shot EP1, and the server reads its own disk for them: the set table
+   carries `states` — the list of shots that actually exist for that station today. So this
+   never asks for a picture that is not there, and a station whose art has not landed yet
+   keeps its stem, which is the whole reason the stem was put on the stage in Phase 13.
+
+   The treatment is EP2-5's, not EP1's: `setStill(src,true)` crosses on the new file's own
+   load event and grades the frame with `.still`, so a patient going down is a light coming
+   down over eight-tenths of a second rather than a cut. It says nothing the status line
+   under the frame has not already said in words, so it leaks nothing into an exam that the
+   bay was not already showing — the same reasoning the key-art grade was cleared under. */
+const STSTATES=['stable','deteriorating','critical','arrest'];
+/* Seven clinical states, four shots. `improving` and `recovered` are a patient who is coming
+   back and wear the shot she came in as; `dead` wears the arrest. Nobody is asked for seven
+   frames a station when three of them would be the same room. */
+const STATIONSTATE={stable:'stable',improving:'stable',recovered:'stable',
+  deteriorating:'deteriorating',critical:'critical',arrest:'arrest',dead:'arrest'};
+/* A still that failed to load is struck off for the session — a cached set table from before
+   a file moved must not put the bay back on a black frame every tick. */
+const STILLGONE=new Set();
+const stateStills=id=>{ const info=memberOf(id);
+  return (info&&info.m.states||[]).filter(x=>!STILLGONE.has(id+'_'+x)); };
+/* The shot for the state she is in — or the nearest **milder** one that was shot, never a
+   worse one. A station with only `stable` on disk shows the patient as she arrived for the
+   whole run, which is honest; hanging an arrest over a patient who is talking to you would
+   be the frame telling a lie the mark sheet then marks. Nothing at all → '' → the stem. */
+function stationStill(id,status){
+  const have=stateStills(id); if(!have.length)return '';
+  for(let i=STSTATES.indexOf(STATIONSTATE[(status||'stable').toLowerCase()]||'stable');i>=0;i--)
+    if(have.includes(STSTATES[i]))return '/img/cases/states/'+id+'_'+STSTATES[i]+'.jpg';
+  return '';
+}
 /* Put an image in the frame, or take the frame back to black. `key` says it is an episode's
    key art rather than one of EP1's status stills, which is the whole difference in treatment:
    the art is cropped, dimmed and graded (`.still`, in the stylesheet) and EP1's stills are
@@ -2221,11 +2264,24 @@ function setStill(src,key){
 }
 /* The frame with no film in it. EP1's stills are EP1's patient and nobody else's — over
    Prasit or Khaopun they are a wrong-patient error a clinician clocks instantly — so every
-   other episode gets its own key art instead, and a station, which has neither and puts the
-   stem in this frame, gets the black it is expecting underneath. */
+   other episode gets its own key art instead, and a station gets its own patient once one
+   has been shot. Until then it gets the black it is expecting underneath the stem. */
 function paintStill(E){
+  if(E.station){ const src=stationStill(E.id,lastShown); setStill(src,!!src); return; }
   setStill(E.id==='ep1'?'/img/'+lastShown+'.jpg':(E.art||''), E.id!=='ep1');
 }
+/* The one failure the stem exists to catch. A still that will not load — a stale set table,
+   a half-copied file — must not leave the biggest panel in the bay black: the state is struck
+   off, the frame goes back to the sheet, and no later tick asks for it again. */
+$('#fallback').addEventListener('error',()=>{
+  const m=/^\/img\/cases\/states\/(.+)\.jpg$/.exec(stillNow||''); if(!m)return;
+  STILLGONE.add(m[1]); stillNow=''; stillKey=false;
+  /* One state is struck off, not the station. If a milder shot is still there the frame keeps
+     the patient and drops back to it; the stem is the answer only when nothing resolves. */
+  const E=ep();
+  if(STAGE==='pt'&&!stationStill(E.id,lastShown))STAGE='stem';
+  stageKey=''; paintStill(E); renderStage();
+});
 function show(status,kit){
   lastShown=(status||'stable').toLowerCase();
   const E=ep();
@@ -2447,24 +2503,31 @@ const filmTab=f=>FILMTAB[f.intervention]||orderName(f.intervention);
    fills it with film; a station had nothing to put in it and showed a black rectangle
    across half the bay for the length of the exam, which reads as a broken build.
 
-   A station has two things worth that much of the screen, so it shows them there:
+   A station has three things worth that much of the screen, so it shows them there:
 
+     * the patient, whenever she has been shot — the same frame EP1 has always had, and
+       the one thing here that is *not* compiled into the binary: the files land in
+       `static/img/cases/states/` per station per state and the server reads them off the
+       disk, so a station has a patient the moment art drops one in. This is what the
+       frame opens on when it exists, because a bay opens on a bed.
      * the stem, before anything has been ordered — the sheet on the door of the
        station, and the only text in the game a candidate is *supposed* to read before
        touching the patient. Everything on it is already public: it is the shelf card's
        own copy plus the room and the clock. Nothing the mark sheet marks goes on it —
        no diagnosis, no drug, no plan, and not the shelf blurb either, which is written
-       to sell the case ("you saw this in EP1 — prove it") and points at the answer from
-       inside the exam room.
+       to sell the case and used to point at the answer from inside the exam room.
      * the film, once one has been ordered — full frame, because a 12-lead at 69 pixels
        is a grey smudge, and the mark sheet expects the trace to have been *read*.
 
-   `STAGE` is what the frame is showing: 'stem', or an index into SHOWN. A film that has
+   `STAGE` is what the frame is showing: 'pt', 'stem', or an index into SHOWN. A film that has
    just arrived takes the frame by itself — ordering the ECG and then hunting for it is
    not what ordering it means — and after that the strip in the corner is the player's.
    `stageKey` keeps the repaint idempotent: paint() runs every tick and rebuilding this
    markup a second would drop focus and restart the image decode. */
 let STAGE='stem', stageKey='';
+/* What a station opens on: its patient if it has one, the sheet on the door if it does not.
+   Both are always one tap apart in the corner strip. */
+const openStage=id=>stationStill(id,'stable')?'pt':'stem';
 function stemHtml(e){
   /* Same two authorities, same precedence as the shelf card: the server's set table
      names the stem, the band and the tier, and the SEASON entry is the copy that paints
@@ -2505,17 +2568,32 @@ function renderStage(){
     $('#sgt').classList.add('hide'); $('#place').classList.remove('hide');
     stageKey=''; return;
   }
-  const i=(STAGE==='stem')?-1:Math.min(STAGE,SHOWN.length-1);
+  /* Whether there is a patient to switch to at all — not which one, which is paintStill's
+     job and changes with her status. A frame that rebuilt this markup on every state change
+     would restart the film's decode and drop the focus off the strip. */
+  const hasPt=!!stationStill(E.id,lastShown);
+  if(STAGE==='pt'&&!hasPt)STAGE='stem';
+  const pt=STAGE==='pt';
+  const i=pt||STAGE==='stem'?-1:Math.min(STAGE,SHOWN.length-1);
   const f=i>=0?SHOWN[i]:null;
-  const key=E.id+'|'+(f?f.file:'stem')+'|'+SHOWN.map(x=>x.file).join(',')+(over?'|bell':'');
+  const key=E.id+'|'+(pt?'pt':f?f.file:'stem')+'|'+(hasPt?'p':'')
+    +SHOWN.map(x=>x.file).join(',')+(over?'|bell':'');
   if(key===stageKey)return;
   stageKey=key;
-  /* The room is a line on the sheet now; two of it would be one too many. */
+  /* The room is a line on the sheet now; two of it would be one too many. And the corner the
+     tag wants is the strip's. */
   $('#place').classList.add('hide');
-  /* `film` is the height claim, not the visibility: after the bell the frame keeps the film
-     and drops the claim, so the debrief is not read through a slot. */
-  art.classList.add('doc'); art.classList.toggle('film',!!f&&!over);
-  if(!f){
+  /* `doc` is the document's shape, and a patient is not a document: with her on the frame it
+     is 16:9 like every other frame in this bay. `film` is the height claim, not the
+     visibility: after the bell the frame keeps the film and drops the claim, so the debrief
+     is not read through a slot. */
+  art.classList.toggle('doc',!pt); art.classList.toggle('film',!!f&&!over);
+  if(pt){
+    /* Nothing over the frame. The still is already in it — paintStill put it there and keeps
+       it there as she changes — and the scrim and the grade come with it. */
+    $('#filmv').classList.add('hide'); $('#filmv').innerHTML='';
+    $('#stem').classList.add('hide');
+  }else if(!f){
     $('#filmv').classList.add('hide'); $('#filmv').innerHTML='';
     $('#stem').innerHTML=stemHtml(E); $('#stem').classList.remove('hide');
   }else{
@@ -2530,12 +2608,19 @@ function renderStage(){
     $('#filmv').classList.remove('hide');
     $('#filmv').querySelector('.fv-i').onclick=()=>openFilm(f);
   }
-  if(!SHOWN.length){ $('#sgt').classList.add('hide'); $('#sgt').innerHTML=''; return; }
-  $('#sgt').innerHTML=`<button type="button" data-v="stem" class="${f?'':'on'}" aria-pressed="${!f}">stem</button>`
-    +SHOWN.map((x,n)=>`<button type="button" data-v="${n}" class="${i===n?'on':''}" aria-pressed="${i===n}">${filmTab(x)}</button>`).join('');
+  /* The strip is a way out of wherever the frame is, so it appears when there is somewhere
+     to go. The stem is on it whatever else is: it is the sheet the candidate is *supposed*
+     to have read, and it must stay one tap away for the whole station however good the
+     picture in front of it is. */
+  const tabs=(hasPt?[`<button type="button" data-v="pt" class="${pt?'on':''}" aria-pressed="${pt}">patient</button>`]:[])
+    .concat(`<button type="button" data-v="stem" class="${!pt&&!f?'on':''}" aria-pressed="${!pt&&!f}">stem</button>`)
+    .concat(SHOWN.map((x,n)=>`<button type="button" data-v="${n}" class="${i===n?'on':''}" aria-pressed="${i===n}">${filmTab(x)}</button>`));
+  if(tabs.length<2){ $('#sgt').classList.add('hide'); $('#sgt').innerHTML=''; return; }
+  $('#sgt').innerHTML=tabs.join('');
   $('#sgt').classList.remove('hide');
   $('#sgt').querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{
-    STAGE=b.dataset.v==='stem'?'stem':+b.dataset.v; renderStage(); });
+    const v=b.dataset.v;
+    STAGE=(v==='stem'||v==='pt')?v:+v; renderStage(); });
 }
 function renderFilms(v){
   const was=SHOWN.map(f=>f.file).join(',');
@@ -2544,9 +2629,8 @@ function renderFilms(v){
   if(SHOWN.length&&now!==was)STAGE=SHOWN.length-1;
   renderStage();
 }
-/* One light box, two callers: a film from the bay, and the credits from the shelf — the
-   card art on two station cards is a CC-BY derivative too, and the lobby has no other way
-   to reach the licence. */
+/* One light box, two callers: a film from the bay, and the credits from the shelf, which is
+   where a visitor who never sits a station can still read where the images came from. */
 function lightbox(html){
   $('#lightbox').innerHTML=html
     +'<button type="button" class="lb-x" data-lb-x aria-label="close">✕</button>';
@@ -2704,7 +2788,7 @@ $('#start').onclick=async()=>{
   id=r.id; mode='ask'; loopNow=''; cutting=false; $('#cut').classList.remove('on');
   /* The frame goes back to the door of the station. Wiped rather than left: a film from
      the previous run still on the stage is a picture of a patient who is not in the bed. */
-  SHOWN=[]; STAGE='stem'; stageKey='';
+  SHOWN=[]; STAGE=openStage(e); stageKey='';
   /* Declare the run before playing it. The whole integrity claim is that the chain knew you
      started before you knew how it would go — so the declaration has to land here, at the top,
      not at anchor time when the outcome is already on the screen. If it fails the run still
@@ -3131,12 +3215,12 @@ function paintSeason(){
     const title=info?info.m.title:e.t, spec=info?bandOf(info.m):e.spec;
     const tierName=info?info.m.tier:e.tier;
     const pr=progOf(e);
-    /* A station whose set table gives it card art wears the film; the rest keep the plain
-       clinic face. Only where the picture says something — six of the source images are the
-       same indistinguishable normal chest, and a shelf of those teaches nothing. */
-    const cardArt=info&&info.m.card?`/img/cases/card/${info.m.card}`:null;
+    /* A station card is typographic and stays that way. Two of them wore an ECG crop for a
+       while, and it was the wrong picture for the job twice over: a card has to say *who the
+       patient is*, and a 12-lead says nothing about that — it is one investigation out of a
+       case, hung on the door before the candidate has decided to order it. The films stay
+       exactly where they belong, in the bay, when they are asked for. */
     const art=e.art?artOf(e)
-      :cardArt?`<img src="${cardArt}" alt="" decoding="async" loading="lazy">`
       :e.station?`<div class="art-ph art-cl"><span>${specShort(spec)}</span></div>`
       :`<div class="art-ph ph-t-wrap ph-${e.id}"><span class="ph-t">${e.t}</span></div>`;
     /* No provenance badge on the face. In the game nobody has heard of the case bank — it read
