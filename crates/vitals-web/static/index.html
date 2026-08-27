@@ -455,6 +455,44 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
   font-size:.6rem;letter-spacing:.06em;color:#E7EFEE;background:rgba(6,14,14,.6);
   padding:.2rem .5rem;border-radius:6px;backdrop-filter:blur(5px)}
 
+/* ── the still ────────────────────────────────────────────────────────────────
+   EP1 was shot: it has a loop for every state its patient can be in and a cutscene on
+   every beat, and none of what follows touches it. EP2 to EP5 have not been shot, and
+   what they had in the biggest panel on the screen was the same black rectangle a
+   station used to have — for twelve to eighteen minutes, over the whole episode.
+
+   Each of them does have one frame of its own: the key art, which is not a poster.
+   There is no title on it, no billing, no cast — it is a photograph of that patient in
+   this bay, lit by the same ceiling. So the frame hangs it where the film would have
+   been, and grades it to be in the room instead of on a wall:
+
+     * cover, not the fit's letterbox. The crop is 16:9 and the frame is 16:9, so on a
+       phone nothing is lost at all; in the desktop cockpit, where the row hands out
+       whatever height is left over, a few pixels off the ceiling is the honest trade
+       against two black bars, which is the thing that reads as a poster in a dark room.
+       `38%` because every face in the season sits above the middle of its own frame.
+     * dimmed and pulled off full saturation, because key art is lit for a shelf card
+       and the bay is a dark room.
+     * the scrim: a fall-off at the edges and a floor at the bottom, so the place tag
+       lands on a surface rather than on somebody's shoulder.
+
+   And the frame is the one thing on this stage that cannot move with her. EP1 answers
+   that by swapping the still per status; here there is one shot, so the grade carries
+   it — the room goes down as she does, and out when she arrests. It says nothing the
+   status line under the frame has not already said in words, so it leaks nothing into
+   an exam that the bay was not already showing. */
+.scrim{position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity .45s ease;
+  background:radial-gradient(118% 88% at 50% 40%,rgba(0,0,0,0) 44%,rgba(3,9,9,.58) 100%),
+    linear-gradient(to top,rgba(3,9,9,.66) 0,rgba(3,9,9,0) 32%)}
+.pt-art.still>.scrim{opacity:1}
+/* The grade is graded into, not cut to: the room going down is a light on a dimmer, and a
+   colour fade is not motion, so it stands under prefers-reduced-motion as it is. */
+.pt-art.still>img{object-fit:cover;object-position:50% 38%;
+  filter:saturate(.88) contrast(1.04) brightness(.84);
+  transition:opacity .45s ease,filter .8s ease}
+.pt-art.still[data-st="worse"]>img{filter:saturate(.72) contrast(1.06) brightness(.72)}
+.pt-art.still[data-st="gone"]>img{filter:saturate(.3) contrast(1.08) brightness(.56)}
+
 /* ── the stage ────────────────────────────────────────────────────────────────
    The biggest panel in the bay is a video frame, and a station has no video: it was
    a black rectangle over half the screen for the whole exam, which reads as broken
@@ -1292,6 +1330,11 @@ a.give:hover{filter:brightness(1.06)}
         <video id="loop" autoplay loop muted playsinline preload="auto"></video>
         <video id="cut" muted playsinline preload="auto"></video>
         <img id="fallback" src="/img/stable.jpg" alt="the patient">
+        <!-- The grade on the still, as a layer rather than a filter: a dark room falling off
+             at the edges, and a floor under the place tag. It sits between the still and
+             everything that is allowed to cover the still — the stem, a film, a cutscene, the
+             tags — which is exactly what its position in this list buys it. -->
+        <i class="scrim" aria-hidden="true"></i>
         <!-- What a station puts in the frame an episode fills with film: the stem sheet
              before the first order, the film itself once one has been ordered, and a strip
              in the corner to move between them. renderStage() drives all three, and paints
@@ -2150,31 +2193,55 @@ function stateClip(status,kit){
   const suffix = on.has('ett') && s==='deteriorating' ? '_ett' : on.has('o2') ? '_o2' : '';
   return 'ep1_state_'+s+suffix;
 }
+/* How far down the room has gone, for an episode whose one frame cannot go anywhere. Only
+   the states EP1 has a different still for: everything else is the shot as it was taken. */
+const STILLGRADE={deteriorating:'worse',critical:'worse',arrest:'gone',dead:'gone'};
+let stillNow='/img/stable.jpg', stillKey=false;
+/* Put an image in the frame, or take the frame back to black. `key` says it is an episode's
+   key art rather than one of EP1's status stills, which is the whole difference in treatment:
+   the art is cropped, dimmed and graded (`.still`, in the stylesheet) and EP1's stills are
+   not touched at all. */
+function setStill(src,key){
+  const f=$('#fallback'), a=document.querySelector('.pt-art');
+  if(!src){ f.classList.remove('on'); a.classList.remove('still'); a.removeAttribute('data-st'); return; }
+  a.classList.toggle('still',!!key);
+  if(key)a.dataset.st=STILLGRADE[lastShown]||'ok'; else a.removeAttribute('data-st');
+  if(src===stillNow){ f.classList.add('on'); return; }
+  /* A swap with a key art on either end of it is a swap between two patients, and the one
+     leaving must not be what is on the frame while the one arriving decodes — that is the
+     wrong-patient frame, briefly, which is the thing this whole path exists to avoid. So it
+     is uncovered by its own load event. EP1 cutting between EP1's stills is one patient in
+     one bay and cuts exactly as it always did. */
+  const cross=key||stillKey;
+  stillNow=src; stillKey=!!key; f.setAttribute('src',src);
+  if(!cross){ f.classList.add('on'); return; }
+  f.classList.remove('on');
+  f.onload=()=>{ if(stillNow===src)f.classList.add('on'); };
+  if(f.complete&&f.naturalWidth)f.classList.add('on');
+}
+/* The frame with no film in it. EP1's stills are EP1's patient and nobody else's — over
+   Prasit or Khaopun they are a wrong-patient error a clinician clocks instantly — so every
+   other episode gets its own key art instead, and a station, which has neither and puts the
+   stem in this frame, gets the black it is expecting underneath. */
+function paintStill(E){
+  setStill(E.id==='ep1'?'/img/'+lastShown+'.jpg':(E.art||''), E.id!=='ep1');
+}
 function show(status,kit){
   lastShown=(status||'stable').toLowerCase();
+  const E=ep();
   // Only EP1 has film — and only while the film actually loads. A deploy without the clips
   // must degrade to the stills, not to a black frame, which is what it did on Cloud Run.
-  if(ep().id!=='ep1' || !film){
-    $('#loop').classList.remove('on');
-    /* The stills are EP1's patient. For EP1 they are the right degrade when the film is
-       missing; over Prasit or Khaopun they are a wrong-patient error a clinician clocks
-       instantly — an empty dark bay with the place tag reads truer than the wrong face. */
-    if(ep().id==='ep1'){ $('#fallback').classList.add('on'); $('#fallback').src='/img/'+lastShown+'.jpg'; }
-    else $('#fallback').classList.remove('on');
-    return;
-  }
+  if(E.id!=='ep1' || !film){ $('#loop').classList.remove('on'); paintStill(E); return; }
   const want=stateClip(status,kit||[]);
-  if(!want){ $('#loop').classList.remove('on'); $('#fallback').classList.add('on');
-    $('#fallback').src='/img/'+lastShown+'.jpg'; return; }
-  $('#fallback').classList.remove('on');
+  if(!want){ $('#loop').classList.remove('on'); paintStill(E); return; }
+  setStill('');
   if(want!==loopNow){ loopNow=want; $('#loop').src='/clip/'+want+'.mp4'; $('#loop').play().catch(()=>{}); }
   $('#loop').classList.add('on');
 }
 /* One failed clip turns the film off for the visit: every later state change takes the still
    path instead of re-requesting files that are not there. The still keeps tracking status. */
 $('#loop').addEventListener('error',()=>{ film=false; loopNow='';
-  $('#loop').classList.remove('on');
-  $('#fallback').src='/img/'+lastShown+'.jpg'; $('#fallback').classList.add('on'); });
+  $('#loop').classList.remove('on'); paintStill(ep()); });
 $('#cut').addEventListener('error',()=>{ film=false;
   $('#cut').classList.remove('on'); $('#cut-tag').classList.remove('on'); cutting=false; });
 /* Play a cutscene over the loop, then hand the frame back. */
