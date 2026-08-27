@@ -235,3 +235,76 @@ fn a_live_run_never_puts_the_bank_id_on_the_wire() {
         assert!(!seen.contains("eir-"), "{ep}: a live payload names the specialty");
     }
 }
+
+/// **The seal that was only CSS.** `view()` never read `exam_mode`, so the harm sentence went
+/// out on every tick in three fields at once and the page greyed one copy of it out. Station C's
+/// whole lesson is *do not put the depressor in*; the run that put it in was being told, in
+/// text, in the tab beside the game, exactly what putting it in did.
+#[test]
+fn a_station_withholds_the_harm_sentence_until_the_bell() {
+    const FULL: &str = "the tongue depressor goes in";
+    let s = Server::start();
+    let id = s.open("osce-c");
+
+    s.order(&id, "look in the throat");
+    let v = s.tick(&id, 10.0);
+    let body = v.to_string();
+
+    assert!(!body.contains(FULL), "the harm sentence is still on the wire mid-run: {body}");
+    assert_eq!(v["harm"].as_array().map(Vec::len), Some(0), "the harm list is not sealed: {v}");
+    let beats: Vec<&str> = v["beats"].as_array().expect("beats").iter()
+        .filter_map(|b| b.as_str()).filter(|b| b.starts_with("harm")).collect();
+    assert_eq!(beats, vec!["harm:sealed"], "a harm beat says more than the token: {beats:?}");
+    let chart: Vec<&str> = v["chart"].as_array().expect("chart").iter()
+        .filter(|c| c["kind"] == "harm").filter_map(|c| c["text"].as_str()).collect();
+    assert_eq!(chart, vec!["harm:sealed"], "the chart still prints the harm sentence: {chart:?}");
+    // The line itself is kept — that something went wrong, at this second, is on the monitor
+    // anyway. Withholding the fact as well would be lying to the candidate rather than sealing.
+    assert_eq!(v["chart"].as_array().expect("chart").iter().filter(|c| c["kind"] == "harm").count(), 1);
+
+    // And the bell hands all of it back, in every field, because that is what the debrief is.
+    let end = s.play_out(&id);
+    let after = end.to_string();
+    assert!(after.contains(FULL), "the debrief never got the harm sentence back: {after}");
+    assert!(
+        end["harm"].as_array().is_some_and(|a| a.iter().any(|h| h.as_str().is_some_and(|h| h.contains(FULL)))),
+        "the harm list stayed sealed after the outcome: {end}"
+    );
+    assert!(
+        end["beats"].as_array().is_some_and(|a| a.iter().any(|b| b.as_str().is_some_and(|b| b.contains(FULL)))),
+        "the beats stayed sealed after the outcome: {end}"
+    );
+    assert!(
+        end["chart"].as_array().is_some_and(|a| a.iter().any(|c| c["text"].as_str().is_some_and(|t| t.contains(FULL)))),
+        "the chart stayed sealed after the outcome: {end}"
+    );
+}
+
+/// The seal must not travel by translation either. `tr` is the beat table read in the language
+/// the page asked for, and a translated harm line is the harm line.
+#[test]
+fn the_seal_holds_in_every_language() {
+    let s = Server::start();
+    let id = s.open("osce-c");
+    s.order(&id, "look in the throat");
+    let v = s.json(&format!("/api/step?id={id}&tick=10&lang=th"));
+    let body = v.to_string();
+    assert!(!body.contains("the tongue depressor"), "the English leaked under a Thai run: {body}");
+    for key in v["tr"].as_object().map(|m| m.keys().cloned().collect::<Vec<_>>()).unwrap_or_default() {
+        assert!(!key.starts_with("harm:") || key == "harm:sealed", "a harm beat was translated: {key}");
+    }
+}
+
+/// An episode is drama, not an exam. Nothing is withheld there, and the seal must not have
+/// wandered into the season on its way to the circuit.
+#[test]
+fn an_episode_is_never_sealed() {
+    let s = Server::start();
+    let id = s.open("ep1");
+    s.order(&id, "let her stand up");
+    let v = s.tick(&id, 10.0);
+    assert!(
+        v["harm"].as_array().is_some_and(|a| !a.is_empty()),
+        "an episode lost its harm feedback mid-run: {v}"
+    );
+}

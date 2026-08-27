@@ -338,6 +338,15 @@ struct Note {
 }
 
 
+/// The one thing a sealed harm is allowed to say.
+///
+/// It keeps the `harm:` prefix because that prefix is the page's own grammar — the feed reads it
+/// to know a line is a harm line and colour it, and `unsealHarm()` counts sealed lines against
+/// the full beats the bell delivers, so the count on both sides has to match. Everything after
+/// the prefix is a constant: one token, identical on every station and every harm, so nothing
+/// about *which* mistake it was can be recovered from its length, its wording or its repetition.
+const HARM_SEALED: &str = "harm:sealed";
+
 impl Session {
     /// A full snapshot of the run, in the language the page asked for.
     ///
@@ -370,6 +379,38 @@ impl Session {
             rr: v.rr, spo2: v.spo2, on_oxygen, sbp: v.sbp, hr: v.hr, temp: v.temp, gcs: v.gcs,
         };
         let n = news2::score(&obs);
+        // ── the seal, where a seal has to be ────────────────────────────────────
+        // It was CSS. `view()` did not read `exam_mode` at all, so every tick of every station
+        // shipped the harm sentence in full — "the tongue depressor goes in — she screams, and
+        // the stridor doubles" — three times over, in `harm`, in `beats` and in `chart`. The
+        // page then greyed one copy of it out. A Network tab reads all three, and a station
+        // whose whole lesson is *do not put the depressor in* was telling the candidate what
+        // the depressor did, mid-run, in text.
+        //
+        // So the withholding happens here, before the bytes exist. It lasts exactly as long as
+        // the clock: `outcome.is_none()` is the entire condition, and the moment the bell rings
+        // the same call returns every sentence in full, because the mark sheet and the debrief
+        // are what an unlimited-retry model is *for*. Practice is never sealed — a practice run
+        // is a lesson, and a coach who will not say what went wrong is not coaching.
+        //
+        // The tape, the replay, the harm list the leaf hashes and the rubric's own `no_harm`
+        // checks are all untouched: this is the last step before serialisation, and nothing
+        // downstream of a leaf can read it. A run played sealed and a run played unsealed
+        // anchor byte for byte identically.
+        //
+        // "Is this an exam" is asked of the station table, not only of `exam_mode`. `exam_mode`
+        // is set from a *landed chain commitment* and nowhere else, so on a bay with no chain
+        // configured it is false for every run ever played — and the twelve stations would have
+        // gone on shipping the sentence in full on exactly the deployment a visitor reaches
+        // first. A station is an exam by definition; that is already the page's own rule
+        // (`examMode()` is true for anything with `station` set), and this is the server
+        // finally agreeing with it rather than trusting it.
+        let sealed = (self.exam_mode || set_member(&self.ep).is_some()) && outcome.is_none();
+        let beats = if sealed {
+            self.beats.iter().map(|b| if b.starts_with("harm:") { HARM_SEALED.to_string() } else { b.clone() }).collect()
+        } else {
+            self.beats.clone()
+        };
 
         View {
             scenario: self.scenario.clone(),
@@ -381,10 +422,14 @@ impl Session {
             temp: (v.temp * 10.0).round() / 10.0,
             gcs: v.gcs,
             status: format!("{:?}", self.state.status),
-            beats: self.beats.clone(),
-            tr: beat_lines(lang, &self.beats),
+            // Read off the sealed copy, not the live one: a translation of a withheld sentence
+            // is the withheld sentence.
+            tr: beat_lines(lang, &beats),
+            beats,
             films: self.films.clone(),
-            harm: self.state.harm_events.clone(),
+            // The list the result panel prints as "Harm on the record". Empty while the case is
+            // running under exam; whole from the bell onwards.
+            harm: if sealed { Vec::new() } else { self.state.harm_events.clone() },
             outcome,
             elapsed,
             leaf: leaf_hex,
@@ -399,7 +444,14 @@ impl Session {
                 .state
                 .events()
                 .iter()
-                .map(|e| Note { t: e.t_sec, kind: e.kind.clone(), text: e.text.clone() })
+                .map(|e| Note {
+                    t: e.t_sec,
+                    kind: e.kind.clone(),
+                    // The chart keeps the line and the clock — that harm happened, and when,
+                    // is a fact the patient is showing on the monitor anyway. What it does not
+                    // keep, until the bell, is the sentence that says which mistake it was.
+                    text: if sealed && e.kind == "harm" { HARM_SEALED.to_string() } else { e.text.clone() },
+                })
                 .collect(),
             news: (self.state.status != vitals_sce::PatientStatus::Dead).then(|| News {
                 total: n.total,
