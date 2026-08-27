@@ -56,10 +56,61 @@ addEventListener('click',function(e){
 :root{ --mint:#26c0a5; --mint-d:#1f9d86; --navy:#0f2d3a; --lb-bg:#eef4f4;
        --gold:#ffc83d; --lock:#9aa7ad; --border:#e2e8e8 }
 .hide{display:none !important}
+
+/* ── the depth of the shelf (CEO, 27 Aug) ────────────────────────────────────
+   A card is an object on a surface, not a rectangle printed on one. Two layers
+   every time: a sharp contact shadow that says the card is touching, and a soft
+   one that says how far above the shelf it is. The light is overhead, so both
+   fall downward — a shadow spread evenly around a card is a glow, and a glow is
+   a different, wrong statement about the object.
+   Locked cards sit lower and flatter, because something you cannot reach yet
+   should not look like it is already in your hand. Stations sit between the two:
+   an episode outranks its interludes, and the eye should be told that without
+   reading a word. On a dark surface a black shadow does nothing at all, so the
+   whole set is restated as a hairline ring plus a deeper drop.
+   Every one of these lives on an element that also transforms, so the browser
+   promotes it once and the scroll stays smooth. */
+:root{
+  --ease:cubic-bezier(.22,.61,.36,1);
+  --sh-rest:0 1px 2px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.10);
+  --sh-lift:0 2px 4px rgba(0,0,0,.07), 0 16px 40px rgba(0,0,0,.18);
+  --sh-lock:0 1px 2px rgba(0,0,0,.05), 0 6px 16px rgba(0,0,0,.06);
+  --sh-st:0 1px 2px rgba(0,0,0,.05), 0 6px 18px rgba(15,45,58,.09);
+  --sh-st-lift:0 2px 4px rgba(0,0,0,.06), 0 14px 32px rgba(15,45,58,.16);
+  --sh-hero:0 2px 4px rgba(0,0,0,.08), 0 18px 44px rgba(15,45,58,.30);
+  --sh-hero-lift:0 3px 6px rgba(0,0,0,.10), 0 26px 56px rgba(15,45,58,.38);
+  --sh-chip:0 1px 2px rgba(0,0,0,.05), 0 4px 12px rgba(15,45,58,.07);
+}
+/* A dark room takes the same set restated: the ring carries the edge that the
+   black shadow can no longer draw, and the drop goes deeper to compensate. */
+@media (prefers-color-scheme:dark){
+  :root{
+    --sh-rest:0 0 0 1px rgba(255,255,255,.06), 0 12px 32px rgba(0,0,0,.5);
+    --sh-lift:0 0 0 1px rgba(255,255,255,.12), 0 20px 44px rgba(0,0,0,.6);
+    --sh-lock:0 0 0 1px rgba(255,255,255,.04), 0 8px 20px rgba(0,0,0,.4);
+    --sh-st:0 0 0 1px rgba(255,255,255,.05), 0 10px 26px rgba(0,0,0,.45);
+    --sh-st-lift:0 0 0 1px rgba(255,255,255,.10), 0 16px 36px rgba(0,0,0,.55);
+    --sh-hero:0 0 0 1px rgba(255,255,255,.08), 0 22px 50px rgba(0,0,0,.62);
+    --sh-hero-lift:0 0 0 1px rgba(255,255,255,.14), 0 28px 60px rgba(0,0,0,.7);
+    --sh-chip:0 0 0 1px rgba(255,255,255,.05), 0 8px 20px rgba(0,0,0,.42);
+  }
+}
 #lobby{min-height:100vh;background:radial-gradient(1200px 520px at 50% -12%, #d6f3ec 0%, var(--lb-bg) 58%) fixed}
 .lb-bar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:.7rem;
   background:linear-gradient(100deg,var(--navy),var(--mint-d));color:#fff;padding:.65rem 1rem;
   box-shadow:0 2px 14px rgba(15,45,58,.25)}
+/* At 390px the wordmark, the subtitle and four pills are wider than the phone, and a
+   sticky bar that overflows takes the whole page sideways with it — the shelf scrolled
+   horizontally under the thumb before this. It wraps to a second line instead, the
+   subtitle steps aside where there is no room for it, and the two pills whose text
+   arrives from the network are allowed to truncate: a cluster name is a detail, and a
+   page that scrolls sideways on a phone is not. */
+.lb-bar{flex-wrap:wrap}
+#lb-chain{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.me{min-width:0;max-width:100%}
+.me-t{min-width:0}
+.me-t b{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:640px){ .lb-sub{display:none} }
 .lb-bar b{font-size:1.15rem;letter-spacing:.14em;font-family:Archivo,sans-serif}
 .lb-sub{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;opacity:.75}
 .lb-bar .sp{margin-left:auto}
@@ -75,7 +126,9 @@ addEventListener('click',function(e){
    where the thumb expects it. */
 .hero{display:block;width:100%;border:0;padding:0;margin:0 0 1.7rem;cursor:pointer;text-align:left;
   border-radius:18px;overflow:hidden;position:relative;background:var(--navy);color:#fff;
-  box-shadow:0 14px 34px rgba(15,45,58,.28);font-family:inherit}
+  box-shadow:var(--sh-hero);font-family:inherit;
+  transition:transform 180ms var(--ease),box-shadow 180ms var(--ease)}
+.hero:hover,.hero:focus-visible{transform:translateY(-6px);box-shadow:var(--sh-hero-lift)}
 .hero:focus-visible{outline:3px solid var(--mint);outline-offset:2px}
 .hero-art{position:absolute;inset:0;overflow:hidden}
 .hero-art img{width:100%;height:100%;object-fit:cover;display:block}
@@ -113,7 +166,11 @@ addEventListener('click',function(e){
 .row-h{display:flex;align-items:flex-end;gap:.8rem;margin:0 0 .7rem}
 .row-t h2{font-family:Archivo,sans-serif;font-size:1.3rem;font-weight:800;letter-spacing:-.02em;
   margin:.15rem 0 0;color:#12262c}
-.lb-row{display:flex;gap:.75rem;overflow-x:auto;padding:.25rem 1.1rem 1.05rem;margin:0 -1.1rem;
+/* The padding is the lift's headroom. `overflow-x:auto` computes `overflow-y` to
+   auto as well, so this box clips vertically whether it was asked to or not — with
+   the old quarter-rem top, a card that rose six pixels had its own head cut off. */
+.lb-row{display:flex;gap:.75rem;overflow-x:auto;padding:1.05rem 1.1rem 1.6rem;
+  margin:-.7rem -1.1rem .2rem;
   scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
 .lb-row .tile{flex:0 0 clamp(13.5rem,64vw,15.5rem);scroll-snap-align:start}
 /* A3 · the interlude tile: the OSCE stations sit on the same shelf but are not
@@ -121,7 +178,12 @@ addEventListener('click',function(e){
    the face is a clinic card, Embla's language — real case name, specialty chip,
    the two-tier star — not a drama poster. */
 .lb-row .tile.st{flex-basis:clamp(10.5rem,46vw,12rem);align-self:center;
-  border:2px solid var(--mint-d);box-shadow:0 4px 14px rgba(31,157,134,.2)}
+  border:2px solid var(--mint-d);box-shadow:var(--sh-st)}
+/* The visual rank of the shelf, carried by depth alone: an episode sits higher off
+   it than the stations that open its door. */
+.lb-row .tile.st:hover:not(.lock):not(.cs),.lb-row .tile.st:focus-visible:not(.lock):not(.cs){
+  box-shadow:var(--sh-st-lift)}
+.lb-row .tile.st.lock,.lb-row .tile.st.cs{box-shadow:var(--sh-lock)}
 .tile.st .art{aspect-ratio:16/9}
 /* The provenance banner that used to run across the top of this art is gone — a player has
    never heard of the case bank, and the credit now sits under the score instead (.prov). With
@@ -161,10 +223,16 @@ addEventListener('click',function(e){
   letter-spacing:.06em;text-transform:uppercase}
 .ring-t b{color:#12262c}
 .tile{background:#fff;border:1px solid var(--border);border-radius:16px;overflow:hidden;
-  box-shadow:0 6px 20px rgba(15,45,58,.07);cursor:pointer;text-align:left;padding:0;
-  display:flex;flex-direction:column;transition:transform .08s,box-shadow .12s}
-.tile:hover:not(.lock){transform:translateY(-2px);box-shadow:0 12px 26px rgba(15,45,58,.13)}
+  box-shadow:var(--sh-rest);cursor:pointer;text-align:left;padding:0;
+  display:flex;flex-direction:column;
+  transition:transform 180ms var(--ease),box-shadow 180ms var(--ease)}
+/* Picked up, not nudged: six pixels of lift and a deeper drop, so the card that is
+   about to be chosen is visibly off the shelf. */
+.tile:hover:not(.lock):not(.cs),.tile:focus-visible:not(.lock):not(.cs){
+  transform:translateY(-6px);box-shadow:var(--sh-lift)}
 .tile:focus-visible{outline:3px solid var(--mint);outline-offset:2px}
+/* Out of reach reads flatter, and does not rise to meet the cursor. */
+.tile.lock,.tile.cs{box-shadow:var(--sh-lock)}
 .tile .art{aspect-ratio:16/10;position:relative;background:linear-gradient(150deg,var(--navy),var(--mint-d))}
 .tile .art img{width:100%;height:100%;object-fit:cover;display:block}
 .tile .no{position:absolute;top:.55rem;left:.6rem;font-family:"IBM Plex Mono",monospace;
@@ -227,8 +295,8 @@ addEventListener('click',function(e){
 .sets{display:flex;flex-wrap:wrap;gap:.5rem;margin:.9rem 0 0}
 .setchip{flex:1 1 10rem;background:#fff;border:1px solid var(--border);border-radius:12px;
   padding:.55rem .7rem;display:flex;flex-direction:column;gap:.3rem;
-  box-shadow:0 3px 12px rgba(15,45,58,.06)}
-.setchip.done{border-color:var(--mint-d);box-shadow:0 3px 12px rgba(31,157,134,.18)}
+  box-shadow:var(--sh-chip)}
+.setchip.done{border-color:var(--mint-d);box-shadow:var(--sh-chip)}
 .sc-h{display:flex;align-items:baseline;justify-content:space-between;gap:.5rem}
 .sc-g{font-family:"IBM Plex Mono",monospace;font-size:.6rem;letter-spacing:.1em;
   text-transform:uppercase;color:#8aa0a4}
@@ -713,8 +781,11 @@ a.give:hover{filter:brightness(1.06)}
 .un{cursor:default;max-width:24rem;width:100%;animation:cinein .4s ease}
 .un-k{font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.26em;
   text-transform:uppercase;color:#7fe7d2;margin-bottom:.8rem}
+/* This card is always on black, so it never gets the black shadow — it gets the
+   dark-room statement of it: a hairline ring for the edge, a deep drop for the height. */
 .un-card{display:flex;gap:.8rem;align-items:center;background:#0d1a1e;border:1px solid #1e3238;
-  border-radius:14px;padding:.8rem;text-align:left;margin-bottom:.9rem}
+  border-radius:14px;padding:.8rem;text-align:left;margin-bottom:.9rem;
+  box-shadow:0 0 0 1px rgba(255,255,255,.06), 0 12px 32px rgba(0,0,0,.5)}
 .un-card img,.un-ph{width:6.4rem;aspect-ratio:16/10;border-radius:8px;object-fit:cover;flex:none;
   background:linear-gradient(150deg,#0f2d3a,#1f9d86)}
 .un-n{font-family:"IBM Plex Mono",monospace;font-size:.6rem;letter-spacing:.14em;
@@ -789,6 +860,221 @@ a.give:hover{filter:brightness(1.06)}
 /* The shelf's own credit door, for the card crops — the lobby has no light box of its own. */
 .credit-link{background:none;border:0;padding:0;font:inherit;color:#3d7d6d;text-decoration:underline;
   text-underline-offset:2px;cursor:pointer}
+
+/* ══ MOTION ══════════════════════════════════════════════════════════════════
+   The room's own vocabulary, not a library's: a trace sweeping a screen, a monitor
+   waking up, an alarm border, a line going flat. Four rules govern every one of
+   them and none of them bends.
+
+   1. Anything you can start, you can end — one tap, anywhere. The finishers live
+      in a set the page can drain on any pointerdown (see `skipMotion`).
+   2. `prefers-reduced-motion` is not a softer version of this; it is a 120ms
+      cross-fade instead of it, everywhere.
+   3. Nothing here runs on the patient's clock. Every step is either before
+      /api/new or after the outcome, because seconds in the bay are the score.
+   4. transform / opacity / clip-path. The one exception is the title card, which
+      the brief asks for in blur and letter-spacing by name — one short line of
+      text, once per episode, and it is marked `will-change` so the browser knows.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── the sweep · the signature ────────────────────────────────────────────────
+   A heartbeat trace crosses the screen left to right and the new scene is what it
+   leaves behind. It is one panel exactly a screen wide with the trace riding its
+   leading edge: 260ms to cover, the scene is swapped underneath at that instant,
+   260ms to clear off the right. Nothing but a translate, so it composites.
+   Used for every move that goes *forward* — shelf to episode, case to verdict,
+   episode to the next one. Going back is a fade; a sweep backwards is a lie about
+   which way the story is running. */
+.sweep{position:fixed;inset:0;z-index:90;overflow:hidden;cursor:pointer}
+.sw-panel{position:absolute;top:0;left:0;width:100%;height:100%;background:#050b0d;
+  transform:translate3d(-100%,0,0);will-change:transform;
+  transition:transform 260ms var(--ease)}
+.sweep.a .sw-panel{transform:translate3d(0,0,0)}
+.sweep.b .sw-panel{transform:translate3d(100%,0,0)}
+/* the wash off the leading edge, so the boundary is a light source and not a cut */
+.sw-panel::after{content:'';position:absolute;top:0;bottom:0;right:0;width:8rem;
+  background:linear-gradient(to left,rgba(62,224,192,.17),transparent);pointer-events:none}
+.sweep.b .sw-panel::after{right:auto;left:0;
+  background:linear-gradient(to right,rgba(62,224,192,.17),transparent)}
+/* The trace itself: a vertical baseline with four QRS complexes deflecting into the
+   part of the screen it has not taken yet. It hangs off the panel's leading edge, so
+   it travels the full width of the screen exactly once per phase. */
+.sw-edge{position:absolute;top:-2%;height:104%;width:4.6rem;right:-2.3rem;overflow:visible;
+  fill:none;stroke:#3ee0c0;stroke-width:2.4;stroke-linejoin:round;stroke-linecap:round;
+  vector-effect:non-scaling-stroke;filter:drop-shadow(0 0 9px rgba(62,224,192,.8))}
+.sweep.b .sw-edge{right:auto;left:-2.3rem;transform:scaleX(-1)}
+/* Reduced motion: the same beat, told as a 120ms cross-fade. Written after the
+   phase rules on purpose — equal specificity, so the later one wins. */
+.sweep.x .sw-panel{transform:none;opacity:0;transition:opacity 100ms linear}
+.sweep.x.a .sw-panel{opacity:1}
+.sweep.x .sw-edge,.sweep.x .sw-panel::after{display:none}
+
+/* ── the shared element ───────────────────────────────────────────────────────
+   The card you pressed is the thing that becomes the screen — the move every
+   streaming shelf makes, and the reason a cut felt like a different app opening.
+   The clone starts at the card's own rectangle (measured, not guessed) and grows
+   to the viewport in 320ms while its art dims toward the black the title card
+   arrives on. Uniform scale, so the art inside is never stretched on the way. */
+.shel{position:fixed;inset:0;z-index:88;border-radius:16px;overflow:hidden;
+  background:#050b0d;transform-origin:50% 50%;will-change:transform;pointer-events:none;
+  transition:transform 320ms var(--ease)}
+.shel-in{position:absolute;inset:0;opacity:1;transition:opacity 300ms ease-in}
+.shel-in>*{display:block;width:100%;height:100%}
+.shel-in img{width:100%;height:100%;object-fit:cover;display:block}
+.shel-in picture{display:block;width:100%;height:100%}
+.shel.go .shel-in{opacity:.22}
+
+/* ── the cinema bars ──────────────────────────────────────────────────────────
+   They slide in over the recap and the stinger and slide out again, which is the
+   cheapest honest signal that what you are looking at is footage rather than UI. */
+.cbars{position:fixed;inset:0;z-index:82;pointer-events:none}
+.cbars i{position:absolute;left:0;right:0;height:8.5vh;background:#000;
+  transition:transform 320ms var(--ease)}
+.cbars i:first-child{top:0;transform:translate3d(0,-101%,0)}
+.cbars i:last-child{bottom:0;transform:translate3d(0,101%,0)}
+.cbars.on i{transform:translate3d(0,0,0)}
+
+/* ── the alarm border ─────────────────────────────────────────────────────────
+   She is getting worse. A status word changing colour is a fact; the room going
+   red twice is an event, and an event is what a deteriorating patient is. Two
+   beats, opacity only, and it never eats a click. */
+.alarmv{position:fixed;inset:0;z-index:70;pointer-events:none;opacity:0;
+  box-shadow:inset 0 0 100px 26px rgba(198,54,46,.55)}
+.alarmv.on{animation:alarmbeat 1.1s ease-out both}
+.alarmv.on.quick{animation:alarmquick .12s ease both}
+@keyframes alarmbeat{0%{opacity:0}14%{opacity:1}34%{opacity:0}52%{opacity:.92}74%{opacity:0}100%{opacity:0}}
+@keyframes alarmquick{0%{opacity:0}45%{opacity:.7}100%{opacity:0}}
+
+/* ── the vignette ─────────────────────────────────────────────────────────────
+   The dark that closes in from the edges when she dies. A ring of black scaled
+   down over the frame — one transform, no repaint. */
+.vig{position:fixed;inset:0;z-index:71;pointer-events:none;opacity:0;
+  display:grid;place-items:center;overflow:hidden}
+.vig i{display:block;width:260vmax;height:260vmax;border-radius:50%;
+  background:radial-gradient(circle,rgba(0,0,0,0) 34%,rgba(2,6,8,.72) 58%,#020608 76%);
+  transform:scale(1.9);will-change:transform}
+.vig.on{opacity:1;transition:opacity 260ms ease}
+.vig.on i{transform:scale(.42);transition:transform 900ms cubic-bezier(.4,0,.5,1)}
+
+/* the white cut before SEASON 2 — a splice, not a fade */
+.flash{position:fixed;inset:0;z-index:95;background:#fff;opacity:0;pointer-events:none}
+.flash.on{animation:flashcut 400ms ease-out both}
+@keyframes flashcut{0%{opacity:0}11%{opacity:1}100%{opacity:0}}
+
+/* ── the monitor's trace ──────────────────────────────────────────────────────
+   The rail's monitor gets the line it was always missing. It boots in from the
+   right when a case opens, it settles when she turns the corner, and it goes flat
+   when she does not — the flat line eating the wave from the left, which is the
+   direction a real strip runs. `non-scaling-stroke` keeps the stroke honest under
+   the non-uniform stretch this viewBox takes. */
+.mini-tr{height:1.75rem;margin:.1rem 0 .5rem;overflow:hidden}
+.mini-tr svg{display:block;width:100%;height:100%}
+.mini-tr path{fill:none;stroke-width:1.7;vector-effect:non-scaling-stroke;
+  stroke-linejoin:round;stroke-linecap:round}
+.tr-w{stroke:#4ADE80;clip-path:inset(0 0 0 0);transform-box:fill-box;transform-origin:50% 50%;
+  transition:transform 600ms var(--ease)}
+.tr-f{stroke:#F87171;clip-path:inset(0 100% 0 0)}
+.mini-tr.boot .tr-w{animation:trboot 500ms var(--ease) both}
+@keyframes trboot{from{clip-path:inset(0 0 0 100%)}to{clip-path:inset(0 0 0 0)}}
+.mini-tr.flat .tr-w{animation:trwgo 900ms linear both}
+.mini-tr.flat .tr-f{animation:trfgo 900ms linear both}
+@keyframes trwgo{from{clip-path:inset(0 0 0 0)}to{clip-path:inset(0 0 0 100%)}}
+@keyframes trfgo{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+/* she turned the corner — the trace stops shouting */
+.mini.calm .tr-w{transform:scaleY(.42)}
+
+/* ── the title card ───────────────────────────────────────────────────────────
+   Out of focus and spread wide, pulling into focus and closing up over 600ms, then
+   it holds — and the sweep is what takes it away. blur and letter-spacing are the
+   two properties the brief names, and they are the two that are not composited; it
+   is one line of text once per entrance, and it says so to the compositor. */
+.tc{animation:none}
+.tc-k{animation:cinein 460ms ease both}
+.tc-t{animation:tcin 600ms var(--ease) both;will-change:filter,letter-spacing,opacity}
+@keyframes tcin{
+  from{opacity:0;filter:blur(16px);letter-spacing:.5em;transform:scale(1.03)}
+  55%{opacity:1}
+  to{opacity:1;filter:blur(0);letter-spacing:.02em;transform:none}}
+.tc-prev{animation:cinein 460ms ease both}
+
+/* ── previously on… ───────────────────────────────────────────────────────────
+   Ken Burns on every frame, and the frames dissolve through each other rather than
+   through black: cineNext keeps the outgoing still underneath for a quarter second
+   while the new one comes up over it. */
+.rc-still{animation:rcin 250ms ease both}
+@keyframes rcin{from{opacity:0}to{opacity:1}}
+.rc-still.rc-out{animation:rcout 250ms linear both;z-index:0}
+@keyframes rcout{from{opacity:1}to{opacity:0}}
+.rc-still img{animation:rcken 3.6s ease-out both}
+@keyframes rcken{from{transform:scale(1.05)}to{transform:scale(1.17) translate(-1.6%,-1.2%)}}
+.rc-line{animation:cinein 420ms var(--ease) both;animation-delay:110ms}
+
+/* the stinger: one line, up from eight pixels, and gone */
+.sting{animation:cinein 420ms var(--ease) both}
+
+/* ── up next ──────────────────────────────────────────────────────────────────
+   The countdown was a digit ticking down; it is a ring walking backwards now, with
+   the digit still inside it for anyone who wants the number rather than the feel. */
+.un{animation:cinein 380ms var(--ease) both}
+.un-k{animation:cinein 380ms var(--ease) both}
+.un-count{display:flex;align-items:center;justify-content:center;gap:.5rem}
+.un-dial{position:relative;display:inline-grid;place-items:center;width:2.4rem;height:2.4rem;flex:none}
+.un-dial svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+.un-dial circle{fill:none;stroke:rgba(255,255,255,.15);stroke-width:2.6}
+.un-dial .un-arc{stroke:#7fe7d2;stroke-linecap:round;stroke-dasharray:97.4;
+  animation:uncount 5s linear both}
+@keyframes uncount{from{stroke-dashoffset:0}to{stroke-dashoffset:97.4}}
+.un-dial b{font-family:"IBM Plex Mono",monospace;font-size:.78rem;color:#fff;
+  font-variant-numeric:tabular-nums}
+
+/* ── the epilogue ─────────────────────────────────────────────────────────────
+   The paper rides up slowly and the letter sets itself a line at a time — the one
+   place in the game where slow is the point, because it is the last thing you read
+   before a season ends. */
+.epi{animation:none}
+.epi-k{animation:cinein 420ms ease both}
+.epi-letter{animation:epipaper 900ms var(--ease) both}
+@keyframes epipaper{from{opacity:0;transform:translateY(26px) rotate(-.4deg)}
+  to{opacity:1;transform:translateY(0) rotate(-.4deg)}}
+.epi-lh{animation:cinein 380ms ease both;animation-delay:220ms}
+.epi-letter p{animation:cinein 380ms ease both}
+.epi-letter p:nth-of-type(1){animation-delay:460ms}
+.epi-letter p:nth-of-type(2){animation-delay:700ms}
+.epi-punch{animation:cinein 420ms var(--ease) both;animation-delay:940ms}
+
+/* ── the stars, and the door they open ────────────────────────────────────────
+   A star that arrives is worth a beat of its own, so they land one at a time; and a
+   door that opens after five shut ones must not open in silence — the card comes up
+   out of its own blur, lifts eight pixels, and carries a glow for a moment before
+   settling into the shelf's ordinary shadow. */
+.sg{font-style:normal;display:inline-block}
+.sg.pop{animation:starpop 280ms cubic-bezier(.34,1.56,.64,1) both;
+  animation-delay:calc(var(--i) * 120ms)}
+@keyframes starpop{from{transform:scale(.2);opacity:0}
+  60%{transform:scale(1.35);opacity:1}to{transform:scale(1);opacity:1}}
+.tile.just-open{animation:dooropen 500ms var(--ease) both,doorglow 900ms ease-out both}
+@keyframes dooropen{from{opacity:.35;filter:blur(6px);transform:translateY(8px)}
+  62%{opacity:1;filter:blur(0)}to{opacity:1;filter:blur(0);transform:translateY(0)}}
+@keyframes doorglow{from{box-shadow:0 0 0 2px rgba(38,192,165,.6),0 18px 44px rgba(31,157,134,.4)}
+  to{box-shadow:var(--sh-rest)}}
+
+/* ── accessibility is not a setting we get to weigh ───────────────────────────
+   Everything above becomes the same 120ms cross-fade. The JS halves its own
+   durations from the same media query, so the two can never disagree. */
+@media (prefers-reduced-motion:reduce){
+  .sw-panel,.shel,.cbars i,.tr-w{transition-duration:60ms !important}
+  .tc-t,.tc-k,.tc-prev,.rc-still,.rc-still img,.rc-line,.sting,.un,.un-k,
+  .epi-k,.epi-letter,.epi-lh,.epi-letter p,.epi-punch,.sg.pop,.tile.just-open,
+  .alarmv.on,.flash.on{
+    animation-duration:120ms !important;animation-delay:0ms !important}
+  .tc-t{animation-name:cinein}
+  .tile.just-open{animation-name:rcin}
+  .vig.on i{transition-duration:120ms !important}
+  .un-dial .un-arc{animation:none;stroke-dashoffset:0}
+  .tile:hover:not(.lock):not(.cs),.tile:focus-visible:not(.lock):not(.cs),
+  .hero:hover,.hero:focus-visible{transform:none}
+  .rc-still img{animation:none}
+}
 
 /* ── the fit ──────────────────────────────────────────────────────────────────
    On a desktop the bay is a cockpit, not a page: one viewport, no page scroll
@@ -934,6 +1220,16 @@ a.give:hover{filter:brightness(1.06)}
   <aside class="rail">
     <div class="mini" id="mini">
       <div class="mini-h"><span>MONITOR</span><span id="mini-status">—</span></div>
+      <!-- The trace. It is the one thing on the rail that is allowed to move on its own:
+           it arrives from the right when a case opens, drops its amplitude when she
+           settles, and is overtaken by the flat red line when she dies. Decorative to a
+           screen reader — every number it stands for is already read out below it. -->
+      <div class="mini-tr" id="mtrace" aria-hidden="true">
+        <svg viewBox="0 0 300 40" preserveAspectRatio="none">
+          <path class="tr-w" d="M0 28 H36 l5 -3 l4 6 l5 -20 l5 26 l6 -12 l4 3 H110 l5 -3 l4 6 l5 -20 l5 26 l6 -12 l4 3 H184 l5 -3 l4 6 l5 -20 l5 26 l6 -12 l4 3 H258 l5 -3 l4 6 l5 -20 l5 26 l6 -12 l4 3 H300"/>
+          <path class="tr-f" d="M0 28 H300"/>
+        </svg>
+      </div>
       <div class="mini-g">
         <div><i>HR</i><b id="m-hr">—</b></div>
         <div><i>SpO₂</i><b id="m-spo2">—</b></div>
@@ -1045,6 +1341,26 @@ a.give:hover{filter:brightness(1.06)}
        one black surface. cineShow() runs a queue of steps; a tap advances the skippable
        ones; cards that carry their own buttons drive themselves. -->
   <div class="cine hide" id="cine"></div>
+
+  <!-- ── the motion surfaces ────────────────────────────────────────────────────
+       Five fixed layers that are display:none until something asks for them, so an
+       idle page carries no cost for any of it. They sit above the cinema layer (80)
+       and below nothing except the season-2 splice, and every one of them is either
+       pointer-events:none or is itself the skip target.
+
+       The sweep is the game's signature: a heartbeat trace crossing the screen and
+       leaving the next scene behind it. -->
+  <div class="sweep hide" id="sweep" aria-hidden="true">
+    <div class="sw-panel" id="sw-panel">
+      <svg class="sw-edge" viewBox="0 0 60 1000" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M8 0 V200 l0 12 l12 6 l-6 8 l30 14 l-38 16 l14 8 l-12 6 V480 l0 12 l12 6 l-6 8 l30 14 l-38 16 l14 8 l-12 6 V760 l0 12 l12 6 l-6 8 l30 14 l-38 16 l14 8 l-12 6 V1000"/>
+      </svg>
+    </div>
+  </div>
+  <div class="cbars hide" id="cbars" aria-hidden="true"><i></i><i></i></div>
+  <div class="alarmv hide" id="alarm" aria-hidden="true"></div>
+  <div class="vig hide" id="vig" aria-hidden="true"><i></i></div>
+  <div class="flash hide" id="flash" aria-hidden="true"></div>
 
   <!-- The film, full size. Top level rather than inside #game, because the lobby opens it too
        for the image credits — the shelf's card art is a CC-BY derivative and the licence does
@@ -1815,9 +2131,18 @@ function paint(v){
   $('#pt-name').textContent=E.who; $('#pt-line').textContent=E.line; $('#place').textContent='📷 '+E.place;
   $('#pt-status').textContent=v.status; $('#pt-status').className='pt-status '+v.status;
   show(v.status, v.equipment);
-  $('#m-hr').textContent=v.hr; $('#m-spo2').textContent=v.spo2+'%';
-  $('#m-bp').textContent=v.sbp+'/'+v.dbp; $('#m-rr').textContent=v.rr;
+  /* Through setVital, not straight to the DOM: while the monitor is booting these are
+     the boot's moving target rather than the screen, so a count-up can never land on a
+     reading that was already two seconds stale. */
+  setVital('#m-hr',v.hr); setVital('#m-spo2',v.spo2+'%');
+  setVital('#m-bp',v.sbp+'/'+v.dbp); setVital('#m-rr',v.rr);
   $('#mini-status').textContent=v.status;
+  /* She is getting worse. A class changing colour is a fact and nobody looks up for a
+     fact; the room going red twice is the alarm the bay would actually be making. Only
+     downward, and never after the bell — the border is a warning, not a verdict. */
+  const rk=RANK[v.status]||0;
+  if(rk>lastRank&&rk>=2&&!over&&!v.outcome)alarmPulse();
+  lastRank=rk;
   $('#clock').textContent=fmt(v.elapsed); clockNow=v.elapsed;
 
   /* A2 · the shelf remembers where you left the shift: vitals.seen drives the hero's
@@ -2000,7 +2325,10 @@ function finish(v){
   if(!v.outcome || over) return;
   over=true; stop();
   const win=v.outcome.startsWith('Win');
-  $('#result').className='result '+(win?'win':'lose'); $('#result').style.display='block';
+  /* The panel is built now and shown later. Everything below fills it — including two
+     async fetches — while it is still display:none, so by the time the sweep uncovers
+     it the verdict is whole rather than assembling itself in front of the player. */
+  $('#result').className='result '+(win?'win':'lose');
   /* Every sealed line in the feed now says what it was. Matched by position against the run's
      own harm beats, which is the order they were appended in. */
   unsealHarm(v);
@@ -2013,8 +2341,27 @@ function finish(v){
   $('#cmd').disabled=true; $('#send').disabled=true; $('#pause').disabled=true;
   if(win){ const c=cleared(), e=$('#ep').value;
     if(!c.includes(e)){c.push(e);localStorage.setItem('vitals.cleared',JSON.stringify(c));} }
-  chainState(); $('#result').scrollIntoView({behavior:'smooth',block:'nearest'});
-  endFlow(win);
+  chainState();
+  /* ── the two endings, which must not feel the same ─────────────────────────────
+     She lived: the monitor calms for 600ms — the trace drops its amplitude, the room
+     stops being an emergency — and then the sweep hands over the verdict.
+     She died: the flat line eats the wave, the dark closes in from the edges and the
+     sound goes, over 900ms. It is longer than anything else in this game on purpose;
+     the brief exempts it from the 600ms ceiling for exactly this reason. A death that
+     cuts to a scorecard at the same speed as a save is a game telling you it did not
+     notice. Both are skippable, both are after the clock has stopped. */
+  /* Guarded on the run, like endFlow: restart pressed during the ending would otherwise
+     open a result panel that #start has just emptied, over a case that has just begun. */
+  const runId=id;
+  const live=()=>id===runId&&over;
+  const reveal=()=>{
+    if(!live())return;
+    $('#result').style.display='block';
+    $('#result').scrollIntoView({behavior:'smooth',block:'nearest'});
+    $('#vig').className='vig hide';
+  };
+  const hand=()=>{ if(!live())return; sweep(reveal,()=>{ if(live())endFlow(win); }); };
+  if(win)settle(hand); else flatline(hand);
 }
 
 /* Deferred, not deleted. Every line the exam sealed is rewritten with the sentence the scenario
@@ -2084,6 +2431,12 @@ $('#start').onclick=async()=>{
      plays; it just cannot anchor, and the anchor button will say why. */
   commitRun(EXAMRUN);
   renderModes(); renderChips(); paint(r.view);
+  /* The monitor wakes up: the trace runs in from the right and the four numbers climb
+     from zero to the readings paint() has just put there. Five hundred milliseconds,
+     entirely inside the 700ms before the first tick, and it animates values that are
+     already true — the clock is not held for a frame of it. */
+  lastRank=0; $('#mini').classList.remove('calm'); $('#vig').className='vig hide';
+  bootMonitor();
   if(ep().id==='ep1') playCut('cold_open');
   $('#device').src=deviceSrc('monitor');
   document.querySelectorAll('.dev').forEach(b=>b.classList.toggle('on',b.dataset.dev==='monitor'));
@@ -2094,7 +2447,14 @@ $('#start').onclick=async()=>{
   if(!voice) ev('note','—','no gateway, so she cannot answer — orders still work');
   run(); chainState();
 };
-$('#back').onclick=()=>{ stop(); EXAMRUN=false; EXAMLIVE=false; $('#game').classList.add('hide'); $('#lobby').classList.remove('hide'); renderSeason(); };
+/* Leaving is not a sweep. The sweep is the signature of going forward — running it
+   backwards would say the story moved on when the player just stepped out of it. Two
+   hundred milliseconds through black instead. DOORWATCH opens here because the shelf
+   the player is about to see is the one a finished run may have unlocked, and that is
+   the only moment a door opening deserves a fanfare. */
+$('#back').onclick=()=>{ stop(); EXAMRUN=false; EXAMLIVE=false; DOORWATCH=true;
+  fadeSwap(()=>{ $('#game').classList.add('hide'); $('#lobby').classList.remove('hide');
+    renderSeason(); }); };
 $('#pause').onclick=()=>{ if(timer){stop();$('#pause').textContent='resume';} else{run();$('#pause').textContent='hold';} };
 $('#diff').onclick=()=>{ hard=!hard; $('#diff').textContent=hard?'hard':'easy'; $('#diff').classList.toggle('on',hard);
   if(timer){stop();run();} };
@@ -2158,6 +2518,9 @@ $('#anchor').onclick=async()=>{
       if(!ls.includes(e)){ls.push(e);localStorage.setItem('vitals.stars',JSON.stringify(ls));}
       const m=localTiers();
       if((m[e]||0)<t){m[e]=t;localStorage.setItem('vitals.tiers',JSON.stringify(m));}
+      /* A star was just earned here. Tell the next shelf paint to hand it over one glyph
+         at a time, and to watch for the door it may have opened. */
+      POPFOR.add(e); DOORWATCH=true;
     }
     /* What the next star costs, in the rubric's own points. A percentage tells you how you
        did; "3 points from your third star" tells you whether to sit it again — and the
@@ -2274,7 +2637,10 @@ async function showMarks(){
     next=`${need} point${need===1?'':'s'} from your ${['first','second','third'][t]} star.`
       +(m.exam?' Sit it again and the better run is the one that counts.':'');
   }
-  const head=`<div class="mk-h"><span class="mk-star">${starGlyph(t)}</span>`
+  /* The stars land one at a time here too. This is the first place the run's own result
+     is stated, and three glyphs appearing together is a number; three arriving in turn
+     is the thing being awarded. */
+  const head=`<div class="mk-h"><span class="mk-star">${starRow(t,true)}</span>`
     +`<b>${m.score} / ${m.max}</b><span class="mk-pct">${pct}%</span>`
     +`<span class="mk-k">mark sheet</span><span class="mk-next">${next}</span></div>`;
   el.innerHTML=head+m.items.map(it=>
@@ -2449,6 +2815,18 @@ async function renderSeason(){
    reads as one column of stars rather than a ragged edge — and the circuit band as the art
    monogram. Trimmed to fit the tile: PAEDIATRICS at .3em of letter-spacing runs off it. */
 const starGlyph=t=>'★'.repeat(Math.max(0,Math.min(TIERMAX,t)))+'☆'.repeat(Math.max(0,TIERMAX-t));
+/* The same three glyphs, wearable. `starGlyph` stays a plain string because several
+   callers put it somewhere markup would be wrong; this is the version for the two
+   places a star is a reward being handed over — the card on the shelf and the head of
+   the mark sheet — where they land one at a time, 120ms apart, instead of the number
+   simply being different than it was. */
+const starRow=(t,pop)=>[...starGlyph(t)]
+  .map((c,i)=>`<i class="sg${pop?' pop':''}" style="--i:${i}">${c}</i>`).join('');
+/* Which stations should pop on the next shelf paint, and whether a door opening is
+   news. Both are one-shot: filled by the moment that earned them, drained by the paint
+   that shows them, so a repaint for any other reason never replays the fanfare. */
+const POPFOR=new Set();
+let DOORWATCH=false, LOCKED_PREV=null, RINGWAS=null;
 const specShort=sp=>(sp||'').replace(/^eir-/,'').replace('gastroenterology','gastro')
   .replace('pulmonology','pulmo').replace('paediatrics','paeds').toUpperCase();
 /* What the card is allowed to say about the case's field. The server sends both — the Eir
@@ -2486,7 +2864,7 @@ function paintSeason(){
        your star on it is. Where provenance actually buys credibility is under a score somebody
        just earned (#prov, after the run) and on the landing page; both say it there. */
     const chip=e.station
-      ?`<span class="st-stars" title="your best exam here — ${barRule()}">${starGlyph(tierOf(e.id))}</span>`
+      ?`<span class="st-stars" title="your best exam here — ${barRule()}">${starRow(tierOf(e.id),POPFOR.has(e.id))}</span>`
       :`<span class="tier">${e.tier}</span>`;
     const chips=e.station
       ?`<span class="chiprow"><span class="spec">${spec||''}</span><span class="rt">${tierName} · ${e.rt||''}</span></span>`
@@ -2527,7 +2905,7 @@ function paintSeason(){
   const comingCard=(m,s)=>`<div class="tile st cs" data-ga="coming:${m.id}">
       <div class="art"><div class="art-ph art-cl"><span>${specShort(bandOf(m))}</span></div>
         <span class="no">${m.id.replace('osce-','OSCE ').toUpperCase()}</span>
-        <span class="st-stars" title="${barRule()}">${starGlyph(0)}</span></div>
+        <span class="st-stars" title="${barRule()}">${starRow(0,false)}</span></div>
       <div class="body"><h3>${m.title}</h3>
         <span class="chiprow"><span class="spec">${bandOf(m)}</span><span class="rt">${m.tier}</span></span>
         <p>Being fitted for the bay now.</p>
@@ -2547,15 +2925,44 @@ function paintSeason(){
     }
   }
   $('#eps').innerHTML=cards.join('');
+  /* ── the door opens ───────────────────────────────────────────────────────────
+     A card that was locked the last time this shelf was painted and is not now had a
+     key turn in it, and that is a moment: it comes up out of its own blur, lifts eight
+     pixels, carries a glow for most of a second and then settles into the ordinary
+     shadow of a card you can reach. Gated on DOORWATCH so the two or three repaints a
+     page load takes — the cached table, then the chain's answer — cannot fake one.
+
+     All of it is gated on the shelf actually being on screen. refreshStars() repaints
+     while the player is still reading the debrief in the bay, and a door that opened
+     behind a hidden element would be "already seen" by the time they walked back out —
+     LOCKED_PREV is deliberately the state the player last *looked* at, not the last
+     state painted. */
+  if(!$('#lobby').classList.contains('hide')){
+    const nowLocked=new Set();
+    $('#eps').querySelectorAll('.tile.lock').forEach(t=>nowLocked.add(t.dataset.ep));
+    if(DOORWATCH&&LOCKED_PREV){
+      for(const wasId of LOCKED_PREV){
+        if(nowLocked.has(wasId))continue;
+        const t=$('#eps').querySelector('.tile[data-ep="'+wasId+'"]');
+        if(!t)continue;
+        t.classList.add('just-open');
+        anim(950,()=>t.classList.remove('just-open'));
+      }
+    }
+    LOCKED_PREV=nowLocked; POPFOR.clear();
+  }
   $('#eps').querySelectorAll('.tile:not(.lock):not(.cs)').forEach(b=>b.onclick=()=>{
     /* A station card is only ever an exam — that is what a station is. Episodes enter as
        practice unless the exam door below is the thing clicked. */
     const entry=SEASON.find(x=>x.id===b.dataset.ep);
-    enterEpisode(b.dataset.ep, !!(entry&&entry.station)); });
+    /* The card is handed to the entrance, not just its id: the shared element measures
+       this exact rectangle, so the thing that grows into the screen is the thing the
+       thumb was on. */
+    enterEpisode(b.dataset.ep, !!(entry&&entry.station), b); });
   /* The exam door on the same card: same bay, but the ceremony will bind exam into the
      commitment before the first order is possible. */
   $('#eps').querySelectorAll('[data-exam]').forEach(x=>x.onclick=(ev)=>{
-    ev.stopPropagation(); enterEpisode(x.dataset.exam,true); });
+    ev.stopPropagation(); enterEpisode(x.dataset.exam,true,x.closest('.tile')); });
   /* A5 · the trailer door on a locked card. */
   $('#eps').querySelectorAll('[data-trailer]').forEach(x=>x.onclick=(ev)=>{
     ev.stopPropagation(); playTrailer(x.dataset.trailer); });
@@ -2648,7 +3055,9 @@ function renderHero(){
     <div class="hero-txt"><div class="hero-eye">${eye}</div><h1>${h1}</h1><p>${line}</p>
       <div class="hero-act"><span class="hero-play">${play}</span><span class="hero-rt">${e.rt||''}</span></div>
       ${pr>0&&pr<1?`<div class="hero-prog"><i style="width:${Math.round(pr*100)}%"></i></div>`:''}</div>`;
-  $('#hero').onclick=()=>enterEpisode(e.id,e.station);
+  /* The billboard is a rectangle like any other card, so it takes the same move — it is
+     simply a very large card, and the screen it grows into is nearly its own size. */
+  $('#hero').onclick=()=>enterEpisode(e.id,e.station,$('#hero'));
 }
 /* C10 · the ring: five episodes round the dial, stars under it. Stations are the
    season's interludes, so only the five shifts count toward the circle. The star line
@@ -2659,11 +3068,22 @@ function paintRing(){
   const n=SEASON.filter(e=>!e.station&&cleared().includes(e.id)).length;
   const st=starsKnown(), cap=starCeiling();
   const C=97.4;
+  /* The arc runs itself in rather than appearing at its new length \u2014 one full dash with
+     the offset walked back to the target, which is the compositor's own way of drawing a
+     circle. It only animates when the number actually moved: paintSeason runs two or
+     three times on an ordinary load, and a ring that refilled on each of them would be a
+     tic rather than a reward. */
+  const grew=RINGWAS!=null&&RINGWAS!==n&&!REDUCE();
+  const off=(C-C*n/5).toFixed(1);
   $('#ring').innerHTML=`<svg viewBox="0 0 36 36" aria-hidden="true">
       <circle cx="18" cy="18" r="15.5" class="ring-bg"/>
-      <circle cx="18" cy="18" r="15.5" class="ring-fg" stroke-dasharray="${(C*n/5).toFixed(1)} ${C}"/>
+      <circle cx="18" cy="18" r="15.5" class="ring-fg" stroke-dasharray="${C} ${C}"
+        stroke-dashoffset="${grew?C:off}"${grew?' style="transition:stroke-dashoffset 600ms var(--ease)"':''}/>
       <text x="18" y="21.5" class="ring-n">${n}</text></svg>
     <span class="ring-t"><b>${n} of 5</b> episodes<br>\u2b50 ${cap?`${st} of ${cap}`:st} star${st===1&&!cap?'':'s'}</span>`;
+  if(grew){ const a=$('#ring').querySelector('.ring-fg');
+    requestAnimationFrame(()=>{ if(a)a.setAttribute('stroke-dashoffset',off); }); }
+  RINGWAS=n;
 }
 
 /* ── A4 · motion previews ─────────────────────────────────────────────────────
@@ -2721,6 +3141,225 @@ function playTrailer(epId){
       const v=r.querySelector('video'); v.onended=()=>cineHide(); v.onerror=()=>cineHide(); }}]);
 }
 
+/* ══ Phase 12 · the motion engine ════════════════════════════════════════════
+   Everything that moves between scenes runs through here, and it exists so that
+   four promises can be kept in one place instead of seventeen.
+
+   **Skippable, all of it.** Every animation registers a finisher. Any pointerdown
+   or keydown anywhere on the page drains the set, and each finisher runs its own
+   tail — the scene swap, the reveal, the callback — immediately. Nothing can be
+   left half-played, and nothing needs its own escape hatch.
+
+   **Reduced motion is a different animation, not a faster one.** REDUCE() is read
+   at call time rather than cached, so a player who changes the system setting mid
+   session gets the new behaviour without a reload. The CSS halves its durations
+   from the same media query.
+
+   **The patient's clock is never held.** Every call site here is either before
+   /api/new or after the outcome has landed. The monitor boot is the one that looks
+   like an exception and is not: it animates numbers that are already painted and
+   already correct, on a case whose first tick is 700ms away.
+
+   **transform, opacity, clip-path.** The title card's blur and letter-spacing are
+   the single named exception, asked for by the brief. */
+const REDUCE=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
+const INFLIGHT=new Set();
+/* Drained on any input. A finisher must be idempotent and must remove itself — the
+   pattern below (`ended` flag, delete-then-call) is the only one used. */
+function skipMotion(){
+  const all=[...INFLIGHT]; INFLIGHT.clear();
+  for(const f of all){ try{ f(); }catch(e){} }
+}
+/* Capture phase, so the tap that skips is the same tap the player already made —
+   it never costs a second one. A no-op when nothing is running, which is almost
+   always, so the cost on an ordinary click is one `.size` read. */
+addEventListener('pointerdown',()=>{ if(INFLIGHT.size)skipMotion(); },true);
+addEventListener('keydown',()=>{ if(INFLIGHT.size)skipMotion(); },true);
+addEventListener('touchstart',()=>{ if(INFLIGHT.size)skipMotion(); },{capture:true,passive:true});
+
+/* A CSS animation runs for `ms`; this is the bookkeeping around it. */
+function anim(ms,after){
+  let t=null,ended=false;
+  const fin=()=>{ if(ended)return; ended=true; clearTimeout(t); INFLIGHT.delete(fin);
+    try{ after&&after(); }catch(e){} };
+  INFLIGHT.add(fin);
+  t=setTimeout(fin,REDUCE()?Math.min(ms,120):ms);
+  return fin;
+}
+/* Restart a CSS animation that may already have run on this element. */
+const replay=(el,...cls)=>{ if(!el)return; el.classList.remove(...cls);
+  void el.offsetWidth; el.classList.add(...cls); };
+
+/* ── the sweep ────────────────────────────────────────────────────────────────
+   `mid` is the scene swap and it fires exactly once, at full cover — whether the
+   sweep played out or was skipped on its first frame. `done` fires after. Callers
+   never have to care which happened. */
+function sweep(mid,done){
+  const S=$('#sweep'); if(!S){ mid&&mid(); done&&done(); return; }
+  const R=REDUCE(), half=R?60:260;
+  let t=null,ended=false,swapped=false;
+  const swap=()=>{ if(swapped)return; swapped=true; try{ mid&&mid(); }catch(e){} };
+  const fin=()=>{ if(ended)return; ended=true; clearTimeout(t); INFLIGHT.delete(fin);
+    swap(); S.className='sweep hide'; try{ done&&done(); }catch(e){} };
+  INFLIGHT.add(fin);
+  S.className='sweep'+(R?' x':'');
+  void S.offsetWidth;                                   /* commit the from-state */
+  requestAnimationFrame(()=>{
+    if(ended)return;
+    S.classList.add('a');                               /* cover, 260ms */
+    t=setTimeout(()=>{
+      if(ended)return;
+      swap();                                           /* the scene changes here */
+      S.classList.remove('a'); S.classList.add('b');    /* clear off right, 260ms */
+      t=setTimeout(fin,half);
+    },half);
+  });
+  return fin;
+}
+/* Going back is not a sweep. A quarter-second through black says "we are leaving"
+   without claiming the story moved forward. */
+function fadeSwap(mid,done){
+  const S=$('#sweep'); if(!S){ mid&&mid(); done&&done(); return; }
+  const half=REDUCE()?60:100;
+  let t=null,ended=false,swapped=false;
+  const swap=()=>{ if(swapped)return; swapped=true; try{ mid&&mid(); }catch(e){} };
+  const fin=()=>{ if(ended)return; ended=true; clearTimeout(t); INFLIGHT.delete(fin);
+    swap(); S.className='sweep hide'; try{ done&&done(); }catch(e){} };
+  INFLIGHT.add(fin);
+  S.className='sweep x'; void S.offsetWidth;
+  requestAnimationFrame(()=>{ if(ended)return; S.classList.add('a');
+    t=setTimeout(()=>{ if(ended)return; swap(); S.classList.remove('a');
+      t=setTimeout(fin,half); },half); });
+  return fin;
+}
+
+/* ── the shared element ───────────────────────────────────────────────────────
+   The card becomes the screen. The clone is placed at the viewport and transformed
+   *back* onto the card's measured rectangle, then released — which is the only way
+   to get a 60fps size change out of a browser. Uniform scale keyed on width, so the
+   art inside is never squashed on the way up; the small vertical bloom that leaves
+   reads as the card blooming, which is the effect wanted anyway. */
+function sharedInto(el,after){
+  const go=()=>{ try{ after&&after(); }catch(e){} };
+  if(!el||REDUCE())return go();
+  const r=el.getBoundingClientRect();
+  const w=innerWidth,h=innerHeight;
+  if(!r.width||!r.height||!w||!h)return go();
+  const s=Math.max(.06,Math.min(1,r.width/w));
+  const dx=(r.left+r.width/2)-w/2, dy=(r.top+r.height/2)-h/2;
+  const box=document.createElement('div');
+  box.className='shel';
+  const inner=document.createElement('div'); inner.className='shel-in';
+  /* Only the art travels. The badges and the body are absolutely positioned against
+     a card-sized box and would fly to the wrong corners of a screen-sized one. */
+  const src=el.querySelector('.hero-art picture,.hero-art img,.hero-void,'
+    +'.art picture,.art img,.art-ph');
+  if(src)inner.appendChild(src.cloneNode(true));
+  box.appendChild(inner);
+  box.style.transform=`translate3d(${dx}px,${dy}px,0) scale(${s})`;
+  document.body.appendChild(box);
+  let t=null,ended=false;
+  const fin=()=>{ if(ended)return; ended=true; clearTimeout(t); INFLIGHT.delete(fin);
+    go();
+    /* One frame of overlap, so the black the title card arrives on is already up
+       before the clone leaves — otherwise the shelf flashes back for a frame. */
+    requestAnimationFrame(()=>box.remove()); };
+  INFLIGHT.add(fin);
+  void box.offsetWidth;
+  requestAnimationFrame(()=>{
+    if(ended)return;
+    box.classList.add('go');
+    box.style.transform='translate3d(0,0,0) scale(1)';
+    t=setTimeout(fin,320);
+  });
+  return fin;
+}
+
+/* ── the cinema bars ── */
+let barTimer=null;
+function bars(on){
+  const b=$('#cbars'); if(!b)return;
+  clearTimeout(barTimer);
+  if(on){ b.classList.remove('hide'); void b.offsetWidth; b.classList.add('on'); }
+  else{ b.classList.remove('on');
+    barTimer=setTimeout(()=>b.classList.add('hide'),REDUCE()?140:340); }
+}
+
+/* ── the monitor boots ────────────────────────────────────────────────────────
+   The trace runs in from the right and the numbers climb from zero to what they
+   already are. `BOOTING` is why this cannot show a stale reading: while it runs,
+   every paint writes its value into the target map instead of the DOM, so the
+   count-up is always climbing toward the newest truth and lands exactly on it. */
+let BOOTING=null;
+const VITALSEL=['#m-hr','#m-spo2','#m-bp','#m-rr'];
+function setVital(sel,val){
+  if(BOOTING){ BOOTING[sel]=val; return; }
+  const el=$(sel); if(el)el.textContent=val;
+}
+/* '120/80' at .5 is '60/40'; '98%' is '49%'; '—' is '—'. */
+const countTo=(s,k)=>String(s).replace(/\d+/g,m=>String(Math.round(+m*k)));
+function bootMonitor(){
+  const tr=$('#mtrace');
+  if(tr){ tr.classList.remove('flat'); }
+  if(REDUCE()){ if(tr)tr.classList.remove('boot'); return; }
+  if(tr)replay(tr,'boot');
+  const t={}; for(const s of VITALSEL){ const el=$(s); t[s]=el?el.textContent:''; }
+  BOOTING=t;
+  const t0=performance.now(), MS=500;
+  let raf=null,ended=false;
+  const fin=()=>{ if(ended)return; ended=true; cancelAnimationFrame(raf); INFLIGHT.delete(fin);
+    const target=BOOTING; BOOTING=null;
+    for(const s of VITALSEL){ const el=$(s); if(el)el.textContent=target[s]; } };
+  INFLIGHT.add(fin);
+  const frame=()=>{
+    if(ended)return;
+    const k=Math.min(1,(performance.now()-t0)/MS), e=1-Math.pow(1-k,3);
+    for(const s of VITALSEL){ const el=$(s); if(el)el.textContent=countTo(BOOTING[s],e); }
+    if(k>=1)return fin();
+    raf=requestAnimationFrame(frame);
+  };
+  raf=requestAnimationFrame(frame);
+  return fin;
+}
+
+/* ── she is getting worse ─────────────────────────────────────────────────────
+   Ranked so the border only fires on the way down. Improving back to Stable is not
+   an alarm, and an alarm that cries on good news is an alarm nobody reads. */
+const RANK={Stable:0,Improving:0,Recovered:0,Deteriorating:2,Critical:3,Arrest:4,Dead:5};
+let lastRank=0;
+function alarmPulse(){
+  const a=$('#alarm'); if(!a)return;
+  a.className='alarmv'; void a.offsetWidth;
+  a.className='alarmv on'+(REDUCE()?' quick':'');
+  return anim(REDUCE()?120:1100,()=>{ a.className='alarmv hide'; });
+}
+/* ── she turned the corner ── 600ms of the monitor calming down before the verdict. */
+function settle(after){
+  const m=$('#mini'); if(m)m.classList.add('calm');
+  return anim(600,after);
+}
+/* ── she did not ──────────────────────────────────────────────────────────────
+   Deliberately slower than anything else in the game: 900ms, and the brief is
+   explicit that this one is allowed to be. The flat line eats the wave from the
+   left, the dark closes in from the edges, and the sound goes with her — the
+   cutscene's own audio is wound to nothing, and the LIVE dot has already stopped
+   beating by the time this runs (paint() marks the bar `ended`). */
+function flatline(after){
+  const tr=$('#mtrace'); if(tr){ tr.classList.remove('boot','calm'); replay(tr,'flat'); }
+  const m=$('#mini'); if(m)m.classList.remove('calm');
+  const v=$('#vig'); if(v){ v.classList.remove('hide'); void v.offsetWidth; v.classList.add('on'); }
+  const c=$('#cut'); if(c){ try{ c.volume=0; }catch(e){} }
+  return anim(900,after);
+}
+/* The white splice before SEASON 2 — a cut, not a dissolve. */
+function flash(){
+  const f=$('#flash'); if(!f||REDUCE())return;
+  /* The class comes off before the reflow, not after: offsetWidth on a display:none
+     element is zero and forces nothing, so the animation would never restart. */
+  f.classList.remove('hide'); replay(f,'on');
+  return anim(400,()=>{ f.className='flash hide'; });
+}
+
 /* ── B6-B8 · the cinema layer ─────────────────────────────────────────────────
    A queue of steps on one black surface. A tap (or Escape) advances any skippable
    step; a card with its own buttons sets skip:false and drives itself. The queue's
@@ -2740,7 +3379,17 @@ function cineNext(){
   cineQ.i++;
   if(cineQ.i>=cineQ.steps.length){const d=cineQ.done;cineHide();return d&&d();}
   const st=cineQ.steps[cineQ.i];
+  /* B7 · a real cross-dissolve, not a fade through black. The outgoing recap frame is
+     kept underneath the incoming one for a quarter second and fades out beneath it —
+     which is what "dissolve" means, and what three stills cutting on black did not do.
+     Only between recap frames: everything else in the queue wants a clean cut. */
+  const out=$('#cine').querySelector('.rc-still');
   $('#cine').innerHTML=st.html;
+  if(out&&!REDUCE()&&$('#cine').querySelector('.rc-still')){
+    out.classList.add('rc-out');
+    $('#cine').insertBefore(out,$('#cine').firstChild);
+    setTimeout(()=>out.remove(),260);
+  }
   $('#cine').dataset.skip=st.skip===false?'no':'yes';
   if(st.ms)cineQ.timer=setTimeout(cineNext,st.ms);
   if(st.wire)st.wire($('#cine'));
@@ -2748,18 +3397,27 @@ function cineNext(){
 function cineHide(){
   if(cineQ)clearTimeout(cineQ.timer);
   cineQ=null; $('#cine').classList.add('hide'); $('#cine').innerHTML=''; $('#cine').dataset.skip='';
+  /* The bars belong to the cinema layer and leave with it, from whichever of the
+     several exits was taken. */
+  bars(false);
 }
 $('#cine').onclick=()=>{ if(cineQ&&$('#cine').dataset.skip!=='no')cineNext(); };
 addEventListener('keydown',e=>{ if(e.key==='Escape'&&cineQ&&$('#cine').dataset.skip!=='no')cineNext(); });
 
-/* B6 · the title card: 1.5 seconds of black and the episode's name, skippable. */
+/* B6 · the title card: the name of the episode pulling into focus out of a blur over
+   600ms, then holding for the rest of the step. It is never faded out — the sweep is
+   what lifts it, which is half of why the sweep exists. The bars go out here: the recap
+   they framed is over and the bay is next. */
 const titleCard=e=>({ms:1500,html:'<div class="tc"><div class="tc-k">'
   +(e.station?'night shift training · '+e.n:(e.sn||e.n))+'</div><div class="tc-t">'
-  +e.t.toUpperCase()+'</div></div><span class="cine-skip">tap to skip</span>'});
-/* B7 · the recap: an intro card, then three frames with a line each. */
+  +e.t.toUpperCase()+'</div></div><span class="cine-skip">tap to skip</span>',
+  wire:()=>bars(false)});
+/* B7 · the recap: an intro card, then three frames with a line each, under cinema bars
+   that slide in at the head and out again at the title card. */
 function recapSteps(e){
   const R=RECAP[e.id]; if(!R)return[];
-  const steps=[{ms:1400,html:'<div class="tc"><div class="tc-prev">Previously on <b>VITALS</b>\u2026</div></div><span class="cine-skip">tap to skip</span>'}];
+  const steps=[{ms:1400,html:'<div class="tc"><div class="tc-prev">Previously on <b>VITALS</b>\u2026</div></div><span class="cine-skip">tap to skip</span>',
+    wire:()=>bars(true)}];
   for(const[img,line]of R)steps.push({ms:2600,html:'<div class="rc-still">'
     +(img?'<img src="'+img+'" alt="">':'<div class="rc-void"></div>')
     +'<div class="rc-line">'+line+'</div></div><span class="cine-skip">tap to skip</span>'});
@@ -2770,14 +3428,28 @@ function recapSteps(e){
    everything, and only then the run — the case clock never ticks under the recap.
    The kiosk hash path (#play) keeps calling #start directly and stays overlay-free,
    and so does the restart button: a restart is not an entrance. */
-function enterEpisode(epId,exam){
+function enterEpisode(epId,exam,from){
   const e=SEASON.find(x=>x.id===epId)||SEASON[0];
   EXAMRUN=!!(exam||e.station);
   $('#ep').value=e.id;
-  $('#lobby').classList.add('hide'); $('#game').classList.remove('hide');
-  const steps=e.station?[]:recapSteps(e);
-  steps.push(titleCard(e));
-  cineShow(steps,()=>$('#start').click());
+  /* The whole entrance, in order, and none of it on the clock:
+       the card you pressed grows into the screen (320ms, shelf entrances only)
+       → previously on… under cinema bars (EP2-5)
+       → the title card pulls into focus and holds
+       → the sweep lifts it and puts the bay behind it, opening the case at full cover.
+     The scene swap is inside the sweep's `mid` rather than up here, so the shelf stays
+     where it was until the moment the trace covers it. `/api/new` is fired at that same
+     instant — the first tick of the patient's clock is 700ms after this, and every
+     frame above it has already been spent. */
+  const run=()=>{
+    const steps=e.station?[]:recapSteps(e);
+    steps.push(titleCard(e));
+    cineShow(steps,()=>sweep(()=>{
+      $('#lobby').classList.add('hide'); $('#game').classList.remove('hide');
+      $('#start').click();
+    }));
+  };
+  if(from)sharedInto(from,run); else run();
 }
 /* ── B8 · the end-of-episode flow ─────────────────────────────────────────────
    Outcome → stinger → up next. The terminal cutscene keeps the frame until it ends;
@@ -2787,13 +3459,24 @@ function endFlow(win){
   let waited=0;
   const go=()=>{
     if(id!==runId||!over)return;
+    /* Walked out to the shelf while this was still pending: the flow does not follow.
+       Without this, "← episodes" during the beat between the verdict and the stinger
+       drops the up-next card on top of the lobby a second later — a fullscreen card,
+       skip:false, sitting over a shelf the player is already trying to use. The end of
+       an episode belongs to the bay; leaving the bay ends it. */
+    if($('#game').classList.contains('hide'))return;
     if(cutting&&waited<12000){waited+=400;return void setTimeout(go,400);}
     const steps=[];
     if(win&&STINGER[eId])steps.push({ms:3600,
-      html:'<div class="sting">'+STINGER[eId]+'</div><span class="cine-skip">tap to skip</span>'});
-    cineShow(steps,()=>{ if(id===runId&&over)upNext(win,exam,eId); });
+      html:'<div class="sting">'+STINGER[eId]+'</div><span class="cine-skip">tap to skip</span>',
+      wire:()=>bars(true)});
+    cineShow(steps,()=>{ if(id===runId&&over&&!$('#game').classList.contains('hide'))
+      upNext(win,exam,eId); });
   };
-  setTimeout(go,win?2600:1600);
+  /* Measured from the verdict landing, not from the bell: the settle-or-flatline and the
+     sweep now sit between the two, and the old delays were being eaten by them. This is
+     the beat the player has with the mark sheet before the season asks for them back. */
+  setTimeout(go,win?1800:1600);
 }
 /* The next door that is actually open, walking the shelf left to right. */
 function nextOpen(eId){
@@ -2824,7 +3507,14 @@ function upNext(win,exam,eId){
     +(note?'<p class="un-note">'+note+'</p>':'')
     +'<div class="un-acts"><button class="btn go" data-un-go data-ga="upnext:play">▶ '+(win?'play now':'run it back')+'</button>'
     +'<button class="btn" data-un-stay data-ga="upnext:stay">'+(exam&&win?'review & anchor':'read the debrief')+'</button></div>'
-    +(auto?'<div class="un-count">starting in <b data-un-n>5</b>\u2026</div>':'')+'</div>',
+    /* The countdown reads as a ring walking backwards \u2014 the five seconds are a shape
+       shrinking rather than a digit ticking, which is what a broadcast does with the
+       same five seconds. The digit stays inside it: the ring is the feeling and the
+       number is the fact, and neither is a substitute for the other. */
+    +(auto?'<div class="un-count"><span class="un-dial">'
+      +'<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="15.5"/>'
+      +'<circle cx="18" cy="18" r="15.5" class="un-arc"/></svg>'
+      +'<b data-un-n>5</b></span> starting\u2026</div>':'')+'</div>',
     wire:r=>{
       const go=()=>{cineHide();enterEpisode(nxt.id,nxt.station);};
       r.querySelector('[data-un-go]').onclick=go;
@@ -2866,6 +3556,10 @@ function epilogue(exam){
     +(exam?'<button class="btn go" data-epi-anchor data-ga="epilogue:anchor">review &amp; anchor</button>':'')
     +'<button class="btn'+(exam?'':' go')+'" data-epi-x data-ga="epilogue:shelf">back to the shelf</button></div></div>',
     wire:r=>{
+      /* The letter cuts to white and the white cuts to black, and SEASON 2 is what is
+         standing there when it clears — a splice, the way a title comes up at the end
+         of a finale. The one place in the game a flash is the right instrument. */
+      flash();
       const a=r.querySelector('[data-epi-anchor]');
       if(a)a.onclick=()=>{cineHide();$('#result').scrollIntoView({behavior:'smooth',block:'nearest'});};
       r.querySelector('[data-epi-x]').onclick=()=>{cineHide();$('#back').click();};
