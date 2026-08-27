@@ -56,7 +56,7 @@
 </style>
 
 <header>
-  <span class="bed">BED 3 · ER</span>
+  <span class="bed" id="bed">—</span>
   <span class="pt" id="pt">—</span>
   <span class="sp"></span>
   <span class="alarmbar" id="alarm">MONITORING</span>
@@ -71,19 +71,19 @@
   </div>
   <div class="nums">
     <div class="num ecg" id="n-hr">
-      <div class="lab"><span>HR</span><span class="lim">50–120</span></div>
+      <div class="lab"><span>HR</span><span class="lim"></span></div>
       <div class="v">--</div><div class="sub">bpm</div>
     </div>
     <div class="num pleth" id="n-spo2">
-      <div class="lab"><span>SpO₂</span><span class="lim">≥ 94</span></div>
+      <div class="lab"><span>SpO₂</span><span class="lim"></span></div>
       <div class="v">--</div><div class="sub" id="s-o2">%</div>
     </div>
     <div class="num nibp" id="n-nibp">
-      <div class="lab"><span>NIBP</span><span class="lim">90–160</span></div>
+      <div class="lab"><span>NIBP</span><span class="lim"></span></div>
       <div class="v">--</div><div class="sub" id="s-nibp">mmHg</div>
     </div>
     <div class="num resp" id="n-rr">
-      <div class="lab"><span>RR</span><span class="lim">8–24</span></div>
+      <div class="lab"><span>RR</span><span class="lim"></span></div>
       <div class="v">--</div><div class="sub">/min</div>
     </div>
   </div>
@@ -107,6 +107,10 @@ const SID  = P.get('sid')  || 'default';
 // watching this demo would notice. The bay passes the name in; with no name the header says so
 // rather than inventing one.
 const PT   = P.get('pt') || '';
+// How old the patient is, and which unit this bed is in. Both come from the bay for the same
+// reason the name does — see AGE_BANDS below for why the age is not cosmetic.
+const AGE  = P.has('age') ? Number(P.get('age')) : null;
+const BED  = P.get('bed') || 'BED 3 · ER';
 
 let V = { hr:0, spo2:0, sbp:0, dbp:0, rr:0, status:'', rhythm:'sinus', pulse:true, paused:false };
 let live = false;
@@ -288,8 +292,41 @@ function frame(now){
 requestAnimationFrame(frame);
 
 // ── numbers + alarms ───────────────────────────────────────────────────────────
-const LIM = { hr:[50,120], spo2:[94,100], sbp:[90,160], rr:[8,24] };
+// Alarm limits are a function of age, and this monitor used to have exactly one set of them —
+// the adult set. Four of the season's cases are children. A three-year-old with croup sits at a
+// heart rate of 118 and breathes 28 times a minute, both of them squarely normal for three, and
+// the screen alarmed on both from the first second of the station and printed "50–120" and
+// "8–24" beside the numbers to explain itself. A paediatrician stops watching at that point, and
+// they are right to: a monitor that cannot be trusted about a well child cannot be trusted about
+// a sick one.
+//
+// Bands are the standard paediatric reference ranges (the APLS/PALS-shaped ones a resuscitation
+// chart carries), keyed by the age the bay passes in. SpO₂ does not band — 94% is 94% at every
+// age — and neither does an absent age: no age means the adult set, which is exactly what this
+// page did before, so a bay that forgets to send one degrades to the old behaviour rather than
+// to a wrong one.
+const AGE_BANDS = [
+  { max: 1,        label: 'INFANT',  hr:[100,160], rr:[30,60], sbp:[70,100] },
+  { max: 3,        label: '1–2 YR',  hr:[ 90,150], rr:[24,40], sbp:[80,110] },
+  { max: 6,        label: '3–5 YR',  hr:[ 80,140], rr:[22,34], sbp:[85,110] },
+  { max: 12,       label: '6–11 YR', hr:[ 70,120], rr:[18,30], sbp:[90,120] },
+  { max: 18,       label: '12–17 YR',hr:[ 60,100], rr:[12,20], sbp:[100,130] },
+  { max: Infinity, label: 'ADULT',   hr:[ 50,120], rr:[ 8,24], sbp:[90,160] },
+];
+const band = Number.isFinite(AGE) && AGE >= 0
+  ? AGE_BANDS.find(b => AGE < b.max)
+  : AGE_BANDS[AGE_BANDS.length - 1];
+const LIM = { hr: band.hr, spo2:[94,100], sbp: band.sbp, rr: band.rr };
 const out = (v, [lo,hi]) => v > 0 && (v < lo || v > hi);
+
+// The printed limits are the limits actually being applied. They used to be four fixed strings in
+// the markup, which meant a screen could alarm by one rule and explain itself by another.
+$('#bed').textContent = BED;
+const lim = (sel, txt) => { $(sel).querySelector('.lim').textContent = txt; };
+lim('#n-hr',   `${LIM.hr[0]}–${LIM.hr[1]}`);
+lim('#n-spo2', `≥ ${LIM.spo2[0]}`);
+lim('#n-nibp', `${LIM.sbp[0]}–${LIM.sbp[1]}`);
+lim('#n-rr',   `${LIM.rr[0]}–${LIM.rr[1]}`);
 
 // NIBP is intermittent on a real monitor — it shows the last cuff reading and how long ago it
 // was taken, not a live number. Faking it as continuous is a tell.
@@ -340,7 +377,7 @@ async function poll(){
       // take a "cuff reading" on first sight and then every 3 minutes, like an ER cycle
       if (!nibpAt || Date.now() - nibpAt > 180000){ nibpVal = [d.sbp, d.dbp]; nibpAt = Date.now(); }
       $('#pt').textContent = [PT || 'UNIDENTIFIED', d.status || ''].filter(Boolean).join(' · ');
-      $('#src').textContent = `feed: ${BASE || location.origin}/device/vitals · sid=${SID}`;
+      $('#src').textContent = `feed: ${BASE || location.origin}/device/vitals · sid=${SID} · limits: ${band.label}`;
       $('#net').textContent = '';
     } else { live = false; $('#net').textContent = 'no case in play'; }
   } catch(e){ live = false; $('#net').textContent = 'engine unreachable — ' + e.message; }

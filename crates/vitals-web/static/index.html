@@ -2129,6 +2129,24 @@ const CHIPS={
    Presentation only: no beat key, no chip, no order and no tape entry changes with it. */
 const PRO_F={s:'she',o:'her',p:'her'}, PRO_M={s:'he',o:'him',p:'his'};
 const pro=e=>/·\s*M\b/.test(((e||ep()||{}).who)||'')?PRO_M:PRO_F;
+/* How old the patient is, read off the same `who` string the bed label prints — "Somchai · M 71",
+   "Beam · F 6 · 20 kg". The monitor needs it because alarm limits are a function of age and it
+   had only the adult set: a three-year-old at 118 and 28 is a normal three-year-old, and the
+   screen alarmed on her from the first second. `null` when the string does not say, which the
+   monitor reads as "use the adult limits" — the behaviour it had before it was told anything. */
+const ageOf=e=>{ const m=/·\s*[MF]\s*(\d{1,3})\b/.exec(((e||ep()||{}).who)||''); return m?+m[1]:null; };
+/* Which bed this is and which unit it is in, for the monitor's banner — it printed a hard-coded
+   "BED 3 · ER" over every case in the season, including the paediatric bay in EP3 and twelve OSCE
+   stations that are not bed 3 and not the ER. A station wears its own name. */
+const bedOf=e=>{
+  e=e||ep()||{};
+  const p=(e.place||'').toLowerCase();
+  const unit = e.spec==='paediatrics'||p.includes('paediatric') ? 'PAEDS'
+             : p.includes('resus')  ? 'RESUS'
+             : p.includes('opd')||p.includes('clinic') ? 'OPD'
+             : 'ER';
+  return (e.station ? (e.n||'OSCE') : 'BED 3')+' · '+unit;
+};
 /* `{s}` subject, `{o}` object, `{p}` possessive. A line with no placeholder is a line that never
    needed one — "the reaction comes back" is true whoever it comes back in. */
 const fillPro=(t,e)=>{ const g=pro(e);
@@ -3103,8 +3121,11 @@ $('#mic').onclick=()=>{
    the case itself: no diagnosis, no rubric, nothing but a name, an age and a flag. */
 const deviceSrc=dev=>{
   const e=ep();
+  const a=ageOf(e);
   return '/device/'+dev+'?sid='+encodeURIComponent(id)
     +'&pt='+encodeURIComponent(e.who||'')
+    +(a==null?'':'&age='+a)
+    +'&bed='+encodeURIComponent(bedOf(e))
     +(examMode()?'&exam=1':'');
 };
 document.querySelectorAll('.dev').forEach(b=>b.onclick=()=>{
