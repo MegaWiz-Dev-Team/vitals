@@ -797,21 +797,21 @@ const SETS: &[StationSet] = &[
     ]},
     // gate3 · 3 cases · ceiling 9 · need 6 (67%)
     StationSet { gate: "gate3", opens: "ep3", need: 6, members: &[
-        SetMember { id: "osce-b",  case: "ddx-possible-nstemi-stemi-2", title: "Crushing chest pain into both arms — M 25", specialty: "eir-cardio", band: "emergency", tier: Difficulty::Intern },
-        SetMember { id: "osce-b2", case: "ddx-pericarditis-1", title: "Chest pain that hates lying flat — M 14, febrile", specialty: "eir-cardio", band: "emergency", tier: Difficulty::Intern },
-        SetMember { id: "osce-b3", case: "ddx-croup-1", title: "Barking cough on the second night — F 3", specialty: "eir-ent", band: "paediatrics", tier: Difficulty::Intern },
+        SetMember { id: "osce-b",  case: "ddx-possible-nstemi-stemi-2", title: "Chest pain — M 25", specialty: "eir-cardio", band: "emergency", tier: Difficulty::Intern },
+        SetMember { id: "osce-b2", case: "ddx-pericarditis-1", title: "Chest pain — M 14", specialty: "eir-cardio", band: "emergency", tier: Difficulty::Intern },
+        SetMember { id: "osce-b3", case: "ddx-croup-1", title: "Barking cough — F 3", specialty: "eir-ent", band: "paediatrics", tier: Difficulty::Intern },
     ]},
     // gate4 · 3 cases · ceiling 9 · need 7 (78%)
     StationSet { gate: "gate4", opens: "ep4", need: 7, members: &[
         SetMember { id: "osce-c",  case: "ddx-croup-2", title: "Barking cough and drooling, worse at night — F 6", specialty: "eir-ent", band: "paediatrics", tier: Difficulty::Resident },
-        SetMember { id: "osce-c2", case: "ddx-bronchospasm-acute-asthma-exacerbation-2", title: "Wheeze and breathlessness — F 53, third attack", specialty: "eir-pulmonology", band: "emergency", tier: Difficulty::Intern },
-        SetMember { id: "osce-c3", case: "ddx-pneumonia-2", title: "A week of cough turned rusty — F 25, febrile", specialty: "eir-pulmonology", band: "emergency", tier: Difficulty::Intern },
+        SetMember { id: "osce-c2", case: "ddx-bronchospasm-acute-asthma-exacerbation-2", title: "Wheeze and breathlessness — F 53", specialty: "eir-pulmonology", band: "emergency", tier: Difficulty::Intern },
+        SetMember { id: "osce-c3", case: "ddx-pneumonia-2", title: "A week of cough — F 25", specialty: "eir-pulmonology", band: "emergency", tier: Difficulty::Intern },
     ]},
     // gate5 · 4 cases · ceiling 12 · need 10 (83%)
     StationSet { gate: "gate5", opens: "ep5", need: 10, members: &[
-        SetMember { id: "osce-d",  case: "embla-upper-gastrointestinal-bleeding-intern", title: "Vomited blood, black stool since morning — M 62", specialty: "eir-gastroenterology", band: "emergency", tier: Difficulty::Intern },
+        SetMember { id: "osce-d",  case: "embla-upper-gastrointestinal-bleeding-intern", title: "Vomited blood — M 62", specialty: "eir-gastroenterology", band: "emergency", tier: Difficulty::Intern },
         SetMember { id: "osce-d2", case: "ddx-pulmonary-embolism-2", title: "Sudden breathlessness, clear chest — F 55", specialty: "eir-pulmonology", band: "emergency", tier: Difficulty::Resident },
-        SetMember { id: "osce-d3", case: "ddx-p-anaphylaxis-1", title: "Wheals, swollen lips and a wheeze — F 6, 20 kg", specialty: "eir-emergency", band: "paediatrics", tier: Difficulty::Intern },
+        SetMember { id: "osce-d3", case: "ddx-p-anaphylaxis-1", title: "Wheals, swollen lips and a wheeze — F 6", specialty: "eir-emergency", band: "paediatrics", tier: Difficulty::Intern },
         SetMember { id: "osce-d4", case: "embla-septic-shock-with-multi-organ-failure-resident", title: "Fever, shaking, pressure of 80 — F 72", specialty: "eir-emergency", band: "emergency", tier: Difficulty::Resident },
     ]},
 ];
@@ -2828,6 +2828,17 @@ mod tests {
             "gi bleed", "gastrointestinal", "peptic", "ulcer", "shock",
             "adrenaline", "epinephrine", "steroid", "dexamethasone", "antibiotic", "aspirin",
             "heparin", "thrombolys", "salbutamol", "nebulis",
+            // The rest of what these twelve rubrics pay for. The list was written against the
+            // titles as they stood and stopped there, so a rewrite could reach for a synonym of
+            // the answer and land inside the gap: "melaena" is the diagnosis of a GI bleed said
+            // in one word, "urticaria" is anaphylaxis said in one word, and every drug below is
+            // an `expected` item on some sheet. A stem names what the doorway shows — a rash, a
+            // cough, vomited blood — and none of these is that.
+            "melaena", "melena", "haematemes", "hematemes", "varice", "urticaria",
+            "angio-oedema", "angioedema", "pneumothorax", "tuberculosis", "bronchiolitis",
+            "tracheitis", "urosepsis", "hydrocortisone", "prednisolone", "chlorphen",
+            "ipratropium", "amoxi", "ceftriaxone", "pantoprazole", "colchicine", "ibuprofen",
+            "clopidogrel", "noradrenaline", "endoscopy", "intubat", "defibrillat",
         ];
         let titles = SETS
             .iter()
@@ -2842,6 +2853,56 @@ mod tests {
             }
             assert!(!t.is_empty(), "{id} has no title");
         }
+    }
+
+    /// **The same stem, written twice, and twice it has drifted.**
+    ///
+    /// A station title lives in two files: [`SETS`] here, which is what the server puts in the
+    /// save list, the player bar and `/api/sets`, and `SEASON` in `static/index.html`, which is
+    /// what the shelf card and the title card print. Nothing joined them, so the fix for
+    /// "the card is answering the mark sheet" was applied to one copy and not the other — twice.
+    /// The visible result the second time: the card on the shelf still read
+    /// "Wheals, swollen lips and a wheeze — F 6, 20 kg" — the weight is the paediatric dose
+    /// calculation, and `osce-d3`'s sheet pays for getting it right — while the server had
+    /// already dropped it.
+    ///
+    /// Neither copy can simply be deleted: the page is served as a static file and reads its own
+    /// table before it has spoken to the server, and the server needs the stem with no page in
+    /// the room at all (the save list, the CLI, the mark sheet). So they stay two copies with one
+    /// value, and this is what says so. It reads the page rather than keeping a third list, for
+    /// the same reason `every_alias_names_an_order_a_case_could_recognise` does in `lang.rs`.
+    #[test]
+    fn the_shelf_card_and_the_server_print_the_same_stem() {
+        // The one table in the page that carries a station card. Anchored so a stray `{id:'…'`
+        // somewhere else in the file can never be read as the shelf.
+        let season = PAGE
+            .split_once("const SEASON=[")
+            .map(|(_, rest)| rest)
+            .expect("SEASON is gone from the page");
+        let card = |id: &str| -> &str {
+            let at = season
+                .find(&format!("{{id:'{id}',"))
+                .unwrap_or_else(|| panic!("{id} has no card in SEASON"));
+            let rest = &season[at..];
+            let from = rest.find(",t:'").unwrap_or_else(|| panic!("{id}'s card has no title")) + 4;
+            let to = from + rest[from..].find('\'').unwrap_or_else(|| panic!("{id}'s title never ends"));
+            &rest[from..to]
+        };
+        for m in SETS.iter().flat_map(|s| s.members.iter()) {
+            assert_eq!(
+                card(m.id),
+                m.title,
+                "{}: the shelf card and the set table disagree about the stem",
+                m.id
+            );
+        }
+        // And the page holds exactly these twelve — a card the server has never heard of would
+        // be a station nobody can score, and it would pass the loop above by not being in it.
+        assert_eq!(
+            season.matches("station:true").count(),
+            SETS.iter().map(|s| s.members.len()).sum::<usize>(),
+            "the page shows a different number of stations than the server declares"
+        );
     }
 
     /// Same rule, the other half of the card: the band is what a circuit prints on the door, and
