@@ -1619,6 +1619,16 @@ fn main() {
                                 Err(e) => json(serde_json::json!({ "error": e })),
                                 Ok((rubric, det)) => json(serde_json::json!({
                                     "case": rubric.case,
+                                    // Where the case came from, and what field it belongs to.
+                                    // These used to ride on /api/chain, where a GET before the
+                                    // exam started read them for all twelve stations at once —
+                                    // a bank id names the diagnosis and a specialty names the
+                                    // organ. They live here now because this endpoint is
+                                    // already sealed behind an outcome: by the time anyone can
+                                    // read them, the clock has stopped and the leaf is fixed,
+                                    // which is exactly when a provenance line is worth reading.
+                                    "bank_case": set_member(&s.ep).map(|m| m.case),
+                                    "specialty": set_member(&s.ep).map(|m| m.specialty),
                                     "score": det.earned,
                                     "max": det.max,
                                     "bps": det.bps(),
@@ -1814,13 +1824,19 @@ fn main() {
                         // page never multiplies by a 3 of its own.
                         "ceiling": st.ceiling(),
                         "complete": st.members.iter().all(|(_, h)| h.is_some()),
+                        // ── what a member may say before the bell ────────────────────
+                        // `case` and `specialty` are NOT here, and this is the whole point of
+                        // the shape. The bank id spells the diagnosis out loud
+                        // ("ddx-anaphylaxis-1"), and the Eir specialty names the organ the
+                        // rubric is marking — so this one unauthenticated GET used to hand a
+                        // candidate the answer to all twelve stations before they sat any of
+                        // them, undoing every stem, band and nudge fix that came before it.
+                        // Both now travel on `/api/marks`, which opens only once the case has
+                        // an outcome. Nothing on this endpoint may name a disease again.
                         "members": st.members.iter().map(|(m, h)| serde_json::json!({
                             "id": m.id,
-                            "case": m.case,
                             "title": m.title,
-                            "specialty": m.specialty,
-                            // What the card wears. `specialty` stays in the payload for the
-                            // record and for the debrief, but the shelf reads `band` — an
+                            // What the card wears: the circuit band, never the organ — an
                             // organ name over a stem is a free rubric point (see SetMember).
                             "band": m.band,
                             "tier": tier_str(m.tier),

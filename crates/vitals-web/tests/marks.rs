@@ -200,7 +200,11 @@ fn the_page_only_asks_for_the_sheet_once_the_run_is_over() {
     assert!(body.contains("/api/marks"), "showMarks no longer fetches the sheet");
     assert!(body.contains("if(!id||!over) return;"), "showMarks lost its guard — it would render mid-run");
     // And it is raised from the bell, not from paint().
-    assert!(page.contains("showDebrief(); showMarks();"), "showMarks is not raised by finish()");
+    assert!(page.contains("showMarks();"), "showMarks is not raised by finish()");
+    assert!(
+        page.contains("showDebrief(); showProvenance(null); showMarks();"),
+        "the bell no longer clears provenance before re-filling it from the sealed sheet"
+    );
 }
 
 /// The sheet and the star are one walk over one tape, and the test proves it the hard way:

@@ -2992,7 +2992,7 @@ function finish(v){
   /* Every sealed line in the feed now says what it was. Matched by position against the run's
      own harm beats, which is the order they were appended in. */
   unsealHarm(v);
-  showDebrief(); showMarks(); showProvenance(); showReveal();
+  showDebrief(); showProvenance(null); showMarks(); showReveal();
   $('#outcome').textContent=say('terminal:'+v.outcome);
   $('#outnote').textContent=(v.harm.length?'Harm on the record: '+v.harm.join(', '):'No harm recorded.')+'  ·  '+v.outcome;
   $('#leaf').textContent=v.leaf;
@@ -3296,7 +3296,12 @@ async function showMarks(){
   /* The seal, said twice. The server is the one that holds. */
   if(!id||!over) return;
   let m; try{ m=await (await fetch('/api/marks?id='+id+asMe())).json(); }catch(e){ return; }
-  if(!m||m.error||!Array.isArray(m.items)||!m.items.length) return;
+  if(!m||m.error) return;
+  /* Provenance rides in on the same sealed answer, and is printed from here rather than from
+     the shelf's set table — see showProvenance(). It goes up even for a case with no rubric,
+     because where the case came from is true whether or not there was a sheet to mark. */
+  showProvenance(m);
+  if(!Array.isArray(m.items)||!m.items.length) return;
   const bps=m.bps||0, t=tierFor(bps), nb=nextBar(bps);
   const pct=(bps/100).toFixed(bps%100?1:0);
   /* The same sentence the anchor prints, available before anchoring and in practice —
@@ -3334,17 +3339,21 @@ function showReveal(){
 }
 
 /* Where the case came from — printed once the score exists, which is the only moment it means
-   anything to the person reading it. The id is the server's own (the set table carries `case`
-   for every member), so the line cannot credit a bank the shelf is not actually drawing from,
-   and an episode — written for this season, not converted from anything — gets no line at all.
+   anything to the person reading it. An episode — written for this season, not converted from
+   anything — gets no line at all.
    It says "deterministic", not "validated": the mark sheets in demo/rubrics still carry
    `status: provisional … point weights pending clinical review`, and a screen that will be
-   filmed must not promise a sign-off nobody has given yet. */
-function showProvenance(){
+   filmed must not promise a sign-off nobody has given yet.
+
+   The bank id arrives on the /api/marks payload now, not on the shelf's set table. It used to
+   be read out of `memberOf()`, which meant every station's bank id — and the disease spelled
+   into it, "ddx-anaphylaxis-1" — was sitting in the one GET the lobby makes before anybody
+   sits anything. Called with the sealed answer, or with nothing to clear the line between
+   runs. */
+function showProvenance(m){
   const el=$('#prov'); if(!el)return;
-  const info=memberOf($('#ep').value);
-  el.textContent = info&&info.m&&info.m.case
-    ? `case ${info.m.case} · clinical case bank · deterministic score — anyone can re-derive it`
+  el.textContent = m&&m.bank_case
+    ? `case ${m.bank_case} · clinical case bank · deterministic score — anyone can re-derive it`
     : '';
 }
 
@@ -3500,14 +3509,13 @@ const POPFOR=new Set();
 let DOORWATCH=false, LOCKED_PREV=null, RINGWAS=null;
 const specShort=sp=>(sp||'').replace(/^eir-/,'').replace('gastroenterology','gastro')
   .replace('pulmonology','pulmo').replace('paediatrics','paeds').toUpperCase();
-/* What the card is allowed to say about the case's field. The server sends both — the Eir
-   specialty for the record, the circuit band for the shelf — and the shelf takes the band:
-   GASTRO over "vomited blood, black stool" tells the candidate it is not the heart, which is
-   the exact question osce-d's mark sheet is asking. Older cached set tables have no band, so
-   an organ name is widened here rather than painted. */
-const BANDFOR={'eir-emergency':'emergency','eir-cardio':'emergency','eir-pulmonology':'emergency',
-  'eir-gastroenterology':'emergency','eir-ent':'paediatrics','eir-paediatrics':'paediatrics'};
-const bandOf=m=>m.band||BANDFOR[m.specialty]||'medicine';
+/* What the card is allowed to say about the case's field. The circuit band, and only the
+   circuit band: GASTRO over "vomited blood, black stool" tells the candidate it is not the
+   heart, which is the exact question osce-d's mark sheet is asking, so the organ specialty is
+   not on this endpoint at all any more — it arrives with the mark sheet, after the bell. A
+   member with no band (an old cached set table, a member added without one) falls back to the
+   widest label there is rather than to anything that names an organ. */
+const bandOf=m=>m.band||'medicine';
 function paintSeason(){
   const seasonIds=new Set(SEASON.map(x=>x.id));
   /* One shut door explains itself; every later one just wears the count — the same lock
