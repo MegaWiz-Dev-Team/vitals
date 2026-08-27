@@ -561,7 +561,7 @@
   },
   {
    "id": "death_arrest",
-   "kind": "lose",
+   "kind": "death",
    "label": "Arrest — reperfusion never came"
   }
  ]

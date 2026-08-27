@@ -198,7 +198,7 @@
    "bands": [],
    "transitions": [
     {
-     "outcome": "death_at_home",
+     "outcome": "death_biphasic",
      "when": {
       "var": "t_in_state",
       "op": "ge",
@@ -496,12 +496,12 @@
   },
   {
    "id": "death_arrest",
-   "kind": "lose",
+   "kind": "death",
    "label": "Obstructive shock to arrest"
   },
   {
-   "id": "death_at_home",
-   "kind": "lose",
+   "id": "death_biphasic",
+   "kind": "death",
    "label": "Discharged as anxiety — died at home"
   }
  ]

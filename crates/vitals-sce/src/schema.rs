@@ -176,7 +176,16 @@ pub struct Trigger {
     #[serde(default = "default_true")] pub once: bool,
 }
 
-/// A terminal outcome class. `kind` ∈ win | death | transfer (UI/scoring maps it).
+/// The only outcome classes the runtime acts on.
+///
+/// This is not documentation, it is the list [`Sce::validate`] checks against — because a `kind`
+/// the engine does not recognise is not a parse error, it is a **silent** one: `terminate` sets
+/// no `Dead` status and zeroes no vitals, so the case reaches its ending with the monitor still
+/// sweeping over a patient the script has killed. Four shipped scenarios said `"lose"` and did
+/// exactly that, for as long as they have existed.
+pub const OUTCOME_KINDS: [&str; 3] = ["win", "death", "transfer"];
+
+/// A terminal outcome class. `kind` ∈ [`OUTCOME_KINDS`] (UI/scoring maps it).
 #[derive(Debug, Clone, Deserialize)]
 pub struct OutcomeDef {
     pub id: String,
@@ -259,6 +268,27 @@ impl Sce {
         }
         if states.len() != self.states.len() {
             errs.push("duplicate state id(s)".into());
+        }
+
+        // An outcome the engine cannot read is the worst kind of authoring mistake, because
+        // nothing fails: an unknown `kind` leaves the patient alive on the screen, and an
+        // unknown `id` collapses through `outcome_enum`'s fallback onto some *other* ending,
+        // taking its cutscene and its debrief line with it. Both are caught here, where an
+        // author finds them, rather than by a marker watching a corpse breathe.
+        for o in &self.outcomes {
+            if !OUTCOME_KINDS.contains(&o.kind.as_str()) {
+                errs.push(format!(
+                    "outcome '{}': kind '{}' is not one of {:?} — the engine would ignore it",
+                    o.id, o.kind, OUTCOME_KINDS
+                ));
+            }
+            if !crate::runtime::OUTCOME_IDS.contains(&o.id.as_str()) {
+                errs.push(format!(
+                    "outcome '{}' is not one of {:?} — the engine would play a different ending",
+                    o.id,
+                    crate::runtime::OUTCOME_IDS
+                ));
+            }
         }
 
         for st in &self.states {

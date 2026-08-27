@@ -664,6 +664,13 @@ fn parse_status(s: &str) -> PatientStatus {
     }
 }
 
+/// Every outcome id this bridge actually knows a name for.
+///
+/// One list, checked by [`crate::schema::Sce::validate`], so an author cannot invent a
+/// `death_at_home` that quietly plays as `death_arrest` — which EP4 did, taking the "dies at
+/// home" line out of the game and leaving it as dead code in the page.
+pub const OUTCOME_IDS: [&str; 4] = ["win_discharge", "win_icu", "death_arrest", "death_biphasic"];
+
 /// Bridge SCE outcome ids → the legacy `Outcome` enum (kept while the Director +
 /// Story-Mode HUD still speak `Outcome`). Unknown ids fall back by `kind`.
 fn outcome_enum(id: &str, kind: &str) -> Outcome {
