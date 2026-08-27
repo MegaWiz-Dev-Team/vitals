@@ -382,10 +382,26 @@ struct SetMember {
     id: &'static str,
     /// The embla-cases id this member is converted from. Provenance, worn on the card.
     case: &'static str,
-    /// The clinic display title — the real case name, the way Embla's bank names it.
+    /// The clinic display title — **the OSCE stem, never the answer**. A station is a mark
+    /// sheet with a rubric item worth 2–4 points for naming the diagnosis, and this string is
+    /// on the shelf card, on the title card, and in the player bar for the whole eight to
+    /// fourteen minutes of the exam. "Pericarditis — acute chest pain" therefore paid the
+    /// candidate before the clock started. What a real circuit puts on the door is the
+    /// presentation: age, sex, complaint, the one thing visible from the doorway. Rule for
+    /// anything written here: **no disease and no treatment may appear in it.** The diagnosis
+    /// is revealed on the debrief instead, where the exam is already over ([`REVEAL`] in
+    /// index.html, beside the provenance line).
     title: &'static str,
-    /// The Eir specialty chip.
+    /// The Eir specialty. Kept for the record and for the debrief line — it is deliberately
+    /// **not** what the shelf card wears any more; see [`SetMember::band`].
     specialty: &'static str,
+    /// The OSCE circuit band the card shows instead of the organ specialty. "eir-gastroenterology"
+    /// over an epigastric-pain-and-shock stem answers the station's own trap (bleed, not ACS)
+    /// before the candidate touches the patient, and "eir-pulmonology" over a clear-chested
+    /// hypoxia does the same to the masquerader. A real circuit's door says *Medicine* or
+    /// *Paediatrics*; that is the widest label that still tells a player what kind of station
+    /// they are picking, and it names no organ the rubric marks.
+    band: &'static str,
     /// The tier the case plays at. [`difficulty`] reads this for every member, so adding a
     /// Phase-5b member here is the whole server arm: files land, the member goes live.
     tier: Difficulty,
@@ -416,27 +432,27 @@ struct StationSet {
 const SETS: &[StationSet] = &[
     // gate2 · 2 cases · ceiling 6 · need 3 (50%)
     StationSet { gate: "gate2", opens: "ep2", need: 3, members: &[
-        SetMember { id: "osce-a",  case: "ddx-anaphylaxis-1", title: "Anaphylaxis — adult, first presentation", specialty: "eir-emergency", tier: Difficulty::Student },
-        SetMember { id: "osce-a2", case: "ddx-anaphylaxis-2", title: "Anaphylaxis — adult, second presentation", specialty: "eir-emergency", tier: Difficulty::Student },
+        SetMember { id: "osce-a",  case: "ddx-anaphylaxis-1", title: "Rash and facial swelling after a meal — M 71", specialty: "eir-emergency", band: "emergency", tier: Difficulty::Student },
+        SetMember { id: "osce-a2", case: "ddx-anaphylaxis-2", title: "Belly cramps, loose stools, swollen face — F 68", specialty: "eir-emergency", band: "emergency", tier: Difficulty::Student },
     ]},
     // gate3 · 3 cases · ceiling 9 · need 6 (67%)
     StationSet { gate: "gate3", opens: "ep3", need: 6, members: &[
-        SetMember { id: "osce-b",  case: "ddx-possible-nstemi-stemi-2", title: "Acute chest pain — possible NSTEMI / STEMI", specialty: "eir-cardio", tier: Difficulty::Intern },
-        SetMember { id: "osce-b2", case: "ddx-pericarditis-1", title: "Pericarditis — acute chest pain", specialty: "eir-cardio", tier: Difficulty::Intern },
-        SetMember { id: "osce-b3", case: "ddx-croup-1", title: "Croup — child, first presentation", specialty: "eir-ent", tier: Difficulty::Intern },
+        SetMember { id: "osce-b",  case: "ddx-possible-nstemi-stemi-2", title: "Crushing chest pain into both arms — M 25", specialty: "eir-cardio", band: "emergency", tier: Difficulty::Intern },
+        SetMember { id: "osce-b2", case: "ddx-pericarditis-1", title: "Chest pain that hates lying flat — M 14, febrile", specialty: "eir-cardio", band: "emergency", tier: Difficulty::Intern },
+        SetMember { id: "osce-b3", case: "ddx-croup-1", title: "Barking cough on the second night — F 3", specialty: "eir-ent", band: "paediatrics", tier: Difficulty::Intern },
     ]},
     // gate4 · 3 cases · ceiling 9 · need 7 (78%)
     StationSet { gate: "gate4", opens: "ep4", need: 7, members: &[
-        SetMember { id: "osce-c",  case: "ddx-croup-2", title: "Croup — child, worse every night", specialty: "eir-ent", tier: Difficulty::Resident },
-        SetMember { id: "osce-c2", case: "ddx-bronchospasm-acute-asthma-exacerbation-2", title: "Acute asthma exacerbation — bronchospasm", specialty: "eir-pulmonology", tier: Difficulty::Intern },
-        SetMember { id: "osce-c3", case: "ddx-pneumonia-2", title: "Pneumonia — adult", specialty: "eir-pulmonology", tier: Difficulty::Intern },
+        SetMember { id: "osce-c",  case: "ddx-croup-2", title: "Barking cough and drooling, worse at night — F 6", specialty: "eir-ent", band: "paediatrics", tier: Difficulty::Resident },
+        SetMember { id: "osce-c2", case: "ddx-bronchospasm-acute-asthma-exacerbation-2", title: "Wheeze and breathlessness — F 53, third attack", specialty: "eir-pulmonology", band: "emergency", tier: Difficulty::Intern },
+        SetMember { id: "osce-c3", case: "ddx-pneumonia-2", title: "A week of cough turned rusty — F 25, febrile", specialty: "eir-pulmonology", band: "emergency", tier: Difficulty::Intern },
     ]},
     // gate5 · 4 cases · ceiling 12 · need 10 (83%)
     StationSet { gate: "gate5", opens: "ep5", need: 10, members: &[
-        SetMember { id: "osce-d",  case: "embla-upper-gastrointestinal-bleeding-intern", title: "Upper GI bleeding — adult, full case", specialty: "eir-gastroenterology", tier: Difficulty::Intern },
-        SetMember { id: "osce-d2", case: "ddx-pulmonary-embolism-2", title: "Pulmonary embolism — adult", specialty: "eir-pulmonology", tier: Difficulty::Resident },
-        SetMember { id: "osce-d3", case: "ddx-p-anaphylaxis-1", title: "Anaphylaxis — paediatric", specialty: "eir-emergency", tier: Difficulty::Intern },
-        SetMember { id: "osce-d4", case: "embla-septic-shock-with-multi-organ-failure-resident", title: "Septic shock — multi-organ failure", specialty: "eir-emergency", tier: Difficulty::Resident },
+        SetMember { id: "osce-d",  case: "embla-upper-gastrointestinal-bleeding-intern", title: "Vomited blood, black stool since morning — M 62", specialty: "eir-gastroenterology", band: "emergency", tier: Difficulty::Intern },
+        SetMember { id: "osce-d2", case: "ddx-pulmonary-embolism-2", title: "Sudden breathlessness, clear chest — F 55", specialty: "eir-pulmonology", band: "emergency", tier: Difficulty::Resident },
+        SetMember { id: "osce-d3", case: "ddx-p-anaphylaxis-1", title: "Wheals, swollen lips and a wheeze — F 6, 20 kg", specialty: "eir-emergency", band: "paediatrics", tier: Difficulty::Intern },
+        SetMember { id: "osce-d4", case: "embla-septic-shock-with-multi-organ-failure-resident", title: "Fever, shaking, pressure of 80 — F 72", specialty: "eir-emergency", band: "emergency", tier: Difficulty::Resident },
     ]},
 ];
 
@@ -542,13 +558,13 @@ fn title(id: &str) -> &'static str {
         "ep3" => "EP3 · Don't Make Him Cry",
         "ep4" => "EP4 · The Masquerader",
         "ep5" => "EP5 · The Night the Stars Fell",
-        // Stations wear the clinic name, not a drama title (Station Sets v2: การ์ดคลินิก
-        // ไม่ใช่การ์ดละคร). The prefix keeps the station id readable in the save list; the
-        // case name is the one Embla's bank uses. Display only — hashes never move from here.
-        "osce-a" => "OSCE-A · Anaphylaxis — adult, first presentation",
-        "osce-b" => "OSCE-B · Acute chest pain — possible NSTEMI / STEMI",
-        "osce-c" => "OSCE-C · Croup — child, worse every night",
-        "osce-d" => "OSCE-D · Upper GI bleeding — adult, full case",
+        // Stations wear the stem, not a drama title and not the answer (see [`SetMember::title`]:
+        // this string rides the player bar for the whole exam). The prefix keeps the station id
+        // readable in the save list. Display only — hashes never move from here.
+        "osce-a" => "OSCE-A · Rash and facial swelling after a meal — M 71",
+        "osce-b" => "OSCE-B · Crushing chest pain into both arms — M 25",
+        "osce-c" => "OSCE-C · Barking cough and drooling, worse at night — F 6",
+        "osce-d" => "OSCE-D · Vomited blood, black stool since morning — M 62",
         _ => set_member(id).map(|m| m.title).unwrap_or("EP1 · The Last Bite"),
     }
 }
@@ -1270,6 +1286,10 @@ fn main() {
                             "case": m.case,
                             "title": m.title,
                             "specialty": m.specialty,
+                            // What the card wears. `specialty` stays in the payload for the
+                            // record and for the debrief, but the shelf reads `band` — an
+                            // organ name over a stem is a free rubric point (see SetMember).
+                            "band": m.band,
                             "tier": tier_str(m.tier),
                             "playable": h.is_some(),
                         })).collect::<Vec<_>>(),
@@ -2065,6 +2085,47 @@ mod tests {
         assert_eq!(difficulty("osce-b"), Difficulty::Intern);
         assert_eq!(difficulty("osce-c"), Difficulty::Resident);
         assert_eq!(difficulty("osce-d"), Difficulty::Intern);
+    }
+
+    /// A station title is on screen from the shelf card through the title card and then in the
+    /// player bar for every minute of the exam — while the mark sheet is paying 2–4 points for
+    /// naming the diagnosis. So the rule is mechanical, and so is the check: no station's display
+    /// copy may contain a disease or a treatment. This test is the reason the rule survives the
+    /// next person who adds a member and reaches for the case name.
+    #[test]
+    fn no_station_title_names_the_answer_it_is_marking() {
+        // Diseases the rubrics name, and the drugs their `expected` items pay for.
+        const GIVEAWAYS: &[&str] = &[
+            "anaphyla", "stemi", "infarct", "coronary", "pericarditis", "myocarditis", "croup",
+            "epiglott", "asthma", "bronchospasm", "pneumonia", "embolism", "sepsis", "septic",
+            "gi bleed", "gastrointestinal", "peptic", "ulcer", "shock",
+            "adrenaline", "epinephrine", "steroid", "dexamethasone", "antibiotic", "aspirin",
+            "heparin", "thrombolys", "salbutamol", "nebulis",
+        ];
+        let titles = SETS
+            .iter()
+            .flat_map(|s| s.members.iter())
+            .map(|m| (m.id, m.title.to_string()))
+            // The save-list copy is the same string with an id in front of it; it leaks the same.
+            .chain(SETS.iter().flat_map(|s| s.members.iter()).map(|m| (m.id, title(m.id).to_string())));
+        for (id, t) in titles {
+            let low = t.to_lowercase();
+            for bad in GIVEAWAYS {
+                assert!(!low.contains(bad), "{id} title says the answer out loud: {t:?} contains {bad:?}");
+            }
+            assert!(!t.is_empty(), "{id} has no title");
+        }
+    }
+
+    /// Same rule, the other half of the card: the band is what a circuit prints on the door, and
+    /// it must stay wider than the organ the station is about.
+    #[test]
+    fn a_station_card_wears_a_circuit_band_not_an_organ() {
+        const BANDS: &[&str] = &["emergency", "paediatrics", "medicine", "surgery"];
+        for m in SETS.iter().flat_map(|s| s.members.iter()) {
+            assert!(BANDS.contains(&m.band), "{} wears {:?}, which is not a circuit band", m.id, m.band);
+            assert!(!m.band.starts_with("eir-"), "{} is wearing the Eir specialty on the card", m.id);
+        }
     }
 
     /// The commit gate and the anchor scorer both ask this function, so the set of cases that

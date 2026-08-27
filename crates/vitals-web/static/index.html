@@ -619,6 +619,11 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
 /* where the case came from — a footnote under the score, not a badge on the shelf */
 .prov{margin-top:.35rem;font-family:"IBM Plex Mono",monospace;font-size:.67rem;color:var(--ink-3)}
 .prov:empty{display:none}
+/* The answer, after the bell. It sits above provenance and reads louder than it, because this
+   is the line the candidate came back to the debrief for. */
+.reveal{margin-top:.6rem;font-family:Archivo,sans-serif;font-weight:700;font-size:.92rem;
+  color:var(--mint-d);border-left:3px solid var(--mint);padding-left:.55rem}
+.reveal:empty{display:none}
 
 /* ── the meter and the ceiling ────────────────────────────────────────────────
    The bay is free and the compute is donated, so the constraint is shown rather than hidden:
@@ -773,9 +778,12 @@ a.give:hover{filter:brightness(1.06)}
          paintSets() fills it from /api/chain's set table joined with your certified tiers. -->
     <div class="sets" id="setbar"></div>
 
+    <!-- The case bank is not a brand anyone in this game has heard of. It signs the score
+         (#prov, after a run) and it is named on the landing page, where the claim is being made
+         to a buyer. In the shelf it was a second logo on a line about stars. -->
     <p class="lb-foot">Every episode door is opened by stars from its own OSCE stations —
-       real cases from the Embla bank, ★ for a pass, ★★ for excellence, ★★★ for a flawless
-       run. Skill unlocks the story; nothing you pay ever changes your standing.</p>
+       ★ for a pass, ★★ for excellence, ★★★ for a flawless run. Skill unlocks the story;
+       nothing you pay ever changes your standing.</p>
   </div>
 </div>
 
@@ -911,6 +919,10 @@ a.give:hover{filter:brightness(1.06)}
     <div class="db" id="db"></div>
     <div class="verdict" id="verdict"></div>
     <div class="hint" style="margin-top:.5rem">Hand the tape and the scenario to anyone — they recompute this leaf without asking us.</div>
+    <!-- The answer, released by the bell. The station's own title is a stem all the way through
+         the exam — the rubric pays for naming the diagnosis — so this is where the candidate is
+         finally told what they were looking at. Filled by showReveal(); stations only. -->
+    <div class="reveal" id="reveal"></div>
     <!-- Provenance belongs where it means something: after the score, not on the card of a case
          you are about to sit. Filled by showProvenance() for stations; empty everywhere else. -->
     <div class="prov" id="prov"></div>
@@ -1116,20 +1128,26 @@ const SEASON=[
   d:'A nineteen-year-old, ten minutes after the wrong salad. Her throat is closing.'},
  /* The stations are exam-only interludes — same bay, same engine, but the card commits
     exam-ness before the first order, and the stars it earns open its set's episode door.
-    Station Sets v2: the shelf face is a clinic card — t is the real case name (the server's
-    set table is the authority; these are the instant-paint copies), spec the Eir specialty.
-    Copy rule for a station's `d`: it is a stem, not a plan. It may say who walks in and what
-    you can see from the door; it may not name anything the mark sheet marks. Half of these
-    blurbs used to read back demo/rubrics item for item — "cultures before antibiotics, volume
-    before noradrenaline", "weigh her, then draw 0.01 a kilo" — which hands the candidate the
-    answer on the card they click to be examined on it. */
- {id:'osce-a',n:'OSCE A',sn:'S1 · OSCE A',t:'Anaphylaxis — adult, first presentation',tier:'student',station:true,
-  spec:'eir-emergency',rt:'an 8-minute station',mins:8,
+    Station Sets v2: the shelf face is a clinic card (the server's set table is the authority;
+    these are the instant-paint copies).
+    Copy rule for a station's `t` AND `d` alike: they are a stem, not a plan. They may say who
+    walks in and what you can see from the door; they may not name anything the mark sheet
+    marks. `t` used to be the case name — "Pericarditis — acute chest pain" — and that string
+    rides the player bar for the whole exam while the rubric pays four points for naming the
+    diagnosis. It is the stem now, and the answer is revealed after the outcome instead (REVEAL,
+    below). Half of these blurbs used to read back demo/rubrics item for item — "cultures before
+    antibiotics, volume before noradrenaline", "weigh her, then draw 0.01 a kilo" — which hands
+    the candidate the answer on the card they click to be examined on it.
+    `spec` is the circuit band a real OSCE door wears (emergency · paediatrics), not the Eir
+    organ specialty: "eir-gastroenterology" over "vomited blood, cold to the wrist" answers this
+    station's own trap before the candidate has touched the patient. */
+ {id:'osce-a',n:'OSCE A',sn:'S1 · OSCE A',t:'Rash and facial swelling after a meal — M 71',tier:'student',station:true,
+  spec:'emergency',rt:'an 8-minute station',mins:8,
   who:'Somchai · M 71', line:'urticaria head to toe, face swelling, cramping belly pain',
   place:'OSCE station · Nurse Mali examining',
   d:'Thirty minutes after a meal he will not talk about. You saw this in EP1 — prove it. Nurse Mali is marking.'},
- {id:'osce-a2',n:'OSCE A2',sn:'S1 · OSCE A2',t:'Anaphylaxis — adult, second presentation',tier:'student',station:true,
-  spec:'eir-emergency',rt:'an 8-minute station',mins:8,
+ {id:'osce-a2',n:'OSCE A2',sn:'S1 · OSCE A2',t:'Belly cramps, loose stools, swollen face — F 68',tier:'student',station:true,
+  spec:'emergency',rt:'an 8-minute station',mins:8,
   who:'Somsri · F 68', line:'wheals and a swelling face, cramping belly, three loose stools — and a faint she will not admit to',
   place:'OSCE station · Nurse Mali marking',
   d:'The same disease in a different costume: she arrives looking like food poisoning — and she has left the worst of the story out.'},
@@ -1137,18 +1155,18 @@ const SEASON=[
   who:'Prasit · M 58', line:'crushing chest pain to the jaw, sweating',
   place:'Emergency department · evening',
   d:'Thirty years driving patients to this door — tonight Prasit arrives as one. The ECG tells the truth in ten minutes.'},
- {id:'osce-b',n:'OSCE B',sn:'S1 · OSCE B',t:'Acute chest pain — possible NSTEMI / STEMI',tier:'intern',station:true,
-  spec:'eir-cardio',rt:'a 10-minute station',mins:10,
+ {id:'osce-b',n:'OSCE B',sn:'S1 · OSCE B',t:'Crushing chest pain into both arms — M 25',tier:'intern',station:true,
+  spec:'emergency',rt:'a 10-minute station',mins:10,
   who:'Somchai Jaidee · M 25', line:'crushing chest pain to both arms, nauseous, terrified',
   place:'OSCE station · Nurse Mali on the stopwatch',
   d:'A young smoker certain he is dying. Nurse Mali is on the stopwatch and will not say what it is counting.'},
- {id:'osce-b2',n:'OSCE B2',sn:'S1 · OSCE B2',t:'Pericarditis — acute chest pain',tier:'intern',station:true,
-  spec:'eir-cardio',rt:'a 10-minute station',mins:10,
+ {id:'osce-b2',n:'OSCE B2',sn:'S1 · OSCE B2',t:'Chest pain that hates lying flat — M 14, febrile',tier:'intern',station:true,
+  spec:'emergency',rt:'a 10-minute station',mins:10,
   who:'Tan · M 14', line:'stabbing chest pain that hates lying down, a fever, a scratchy rub',
   place:'OSCE station · Nurse Mali marking',
   d:'ST elevation on the screen, a fourteen-year-old under it — and everything EP2 taught you to do about that.'},
- {id:'osce-b3',n:'OSCE B3',sn:'S1 · OSCE B3',t:'Croup — child, first presentation',tier:'intern',station:true,
-  spec:'eir-ent',rt:'a 10-minute station',mins:10,
+ {id:'osce-b3',n:'OSCE B3',sn:'S1 · OSCE B3',t:'Barking cough on the second night — F 3',tier:'intern',station:true,
+  spec:'paediatrics',rt:'a 10-minute station',mins:10,
   who:'Pim · F 3', line:'two days of a cold, then a barking cough tonight — loud, cool, drinking her milk',
   place:'OSCE station · Nurse Mali marking',
   d:'Two days of a cold, then a bark that woke the house. She is loud, she is drinking, and the rest of the visit is yours.'},
@@ -1156,18 +1174,18 @@ const SEASON=[
   who:'Khaopun · M 5', line:'tripod, drooling, muffled voice, will not lie down',
   place:'Paediatric bay · evening',
   d:'Carried in by a grandfather you have met before. A five-year-old sitting very still — the stillness is the frightening part.'},
- {id:'osce-c',n:'OSCE C',sn:'S1 · OSCE C',t:'Croup — child, worse every night',tier:'resident',station:true,
-  spec:'eir-ent',rt:'a 10-minute station',mins:10,
+ {id:'osce-c',n:'OSCE C',sn:'S1 · OSCE C',t:'Barking cough and drooling, worse at night — F 6',tier:'resident',station:true,
+  spec:'paediatrics',rt:'a 10-minute station',mins:10,
   who:'Fon · F 6', line:'barking cough, drooling on her mother’s shoulder, worse every night',
   place:'OSCE station · Nurse Mali marking, sixteen hours in',
   d:'Drooling like the boy who nearly died — but this one is loud, and loud is information. EP3 taught you the difference; the marks are in what you do with it.'},
- {id:'osce-c2',n:'OSCE C2',sn:'S1 · OSCE C2',t:'Acute asthma exacerbation — bronchospasm',tier:'intern',station:true,
-  spec:'eir-pulmonology',rt:'a 10-minute station',mins:10,
+ {id:'osce-c2',n:'OSCE C2',sn:'S1 · OSCE C2',t:'Wheeze and breathlessness — F 53, third attack',tier:'intern',station:true,
+  spec:'emergency',rt:'a 10-minute station',mins:10,
   who:'Wasana · F 53', line:'third attack this year on a blue inhaler alone — wheezing, 94%, frightened',
   place:'OSCE station · Nurse Mali marking',
   d:'Her third attack this year on a blue inhaler alone — wheezing, frightened, and out of her own answers.'},
- {id:'osce-c3',n:'OSCE C3',sn:'S1 · OSCE C3',t:'Pneumonia — adult',tier:'intern',station:true,
-  spec:'eir-pulmonology',rt:'a 10-minute station',mins:10,
+ {id:'osce-c3',n:'OSCE C3',sn:'S1 · OSCE C3',t:'A week of cough turned rusty — F 25, febrile',tier:'intern',station:true,
+  spec:'emergency',rt:'a 10-minute station',mins:10,
   who:'Waen · F 25', line:'a week of cough turned rusty, a stab on breathing in, 38.5 and saturating 93',
   place:'OSCE station · Nurse Mali marking',
   d:'A week of cough turned rusty and a stab when she breathes in. The diagnosis is the easy half; the rest of the mark sheet is not.'},
@@ -1175,23 +1193,23 @@ const SEASON=[
   who:'Mali · F 34', line:'breathless, pleuritic pain, looks anxious',
   place:'Emergency department · afternoon',
   d:'One of your own nurses, still in uniform. Everything looks normal — the oxygen is quietly low and the heart is too fast.'},
- {id:'osce-d',n:'OSCE D',sn:'S1 · OSCE D',t:'Upper GI bleeding — adult, full case',tier:'intern',station:true,
-  spec:'eir-gastroenterology',rt:'a 12-minute station',mins:12,
+ {id:'osce-d',n:'OSCE D',sn:'S1 · OSCE D',t:'Vomited blood, black stool since morning — M 62',tier:'intern',station:true,
+  spec:'emergency',rt:'a 12-minute station',mins:12,
   who:'Somchai Jaiman · M 62', line:'vomited a glass of fresh blood, black stool since morning, cold to the wrist',
   place:'OSCE station · Nurse Mali marking from a chair — doctor’s orders',
   d:'A heart patient bleeding from the other end of his aspirin — cold to the wrist and still apologising for the mess.'},
- {id:'osce-d2',n:'OSCE D2',sn:'S1 · OSCE D2',t:'Pulmonary embolism — adult',tier:'resident',station:true,
-  spec:'eir-pulmonology',rt:'a 12-minute station',mins:12,
+ {id:'osce-d2',n:'OSCE D2',sn:'S1 · OSCE D2',t:'Sudden breathlessness, clear chest — F 55',tier:'resident',station:true,
+  spec:'emergency',rt:'a 12-minute station',mins:12,
   who:'Somsri Jaidee · F 55', line:'sudden pleuritic pain and real hypoxia on a clear chest — cancer, on hormone tablets',
   place:'OSCE station · Nurse Mali marking',
   d:'Sudden pain, real hypoxia, and a chest film with nothing on it. EP4’s masquerader, with the mask half off.'},
- {id:'osce-d3',n:'OSCE D3',sn:'S1 · OSCE D3',t:'Anaphylaxis — paediatric',tier:'intern',station:true,
-  spec:'eir-emergency',rt:'a 10-minute station',mins:10,
+ {id:'osce-d3',n:'OSCE D3',sn:'S1 · OSCE D3',t:'Wheals, swollen lips and a wheeze — F 6, 20 kg',tier:'intern',station:true,
+  spec:'paediatrics',rt:'a 10-minute station',mins:10,
   who:'Beam · F 6 · 20 kg', line:'prawn fritters at the school fair — wheals, swelling lips, a wheeze, a falling pressure',
   place:'OSCE station · Nurse Mali marking',
   d:'The season’s first disease, child-sized: prawn fritters at a school fair, and twenty kilos of patient on the trolley.'},
- {id:'osce-d4',n:'OSCE D4',sn:'S1 · OSCE D4',t:'Septic shock — multi-organ failure',tier:'resident',station:true,
-  spec:'eir-emergency',rt:'a 14-minute station',mins:14,
+ {id:'osce-d4',n:'OSCE D4',sn:'S1 · OSCE D4',t:'Fever, shaking, pressure of 80 — F 72',tier:'resident',station:true,
+  spec:'emergency',rt:'a 14-minute station',mins:14,
   who:'Pranom · F 72', line:'39.5 and shaking, pressure 80, lactate 5.6, a kidney stone history and a tender right loin',
   place:'OSCE station · Nurse Mali marking, the finale a week away',
   d:'The finale’s hour, rehearsed on one patient: 39.5, a pressure of 80, and a lactate that has already made up its mind.'},
@@ -1273,72 +1291,72 @@ const CHIPS={
       lab:['serum tryptase','12-lead ecg','full blood count','chest x-ray'],
       drug:['adrenaline im','oxygen mask','normal saline bolus','chlorpheniramine','hydrocortisone'],
       proc:['lay him flat, legs up','iv access'],
-      dx:['anaphylaxis','admit for observation','discharge home']},
+      dx:['anaphylaxis','vasovagal faint','acute urticaria only','septic shock','admit for observation','discharge home']},
  'osce-a2':{ask:['any allergies?','what did you eat today?','tell me about the diarrhoea','did you faint — even for a moment?'],
       exam:['look at the skin','listen to the chest'],
       lab:['serum tryptase','blood glucose','12-lead ecg'],
       drug:['adrenaline im','oxygen mask','normal saline bolus','chlorpheniramine','hydrocortisone'],
       proc:['lay her flat, legs up'],
-      dx:['anaphylaxis','food poisoning — a stomach bug','admit for observation','discharge home']},
+      dx:['anaphylaxis','food poisoning — a stomach bug','vasovagal syncope','acute gastritis','urinary sepsis','admit for observation','discharge home']},
  'osce-b':{ask:['where is the pain?','does it go anywhere?','any risk factors — smoking, sugar, pressure?'],
       exam:['listen to the heart','check the pulses'],
       lab:['12-lead ecg','troponin','chest x-ray'],
       drug:['aspirin 300 chewed','oxygen'],
       proc:['activate the cath lab','thrombolysis','iv access'],
-      dx:['acute stemi','admit','reassure and discharge']},
+      dx:['acute stemi','pericarditis','aortic dissection','oesophageal spasm','admit','reassure and discharge']},
  'osce-b2':{ask:['where is the pain — what makes it better?','does breathing change it?','any fever or a cold lately?'],
       exam:['listen to the heart — sit him forward'],
       lab:['12-lead ecg','troponin','echocardiogram','chest x-ray'],
       drug:['ibuprofen with food','colchicine','aspirin 300 chewed'],
       proc:['activate the cath lab','thrombolysis','pericardiocentesis'],
-      dx:['pericarditis','call it a stemi','admit for rest and observation']},
+      dx:['pericarditis','call it a stemi','myocarditis','pulmonary embolism','spontaneous pneumothorax','admit for rest and observation']},
  'osce-b3':{ask:['when did the bark start?','any fever?','is she drinking?'],
       exam:['score her from the doorway','check the saturations','listen to the chest'],
       lab:['neck and chest films'],
       drug:['dexamethasone syrup','nebulised adrenaline','amoxicillin for the throat'],
       proc:['keep her on mum’s lap','watch her for an hour','give the safety-net advice'],
-      dx:['croup','epiglottitis — call the airway team','send her home']},
+      dx:['croup','epiglottitis — call the airway team','bacterial tracheitis','bronchiolitis','inhaled foreign body','send her home']},
  'osce-c':{ask:['has she had this before?','any fever?','are her shots up to date?','when is it worse?'],
       exam:['score her from the doorway','check the saturations','listen to the chest'],
       lab:['neck and chest films'],
       drug:['dexamethasone syrup','nebulised adrenaline'],
       proc:['keep her on mum’s lap','watch her for two hours','look in the throat','a drip and bloods first'],
-      dx:['croup','epiglottitis — call the airway team']},
+      dx:['croup','epiglottitis — call the airway team','retropharyngeal abscess','bacterial tracheitis','inhaled foreign body']},
  'osce-c2':{ask:['how often does this happen?','can you finish a sentence?'],
       exam:['listen to the chest'],
       lab:['peak flow — measure it','chest x-ray'],
       drug:['salbutamol neb','ipratropium','prednisolone 40 mg','oxygen','inhaled steroid + action plan','diazepam for the panic'],
       proc:['reassess — peak flow again'],
-      dx:['acute asthma exacerbation','home with a plan']},
+      dx:['acute asthma exacerbation','pulmonary oedema','vocal cord dysfunction','pneumonia','home with a plan']},
  'osce-c3':{ask:['tell me about the cough','any illnesses? do you smoke?'],
       exam:['listen to the chest','count the breathing'],
       lab:['chest x-ray','full blood count','sputum and blood cultures'],
       drug:['co-amoxiclav plus macrolide — first dose now','oxygen','paracetamol'],
       proc:['curb-65 — score her','admit to a short-stay bed','send her home with tablets'],
-      dx:['pneumonia']},
+      dx:['pneumonia','acute bronchitis','pulmonary embolism','pulmonary tuberculosis']},
  'osce-d':{ask:['what pills do you take every day?','how much blood — what colour?','any dizziness standing up?'],
       exam:['feel his hands, look at his eyes','press on the belly','rectal exam'],
       lab:['group and crossmatch four units','full blood count','coagulogram'],
       drug:['warmed crystalloid, wide open','transfuse packed cells','pantoprazole bolus and infusion','aspirin 300 chewed'],
       proc:['two large-bore lines','hold the aspirin and clopidogrel','call gi — urgent endoscopy'],
-      dx:['upper gi bleed','acute coronary syndrome']},
+      dx:['upper gi bleed','acute coronary syndrome','acute pancreatitis','perforated viscus','ruptured aortic aneurysm']},
  'osce-d2':{ask:['what were you doing when it started?','any illnesses — any tablets?','how are your legs?'],
       exam:['examine the calves','listen to the chest'],
       lab:['d-dimer','12-lead ecg','chest x-ray','ct pulmonary angiogram'],
       drug:['oxygen','low-molecular-weight heparin','thrombolysis — full-dose lytics'],
       proc:['wells score','a careful 500 of fluid'],
-      dx:['pulmonary embolism','reassure — anxiety attack','admit to the unit']},
+      dx:['pulmonary embolism','reassure — anxiety attack','pneumonia','pneumothorax','acute coronary syndrome','admit to the unit']},
  'osce-d3':{ask:['how much does she weigh?','what did she eat?','any known allergies?'],
       exam:['look at the skin','listen to the chest'],
       drug:['adrenaline 0.2 mg im — 0.01 per kilo','adrenaline 0.5 mg im — the adult dose','oxygen','saline 20 ml/kg','chlorpheniramine'],
       proc:['admit and watch for the second wave'],
-      dx:['anaphylaxis','send her home']},
+      dx:['anaphylaxis','acute asthma','vasovagal syncope','septic shock','send her home']},
  'osce-d4':{ask:['ask the niece what happened'],
       exam:['feel the skin — perfusion','press the right loin'],
       lab:['lactate','two sets of blood cultures','urinalysis'],
       drug:['broad-spectrum antibiotics now','warmed crystalloid 30 ml/kg','noradrenaline','oxygen'],
       proc:['two large-bore lines','urinary catheter — hourly output','call urology — unblock the kidney','icu bed'],
-      dx:['septic shock — urosepsis']},
+      dx:['septic shock — urosepsis','cardiogenic shock','hypovolaemic shock','diabetic ketoacidosis']},
  ep5:{ask:['what happened?','where does it hurt?','can you feel your legs?'],
       exam:['primary survey','check the chest','check for bleeding'],
       lab:['blood gas','crossmatch'],
@@ -1360,9 +1378,45 @@ const SAY={
 };
 const say=b=>SAY[b] || (b.startsWith("harm:") ? "harm — "+b.slice(5) : b.replace(/^[a-z]+:/,""));
 
+/* A harm beat is written to teach: "no steroid by the seventh minute — croup is a steroid
+   disease" names the drug, the disease and the deadline in one line, and the scenario fires it
+   at the exact moment the candidate has not thought of it. In practice that is the whole point.
+   During an exam it is a coach leaning over the desk — the rubric is at that moment paying for
+   the steroid it just named.
+   So: while a station is running, harm is reported the way the bedside reports it — something
+   went wrong, at this time, and the patient will show you the rest. The full sentence is not
+   deleted, it is deferred: the debrief prints every harm in full for both modes, because
+   feedback after the bell is what an exam is for. `over` and `v.outcome` are both consulted so
+   the last paint of a run — the one that draws the chart under the result panel — is already
+   the after picture.
+   The scenario files themselves are never touched: demo/ is the case, and a case must read the
+   same to the engine, the replayer and the chain no matter who is looking at the screen. */
+const HARM_SEALED='⚠ harm recorded';
+const harmShown=(text,ended)=>(examMode()&&!ended)?HARM_SEALED:text;
+
 /* Why this patient is kept in — the line under the disposition box. Practice only, and only
    where it is true: the box is on screen for all seventeen cases and the reason is not. */
 const DISPO_WHY={ep1:'biphasic reactions come back hours later'};
+
+/* What the case actually was — printed on the debrief, next to the provenance line, and
+   nowhere else. The station title is a stem now (SEASON above), which is the only way a mark
+   sheet that pays for "named the diagnosis" can mean anything; this is where the candidate
+   finally gets told, at the one moment it costs nothing. Episodes are not listed: their titles
+   are drama, not diagnosis, and they give nothing away. */
+const REVEAL={
+ 'osce-a':'anaphylaxis',
+ 'osce-a2':'anaphylaxis, arriving in a gastrointestinal disguise',
+ 'osce-b':'acute ST-elevation myocardial infarction',
+ 'osce-b2':'acute pericarditis',
+ 'osce-b3':'croup — mild',
+ 'osce-c':'croup — not epiglottitis',
+ 'osce-c2':'acute asthma exacerbation',
+ 'osce-c3':'community-acquired pneumonia, right lower lobe',
+ 'osce-d':'upper gastrointestinal bleeding',
+ 'osce-d2':'pulmonary embolism',
+ 'osce-d3':'anaphylaxis, paediatric',
+ 'osce-d4':'septic shock from an obstructed, infected kidney',
+};
 
 let id=null,timer=null,over=false,seen=0,mode='ask',asking=false,hard=false;
 const fmt=s=>`${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,'0')}`;
@@ -1644,6 +1698,15 @@ function paint(v){
     $('#newsbox').dataset.band='none';
     $('#news-bar').innerHTML = Array.from({length:20},()=>'<i></i>').join('');
     $('#clock').textContent = fmt(v.elapsed);
+    /* A death is still the end of a run, and the end of a run is where the debrief lives. This
+       branch used to `return` straight out of paint(), so a case that ended in a death raised no
+       result panel at all — no leaf, no score, no "what the case asked for", and, once the exam
+       started holding harm back, no unsealing either. The candidate who killed the patient is
+       exactly the one the feedback is for. Beats are drained but the Director is not called: a
+       death cutscene that has never fired is not something to switch on from a bug fix. */
+    renderChart(v, true);
+    drainBeats(v, true);
+    finish(v);
     return;
   }
   $('#news-n').textContent = n.total;
@@ -1684,44 +1747,74 @@ function paint(v){
      so it is said only on the case it is true of. */
   $('#dispo-why').textContent = examMode() ? '' : (DISPO_WHY[E.id]||'');
 
-  /* Orders and events are different kinds of fact and a real chart never runs them together in
-     one column of lowercase fragments. The tag says which, and the rule down the left carries it
-     at a glance. */
-  const KIND={action:'ORDER', equipment:'DEVICE', harm:'HARM', outcome:'OUTCOME'};
+  /* The chart repaints every tick, so it flips to the full harm text by itself on the last
+     paint of the run — the one that raises the result panel. */
+  const ended = over || !!v.outcome;
+  renderChart(v, ended);
+  const fresh = drainBeats(v, ended);
+  if(fresh.length) direct(fresh, v.outcome);
+  finish(v);
+}
+
+/* Orders and events are different kinds of fact and a real chart never runs them together in
+   one column of lowercase fragments. The tag says which, and the rule down the left carries it
+   at a glance. */
+const KIND={action:'ORDER', equipment:'DEVICE', harm:'HARM', outcome:'OUTCOME'};
+function renderChart(v,ended){
   $('#chart').innerHTML = v.chart.length
     ? v.chart.slice(-40).map(c=>
         `<div class="c ${c.kind}"><span class="t">${fmt(c.t)}</span>`
         +`<span class="c-k">${KIND[c.kind]||'EVENT'}</span>`
-        +`<span class="c-x">${c.text}</span></div>`).join('')
+        +`<span class="c-x">${c.kind==='harm'?harmShown(c.text,ended):c.text}</span></div>`).join('')
     : '<span class="muted">nothing recorded yet</span>';
   $('#chart').scrollTop=1e6;
-
+}
+/* Everything the engine has said since the last look, as lines in the feed. Returns the new
+   beats so the caller can decide whether the Director gets a turn. */
+function drainBeats(v,ended){
   const fresh=v.beats.slice(seen);
   for(const b of fresh){
     const k = b.startsWith('harm') ? 'harm' : b.startsWith('terminal') ? 'end' : 'beat';
-    ev(k, k==='harm'?'⚠':k==='end'?'■':'·', say(b), b);
+    /* The raw beat is not passed as the tooltip for a sealed harm — a title attribute is one
+       hover away from being the answer key the seal exists to close. */
+    const sealed = k==='harm' && examMode() && !ended;
+    ev(k+(sealed?' sealed':''), k==='harm'?'⚠':k==='end'?'■':'·', sealed?HARM_SEALED:say(b), sealed?null:b);
   }
   seen=v.beats.length;
-  if(fresh.length) direct(fresh, v.outcome);
-
-  if(v.outcome && !over){
-    over=true; stop();
-    const win=v.outcome.startsWith('Win');
-    $('#result').className='result '+(win?'win':'lose'); $('#result').style.display='block';
-    showDebrief(); showProvenance();
-    $('#outcome').textContent=say('terminal:'+v.outcome);
-    $('#outnote').textContent=(v.harm.length?'Harm on the record: '+v.harm.join(', '):'No harm recorded.')+'  ·  '+v.outcome;
-    $('#leaf').textContent=v.leaf;
-    $('#verdict').innerHTML=''; $('#anchor').textContent='anchor this run on chain'; $('#anchor').disabled=false;
-    ['#c1','#c2','#c3','#c4'].forEach(s=>$(s).disabled=true);
-    $('#cmd').disabled=true; $('#send').disabled=true; $('#pause').disabled=true;
-    if(win){ const c=cleared(), e=$('#ep').value;
-      if(!c.includes(e)){c.push(e);localStorage.setItem('vitals.cleared',JSON.stringify(c));} }
-    chainState(); $('#result').scrollIntoView({behavior:'smooth',block:'nearest'});
-    endFlow(win);
-  }
+  return fresh;
+}
+/* The bell. Raised from both ends of paint() — the living patient's path and the dead one's —
+   because a run that ended is a run that gets its score, its leaf and its debrief either way. */
+function finish(v){
+  if(!v.outcome || over) return;
+  over=true; stop();
+  const win=v.outcome.startsWith('Win');
+  $('#result').className='result '+(win?'win':'lose'); $('#result').style.display='block';
+  /* Every sealed line in the feed now says what it was. Matched by position against the run's
+     own harm beats, which is the order they were appended in. */
+  unsealHarm(v);
+  showDebrief(); showProvenance(); showReveal();
+  $('#outcome').textContent=say('terminal:'+v.outcome);
+  $('#outnote').textContent=(v.harm.length?'Harm on the record: '+v.harm.join(', '):'No harm recorded.')+'  ·  '+v.outcome;
+  $('#leaf').textContent=v.leaf;
+  $('#verdict').innerHTML=''; $('#anchor').textContent='anchor this run on chain'; $('#anchor').disabled=false;
+  ['#c1','#c2','#c3','#c4'].forEach(s=>$(s).disabled=true);
+  $('#cmd').disabled=true; $('#send').disabled=true; $('#pause').disabled=true;
+  if(win){ const c=cleared(), e=$('#ep').value;
+    if(!c.includes(e)){c.push(e);localStorage.setItem('vitals.cleared',JSON.stringify(c));} }
+  chainState(); $('#result').scrollIntoView({behavior:'smooth',block:'nearest'});
+  endFlow(win);
 }
 
+/* Deferred, not deleted. Every line the exam sealed is rewritten with the sentence the scenario
+   actually wrote, in beat order, the moment the case is over. */
+function unsealHarm(v){
+  const full=(v.beats||[]).filter(b=>b.startsWith('harm:'));
+  document.querySelectorAll('#chat .ev.harm.sealed').forEach((n,i)=>{
+    if(full[i]!=null){ n.querySelector('.tx').textContent=say(full[i]); n.title=full[i]; }
+    n.classList.remove('sealed');
+  });
+}
 async function step(q){
   if(!id)return;
   const v=await (await fetch('/api/step?id='+id+q+asMe())).json();
@@ -1778,7 +1871,7 @@ $('#start').onclick=async()=>{
   commitRun(EXAMRUN);
   renderModes(); renderChips(); paint(r.view);
   if(ep().id==='ep1') playCut('cold_open');
-  $('#device').src='/device/monitor?sid='+encodeURIComponent(id);
+  $('#device').src=deviceSrc('monitor');
   document.querySelectorAll('.dev').forEach(b=>b.classList.toggle('on',b.dataset.dev==='monitor'));
   $('#cmd').disabled=false; $('#send').disabled=false; $('#pause').disabled=false;
   $('#pause').textContent='hold'; $('#cmd').focus();
@@ -1798,9 +1891,22 @@ $('#mic').onclick=()=>{
   if(!SR)return turn('sys note','','this browser has no speech recognition');
   const r=new SR(); r.lang='en-GB'; r.onresult=ev=>{ $('#cmd').value=ev.results[0][0].transcript; }; r.start();
 };
+/* A bedside device knows the session it is watching, who is in the bed, and whether the room is
+   an exam. The first two because a monitor with someone else's name at the top is a wrong-patient
+   error a clinician clocks in half a second — the pane used to print "Ing · F 19" over every
+   case in the season, including the 71-year-old man in OSCE A. The third because the ventilator
+   panel interprets its own numbers out loud ("think bronchospasm or a blocked tube"), which is
+   teaching in practice and the answer read off the wall at a station. The devices stay dumb about
+   the case itself: no diagnosis, no rubric, nothing but a name, an age and a flag. */
+const deviceSrc=dev=>{
+  const e=ep();
+  return '/device/'+dev+'?sid='+encodeURIComponent(id)
+    +'&pt='+encodeURIComponent(e.who||'')
+    +(examMode()?'&exam=1':'');
+};
 document.querySelectorAll('.dev').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.dev').forEach(x=>x.classList.toggle('on',x===b));
-  if(id)$('#device').src='/device/'+b.dataset.dev+'?sid='+encodeURIComponent(id);
+  if(id)$('#device').src=deviceSrc(b.dataset.dev);
 });
 $('#addkit').onclick=openPicker;
 $('#p-admit').onchange=e=>{ if(e.target.checked) doOrder('admit'); };
@@ -1903,6 +2009,18 @@ async function showDebrief(){
       +`<span class="db-w">${F(s.seconds)}</span></div>`).join('')+'</div>';
   }
   $('#db').innerHTML=h;
+}
+
+/* The answer, at the only moment it is free to give. A station's card, title card and player
+   bar carry the stem now — age, sex, complaint, what you could see from the doorway — because
+   the mark sheet is paying two to four points for naming the diagnosis and a title that names it
+   pays them first. Here the clock has stopped and the leaf is computed, so the candidate is
+   simply told, beside where the case came from: this is what it was. Episodes have no entry —
+   their titles are drama, not diagnosis — and they get no line, exactly like provenance. */
+function showReveal(){
+  const el=$('#reveal'); if(!el)return;
+  const dx=REVEAL[$('#ep').value];
+  el.textContent = dx ? `This was: ${dx}` : '';
 }
 
 /* Where the case came from — printed once the score exists, which is the only moment it means
@@ -2050,11 +2168,19 @@ async function renderSeason(){
   if(repaint) paintSeason();
 }
 /* the three-tier star as a card wears it — always three glyphs wide, so a shelf of cards
-   reads as one column of stars rather than a ragged edge — and the specialty as the art
-   monogram */
+   reads as one column of stars rather than a ragged edge — and the circuit band as the art
+   monogram. Trimmed to fit the tile: PAEDIATRICS at .3em of letter-spacing runs off it. */
 const starGlyph=t=>'★'.repeat(Math.max(0,Math.min(TIERMAX,t)))+'☆'.repeat(Math.max(0,TIERMAX-t));
 const specShort=sp=>(sp||'').replace(/^eir-/,'').replace('gastroenterology','gastro')
-  .replace('pulmonology','pulmo').toUpperCase();
+  .replace('pulmonology','pulmo').replace('paediatrics','paeds').toUpperCase();
+/* What the card is allowed to say about the case's field. The server sends both — the Eir
+   specialty for the record, the circuit band for the shelf — and the shelf takes the band:
+   GASTRO over "vomited blood, black stool" tells the candidate it is not the heart, which is
+   the exact question osce-d's mark sheet is asking. Older cached set tables have no band, so
+   an organ name is widened here rather than painted. */
+const BANDFOR={'eir-emergency':'emergency','eir-cardio':'emergency','eir-pulmonology':'emergency',
+  'eir-gastroenterology':'emergency','eir-ent':'paediatrics','eir-paediatrics':'paediatrics'};
+const bandOf=m=>m.band||BANDFOR[m.specialty]||'medicine';
 function paintSeason(){
   const seasonIds=new Set(SEASON.map(x=>x.id));
   /* One shut door explains itself; every later one just wears the count — the same lock
@@ -2062,11 +2188,11 @@ function paintSeason(){
   let lockNamed=false;
   const card=(e,i)=>{
     const un=open_(i), done=cleared().includes(e.id), star=starred().includes(e.id);
-    /* A station's face is a clinic card in Embla's language: the server's set table names
-       the case, the specialty and the tier; the SEASON entry is only the instant-paint
-       copy, so the server copy wins the moment it arrives. */
+    /* A station's face is a clinic card: the server's set table names the stem, the circuit
+       band and the tier; the SEASON entry is only the instant-paint copy, so the server copy
+       wins the moment it arrives. */
     const info=e.station?memberOf(e.id):null;
-    const title=info?info.m.title:e.t, spec=info?info.m.specialty:e.spec;
+    const title=info?info.m.title:e.t, spec=info?bandOf(info.m):e.spec;
     const tierName=info?info.m.tier:e.tier;
     const pr=progOf(e);
     const art=e.art?`<img src="${e.art}" alt="">`
@@ -2116,11 +2242,11 @@ function paintSeason(){
   /* A declared member whose files are still being fitted (Phase 5b) is a card, not an
      error — it sits with its set and says what it will be. */
   const comingCard=(m,s)=>`<div class="tile st cs" data-ga="coming:${m.id}">
-      <div class="art"><div class="art-ph art-cl"><span>${specShort(m.specialty)}</span></div>
+      <div class="art"><div class="art-ph art-cl"><span>${specShort(bandOf(m))}</span></div>
         <span class="no">${m.id.replace('osce-','OSCE ').toUpperCase()}</span>
         <span class="st-stars" title="${barRule()}">${starGlyph(0)}</span></div>
       <div class="body"><h3>${m.title}</h3>
-        <span class="chiprow"><span class="spec">${m.specialty}</span><span class="rt">${m.tier}</span></span>
+        <span class="chiprow"><span class="spec">${bandOf(m)}</span><span class="rt">${m.tier}</span></span>
         <p>Being fitted for the bay now.</p>
         <span class="go">coming soon${s.need_now<s.need?` · door opens at ⭐${s.need_now} until the full set lands`:''}</span></div></div>`;
   const cards=[];
