@@ -160,30 +160,123 @@ addEventListener('click',function(e){
   overflow:hidden;max-width:22rem}
 .hero-prog i{display:block;height:100%;background:var(--mint)}
 
-/* ── A2 · the row ─────────────────────────────────────────────────────────────
-   One season, one shelf, thumbed sideways. A grid reads as a menu; a row you swipe
-   reads as a season. It bleeds to the screen edge on a phone, the way shelves do. */
+/* ── A2 · the shelf, turned (CEO, 27 Aug) ─────────────────────────────────────
+   One season, one shelf — and a shelf is a thing you turn, not a strip you drag
+   sideways past your own thumb. The row is a coverflow now: the card in front of
+   you faces you square, its neighbours lean away on the Y axis and step back in
+   Z, and each card's place is one transform derived from how far it sits from
+   the middle. Nothing in this stylesheet counts cards, so seventeen of them cost
+   exactly what four did.
+
+   Held wide, on purpose. The landing page's deck runs at .39 of a card between
+   centres and reads as a fan of edges — right for four posters glimpsed once by a
+   buyer. This shelf is a room a player works in, so the gap is .95 of a card:
+   at that spacing a neighbour's inner edge lands just clear of the middle card's
+   outer one, so there is air between them and the lean is what says depth, not
+   the overlap. A side card stays a card — whole, readable, one click from the
+   middle — because on this shelf it is also a door, a lock and a star count. */
 .row-h{display:flex;align-items:flex-end;gap:.8rem;margin:0 0 .7rem}
 .row-t h2{font-family:Archivo,sans-serif;font-size:1.3rem;font-weight:800;letter-spacing:-.02em;
   margin:.15rem 0 0;color:#12262c}
-/* The padding is the lift's headroom. `overflow-x:auto` computes `overflow-y` to
-   auto as well, so this box clips vertically whether it was asked to or not — with
-   the old quarter-rem top, a card that rose six pixels had its own head cut off. */
-.lb-row{display:flex;gap:.75rem;overflow-x:auto;padding:1.05rem 1.1rem 1.6rem;
-  margin:-.7rem -1.1rem .2rem;
-  scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
-.lb-row .tile{flex:0 0 clamp(13.5rem,64vw,15.5rem);scroll-snap-align:start}
-/* A3 · the interlude tile: the OSCE stations sit on the same shelf but are not
-   episodes — smaller, scrub-green edge, wearing their own banner. Station Sets v2:
-   the face is a clinic card, Embla's language — real case name, specialty chip,
-   the two-tier star — not a drama poster. */
-.lb-row .tile.st{flex-basis:clamp(10.5rem,46vw,12rem);align-self:center;
-  border:2px solid var(--mint-d);box-shadow:var(--sh-st)}
-/* The visual rank of the shelf, carried by depth alone: an episode sits higher off
-   it than the stations that open its door. */
+/* The deck owns the perspective and the clipping, and keeps the row's old bleed to
+   the screen edge — on a phone the neighbours run off the sides the way a shelf
+   does. `touch-action:pan-y` leaves the vertical flick to the page: the deck only
+   ever claims the sideways one. Its height is set from the tallest card by JS; the
+   value here is the placeholder for the frame before that happens. */
+.lb-row{--cf-w:clamp(12rem,58vw,16rem);
+  position:relative;height:23rem;margin:-.7rem -1.1rem .2rem;
+  perspective:1150px;perspective-origin:50% 46%;
+  overflow:hidden;touch-action:pan-y;
+  user-select:none;-webkit-user-select:none;cursor:grab}
+.lb-row.dragging{cursor:grabbing}
+.lb-row:focus-visible{outline:3px solid var(--mint);outline-offset:-3px;border-radius:14px}
+/* Every card is the same slot now — an episode and a station are the same rectangle,
+   and the rank between them is carried by scale and edge instead of width. `top:50%`
+   plus the translateY(-50%) JS puts at the head of every transform centres a card of
+   any height, so the long sentence on the first shut door is never cropped to fit a
+   fixed box. */
+.lb-row .tile{position:absolute;top:50%;left:50%;width:var(--cf-w);
+  margin-left:calc(var(--cf-w) / -2);
+  transition:transform 460ms var(--ease),opacity 460ms ease,box-shadow 200ms var(--ease)}
+.lb-row .tile img,.lb-row .tile picture{-webkit-user-drag:none}
+/* The card in front is the one you can act on, and it is the only one that says so:
+   it carries the lift, and the buttons behind it are dimmed rather than taken away —
+   a side card still has to read as a station you sit rather than an episode you
+   enter, and a shut door still has to name its price. */
+.lb-row .tile[aria-current]{box-shadow:var(--sh-lift)}
+.lb-row .tile[aria-current].st{box-shadow:var(--sh-st-lift)}
+.lb-row .tile[aria-current].lock,.lb-row .tile[aria-current].cs{box-shadow:var(--sh-lock)}
+.lb-row .tile:not([aria-current]) .go{opacity:.52}
+/* the turned-away edge falls into shadow — the outer one on both sides. */
+.lb-row .tile::after{content:"";position:absolute;inset:0;z-index:3;pointer-events:none;
+  opacity:var(--cf-shade,0);transition:opacity 460ms ease;
+  background:linear-gradient(to left,rgba(6,20,24,.9),rgba(6,20,24,0) 86%)}
+.lb-row .tile[data-side="r"]::after{
+  background:linear-gradient(to right,rgba(6,20,24,.9),rgba(6,20,24,0) 86%)}
+/* A3 · the interlude tile: the OSCE stations sit on the same deck but are not
+   episodes — scrub-green edge, wearing their own banner, and standing a little
+   smaller in the slot (JS multiplies their scale) so an episode still outranks the
+   interludes that open its door. Station Sets v2: the face is a clinic card, Embla's
+   language — real case name, specialty chip, the two-tier star. */
+.lb-row .tile.st{border:2px solid var(--mint-d);box-shadow:var(--sh-st)}
+/* A station keeps its own drop when it is picked up, rather than borrowing the
+   episode's — the rank between the two is the point of having two shadows. */
 .lb-row .tile.st:hover:not(.lock):not(.cs),.lb-row .tile.st:focus-visible:not(.lock):not(.cs){
   box-shadow:var(--sh-st-lift)}
 .lb-row .tile.st.lock,.lb-row .tile.st.cs{box-shadow:var(--sh-lock)}
+/* A door that opens on the deck may not animate its own transform: JS owns that
+   property now, and a keyframe outranks an inline style, so the old one threw the
+   card out of its slot for half a second on the happiest moment in the game. It
+   comes up out of its blur and glows in place instead. */
+.lb-row .tile.just-open{animation:dooropen-cf 500ms var(--ease) both,doorglow 900ms ease-out both}
+@keyframes dooropen-cf{from{opacity:.35;filter:blur(6px)}
+  62%{opacity:1;filter:blur(0)}to{opacity:1;filter:blur(0)}}
+
+/* ── A2b · finding yourself among seventeen ───────────────────────────────────
+   Dots do not survive this shelf. Seventeen of them is seventeen six-pixel targets
+   on a phone, and nobody counts to "which one is lit" at a glance anyway — the dot
+   row would be a decoration that answers no question. So the readout says it in
+   words, "3 of 17 · OSCE A2" and the case name under it, and the rail draws the
+   season's rhythm rather than its inventory: a tall mark for each episode, a short
+   one for each station standing between them. The five tall marks are buttons,
+   because an episode door is the only landmark anyone aims for by name; the
+   stations are the ground you cover with the arrows, the drag, or the keys. */
+.cf-nav{display:flex;align-items:center;justify-content:center;gap:.8rem;margin:.2rem 0 0}
+.cf-btn{width:2.6rem;height:2.6rem;flex:none;display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--border);border-radius:12px;background:#fff;color:var(--navy);
+  font:800 1.25rem/1 Archivo,sans-serif;cursor:pointer;box-shadow:var(--sh-chip);
+  transition:transform 120ms var(--ease),box-shadow 120ms var(--ease),color 120ms linear}
+.cf-btn:hover:not(:disabled){border-color:var(--mint-d);color:var(--mint-d);transform:translateY(-2px)}
+.cf-btn:disabled{opacity:.32;cursor:default;box-shadow:none}
+.cf-where{flex:1 1 auto;min-width:0;text-align:center;margin:0;
+  font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.12em;
+  text-transform:uppercase;color:#5b6b70;line-height:1.6}
+.cf-where b{display:block;font-family:Archivo,sans-serif;font-size:.92rem;font-weight:700;
+  letter-spacing:-.01em;text-transform:none;color:#12262c;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cf-rail{display:flex;align-items:center;justify-content:center;gap:.2rem;
+  height:1.7rem;margin:.3rem 0 .2rem}
+.cf-tick{flex:none;border:0;padding:0;background:none;height:1.7rem;
+  display:flex;align-items:center;justify-content:center}
+.cf-tick::before{content:"";display:block;width:.3rem;height:.5rem;border-radius:999px;
+  background:#cfdcdc;transition:background 160ms linear,height 160ms var(--ease),width 160ms var(--ease)}
+.cf-tick.tk-st{width:.6rem}
+.cf-tick.tk-ep{width:1.5rem;cursor:pointer}
+.cf-tick.tk-ep::before{width:.42rem;height:1.05rem;background:#8aa0a4}
+.cf-tick.lk::before{opacity:.4}
+/* Where you are stands up out of the rail — but not all the way up to an episode's
+   height, or the mark would claim to be a door every time you stopped on a station. */
+.cf-tick.at::before{width:.42rem;background:var(--mint-d);opacity:1;
+  box-shadow:0 0 0 3px rgba(38,192,165,.22)}
+.cf-tick.tk-st.at::before{height:.8rem}
+.cf-btn:focus-visible,.cf-tick:focus-visible{outline:3px solid var(--mint);outline-offset:2px;
+  border-radius:8px}
+@media (max-width:560px){.cf-where{font-size:.6rem;letter-spacing:.08em}
+  .cf-where b{font-size:.82rem}}
+/* Reduced motion takes the travel, not the shelf: every step still lands, it just
+   lands at once. */
+@media (prefers-reduced-motion:reduce){
+  .lb-row .tile,.lb-row .tile::after,.cf-btn,.cf-tick::before{transition:none}}
 .tile.st .art{aspect-ratio:16/9}
 /* The provenance banner that used to run across the top of this art is gone — a player has
    never heard of the case bank, and the credit now sits under the score instead (.prov). With
@@ -1280,7 +1373,29 @@ a.give:hover{filter:brightness(1.06)}
       <!-- C10 · the season at a glance: episodes watched, stars banked -->
       <div class="ring" id="ring"></div>
     </div>
-    <div class="lb-row" id="eps"></div>
+    <!-- A2 · the deck. paintSeason() still writes nothing but cards in here, in season
+         order; the coverflow only decides where each one stands. The group is focusable
+         so the arrow keys have somewhere to land, and it is labelled because a player on
+         a screen reader arrives at a row of buttons with no idea what they are a row of.
+         The label names no count — the season grows a card whenever a declared station
+         lands, and the readout below says how many there are today. -->
+    <div class="lb-row" id="eps" tabindex="0" role="group"
+         aria-label="Season 1 — the resus bay: the episodes and the OSCE stations that open their doors. Left and right arrows turn the deck."></div>
+
+    <!-- The controls: a step either way, and the readout that says where you are among
+         seventeen. Both arrows stop at the ends — the season has a first card and a last
+         one, and a deck that wrapped round would put EP5 next to EP1 and call it progress. -->
+    <div class="cf-nav">
+      <button class="cf-btn" id="eps-prev" type="button" data-ga="shelf_prev"
+              aria-label="previous card on the shelf">&lsaquo;</button>
+      <p class="cf-where" id="eps-where" aria-live="polite" aria-atomic="true"></p>
+      <button class="cf-btn" id="eps-next" type="button" data-ga="shelf_next"
+              aria-label="next card on the shelf">&rsaquo;</button>
+    </div>
+    <!-- The season's rhythm, and a jump to any of the five episode doors. Filled by
+         cfRail() from the cards actually on the deck, so a coming-soon member that
+         arrives mid-season gets its mark without anything here changing. -->
+    <div class="cf-rail" id="eps-rail"></div>
 
     <!-- The set strip: each door, what its own set is worth, and how far along you are.
          paintSets() fills it from /api/chain's set table joined with your certified tiers. -->
@@ -3289,6 +3404,9 @@ function paintSeason(){
     }
   }
   $('#eps').innerHTML=cards.join('');
+  /* The deck places what was just written, in the same frame: without this the
+     seventeen cards spend one paint stacked on top of each other in the middle. */
+  cfSync();
   /* ── the door opens ───────────────────────────────────────────────────────────
      A card that was locked the last time this shelf was painted and is not now had a
      key turn in it, and that is a moment: it comes up out of its own blur, lifts eight
@@ -3340,6 +3458,213 @@ function paintSeason(){
   $('#coin-n').textContent=cleared().length;
   renderHero(); paintSets(); paintRing(); probeTrailers();
 }
+
+/* ── A2b · the deck ───────────────────────────────────────────────────────────
+   Seventeen cards on a coverflow. paintSeason() owns what a card says; this owns
+   only where it stands, and the two never argue because they touch different
+   properties: the template writes the innerHTML, this writes transform, opacity,
+   z-index and one custom property for the shade.
+
+   The numbers, and why they are these numbers. The gap between card centres is
+   .95 of a card width — the landing page runs at .39 and reads as a fan of edges,
+   which is right for four posters a buyer glances at once and wrong for a shelf a
+   player works in. At .95, with 38° of lean on the first neighbour and a scale that
+   drops 9% a step, the neighbour's inner edge lands a few pixels clear of the middle
+   card's outer one: air between them, every side card whole and readable, and the
+   lean carrying the depth on its own instead of the overlap. The lean is capped at
+   52° and never approaches the 90° where a card turns edge-on and disappears.
+
+   Nothing here wraps. A season has a first card and a last one, and a deck that
+   rolled EP5 round to EP1 would say the shelf is a loop when it is a ladder. */
+const CFV={i:0,key:null,moved:false,drag:null,wheel:0,seeded:false,fit:0};
+const cfList=()=>[].slice.call($('#eps').children);
+const cfKey=(el,i)=>el.dataset.ep||el.dataset.ga||('#'+i);
+/* Two neighbours a side on a desk, one on a phone — past that the card is off the
+   screen anyway, and an off-screen card that is still in the focus order is a tab
+   stop into nowhere. */
+const cfNear=()=>innerWidth<=560?1:2;
+function cfPaint(){
+  const cards=cfList(); if(!cards.length)return;
+  const w=cards[0].offsetWidth||240, gap=Math.round(w*0.95), near=cfNear();
+  cards.forEach((c,i)=>{
+    const off=i-CFV.i, a=Math.abs(off), far=a>near;
+    /* an episode outranks the stations that open its door, and stands taller in the
+       slot to say so — the width is shared now, so the rank moved into the scale. */
+    const rank=c.classList.contains('st')?.94:1;
+    const lean=off===0?0:(off<0?1:-1)*Math.min(52,38+(a-1)*7);
+    c.style.transform='translateY(-50%) translateX('+(off*gap)+'px) '
+      +'translateZ('+(-a*110)+'px) rotateY('+lean+'deg) scale('+(rank*(1-a*0.09))+')';
+    c.style.opacity=far?'0':'1';
+    c.style.pointerEvents=far?'none':'auto';
+    c.style.zIndex=String(100-a);
+    c.style.setProperty('--cf-shade',String(Math.min(a*0.3,0.72)));
+    c.dataset.side=off<0?'l':'r';
+    if(off===0)c.setAttribute('aria-current','true'); else c.removeAttribute('aria-current');
+    /* Only the card in front is a tab stop. Seventeen of them in the tab order meant
+       Tab out of the deck rewound it to the first card and walked the whole season a
+       press at a time; now Tab reaches the card you are looking at and then leaves,
+       and the arrows — which is what the deck's label offers — do the browsing. */
+    if(off===0)c.removeAttribute('tabindex'); else c.setAttribute('tabindex','-1');
+    /* A card nobody can see must not be a place the keyboard can get to, and it must
+       not be read out either. `inert` does both in one word; where it is missing, the
+       aria half is still worth having. But inerting the element that currently holds
+       focus drops focus on the floor — three arrow presses and the keyboard had lost
+       the deck entirely — so the deck takes it back first. */
+    if(far&&c.contains(document.activeElement)){
+      try{ $('#eps').focus({preventScroll:true}); }catch(err){} }
+    if('inert' in c)c.inert=far; else c.setAttribute('aria-hidden',far?'true':'false');
+  });
+  cfRail(cards); cfWhere(cards);
+}
+/* The deck is as tall as its tallest card, measured rather than guessed: the shut
+   door that names its price runs to three lines and a fixed box would crop it. */
+function cfFit(cards){
+  let tall=0;
+  for(const c of cards){ const h=c.offsetHeight; if(h>tall)tall=h; }
+  if(tall&&tall!==CFV.fit){ CFV.fit=tall; $('#eps').style.height=(tall+40)+'px'; }
+}
+function cfGo(n){
+  const cards=cfList(); if(!cards.length)return;
+  CFV.i=Math.max(0,Math.min(cards.length-1,n));
+  CFV.key=cfKey(cards[CFV.i],CFV.i);
+  cfPaint();
+}
+/* Where you are, said in words. Seventeen dots would be seventeen targets and no
+   answer; this is one line that names the card and admits when it is shut. */
+function cfWhere(cards){
+  const c=cards[CFV.i]; if(!c)return;
+  const e=c.dataset.ep?SEASON.find(x=>x.id===c.dataset.ep):null;
+  const h=c.querySelector('h3');
+  const state=c.classList.contains('lock')?' · locked'
+    :c.classList.contains('cs')?' · coming soon':'';
+  const w=$('#eps-where'); w.textContent='';
+  const line=document.createElement('span');
+  line.textContent=(CFV.i+1)+' of '+cards.length+(e?' · '+e.n:'')+state;
+  const name=document.createElement('b');
+  name.textContent=h?h.textContent:'';
+  name.title=name.textContent;
+  w.appendChild(line); w.appendChild(name);
+  $('#eps-prev').disabled=CFV.i<=0;
+  $('#eps-next').disabled=CFV.i>=cards.length-1;
+}
+/* The rail: the season's shape, not its inventory. Rebuilt only when the deck's
+   contents actually change — a repaint for a star that moved must not throw away
+   the buttons under the player's cursor. */
+function cfRail(cards){
+  const rail=$('#eps-rail');
+  const sig=cards.map((c,i)=>cfKey(c,i)+(c.classList.contains('lock')||c.classList.contains('cs')?'!':'')).join('|');
+  if(rail.dataset.sig!==sig){
+    rail.dataset.sig=sig; rail.textContent='';
+    cards.forEach((c,i)=>{
+      const e=c.dataset.ep?SEASON.find(x=>x.id===c.dataset.ep):null;
+      const door=!!e&&!e.station;
+      const t=document.createElement(door?'button':'span');
+      t.className='cf-tick '+(door?'tk-ep':'tk-st')
+        +(c.classList.contains('lock')||c.classList.contains('cs')?' lk':'');
+      if(door){
+        t.type='button';
+        t.title=e.n+' · '+e.t;
+        t.setAttribute('data-ga','shelf_jump:'+e.id);
+        t.setAttribute('aria-label','go to '+e.n+' — '+e.t);
+        t.addEventListener('click',()=>cfGo(i));
+      } else t.setAttribute('aria-hidden','true');
+      rail.appendChild(t);
+    });
+  }
+  [].forEach.call(rail.children,(t,i)=>t.classList.toggle('at',i===CFV.i));
+}
+/* Called by paintSeason the moment it has written the cards. The deck keeps its
+   place across a repaint by the card's own id rather than its index, so a
+   coming-soon member arriving mid-season cannot shuffle the shelf under the thumb. */
+function cfSync(){
+  const cards=cfList(); if(!cards.length)return;
+  if(!CFV.seeded){
+    CFV.seeded=true;
+    /* First paint opens on the same entry the billboard is offering — the shift you
+       left half-done, or EP1 on a spotless browser. The shelf and the hero should not
+       have to be reconciled by the player. */
+    try{ const h=heroPick();
+      if(h&&h.e){ const j=cards.findIndex(c=>c.dataset.ep===h.e.id); if(j>=0)CFV.i=j; } }catch(err){}
+  } else if(CFV.key){
+    const j=cards.findIndex((c,i)=>cfKey(c,i)===CFV.key);
+    if(j>=0)CFV.i=j;
+  }
+  CFV.i=Math.max(0,Math.min(cards.length-1,CFV.i));
+  CFV.key=cfKey(cards[CFV.i],CFV.i);
+  cfFit(cards); cfPaint();
+}
+/* Bound once, on the deck itself — paintSeason replaces the cards inside it several
+   times a visit and would take any handler bound to a card with them. */
+function cfWire(){
+  const deck=$('#eps');
+  /* A click on a card that is not the middle one turns the deck instead of entering
+     the bay, and a click that is really the end of a drag does nothing at all. Both
+     have to happen in the capture phase: paintSeason binds enterEpisode straight onto
+     the card, and by the target phase it is already too late to say no. */
+  deck.addEventListener('click',e=>{
+    const c=e.target.closest&&e.target.closest('.tile');
+    if(!c||c.parentElement!==deck)return;
+    const i=cfList().indexOf(c);
+    if(CFV.moved||i!==CFV.i){ e.stopPropagation(); e.preventDefault();
+      if(!CFV.moved&&i>=0)cfGo(i); }
+  },true);
+  /* There is deliberately no focus-follows rule here, and it cost two regressions to
+     learn why. Turning the deck when a card takes focus reads well until you notice
+     what focuses a card: the press that is about to click it. The deck would arrive at
+     the card first, the click would then find nothing to intercept, and a side card
+     would open a case instead of centring — on a mouse it happened between pointerdown
+     and click, on a touchscreen the focus lands after pointerup, so no pointer-state
+     guard covers both. The roving tabindex in cfPaint makes the rule unnecessary
+     anyway: the only card Tab can reach is the one already in front of you. */
+  deck.addEventListener('keydown',e=>{
+    if(e.key==='ArrowLeft')cfGo(CFV.i-1);
+    else if(e.key==='ArrowRight')cfGo(CFV.i+1);
+    else if(e.key==='Home')cfGo(0);
+    else if(e.key==='End')cfGo(cfList().length-1);
+    else return;
+    e.preventDefault();
+  });
+  $('#eps-prev').addEventListener('click',()=>cfGo(CFV.i-1));
+  $('#eps-next').addEventListener('click',()=>cfGo(CFV.i+1));
+  deck.addEventListener('pointerdown',e=>{
+    if(e.button>0)return;
+    CFV.drag={x:e.clientX,id:e.pointerId,cap:false}; CFV.moved=false;
+    deck.classList.add('dragging');
+  });
+  deck.addEventListener('pointermove',e=>{
+    if(!CFV.drag)return;
+    const dx=e.clientX-CFV.drag.x;
+    /* Capture only once this is a drag and not a click: a captured pointer retargets
+       the click to the deck, which would cost us click-a-card-to-centre-it. */
+    if(!CFV.drag.cap&&Math.abs(dx)>10){
+      try{deck.setPointerCapture(CFV.drag.id);}catch(err){} CFV.drag.cap=true; }
+    if(Math.abs(dx)>40){ cfGo(CFV.i+(dx<0?1:-1)); CFV.drag.x=e.clientX; CFV.moved=true; }
+  });
+  const release=()=>{
+    if(!CFV.drag)return;
+    if(CFV.drag.cap){try{deck.releasePointerCapture(CFV.drag.id);}catch(err){}}
+    CFV.drag=null; deck.classList.remove('dragging');
+    if(CFV.moved)setTimeout(()=>{CFV.moved=false;},60);
+  };
+  deck.addEventListener('pointerup',release);
+  deck.addEventListener('pointercancel',release);
+  /* A trackpad's sideways flick is the same gesture as the drag and the shelf used to
+     answer it, so it still does. The vertical one is the page's and is left alone. */
+  deck.addEventListener('wheel',e=>{
+    if(Math.abs(e.deltaX)<=Math.abs(e.deltaY))return;
+    e.preventDefault();
+    const now=Date.now(); if(now-CFV.wheel<220)return;
+    CFV.wheel=now; cfGo(CFV.i+(e.deltaX>0?1:-1));
+  },{passive:false});
+  let rz=null;
+  addEventListener('resize',()=>{ clearTimeout(rz); rz=setTimeout(()=>{
+    const cards=cfList(); if(!cards.length)return;
+    CFV.fit=0; cfFit(cards); cfPaint(); },120); });
+  /* The cards are as tall as their type, and the type arrives after the first paint. */
+  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{
+    const cards=cfList(); if(cards.length){ CFV.fit=0; cfFit(cards); cfPaint(); } }).catch(()=>{});
+}
+cfWire();
 
 /* ── the set strip ── the door prices, said in the only unit that opens them.
    A station card wears its own star; nothing on the shelf added them up, so a player
@@ -3455,6 +3780,11 @@ function paintRing(){
    every later hover takes the Ken Burns path instead of re-requesting missing files. */
 let PVOK=true;
 function motionOn(tile){
+  /* On the deck only the card facing you moves. The four leaning behind it are
+     scenery — five clips playing at once to serve one hover is a frame nobody
+     asked for, and a Ken Burns drift on a card turned 38° away is invisible. */
+  if(tile.parentElement&&tile.parentElement.id==='eps'
+     &&tile.getAttribute('aria-current')!=='true')return;
   if(tile.dataset.pv)return; tile.dataset.pv='1';
   const e=SEASON.find(x=>x.id===tile.dataset.ep)||{};
   const img=tile.querySelector('.art img');
