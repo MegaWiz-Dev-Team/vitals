@@ -79,6 +79,11 @@ addEventListener('click',function(e){
 .hero:focus-visible{outline:3px solid var(--mint);outline-offset:2px}
 .hero-art{position:absolute;inset:0;overflow:hidden}
 .hero-art img{width:100%;height:100%;object-fit:cover;display:block}
+/* The art is wrapped in a <picture> so a narrow screen takes the 3:2 crop instead of the
+   16:9 billboard. <picture> is an inline box by default, and an inline box has no height for
+   the img's `height:100%` to resolve against — which collapsed the art to nothing. It is a
+   block that fills its frame, and then the img rule above applies exactly as it did. */
+.hero-art picture,.tile .art picture{display:block;width:100%;height:100%}
 .hero-void{width:100%;height:100%;display:grid;place-items:center;
   background:linear-gradient(150deg,#0f2d3a,#1f9d86)}
 .hero-void span{font-family:Archivo,sans-serif;font-weight:800;font-size:clamp(3rem,15vw,6rem);
@@ -1203,7 +1208,12 @@ const SEASON=[
   who:'Somsri · F 68', line:'wheals and a swelling face, cramping belly, three loose stools — and a faint she will not admit to',
   place:'OSCE station · Nurse Mali marking',
   d:'The same disease in a different costume: she arrives looking like food poisoning — and she has left the worst of the story out.'},
+ /* Key art, from EP2 on: `art` is the 16:9 billboard crop and `art2` the 3:2 one a narrow
+    screen gets instead (artOf() builds the <picture>). EP1 keeps stable.jpg — a real frame of
+    its own patient, which no generated portrait improves on. The faces are canon; the rules
+    for shooting more of them are in docs/internal/SEASON_ARC.md, "Canon ภาพตัวละคร". */
  {id:'ep2',n:'EP2',sn:'S1:E2',t:'Time Is Muscle',tier:'intern',rt:'a 12-minute shift',mins:12,
+  art:'/img/ep2_prasit.jpg',art2:'/img/ep2_prasit_3x2.jpg',
   who:'Prasit · M 58', line:'crushing chest pain to the jaw, sweating',
   place:'Emergency department · evening',
   d:'Thirty years driving patients to this door — tonight Prasit arrives as one. The ECG tells the truth in ten minutes.'},
@@ -1223,6 +1233,7 @@ const SEASON=[
   place:'OSCE station · Nurse Mali marking',
   d:'Two days of a cold, then a bark that woke the house. She is loud, she is drinking, and the rest of the visit is yours.'},
  {id:'ep3',n:'EP3',sn:'S1:E3',t:"Don't Make Him Cry",tier:'resident',rt:'a 14-minute shift',mins:14,
+  art:'/img/ep3_khaopun.jpg',art2:'/img/ep3_khaopun_3x2.jpg',
   who:'Khaopun · M 5', line:'tripod, drooling, muffled voice, will not lie down',
   place:'Paediatric bay · evening',
   d:'Carried in by a grandfather you have met before. A five-year-old sitting very still — the stillness is the frightening part.'},
@@ -1242,6 +1253,7 @@ const SEASON=[
   place:'OSCE station · Nurse Mali marking',
   d:'A week of cough turned rusty and a stab when she breathes in. The diagnosis is the easy half; the rest of the mark sheet is not.'},
  {id:'ep4',n:'EP4',sn:'S1:E4',t:'The Masquerader',tier:'resident',rt:'a 12-minute shift',mins:12,
+  art:'/img/ep4_mali.jpg',art2:'/img/ep4_mali_3x2.jpg',
   who:'Mali · F 34', line:'breathless, pleuritic pain, looks anxious',
   place:'Emergency department · afternoon',
   d:'One of your own nurses, still in uniform. Everything looks normal — the oxygen is quietly low and the heart is too fast.'},
@@ -1266,28 +1278,45 @@ const SEASON=[
   place:'OSCE station · Nurse Mali marking, the finale a week away',
   d:'The finale’s hour, rehearsed on one patient: 39.5, a pressure of 80, and a lactate that has already made up its mind.'},
  {id:'ep5',n:'EP5',sn:'S1:E5',t:'The Night the Stars Fell',tier:'resident',rt:'an 18-minute shift',mins:18,
+  art:'/img/ep5_boonsong.jpg',art2:'/img/ep5_boonsong_3x2.jpg',
   who:'Boonsong · M 47', line:'the fireworks foreman — bleeding, chest not moving well, six more waiting',
   place:'Resus · mass casualty',
   d:'Everyone you have met, in one room, on the worst night of the year.'},
 ];
 const ep=()=>SEASON.find(e=>e.id===$('#ep').value)||SEASON[0];
 
+/* An entry's art as a <picture>: a phone takes the 3:2 crop and never downloads the 16:9
+   billboard, and an entry with only one file still works because <source> is optional.
+   Everything below the fold is `loading="lazy"` — a shelf of five episodes plus twelve
+   stations is a lot of megabytes to spend before the first card is even on screen. The
+   billboard is the exception: it *is* the first screen, so it loads eagerly and says so,
+   which is the difference between a hero that paints late and one that paints. */
+function artOf(e,eager){
+  if(!e||!e.art)return '';
+  const src=e.art2?`<source media="(max-width:640px)" srcset="${e.art2}">`:'';
+  const how=eager?'loading="eager" fetchpriority="high"':'loading="lazy"';
+  return `<picture>${src}<img src="${e.art}" alt="" decoding="async" ${how}></picture>`;
+}
+
 /* ── B7 · "Previously on Vitals…" ─────────────────────────────────────────────
    Three frames, one line each, straight off the season arc (docs/internal/SEASON_ARC.md).
-   EP2's recap wears EP1's real frames; the later ones run on dark memory-frames until
-   their episodes have art — a wrong face is worse than no face. Phase 3 (narrative
+   EP2's recap wears EP1's real frames. The later ones now open on the key art of the
+   episode they are remembering — the face the line names, and only that one: a still
+   held three times in a row reads as a stuck projector, and the remaining lines (a cath
+   lab, a radio channel, a factory running late) have no shot of their own, so those keep
+   the dark memory-frame. A wrong face is still worse than no face. Phase 3 (narrative
    prose pass) owns this copy: polish the lines here and in STINGER, nowhere else. */
 const RECAP={
  ep2:[['/img/critical.jpg','Ing, nineteen. The wrong salad, and her throat closing in minutes.'],
       ['/img/recovered.jpg','Adrenaline, first and fast. She walked out of this bay alive.'],
       ['/img/stable.jpg','\u201cOne day I\u2019m coming back here. To help.\u201d She meant it.']],
- ep3:[[null,'Prasit, 58. Thirty years driving the sick to this door — then the pain hit his jaw at the wheel.'],
+ ep3:[['/img/ep2_prasit.jpg','Prasit, 58. Thirty years driving the sick to this door — then the pain hit his jaw at the wheel.'],
       [null,'The ECG told the truth and the cath lab beat the clock. Time is muscle — you spent it well.'],
       [null,'He taped a radio channel to the triage desk: \u201cThe day you need a car — radio me.\u201d']],
  ep4:[[null,'Prasit, back through the doors at a run — his grandson in his arms. Khaopun, five years old, far too quiet.'],
-      [null,'The boy would not cry, and the stillness was the emergency. You kept him calm; the airway held.'],
+      ['/img/ep3_khaopun.jpg','The boy would not cry, and the stillness was the emergency. You kept him calm; the airway held.'],
       [null,'His mother watched from the doorway in uniform — a nurse on this ward, sixteen hours into her own shift.']],
- ep5:[[null,'Mali — Khaopun\u2019s mother. The nurse who held everyone else up, brought down by a clot grown on double shifts.'],
+ ep5:[['/img/ep4_mali.jpg','Mali — Khaopun\u2019s mother. The nurse who held everyone else up, brought down by a clot grown on double shifts.'],
       [null,'The masquerader nearly took her. Heparin bought her back — but the system is stretched past its people.'],
       [null,'Tonight is the new year festival. The fireworks factory is running late.']],
 };
@@ -2467,7 +2496,7 @@ function heroPick(){
 }
 function renderHero(){
   const p=heroPick(), e=p.e, pr=progOf(e);
-  const art=e.art?`<img src="${e.art}" alt="">`
+  const art=e.art?artOf(e,true)
     :`<div class="hero-void ph-${e.id}"><span>${e.sn||e.n}</span></div>`;
   const eye = p.mode==='continue'?`Continue watching · ${e.sn||e.n}`
     : p.mode==='next'?`Up next · ${e.sn||e.n}`

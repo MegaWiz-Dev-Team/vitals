@@ -78,6 +78,26 @@ const STILLS: &[(&str, &[u8])] = &[
     ("dead", include_bytes!("../static/img/dead.jpg")),
 ];
 
+/// The episode key art — one face per shift, keyed the way [`STILLS`] is so `/img/<key>.jpg`
+/// serves both from one arm.
+///
+/// Kept apart from `STILLS` because they answer different questions: a still says how the
+/// patient *is* right now and is swapped by the automaton, while key art is the episode's
+/// portrait and never changes during a run. Two entries per episode — a 16:9 billboard crop and
+/// a 3:2 one for a narrow screen, which the page picks between with `<picture>` so a phone never
+/// downloads the wide one. Canon for these faces is locked in `docs/internal/SEASON_ARC.md`
+/// ("Canon ภาพตัวละคร"); EP1 keeps `stable.jpg`, which is a real frame of its own patient.
+const KEY_ART: &[(&str, &[u8])] = &[
+    ("ep2_prasit", include_bytes!("../static/img/ep2_prasit.jpg")),
+    ("ep2_prasit_3x2", include_bytes!("../static/img/ep2_prasit_3x2.jpg")),
+    ("ep3_khaopun", include_bytes!("../static/img/ep3_khaopun.jpg")),
+    ("ep3_khaopun_3x2", include_bytes!("../static/img/ep3_khaopun_3x2.jpg")),
+    ("ep4_mali", include_bytes!("../static/img/ep4_mali.jpg")),
+    ("ep4_mali_3x2", include_bytes!("../static/img/ep4_mali_3x2.jpg")),
+    ("ep5_boonsong", include_bytes!("../static/img/ep5_boonsong.jpg")),
+    ("ep5_boonsong_3x2", include_bytes!("../static/img/ep5_boonsong_3x2.jpg")),
+];
+
 struct Session {
     /// Which scenario, so a resumed run reloads the same automaton it was played against.
     ep: String,
@@ -963,7 +983,7 @@ fn main() {
             }
             (Method::Get, p) if p.starts_with("/img/") => {
                 let key = p.trim_start_matches("/img/").trim_end_matches(".jpg");
-                match STILLS.iter().find(|(k, _)| *k == key) {
+                match STILLS.iter().chain(KEY_ART.iter()).find(|(k, _)| *k == key) {
                     Some((_, bytes)) => {
                         let _ = req.respond(
                             Response::from_data(*bytes)
