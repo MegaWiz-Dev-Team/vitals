@@ -438,9 +438,12 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
 .pt{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;
   text-align:center;padding-bottom:.7rem}
 .pt-art{position:relative;aspect-ratio:16/9;background:#0b1312}
-.pt-art video,.pt-art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+/* Direct children only. The frame now holds a document and a film of its own, and an
+   `img` anywhere inside it used to inherit "absolute, inset 0, cover, opacity 0" — which
+   is a chest radiograph, invisible, stretched over the whole panel. */
+.pt-art>video,.pt-art>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
   opacity:0;transition:opacity .45s ease}
-.pt-art video.on,.pt-art img.on{opacity:1}
+.pt-art>video.on,.pt-art>img.on{opacity:1}
 /* A cutscene cuts, it does not dissolve — the Director hands it the whole frame. */
 #cut{opacity:0;transition:opacity .18s ease;z-index:2;background:#000}
 #cut.on{opacity:1}
@@ -451,6 +454,103 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
 .place{position:absolute;left:.55rem;bottom:.55rem;font-family:"IBM Plex Mono",monospace;
   font-size:.6rem;letter-spacing:.06em;color:#E7EFEE;background:rgba(6,14,14,.6);
   padding:.2rem .5rem;border-radius:6px;backdrop-filter:blur(5px)}
+
+/* ── the stage ────────────────────────────────────────────────────────────────
+   The biggest panel in the bay is a video frame, and a station has no video: it was
+   a black rectangle over half the screen for the whole exam, which reads as broken
+   rather than as empty. So the frame carries what a station actually has.
+
+   Before the first order it is the stem — the sheet pinned to the door of a real OSCE
+   station: who walks in, what you can see from the doorway, the room, the clock. Paper
+   on the dark frame, because that is what it is. It says nothing the mark sheet marks
+   (no diagnosis, no drug, no plan) — the same rule the card and the player bar keep.
+
+   Order an investigation that has a picture and the picture takes the frame at the size
+   a film is actually read at, with the caption beside it and the licence under that. A
+   corner strip switches between the stem and each film; the light box is still one tap
+   away for the full screen.
+
+   An episode with real film keeps every one of its own behaviours: none of this paints
+   unless the entry is a station. */
+.stem{position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;gap:.45rem;
+  background:#FBFAF7;color:var(--ink);text-align:left;overflow:auto;
+  box-shadow:inset 0 -1px 0 var(--line);
+  padding:clamp(.7rem,2.4vh,1.15rem) clamp(.9rem,2.6vw,1.8rem) 2.5rem}
+.stem-h{display:flex;align-items:baseline;gap:.5rem;flex-wrap:wrap;flex:none;
+  font-family:"IBM Plex Mono",monospace;font-size:.6rem;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ink-3);border-bottom:1px solid var(--line);
+  padding-bottom:.4rem}
+.stem-h b{color:var(--act);font-weight:700}
+.stem-h .sp{margin-left:auto}
+.stem-t{font-family:Archivo,sans-serif;font-weight:700;letter-spacing:-.01em;margin:.1rem 0 0;
+  font-size:clamp(1rem,2.6vh,1.42rem);line-height:1.2;flex:none}
+/* dt/dd straight into the grid: label column, value column, no wrapper divs. */
+.stem-g{margin:.15rem 0 0;display:grid;grid-template-columns:auto minmax(0,1fr);
+  gap:.28rem .9rem;align-items:baseline;flex:none;font-size:clamp(.78rem,1.9vh,.92rem)}
+.stem-g dt{font-family:"IBM Plex Mono",monospace;font-size:.57rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-3);white-space:nowrap;padding-top:.15rem}
+.stem-g dd{margin:0;color:var(--ink-2);line-height:1.4}
+.stem-task{margin:.35rem 0 0;flex:none;font-size:clamp(.82rem,2vh,1rem);font-weight:600}
+.stem-f{margin:auto 0 0;flex:none;font-family:"IBM Plex Mono",monospace;font-size:.57rem;
+  letter-spacing:.05em;line-height:1.7;color:var(--ink-3);border-top:1px solid var(--line);
+  padding-top:.4rem}
+.stem-f b{color:#c68f1f;letter-spacing:.14em;text-transform:uppercase}
+
+.filmv{position:absolute;inset:0;z-index:1;margin:0;display:flex;background:#0b1312}
+/* The corner strip is cleared with a gutter on the left, not with margin at the bottom.
+   Every film in the bank is square or taller, so on this wide frame the height is what
+   limits how big a 12-lead can be drawn and the width is not: giving the strip a lane
+   down the left costs the film nothing, while reserving the same space under it would
+   cost a tenth of the only dimension that matters. The phone layout, where the read is
+   under the film instead of beside it, clears the strip with the caption. */
+.fv-i{flex:1 1 auto;min-width:0;min-height:0;display:flex;align-items:center;
+  justify-content:center;padding:.45rem .45rem .45rem 8.6rem;background:none;border:0;
+  cursor:zoom-in;transition:none}
+.fv-i img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;
+  display:block;border-radius:3px}
+.fv-i:focus-visible{outline:2px solid #7fe7d2;outline-offset:-4px}
+/* `safe center` because the credit is a licence condition, not a caption: in a short frame —
+   after the bell, when the debrief has taken the height back — plain `center` overflows both
+   ends of the column and the top and bottom lines become unreachable. Safe centring falls
+   back to start-aligned, and the column scrolls, so all four things CC-BY asks for stay
+   readable at every height this frame can be. */
+.fv-c{flex:0 0 clamp(9.5rem,24%,16rem);min-width:0;display:flex;flex-direction:column;
+  gap:.35rem;justify-content:center;justify-content:safe center;overflow:auto;
+  padding:.7rem .9rem .7rem .2rem;text-align:left}
+.fv-c>*{flex:none}
+.fv-who{font-family:"IBM Plex Mono",monospace;font-size:.57rem;letter-spacing:.16em;
+  text-transform:uppercase;color:#7fe7d2}
+.fv-cap{font-size:.83rem;line-height:1.45;color:#eaf4f1;font-weight:600}
+.fv-cr{font-family:"IBM Plex Mono",monospace;font-size:.55rem;line-height:1.6;color:#8fa8ab}
+.fv-cr a{color:#7fe7d2}
+.fv-z{font-family:"IBM Plex Mono",monospace;font-size:.55rem;letter-spacing:.1em;
+  text-transform:uppercase;color:#6f8a8d}
+/* On a phone the frame is too narrow to give a column away: the read goes under the film. */
+@media(max-width:34rem){
+  .filmv{flex-direction:column}
+  .fv-i{padding:.4rem .4rem .2rem .4rem}
+  .fv-c{flex:none;justify-content:flex-start;text-align:left;
+    padding:.5rem .8rem 2.3rem;border-top:1px solid rgba(255,255,255,.08)}
+}
+
+/* the switch strip, in the corner the place tag had — a station folds the room into
+   the stem, so the two never want that corner at the same time */
+.sgt{position:absolute;left:.5rem;bottom:.5rem;z-index:3;display:flex;gap:.2rem;
+  background:rgba(6,14,14,.74);border-radius:8px;padding:3px;backdrop-filter:blur(5px)}
+.sgt button{font-family:"IBM Plex Mono",monospace;font-size:.58rem;letter-spacing:.12em;
+  text-transform:uppercase;color:#cfe0dd;background:none;border:0;border-radius:6px;
+  padding:.24rem .5rem;cursor:pointer;transition:background .12s,color .12s}
+.sgt button:hover{background:rgba(255,255,255,.12);color:#fff}
+.sgt button.on{background:var(--act);color:#fff}
+.sgt button:focus-visible{outline:2px solid #7fe7d2;outline-offset:1px}
+/* A document is not a 16:9 frame. Where the page still scrolls (phones, short windows)
+   the frame takes the height the sheet needs; inside the one-viewport fit below, the
+   flex row hands it out instead and this floor comes back off. */
+.pt-art.doc{aspect-ratio:auto;min-height:clamp(19rem,46vh,26rem)}
+/* A film wants more of a phone than a sheet does: stacked under its read, the frame has
+   to be tall enough for the trace to reach the full width of the screen before it stops
+   growing. Below that it is the height, not the width, that decides how big a 12-lead is. */
+.pt-art.doc.film{min-height:clamp(23rem,58vh,33rem)}
 .pt-name{font-family:Archivo,sans-serif;font-weight:700;font-size:1.02rem;margin-top:.6rem}
 .pt-status{font-family:"IBM Plex Mono",monospace;font-size:.76rem;font-weight:600;letter-spacing:.06em}
 .pt-status.Deteriorating,.pt-status.Critical{color:var(--warn)}
@@ -820,26 +920,17 @@ a.give:hover{filter:brightness(1.06)}
 .epi-s2 span{display:block;font-size:clamp(1.7rem,7vw,2.7rem);letter-spacing:.04em;color:#fff;margin-top:.15rem}
 
 /* ── the films ────────────────────────────────────────────────────────────────
-   An investigation you ordered comes back as a picture. It lands as a thumbnail in
-   the rail — which scrolls inside itself, so the bay is still one viewport and the
-   film costs the layout nothing — and opens full size in a light box with the report
-   line under it and the credit under that. The strip is hidden until the first order
-   comes back: an empty frame on a station with no imaging is furniture.
+   An investigation you ordered comes back as a picture, and it goes on the stage —
+   the frame that was black for the whole station — at the size a film is read at.
+   See `.stem` and `.filmv` above for that frame; this is the light box it opens into
+   for the full screen.
 
    The credit is not decoration. Both ECGs are PTB-XL under CC-BY 4.0, whose §3(a)
    asks for the creator, the licence, its URI and a statement that the work was
    modified — ours is modified twice, rendered then re-encoded. A viewer who never
-   opens the repository still has to be able to read all four, so every open film
-   carries the line and the shelf carries "image credits" for the card crops, which
-   are derivatives under the same licence. */
-.film-strip{display:flex;gap:.4rem;flex-wrap:wrap}
-.film-th{position:relative;width:4.3rem;aspect-ratio:1/1;flex:none;padding:0;overflow:hidden;
-  border:1px solid var(--line);border-radius:8px;background:#0b1418;cursor:pointer}
-.film-th img{width:100%;height:100%;object-fit:cover;display:block}
-.film-th b{position:absolute;inset:auto 0 0 0;font-family:"IBM Plex Mono",monospace;font-weight:600;
-  font-size:.5rem;letter-spacing:.1em;text-transform:uppercase;color:#fff;
-  background:rgba(6,20,24,.74);padding:.12rem .25rem}
-.film-th:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+   opens the repository still has to be able to read all four, so every film carries
+   the line on the stage *and* in the light box, and the shelf carries "image credits"
+   for the card crops, which are derivatives under the same licence. */
 /* Centred by `margin:auto` on the child rather than by `align-items:center` on the box: a
    centred flex item taller than its container is clipped at the top with no way to scroll to
    it, and a portrait chest film on a short window is exactly that case. */
@@ -1092,7 +1183,15 @@ a.give:hover{filter:brightness(1.06)}
   .stage{min-height:0;overflow-y:auto;overscroll-behavior:contain;gap:.6rem}
   .pt{display:flex;flex-direction:column;min-height:0;flex:2.2 1 0;padding-bottom:.55rem}
   .pt-art{aspect-ratio:auto;flex:1 1 auto;min-height:7rem}
-  .pt-art video,.pt-art img{object-fit:contain}
+  /* Those floors are for the scrolling layout; here the row gives out the height, and a
+     floor taller than the row's share is what pushes a bay off the bottom of the screen. */
+  .pt-art.doc,.pt-art.doc.film{min-height:7rem}
+  /* A film on the stage is the thing being read, and a 12-lead is nearly square: on a
+     wide short frame its height is what limits it, so the frame takes height off the
+     transcript for as long as the film is up and hands it straight back after. The
+     transcript keeps its floor, so it can never be squeezed out of existence. */
+  .stage:has(.pt-art.film) .pt{flex:4.2 1 0}
+  .pt-art>video,.pt-art>img{object-fit:contain}
   .pt-name,.pt-status,.pt-line{flex:none}
   .pt-name{margin-top:.4rem}
   .chat{flex:1 1 0;min-height:6rem;max-height:none;overscroll-behavior:contain}
@@ -1193,6 +1292,13 @@ a.give:hover{filter:brightness(1.06)}
         <video id="loop" autoplay loop muted playsinline preload="auto"></video>
         <video id="cut" muted playsinline preload="auto"></video>
         <img id="fallback" src="/img/stable.jpg" alt="the patient">
+        <!-- What a station puts in the frame an episode fills with film: the stem sheet
+             before the first order, the film itself once one has been ordered, and a strip
+             in the corner to move between them. renderStage() drives all three, and paints
+             none of them for an episode. -->
+        <div class="stem hide" id="stem"></div>
+        <figure class="filmv hide" id="filmv"></figure>
+        <div class="sgt hide" id="sgt"></div>
         <span class="cut-tag" id="cut-tag">cutscene</span>
         <span class="place" id="place">📷 Emergency department · night</span>
       </div>
@@ -1267,14 +1373,12 @@ a.give:hover{filter:brightness(1.06)}
       <button class="btn" id="addkit" style="width:100%">+ attach a device</button>
     </div>
 
-    <!-- What came back from the imaging you ordered. Hidden until there is something in it,
-         and it holds nothing the tape does not already hold: films are presentation, keyed off
-         the intervention id the matcher resolved, and never reach the leaf. renderFilms() fills
-         it from the view's `films`. -->
-    <div class="panel hide" id="filmbox">
-      <div class="k">films</div>
-      <div class="film-strip" id="films"></div>
-    </div>
+    <!-- The films had a panel of their own here: a row of 69px thumbnails of a 12-lead ECG,
+         which is a grey smudge and not a film anybody read. They are on the stage now, at the
+         size they are read at, with a strip in that frame's corner to switch between them —
+         so this panel would have been a second list of the same one or two things, in the one
+         column of the fit that has no height to spare. Removed rather than kept as a shortcut
+         to something already on screen and larger. -->
 
     <div class="panel">
       <div class="k">chart</div>
@@ -2245,10 +2349,14 @@ function renderChart(v,ended){
 
    Two of the bank's images are held back pending a clinician's read. They are not in
    the server's table *and* not compiled into the binary, so there is nothing here for
-   this code to show even by accident.
+   this code to show even by accident. A station that is holding its only film — osce-b's
+   ECG, osce-c3's chest — orders it, gets no picture, and keeps the stem on the stage. It
+   never falls back to the black frame, which is the whole point of the stem being there.
 
    Captions, intervention ids and the credit are server constants and page constants —
-   no player text reaches this markup, which is why none of it is escaped. */
+   no player text reaches this markup, which is why none of it is escaped. The stem is
+   built from the same two authorities the shelf card uses (the SEASON entry and the
+   server's set table) and carries no player text either. */
 let SHOWN=[];
 /* Copied from static/img/cases/ATTRIBUTION.md rather than composed here. CC-BY 4.0 §3(a)
    wants four things and all four are in this line: who made it, the licence, the licence
@@ -2261,16 +2369,113 @@ const CREDIT='ECG: PTB-XL (Wagner et al., 2020), '
   +'<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC-BY 4.0</a>, '
   +'rendered and re-encoded · CXR: NIH ChestX-ray14 (Wang et al., 2017)';
 const orderName=s=>String(s||'').replace(/_/g,' ');
+/* What the switch strip calls each one. The order id spelled out is the honest label and
+   the short one is what a clinician says, so the strip reads ECG / CXR / X-RAY rather than
+   "xray neck" wrapped onto two lines in a corner chip. */
+const FILMTAB={ecg:'ECG',cxr:'CXR',xray_neck:'X-ray'};
+const filmTab=f=>FILMTAB[f.intervention]||orderName(f.intervention);
+
+/* ── the stage ────────────────────────────────────────────────────────────────
+   The frame above the patient's name is the biggest thing on the screen. An episode
+   fills it with film; a station had nothing to put in it and showed a black rectangle
+   across half the bay for the length of the exam, which reads as a broken build.
+
+   A station has two things worth that much of the screen, so it shows them there:
+
+     * the stem, before anything has been ordered — the sheet on the door of the
+       station, and the only text in the game a candidate is *supposed* to read before
+       touching the patient. Everything on it is already public: it is the shelf card's
+       own copy plus the room and the clock. Nothing the mark sheet marks goes on it —
+       no diagnosis, no drug, no plan, and not the shelf blurb either, which is written
+       to sell the case ("you saw this in EP1 — prove it") and points at the answer from
+       inside the exam room.
+     * the film, once one has been ordered — full frame, because a 12-lead at 69 pixels
+       is a grey smudge, and the mark sheet expects the trace to have been *read*.
+
+   `STAGE` is what the frame is showing: 'stem', or an index into SHOWN. A film that has
+   just arrived takes the frame by itself — ordering the ECG and then hunting for it is
+   not what ordering it means — and after that the strip in the corner is the player's.
+   `stageKey` keeps the repaint idempotent: paint() runs every tick and rebuilding this
+   markup a second would drop focus and restart the image decode. */
+let STAGE='stem', stageKey='';
+function stemHtml(e){
+  /* Same two authorities, same precedence as the shelf card: the server's set table
+     names the stem, the band and the tier, and the SEASON entry is the copy that paints
+     before it arrives. A station whose table entry has not landed still gets a full sheet. */
+  const info=memberOf(e.id);
+  const title=info?info.m.title:e.t;
+  const band=(info?bandOf(info.m):e.spec)||'';
+  const tier=(info?info.m.tier:e.tier)||'';
+  /* The place is written for the film's corner tag, where "OSCE station · Nurse Mali
+     marking" has to say which room it is. On the sheet the header has already said that,
+     so the prefix comes off and what is left is what the row is actually for: who else is
+     in there with you. A place that is not a station's keeps every word. */
+  const room=String(e.place||'').replace(/^OSCE station · /,'');
+  return `<div class="stem-h"><b>OSCE station ${e.n.replace(/^OSCE /,'')}</b>`
+      +'<span class="sp"></span>'
+      +`<span>${specShort(band)}${tier?' · '+tier:''}</span></div>`
+    +`<h3 class="stem-t">${title}</h3>`
+    +'<dl class="stem-g">'
+      +`<dt>patient</dt><dd>${e.who||''}</dd>`
+      +`<dt>presents</dt><dd>${e.line||''}</dd>`
+      +`<dt>in the room</dt><dd>${room}</dd>`
+      +`<dt>time</dt><dd>${e.rt||''}</dd>`
+    +'</dl>'
+    /* Deliberately the generic candidate instruction and not a per-case one: a task
+       written for this station would have to say what the station is about. */
+    +'<p class="stem-task">Assess and manage this patient.</p>'
+    +'<p class="stem-f"><b>★ exam conditions</b> — this attempt is declared on chain before '
+    +'it is played, and the score is derived from the tape afterwards. Harm and the mark '
+    +'sheet stay sealed until the bell.</p>';
+}
+function renderStage(){
+  const E=ep(), art=document.querySelector('.pt-art');
+  /* An episode's frame is the film's, exactly as it was: nothing here paints over it,
+     and the place tag goes back where the Director left it. */
+  if(!E.station){
+    art.classList.remove('doc','film');
+    $('#stem').classList.add('hide'); $('#filmv').classList.add('hide');
+    $('#sgt').classList.add('hide'); $('#place').classList.remove('hide');
+    stageKey=''; return;
+  }
+  const i=(STAGE==='stem')?-1:Math.min(STAGE,SHOWN.length-1);
+  const f=i>=0?SHOWN[i]:null;
+  const key=E.id+'|'+(f?f.file:'stem')+'|'+SHOWN.map(x=>x.file).join(',')+(over?'|bell':'');
+  if(key===stageKey)return;
+  stageKey=key;
+  /* The room is a line on the sheet now; two of it would be one too many. */
+  $('#place').classList.add('hide');
+  /* `film` is the height claim, not the visibility: after the bell the frame keeps the film
+     and drops the claim, so the debrief is not read through a slot. */
+  art.classList.add('doc'); art.classList.toggle('film',!!f&&!over);
+  if(!f){
+    $('#filmv').classList.add('hide'); $('#filmv').innerHTML='';
+    $('#stem').innerHTML=stemHtml(E); $('#stem').classList.remove('hide');
+  }else{
+    $('#stem').classList.add('hide');
+    $('#filmv').innerHTML=
+       `<button type="button" class="fv-i" title="${f.caption}" aria-label="enlarge this film">`
+      +`<img src="/img/cases/${f.file}" alt="${f.caption}" decoding="async"></button>`
+      +`<figcaption class="fv-c"><span class="fv-who">${orderName(f.intervention)}</span>`
+      +`<span class="fv-cap">${f.caption}</span>`
+      +`<span class="fv-cr">${CREDIT}</span>`
+      +'<span class="fv-z">⤢ tap the film for full screen</span></figcaption>';
+    $('#filmv').classList.remove('hide');
+    $('#filmv').querySelector('.fv-i').onclick=()=>openFilm(f);
+  }
+  if(!SHOWN.length){ $('#sgt').classList.add('hide'); $('#sgt').innerHTML=''; return; }
+  $('#sgt').innerHTML=`<button type="button" data-v="stem" class="${f?'':'on'}" aria-pressed="${!f}">stem</button>`
+    +SHOWN.map((x,n)=>`<button type="button" data-v="${n}" class="${i===n?'on':''}" aria-pressed="${i===n}">${filmTab(x)}</button>`).join('');
+  $('#sgt').classList.remove('hide');
+  $('#sgt').querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{
+    STAGE=b.dataset.v==='stem'?'stem':+b.dataset.v; renderStage(); });
+}
 function renderFilms(v){
+  const was=SHOWN.map(f=>f.file).join(',');
   SHOWN=v.films||[];
-  $('#filmbox').classList.toggle('hide',!SHOWN.length);
-  if(!SHOWN.length){ $('#films').innerHTML=''; return; }
-  $('#films').innerHTML=SHOWN.map((f,i)=>
-    `<button type="button" class="film-th" data-film="${i}" title="${f.caption}">`
-    +`<img src="/img/cases/${f.file}" alt="" loading="lazy" decoding="async">`
-    +`<b>${orderName(f.intervention)}</b></button>`).join('');
-  $('#films').querySelectorAll('[data-film]').forEach(b=>
-    b.onclick=()=>openFilm(SHOWN[+b.dataset.film]));
+  const now=SHOWN.map(f=>f.file).join(',');
+  if(SHOWN.length&&now!==was)STAGE=SHOWN.length-1;
+  renderStage();
 }
 /* One light box, two callers: a film from the bay, and the credits from the shelf — the
    card art on two station cards is a CC-BY derivative too, and the lobby has no other way
@@ -2324,6 +2529,11 @@ function drainBeats(v,ended){
 function finish(v){
   if(!v.outcome || over) return;
   over=true; stop();
+  /* The film stops being the thing the screen is for. It borrowed height from the transcript
+     while it was being read; the verdict is what wants the room now, and the frame gives it
+     back rather than holding a hundred-and-fifty-pixel radiograph over a squeezed debrief.
+     The film stays on the stage — just at the frame's ordinary share of it. */
+  renderStage();
   const win=v.outcome.startsWith('Win');
   /* The panel is built now and shown later. Everything below fills it — including two
      async fetches — while it is still display:none, so by the time the sweep uncovers
@@ -2425,6 +2635,9 @@ $('#start').onclick=async()=>{
   if(r.error)return ev('note','—',r.error);
   gtag('event','case_start',{ep:e,difficulty:$('#diff').dataset.d});
   id=r.id; mode='ask'; loopNow=''; cutting=false; $('#cut').classList.remove('on');
+  /* The frame goes back to the door of the station. Wiped rather than left: a film from
+     the previous run still on the stage is a picture of a patient who is not in the bed. */
+  SHOWN=[]; STAGE='stem'; stageKey='';
   /* Declare the run before playing it. The whole integrity claim is that the chain knew you
      started before you knew how it would go — so the declaration has to land here, at the top,
      not at anchor time when the outcome is already on the screen. If it fails the run still
