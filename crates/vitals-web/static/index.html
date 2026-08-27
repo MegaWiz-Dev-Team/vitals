@@ -2160,7 +2160,7 @@ const say=b=>fillPro(TR[b] || SAY[b] || (b.startsWith("harm:") ? "harm — "+b.s
    The server owns the tables — one file to edit to add Bahasa Indonesia — so the page holds no
    list of languages of its own. Until /api/lang answers, LANG is empty and every request simply
    omits the parameter, which the API reads as "the language the cases are written in". */
-let LANG='', LANGS=[], PACK={asks:{},ui:{}};
+let LANG='', LANGS=[], PACK={asks:{},ui:{},kit:{}};
 /* Beat → the line to read it in, for this run. Filled from each view, which carries only the
    beats the run has already earned — never the ones it has not, because a harm line names the
    drug and the deadline the rubric is about to pay for. */
@@ -2182,11 +2182,11 @@ function renderLangPickers(){
 async function setLang(id,remember){
   LANG=id||'';
   if(remember) { try{localStorage.setItem('vitals.lang',LANG)}catch(e){} }
-  PACK={asks:{},ui:{}};
+  PACK={asks:{},ui:{},kit:{}};
   try{
     const d=await (await fetch('/api/lang'+(LANG?'?lang='+encodeURIComponent(LANG):''))).json();
     if(d.languages&&d.languages.length) LANGS=d.languages;
-    PACK={asks:d.asks||{},ui:d.ui||{}};
+    PACK={asks:d.asks||{},ui:d.ui||{},kit:d.kit||{}};
     if(d.lang) LANG=d.lang;
   }catch(e){ /* no pack is the English pack: every string below falls back to the original */ }
   HARM_SEALED = PACK.ui.harm_sealed || '⚠ harm recorded';
@@ -2285,7 +2285,13 @@ function emptyState(){
    first. 999 mL/hr is not a bug — it is an IV run wide open, and it is one of the
    presets a learner picks from. */
 const KIT=[
- {id:'o2',  label:'O₂ face mask', device:'O₂ mask', detail:'high-flow', unit:'L/min', presets:[6,10,15], def:10,
+ /* Presets, not a slider, and this is the one that has to be read carefully: 2 and 4 are a nasal
+    cannula, 6 is a simple mask, 10 and 15 are a non-rebreather. They are the settings a hand
+    actually reaches for — a 0–15 slider in steps of one invites a learner to choose 7 for no
+    reason, and "7 L/min" is not a thing anybody hangs on a wall. The detail line is the mapping
+    itself, because the flowmeter is where that lesson lands. Ported from Embla, where the same
+    five have been in front of candidates. */
+ {id:'o2',  label:'Oxygen', device:'O₂', detail:'cannula 2–4 · mask 6–8 · NRB 10–15', unit:'L/min', presets:[2,4,6,10,15], def:10,
   detach:true,  group:'breathing'},
  {id:'iv',  label:'IV + fluid',   device:'IV · 0.9% NaCl', detail:'0.9% NaCl', unit:'mL/hr', presets:[80,125,500,999], def:999,
   detach:true,  group:'circulation'},
@@ -2297,31 +2303,48 @@ const KIT=[
   detach:false, group:'circulation', confirm:'Deliver the shock?'},
 ];
 const KITLBL=Object.fromEntries(KIT.map(k=>[k.id,k]));
+/* The tray's words in the language the bay is being played in — and only its words. The id, the
+   setting and the phrase the server mints from them are untouched, so this relabels exactly the
+   way a chip relabels: two learners who attach the same device at the same number write the same
+   tape whichever language they read it in. No row, or English, gives the original back. */
+const kitL=(k,f)=>PACK.kit[k.id+'.'+f]||k[f];
 let picking=null;
 
 /* Simple line art, drawn rather than photographed: a learner should recognise the thing on
-   the trolley, and a stock photo of a mask teaches nothing about the flowmeter. */
+   the trolley, and a stock photo of a mask teaches nothing about the flowmeter.
+   One grammar for all five: 90×104, stroke 2.2 on currentColor, fills only from the tokens
+   below, and never more than four parts — at 38px a fifth part turns the icon to mush. */
 const ART={
- o2:`<svg viewBox="0 0 90 104" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round">
-   <path d="M22 30h46a6 6 0 0 1 6 6v22a22 22 0 0 1-22 22H38a22 22 0 0 1-22-22V36a6 6 0 0 1 6-6z" fill="#EAF3F1"/>
-   <path d="M30 30V22a15 15 0 0 1 30 0v8"/><path d="M45 80v14"/>
-   <path d="M45 94c-10 0-16 4-16 8h32c0-4-6-8-16-8z" fill="#DCEDE7"/>
-   <circle cx="45" cy="54" r="7" fill="#2A9D7E" stroke="none" opacity=".8"/></svg>`,
- iv:`<svg viewBox="0 0 90 104" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round">
-   <path d="M45 6v10"/><path d="M30 16h30l-3 40a12 12 0 0 1-24 0z" fill="#E7F1F6"/>
-   <path d="M45 68v10"/><path d="M39 78h12v10H39z" fill="#EAF3F1"/>
-   <path d="M45 88c0 8-14 6-14 16"/></svg>`,
- ett:`<svg viewBox="0 0 90 104" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round">
-   <path d="M20 20c26 0 40 20 40 40s-8 30-22 34" />
-   <ellipse cx="58" cy="62" rx="11" ry="7" fill="#EAF3F1"/>
-   <path d="M20 14v12"/><circle cx="20" cy="20" r="6" fill="#DCEDE7"/></svg>`,
- supine:`<svg viewBox="0 0 90 104" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round">
-   <path d="M8 66h60l14-16" /><circle cx="20" cy="58" r="7" fill="#EAF3F1"/>
-   <path d="M8 66v10M68 66v10"/></svg>`,
- defib:`<svg viewBox="0 0 90 104" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round">
-   <rect x="14" y="26" width="28" height="22" rx="4" fill="#FBE8E6"/>
-   <rect x="48" y="56" width="28" height="22" rx="4" fill="#FBE8E6"/>
-   <path d="M42 37h10M38 67h10"/><path d="M46 20l-8 14h10l-8 14"/></svg>`,
+ o2:`<svg viewBox="0 0 90 104" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+   <path d="M28 20h34a6 6 0 0 1 6 6v18c0 13-10.5 23-23 23S22 57 22 44V26a6 6 0 0 1 6-6z" fill="#EAF3F1"/>
+   <path d="M22 27H9M68 27h13"/>
+   <circle cx="45" cy="40" r="4.5" fill="#2A9D7E" stroke="none"/>
+   <path d="M45 67v6"/>
+   <path d="M45 73c-9 0-14 6-14 13s6 13 14 13 14-6 14-13-5-13-14-13z" fill="#DCEDE7"/></svg>`,
+ iv:`<svg viewBox="0 0 90 104" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+   <path d="M45 6v7"/><path d="M38 8a7 7 0 0 1 14 0"/>
+   <path d="M32 13h26a3 3 0 0 1 3 3.3l-3.4 34A11 11 0 0 1 46.7 60h-3.4a11 11 0 0 1-10.9-9.7L29 16.3A3 3 0 0 1 32 13z" fill="#E7F1F6"/>
+   <path d="M35 25h20"/><path d="M45 60v5"/>
+   <rect x="39" y="65" width="12" height="15" rx="3" fill="#EAF3F1"/>
+   <circle cx="45" cy="71" r="2.2" fill="#2A9D7E" stroke="none"/>
+   <path d="M45 80v6c0 9-14 8-14 17"/>
+   <rect x="38.5" y="88" width="8" height="7" rx="2.5" fill="#DCEDE7"/></svg>`,
+ ett:`<svg viewBox="0 0 90 104" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+   <rect x="30" y="8" width="30" height="16" rx="4" fill="#DCEDE7"/>
+   <path d="M36 24v34c0 16 4 26 14 32l10-8c-6-5-6-12-6-24V24"/>
+   <ellipse cx="45" cy="62" rx="16" ry="10" fill="#EAF3F1"/>
+   <circle cx="53" cy="83" r="2" fill="currentColor" stroke="none"/></svg>`,
+ supine:`<svg viewBox="0 0 90 104" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+   <path d="M58 72l22-18v18z" fill="#DCEDE7"/>
+   <path d="M6 72h76"/><path d="M12 72v13M76 72v13"/>
+   <circle cx="19" cy="62" r="7" fill="#EAF3F1"/>
+   <path d="M26 65h24l10-3"/><path d="M60 62l16-11"/>
+   <path d="M30 66c5 5 12 5 16 1"/></svg>`,
+ defib:`<svg viewBox="0 0 90 104" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+   <rect x="10" y="22" width="27" height="21" rx="6" fill="#FBE8E6"/>
+   <rect x="53" y="61" width="27" height="21" rx="6" fill="#FBE8E6"/>
+   <path d="M23.5 22V13c0-4 4-5 7-4"/><path d="M66.5 82v9c0 4-4 5-7 4"/>
+   <path d="M50 34l-9 15h8l-9 16" stroke="#C2453B"/></svg>`,
 };
 
 /* The catalogue, grouped the way a resuscitation is taught. */
@@ -2344,7 +2367,7 @@ function openPicker(){
       const rows=KIT.filter(k=>k.group===g); if(!rows.length)return '';
       return `<div><div class="grp-h">${title}</div>`+rows.map(k=>`
         <button class="dev-row" data-dev="${k.id}" data-ga="dev:${k.id}">
-          <span><span class="n">${k.label}</span><span class="d">${k.detail}</span></span>
+          <span><span class="n">${kitL(k,'label')}</span><span class="d">${kitL(k,'detail')}</span></span>
           ${on.has(k.id)?'<span class="on">✓ on</span>':''}
         </button>`).join('')+`</div>`;
     }).join('')+`</div>`;
@@ -2361,12 +2384,12 @@ function openSetting(devId){
   const mins=cur?Math.max(0,Math.floor((clockNow-cur.since)/60)):null;
   const val=cur&&cur.setting!=null?cur.setting:k.def;
   $('#sheet').innerHTML=`
-    <div class="sheet-h"><b>${k.label}</b><span class="sp"></span>
+    <div class="sheet-h"><b>${kitL(k,'label')}</b><span class="sp"></span>
       <button class="btn" data-back data-ga="sheet-back">← back</button></div>
     <div class="sheet-b">
       <div class="set-top">
         ${ART[devId]?`<div class="art">${ART[devId]}</div>`:''}
-        <div class="meta"><div class="n">${k.label}</div><div class="d">${k.detail}</div>
+        <div class="meta"><div class="n">${kitL(k,'label')}</div><div class="d">${kitL(k,'detail')}</div>
           ${cur?`<div class="since">on for ${mins} min${cur.setting!=null?` · ${cur.setting} ${k.unit}`:''}</div>`:''}
         </div>
       </div>
@@ -2391,15 +2414,15 @@ function openSetting(devId){
 async function commit(k, value){
   // Support that can only ever be added teaches that nothing you attach can be got wrong, so the
   // two that cannot be undone ask first.
-  if(k.confirm && !confirm(k.confirm)) return;
+  if(k.confirm && !confirm(kitL(k,'confirm'))) return;
   const v=await (await fetch(`/api/kit?id=${id}&dev=${k.id}`+(value!=null?`&set=${value}`:'')+asMe()+langQ())).json();
   if(v.error) return ev('note','—',v.error);
-  ev('order','▸', k.label+(value!=null?` · ${value} ${k.unit}`:''));
+  ev('order','▸', kitL(k,'label')+(value!=null?` · ${value} ${k.unit}`:''));
   paint(v);
 }
 async function detach(devId){
   const v=await (await fetch(`/api/kit?id=${id}&dev=${devId}&off=1`+asMe()+langQ())).json();
-  if(v.error) return; ev('order','✕','remove '+KITLBL[devId].label); paint(v);
+  if(v.error) return; ev('order','✕','remove '+kitL(KITLBL[devId],'label')); paint(v);
 }
 
 /* ─── film ──────────────────────────────────────────────────────────────────
@@ -4321,13 +4344,23 @@ function upNext(win,exam,eId){
   }
   if(!nxt)return epilogue(exam);
   const auto=win&&!exam;
+  /* A station has no key art — it is not an episode and never gets a billboard — so this card
+     used to be a stem beside an empty gradient, which is the one place in the flow where the
+     next patient is announced and nobody is shown. It has a face on disk already: the `stable`
+     shot the bay itself opens on. `stationStill` is the same reader the bay uses, and it returns
+     '' unless the server's set table says that file is really there, so a station whose art has
+     not landed keeps the gradient rather than a broken frame.
+     `stable` and only `stable`: it is the patient as they arrive, which is what the candidate is
+     about to see through the door anyway. A later state would be the card telling them how this
+     run ends before they have taken it. */
+  const unArt = nxt.art || (nxt.station ? stationStill(nxt.id,'stable') : '');
   cineShow([{skip:false,html:'<div class="un"><div class="un-k">'+(win?'up next':'run it back')+'</div>'
-    +'<div class="un-card">'+(nxt.art?'<img src="'+nxt.art+'" alt="">':'<div class="un-ph ph-'+nxt.id+'"></div>')
+    +'<div class="un-card">'+(unArt?'<img src="'+unArt+'" alt="" onerror="this.replaceWith(Object.assign(document.createElement(\'div\'),{className:\'un-ph ph-'+nxt.id+'\'}))">':'<div class="un-ph ph-'+nxt.id+'"></div>')
     +'<div><div class="un-n">'+(nxt.sn||nxt.n)+(nxt.station?' · night shift training':'')+'</div>'
     +'<div class="un-t">'+nxt.t+'</div><div class="un-rt">'+(nxt.rt||'')+'</div></div></div>'
     +(note?'<p class="un-note">'+note+'</p>':'')
     +'<div class="un-acts"><button class="btn go" data-un-go data-ga="upnext:play">▶ '+(win?'play now':'run it back')+'</button>'
-    +'<button class="btn" data-un-stay data-ga="upnext:stay">'+(exam&&win?'review & anchor':'read the debrief')+'</button></div>'
+    +'<button class="btn" data-un-stay data-ga="upnext:stay">'+(exam&&win?'review &amp; anchor':'read the debrief')+'</button></div>'
     /* The countdown reads as a ring walking backwards \u2014 the five seconds are a shape
        shrinking rather than a digit ticking, which is what a broadcast does with the
        same five seconds. The digit stays inside it: the ring is the feeling and the

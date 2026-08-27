@@ -334,12 +334,61 @@ const UI: &[Line] = &[
     Line { key: "picker_label", tr: &[("th", "ภาษาที่คนไข้พูด")] },
 ];
 
+/// ── the kit ──────────────────────────────────────────────────────────────────
+///
+/// The device tray's own words: what each item is called, the line underneath that says what it
+/// actually is, and the question the two irreversible ones ask before they happen.
+///
+/// This is the [`ASKS`] argument, not the chart's. Attaching oxygen is an act performed *at* the
+/// patient, at her bedside, by hand — the same category as asking her a question — and a learner
+/// who reaches for the flowmeter in Thai should read the flowmeter in Thai. What it is **not** is
+/// a second rulebook: exactly as with the chips, a translated label *relabels and does not
+/// re-fire*. The device id, the phrase `kit_phrase` mints, the intervention it matches and the
+/// text that lands on the tape are all untouched, so a Thai learner and an English one who attach
+/// the same device at the same setting write byte-identical tapes.
+///
+/// Keys are `<device id>.<field>`, and the device ids are the engine's own — `o2`, `iv`, `ett`,
+/// `supine`, `defib`. A row with no translation shows the English the page already holds.
+///
+/// The Thai is Embla's, lifted verbatim from its `device_catalogue()`. Those words have been read
+/// by real candidates in a real faculty; a fresh translation of a clinical label is a new thing to
+/// get wrong, and "ทำครั้งเดียว ไม่ใช่อุปกรณ์" is a distinction a bedside actually has to make.
+///
+/// Deliberately absent: the tray's short name (`device` in the page's `KIT`) and the setting's
+/// unit. Those sit in the chart's column, beside the readings, and the chart is English — see
+/// `docs/internal/LANGUAGE_LAYER.md`.
+///
+/// Nothing here is case-specific. The catalogue is the same five items in every station, so a
+/// label can never hint at what *this* patient needs — which is the property exam mode depends on.
+const KIT: &[Line] = &[
+    Line { key: "o2.label", tr: &[("th", "ออกซิเจน")] },
+    // Reads as teaching, and is the reason the presets are 2/4/6/10/15 rather than a slider:
+    // the numbers are the devices a hand actually reaches for.
+    Line { key: "o2.detail", tr: &[("th", "cannula 2–4 · mask 6–8 · NRB 10–15")] },
+    Line { key: "iv.label", tr: &[("th", "เปิดเส้น + สารน้ำ")] },
+    // The fluid keeps its label: "0.9% NaCl" is what is printed on the bag on the trolley.
+    Line { key: "iv.detail", tr: &[("th", "0.9% NaCl")] },
+    Line { key: "ett.label", tr: &[("th", "ใส่ท่อช่วยหายใจ")] },
+    Line { key: "ett.detail", tr: &[("th", "ETT 7.0 · cuffed")] },
+    Line { key: "ett.confirm", tr: &[("th", "ใส่ท่อช่วยหายใจตอนนี้?")] },
+    Line { key: "supine.label", tr: &[("th", "จัดท่านอนราบ ยกขา")] },
+    Line { key: "supine.detail", tr: &[("th", "ทำครั้งเดียว ไม่ใช่อุปกรณ์")] },
+    // Untranslated on purpose, and Embla makes the same call: the verb a Thai resus team shouts
+    // is the English one.
+    Line { key: "defib.label", tr: &[("th", "Defibrillate")] },
+    Line { key: "defib.detail", tr: &[("th", "shock ได้เฉพาะ VF / pulseless VT")] },
+    Line { key: "defib.confirm", tr: &[("th", "ปล่อยกระแสไฟฟ้า?")] },
+];
+
 /// What `/api/lang` hands the page.
 ///
 /// `languages` is always the whole list, so the picker is built from the server's table and no
 /// count of languages is hard-coded in the page. The rest is the pack for one language, and it is
 /// **empty for the default** — the page already holds the English wording, and an empty pack is
 /// what "show the original" looks like on the wire.
+///
+/// The kit table is safe to hand over whole for the reason a beat is not: the catalogue is the
+/// same five devices in every station, so it says nothing about the case on screen.
 ///
 /// Deliberately *not* in here: any case's scripted beat. Those arrive per-run through the view,
 /// one line at a time, as the run earns them. A pack containing every beat of every case would be
@@ -364,6 +413,7 @@ pub fn pack(lang: &Language) -> Value {
         "languages": list,
         "asks": table(ASKS),
         "ui": table(UI),
+        "kit": table(KIT),
     })
 }
 
@@ -408,8 +458,55 @@ mod tests {
         let p = pack(en);
         assert!(p["asks"].as_object().is_some_and(serde_json::Map::is_empty));
         assert!(p["ui"].as_object().is_some_and(serde_json::Map::is_empty));
+        assert!(p["kit"].as_object().is_some_and(serde_json::Map::is_empty));
         for l in BEATS {
             assert_eq!(beat(en, l.key), None, "{} was translated into the original", l.key);
+        }
+    }
+
+    /// A device label may never invent a device. The keys are `<id>.<field>` and the ids are the
+    /// engine's — if one drifts, the page silently falls back to English and nobody notices until
+    /// a Thai learner sees one item in the wrong language.
+    ///
+    /// `kit_phrase` in `main.rs` is the other half of this pair: these five are exactly the
+    /// devices it knows how to mint a phrase for.
+    #[test]
+    fn every_kit_label_names_a_device_the_engine_has() {
+        const DEVICES: &[&str] = &["o2", "iv", "ett", "supine", "defib"];
+        const FIELDS: &[&str] = &["label", "detail", "confirm"];
+        for line in KIT {
+            let (id, field) = line.key.split_once('.').unwrap_or_else(|| {
+                panic!("{} is not <device>.<field>", line.key)
+            });
+            assert!(DEVICES.contains(&id), "{id} is not a device the engine has");
+            assert!(FIELDS.contains(&field), "{field} is not a label the tray draws");
+        }
+        // Every device the tray can open needs a name and a line under it, or switching language
+        // leaves the sheet half translated.
+        for d in DEVICES {
+            for f in ["label", "detail"] {
+                let key = format!("{d}.{f}");
+                assert!(KIT.iter().any(|l| l.key == key), "{key} is missing");
+            }
+        }
+    }
+
+    /// The catalogue is the same in every station, so no label can name the case. A row that
+    /// mentioned a diagnosis or a drug would be an answer key drawn on the tray in exam mode,
+    /// where even the harm line is sealed.
+    #[test]
+    fn no_device_label_gives_a_case_away() {
+        const TELLS: &[&str] = &[
+            "anaphylax", "แพ้", "asthma", "หอบ", "sepsis", "pneumonia", "croup",
+            "embolism", "infarct", "stemi", "adrenaline", "steroid",
+        ];
+        for line in KIT {
+            for (_, text) in line.tr {
+                let t = text.to_lowercase();
+                for tell in TELLS {
+                    assert!(!t.contains(tell), "{}: {text:?} names the case", line.key);
+                }
+            }
         }
     }
 
