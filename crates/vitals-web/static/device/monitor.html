@@ -101,6 +101,12 @@ const $ = s => document.querySelector(s);
 const P = new URLSearchParams(location.search);
 const BASE = P.get('base') || '';
 const SID  = P.get('sid')  || 'default';
+// Who is actually in this bed. The banner used to be the string "Ing · F 19", hard-coded — so a
+// 71-year-old man in OSCE A was monitored under a nineteen-year-old woman's name for the whole
+// station. On a real unit that is a wrong-patient error, and it is the first thing a clinician
+// watching this demo would notice. The bay passes the name in; with no name the header says so
+// rather than inventing one.
+const PT   = P.get('pt') || '';
 
 let V = { hr:0, spo2:0, sbp:0, dbp:0, rr:0, status:'', rhythm:'sinus', pulse:true, paused:false };
 let live = false;
@@ -333,7 +339,7 @@ async function poll(){
       V = d; live = true;
       // take a "cuff reading" on first sight and then every 3 minutes, like an ER cycle
       if (!nibpAt || Date.now() - nibpAt > 180000){ nibpVal = [d.sbp, d.dbp]; nibpAt = Date.now(); }
-      $('#pt').textContent = `Ing · F 19 · ${d.status || ''}`;
+      $('#pt').textContent = [PT || 'UNIDENTIFIED', d.status || ''].filter(Boolean).join(' · ');
       $('#src').textContent = `feed: ${BASE || location.origin}/device/vitals · sid=${SID}`;
       $('#net').textContent = '';
     } else { live = false; $('#net').textContent = 'no case in play'; }

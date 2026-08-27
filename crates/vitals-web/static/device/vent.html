@@ -125,6 +125,11 @@ const $ = s => document.querySelector(s);
 const P = new URLSearchParams(location.search);
 const BASE = P.get('base') || '';
 const SID  = P.get('sid')  || 'default';
+// Whether this pane is standing in an exam room. A ventilator displays; it does not tutor. The
+// gap between Ppeak and Pplat is a reading, and reading it is the skill the station is marking —
+// so under exam the panel prints the number and stops, and in practice it goes on to say what the
+// number means. Nothing else about the pane changes: same waveforms, same alarms, same numbers.
+const EXAM = P.get('exam') === '1';
 
 // Settings live on the ventilator, as they do at the bedside — the engine is not asked what the
 // vent is set to. Lung-protective start for a 19-year-old female: 6 mL/kg of ~65 kg IBW.
@@ -291,11 +296,14 @@ function paint(){
   $('#fnote').textContent = trapping ? 'expiratory flow has not returned to zero' : '';
   $('#fnote').className = 'note' + (trapping ? ' bad' : '');
 
-  // The panel says what the gap MEANS. A number a learner cannot interpret is decoration, and this
-  // is the one reading that separates a tight airway from a stiff lung.
-  $('#hint').innerHTML = gap > 15
-    ? 'Ppeak high but <b>Pplat normal</b> → airway resistance, not stiff lungs — think bronchospasm or a blocked tube'
-    : 'Ppeak and Pplat are close — airway resistance is not the problem';
+  // In practice the panel says what the gap MEANS: a number a learner cannot interpret is
+  // decoration, and this is the one reading that separates a tight airway from a stiff lung.
+  // Under exam it says only what it measured — the interpretation is the mark.
+  $('#hint').innerHTML = EXAM
+    ? `Ppeak − Pplat = <b>${Math.round(gap)}</b> cmH₂O`
+    : gap > 15
+      ? 'Ppeak high but <b>Pplat normal</b> → airway resistance, not stiff lungs — think bronchospasm or a blocked tube'
+      : 'Ppeak and Pplat are close — airway resistance is not the problem';
 }
 
 // ── feed ──────────────────────────────────────────────────────────────────────
