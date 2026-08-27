@@ -126,6 +126,18 @@ pub enum Outcome {
     DeathBiphasic,
 }
 
+impl Outcome {
+    /// Did the patient die?
+    ///
+    /// Asked here rather than by matching on variants at the call site, because the variants are
+    /// a legacy shape: [`outcome_enum`] folds any outcome a case declares with `kind: "death"`
+    /// into `DeathArrest` when it does not recognise the id, so this is the one place that knows
+    /// the fold and the only honest way to ask the question.
+    pub fn is_death(self) -> bool {
+        matches!(self, Outcome::DeathArrest | Outcome::DeathBiphasic)
+    }
+}
+
 /// Events emitted on tick/apply for the Director to react to.
 #[derive(Debug, Clone, PartialEq)]
 pub enum NarrativeBeat {

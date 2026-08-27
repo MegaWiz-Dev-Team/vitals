@@ -3307,7 +3307,14 @@ async function showMarks(){
   /* The same sentence the anchor prints, available before anchoring and in practice —
      the arithmetic is the server's either way, so the two can never disagree. */
   let next;
-  if(nb==null) next='Flawless. There is nothing above this one.';
+  if(m.capped_from!=null){
+    /* The floor under everything else. The rows below still show every point that was earned —
+       and there are usually a lot of them, because these are good runs — so the head has to say
+       why the total is not their sum, in the one sentence that is actually the lesson. */
+    next=`The patient died. ${m.capped_from} of ${m.max} were earned; a station where she dies `
+      +'cannot pass, whatever else was right.';
+  }
+  else if(nb==null) next='Flawless. There is nothing above this one.';
   else{
     const need=Math.max(1,Math.ceil(nb*m.max/10000)-m.score);
     next=`${need} point${need===1?'':'s'} from your ${['first','second','third'][t]} star.`

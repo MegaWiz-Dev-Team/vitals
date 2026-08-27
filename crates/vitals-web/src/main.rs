@@ -1686,6 +1686,12 @@ fn main() {
                                     "bps": det.bps(),
                                     "pass_bps": rubric.pass_bps,
                                     "cleared": det.cleared(&rubric),
+                                    // What the items added to before the death cap, or absent.
+                                    // The sheet below still shows every point that was earned,
+                                    // so without this the head and the rows would disagree and
+                                    // the player would be right to think the sheet was broken.
+                                    // See `vitals_osce::death_cap`.
+                                    "capped_from": det.capped_from,
                                     "exam": s.exam_mode,
                                     // Costliest first — the top of the sheet is what to fix
                                     // before sitting it again, which is the whole point of

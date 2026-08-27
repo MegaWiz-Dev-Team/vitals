@@ -14,7 +14,7 @@
 
 use serde::Deserialize;
 use vitals_replay::{resume, Step};
-use vitals_sce::runtime::Event;
+use vitals_sce::runtime::{Event, Outcome};
 use vitals_sce::text::canon;
 
 /// One deterministic check against the event log. Internally tagged by `type` so a rubric reads
@@ -144,9 +144,44 @@ impl ItemResult {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DetResult {
+    /// The score of record — what the chain carries, what the star is read off, what the sheet
+    /// prints at the top. Normally the items' own total; below it when [`DetResult::capped_from`]
+    /// says the death cap took the rest away.
     pub earned: u16,
     pub max: u16,
     pub items: Vec<ItemResult>,
+    /// What the items added up to before the death cap, or `None` when no cap applied — which
+    /// is every run the patient survived. See [`death_cap`].
+    pub capped_from: Option<u16>,
+}
+
+/// ── the rule that outranks the arithmetic ────────────────────────────────────
+///
+/// **If the patient died, the run scores below the pass bar. Always. Whatever else it did.**
+///
+/// The audit found osce-c2 and osce-d4 handing out stars over a body: 29/40 and 32/40, both
+/// above 70%, both with the patient dead on the trolley. Nothing was broken in the marking —
+/// every one of those points was genuinely earned. The terminal outcome was simply *an item*,
+/// worth 3 of 40 on one station and 5 on the other, so a candidate could buy a pass out of the
+/// history, the bloods and the imaging and lose the patient on the way.
+///
+/// That is a defensible way to weight a written paper and an indefensible way to weight this.
+/// A star on this shelf is a claim, anchored, that the holder **knew enough to help her** — not
+/// that they got a lot of questions right in a room she happened to die in. There is no
+/// weighting of a rubric that expresses "and she lived" correctly, because it is not a weight:
+/// it is a floor under everything else, and a floor has to be written as one.
+///
+/// So it is a rule in code, above the items, and it reads the terminal the automaton actually
+/// reached rather than any item a rubric author remembered to include. A rubric that forgets to
+/// pay for survival is now still safe; a rubric that pays 5 points for it is not thereby saying
+/// survival is worth 5 points.
+///
+/// The cap is the highest score that still fails: the largest `e` for which
+/// `e * 10_000 / max < pass_bps`. Not zero — the mark sheet is the lesson, and a candidate who
+/// ran a good resuscitation and lost the patient anyway has earned the right to read what they
+/// did get. They have simply not earned a star.
+fn death_cap(pass_bps: u32, max: u16) -> u16 {
+    ((pass_bps as u64 * max as u64).saturating_sub(1) / 10_000) as u16
 }
 
 impl DetResult {
@@ -164,9 +199,12 @@ impl DetResult {
         self.max > 0 && self.bps() >= rubric.pass_bps
     }
 
-    /// The items, read back as one number. `earned` is accumulated as the checks are walked and
-    /// this re-adds the sheet the player is shown — they are two paths to the same total, which
-    /// is exactly the property [`sheet_for_run`] refuses to publish a mark sheet without.
+    /// The items, read back as one number — always the items' own total, never the capped one.
+    /// `earned` is accumulated as the checks are walked and this re-adds the sheet the player is
+    /// shown; they are two paths to the same total, which is exactly the property
+    /// [`sheet_for_run`] refuses to publish a mark sheet without. When the death cap has bitten,
+    /// this is what [`DetResult::capped_from`] holds, and the sheet is checked against *that*:
+    /// the arithmetic still has to reconcile, it is just no longer the score.
     pub fn items_total(&self) -> u16 {
         self.items.iter().map(ItemResult::earned_points).fold(0u16, u16::saturating_add)
     }
@@ -205,14 +243,19 @@ fn first_of(events: &[Event], kind: &str, needles: &[String]) -> Option<f64> {
     })
 }
 
-/// Score a replayed run against a rubric. Pure and total: same events + same rubric → same result,
-/// which is the property the claim path depends on.
+/// Score a replayed run against a rubric. Pure and total: same events + same rubric + same
+/// terminal → same result, which is the property the claim path depends on.
 ///
 /// One walk produces both halves of the answer — the total the chain carries, and the per-item
 /// mark sheet the debrief shows. There is deliberately no second function that re-reads the
 /// events to explain the score: a sheet computed on its own path is a sheet that can disagree
 /// with the number a verifier re-derives, and then neither of them is evidence.
-pub fn score(events: &[Event], rubric: &Rubric) -> DetResult {
+///
+/// `ended` is the terminal the automaton reached, and it is a parameter rather than something
+/// read back out of the event log on purpose: the log carries the outcome's *id*, and only the
+/// scenario knows whether an id it declared is a win or a death. Every caller therefore has to
+/// answer the question, which is how [`death_cap`] stays impossible to skip.
+pub fn score(events: &[Event], rubric: &Rubric, ended: Option<Outcome>) -> DetResult {
     let mut earned = 0u16;
     let mut max = 0u16;
     let mut items = Vec::with_capacity(rubric.items.len());
@@ -264,8 +307,21 @@ pub fn score(events: &[Event], rubric: &Rubric) -> DetResult {
             within,
         });
     }
-    let det = DetResult { earned, max, items };
-    debug_assert_eq!(det.earned, det.items_total(), "the mark sheet does not add up to the score");
+    // The floor, applied last and to the total rather than to any item — see [`death_cap`].
+    let capped_from = ended.filter(|o| o.is_death()).and_then(|_| {
+        let cap = death_cap(rubric.pass_bps, max);
+        (earned > cap).then(|| {
+            let was = earned;
+            earned = cap;
+            was
+        })
+    });
+    let det = DetResult { earned, max, items, capped_from };
+    debug_assert_eq!(
+        det.capped_from.unwrap_or(det.earned),
+        det.items_total(),
+        "the mark sheet does not add up to the score"
+    );
     det
 }
 
@@ -301,15 +357,20 @@ pub fn sheet_for_run(
 ) -> Result<(Rubric, DetResult), String> {
     let rubric: Rubric = serde_json::from_str(rubric_json).map_err(|e| e.to_string())?;
     let (state, _replay) = resume(sce_json, tape)?;
-    let det = score(state.events(), &rubric);
+    // The terminal is read off the replayed automaton, never off a caller — the death cap is
+    // only worth anything if it reads the same fact a verifier re-derives.
+    let det = score(state.events(), &rubric, state.outcome());
     // Not a `debug_assert`: this runs inside the server that serves the debrief, and the one
     // failure worth catching in release is the one where the sheet and the star disagree. It
     // returns rather than panics for the same reason — a bay must not die of a bad rubric.
-    if det.earned != det.items_total() {
+    // The sheet reconciles against what the items earned, which is the score unless the death
+    // cap took the rest — and then it reconciles against the pre-cap total, because the cap is
+    // a rule about the run and not an arithmetic error in the sheet.
+    if det.capped_from.unwrap_or(det.earned) != det.items_total() {
         return Err(format!(
             "mark sheet does not add up: items total {} against a det score of {}",
             det.items_total(),
-            det.earned
+            det.capped_from.unwrap_or(det.earned)
         ));
     }
     Ok((rubric, det))
@@ -341,7 +402,7 @@ mod tests {
             ev("action", "antibiotic ceftriaxone", 300.0),
             ev("outcome", "WinDischarge", 900.0),
         ];
-        let r = score(&evs, &rubric());
+        let r = score(&evs, &rubric(), Some(Outcome::WinDischarge));
         assert_eq!((r.earned, r.max), (40, 40));
         assert_eq!(r.bps(), 10_000);
         assert!(r.cleared(&rubric()));
@@ -354,7 +415,7 @@ mod tests {
             ev("action", "antibiotic", 900.0), // past the 600s window
             ev("outcome", "WinDischarge", 1000.0),
         ];
-        let r = score(&evs, &rubric());
+        let r = score(&evs, &rubric(), Some(Outcome::WinDischarge));
         assert_eq!(r.earned, 30); // oxygen + no-harm(shock absent) + outcome; abx too late
     }
 
@@ -364,7 +425,7 @@ mod tests {
             ev("harm", "shock on a perfusing rhythm", 50.0),
             ev("action", "oxygen", 10.0),
         ];
-        let r = score(&evs, &rubric());
+        let r = score(&evs, &rubric(), None);
         assert_eq!(r.earned, 10); // only oxygen; shock harm fired, abx & outcome absent
         assert!(!r.cleared(&rubric()));
     }
@@ -385,14 +446,14 @@ mod tests {
         )
         .unwrap();
         // PCI alone earns it; thrombolysis alone earns it; neither earns nothing.
-        assert_eq!(score(&[ev("action", "cath_lab", 400.0)], &r).earned, 12);
-        assert_eq!(score(&[ev("action", "thrombolysis", 400.0)], &r).earned, 12);
-        assert_eq!(score(&[ev("action", "aspirin", 60.0)], &r).earned, 0);
+        assert_eq!(score(&[ev("action", "cath_lab", 400.0)], &r, None).earned, 12);
+        assert_eq!(score(&[ev("action", "thrombolysis", 400.0)], &r, None).earned, 12);
+        assert_eq!(score(&[ev("action", "aspirin", 60.0)], &r, None).earned, 0);
     }
 
     #[test]
     fn empty_rubric_proves_nothing() {
-        let r = DetResult { earned: 0, max: 0, items: vec![] };
+        let r = DetResult { earned: 0, max: 0, items: vec![], capped_from: None };
         assert_eq!(r.bps(), 0);
         assert!(!r.cleared(&rubric()));
     }
@@ -462,7 +523,7 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &hesitation, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![] };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
         assert!(!det.cleared(&r), "a run without adrenaline must not clear: {s}/{m}");
     }
 
@@ -680,7 +741,7 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &depressor, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![] };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
         assert!(!det.cleared(&r), "the tongue depressor must not clear the bar: {s}/{m}");
     }
 
@@ -736,7 +797,7 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &reflex, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![] };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
         assert!(!det.cleared(&r), "the chest-pain reflex must not clear the bar: {s}/{m}");
     }
 
@@ -784,7 +845,7 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &reflex, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![] };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
         assert!(!det.cleared(&r), "the antihistamine reflex must not clear the bar: {s}/{m}");
     }
 
@@ -840,7 +901,7 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &reflex, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![] };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
         assert!(!det.cleared(&r), "the stemi reflex must not clear the bar: {s}/{m}");
     }
 
@@ -894,7 +955,7 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &bottle, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![] };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
         assert!(!det.cleared(&r), "antibiotics-and-home must not clear the bar: {s}/{m}");
     }
 
@@ -951,7 +1012,7 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &sedated, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![] };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
         assert!(!det.cleared(&r), "the sedative must not clear the bar: {s}/{m}");
     }
 
@@ -1009,7 +1070,7 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &arithmetic, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![] };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
         assert!(!det.cleared(&r), "score-says-home must not clear the bar: {s}/{m}");
     }
 
@@ -1062,7 +1123,7 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &stall, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![] };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
         assert!(!det.cleared(&r), "the dimer stall must not clear the bar: {s}/{m}");
     }
 
@@ -1106,7 +1167,7 @@ mod tests {
         let adult = competent("adrenaline 0.5 mg im — the adult dose");
         let (s, m, _) = det_for_run(&sce, &adult, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![] };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
         assert!(!det.cleared(&r), "the adult dose must not clear the bar: {s}/{m}");
         assert!(s >= 20, "the adult dose still treats — the run fails on marks, not on death: {s}/{m}");
     }
@@ -1171,8 +1232,125 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &backwards, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![] };
+        let det = DetResult { earned: s, max: m, items: vec![], capped_from: None };
         assert!(!det.cleared(&r), "the backwards reflex must not clear the bar: {s}/{m}");
+    }
+
+    /// **The two stations that gave a star over a body.** Both of these are real runs, both were
+    /// above 70%, and in both of them the patient is dead at the end — because the terminal
+    /// outcome was just another item, worth 3 of 40 on one and 5 on the other. See [`death_cap`]
+    /// for why that is not a weighting problem.
+    ///
+    /// The tapes are deliberately *good* runs. That is the finding: neither of them is a
+    /// candidate flailing. They take the history, send the bloods, name the diagnosis, and lose
+    /// her on one step apiece.
+    #[test]
+    fn a_run_that_ends_with_the_patient_dead_cannot_reach_the_bar() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/");
+        let step = |orders: &[&str], tail: usize| {
+            let mut t = Vec::new();
+            for o in orders {
+                t.push(Step::Do((*o).into()));
+                t.push(Step::Tick(10.0));
+            }
+            t.extend(std::iter::repeat_n(Step::Tick(30.0), tail));
+            t
+        };
+
+        // C2, the asthma ladder: everything right, then diazepam for the "panic" on a tiring
+        // chest. She stops breathing. Uncapped this was 32/40 — 80%, two stars.
+        let c2 = step(
+            &[
+                "how often does this happen?", "can you finish a sentence?", "listen to the chest",
+                "peak flow — measure it", "oxygen", "salbutamol neb", "prednisolone 40 mg",
+                "ipratropium", "peak flow again", "inhaled steroid + action plan",
+                "acute asthma exacerbation", "diazepam for the panic", "diazepam for the panic",
+                "diazepam for the panic", "diazepam for the panic",
+            ],
+            15,
+        );
+        // D4, the sepsis six: cultures, fluids, antibiotics inside the hour, source named, unit
+        // booked — and no pressor when the full tank stopped answering. Uncapped this was the
+        // audit's 29/40, 72.5%, a star.
+        let d4 = step(
+            &[
+                "ask the niece what happened", "feel the skin — perfusion", "press the right loin",
+                "lactate", "two sets of blood cultures", "urinalysis", "two large-bore lines",
+                "warmed crystalloid 30 ml/kg", "broad-spectrum antibiotics now", "oxygen",
+                "urinary catheter — hourly output", "call urology — unblock the kidney", "icu bed",
+                "septic shock — urosepsis",
+            ],
+            30,
+        );
+
+        for (ep, tape, uncapped) in [("osce-c2", c2, 32u16), ("osce-d4", d4, 29u16)] {
+            let sce = std::fs::read_to_string(format!("{root}stations/{ep}.sce.json")).unwrap();
+            let rubric_json = std::fs::read_to_string(format!("{root}rubrics/{ep}.json")).unwrap();
+            let (state, _) = resume(&sce, &tape).unwrap();
+            assert_eq!(
+                state.outcome().map(Outcome::is_death),
+                Some(true),
+                "{ep}: this tape is supposed to be the one where she dies"
+            );
+
+            let (rubric, det) = sheet_for_run(&sce, &tape, &rubric_json).unwrap();
+            assert_eq!(
+                det.capped_from,
+                Some(uncapped),
+                "{ep}: the items no longer add to the number the audit measured"
+            );
+            assert!(
+                !det.cleared(&rubric),
+                "{ep}: a dead patient still cleared the bar at {}/{}",
+                det.earned,
+                det.max
+            );
+            assert!(
+                det.bps() < rubric.pass_bps,
+                "{ep}: {}bps is not under a pass bar of {}bps",
+                det.bps(),
+                rubric.pass_bps
+            );
+            // Not zeroed: the sheet is the lesson, and everything that was genuinely earned is
+            // still on it, item by item, for the candidate to read.
+            assert_eq!(det.items_total(), uncapped, "{ep}: the cap ate the mark sheet as well");
+            assert!(det.earned > 0, "{ep}: the cap zeroed a run that did most of it right");
+
+            // And the chain carries the capped number, not the raw one — det_for_run is the
+            // anchor path and this is the only reason any of it matters.
+            let (anchored, _, _) = det_for_run(&sce, &tape, &rubric_json).unwrap();
+            assert_eq!(anchored, det.earned, "{ep}: the chain would carry the uncapped score");
+        }
+    }
+
+    /// The cap is a floor under the pass bar and nothing else: it never touches a run the
+    /// patient survived, and it is exactly one point below failing rather than a wipe.
+    #[test]
+    fn the_death_cap_leaves_a_survivor_alone() {
+        // The bar is 70% of 40, so 28 is the first passing score and 27 the highest failing one.
+        assert_eq!(death_cap(7_000, 40), 27);
+        assert_eq!(death_cap(7_000, 100), 69);
+        assert_eq!(death_cap(8_000, 40), 31);
+        assert_eq!(death_cap(7_000, 0), 0, "an empty rubric proves nothing either way");
+
+        let r = rubric();
+        let full = [
+            ev("action", "gave Oxygen face mask", 30.0),
+            ev("action", "antibiotic ceftriaxone", 300.0),
+            ev("outcome", "WinDischarge", 900.0),
+        ];
+        for won in [Outcome::WinDischarge, Outcome::WinIcu] {
+            let d = score(&full, &r, Some(won));
+            assert_eq!(d.earned, 40, "{won:?} was capped");
+            assert!(d.capped_from.is_none(), "{won:?} reported a cap it did not take");
+        }
+        // A run still in progress is not a death either — nothing has happened yet.
+        assert!(score(&full, &r, None).capped_from.is_none());
+        // And the same events with a body attached fail, having earned every point on the sheet.
+        let dead = score(&full, &r, Some(Outcome::DeathArrest));
+        assert_eq!((dead.earned, dead.capped_from), (27, Some(40)));
+        assert_eq!(dead.items_total(), 40, "the sheet stopped showing what was earned");
+        assert!(!dead.cleared(&r));
     }
 
     /// The mark sheet and the star are the same arithmetic or the debrief is a lie.

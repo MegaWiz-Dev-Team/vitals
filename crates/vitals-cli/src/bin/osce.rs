@@ -51,7 +51,9 @@ fn main() {
 
     for (name, tape) in [("competent", tape_competent()), ("shaky", tape_shaky())] {
         let (st, replay) = resume(&sce, &tape).expect("replay");
-        let det = score(st.events(), &rubric);
+        // The terminal goes in with the events: a run that ended with the patient dead is
+        // capped under the pass bar whatever else it did (`vitals_osce::death_cap`).
+        let det = score(st.events(), &rubric, st.outcome());
 
         println!("── {name} run ──────────────────────────────");
         print!("  events:");
