@@ -380,3 +380,45 @@ fn the_lines_the_engine_writes_as_prose_survive_the_translation() {
         assert!(!o.contains('_'), "an episode is printing an intervention id too: {o:?}");
     }
 }
+
+/// **The clock a candidate could stop.** `hold` freezes the run and `easy/hard` picks how fast
+/// the patient crumples. Both are right for practice and neither belongs in something that ends
+/// in an anchored claim: half of every station's rubric is timed, so a candidate who can freeze
+/// the patient is inside every window by construction, and choosing the deterioration rate is
+/// choosing how much of the mark sheet is reachable — after the run was declared to the chain.
+#[test]
+fn a_station_has_no_hold_button_and_no_speed_dial() {
+    let page = std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/index.html"),
+    )
+    .expect("the page");
+
+    // One place decides, and it hides both.
+    let at = page.find("function examControls()").expect("examControls is gone");
+    let body = &page[at..at + 400];
+    for id in ["#pause", "#diff"] {
+        assert!(
+            body.contains(&format!("$('{id}').classList.toggle('hide',x)")),
+            "examControls no longer hides {id}"
+        );
+    }
+    assert!(body.contains("hard=false"), "examControls no longer pins the speed");
+
+    // A hidden button is still a button, so the handlers refuse as well.
+    for handler in ["$('#pause').onclick=()=>{ if(examMode())return;", "$('#diff').onclick=()=>{ if(examMode())return;"] {
+        assert!(page.contains(handler), "a control still answers during an exam: {handler}");
+    }
+
+    // And it is called from all three moments exam-ness can change: entering a case, starting
+    // the clock, and walking back out to the shelf.
+    assert!(
+        page.matches("examControls()").count() >= 4,
+        "examControls is declared and barely called"
+    );
+
+    // Nothing else may re-enable the hold button behind its back.
+    assert!(
+        !page.contains("$('#pause').disabled=false"),
+        "something re-enables hold without asking whether this is an exam"
+    );
+}

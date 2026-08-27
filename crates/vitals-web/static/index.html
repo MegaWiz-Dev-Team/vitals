@@ -3065,6 +3065,33 @@ async function askHer(q){
 const run =()=>timer=setInterval(()=>step('&tick='+(hard?3:2)),700);
 const stop=()=>{clearInterval(timer);timer=null};
 
+/* ── the two buttons a station does not have ──────────────────────────────────
+   `hold` stops the clock. `easy/hard` picks how fast the patient deteriorates. Both are
+   exactly right for practice — a learner who wants to stop and think should be able to, and a
+   learner who wants the harder version should be able to ask for it — and neither belongs in
+   something that ends in a claim anchored on a chain.
+
+   Hold is the worse of the two: a station is a ten-minute clock, half the rubric is timed
+   ("ECG within ten minutes", "steroid inside the hour"), and a candidate who can freeze the
+   patient can take as long as they like over every one of those windows and still be inside
+   them. That is not a slower exam, it is a different exam. Difficulty is the same argument one
+   step along: choosing the rate at which she crumples is choosing how much of the mark sheet is
+   reachable, after the run has already been declared to the chain.
+
+   So at a station both come off the bar and the speed is pinned to the one the run was declared
+   at. The handlers below refuse as well, because a hidden button is still a button — the shelf
+   is HTML and the console is right there.
+
+   Practice keeps both, unchanged. */
+function examControls(){
+  const x=examMode();
+  if(x){ hard=false; $('#diff').textContent='easy'; $('#diff').classList.remove('on'); }
+  $('#pause').classList.toggle('hide',x);
+  $('#diff').classList.toggle('hide',x);
+  $('#pause').disabled=x||!id;
+  $('#diff').disabled=x;
+}
+
 async function chainState(){
   const me=await identity();
   const c=await (await fetch('/api/chain'+(me?'?player='+me.pub:''))).json();
@@ -3112,8 +3139,8 @@ $('#start').onclick=async()=>{
   if(ep().id==='ep1') playCut('cold_open');
   $('#device').src=deviceSrc('monitor');
   document.querySelectorAll('.dev').forEach(b=>b.classList.toggle('on',b.dataset.dev==='monitor'));
-  $('#cmd').disabled=false; $('#send').disabled=false; $('#pause').disabled=false;
-  $('#pause').textContent='hold'; $('#cmd').focus();
+  $('#cmd').disabled=false; $('#send').disabled=false;
+  $('#pause').textContent='hold'; examControls(); $('#cmd').focus();
   const voice=(await (await fetch('/api/chain')).json()).voice;
   emptyState();
   if(!voice) ev('note','—',`no gateway, so ${pro().s} cannot answer — orders still work`);
@@ -3124,11 +3151,13 @@ $('#start').onclick=async()=>{
    hundred milliseconds through black instead. DOORWATCH opens here because the shelf
    the player is about to see is the one a finished run may have unlocked, and that is
    the only moment a door opening deserves a fanfare. */
-$('#back').onclick=()=>{ stop(); EXAMRUN=false; EXAMLIVE=false; DOORWATCH=true;
+$('#back').onclick=()=>{ stop(); EXAMRUN=false; EXAMLIVE=false; DOORWATCH=true; examControls();
   fadeSwap(()=>{ $('#game').classList.add('hide'); $('#lobby').classList.remove('hide');
     renderSeason(); }); };
-$('#pause').onclick=()=>{ if(timer){stop();$('#pause').textContent='resume';} else{run();$('#pause').textContent='hold';} };
-$('#diff').onclick=()=>{ hard=!hard; $('#diff').textContent=hard?'hard':'easy'; $('#diff').classList.toggle('on',hard);
+$('#pause').onclick=()=>{ if(examMode())return;
+  if(timer){stop();$('#pause').textContent='resume';} else{run();$('#pause').textContent='hold';} };
+$('#diff').onclick=()=>{ if(examMode())return;
+  hard=!hard; $('#diff').textContent=hard?'hard':'easy'; $('#diff').classList.toggle('on',hard);
   if(timer){stop();run();} };
 $('#cmdf').onsubmit=e=>{ e.preventDefault(); const x=$('#cmd').value.trim(); if(!x)return;
   $('#cmd').value=''; fire(x); };
@@ -4337,6 +4366,9 @@ function enterEpisode(epId,exam,from){
   const e=SEASON.find(x=>x.id===epId)||SEASON[0];
   EXAMRUN=!!(exam||e.station);
   $('#ep').value=e.id;
+  /* Before the title card, not after the first tick: the bar is on screen behind the cinema
+     layer, and a hold button visible for one frame of a station is a hold button. */
+  examControls();
   /* The whole entrance, in order, and none of it on the clock:
        the card you pressed grows into the screen (320ms, shelf entrances only)
        → previously on… under cinema bars (EP2-5)
