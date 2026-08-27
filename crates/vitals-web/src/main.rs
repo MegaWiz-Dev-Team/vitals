@@ -107,6 +107,10 @@ struct Session {
     state: SceState,
     tape: Vec<Step>,
     beats: Vec<String>,
+    /// The films this run has ordered, oldest first, accumulated the way `beats` is so a
+    /// reloaded or resumed run still shows what it has already seen — `View` is a full snapshot,
+    /// not a delta. Presentation only: see [`Film`].
+    films: Vec<&'static Film>,
     sce_json: String,
     scenario: String,
     difficulty: Difficulty,
@@ -214,6 +218,7 @@ impl Session {
             owner: saved.owner.clone(),
             state,
             beats: r.beats,
+            films: films_from_tape(&saved.ep, &saved.tape),
             tape: saved.tape,
             sce_json,
             scenario: title(&saved.ep).to_string(),
@@ -272,6 +277,9 @@ struct View {
     gcs: u8,
     status: String,
     beats: Vec<String>,
+    /// The films ordered so far. Never on the tape, never in the leaf — the page draws a
+    /// thumbnail strip from this and nothing else reads it.
+    films: Vec<&'static Film>,
     harm: Vec<String>,
     outcome: Option<String>,
     elapsed: f64,
@@ -354,6 +362,7 @@ impl Session {
             gcs: v.gcs,
             status: format!("{:?}", self.state.status),
             beats: self.beats.clone(),
+            films: self.films.clone(),
             harm: self.state.harm_events.clone(),
             outcome,
             elapsed,
@@ -425,7 +434,137 @@ struct SetMember {
     /// The tier the case plays at. [`difficulty`] reads this for every member, so adding a
     /// Phase-5b member here is the whole server arm: files land, the member goes live.
     tier: Difficulty,
+    /// Shelf art, as a key under `/img/cases/card/`. `None` keeps the plain clinic card.
+    ///
+    /// Given only where the picture *says* something. Six of the twelve source films are an
+    /// indistinguishable normal chest radiograph, and twelve near-identical grey rectangles down
+    /// one shelf is worse than no art at all — so the rule is say nothing rather than say
+    /// "normal chest" nine times (`docs/internal/CASE_MEDIA_WIRING.md` §2a).
+    card: Option<&'static str>,
 }
+
+/// A film a station reveals when a specific order is recognised.
+///
+/// Keyed by the station id ([`Session::ep`]) and the intervention id the matcher resolved, which
+/// is why no scenario file is touched to add one: a `.sce.json`'s sha256 is the case's identity
+/// on chain, bound in the commitment and carried in the leaf. Everything here hangs off the id
+/// the matcher already produces, so every phrasing that reaches the intervention — "chest x-ray",
+/// "cxr", "chest film" — reaches the picture too, for free.
+///
+/// **Presentation only.** A film never enters `Session::tape`, never reaches `replay`, and never
+/// touches `leaf` or `sce_hash`. A verifier replaying a tape on a build with no images at all
+/// must reach the identical leaf, so nothing below may become an input to one.
+#[derive(Serialize, Clone, Copy)]
+struct Film {
+    station: &'static str,
+    intervention: &'static str,
+    /// Key under `/img/cases/`, extension included — see [`CASE_IMG`].
+    file: &'static str,
+    /// What the report says. The case's own words: the picture is the evidence, the caption is
+    /// the read.
+    caption: &'static str,
+    /// Which bank it came from, so the credit under the film names the right licence.
+    credit: Credit,
+}
+
+/// Whose licence the film is under. Two banks, two obligations — see
+/// `static/img/cases/ATTRIBUTION.md`, which is the authority and whose wording is copied rather
+/// than reinvented.
+#[derive(Serialize, Clone, Copy, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum Credit {
+    /// PTB-XL (PhysioNet). **CC-BY 4.0 — attribution is a licence condition, not a courtesy**:
+    /// creator, licence notice, its URI, and a statement that the material was modified. Ours is
+    /// modified twice over (rendered as a teaching plot, then palette-quantised for the web), so
+    /// the modification notice is not optional. The page carries all four.
+    Ptbxl,
+    /// NIH ChestX-ray14. No attribution condition, credited anyway — a teaching product that
+    /// hides where its films came from has no business asking learners to trust them.
+    Nih,
+}
+
+/// The films, keyed `(station, intervention)`. A station with no entry behaves exactly as it did
+/// before this table existed.
+///
+/// 🛑 **Two entries are held out pending a clinician's sign-off** and are commented, not coded —
+/// see the CLINICAL HOLD in `docs/internal/CASE_MEDIA_WIRING.md`. They are also absent from
+/// [`CASE_IMG`], so the bytes are not in the binary and the route cannot serve them even to
+/// somebody who guesses the filename. Wiring either one is a content decision, not a code one.
+const FILMS: &[Film] = &[
+    Film { station: "osce-a", intervention: "ecg", file: "ecg-sinus-tachycardia-04408.png",
+           caption: "Sinus tachycardia, rate 118 — no ischaemic changes.", credit: Credit::Ptbxl },
+    Film { station: "osce-a", intervention: "cxr", file: "cxr-normal-1.png",
+           caption: "Normal heart size, clear lung fields, no effusion or pneumothorax.", credit: Credit::Nih },
+    Film { station: "osce-a2", intervention: "ecg", file: "ecg-sinus-tachycardia-04408.png",
+           caption: "Sinus tachycardia 124 bpm — no ST changes.", credit: Credit::Ptbxl },
+    // HOLD: awaiting clinical sign-off — osce-b / ecg / ecg-st-elevation-anterior-01278.png.
+    // The bank's own ecg-mapping.tsv flags it "KOL pick leads+verify acute": the PTB-XL SCP
+    // class is ASMI/AMI, which can be an *old* anterior infarct rather than an acute STEMI, and
+    // this station teaches reperfusion inside ten minutes. Only an acute trace will do here.
+    Film { station: "osce-b2", intervention: "cxr", file: "cxr-normal-3.png",
+           caption: "Normal heart size, clear lung fields — no effusion.", credit: Credit::Nih },
+    // "Neck and chest films" orders two and we hold one: the source case carries the chest film
+    // as an image and the neck film as text, and both scenarios already put the steeple sign in
+    // a beat. So the caption says chest — a caption promising a neck film the picture is not
+    // would read as a bug.
+    Film { station: "osce-b3", intervention: "xray_neck", file: "cxr-normal-3.png",
+           caption: "Chest film — normal heart size, clear lung fields.", credit: Credit::Nih },
+    Film { station: "osce-c", intervention: "xray_neck", file: "cxr-normal-3.png",
+           caption: "Chest film — normal heart size, clear lung fields.", credit: Credit::Nih },
+    Film { station: "osce-c2", intervention: "cxr", file: "cxr-normal-1.png",
+           caption: "Normal heart size, clear lung fields — no pneumothorax.", credit: Credit::Nih },
+    // HOLD: awaiting clinical sign-off — osce-c3 / cxr / cxr-consolidation-pneumonia-1.png.
+    // ChestX-ray14's Pneumonia label is NLP-mined from reports and there is no KOL-reviewed CXR
+    // mapping in the bank. On inspection the film does not show the wedge of consolidation this
+    // station's beat describes, and a learner shown a normal-looking film and told it is
+    // pneumonia has been taught something false.
+    Film { station: "osce-d2", intervention: "cxr", file: "cxr-normal-4.png",
+           caption: "Normal heart size, clear lung fields — a chest this clear does not explain the hypoxia.",
+           credit: Credit::Nih },
+];
+
+fn film_for(station: &str, intervention: &str) -> Option<&'static Film> {
+    (!intervention.is_empty())
+        .then(|| FILMS.iter().find(|f| f.station == station && f.intervention == intervention))
+        .flatten()
+}
+
+/// Every film a tape has already earned, in the order it was ordered.
+///
+/// Derived, never stored: the resolved intervention id is already on the tape beside the words,
+/// so a resumed run re-reads its films from the same bytes the leaf is computed from without
+/// films ever becoming an input to that leaf.
+fn films_from_tape(station: &str, tape: &[Step]) -> Vec<&'static Film> {
+    let mut out: Vec<&'static Film> = Vec::new();
+    for s in tape {
+        if let Step::Act { id, .. } = s {
+            if let Some(f) = film_for(station, id) {
+                if !out.iter().any(|x| x.file == f.file) {
+                    out.push(f);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The clinical images, compiled in the way [`STILLS`] is, keyed by their path under
+/// `/img/cases/`. Content-Type comes from this table rather than from a suffix trim, because the
+/// directory mixes PNG and JPEG.
+///
+/// The two files under CLINICAL HOLD are deliberately absent: not compiled in, not serveable,
+/// not guessable. That is the difference between "we did not link it" and "it is not there".
+const CASE_IMG: &[(&str, &[u8], &str)] = &[
+    ("ecg-sinus-tachycardia-04408.png",
+     include_bytes!("../static/img/cases/ecg-sinus-tachycardia-04408.png"), "image/png"),
+    ("cxr-normal-1.png", include_bytes!("../static/img/cases/cxr-normal-1.png"), "image/png"),
+    ("cxr-normal-3.png", include_bytes!("../static/img/cases/cxr-normal-3.png"), "image/png"),
+    ("cxr-normal-4.png", include_bytes!("../static/img/cases/cxr-normal-4.png"), "image/png"),
+    // Shelf art. Only the crops actually assigned in SETS are carried — an unused 30 KB in every
+    // deploy is 30 KB of nothing.
+    ("card/ecg-sinus-tachycardia-04408-card.jpg",
+     include_bytes!("../static/img/cases/card/ecg-sinus-tachycardia-04408-card.jpg"), "image/jpeg"),
+];
 
 /// The station sets (DECISIONS.md "Station Sets", 27 ส.ค.) — the one copy, server side.
 /// From EP2 on, an episode door is opened by **its own set's stars and nothing else's**:
@@ -452,27 +591,35 @@ struct StationSet {
 const SETS: &[StationSet] = &[
     // gate2 · 2 cases · ceiling 6 · need 3 (50%)
     StationSet { gate: "gate2", opens: "ep2", need: 3, members: &[
-        SetMember { id: "osce-a",  case: "ddx-anaphylaxis-1", title: "Rash and facial swelling after a meal — M 71", specialty: "eir-emergency", band: "emergency", tier: Difficulty::Student },
-        SetMember { id: "osce-a2", case: "ddx-anaphylaxis-2", title: "Belly cramps, loose stools, swollen face — F 68", specialty: "eir-emergency", band: "emergency", tier: Difficulty::Student },
+        // The one pair that earns art today: a real trace rather than a grey rectangle, and the
+        // two anaphylaxis stations stay siblings on the shelf.
+        SetMember { id: "osce-a",  case: "ddx-anaphylaxis-1", title: "Rash and facial swelling after a meal — M 71", specialty: "eir-emergency", band: "emergency", tier: Difficulty::Student, card: Some("ecg-sinus-tachycardia-04408-card.jpg") },
+        SetMember { id: "osce-a2", case: "ddx-anaphylaxis-2", title: "Belly cramps, loose stools, swollen face — F 68", specialty: "eir-emergency", band: "emergency", tier: Difficulty::Student, card: Some("ecg-sinus-tachycardia-04408-card.jpg") },
     ]},
     // gate3 · 3 cases · ceiling 9 · need 6 (67%)
     StationSet { gate: "gate3", opens: "ep3", need: 6, members: &[
-        SetMember { id: "osce-b",  case: "ddx-possible-nstemi-stemi-2", title: "Crushing chest pain into both arms — M 25", specialty: "eir-cardio", band: "emergency", tier: Difficulty::Intern },
-        SetMember { id: "osce-b2", case: "ddx-pericarditis-1", title: "Chest pain that hates lying flat — M 14, febrile", specialty: "eir-cardio", band: "emergency", tier: Difficulty::Intern },
-        SetMember { id: "osce-b3", case: "ddx-croup-1", title: "Barking cough on the second night — F 3", specialty: "eir-ent", band: "paediatrics", tier: Difficulty::Intern },
+        // osce-b's ST-elevation crop is the best image the bank holds and it stays off the shelf
+        // until a clinician has read it — see the HOLD note on FILMS.
+        SetMember { id: "osce-b",  case: "ddx-possible-nstemi-stemi-2", title: "Crushing chest pain into both arms — M 25", specialty: "eir-cardio", band: "emergency", tier: Difficulty::Intern, card: None },
+        SetMember { id: "osce-b2", case: "ddx-pericarditis-1", title: "Chest pain that hates lying flat — M 14, febrile", specialty: "eir-cardio", band: "emergency", tier: Difficulty::Intern, card: None },
+        SetMember { id: "osce-b3", case: "ddx-croup-1", title: "Barking cough on the second night — F 3", specialty: "eir-ent", band: "paediatrics", tier: Difficulty::Intern, card: None },
     ]},
     // gate4 · 3 cases · ceiling 9 · need 7 (78%)
     StationSet { gate: "gate4", opens: "ep4", need: 7, members: &[
-        SetMember { id: "osce-c",  case: "ddx-croup-2", title: "Barking cough and drooling, worse at night — F 6", specialty: "eir-ent", band: "paediatrics", tier: Difficulty::Resident },
-        SetMember { id: "osce-c2", case: "ddx-bronchospasm-acute-asthma-exacerbation-2", title: "Wheeze and breathlessness — F 53, third attack", specialty: "eir-pulmonology", band: "emergency", tier: Difficulty::Intern },
-        SetMember { id: "osce-c3", case: "ddx-pneumonia-2", title: "A week of cough turned rusty — F 25, febrile", specialty: "eir-pulmonology", band: "emergency", tier: Difficulty::Intern },
+        SetMember { id: "osce-c",  case: "ddx-croup-2", title: "Barking cough and drooling, worse at night — F 6", specialty: "eir-ent", band: "paediatrics", tier: Difficulty::Resident, card: None },
+        SetMember { id: "osce-c2", case: "ddx-bronchospasm-acute-asthma-exacerbation-2", title: "Wheeze and breathlessness — F 53, third attack", specialty: "eir-pulmonology", band: "emergency", tier: Difficulty::Intern, card: None },
+        // Likewise osce-c3: the only CXR card with a diagnosis attached, and the diagnosis is the
+        // part under review.
+        SetMember { id: "osce-c3", case: "ddx-pneumonia-2", title: "A week of cough turned rusty — F 25, febrile", specialty: "eir-pulmonology", band: "emergency", tier: Difficulty::Intern, card: None },
     ]},
     // gate5 · 4 cases · ceiling 12 · need 10 (83%)
     StationSet { gate: "gate5", opens: "ep5", need: 10, members: &[
-        SetMember { id: "osce-d",  case: "embla-upper-gastrointestinal-bleeding-intern", title: "Vomited blood, black stool since morning — M 62", specialty: "eir-gastroenterology", band: "emergency", tier: Difficulty::Intern },
-        SetMember { id: "osce-d2", case: "ddx-pulmonary-embolism-2", title: "Sudden breathlessness, clear chest — F 55", specialty: "eir-pulmonology", band: "emergency", tier: Difficulty::Resident },
-        SetMember { id: "osce-d3", case: "ddx-p-anaphylaxis-1", title: "Wheals, swollen lips and a wheeze — F 6, 20 kg", specialty: "eir-emergency", band: "paediatrics", tier: Difficulty::Intern },
-        SetMember { id: "osce-d4", case: "embla-septic-shock-with-multi-organ-failure-resident", title: "Fever, shaking, pressure of 80 — F 72", specialty: "eir-emergency", band: "emergency", tier: Difficulty::Resident },
+        SetMember { id: "osce-d",  case: "embla-upper-gastrointestinal-bleeding-intern", title: "Vomited blood, black stool since morning — M 62", specialty: "eir-gastroenterology", band: "emergency", tier: Difficulty::Intern, card: None },
+        // A clear chest *is* this station's teaching point, but on a shelf a normal film reads as
+        // a blank one — and the stem already says "clear chest". Nothing gained, so nothing shown.
+        SetMember { id: "osce-d2", case: "ddx-pulmonary-embolism-2", title: "Sudden breathlessness, clear chest — F 55", specialty: "eir-pulmonology", band: "emergency", tier: Difficulty::Resident, card: None },
+        SetMember { id: "osce-d3", case: "ddx-p-anaphylaxis-1", title: "Wheals, swollen lips and a wheeze — F 6, 20 kg", specialty: "eir-emergency", band: "paediatrics", tier: Difficulty::Intern, card: None },
+        SetMember { id: "osce-d4", case: "embla-septic-shock-with-multi-organ-failure-resident", title: "Fever, shaking, pressure of 80 — F 72", specialty: "eir-emergency", band: "emergency", tier: Difficulty::Resident, card: None },
     ]},
 ];
 
@@ -611,6 +758,7 @@ fn new_session(ep: &str) -> Result<Session, String> {
         state: SceState::new(sce),
         tape: Vec::new(),
         beats: Vec::new(),
+        films: Vec::new(),
         sce_json,
         scenario: title(ep).to_string(),
         difficulty: difficulty(ep),
@@ -981,6 +1129,24 @@ fn main() {
                     None => Response::from_string("no such clip").with_status_code(404),
                 }
             }
+            // Above the `/img/` arm on purpose, and it has to stay there. That arm strips `.jpg`
+            // and searches STILLS only, so `/img/cases/cxr-normal-1.png` would match it first and
+            // 404 with the files sitting right there in the binary. The Content-Type comes from
+            // the table rather than from the suffix, because this directory mixes PNG and JPEG.
+            (Method::Get, p) if p.starts_with("/img/cases/") => {
+                let key = p.trim_start_matches("/img/cases/");
+                match CASE_IMG.iter().find(|(k, _, _)| *k == key) {
+                    Some((_, bytes, mime)) => {
+                        let _ = req.respond(
+                            Response::from_data(*bytes)
+                                .with_header(Header::from_bytes(&b"Content-Type"[..], mime.as_bytes()).unwrap())
+                                .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=86400"[..]).unwrap()),
+                        );
+                        continue;
+                    }
+                    None => Response::from_string("no such film").with_status_code(404),
+                }
+            }
             (Method::Get, p) if p.starts_with("/img/") => {
                 let key = p.trim_start_matches("/img/").trim_end_matches(".jpg");
                 match STILLS.iter().chain(KEY_ART.iter()).find(|(k, _)| *k == key) {
@@ -1079,6 +1245,14 @@ fn main() {
                             // happened, even after the matcher learns the phrase.
                             let id = s.state.resolve(&act).unwrap_or_default();
                             s.tape.push(Step::acted(&act, &id));
+                            // The picture the order asked for, if this station has one. It hangs
+                            // off the id the tape already carries and goes nowhere near it — the
+                            // line above is the whole of what replay will ever see.
+                            if let Some(f) = film_for(&s.ep, &id) {
+                                if !s.films.iter().any(|x| x.file == f.file) {
+                                    s.films.push(f);
+                                }
+                            }
                         }
                         if let Some(dt) = param(&url, "tick").and_then(|v| v.parse::<f64>().ok()) {
                             let emitted = s.state.tick(dt);
@@ -1369,6 +1543,9 @@ fn main() {
                             // organ name over a stem is a free rubric point (see SetMember).
                             "band": m.band,
                             "tier": tier_str(m.tier),
+                            // Shelf art, when the picture says something. `null` for most of the
+                            // roster and the card keeps its plain clinic face — see SetMember.
+                            "card": m.card,
                             "playable": h.is_some(),
                         })).collect::<Vec<_>>(),
                     })).collect::<Vec<_>>(),
@@ -2304,6 +2481,95 @@ mod tests {
                 assert!(rubric_path(m.id).is_none(), "{} without files cannot host an exam", m.id);
                 assert!(h.is_none());
             }
+        }
+    }
+
+    // ── case films ──────────────────────────────────────────────────────────
+
+    /// 🛑 The CLINICAL HOLD, as a test rather than as a promise.
+    ///
+    /// Two images are held pending a clinician's read (`docs/internal/CASE_MEDIA_WIRING.md`):
+    /// the ChestX-ray14 pneumonia film, whose label is NLP-mined and which does not obviously
+    /// show the consolidation osce-c3's beat describes, and the PTB-XL anterior-ST trace, which
+    /// may be an old infarct on a station that teaches acute reperfusion. Neither may be named
+    /// by a film, worn as card art, or compiled into the binary — a route that cannot find the
+    /// bytes cannot serve them to somebody who guesses the URL.
+    #[test]
+    fn the_films_under_clinical_hold_are_nowhere_in_the_build() {
+        const HELD: &[&str] = &["cxr-consolidation-pneumonia-1", "ecg-st-elevation-anterior-01278"];
+        for h in HELD {
+            assert!(!FILMS.iter().any(|f| f.file.contains(h)), "{h} is wired to a station");
+            assert!(!CASE_IMG.iter().any(|(k, _, _)| k.contains(h)), "{h} is compiled in and serveable");
+            assert!(
+                !SETS.iter().flat_map(|s| s.members.iter()).any(|m| m.card.is_some_and(|c| c.contains(h))),
+                "{h} is worn as card art"
+            );
+        }
+    }
+
+    /// Every film and every card names a file the route can actually serve, and every compiled
+    /// image is one something asks for. A caption over a 404 is worse than no picture.
+    #[test]
+    fn every_film_and_card_resolves_to_bytes_in_the_binary() {
+        for f in FILMS {
+            assert!(CASE_IMG.iter().any(|(k, _, _)| *k == f.file), "{}: {} is not served", f.station, f.file);
+            assert!(!f.caption.is_empty(), "{} has a picture and no read", f.station);
+            assert!(set_member(f.station).is_some(), "{} is not a declared station", f.station);
+        }
+        for m in SETS.iter().flat_map(|s| s.members.iter()) {
+            if let Some(c) = m.card {
+                let key = format!("card/{c}");
+                assert!(CASE_IMG.iter().any(|(k, _, _)| *k == key), "{}: {key} is not served", m.id);
+            }
+        }
+        for (k, bytes, mime) in CASE_IMG {
+            assert!(!bytes.is_empty(), "{k} is empty");
+            let used = FILMS.iter().any(|f| f.file == *k)
+                || SETS.iter().flat_map(|s| s.members.iter()).any(|m| m.card.is_some_and(|c| format!("card/{c}") == *k));
+            assert!(used, "{k} is compiled in and nothing shows it");
+            // The mixed-suffix trap the route arm exists to avoid, pinned.
+            let want = if k.ends_with(".png") { "image/png" } else { "image/jpeg" };
+            assert_eq!(*mime, want, "{k} is served as the wrong type");
+        }
+    }
+
+    /// A film is presentation. It is read off the tape, never written to it — so a station
+    /// ordered twice shows one picture, and a resumed run shows what the run had already seen
+    /// without the leaf knowing images exist.
+    #[test]
+    fn films_are_read_off_the_tape_and_never_repeat() {
+        let tape = vec![
+            Step::acted("12-lead ecg", "ecg"),
+            Step::Tick(30.0),
+            Step::acted("chest x-ray", "cxr"),
+            Step::acted("another ecg", "ecg"),
+            // An order nobody understood resolves to an empty id; it must not match a station
+            // whose table happens to hold an entry keyed on the empty string later.
+            Step::acted("do something clever", ""),
+        ];
+        let got = films_from_tape("osce-a", &tape);
+        assert_eq!(got.len(), 2, "one film per distinct order");
+        assert_eq!(got[0].file, "ecg-sinus-tachycardia-04408.png");
+        assert_eq!(got[1].file, "cxr-normal-1.png");
+        // A station with no table entry stays exactly as it was before FILMS existed.
+        assert!(films_from_tape("osce-d", &tape).is_empty());
+        assert!(film_for("osce-a", "").is_none(), "an unresolved order shows nothing");
+    }
+
+    /// The key art is reachable through the same arm the stills use, and both crops of each
+    /// episode ship — `<picture>` falls back to the wide one when a source is missing, so a
+    /// dropped 3:2 file would silently send a phone the billboard.
+    #[test]
+    fn every_episode_with_key_art_ships_both_crops() {
+        for ep in ["ep2_prasit", "ep3_khaopun", "ep4_mali", "ep5_boonsong"] {
+            for k in [ep.to_string(), format!("{ep}_3x2")] {
+                let found = KEY_ART.iter().find(|(n, _)| *n == k);
+                assert!(found.is_some_and(|(_, b)| !b.is_empty()), "{k}.jpg is missing");
+            }
+        }
+        // One namespace, so a key art file may not shadow a clinical status.
+        for (k, _) in KEY_ART {
+            assert!(!STILLS.iter().any(|(s, _)| s == k), "{k} collides with a still");
         }
     }
 

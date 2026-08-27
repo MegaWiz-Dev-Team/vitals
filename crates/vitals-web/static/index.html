@@ -748,6 +748,48 @@ a.give:hover{filter:brightness(1.06)}
   font-size:clamp(1rem,4.2vw,1.4rem);letter-spacing:.14em;color:#8aa0a4;margin-bottom:1.1rem}
 .epi-s2 span{display:block;font-size:clamp(1.7rem,7vw,2.7rem);letter-spacing:.04em;color:#fff;margin-top:.15rem}
 
+/* ── the films ────────────────────────────────────────────────────────────────
+   An investigation you ordered comes back as a picture. It lands as a thumbnail in
+   the rail — which scrolls inside itself, so the bay is still one viewport and the
+   film costs the layout nothing — and opens full size in a light box with the report
+   line under it and the credit under that. The strip is hidden until the first order
+   comes back: an empty frame on a station with no imaging is furniture.
+
+   The credit is not decoration. Both ECGs are PTB-XL under CC-BY 4.0, whose §3(a)
+   asks for the creator, the licence, its URI and a statement that the work was
+   modified — ours is modified twice, rendered then re-encoded. A viewer who never
+   opens the repository still has to be able to read all four, so every open film
+   carries the line and the shelf carries "image credits" for the card crops, which
+   are derivatives under the same licence. */
+.film-strip{display:flex;gap:.4rem;flex-wrap:wrap}
+.film-th{position:relative;width:4.3rem;aspect-ratio:1/1;flex:none;padding:0;overflow:hidden;
+  border:1px solid var(--line);border-radius:8px;background:#0b1418;cursor:pointer}
+.film-th img{width:100%;height:100%;object-fit:cover;display:block}
+.film-th b{position:absolute;inset:auto 0 0 0;font-family:"IBM Plex Mono",monospace;font-weight:600;
+  font-size:.5rem;letter-spacing:.1em;text-transform:uppercase;color:#fff;
+  background:rgba(6,20,24,.74);padding:.12rem .25rem}
+.film-th:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+/* Centred by `margin:auto` on the child rather than by `align-items:center` on the box: a
+   centred flex item taller than its container is clipped at the top with no way to scroll to
+   it, and a portrait chest film on a short window is exactly that case. */
+.lightbox{position:fixed;inset:0;z-index:60;background:rgba(4,12,15,.95);
+  backdrop-filter:blur(9px);display:flex;padding:1.1rem;overflow:auto}
+.lb-fig{max-width:min(58rem,100%);margin:auto;text-align:center}
+.lb-fig img{max-width:100%;max-height:66vh;border-radius:8px;background:#000;display:block;margin:0 auto}
+.lb-cap{font-size:.92rem;line-height:1.45;color:#eaf4f1;font-weight:600;margin:.8rem auto .45rem;max-width:44rem}
+.lb-who{font-family:"IBM Plex Mono",monospace;font-size:.6rem;letter-spacing:.14em;
+  text-transform:uppercase;color:#7fe7d2}
+.lb-cr{font-family:"IBM Plex Mono",monospace;font-size:.6rem;line-height:1.65;color:#8fa8ab;
+  max-width:44rem;margin:.55rem auto 0}
+.lb-cr a{color:#7fe7d2}
+.lb-x{position:fixed;top:.7rem;right:.9rem;background:rgba(255,255,255,.1);color:#fff;border:0;
+  border-radius:999px;width:2.1rem;height:2.1rem;font-size:1.05rem;cursor:pointer;font-family:inherit}
+.lb-hint{font-family:"IBM Plex Mono",monospace;font-size:.55rem;letter-spacing:.12em;
+  text-transform:uppercase;color:#5d7376;margin-top:.9rem}
+/* The shelf's own credit door, for the card crops — the lobby has no light box of its own. */
+.credit-link{background:none;border:0;padding:0;font:inherit;color:#3d7d6d;text-decoration:underline;
+  text-underline-offset:2px;cursor:pointer}
+
 /* ── the fit ──────────────────────────────────────────────────────────────────
    On a desktop the bay is a cockpit, not a page: one viewport, no page scroll
    while a case runs. The film gives up height first — letterboxed whole rather
@@ -826,7 +868,11 @@ a.give:hover{filter:brightness(1.06)}
          to a buyer. In the shelf it was a second logo on a line about stars. -->
     <p class="lb-foot">Every episode door is opened by stars from its own OSCE stations —
        ★ for a pass, ★★ for excellence, ★★★ for a flawless run. Skill unlocks the story;
-       nothing you pay ever changes your standing.</p>
+       nothing you pay ever changes your standing.<br>
+       <!-- Required, not courtesy: the ECG card crops on the shelf are CC-BY 4.0 derivatives,
+            and this is how a viewer who never opens the repository reaches the credit. -->
+       The clinical films and ECGs are real, from open datasets —
+       <button class="credit-link" id="credits" data-ga="credits">image credits</button>.</p>
   </div>
 </div>
 
@@ -925,6 +971,15 @@ a.give:hover{filter:brightness(1.06)}
       <button class="btn" id="addkit" style="width:100%">+ attach a device</button>
     </div>
 
+    <!-- What came back from the imaging you ordered. Hidden until there is something in it,
+         and it holds nothing the tape does not already hold: films are presentation, keyed off
+         the intervention id the matcher resolved, and never reach the leaf. renderFilms() fills
+         it from the view's `films`. -->
+    <div class="panel hide" id="filmbox">
+      <div class="k">films</div>
+      <div class="film-strip" id="films"></div>
+    </div>
+
     <div class="panel">
       <div class="k">chart</div>
       <div class="chart" id="chart"><span class="muted">nothing recorded yet</span></div>
@@ -990,6 +1045,11 @@ a.give:hover{filter:brightness(1.06)}
        one black surface. cineShow() runs a queue of steps; a tap advances the skippable
        ones; cards that carry their own buttons drive themselves. -->
   <div class="cine hide" id="cine"></div>
+
+  <!-- The film, full size. Top level rather than inside #game, because the lobby opens it too
+       for the image credits — the shelf's card art is a CC-BY derivative and the licence does
+       not care which screen it is being shown on. -->
+  <div class="lightbox hide" id="lightbox" role="dialog" aria-modal="true" aria-label="film"></div>
 
   <!-- The visible ceiling: when the month's compute is spent this card says what the money did
        and where more comes from. Fixed at the bottom so it reads the same from the lobby and
@@ -1832,6 +1892,7 @@ function paint(v){
      paint of the run — the one that raises the result panel. */
   const ended = over || !!v.outcome;
   renderChart(v, ended);
+  renderFilms(v);
   const fresh = drainBeats(v, ended);
   if(fresh.length) direct(fresh, v.outcome);
   finish(v);
@@ -1850,6 +1911,75 @@ function renderChart(v,ended){
     : '<span class="muted">nothing recorded yet</span>';
   $('#chart').scrollTop=1e6;
 }
+/* ── the films ────────────────────────────────────────────────────────────────
+   Order the imaging and the picture comes back. The server keys each one on
+   (station, resolved intervention id) — the same id the tape already carries — so
+   every phrasing the matcher understands reaches the picture too, and nothing here is
+   ever written to the tape, the leaf or the replay. A station with no film in the
+   table behaves exactly as it did before any of this existed.
+
+   Two of the bank's images are held back pending a clinician's read. They are not in
+   the server's table *and* not compiled into the binary, so there is nothing here for
+   this code to show even by accident.
+
+   Captions, intervention ids and the credit are server constants and page constants —
+   no player text reaches this markup, which is why none of it is escaped. */
+let SHOWN=[];
+/* Copied from static/img/cases/ATTRIBUTION.md rather than composed here. CC-BY 4.0 §3(a)
+   wants four things and all four are in this line: who made it, the licence, the licence
+   URI (on the link) and the fact that we modified it — these are teaching renders of PTB-XL
+   records, re-encoded again for the web, so "rendered and re-encoded" is the required
+   modification notice and not a flourish. NIH ChestX-ray14 imposes no such condition; it is
+   credited in the same breath because a teaching product that hides where its films came
+   from has no business asking learners to trust them. */
+const CREDIT='ECG: PTB-XL (Wagner et al., 2020), '
+  +'<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC-BY 4.0</a>, '
+  +'rendered and re-encoded · CXR: NIH ChestX-ray14 (Wang et al., 2017)';
+const orderName=s=>String(s||'').replace(/_/g,' ');
+function renderFilms(v){
+  SHOWN=v.films||[];
+  $('#filmbox').classList.toggle('hide',!SHOWN.length);
+  if(!SHOWN.length){ $('#films').innerHTML=''; return; }
+  $('#films').innerHTML=SHOWN.map((f,i)=>
+    `<button type="button" class="film-th" data-film="${i}" title="${f.caption}">`
+    +`<img src="/img/cases/${f.file}" alt="" loading="lazy" decoding="async">`
+    +`<b>${orderName(f.intervention)}</b></button>`).join('');
+  $('#films').querySelectorAll('[data-film]').forEach(b=>
+    b.onclick=()=>openFilm(SHOWN[+b.dataset.film]));
+}
+/* One light box, two callers: a film from the bay, and the credits from the shelf — the
+   card art on two station cards is a CC-BY derivative too, and the lobby has no other way
+   to reach the licence. */
+function lightbox(html){
+  $('#lightbox').innerHTML=html
+    +'<button type="button" class="lb-x" data-lb-x aria-label="close">✕</button>';
+  $('#lightbox').classList.remove('hide');
+}
+function closeLightbox(){ $('#lightbox').classList.add('hide'); $('#lightbox').innerHTML=''; }
+function openFilm(f){
+  if(!f)return;
+  lightbox(`<figure class="lb-fig"><img src="/img/cases/${f.file}" alt="${f.caption}">`
+    +`<figcaption><div class="lb-who">${orderName(f.intervention)}</div>`
+    +`<div class="lb-cap">${f.caption}</div><div class="lb-cr">${CREDIT}</div>`
+    +`<div class="lb-hint">tap anywhere to close</div></figcaption></figure>`);
+}
+function openCredits(){
+  lightbox('<div class="lb-fig"><div class="lb-who">image credits</div>'
+    +'<div class="lb-cap">The radiographs and ECGs in this bay are real clinical images from '
+    +'open research datasets, re-encoded for the web. None of them is a patient of ours, and '
+    +'none of them was generated.</div>'
+    +'<div class="lb-cr">'+CREDIT+'</div>'
+    +'<div class="lb-hint">tap anywhere to close</div></div>');
+}
+/* Anywhere closes it — except the licence link, which is the one thing in there somebody
+   might actually be reaching for. */
+$('#lightbox').onclick=e=>{ if(!(e.target.closest&&e.target.closest('a')))closeLightbox(); };
+$('#credits').onclick=openCredits;
+/* Ahead of the cinema layer's own Escape handler only in the sense that it guards on its own
+   state: the light box never opens over a running cutscene, so the two cannot both answer. */
+addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&!$('#lightbox').classList.contains('hide'))closeLightbox(); });
+
 /* Everything the engine has said since the last look, as lines in the feed. Returns the new
    beats so the caller can decide whether the Director gets a turn. */
 function drainBeats(v,ended){
@@ -2343,7 +2473,12 @@ function paintSeason(){
     const title=info?info.m.title:e.t, spec=info?bandOf(info.m):e.spec;
     const tierName=info?info.m.tier:e.tier;
     const pr=progOf(e);
-    const art=e.art?`<img src="${e.art}" alt="">`
+    /* A station whose set table gives it card art wears the film; the rest keep the plain
+       clinic face. Only where the picture says something — six of the source images are the
+       same indistinguishable normal chest, and a shelf of those teaches nothing. */
+    const cardArt=info&&info.m.card?`/img/cases/card/${info.m.card}`:null;
+    const art=e.art?artOf(e)
+      :cardArt?`<img src="${cardArt}" alt="" decoding="async" loading="lazy">`
       :e.station?`<div class="art-ph art-cl"><span>${specShort(spec)}</span></div>`
       :`<div class="art-ph ph-t-wrap ph-${e.id}"><span class="ph-t">${e.t}</span></div>`;
     /* No provenance badge on the face. In the game nobody has heard of the case bank — it read
