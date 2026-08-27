@@ -406,6 +406,24 @@ impl Session {
         // (`examMode()` is true for anything with `station` set), and this is the server
         // finally agreeing with it rather than trusting it.
         let sealed = (self.exam_mode || set_member(&self.ep).is_some()) && outcome.is_none();
+        // ── the chart says what was ordered, not what the rubric calls it ───────
+        // The engine records an order by intervention id, because an id is what replay and the
+        // rubric need. The chart then printed that id: `adrenaline_undosed`, `dx_epiglottitis`,
+        // `exam_throat`. Those are the mark sheet's own needles, and they say out loud both what
+        // the sheet is looking for and — in `_undosed`, `dx_` — the shape of the mistake it is
+        // waiting to catch. So the id is translated on the way out: the case author's label
+        // first, and failing that the player's own words off the tape.
+        //
+        // The tape and the events keep the id. Nothing here is read by replay, the leaf or the
+        // scorer; this is the last step before the screen.
+        let said: std::collections::HashMap<&str, &str> = self
+            .tape
+            .iter()
+            .filter_map(|s| match s {
+                Step::Act { text, id } => Some((id.as_str(), text.as_str())),
+                _ => None,
+            })
+            .collect();
         let beats = if sealed {
             self.beats.iter().map(|b| if b.starts_with("harm:") { HARM_SEALED.to_string() } else { b.clone() }).collect()
         } else {
@@ -450,7 +468,22 @@ impl Session {
                     // The chart keeps the line and the clock — that harm happened, and when,
                     // is a fact the patient is showing on the monitor anyway. What it does not
                     // keep, until the bell, is the sentence that says which mistake it was.
-                    text: if sealed && e.kind == "harm" { HARM_SEALED.to_string() } else { e.text.clone() },
+                    text: if sealed && e.kind == "harm" {
+                        HARM_SEALED.to_string()
+                    } else if self.state.is_intervention(&e.text) {
+                        // An order, recorded by id. Never the id itself: the case's own label,
+                        // or what the player typed to reach it, and only then — for a case that
+                        // named nothing and an order nobody typed — the id, which by then is the
+                        // only word anyone has for it.
+                        self.state
+                            .intervention_label(&e.text)
+                            .or_else(|| said.get(e.text.as_str()).copied())
+                            .unwrap_or(&e.text)
+                            .to_string()
+                    } else {
+                        // Already a line rather than an id — the defibrillator writes its own.
+                        e.text.clone()
+                    },
                 })
                 .collect(),
             news: (self.state.status != vitals_sce::PatientStatus::Dead).then(|| News {

@@ -332,6 +332,25 @@ impl SceState {
 
     pub fn equipment(&self) -> &[Equipment] { &self.equipment }
     pub fn has_equipment(&self, id: &str) -> bool { self.equipment.iter().any(|e| e.id == id) }
+
+    /// Does this string name an intervention this scenario defines?
+    ///
+    /// Asked because the engine records prose under `action` as well as ids — the defibrillator
+    /// writes its own sentence — and a renderer has to be able to tell "this is an id, translate
+    /// it" from "this is already a line, print it".
+    pub fn is_intervention(&self, id: &str) -> bool {
+        self.sce.interventions.iter().any(|iv| iv.id == id)
+    }
+
+    /// The human name a case gives one of its own interventions.
+    ///
+    /// The id is the engine's word and the rubric's needle — `adrenaline_undosed`,
+    /// `dx_epiglottitis`, `exam_throat` — and every one of those spells out what the mark sheet
+    /// is looking for. This is the case author's word for the same thing, written to be read.
+    /// `None` when the id is not an intervention here, or when the case never named it.
+    pub fn intervention_label(&self, id: &str) -> Option<&str> {
+        self.sce.interventions.iter().find(|iv| iv.id == id).and_then(|iv| iv.label.as_deref())
+    }
     /// Setting of an attached item, if it has one (oxygen LPM, pump mL/hr).
     pub fn equipment_setting(&self, id: &str) -> Option<f64> {
         self.equipment.iter().find(|e| e.id == id).and_then(|e| e.setting)

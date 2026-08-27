@@ -308,3 +308,75 @@ fn an_episode_is_never_sealed() {
         "an episode lost its harm feedback mid-run: {v}"
     );
 }
+
+/// **The rubric's needles, printed on the chart.** The engine records an order by intervention
+/// id because that is what replay and the scorer need, and the chart printed the id straight:
+/// `adrenaline_undosed`, `dx_epiglottitis`, `exam_throat`. Those are the mark sheet's own
+/// needles — they name what is being marked, and `_undosed` and `dx_` name the shape of the
+/// mistake it is waiting for. The id stays on the tape; it may not reach a screen.
+#[test]
+fn the_chart_prints_what_was_ordered_and_never_the_rubric_needle() {
+    let s = Server::start();
+    // osce-d3 is where this is worst: the paediatric anaphylaxis station marks the *dose*, and
+    // the id says so out loud.
+    let id = s.open("osce-d3");
+    for order in ["adrenaline", "oxygen", "look in the throat", "anaphylaxis"] {
+        s.order(&id, order);
+        s.tick(&id, 10.0);
+    }
+    let v = s.tick(&id, 10.0);
+    let chart = v["chart"].as_array().expect("chart").clone();
+    assert!(!chart.is_empty(), "nothing reached the chart: {v}");
+
+    for c in &chart {
+        let kind = c["kind"].as_str().unwrap_or_default();
+        if kind != "action" && kind != "action_refused" {
+            continue;
+        }
+        let text = c["text"].as_str().unwrap_or_default();
+        assert!(
+            !text.contains('_'),
+            "the chart is printing an intervention id: {text:?} — that is the rubric's needle"
+        );
+    }
+    // The whole payload, not just the chart: an id anywhere on the wire is an id the candidate
+    // can read. (The three the audit named, on the two stations that define them.)
+    let body = v.to_string();
+    for needle in ["adrenaline_undosed", "dx_anaphylaxis", "exam_throat"] {
+        assert!(!body.contains(needle), "{needle} is still on the wire: {body}");
+    }
+
+    // And the tape keeps every id, because the leaf and the scorer are built from it.
+    let tape = s.json(&format!("/api/tape?id={id}")).to_string();
+    assert!(tape.contains("adrenaline"), "the tape lost the resolved order: {tape}");
+}
+
+/// The same translation must not swallow the lines the engine does not write as ids. A harm, an
+/// outcome and a status are prose already, and a renderer that assumed every chart line was an
+/// intervention id would replace them with a shrug.
+#[test]
+fn the_lines_the_engine_writes_as_prose_survive_the_translation() {
+    let s = Server::start();
+    let id = s.open("ep1");
+    s.order(&id, "let her stand up");
+    let end = s.play_out(&id);
+    let chart = end["chart"].as_array().expect("chart");
+    let prose: Vec<&str> = chart
+        .iter()
+        .filter(|c| c["kind"] == "harm" || c["kind"] == "outcome" || c["kind"] == "status")
+        .filter_map(|c| c["text"].as_str())
+        .collect();
+    assert!(!prose.is_empty(), "no non-order lines to check: {end}");
+    for line in prose {
+        assert!(!line.is_empty(), "a chart line was translated into nothing");
+    }
+    // And an order that *is* an id still reads as the case's own label rather than the id.
+    let orders: Vec<&str> = chart
+        .iter()
+        .filter(|c| c["kind"] == "action")
+        .filter_map(|c| c["text"].as_str())
+        .collect();
+    for o in orders {
+        assert!(!o.contains('_'), "an episode is printing an intervention id too: {o:?}");
+    }
+}

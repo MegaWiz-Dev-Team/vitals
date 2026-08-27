@@ -821,6 +821,10 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
 .chart .c.action{border-left-color:var(--act)}
 .chart .c.action .c-k{color:var(--act)}
 .chart .c.equipment{border-left-color:#9fc4bb}
+/* An order the case turned down. It happened — the phone was picked up — and it is not an
+   order that landed, so it wears neither the action rule nor the harm one. */
+.chart .c.action_refused{border-left-color:var(--ink-3)}
+.chart .c.action_refused .c-k,.chart .c.action_refused .c-x{color:var(--ink-3)}
 .chart .c.harm{border-left-color:var(--warn)}
 .chart .c.harm .c-k,.chart .c.harm .c-x{color:var(--warn)}
 .chart .c.outcome{border-left-color:var(--alarm)}
@@ -2752,7 +2756,7 @@ function paint(v){
 /* Orders and events are different kinds of fact and a real chart never runs them together in
    one column of lowercase fragments. The tag says which, and the rule down the left carries it
    at a glance. */
-const KIND={action:'ORDER', equipment:'DEVICE', harm:'HARM', outcome:'OUTCOME'};
+const KIND={action:'ORDER', action_refused:'REFUSED', equipment:'DEVICE', harm:'HARM', outcome:'OUTCOME'};
 function renderChart(v,ended){
   $('#chart').innerHTML = v.chart.length
     ? v.chart.slice(-40).map(c=>
