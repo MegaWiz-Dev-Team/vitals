@@ -1888,15 +1888,18 @@ const SEASON=[
     you the difference"), which hands a returning player the diagnosis on the card they click
     to be examined on it. A cross-reference is a hint with a story wrapped round it; the shelf
     is outside the exam room and the exam has already started by the time it is read.
-    `t` used to be the case name — "Pericarditis — acute chest pain" — and that string
+    `t` used to be the case name — the diagnosis, spelled out, as the headline — and that string
     rides the player bar for the whole exam while the rubric pays four points for naming the
     diagnosis. It is the stem now, and the answer is revealed after the outcome instead (REVEAL,
-    below). Half of these blurbs used to read back demo/rubrics item for item — "cultures before
-    antibiotics, volume before noradrenaline", "weigh her, then draw 0.01 a kilo" — which hands
-    the candidate the answer on the card they click to be examined on it.
+    below). Half of these blurbs used to read back demo/rubrics item for item — the order of the
+    workup, the drug and the dose to draw off a weight the candidate is paid to ask for — which
+    hands the candidate the answer on the card they click to be examined on it.
+    The offending strings are described here and not quoted, which is the same rule one level up:
+    this file is served to the candidate whole, so a comment that repeats the answer leaks it
+    exactly as the card did, and view-source is no harder to read than the shelf.
     `spec` is the circuit band a real OSCE door wears (emergency · paediatrics), not the Eir
-    organ specialty: "eir-gastroenterology" over "vomited blood, cold to the wrist" answers this
-    station's own trap before the candidate has touched the patient. */
+    organ specialty: an "eir-<organ system>" band printed over the bed answers this station's own
+    trap before the candidate has touched the patient. */
  {id:'osce-a',n:'OSCE A',sn:'S1 · OSCE A',t:'Rash and facial swelling after a meal — M 71',tier:'student',station:true,
   spec:'emergency',rt:'an 8-minute station',mins:8,
   who:'Somchai · M 71', line:'urticaria head to toe, face swelling, cramping belly pain',
@@ -2198,8 +2201,12 @@ const CHIPS={
    writes the outcome line in the result panel, so a man who survived was told "she goes home" on
    the one frame that carries the hash, the mark sheet and the anchor.
 
-   `who` is the authority — "Somchai · M 71", "Beam · F 6 · 20 kg" — because it is the same string
+   `who` is the authority — "Name · SEX AGE", e.g. "Somchai · M 71" — because it is the same string
    the card prints and the bay captions, so the pronoun can never disagree with the name beside it.
+   Two fields and it stops: this file is served to the candidate, so a third field in a `who`
+   string — or in an example of one written down here — is a mark sheet's hidden number published
+   in view-source. `osce-d3` pays three points for asking the weight and six more for the dose
+   drawn off it, and both were readable out of this comment before it said so.
    Presentation only: no beat key, no chip, no order and no tape entry changes with it. */
 const PRO_F={s:'she',o:'her',p:'her'}, PRO_M={s:'he',o:'him',p:'his'},
       PRO_N={s:'the patient',o:'the patient',p:"the patient's"};
@@ -2224,8 +2231,8 @@ const pro=e=>{
   if(/·\s*F\b/.test(who))return PRO_F;
   return PRO_N;
 };
-/* How old the patient is, read off the same `who` string the bed label prints — "Somchai · M 71",
-   "Beam · F 6 · 20 kg". The monitor needs it because alarm limits are a function of age and it
+/* How old the patient is, read off the same `who` string the bed label prints — "Name · SEX AGE",
+   e.g. "Somchai · M 71". The monitor needs it because alarm limits are a function of age and it
    had only the adult set: a three-year-old at 118 and 28 is a normal three-year-old, and the
    screen alarmed on her from the first second. `null` when the string does not say, which the
    monitor reads as "use the adult limits" — the behaviour it had before it was told anything. */
@@ -2329,11 +2336,12 @@ async function bootLang(){
   await setLang(want||'', false);
 }
 
-/* A harm beat is written to teach: "no steroid by the seventh minute — croup is a steroid
-   disease" names the drug, the disease and the deadline in one line, and the scenario fires it
-   at the exact moment the candidate has not thought of it. In practice that is the whole point.
+/* A harm beat is written to teach: one line naming the drug that was not given, the disease it
+   treats and the deadline that has just gone past, fired at the exact moment the candidate has
+   not thought of it. In practice that is the whole point.
    During an exam it is a coach leaning over the desk — the rubric is at that moment paying for
-   the steroid it just named.
+   the very thing the beat just named. No example is written out here: the page is served to the
+   candidate, so a quoted harm line in this comment is the same leak one file earlier.
    So: while a station is running, harm is reported the way the bedside reports it — something
    went wrong, at this time, and the patient will show you the rest. The full sentence is not
    deleted, it is deferred: the debrief prints every harm in full for both modes, because
@@ -2845,19 +2853,20 @@ function paint(v,named){
   $('#kit').querySelectorAll('[data-off]').forEach(x=>x.onclick=()=>detach(x.dataset.off));
   renderTray(v.equipment);
 
-  /* The rail used to read "⚠ no Adrenaline yet" — the name of the drug the rubric was marking,
-     printed on screen until the candidate typed it. A station is an exam: an examinee who does
-     not know the answer got it from the furniture, and a score that can be earned that way does
+  /* The rail used to read "⚠ no <drug> yet" with the drug the rubric was marking spelled
+     into it, printed on screen until the candidate typed it. A station is an exam: an
+     examinee who does not know the answer got it from the furniture, and a score that can be
+     earned that way does
      not mean what this whole project claims a score means. So: nothing at all under exam, and in
      practice a cue about the chart rather than about the case — an empty chart is a fact the
-     player can see for themselves, "give adrenaline" is an answer they cannot.
+     player can see for themselves, and the name of the drug to give is an answer they cannot.
      It clears on the first thing done to the patient of any kind, drug or device, because the
      sentence it makes is "nothing given yet" and a mask on a face is something given. */
   const acted = v.chart.some(c=>c.kind==='action'||c.kind==='equipment');
   $('#nudge').textContent = (examMode()||acted||over) ? '' : '⚠ nothing given yet';
   /* Same rule, one panel down: the reason for admitting is a teaching line in practice and an
-     answer at a station — and "biphasic reactions" is anaphylaxis's reason, never pneumonia's,
-     so it is said only on the case it is true of. */
+     answer at a station — a reason to admit belongs to one diagnosis and to no other, so it is
+     said only on the case it is true of. */
   $('#dispo-why').textContent = examMode() ? '' : (DISPO_WHY[E.id]||'');
 
   /* The chart repaints every tick, so it flips to the full harm text by itself on the last
@@ -3222,12 +3231,12 @@ const stop=()=>{clearInterval(timer);timer=null};
    learner who wants the harder version should be able to ask for it — and neither belongs in
    something that ends in a claim anchored on a chain.
 
-   Hold is the worse of the two: a station is a ten-minute clock, half the rubric is timed
-   ("ECG within ten minutes", "steroid inside the hour"), and a candidate who can freeze the
-   patient can take as long as they like over every one of those windows and still be inside
-   them. That is not a slower exam, it is a different exam. Difficulty is the same argument one
-   step along: choosing the rate at which she crumples is choosing how much of the mark sheet is
-   reachable, after the run has already been declared to the chain.
+   Hold is the worse of the two: a station is a ten-minute clock, half the rubric is timed — an
+   item that pays only if the thing was done inside its own window — and a candidate who can
+   freeze the patient can take as long as they like over every one of those windows and still
+   be inside them. That is not a slower exam, it is a different exam. Difficulty is the same
+   argument one step along: choosing the rate at which she crumples is choosing how much of the
+   mark sheet is reachable, after the run has already been declared to the chain.
 
    So at a station both come off the bar and the speed is pinned to the one the run was declared
    at. The handlers below refuse as well, because a hidden button is still a button — the shelf
@@ -3321,9 +3330,9 @@ $('#mic').onclick=()=>{
    an exam. The first two because a monitor with someone else's name at the top is a wrong-patient
    error a clinician clocks in half a second — the pane used to print "Ing · F 19" over every
    case in the season, including the 71-year-old man in OSCE A. The third because the ventilator
-   panel interprets its own numbers out loud ("think bronchospasm or a blocked tube"), which is
-   teaching in practice and the answer read off the wall at a station. The devices stay dumb about
-   the case itself: no diagnosis, no rubric, nothing but a name, an age and a flag. */
+   panel interprets its own numbers out loud — it names causes for the pressure it is showing
+   — which is teaching in practice and the answer read off the wall at a station. The devices
+   stay dumb about the case itself: no diagnosis, no rubric, nothing but a name, an age and a flag. */
 const deviceSrc=dev=>{
   const e=ep();
   const a=ageOf(e);
@@ -3541,8 +3550,8 @@ function showReveal(){
    filmed must not promise a sign-off nobody has given yet.
 
    The bank id arrives on the /api/marks payload now, not on the shelf's set table. It used to
-   be read out of `memberOf()`, which meant every station's bank id — and the disease spelled
-   into it, "ddx-anaphylaxis-1" — was sitting in the one GET the lobby makes before anybody
+   be read out of `memberOf()`, which meant every station's bank id — and a bank id spells its
+   own diagnosis into itself — was sitting in the one GET the lobby makes before anybody
    sits anything. Called with the sealed answer, or with nothing to clear the line between
    runs. */
 function showProvenance(m){

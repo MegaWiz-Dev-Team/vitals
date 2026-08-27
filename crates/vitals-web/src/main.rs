@@ -2905,6 +2905,60 @@ mod tests {
         );
     }
 
+    /// **A comment is served with the page.** `static/index.html` ships whole — markup, script
+    /// and every comment in it — so a comment is public copy that happens to be addressed to the
+    /// next engineer. A scored number has now escaped that way twice: the shelf card carried the
+    /// paediatric weight until the test above was written, and the two comments explaining `who`
+    /// went on printing the very same string as their worked example for another release after
+    /// the card was fixed. `osce-d3` pays three points for asking that weight (`ask_weight`) and
+    /// six more for the dose drawn off it, and the whole station is about dosing a child by the
+    /// kilo — nine points, collectable with view-source and no clinical thought at all.
+    ///
+    /// Two mechanical rules, checked against the page exactly as the browser receives it:
+    ///
+    ///   * a patient descriptor is two fields — `Name · SEX AGE` — and stops. A third `·`
+    ///     segment is where the weight got in both times, in the card and in the comment.
+    ///   * a body weight in kilograms appears nowhere in the file. No card, caption or comment
+    ///     has a use for one; the candidate is paid to ask for it. A dose written *per* kilogram
+    ///     (`saline 20 ml/kg`) is a chip label offered on screen, not a weight, and stays legal.
+    ///
+    /// Deliberately narrower than [`no_station_title_names_the_answer_it_is_marking`]: that
+    /// test's GIVEAWAYS list cannot be run over the whole page, because `REVEAL` and `CHIPS`
+    /// legitimately hold all twelve diagnoses and every drug on every differential — the page
+    /// has to print the differential to offer it. The leak this catches is not a disease being
+    /// named in this file, it is a scored *number* written down where nobody had to ask.
+    #[test]
+    fn the_page_never_writes_down_a_number_the_rubric_pays_to_ask_for() {
+        // Every `· M`/`· F` marker in the file is inside a patient descriptor — a `who` field, a
+        // bay caption, or a comment quoting one. Read from the marker to the end of whatever is
+        // holding it and fail on a second separator.
+        let ends = |c: char| c == '\'' || c == '"' || c == '<' || c == '\n';
+        for (i, _) in PAGE.match_indices("· M").chain(PAGE.match_indices("· F")) {
+            let rest = &PAGE[i..];
+            let field = &rest[..rest.find(ends).unwrap_or(rest.len())];
+            assert_eq!(
+                field.matches('·').count(),
+                1,
+                "a patient descriptor carries a third field — {field:?} — and everything past the \
+                 age is a fact the candidate is supposed to have to ask the patient for"
+            );
+        }
+        // And no body weight, in any of them or anywhere else.
+        for (i, _) in PAGE.match_indices("kg") {
+            let head = PAGE[..i].trim_end_matches(' ');
+            if !head.ends_with(|c: char| c.is_ascii_digit()) {
+                continue; // `mg/kg`, `ml/kg`, `20 ml/kg` — a rate per kilo, not a weight.
+            }
+            let mut ctx: Vec<char> = head.chars().rev().take(60).collect();
+            ctx.reverse();
+            let ctx: String = ctx.into_iter().collect();
+            panic!(
+                "the page states a weight in kilograms — ...{ctx}kg... — which is the one number \
+                 `osce-d3` pays a candidate to ask for"
+            );
+        }
+    }
+
     /// Same rule, the other half of the card: the band is what a circuit prints on the door, and
     /// it must stay wider than the organ the station is about.
     #[test]
