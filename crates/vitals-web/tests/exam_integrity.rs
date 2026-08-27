@@ -422,3 +422,33 @@ fn a_station_has_no_hold_button_and_no_speed_dial() {
         "something re-enables hold without asking whether this is an exam"
     );
 }
+
+/// **The endpoint that gave away more than the harm text.** `/api/debrief` was not sealed at
+/// all. `expected` is the scenario's own model answer — every intervention the case wanted, its
+/// label, the reason it wanted it and the second it wanted it by — and `harms` carries the full
+/// sentence together with the intervention id that caused it. One GET mid-run was the whole
+/// station, in order, with timings, which walked straight around the seal the view now holds.
+#[test]
+fn the_debrief_stays_shut_until_the_case_is_over() {
+    let s = Server::start();
+    let id = s.open("osce-c");
+    s.order(&id, "look in the throat");
+    s.tick(&id, 10.0);
+
+    let mid = s.json(&format!("/api/debrief?id={id}"));
+    assert_eq!(mid["sealed"], serde_json::json!(true), "the debrief opened mid-run: {mid}");
+    let body = mid.to_string();
+    assert!(!body.contains("tongue depressor"), "the harm sentence came out of the debrief: {body}");
+    assert!(!body.contains("exam_throat"), "the intervention id came out of the debrief: {body}");
+    assert!(mid["expected"].is_null(), "the model answer leaked mid-run: {mid}");
+    assert!(mid["harms"].is_null(), "the harm list leaked mid-run: {mid}");
+
+    // And the bell opens it, because everything above is what a debrief is for.
+    s.play_out(&id);
+    let after = s.json(&format!("/api/debrief?id={id}"));
+    assert!(after["sealed"].is_null(), "the debrief stayed shut after the outcome: {after}");
+    assert!(
+        after["harms"].as_array().is_some_and(|a| !a.is_empty()),
+        "the debrief lost the harms it exists to explain: {after}"
+    );
+}

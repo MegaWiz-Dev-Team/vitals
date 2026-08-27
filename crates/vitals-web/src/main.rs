@@ -1647,6 +1647,20 @@ fn main() {
                 let mut map = sessions.lock().unwrap();
                 match map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) {
                     None => no_such_session(),
+                    // ── sealed until the case is over, exactly like the mark sheet ─────────
+                    // This endpoint was not sealed at all, and it gives away more than any
+                    // other: `expected` is the scenario's own model answer — every intervention
+                    // the case wanted, with its label, its reason and the second it wanted it by
+                    // — and `harms` carries the full harm sentence with the intervention id that
+                    // caused it. A GET mid-run was the whole station, in order, with timings.
+                    //
+                    // The page only ever asks after the bell, but the page is a file anyone can
+                    // read and edit; this is the refusal that holds. The wording matches
+                    // /api/marks so the two seals read as one rule rather than two accidents.
+                    Some(s) if s.state.outcome().is_none() => json(serde_json::json!({
+                        "sealed": true,
+                        "error": "the debrief opens when the case is over",
+                    })),
                     Some(s) => match vitals_replay::debrief(&s.sce_json, &s.tape) {
                         Err(e) => json(serde_json::json!({ "error": e })),
                         Ok(d) => json(serde_json::json!({
