@@ -616,6 +616,44 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
   font-family:"IBM Plex Mono",monospace;font-size:.71rem}
 .verdict .g{color:var(--act)} .verdict .r{color:var(--warn)} .verdict .n{color:var(--ink-3)}
 .hint{font-size:.77rem;color:var(--ink-3)}
+/* ── the mark sheet ───────────────────────────────────────────────────────────
+   The half of the mastery loop that was missing: a run that failed said "Death ·
+   arrest" and nothing about which of the ten items it dropped. Every row is one
+   rubric item — a glyph for how it went, the label, the seconds it turned on for
+   a timed one, and what it paid out of what it was worth. Worst first, because
+   the top of this list is what to practise. One column on a phone; the points
+   column never wraps, so the sheet still reads as a column of numbers. */
+.marks{margin:.9rem 0 0;display:flex;flex-direction:column;gap:.35rem;text-align:left}
+.marks:empty{display:none}
+.mk-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:.4rem .55rem;
+  padding-bottom:.5rem;border-bottom:1px solid var(--line);margin-bottom:.2rem}
+.mk-h .mk-star{color:var(--gold);letter-spacing:.06em;font-size:.95rem}
+.mk-h b{font-family:Archivo,sans-serif;font-size:1.02rem;font-weight:800}
+.mk-pct{font-family:"IBM Plex Mono",monospace;font-size:.76rem;color:var(--ink-2)}
+.mk-next{flex:1 0 100%;font-size:.79rem;color:var(--ink-2);line-height:1.45}
+.mk-k{font-family:"IBM Plex Mono",monospace;font-size:.62rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-3)}
+.mk-r{display:flex;gap:.5rem;align-items:baseline;padding:.34rem 0;border-bottom:1px solid var(--line)}
+.mk-r:last-child{border-bottom:0}
+.mk-i{flex:none;width:1rem;text-align:center;font-size:.82rem;color:var(--ink-3)}
+.mk-r.hit .mk-i{color:var(--act)}
+.mk-r.partial .mk-i{color:var(--warn)}
+.mk-r.miss .mk-i{color:var(--alarm)}
+.mk-n{flex:1;min-width:0;font-size:.86rem;color:var(--ink)}
+.mk-r.miss .mk-n,.mk-r.partial .mk-n{font-weight:600}
+.mk-r.hit .mk-n{color:var(--ink-2)}
+.mk-y{display:block;margin-top:.15rem;font-family:"IBM Plex Mono",monospace;
+  font-size:.72rem;color:var(--ink-3);line-height:1.5}
+.mk-r.miss .mk-y,.mk-r.partial .mk-y{color:var(--warn)}
+.mk-p{flex:none;font-family:"IBM Plex Mono",monospace;font-size:.75rem;
+  font-variant-numeric:tabular-nums;color:var(--ink-3)}
+.mk-r.hit .mk-p{color:var(--act)}
+.mk-r.partial .mk-p{color:var(--warn)}
+.mk-r.miss .mk-p{color:var(--alarm)}
+/* The way back in, sized like a decision rather than like a link. */
+.runback{display:flex;margin-top:.9rem}
+.runback .btn{flex:1;text-align:center;font-family:Archivo,sans-serif;
+  font-weight:700;font-size:.95rem;padding:.65rem 1rem}
 /* where the case came from — a footnote under the score, not a badge on the shelf */
 .prov{margin-top:.35rem;font-family:"IBM Plex Mono",monospace;font-size:.67rem;color:var(--ink-3)}
 .prov:empty{display:none}
@@ -916,9 +954,18 @@ a.give:hover{filter:brightness(1.06)}
       <button class="btn" id="c1" disabled>claim Advanced beginner</button>
       <button class="btn" id="copy">copy the tape</button>
     </div>
-    <div class="db" id="db"></div>
+    <!-- The debrief reads top to bottom in the order a candidate needs it: what the run was
+         worth and how far the next star is (#verdict, filled by the anchor), then the mark
+         sheet worst-first, then the harm and the timeline, then the answer and where the case
+         came from, then the way back in. Filled only from finish() — every one of these is
+         sealed while the case is running. -->
     <div class="verdict" id="verdict"></div>
-    <div class="hint" style="margin-top:.5rem">Hand the tape and the scenario to anyone — they recompute this leaf without asking us.</div>
+    <!-- The mark sheet: every rubric item, what it paid, and — for a timed one — the second it
+         actually happened against the window it had. Server-sorted by what each miss cost, so
+         the top line is the thing to fix. showMarks() fills it; /api/marks refuses to answer
+         until the case is over. -->
+    <div class="marks" id="marks"></div>
+    <div class="db" id="db"></div>
     <!-- The answer, released by the bell. The station's own title is a stem all the way through
          the exam — the rubric pays for naming the diagnosis — so this is where the candidate is
          finally told what they were looking at. Filled by showReveal(); stations only. -->
@@ -926,6 +973,11 @@ a.give:hover{filter:brightness(1.06)}
     <!-- Provenance belongs where it means something: after the score, not on the card of a case
          you are about to sit. Filled by showProvenance() for stations; empty everywhere else. -->
     <div class="prov" id="prov"></div>
+    <!-- The other half of the mastery loop. Seeing what you missed is worth nothing if the way
+         back in is three clicks through the shelf, so it is one button, here, at the bottom of
+         the sheet the player just read. -->
+    <div class="runback"><button class="btn go" id="runback" data-ga="debrief:runback">↻ run it back</button></div>
+    <div class="hint" style="margin-top:.5rem">Hand the tape and the scenario to anyone — they recompute this leaf without asking us.</div>
   </section>
 </div>
 
@@ -1793,7 +1845,7 @@ function finish(v){
   /* Every sealed line in the feed now says what it was. Matched by position against the run's
      own harm beats, which is the order they were appended in. */
   unsealHarm(v);
-  showDebrief(); showProvenance(); showReveal();
+  showDebrief(); showMarks(); showProvenance(); showReveal();
   $('#outcome').textContent=say('terminal:'+v.outcome);
   $('#outnote').textContent=(v.harm.length?'Harm on the record: '+v.harm.join(', '):'No harm recorded.')+'  ·  '+v.outcome;
   $('#leaf').textContent=v.leaf;
@@ -1859,6 +1911,9 @@ $('#start').onclick=async()=>{
   // would belong to nobody, and a case that belongs to nobody answers to anyone holding its id.
   await identity();
   stop(); over=false; seen=0; clockNow=0; emptyState(); $('#result').style.display='none';
+  /* Wiped, not just hidden: a mark sheet left in the DOM from the previous run is the answer
+     key one devtools inspection away, and #result is display:none rather than gone. */
+  $('#marks').innerHTML=''; $('#db').innerHTML=''; $('#reveal').textContent=''; $('#verdict').innerHTML='';
   const e=$('#ep').value;
   const r=await (await fetch('/api/new?ep='+e+asMe())).json();
   if(r.error)return ev('note','—',r.error);
@@ -2011,6 +2066,65 @@ async function showDebrief(){
   $('#db').innerHTML=h;
 }
 
+/* ── the mark sheet ────────────────────────────────────────────────────────────
+   The missing half of the loop. A failed station used to say "Death · arrest" and stop,
+   so an unlimited-retry model was an unlimited-guess model: nothing on the screen told
+   you which of the ten items you dropped. This prints every one of them, worst first.
+
+   Three rules it must not break.
+
+   1. **After the bell only.** It names every action the rubric pays for, with its window
+      — mid-run that is the answer key, not feedback. `over` is checked here and the
+      server refuses to answer before the outcome (`/api/marks`), so the seal survives
+      someone editing this file.
+   2. **The server's arithmetic, not ours.** Every number below is printed as sent; the
+      page adds nothing up. The sheet comes off `sheet_for_run`, which is `det_for_run`'s
+      own body, so the total here and the det score on chain are the same walk over the
+      same tape.
+   3. **Practice gets it too.** A formative run is where the feedback is worth most; the
+      only thing exam mode changes is that the sheet waits for the bell like everything
+      else. */
+const MKG={hit:'✓',partial:'◐',miss:'✗'};
+const mmss=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+/* What a row says under its label. Only where it adds a fact the label does not already
+   carry: a window that was missed or met, or the moment an avoided harm actually fired. */
+function markNote(it){
+  if(it.within!=null){
+    if(it.at==null) return 'never given · the window was '+mmss(it.within);
+    return 'given at '+mmss(it.at)+' · the window was '+mmss(it.within);
+  }
+  if(it.kind==='no_harm'&&it.at!=null) return 'it happened at '+mmss(it.at);
+  if(it.mark==='hit'&&it.at!=null&&it.kind!=='outcome') return mmss(it.at);
+  return '';
+}
+async function showMarks(){
+  const el=$('#marks'); if(!el) return;
+  el.innerHTML='';
+  /* The seal, said twice. The server is the one that holds. */
+  if(!id||!over) return;
+  let m; try{ m=await (await fetch('/api/marks?id='+id+asMe())).json(); }catch(e){ return; }
+  if(!m||m.error||!Array.isArray(m.items)||!m.items.length) return;
+  const bps=m.bps||0, t=tierFor(bps), nb=nextBar(bps);
+  const pct=(bps/100).toFixed(bps%100?1:0);
+  /* The same sentence the anchor prints, available before anchoring and in practice —
+     the arithmetic is the server's either way, so the two can never disagree. */
+  let next;
+  if(nb==null) next='Flawless. There is nothing above this one.';
+  else{
+    const need=Math.max(1,Math.ceil(nb*m.max/10000)-m.score);
+    next=`${need} point${need===1?'':'s'} from your ${['first','second','third'][t]} star.`
+      +(m.exam?' Sit it again and the better run is the one that counts.':'');
+  }
+  const head=`<div class="mk-h"><span class="mk-star">${starGlyph(t)}</span>`
+    +`<b>${m.score} / ${m.max}</b><span class="mk-pct">${pct}%</span>`
+    +`<span class="mk-k">mark sheet</span><span class="mk-next">${next}</span></div>`;
+  el.innerHTML=head+m.items.map(it=>
+    `<div class="mk-r ${it.mark}"><span class="mk-i">${MKG[it.mark]||'·'}</span>`
+    +`<span class="mk-n">${it.label}`
+    +(markNote(it)?`<span class="mk-y">${markNote(it)}</span>`:'')
+    +`</span><span class="mk-p">${it.earned}/${it.points}</span></div>`).join('');
+}
+
 /* The answer, at the only moment it is free to give. A station's card, title card and player
    bar carry the stem now — age, sex, complaint, what you could see from the doorway — because
    the mark sheet is paying two to four points for naming the diagnosis and a title that names it
@@ -2037,6 +2151,11 @@ function showProvenance(){
     ? `case ${info.m.case} · clinical case bank · deterministic score — anyone can re-derive it`
     : '';
 }
+
+/* Straight back into the same case, in the mode it was just sat in — the same entrance the
+   up-next card uses, so the recap and title card behave identically whichever door you came
+   through. A station is an exam by definition; an episode keeps whatever this run declared. */
+$('#runback').onclick=()=>{ cineHide(); enterEpisode($('#ep').value, EXAMRUN); };
 
 $('#copy').onclick=async()=>{ const t=await (await fetch('/api/tape?id='+id+asMe())).json();
   await navigator.clipboard.writeText(JSON.stringify(t,null,1)); $('#copy').textContent='tape copied'; };
