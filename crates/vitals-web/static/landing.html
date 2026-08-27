@@ -126,6 +126,51 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
   font-weight:800;color:var(--proven);line-height:1.15;margin:0 0 .7rem}
 .mission p{margin:.5rem 0 0;color:var(--ink-2);font-size:.94rem}
 .mission strong{color:var(--ink)}
+
+/* --- case coverflow --------------------------------------------------------
+   Four cards on a ring, no library: the container carries the perspective and
+   every card is placed by one transform that JS derives from its distance to
+   the active card. The CSS only says what a card looks like and how long it
+   takes to move; nothing here assumes an order, so the deck has no ends. */
+.cf{--cf-w:300px;--cf-h:272px;
+  position:relative;height:calc(var(--cf-h) + 3rem);margin:.4rem 0 1rem;
+  perspective:1200px;overflow:hidden;touch-action:pan-y;
+  user-select:none;-webkit-user-select:none;cursor:grab}
+.cf.dragging{cursor:grabbing}
+.cf:focus-visible{outline:2px solid var(--proven);outline-offset:3px;border-radius:10px}
+.cf-card{position:absolute;top:50%;left:50%;width:var(--cf-w);height:var(--cf-h);
+  margin:calc(var(--cf-h) / -2) 0 0 calc(var(--cf-w) / -2);
+  background:var(--surface);border:1px solid var(--rule);border-radius:10px;overflow:hidden;
+  box-shadow:0 10px 30px rgba(0,0,0,.16);backface-visibility:hidden;
+  transition:transform .45s cubic-bezier(.22,.8,.3,1), opacity .45s ease;will-change:transform}
+.cf-card img{display:block;width:100%;height:calc(var(--cf-w) * 2 / 3);object-fit:cover;
+  background:var(--surface-2);pointer-events:none;-webkit-user-drag:none}
+.cf-meta{padding:.6rem .85rem}
+.cf-meta h3{font-size:1.02rem;font-weight:700;line-height:1.2;color:var(--ink)}
+.cf-who{margin:.3rem 0 0;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* the turned-away edge of a side card falls into shadow — darkest on whichever
+   edge is receding, which is the outer one on both sides. */
+.cf-shade{position:absolute;inset:0;pointer-events:none;opacity:0;
+  background:linear-gradient(to left,rgba(0,0,0,.9),rgba(0,0,0,0) 88%);
+  transition:opacity .45s ease}
+.cf-card[data-side="r"] .cf-shade{background:linear-gradient(to right,rgba(0,0,0,.9),rgba(0,0,0,0) 88%)}
+.cf-nav{display:flex;align-items:center;justify-content:center;gap:.9rem}
+.cf-btn{width:2.4rem;height:2.4rem;display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--rule);border-radius:10px;background:var(--surface);color:var(--ink);
+  font:600 1.15rem/1 "IBM Plex Sans",Arial,sans-serif;cursor:pointer}
+.cf-btn:hover{border-color:var(--proven);color:var(--proven)}
+.cf-dots{display:flex;gap:.2rem}
+.cf-dots button{width:1.5rem;height:1.5rem;padding:0;border:0;background:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center}
+.cf-dots button::before{content:"";width:.6rem;height:.6rem;border-radius:50%;
+  border:1px solid var(--ink-3);background:transparent}
+.cf-dots button[aria-current]::before{background:var(--proven);border-color:var(--proven)}
+.cf-btn:focus-visible,.cf-dots button:focus-visible{outline:2px solid var(--proven);outline-offset:2px}
+@media(max-width:640px){.cf{--cf-w:230px;--cf-h:216px}
+  .cf-meta{padding:.5rem .7rem}.cf-meta h3{font-size:.95rem}
+  .cf-who{font-size:.62rem;letter-spacing:.04em}}
+@media (prefers-reduced-motion: reduce){.cf-card,.cf-shade{transition:none}}
 </style>
 </head>
 <body>
@@ -149,6 +194,57 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
       <div class="card"><span class="k">Treat her</span><p>Orders, drugs, airway, fluids — a live bedside monitor moves the way the physiology moves.</p></div>
       <div class="card"><span class="k">She lives or she doesn't</span><p>No script. A deterministic clinical automaton decides in real time, from what you did and when.</p></div>
       <div class="card hl"><span class="k">The run is provable</span><p>Every case reduces to one hash. Replay the tape, get the same answer — no trust required.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Season one</h2>
+    <p class="lede">Four of the cases on the shelf today. Same engine, same clock &mdash; the patient
+    is what changes.</p>
+    <div class="cf" id="cf" tabindex="0" role="group"
+      aria-label="Season one cases &mdash; carousel of four episodes; use the left and right arrow keys to move between them">
+      <article class="cf-card" data-ga="landing_case_ep2">
+        <img src="img/ep2_prasit_3x2.jpg" alt="Prasit, 58, a hospital driver, on the trolley in the emergency department with crushing chest pain." loading="lazy" decoding="async" draggable="false">
+        <div class="cf-meta">
+          <h3>Time Is Muscle</h3>
+          <p class="mono cf-who">EP2 &middot; Prasit &middot; M 58 &middot; 12 min</p>
+        </div>
+        <div class="cf-shade" aria-hidden="true"></div>
+      </article>
+      <article class="cf-card" data-ga="landing_case_ep3">
+        <img src="img/ep3_khaopun_3x2.jpg" alt="Khaopun, 5, sitting bolt upright and drooling in the paediatric bay, refusing to lie down." loading="lazy" decoding="async" draggable="false">
+        <div class="cf-meta">
+          <h3>Don't Make Him Cry</h3>
+          <p class="mono cf-who">EP3 &middot; Khaopun &middot; M 5 &middot; 14 min</p>
+        </div>
+        <div class="cf-shade" aria-hidden="true"></div>
+      </article>
+      <article class="cf-card" data-ga="landing_case_ep4">
+        <img src="img/ep4_mali_3x2.jpg" alt="Mali, 34, a nurse still in uniform, breathless in the emergency department." loading="lazy" decoding="async" draggable="false">
+        <div class="cf-meta">
+          <h3>The Masquerader</h3>
+          <p class="mono cf-who">EP4 &middot; Mali &middot; F 34 &middot; 12 min</p>
+        </div>
+        <div class="cf-shade" aria-hidden="true"></div>
+      </article>
+      <article class="cf-card" data-ga="landing_case_ep5">
+        <img src="img/ep5_boonsong_3x2.jpg" alt="Boonsong, 47, the fireworks foreman, bleeding in resus on a mass-casualty night." loading="lazy" decoding="async" draggable="false">
+        <div class="cf-meta">
+          <h3>The Night the Stars Fell</h3>
+          <p class="mono cf-who">EP5 &middot; Boonsong &middot; M 47 &middot; 18 min</p>
+        </div>
+        <div class="cf-shade" aria-hidden="true"></div>
+      </article>
+    </div>
+    <div class="cf-nav">
+      <button class="cf-btn" id="cf-prev" type="button" data-ga="landing_cases_prev" aria-label="Previous case">&lsaquo;</button>
+      <div class="cf-dots" id="cf-dots">
+        <button type="button" data-ga="landing_cases_dot_ep2" aria-label="Show case 1 of 4: Time Is Muscle"></button>
+        <button type="button" data-ga="landing_cases_dot_ep3" aria-label="Show case 2 of 4: Don't Make Him Cry"></button>
+        <button type="button" data-ga="landing_cases_dot_ep4" aria-label="Show case 3 of 4: The Masquerader"></button>
+        <button type="button" data-ga="landing_cases_dot_ep5" aria-label="Show case 4 of 4: The Night the Stars Fell"></button>
+      </div>
+      <button class="cf-btn" id="cf-next" type="button" data-ga="landing_cases_next" aria-label="Next case">&rsaquo;</button>
     </div>
   </section>
 
@@ -241,5 +337,73 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
     Open source under AGPL-3.0 + commercial licence. No learner is ever charged.</div>
   </footer>
 </div>
+<script>
+/* The coverflow. One rule does the whole effect: a card's place is a function of
+   how far it sits from the active one, wrapped to the shorter way round the ring
+   so four cards have no first and no last. Nothing autoplays — it moves when a
+   reader moves it, by click, drag, button or arrow key. */
+(function(){
+  var box=document.getElementById('cf'); if(!box)return;
+  var cards=[].slice.call(box.querySelectorAll('.cf-card')),
+      dots=[].slice.call(document.querySelectorAll('#cf-dots button')),
+      N=cards.length, cur=0, drag=null, moved=false;
+
+  function paint(){
+    var gap=window.innerWidth<=640?92:118;
+    cards.forEach(function(c,i){
+      var off=i-cur;
+      if(off>N/2)off-=N; else if(off<-N/2)off+=N;
+      var a=Math.abs(off), far=a>2;
+      c.style.transform='translateX('+(off*gap)+'px) translateZ('+(-a*100)+'px) '
+        +'rotateY('+(-off*50)+'deg) scale('+(1-a*0.14)+')';
+      c.style.opacity=far?'0':'1';
+      c.style.pointerEvents=far?'none':'auto';
+      c.style.zIndex=String(100-a);
+      c.setAttribute('aria-hidden',far?'true':'false');
+      c.setAttribute('data-side',off<0?'l':'r');
+      c.querySelector('.cf-shade').style.opacity=String(Math.min(a*0.38,0.78));
+    });
+    dots.forEach(function(d,i){
+      if(i===cur)d.setAttribute('aria-current','true'); else d.removeAttribute('aria-current');
+    });
+  }
+  function go(n){cur=(n%N+N)%N;paint();}
+
+  box.addEventListener('click',function(e){
+    var c=e.target.closest&&e.target.closest('.cf-card');
+    if(c&&!moved)go(cards.indexOf(c));
+  });
+  box.addEventListener('keydown',function(e){
+    if(e.key==='ArrowLeft'){go(cur-1);e.preventDefault();}
+    else if(e.key==='ArrowRight'){go(cur+1);e.preventDefault();}
+  });
+  document.getElementById('cf-prev').addEventListener('click',function(){go(cur-1);});
+  document.getElementById('cf-next').addEventListener('click',function(){go(cur+1);});
+  dots.forEach(function(d,i){d.addEventListener('click',function(){go(i);});});
+
+  box.addEventListener('pointerdown',function(e){
+    if(e.button>0)return;
+    drag={x:e.clientX,id:e.pointerId,cap:false}; moved=false; box.classList.add('dragging');
+  });
+  box.addEventListener('pointermove',function(e){
+    if(!drag)return;
+    var dx=e.clientX-drag.x;
+    /* Capture only once this is a drag rather than a click: a captured pointer
+       retargets the click to the container, which would cost us click-to-centre. */
+    if(!drag.cap&&Math.abs(dx)>10){try{box.setPointerCapture(drag.id);}catch(_){}drag.cap=true;}
+    if(Math.abs(dx)>40){go(cur+(dx<0?1:-1));drag.x=e.clientX;moved=true;}
+  });
+  function release(){
+    if(!drag)return;
+    if(drag.cap){try{box.releasePointerCapture(drag.id);}catch(_){}}
+    drag=null; box.classList.remove('dragging');
+    if(moved)setTimeout(function(){moved=false;},60);
+  }
+  box.addEventListener('pointerup',release);
+  box.addEventListener('pointercancel',release);
+  addEventListener('resize',paint);
+  paint();
+})();
+</script>
 </body>
 </html>
