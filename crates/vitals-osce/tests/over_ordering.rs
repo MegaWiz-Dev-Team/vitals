@@ -305,8 +305,19 @@ fn every_station_sorts_its_chips_into_the_two_kinds() {
 }
 
 /// The twelve competent tapes, word for word out of `vitals-osce`'s own station tests — the
-/// runs those tests assert score 40/40. They speak in the chip texts the page actually sends,
-/// so they go through the matcher exactly as a person playing the station would.
+/// runs those tests assert score 40/40. They are free text, not intervention ids, so they go
+/// through the matcher exactly as a person playing the station does.
+///
+/// They were transcribed from the page's tray, and eleven of these orders are no longer what the
+/// tray's buttons say: the chips used to carry the reason for the order on the button
+/// ("curb-65 — score her", "adrenaline 0.2 mg im — 0.01 per kilo") and that wording was an
+/// answer key readable in view-source, so it came off. **These tapes deliberately keep the old
+/// wording.** Their leaves are pinned below, and a pinned leaf whose input is edited to follow
+/// the interface is not a pin — it is a number that gets recomputed whenever it fails. Keeping
+/// them is also the stronger statement: these are what a run anchored before the tray was
+/// rewritten actually contains, and the pin says that run still replays to the same leaf and
+/// marks to the same score. Every one of the changed orders resolves to the identical
+/// intervention id in its own station, which is why the marks below did not move.
 ///
 /// Copied rather than shared because they are the *pinned* runs: if the tape in the unit test
 /// changes, this file must be made to disagree with it and say so, not follow it silently.
