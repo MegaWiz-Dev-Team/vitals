@@ -183,6 +183,10 @@ impl DetResult {
 
 /// The scenario clock of the first `kind` event whose text contains `needle`, canonicalised on
 /// both sides so a full-width or NFC/NFD variant cannot slip a match. `None` if it never happened.
+///
+/// `kind` is matched exactly, which is what makes `action_refused` invisible to every `action`
+/// check in every rubric without one of them being edited: the cath lab that answered "the lab
+/// wants an ecg before it spins up" is on the event log, and it is not an action.
 fn hit(events: &[Event], kind: &str, needle: &str) -> Option<f64> {
     let n = canon(needle).to_lowercase();
     events
@@ -490,8 +494,11 @@ mod tests {
         ];
         let (s, m, _) = det_for_run(&sce, &tape, &rubric_json).unwrap();
         assert_eq!((s, m), (40, 40));
-        // Cath lab on a hunch, no ECG ever: the reperfusion flag never sets, the ten-minute harm
-        // fires, the infarct completes. The action_any credit alone cannot reach the bar.
+        // Cath lab on a hunch, no ECG ever. The lab refuses — "the lab wants an ecg before it
+        // spins up" — and the refusal is now recorded as `action_refused`, so the ten-point
+        // reperfusion item is a miss rather than a hit. It used to be a hit: `record("action")`
+        // fired before the branch that turned the order down, and the candidate was paid in
+        // full for a reperfusion that never happened.
         let hunch = vec![
             Step::Do("activate the cath lab".into()),
             Step::Tick(200.0),
@@ -499,10 +506,112 @@ mod tests {
             Step::Tick(200.0),
             Step::Tick(200.0),
         ];
-        let (s, m, _) = det_for_run(&sce, &hunch, &rubric_json).unwrap();
+        let (_, sheet) = sheet_for_run(&sce, &hunch, &rubric_json).unwrap();
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
-        let det = DetResult { earned: s, max: m, items: vec![] };
-        assert!(!det.cleared(&r), "reperfusion credit without the ECG must not clear: {s}/{m}");
+        assert!(!sheet.cleared(&r), "reperfusion credit without the ECG must not clear: {}/{}", sheet.earned, sheet.max);
+        let reperfusion = sheet
+            .items
+            .iter()
+            .find(|i| i.label.starts_with("Reperfusion"))
+            .expect("the reperfusion item");
+        assert_eq!(
+            (reperfusion.earned, reperfusion.mark),
+            (false, Mark::Miss),
+            "a cath lab that said no still paid for reperfusion"
+        );
+        assert_eq!(sheet.earned, 3, "a refused order left points behind: {:?}", sheet.items);
+    }
+
+    /// **The refused order, on the three stations the audit named.** Each of these is a gated
+    /// intervention: the case hears the order, checks a precondition, and turns it down in
+    /// words — no flag, no variable, no harm, nothing on the patient. `record("action", …)` used
+    /// to fire before that branch was even evaluated, so every one of them was worth full marks
+    /// to a candidate who never earned the thing being marked.
+    ///
+    /// This is the property, and it is stated per station in points because points are what the
+    /// star is made of.
+    #[test]
+    fn an_order_the_case_refused_earns_nothing() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/");
+        // (station, the order, the rubric label it must no longer pay for, what it was worth)
+        for (ep, order, label, worth) in [
+            ("osce-b", "activate the cath lab", "Reperfusion decision", 10u16),
+            ("osce-d2", "heparin", "Anticoagulation", 6),
+            ("osce-d", "call gi — urgent endoscopy", "Called GI", 4),
+        ] {
+            let sce = std::fs::read_to_string(format!("{root}stations/{ep}.sce.json")).unwrap();
+            let rubric_json = std::fs::read_to_string(format!("{root}rubrics/{ep}.json")).unwrap();
+            let tape = vec![Step::Do(order.into()), Step::Tick(200.0), Step::Tick(200.0)];
+
+            // The order is on the record — the debrief has to be able to say the lab said no —
+            // and it is on it under a kind no rubric asks about.
+            let (state, _) = resume(&sce, &tape).unwrap();
+            let kinds: Vec<&str> = state.events().iter().map(|e| e.kind.as_str()).collect();
+            assert!(
+                kinds.contains(&vitals_sce::runtime::ACTION_REFUSED),
+                "{ep}: the refusal left no record at all: {kinds:?}"
+            );
+            assert!(
+                !kinds.contains(&vitals_sce::runtime::ACTION),
+                "{ep}: a refused order is still filed as an action: {kinds:?}"
+            );
+
+            let (_, sheet) = sheet_for_run(&sce, &tape, &rubric_json).unwrap();
+            let item = sheet
+                .items
+                .iter()
+                .find(|i| i.label.starts_with(label))
+                .unwrap_or_else(|| panic!("{ep}: no item named {label:?}"));
+            assert_eq!(item.points, worth, "{ep}: {label} is not worth what the audit measured");
+            assert!(!item.earned, "{ep}: {label} still pays {worth} for an order that was refused");
+            assert!(item.at.is_none(), "{ep}: {label} still quotes a second for something that did not happen");
+        }
+    }
+
+    /// The other half of the same change, and the one that would be expensive to get wrong: a
+    /// refusal is a fact about the *marking*, not about the run. The tape, the beats, the harm
+    /// list and the outcome are what `vitals_replay::leaf` hashes; the event log is not in it at
+    /// all. So every run anchored before this change replays to the identical leaf after it.
+    #[test]
+    fn refusing_an_order_moves_the_mark_and_never_the_leaf() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/");
+        let sce = std::fs::read_to_string(format!("{root}stations/osce-b.sce.json")).unwrap();
+        let tape = vec![
+            Step::Do("activate the cath lab".into()),
+            Step::Tick(200.0), Step::Tick(200.0), Step::Tick(200.0), Step::Tick(200.0),
+        ];
+        let (state, replay) = resume(&sce, &tape).unwrap();
+
+        // Pinned by value, not by "it did not change": these four are the leaf's whole input.
+        assert_eq!(
+            replay.beats,
+            vec![
+                "threshold:the lab wants an ecg before it spins up".to_string(),
+                "harm:ecg delayed beyond ten minutes — the infarct ran unseen".to_string(),
+                "status:Critical".to_string(),
+                "terminal:DeathArrest".to_string(),
+            ],
+            "the refusal changed what the case said"
+        );
+        assert_eq!(replay.harm_events.len(), 1, "the refusal changed the harm list");
+        assert_eq!(replay.outcome.as_deref(), Some("DeathArrest"), "the refusal changed the outcome");
+        // Those four and the tape are the leaf's entire input — `vitals_replay::leaf` takes a
+        // `&Replay`, which has no event log in it — so pinning them pins the leaf without
+        // hard-coding a hash that an author legitimately rewriting the case would have to come
+        // and edit. Replaying twice is the determinism half of the same statement.
+        let leaf_of = |t: &[Step]| {
+            let r = vitals_replay::replay(&sce, t).unwrap();
+            vitals_replay::leaf(&vitals_replay::sce_hash(&sce), t, &r)
+        };
+        assert_eq!(leaf_of(&tape), leaf_of(&tape), "the leaf is not a function of the tape");
+
+        // And `done` is untouched, because the scenarios' own conditions read it: a refused
+        // order that fell out of `done` would change what cases *do*, and that would change a
+        // leaf. The proof is the beat: `done` is what the refusal branch is testing against.
+        assert!(
+            state.events().iter().any(|e| e.kind == vitals_sce::runtime::ACTION_REFUSED && e.text == "cath_lab"),
+            "the refusal is not on the record under its own name"
+        );
     }
 
     /// Station C (osce-c, from embla-cases ddx-croup-2): a drooling child who looks like EP3's

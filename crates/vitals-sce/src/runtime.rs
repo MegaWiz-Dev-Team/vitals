@@ -163,11 +163,42 @@ pub struct Equipment {
 /// You could not ask "what has happened, in order" without merging four half-records and guessing
 /// the interleaving, which is precisely the question an agent has to answer before it can react to
 /// a situation rather than to the last sentence typed at it.
+/// The event kind an order that landed is recorded under. Rubrics match on this string.
+pub const ACTION: &str = "action";
+
+/// The event kind an order the case *refused* is recorded under.
+///
+/// A separate kind rather than a missing record, because "you called the cath lab and it said
+/// no" is a thing that happened and a debrief has to be able to say so. It is simply not the
+/// thing a rubric asking "was reperfusion achieved" is asking about — and since `vitals-osce`
+/// filters strictly on `kind == "action"`, giving the refusal its own name is the whole fix.
+pub const ACTION_REFUSED: &str = "action_refused";
+
+/// What one intervention's effects actually did, as opposed to what they said.
+///
+/// Collected while the effects run and thrown away immediately after; nothing here reaches the
+/// tape, the beats, the harm list or the outcome, which is why it cannot move a leaf.
+#[derive(Debug, Default, Clone, Copy)]
+struct EffectTrace {
+    /// A `branch` matched none of its arms and ran its `else`.
+    took_else: bool,
+    /// Something changed about the patient — a variable, a flag, a harm, a state, a terminal
+    /// outcome, a piece of equipment. A beat is not one of these.
+    touched: bool,
+}
+
+impl EffectTrace {
+    /// The case answered with words and changed nothing: the order did not happen.
+    fn refused(self) -> bool {
+        self.took_else && !self.touched
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Event {
     /// Scenario clock, seconds. The ordering key, and what a debrief quotes.
     pub t_sec: f64,
-    /// `action` | `equipment` | `harm` | `status` | `beat` | `outcome`
+    /// `action` | `action_refused` | `equipment` | `harm` | `status` | `beat` | `outcome`
     pub kind: String,
     pub text: String,
 }
@@ -415,18 +446,50 @@ impl SceState {
             // time and the ordering are exactly the parts a verifier can recompute.
             //
             // Recorded before the effects run, so the order precedes the harm it caused.
-            self.record("action", id.clone());
+            // Its *kind* is decided afterwards — see the refusal note below — so the index is
+            // kept rather than the event.
+            let at = self.events.len();
+            self.record(ACTION, id.clone());
+            let mut trace = EffectTrace::default();
             if let Some(h) = &sce.interventions[i].harm {
                 let h = h.clone();
+                trace.touched = true;
                 self.harm_events.push(h.clone());
                 self.record("harm", h.clone());
                 beats.push(NarrativeBeat::Harm(h));
             }
-            self.run_effects(sce, &sce.interventions[i].effects.clone(), &mut beats);
+            self.run_effects_traced(sce, &sce.interventions[i].effects.clone(), &mut beats, &mut trace);
             // Whatever the intervention leaves on the patient goes onto the bedside too. Typed
             // order and pressed button now converge on one record; attach() is idempotent on id, so
             // a learner who says it and then presses it does not end up with two masks.
-            if let Some(e) = eq { self.attach(&e, eq_set); }
+            if let Some(e) = eq { trace.touched = true; self.attach(&e, eq_set); }
+            // ── an order the case refused is not an order the case did ──────────────
+            // `record("action", …)` used to fire unconditionally, before the branch that
+            // decides whether the order lands. So the cath lab that answered "the lab wants an
+            // ecg before it spins up" still wrote `action cath_lab`, and the rubric — which
+            // reads the event log and nothing else — paid the full ten points for reperfusion
+            // to a candidate who never got one. Same for heparin before the scan (6), and for
+            // calling GI on an unresuscitated bleed (4): refuse the order, keep the marks.
+            //
+            // A refusal is now a kind of its own, so no `action` needle can match it and every
+            // rubric in the repo is fixed without a line being edited in any of them.
+            //
+            // The test is [`EffectTrace`]: the order fell through to an `else`, and nothing in
+            // the whole intervention touched the patient — no variable, no flag, no harm, no
+            // state, no terminal, no equipment. Words only. That is what distinguishes the
+            // cath lab saying no from osce-d's crystalloid, which *does* go in when the lines
+            // are thin, just slower and worth less — and that one is still an action, because
+            // a litre went in.
+            //
+            // What deliberately does NOT move: `done`, the tape, the beats, the harm list and
+            // the outcome. `done` is read by the scenarios' own conditions, so demoting it
+            // would change what cases do; the other four are what the leaf hashes. The event
+            // log is not in the leaf (`vitals_replay::leaf` hashes tape + beats + harms +
+            // outcome), so a run anchored before this change replays to the identical leaf
+            // after it. Only the rubric's reading of the run moves — which is the point.
+            if trace.refused() {
+                self.events[at].kind = ACTION_REFUSED.to_string();
+            }
             self.done.insert(id);
         }
         // rescue can promote immediately (the old apply() re-checked is_safe)
@@ -465,11 +528,25 @@ impl SceState {
 
     /// Returns true if an effect changed state or terminated.
     fn run_effects(&mut self, sce: &Sce, es: &[Effect], beats: &mut Vec<NarrativeBeat>) -> bool {
+        let mut ignored = EffectTrace::default();
+        self.run_effects_traced(sce, es, beats, &mut ignored)
+    }
+
+    /// The same walk, with a note of what it did — see [`EffectTrace`]. Only [`SceState::fire`]
+    /// reads the note; every other caller takes the plain wrapper above.
+    fn run_effects_traced(
+        &mut self,
+        sce: &Sce,
+        es: &[Effect],
+        beats: &mut Vec<NarrativeBeat>,
+        trace: &mut EffectTrace,
+    ) -> bool {
         let mut changed = false;
         for e in es {
             if self.outcome.is_some() { break; }
             match e {
                 Effect::Delta { delta, cap, floor } => {
+                    trace.touched = true;
                     for (k, v) in delta {
                         let mut nv = self.get_var(k) + v;
                         if let Some(c) = cap { nv = nv.min(*c); }
@@ -477,8 +554,12 @@ impl SceState {
                         self.set_var(sce, k, nv);
                     }
                 }
-                Effect::Set { set } => for (k, v) in set { self.set_var(sce, k, *v); },
+                Effect::Set { set } => {
+                    trace.touched = true;
+                    for (k, v) in set { self.set_var(sce, k, *v); }
+                }
                 Effect::Flag { flag, value, for_sec } => {
+                    trace.touched = true;
                     if *value {
                         let exp = for_sec.map_or(f64::INFINITY, |s| self.t_elapsed + s);
                         self.flags.insert(flag.clone(), exp);
@@ -486,24 +567,31 @@ impl SceState {
                         self.flags.remove(flag);
                     }
                 }
+                // Deliberately not `touched`: a beat is the case talking, not the case
+                // changing. It is the whole difference between "GI, on the phone: not on an
+                // empty tank" and a scope that actually went in.
                 Effect::Beat { beat } => beats.push(NarrativeBeat::Threshold(beat.clone())),
                 Effect::Harm { harm } => {
+                    trace.touched = true;
                     self.harm_events.push(harm.clone());
                     self.record("harm", harm.clone());
                     beats.push(NarrativeBeat::Harm(harm.clone()));
                 }
-                Effect::ToState { to_state } => { self.change_state(sce, to_state); changed = true; }
-                Effect::Outcome { outcome } => { self.terminate(sce, outcome, beats); changed = true; }
+                Effect::ToState { to_state } => { trace.touched = true; self.change_state(sce, to_state); changed = true; }
+                Effect::Outcome { outcome } => { trace.touched = true; self.terminate(sce, outcome, beats); changed = true; }
                 Effect::Branch { branch, els } => {
                     let mut matched = false;
                     for a in branch {
                         if self.eval(sce, &a.iff) {
-                            if self.run_effects(sce, &a.then, beats) { changed = true; }
+                            if self.run_effects_traced(sce, &a.then, beats, trace) { changed = true; }
                             matched = true;
                             break;
                         }
                     }
-                    if !matched && self.run_effects(sce, els, beats) { changed = true; }
+                    if !matched {
+                        trace.took_else = true;
+                        if self.run_effects_traced(sce, els, beats, trace) { changed = true; }
+                    }
                 }
             }
         }
