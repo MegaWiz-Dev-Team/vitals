@@ -168,6 +168,20 @@ impl Patient {
     }
 }
 
+/// `(object, subject)` pronouns for a persona's `sex`, or a neutral pair when the case does not
+/// say.
+///
+/// Unknown is answered with "this patient" / "they" rather than a guess. A brief that asserts the
+/// wrong sex is worse than one that declines to assert any: the model is being handed the case as
+/// fact, and everything it invents from a wrong fact is wrong downstream.
+fn pronouns(sex: Option<&str>) -> (&'static str, &'static str) {
+    match sex.map(str::trim).unwrap_or_default().to_ascii_uppercase().as_str() {
+        "M" | "MALE" => ("him", "he"),
+        "F" | "FEMALE" => ("her", "she"),
+        _ => ("this patient", "they"),
+    }
+}
+
 /// The character brief, built from the authored story and the language the learner chose.
 ///
 /// A free function rather than a method so it can be read — and tested — without a gateway: the
@@ -184,14 +198,20 @@ impl Patient {
 /// words is what this model is for, and it is doing it in English already.
 pub fn brief(persona: &Value, status: &str, spo2: f64, lang: &Language) -> String {
     let p = &persona["patient"];
+    // Read from the case, not written in here. The season is more than half men — a 71-year-old
+    // with a swelling face, a 62-year-old vomiting blood, a five-year-old who will not lie down —
+    // and a brief that calls every one of them "her" is a prompt telling the model something the
+    // case says is false. `sex` is a field the persona has always carried.
+    let (obj, subj) = pronouns(p["sex"].as_str());
     let mut s = format!(
         "You are {}, {} years old, in an emergency department right now. \
-         You are frightened and short of breath. Speak ONLY as her, in first person, in \
+         You are frightened and short of breath. Speak ONLY as {}, in first person, in \
          {}, in one or two short sentences. Broken, breathless phrasing. Never narrate, \
          never describe yourself from outside, never mention being an AI, never give medical \
          advice or diagnose yourself.\n\n",
         p["name"].as_str().unwrap_or("Ing"),
         p["age"].as_i64().unwrap_or(19),
+        obj,
         lang.speaks,
     );
     s.push_str("What is true about you, and what you say if asked:\n");
@@ -226,10 +246,10 @@ pub fn brief(persona: &Value, status: &str, spo2: f64, lang: &Language) -> Strin
              same timing, the same symptoms, the same numbers, the same things you will only say \
              if you are asked. Do not add a detail that is not in the notes and do not leave one \
              out because it is awkward to say in {0}. \
-             Speak the way this patient would speak — a frightened teenager, not a doctor. Where \
+             Speak the way this patient would speak — a frightened patient, not a doctor. Where \
              {0} has an everyday word for something, use the everyday word; where the only word \
-             she would have is the borrowed medical one, use that.",
-            lang.speaks
+             {1} would have is the borrowed medical one, use that.",
+            lang.speaks, subj
         ));
     }
     s
@@ -276,5 +296,41 @@ impl Wire {
             .as_str()
             .map(|s| s.to_string())
             .ok_or_else(|| "metadata token: no access_token".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The brief must not tell the model something the case denies. Seven of the season's
+    /// seventeen patients are men, and "Speak ONLY as her" over a 71-year-old man is a false
+    /// fact handed to a model that will build on it for the rest of the encounter.
+    #[test]
+    fn the_brief_speaks_as_the_patient_the_case_describes() {
+        let man = json!({ "patient": { "name": "Somchai", "age": 71, "sex": "M" } });
+        let s = brief(&man, "Deteriorating", 91.0, crate::lang::default_language());
+        assert!(s.contains("Speak ONLY as him,"), "the man is still spoken of as a woman");
+        assert!(!s.contains("as her,"), "\"her\" survived somewhere in the brief");
+
+        let woman = json!({ "patient": { "name": "Ing", "age": 19, "sex": "F" } });
+        let s = brief(&woman, "Deteriorating", 91.0, crate::lang::default_language());
+        assert!(s.contains("Speak ONLY as her,"), "EP1's brief changed");
+    }
+
+    /// A case that does not say declines to assert, rather than guessing and being wrong half
+    /// the time. `they` is not a claim about anybody.
+    #[test]
+    fn a_case_that_names_no_sex_is_not_given_one() {
+        assert_eq!(pronouns(None), ("this patient", "they"));
+        assert_eq!(pronouns(Some("")), ("this patient", "they"));
+        assert_eq!(pronouns(Some("?")), ("this patient", "they"));
+        // The field is authored by hand across seventeen files, so it is read forgivingly.
+        for m in ["M", "m", " male ", "Male"] {
+            assert_eq!(pronouns(Some(m)), ("him", "he"), "{m} was not read as a man");
+        }
+        for f in ["F", "f", " female ", "Female"] {
+            assert_eq!(pronouns(Some(f)), ("her", "she"), "{f} was not read as a woman");
+        }
     }
 }

@@ -2116,21 +2116,39 @@ const CHIPS={
       dx:['haemorrhagic shock','to theatre']},
 };
 
+/* ─── who the patient is ──────────────────────────────────────────────────────
+   The season is not one woman. Seven of its seventeen patients are men — a seventy-one-year-old
+   whose face is still swelling, a sixty-two-year-old vomiting blood, a five-year-old who will not
+   lie down — and the event log used to call every one of them "she", because these lines were
+   written for EP1 and never asked who was on the trolley. It is not only the log: the same table
+   writes the outcome line in the result panel, so a man who survived was told "she goes home" on
+   the one frame that carries the hash, the mark sheet and the anchor.
+
+   `who` is the authority — "Somchai · M 71", "Beam · F 6 · 20 kg" — because it is the same string
+   the card prints and the bay captions, so the pronoun can never disagree with the name beside it.
+   Presentation only: no beat key, no chip, no order and no tape entry changes with it. */
+const PRO_F={s:'she',o:'her',p:'her'}, PRO_M={s:'he',o:'him',p:'his'};
+const pro=e=>/·\s*M\b/.test(((e||ep()||{}).who)||'')?PRO_M:PRO_F;
+/* `{s}` subject, `{o}` object, `{p}` possessive. A line with no placeholder is a line that never
+   needed one — "the reaction comes back" is true whoever it comes back in. */
+const fillPro=(t,e)=>{ const g=pro(e);
+  return typeof t==='string' ? t.replace(/\{([sop])\}/g,(_,k)=>g[k]) : t; };
+
 /* ─── the engine speaks in beats; a person hears a story ────────────────────── */
 const SAY={
- "status:Stable":"she is holding","status:Deteriorating":"she is getting worse",
- "status:Critical":"she is crashing","status:Improving":"she is turning around",
- "status:Recovered":"she settles","status:Arrest":"she arrests","status:Dead":"she is gone",
- "threshold:biphasic":"the reaction comes back","threshold:going_quiet":"he goes quiet — that is worse",
- "threshold:stemi_recognised":"the ECG tells the truth","threshold:collapse":"she collapses",
+ "status:Stable":"{s} is holding","status:Deteriorating":"{s} is getting worse",
+ "status:Critical":"{s} is crashing","status:Improving":"{s} is turning around",
+ "status:Recovered":"{s} settles","status:Arrest":"{s} arrests","status:Dead":"{s} is gone",
+ "threshold:biphasic":"the reaction comes back","threshold:going_quiet":"{s} goes quiet — that is worse",
+ "threshold:stemi_recognised":"the ECG tells the truth","threshold:collapse":"{s} collapses",
  "threshold:code_blue":"the monitor alarms — code blue","threshold:rosc":"a rhythm comes back",
- "terminal:WinDischarge":"she goes home","terminal:WinIcu":"she lives — ICU",
- "terminal:DeathArrest":"she dies","terminal:DeathBiphasic":"she dies at home"
+ "terminal:WinDischarge":"{s} goes home","terminal:WinIcu":"{s} lives — ICU",
+ "terminal:DeathArrest":"{s} dies","terminal:DeathBiphasic":"{s} dies at home"
 };
 /* The line a beat is read in: the run's own translation first, then the page's English, then the
    raw beat with its kind stripped. Three fallbacks deep and none of them can be empty, because a
    case with no translation must read exactly as it did before any of this existed. */
-const say=b=>TR[b] || SAY[b] || (b.startsWith("harm:") ? "harm — "+b.slice(5) : b.replace(/^[a-z]+:/,""));
+const say=b=>fillPro(TR[b] || SAY[b] || (b.startsWith("harm:") ? "harm — "+b.slice(5) : b.replace(/^[a-z]+:/,"")));
 
 /* ─── the language the patient speaks ─────────────────────────────────────────
    Presentation, all of it. Nothing below reaches the tape, the leaf or the mark sheet: the chips
@@ -2259,7 +2277,7 @@ function emptyState(){
   const c=$('#chat'); c.innerHTML=''; c.classList.add('empty');
   const E=ep();
   c.innerHTML=`<div class="empty-in"><b>${E.who}</b>${E.line}.<br>
-    Ask her something, or start treating. The clock is the patient — she does not wait.</div>`;
+    Ask ${pro(E).o} something, or start treating. The clock is the patient — ${pro(E).s} does not wait.</div>`;
 }
 /* ─── the kit ────────────────────────────────────────────────────────────────
    Embla's device tray, not a row of buttons: every item carries what it actually is,
@@ -2554,7 +2572,7 @@ function renderChips(){
   $('#chips').innerHTML=c.map(x=>`<button class="btn" data-x="${x}" data-ga="chip:${x}">${chipLabel(x)}</button>`).join('');
   $('#chips').querySelectorAll('button').forEach(b=>b.onclick=()=>fire(b.dataset.x));
   $('#cmd').placeholder = mode==='ask'
-    ? (PACK.ui.ask_placeholder || 'ask her anything…')
+    ? (PACK.ui.ask_placeholder || `ask ${pro().o} anything…`)
     : (PACK.ui.order_placeholder || 'or type the order yourself…');
 }
 /* At a station every chip is an order — the asks included. Step::Ask never reaches the tape
@@ -2973,7 +2991,7 @@ async function askHer(q){
      still true about the case, and swallowing it would cost the learner the only reply the
      month's compute paid for. A note beside it, so a learner who chose Thai is told rather than
      left wondering whether the setting did anything. */
-  if(r.reply && r.off_language) ev('note','·', PACK.ui.off_language || '— she answered in another language');
+  if(r.reply && r.off_language) ev('note','·', PACK.ui.off_language || `— ${pro().s} answered in another language`);
   /* The month is spent: the reply carries the whole meter, and the card takes it from here. */
   if(r.ceiling) showCeiling(r.ceiling);
   $('#chat').scrollTop=1e6; asking=false; $('#send').disabled=false; $('#cmd').focus();
@@ -3032,7 +3050,7 @@ $('#start').onclick=async()=>{
   $('#pause').textContent='hold'; $('#cmd').focus();
   const voice=(await (await fetch('/api/chain')).json()).voice;
   emptyState();
-  if(!voice) ev('note','—','no gateway, so she cannot answer — orders still work');
+  if(!voice) ev('note','—',`no gateway, so ${pro().s} cannot answer — orders still work`);
   run(); chainState();
 };
 /* Leaving is not a sweep. The sweep is the signature of going forward — running it
@@ -4496,7 +4514,7 @@ function showCeiling(m){
   c.innerHTML=
     `<b>The bay has spent its month of compute.</b>
      <span>${used} conversations with a dying patient ran free in ${m.month} — every one paid
-     for by donations. Orders and the monitor still work; her voice returns on the 1st.</span>`
+     for by donations. Orders and the monitor still work; the patient's voice returns on the 1st.</span>`
     +(m.donate?`<a class="cl-give" href="/donate" target="_blank" rel="noopener">Keep the bay running →</a>`:'')
     +`<span class="cl-count">♥ ${clicks} ${+m.clicks===1?'person':'people'} followed the donate link this month</span>`;
 }

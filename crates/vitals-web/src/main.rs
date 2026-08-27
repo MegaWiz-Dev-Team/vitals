@@ -1193,7 +1193,7 @@ fn main() {
         if path == "/api/say" {
             said.retain(|t| t.elapsed() < Duration::from_secs(60));
             if said.len() >= SAY_PER_MIN {
-                let _ = req.respond(json(serde_json::json!({ "error": "too many questions — give her a moment" })));
+                let _ = req.respond(json(serde_json::json!({ "error": "too many questions — give the patient a moment" })));
                 continue;
             }
             said.push(Instant::now());
@@ -1598,7 +1598,7 @@ fn main() {
                 let caller = param(&url, "player");
                 let q = param(&url, "q").unwrap_or_default();
                 let Some(pt) = patient.as_ref() else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no gateway — she has no voice here" })));
+                    let _ = req.respond(json(serde_json::json!({ "error": "no gateway — the patient has no voice here" })));
                     continue;
                 };
                 // The bay is free and the inference is paid for by donations, so the spend is
@@ -1608,7 +1608,7 @@ fn main() {
                     meter::Verdict::Ok => {}
                     meter::Verdict::SlowDown { retry_secs } => {
                         let _ = req.respond(json_code(serde_json::json!({
-                            "error": "she needs a moment — you are asking faster than the bay allows",
+                            "error": "the patient needs a moment — you are asking faster than the bay allows",
                             "retry_in": retry_secs,
                         }), 429));
                         continue;
