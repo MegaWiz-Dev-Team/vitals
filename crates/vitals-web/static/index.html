@@ -218,6 +218,27 @@ addEventListener('click',function(e){
   radial-gradient(1.5px 1.5px at 83% 34%,rgba(255,220,120,.8) 50%,transparent 51%),
   radial-gradient(1px 1px at 38% 45%,rgba(255,200,61,.5) 50%,transparent 51%),
   linear-gradient(160deg,#132c46 0%,#0a1726 55%,#05090f 100%)}
+/* ── the set strip ── one chip per station set: what the door costs, what the set is
+   worth, and how far along this account is. The shelf shows a station's own star; this
+   is the only place the *set* total is legible, which is the number a door is priced in. */
+.sets{display:flex;flex-wrap:wrap;gap:.5rem;margin:.9rem 0 0}
+.setchip{flex:1 1 10rem;background:#fff;border:1px solid var(--border);border-radius:12px;
+  padding:.55rem .7rem;display:flex;flex-direction:column;gap:.3rem;
+  box-shadow:0 3px 12px rgba(15,45,58,.06)}
+.setchip.done{border-color:var(--mint-d);box-shadow:0 3px 12px rgba(31,157,134,.18)}
+.sc-h{display:flex;align-items:baseline;justify-content:space-between;gap:.5rem}
+.sc-g{font-family:"IBM Plex Mono",monospace;font-size:.6rem;letter-spacing:.1em;
+  text-transform:uppercase;color:#8aa0a4}
+.sc-n{font-family:Archivo,sans-serif;font-size:.86rem;font-weight:700;color:#12262c;white-space:nowrap}
+.sc-n b{color:var(--mint-d)}
+.setchip.done .sc-n b{color:var(--act)}
+.sc-b{display:block;height:.3rem;border-radius:999px;background:#e3ecea;overflow:hidden;position:relative}
+/* the door's price, marked on the bar itself — a target you can see is a target you aim at */
+.sc-b i{display:block;height:100%;background:var(--mint);border-radius:999px}
+.sc-b u{position:absolute;top:-2px;bottom:-2px;width:2px;background:#0f2d3a;opacity:.55}
+.sc-d{font-size:.68rem;color:#6b7d82}
+.sc-rule{flex-basis:100%;text-align:center;font-family:"IBM Plex Mono",monospace;
+  font-size:.62rem;letter-spacing:.06em;color:#8aa0a4;margin:.15rem 0 0}
 .lb-foot{margin-top:1.6rem;text-align:center;font-size:.82rem;color:#6b7d82;max-width:44em;
   margin-left:auto;margin-right:auto}
 .backbtn{font-family:"IBM Plex Mono",monospace;font-size:.7rem}
@@ -747,9 +768,13 @@ a.give:hover{filter:brightness(1.06)}
     </div>
     <div class="lb-row" id="eps"></div>
 
+    <!-- The set strip: each door, what its own set is worth, and how far along you are.
+         paintSets() fills it from /api/chain's set table joined with your certified tiers. -->
+    <div class="sets" id="setbar"></div>
+
     <p class="lb-foot">Every episode door is opened by stars from its own OSCE stations —
-       real cases from the Embla bank, ★ for a pass, ★★ for excellence. Skill unlocks the
-       story; nothing you pay ever changes your standing.</p>
+       real cases from the Embla bank, ★ for a pass, ★★ for excellence, ★★★ for a flawless
+       run. Skill unlocks the story; nothing you pay ever changes your standing.</p>
   </div>
 </div>
 
@@ -1762,17 +1787,27 @@ $('#anchor').onclick=async()=>{
   if(!st.includes(e)){st.push(e);localStorage.setItem('vitals.starred',JSON.stringify(st));}
   /* An exam that cleared a bar is a star the chain will certify in a moment. Floor the
      tier locally now — a door must not stand shut in front of the room while two
-     signatures land — then ask /api/stars until the chain's answer catches up. Two-tier:
-     ≥85% of the rubric floors ★★, ≥70% floors ★; only ever upward. */
+     signatures land — then ask /api/stars until the chain's answer catches up. Three-tier:
+     ≥95% of the rubric floors ★★★, ≥85% ★★, ≥70% ★; only ever upward. */
   if(EXAMLIVE&&r.det&&r.det.max>0){
-    const bps=r.det.score*10000/r.det.max;
-    const t=bps>=EXBAR?2:bps>=STARBAR?1:0;
+    const bps=bpsOf(r.det.score,r.det.max);
+    const t=tierFor(bps);
     if(t){
       const ls=localStars();
       if(!ls.includes(e)){ls.push(e);localStorage.setItem('vitals.stars',JSON.stringify(ls));}
       const m=localTiers();
       if((m[e]||0)<t){m[e]=t;localStorage.setItem('vitals.tiers',JSON.stringify(m));}
     }
+    /* What the next star costs, in the rubric's own points. A percentage tells you how you
+       did; "3 points from your third star" tells you whether to sit it again — and the
+       arithmetic is the server's, so the number is a promise the door will keep. */
+    const nb=nextBar(bps), pct=(bps/100).toFixed(bps%100?1:0);
+    const ord=['first','second','third'][t];
+    v.innerHTML+=nb==null
+      ? `<span class="g">${starGlyph(t)} ${pct}% — flawless. There is nothing above this one.</span>`
+      : `<span class="g">${starGlyph(t)} ${pct}% — ${Math.max(1,Math.ceil(nb*r.det.max/10000)-r.det.score)} `
+        +`point${Math.ceil(nb*r.det.max/10000)-r.det.score===1?'':'s'} from your ${ord} star. `
+        +`Sit it again and the better run is the one that counts.</span>`;
   }
   refreshStars();
   $('#anchor').textContent='anchored'; ['#c1','#c2','#c3','#c4'].forEach(s=>$(s).disabled=false); chainState();
@@ -1841,27 +1876,45 @@ const starred=()=>JSON.parse(localStorage.getItem('vitals.starred')||'[]');
 
 /* ─── what opens a door ────────────────────────────────────────────────────────
    Station Sets v2: from EP2 on, an episode door is priced in the stars of ITS OWN set of
-   stations and nothing else's. A case's star is two-tier — best proven det ≥70% is ★,
-   ≥85% is ★★ — and the server computes it from proven attempts (/api/stars), so a door
-   that opens here opened because the record earned it. The set table itself (members,
-   needs) lives on the server (/api/chain) and is only cached here; an episode's own exam
-   is a replay for the record — XP and the chain, never a key to a door. */
+   stations and nothing else's. A case's star is three-tier — best proven det ≥70% is ★,
+   ≥85% is ★★, ≥95% is ★★★ — and the server computes it from proven attempts (/api/stars),
+   so a door that opens here opened because the record earned it. The set table itself
+   (members, needs, ceilings) lives on the server (/api/chain) and is only cached here; an
+   episode's own exam is a replay for the record — XP and the chain, never a key to a door. */
 let SETSRV=null;   /* the set table, from /api/chain — cached so a revisit paints doors instantly */
 try{SETSRV=JSON.parse(localStorage.getItem('vitals.sets')||'null')}catch(e){}
-let SETSTARS=null; /* {station: 0|1|2} — the tiers the chain has certified */
+let SETSTARS=null; /* {station: 0..3} — the tiers the chain has certified */
 let STARS=null;    /* the legacy flat count — kept for the pre-set fallback paths */
 let STARBAR=7000;  /* pass bar in bps; refreshed from /api/stars so the two cannot drift */
 let EXBAR=8500;    /* the ★★ bar, same discipline */
+let FLBAR=9500;    /* the ★★★ bar — a flawless run, not a perfect one: 95%, not 100% */
+const TIERMAX=3;   /* what one case can be worth; a set's ceiling is members × this */
+/* Which star a deterministic score in basis points has earned, and where the next one sits.
+   Floored the way the server's integer arithmetic floors, so the page and the chain never
+   disagree by a fraction of a basis point about which side of a bar a run landed on. */
+const bpsOf=(score,max)=>max>0?Math.floor(score*10000/max):0;
+const tierFor=bps=>bps>=FLBAR?3:bps>=EXBAR?2:bps>=STARBAR?1:0;
+const nextBar=bps=>bps>=FLBAR?null:bps>=EXBAR?FLBAR:bps>=STARBAR?EXBAR:STARBAR;
+/* The rule, in the words a player reads it in — one sentence, built from the live bars so
+   it can never claim a threshold the server is not actually using. */
+const barRule=()=>`${STARBAR/100}% pass · ${EXBAR/100}% excellent · ${FLBAR/100}% flawless`;
 /* Stars this browser watched being earned — optimistic floors under the chain's answer,
    never substitutes: the anchor takes two signatures to land, and a demo must not stand
-   in front of a shut door waiting for finality. vitals.tiers is the two-tier floor;
+   in front of a shut door waiting for finality. vitals.tiers is the per-station floor and
+   its values are simply tiers, so a 2 written under the two-tier rules still reads as ★★;
    vitals.stars is the older one-tier list, still read so nobody's door slams shut. */
 const localStars=()=>JSON.parse(localStorage.getItem('vitals.stars')||'[]');
 const localTiers=()=>{try{return JSON.parse(localStorage.getItem('vitals.tiers')||'{}')}catch(e){return{}}};
 /* One station's effective tier: the best of what the chain certifies and what this browser
-   watched land. Only ever asked about set members, so an episode's exam cannot leak in. */
-const tierOf=id=>Math.max((SETSTARS&&SETSTARS[id])||0, localTiers()[id]||0, localStars().includes(id)?1:0);
+   watched land, and never above the ceiling — a corrupted cache must not be able to open a
+   door. Only ever asked about set members, so an episode's exam cannot leak in. */
+const tierOf=id=>Math.min(TIERMAX,
+  Math.max((SETSTARS&&SETSTARS[id])||0, localTiers()[id]||0, localStars().includes(id)?1:0));
 const setTotal=s=>s.members.reduce((n,m)=>n+tierOf(m.id),0);
+/* What a set is worth today: its playable members × 3. The server sends this; an older
+   cached table has to be measured instead, so an upgrade never paints a wrong denominator. */
+const setCeiling=s=>s.ceiling!=null?s.ceiling
+  :s.members.filter(m=>m.playable!==false).length*TIERMAX;
 /* Which set an id belongs to, and which gate an id stands behind: an episode is opened by
    its own set; a station opens alongside the episode it follows (its set's teaching just
    happened), so gate2's stations are free and gate3's wait on gate2 — the old ladder, in
@@ -1885,6 +1938,7 @@ async function fetchStars(){
     if(r.error||r.stars==null)return null;
     if(r.pass_bps)STARBAR=r.pass_bps;
     if(r.excellent_bps)EXBAR=r.excellent_bps;
+    if(r.flawless_bps)FLBAR=r.flawless_bps;
     if(r.sets){const t={};for(const s of r.sets)Object.assign(t,s.tiers);SETSTARS=t;}
     return r.stars;
   }catch(e){ return null }
@@ -1922,13 +1976,20 @@ async function renderSeason(){
   if(!EXAM_EPS.length||!SETSRV){
     try{ const c=await (await fetch('/api/chain')).json();
       if(c.exam_eps&&c.exam_eps.length){ EXAM_EPS=c.exam_eps; repaint=true; }
+      /* The bars arrive here too, so a visitor with no account and no chain still reads
+         the real thresholds on the shelf rather than a number baked into this file. */
+      if(c.star_bars){ const b=c.star_bars;
+        if(b.pass)STARBAR=b.pass; if(b.excellent)EXBAR=b.excellent; if(b.flawless)FLBAR=b.flawless;
+        repaint=true; }
       if(c.sets&&c.sets.length){ SETSRV=c.sets; repaint=true;
         try{localStorage.setItem('vitals.sets',JSON.stringify(c.sets))}catch(e){} } }catch(e){}
   }
   if(repaint) paintSeason();
 }
-/* the two-tier star as a card wears it, and the specialty as the art monogram */
-const starGlyph=t=>t>=2?'★★':t>=1?'★☆':'☆☆';
+/* the three-tier star as a card wears it — always three glyphs wide, so a shelf of cards
+   reads as one column of stars rather than a ragged edge — and the specialty as the art
+   monogram */
+const starGlyph=t=>'★'.repeat(Math.max(0,Math.min(TIERMAX,t)))+'☆'.repeat(Math.max(0,TIERMAX-t));
 const specShort=sp=>(sp||'').replace(/^eir-/,'').replace('gastroenterology','gastro')
   .replace('pulmonology','pulmo').toUpperCase();
 function paintSeason(){
@@ -1950,7 +2011,7 @@ function paintSeason(){
       :`<div class="art-ph ph-t-wrap ph-${e.id}"><span class="ph-t">${e.t}</span></div>`;
     const badge=e.station?`<span class="st-k">from the Embla case bank</span>`:'';
     const chip=e.station
-      ?`<span class="st-stars" title="your best exam here — ★ ≥70% · ★★ ≥85%">${starGlyph(tierOf(e.id))}</span>`
+      ?`<span class="st-stars" title="your best exam here — ${barRule()}">${starGlyph(tierOf(e.id))}</span>`
       :`<span class="tier">${e.tier}</span>`;
     const chips=e.station
       ?`<span class="chiprow"><span class="spec">${spec||''}</span><span class="rt">${tierName} · ${e.rt||''}</span></span>`
@@ -1991,7 +2052,7 @@ function paintSeason(){
   const comingCard=(m,s)=>`<div class="tile st cs" data-ga="coming:${m.id}">
       <div class="art"><div class="art-ph art-cl"><span>${specShort(m.specialty)}</span></div>
         <span class="st-k">from the Embla case bank</span><span class="no">${m.id.replace('osce-','OSCE ').toUpperCase()}</span>
-        <span class="st-stars">☆☆</span></div>
+        <span class="st-stars" title="${barRule()}">${starGlyph(0)}</span></div>
       <div class="body"><h3>${m.title}</h3>
         <span class="chiprow"><span class="spec">${m.specialty}</span><span class="rt">${m.tier}</span></span>
         <p>Being fitted for the bay now.</p>
@@ -2031,7 +2092,33 @@ function paintSeason(){
     b.addEventListener('touchstart',()=>motionOn(b),{passive:true});
   });
   $('#coin-n').textContent=cleared().length;
-  renderHero(); paintRing(); probeTrailers();
+  renderHero(); paintSets(); paintRing(); probeTrailers();
+}
+
+/* ── the set strip ── the door prices, said in the only unit that opens them.
+   A station card wears its own star; nothing on the shelf added them up, so a player
+   three stars into a six-star door had to count cards to find out. One chip per set:
+   what you have of what the set is worth ("6 / 9 ⭐"), the door's price marked on the
+   bar, and the rule underneath — 70% pass · 85% excellent · 95% flawless. */
+function paintSets(){
+  const el=$('#setbar'); if(!el)return;
+  if(!SETSRV||!SETSRV.length){ el.innerHTML=''; return; }
+  el.innerHTML=SETSRV.map(s=>{
+    const got=setTotal(s), cap=setCeiling(s), need=s.need_now!=null?s.need_now:s.need;
+    const ep=SEASON.find(x=>x.id===s.opens)||{};
+    const open=got>=need;
+    /* Against the ceiling, not against the price: a bar that fills at the door would say
+       a full set and an opened door are the same thing, and they are not. */
+    const fill=cap?Math.min(100,Math.round(got*100/cap)):0;
+    const mark=cap?Math.min(100,Math.round(need*100/cap)):0;
+    return `<div class="setchip${open?' done':''}">
+      <span class="sc-h"><span class="sc-g">${(ep.sn||s.opens||'').toUpperCase()} door</span>
+        <span class="sc-n"><b>${got}</b> / ${cap} ⭐</span></span>
+      <span class="sc-b" title="${got} of ${cap} · opens at ${need}"><i style="width:${fill}%"></i><u style="left:${mark}%"></u></span>
+      <span class="sc-d">${open?'open — '+(ep.n||s.opens)+' is yours'
+        :'opens at ⭐'+need+' · '+(need-got)+' to go'}${s.need_now!=null&&s.need!=null&&s.need_now<s.need?' · full set coming':''}</span>
+    </div>`;
+  }).join('')+`<span class="sc-rule">a station's star: ${barRule()}</span>`;
 }
 
 /* ── A1/A2 · what the shelf remembers ─────────────────────────────────────────
@@ -2089,16 +2176,19 @@ function renderHero(){
   $('#hero').onclick=()=>enterEpisode(e.id,e.station);
 }
 /* C10 · the ring: five episodes round the dial, stars under it. Stations are the
-   season's interludes, so only the five shifts count toward the circle. */
+   season's interludes, so only the five shifts count toward the circle. The star line
+   is read against the season's whole ceiling — every playable station × 3 — so the
+   number has something behind it instead of climbing toward nothing. */
+const starCeiling=()=>SETSRV?SETSRV.reduce((n,s)=>n+setCeiling(s),0):0;
 function paintRing(){
   const n=SEASON.filter(e=>!e.station&&cleared().includes(e.id)).length;
-  const st=starsKnown();
+  const st=starsKnown(), cap=starCeiling();
   const C=97.4;
   $('#ring').innerHTML=`<svg viewBox="0 0 36 36" aria-hidden="true">
       <circle cx="18" cy="18" r="15.5" class="ring-bg"/>
       <circle cx="18" cy="18" r="15.5" class="ring-fg" stroke-dasharray="${(C*n/5).toFixed(1)} ${C}"/>
       <text x="18" y="21.5" class="ring-n">${n}</text></svg>
-    <span class="ring-t"><b>${n} of 5</b> episodes<br>\u2b50 ${st} star${st===1?'':'s'}</span>`;
+    <span class="ring-t"><b>${n} of 5</b> episodes<br>\u2b50 ${cap?`${st} of ${cap}`:st} star${st===1&&!cap?'':'s'}</span>`;
 }
 
 /* ── A4 · motion previews ─────────────────────────────────────────────────────
