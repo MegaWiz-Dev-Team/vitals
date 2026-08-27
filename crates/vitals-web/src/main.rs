@@ -1158,6 +1158,64 @@ fn main() {
                     },
                 }
             }
+            // ── the mark sheet ──────────────────────────────────────────────────
+            // What the rubric actually paid for, item by item, from the same tape and the same
+            // scorer that produce the number the chain carries (`vitals_osce::sheet_for_run` is
+            // `det_for_run`'s own body). The debrief is therefore the arithmetic behind the star
+            // rather than a second opinion about it.
+            //
+            // **Sealed until the case is over, on this side of the wire.** A mark sheet mid-run
+            // is the answer key — it names every action the rubric pays for, with its window.
+            // The page also refuses to ask for one, but the page is a file anyone can read and
+            // edit; this is the refusal that holds. It is the same seal the harm text gets
+            // (Phase 9), applied to the thing that would give away more.
+            (Method::Get, "/api/marks") => {
+                let id = param(&url, "id").unwrap_or_default();
+                let caller = param(&url, "player");
+                let map = sessions.lock().unwrap();
+                match map.get(&id).filter(|s| s.answers_to(caller.as_deref())) {
+                    None => no_such_session(),
+                    Some(s) if s.state.outcome().is_none() => json(serde_json::json!({
+                        "sealed": true,
+                        "error": "the mark sheet opens when the case is over",
+                    })),
+                    // A case with no rubric — EP1, or a member whose files have not landed — has
+                    // no mark sheet to open. That is a fact about the case, not a failure.
+                    Some(s) => match rubric_path(&s.ep) {
+                        None => json(serde_json::json!({ "case": s.ep, "items": [] })),
+                        Some(p) => {
+                            let sheet = std::fs::read_to_string(&p)
+                                .map_err(|e| e.to_string())
+                                .and_then(|rj| vitals_osce::sheet_for_run(&s.sce_json, &s.tape, &rj));
+                            match sheet {
+                                Err(e) => json(serde_json::json!({ "error": e })),
+                                Ok((rubric, det)) => json(serde_json::json!({
+                                    "case": rubric.case,
+                                    "score": det.earned,
+                                    "max": det.max,
+                                    "bps": det.bps(),
+                                    "pass_bps": rubric.pass_bps,
+                                    "cleared": det.cleared(&rubric),
+                                    "exam": s.exam_mode,
+                                    // Costliest first — the top of the sheet is what to fix
+                                    // before sitting it again, which is the whole point of
+                                    // showing it. Sorted here so every reader agrees.
+                                    "items": det.by_loss().iter().map(|i| serde_json::json!({
+                                        "label": i.label,
+                                        "kind": i.kind,
+                                        "mark": i.mark.as_str(),
+                                        "points": i.points,
+                                        "earned": i.earned_points(),
+                                        "lost": i.lost(),
+                                        "at": i.at,
+                                        "within": i.within,
+                                    })).collect::<Vec<_>>(),
+                                })),
+                            }
+                        }
+                    },
+                }
+            }
             (Method::Get, "/api/tape") => {
                 let id = param(&url, "id").unwrap_or_default();
                 let caller = param(&url, "player");

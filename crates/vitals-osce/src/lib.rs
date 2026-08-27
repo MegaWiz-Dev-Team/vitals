@@ -45,6 +45,18 @@ impl Check {
             | Check::Outcome { points, .. } => *points,
         }
     }
+
+    /// The check's own name, as the rubric JSON spells it. Carried onto the mark sheet so the
+    /// page can say "window was 5:00" for a timed item without re-deriving what kind it was.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Check::Action { .. } => "action",
+            Check::ActionBy { .. } => "action_by",
+            Check::ActionAny { .. } => "action_any",
+            Check::NoHarm { .. } => "no_harm",
+            Check::Outcome { .. } => "outcome",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -71,11 +83,63 @@ fn default_pass() -> u32 {
     7000
 }
 
+/// How one item came out, for a reader rather than for the arithmetic.
+///
+/// The arithmetic is binary — a check is earned or it is not, and that is what makes the score
+/// re-derivable. But "you never gave it" and "you gave it four minutes late" are the same zero
+/// and completely different lessons, and a mark sheet whose whole job is to say what to fix
+/// first must not flatten them. [`Mark::Partial`] is that distinction and nothing more: it never
+/// awards a point, it only says the deed happened and the qualifier did not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mark {
+    /// Earned, in full.
+    Hit,
+    /// The action happened, outside the window it had to happen in. Worth nothing.
+    Partial,
+    /// Never done — or, for an avoidance check, done.
+    Miss,
+}
+
+impl Mark {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Mark::Hit => "hit",
+            Mark::Partial => "partial",
+            Mark::Miss => "miss",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ItemResult {
     pub label: String,
     pub points: u16,
     pub earned: bool,
+    /// Which check this was, for the sentence the debrief writes under it.
+    pub kind: &'static str,
+    pub mark: Mark,
+    /// The scenario clock this item's evidence sits at, in seconds: when the action was first
+    /// ordered, when the avoided harm fired, when the outcome was reached. `None` means it never
+    /// happened — which is the earned answer for a `no_harm` and the failing one for the rest.
+    pub at: Option<f64>,
+    /// The window the item had to land inside. `Some` only for a timed check.
+    pub within: Option<f64>,
+}
+
+impl ItemResult {
+    /// What this item actually put on the board. The one place a point is turned into a number,
+    /// so the sheet and the total cannot be added up two different ways.
+    pub fn earned_points(&self) -> u16 {
+        if self.earned {
+            self.points
+        } else {
+            0
+        }
+    }
+    /// What it cost. The mark sheet is sorted on this — the biggest hole is the thing to fix.
+    pub fn lost(&self) -> u16 {
+        self.points - self.earned_points()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -99,6 +163,22 @@ impl DetResult {
     pub fn cleared(&self, rubric: &Rubric) -> bool {
         self.max > 0 && self.bps() >= rubric.pass_bps
     }
+
+    /// The items, read back as one number. `earned` is accumulated as the checks are walked and
+    /// this re-adds the sheet the player is shown — they are two paths to the same total, which
+    /// is exactly the property [`sheet_for_run`] refuses to publish a mark sheet without.
+    pub fn items_total(&self) -> u16 {
+        self.items.iter().map(ItemResult::earned_points).fold(0u16, u16::saturating_add)
+    }
+
+    /// The mark sheet in the order it is meant to be read: the costliest miss first, because the
+    /// top of the list is what to fix before sitting the station again. Ties keep the rubric's
+    /// own order, so two runs of the same station read the same way.
+    pub fn by_loss(&self) -> Vec<&ItemResult> {
+        let mut v: Vec<&ItemResult> = self.items.iter().collect();
+        v.sort_by_key(|i| std::cmp::Reverse(i.lost()));
+        v
+    }
 }
 
 /// The scenario clock of the first `kind` event whose text contains `needle`, canonicalised on
@@ -112,8 +192,22 @@ fn hit(events: &[Event], kind: &str, needle: &str) -> Option<f64> {
         .map(|e| e.t_sec)
 }
 
+/// The earliest scenario clock at which *any* of `needles` matched, so a check with several
+/// clinically equivalent routes reports the one that actually happened rather than the first
+/// one the rubric happened to list.
+fn first_of(events: &[Event], kind: &str, needles: &[String]) -> Option<f64> {
+    needles.iter().filter_map(|n| hit(events, kind, n)).fold(None, |acc: Option<f64>, t| {
+        Some(acc.map_or(t, |a| a.min(t)))
+    })
+}
+
 /// Score a replayed run against a rubric. Pure and total: same events + same rubric → same result,
 /// which is the property the claim path depends on.
+///
+/// One walk produces both halves of the answer — the total the chain carries, and the per-item
+/// mark sheet the debrief shows. There is deliberately no second function that re-reads the
+/// events to explain the score: a sheet computed on its own path is a sheet that can disagree
+/// with the number a verifier re-derives, and then neither of them is evidence.
 pub fn score(events: &[Event], rubric: &Rubric) -> DetResult {
     let mut earned = 0u16;
     let mut max = 0u16;
@@ -121,25 +215,54 @@ pub fn score(events: &[Event], rubric: &Rubric) -> DetResult {
     for it in &rubric.items {
         let p = it.check.points();
         max = max.saturating_add(p);
-        let ok = match &it.check {
-            Check::Action { needle, .. } => hit(events, "action", needle).is_some(),
+        // `at` is the evidence, `ok` is the verdict, and both come off the same lookup — the
+        // mark sheet quotes the very seconds the check was decided on.
+        let (ok, at, within) = match &it.check {
+            Check::Action { needle, .. } => {
+                let at = hit(events, "action", needle);
+                (at.is_some(), at, None)
+            }
             Check::ActionBy { needle, by_sec, .. } => {
-                hit(events, "action", needle).is_some_and(|t| t <= *by_sec)
+                let at = hit(events, "action", needle);
+                (at.is_some_and(|t| t <= *by_sec), at, Some(*by_sec))
             }
             Check::ActionAny { any_of, .. } => {
-                any_of.iter().any(|n| hit(events, "action", n).is_some())
+                let at = first_of(events, "action", any_of);
+                (at.is_some(), at, None)
             }
-            Check::NoHarm { needle, .. } => hit(events, "harm", needle).is_none(),
+            // The clock here is when the harm fired, not when it was avoided — an avoidance
+            // check that was kept has nothing to point at, which is the whole idea.
+            Check::NoHarm { needle, .. } => {
+                let at = hit(events, "harm", needle);
+                (at.is_none(), at, None)
+            }
             Check::Outcome { any_of, .. } => {
-                any_of.iter().any(|o| hit(events, "outcome", o).is_some())
+                let at = first_of(events, "outcome", any_of);
+                (at.is_some(), at, None)
             }
         };
         if ok {
             earned = earned.saturating_add(p);
         }
-        items.push(ItemResult { label: it.label.clone(), points: p, earned: ok });
+        let mark = match (ok, &it.check, at) {
+            (true, _, _) => Mark::Hit,
+            // The only partial the check set can produce: the drug was given, the window shut.
+            (false, Check::ActionBy { .. }, Some(_)) => Mark::Partial,
+            _ => Mark::Miss,
+        };
+        items.push(ItemResult {
+            label: it.label.clone(),
+            points: p,
+            earned: ok,
+            kind: it.check.kind(),
+            mark,
+            at,
+            within,
+        });
     }
-    DetResult { earned, max, items }
+    let det = DetResult { earned, max, items };
+    debug_assert_eq!(det.earned, det.items_total(), "the mark sheet does not add up to the score");
+    det
 }
 
 /// Score a finished run for anchoring, in one call: replay its tape, mark it against `rubric_json`,
@@ -155,10 +278,37 @@ pub fn det_for_run(
     tape: &[Step],
     rubric_json: &str,
 ) -> Result<(u16, u16, [u8; 32]), String> {
+    let (_, det) = sheet_for_run(sce_json, tape, rubric_json)?;
+    Ok((det.earned, det.max, vitals_progress::record::rubric_hash(rubric_json.as_bytes())))
+}
+
+/// Mark a finished run and hand back the whole sheet — the rubric it was marked against and every
+/// item, with the seconds each was decided on.
+///
+/// This is [`det_for_run`]'s own body: the anchor path calls it and throws the sheet away, the
+/// debrief calls it and keeps it. That is the point. A player who is told "adrenaline, 0 of 10,
+/// given at 6:12, window was 5:00" is being shown the arithmetic that produced the number on
+/// chain, not a second opinion about it — so the sheet is checked against the total before it is
+/// returned, and a sheet that does not add up is an error rather than a page.
+pub fn sheet_for_run(
+    sce_json: &str,
+    tape: &[Step],
+    rubric_json: &str,
+) -> Result<(Rubric, DetResult), String> {
     let rubric: Rubric = serde_json::from_str(rubric_json).map_err(|e| e.to_string())?;
     let (state, _replay) = resume(sce_json, tape)?;
     let det = score(state.events(), &rubric);
-    Ok((det.earned, det.max, vitals_progress::record::rubric_hash(rubric_json.as_bytes())))
+    // Not a `debug_assert`: this runs inside the server that serves the debrief, and the one
+    // failure worth catching in release is the one where the sheet and the star disagree. It
+    // returns rather than panics for the same reason — a bay must not die of a bad rubric.
+    if det.earned != det.items_total() {
+        return Err(format!(
+            "mark sheet does not add up: items total {} against a det score of {}",
+            det.items_total(),
+            det.earned
+        ));
+    }
+    Ok((rubric, det))
 }
 
 #[cfg(test)]
@@ -914,6 +1064,109 @@ mod tests {
         let r: Rubric = serde_json::from_str(&rubric_json).unwrap();
         let det = DetResult { earned: s, max: m, items: vec![] };
         assert!(!det.cleared(&r), "the backwards reflex must not clear the bar: {s}/{m}");
+    }
+
+    /// The mark sheet and the star are the same arithmetic or the debrief is a lie.
+    ///
+    /// Every published station, marked by the exact anchor path, on two tapes each — the empty
+    /// one and one that does a little of everything — and on all of them the sheet the debrief
+    /// shows must re-add to the number `det_for_run` hands the chain, item by item. This is the
+    /// regression guard for the failure the whole endpoint is one refactor away from: a second
+    /// walk over the events that explains a score it does not actually reproduce.
+    #[test]
+    fn the_sheet_always_re_adds_to_the_det_score() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/");
+        let mut checked = 0;
+        for entry in std::fs::read_dir(format!("{root}rubrics")).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let case = path.file_stem().unwrap().to_str().unwrap().to_string();
+            let sce_path = if case.starts_with("osce-") {
+                format!("{root}stations/{case}.sce.json")
+            } else {
+                format!("{root}scenarios/{case}.json")
+            };
+            let sce = std::fs::read_to_string(&sce_path).unwrap();
+            let rubric_json = std::fs::read_to_string(&path).unwrap();
+            // Nothing at all, and then a scatter of the orders these cases share — enough to
+            // earn some items and miss others, which is the only interesting shape of sheet.
+            for tape in [
+                vec![],
+                vec![
+                    Step::Do("oxygen".into()),
+                    Step::Tick(400.0),
+                    Step::Do("adrenaline im".into()),
+                    Step::Tick(400.0),
+                    Step::Do("12-lead ecg".into()),
+                    Step::Tick(400.0),
+                ],
+            ] {
+                let (_, det) = sheet_for_run(&sce, &tape, &rubric_json).unwrap();
+                let (s, m, _) = det_for_run(&sce, &tape, &rubric_json).unwrap();
+                assert_eq!((det.earned, det.max), (s, m), "{case}: sheet and det disagree");
+                assert_eq!(det.items_total(), s, "{case}: the items do not add up to the score");
+                assert_eq!(
+                    det.items.iter().map(|i| i.points).fold(0u16, u16::saturating_add),
+                    m,
+                    "{case}: the item maxima do not add up to the rubric max"
+                );
+                // Sorting for the reader must not invent or drop a point.
+                let sorted = det.by_loss();
+                assert_eq!(sorted.len(), det.items.len(), "{case}: by_loss lost an item");
+                assert!(
+                    sorted.windows(2).all(|w| w[0].lost() >= w[1].lost()),
+                    "{case}: the sheet is not ordered by what it cost"
+                );
+                // Every zero says which kind of zero it was, and every point says it was earned.
+                for it in &det.items {
+                    assert_eq!(it.earned, it.mark == Mark::Hit, "{case}/{}: mark and points disagree", it.label);
+                }
+                checked += 1;
+            }
+        }
+        assert!(checked >= 20, "expected every published rubric on both tapes, ran {checked}");
+    }
+
+    /// Late is not the same zero as never, and the sheet has to say so — with the numbers.
+    ///
+    /// Station A pays ten points for adrenaline inside five minutes. Given at 6:00 it earns
+    /// nothing, exactly as before; what changes is that the sheet now carries `at` and `within`,
+    /// so the debrief can write "given at 6:00 — the window was 5:00" instead of a bare cross,
+    /// and a run that never gave it at all still reads as a different mistake.
+    #[test]
+    fn a_late_drug_reads_as_late_and_a_missing_one_as_missing() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../demo/");
+        let sce = std::fs::read_to_string(format!("{root}stations/osce-a.sce.json")).unwrap();
+        let rubric_json = std::fs::read_to_string(format!("{root}rubrics/osce-a.json")).unwrap();
+        let find = |det: &DetResult, needle: &str| -> ItemResult {
+            det.items.iter().find(|i| i.label.contains(needle)).expect(needle).clone()
+        };
+
+        let late = vec![Step::Tick(360.0), Step::Do("adrenaline im".into()), Step::Tick(200.0)];
+        let (_, det) = sheet_for_run(&sce, &late, &rubric_json).unwrap();
+        let adr = find(&det, "Adrenaline IM");
+        assert_eq!(adr.mark, Mark::Partial, "a drug given late is not a drug never given");
+        assert_eq!(adr.earned_points(), 0, "late still earns nothing — the star is unchanged");
+        assert_eq!(adr.lost(), 10);
+        assert_eq!(adr.within, Some(300.0), "the window the sheet quotes is the rubric's own");
+        assert_eq!(adr.at, Some(360.0), "the sheet must quote when it actually happened");
+        assert_eq!(adr.kind, "action_by");
+
+        let never = vec![Step::Do("chlorpheniramine".into()), Step::Tick(600.0)];
+        let (_, det) = sheet_for_run(&sce, &never, &rubric_json).unwrap();
+        let adr = find(&det, "Adrenaline IM");
+        assert_eq!(adr.mark, Mark::Miss);
+        assert_eq!(adr.at, None);
+        // The avoidance check points at the moment the harm fired, so the debrief can time it.
+        let window = find(&det, "Never let the adrenaline window close");
+        assert_eq!(window.mark, Mark::Miss);
+        assert!(window.at.is_some(), "a harm that fired must be timed on the sheet");
+
+        // And the costliest miss is what the reader sees first.
+        let (_, det) = sheet_for_run(&sce, &never, &rubric_json).unwrap();
+        assert_eq!(det.by_loss()[0].lost(), 10, "the ten-point hole is not at the top of the sheet");
     }
 
     #[test]
