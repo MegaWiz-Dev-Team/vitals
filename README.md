@@ -3,33 +3,46 @@
 **A patient is dying on a clock and you decide what happens next.
 Anyone can play. Nobody can fake the replay.**
 
-> v0.1.0 · kickoff 2026-08-22 · Rust throughout · License **AGPL-3.0 + Commercial**
-> Built on the encounter engine and physiology automaton from [Embla](../Embla) /
-> [Embla Cloud](../embla-cloud), which ship today. Targeting the Colosseum / Solana track.
+> v0.3.0 · kickoff 2026-08-22 · Rust throughout · SPDX **`AGPL-3.0-or-later`**, plus a commercial
+> licence (the same pair the workspace manifest declares).
+> Built on the encounter engine and physiology automaton from **Embla** and **Embla Cloud**, which
+> ship today at [embla.megawiz.co.th](https://embla.megawiz.co.th). Those are separate private
+> repositories, not part of this one, so there is no link here to follow.
+> Targeting the Colosseum / Solana track.
 
 Vitals is two things that turn out to be the same thing:
 
 - **A game.** A real-time clinical emergency, driven by a deterministic physiology
   simulation — vitals move, the patient deteriorates, and the clock is the patient
   rather than an arbitrary timer. No medical vocabulary required to feel the stakes.
-- **A protocol.** Every run is anchored on Solana as a replayable action trace, so the
-  outcome can be re-derived by anyone, forever, without us. Progression is minted because
-  the chain recomputed the predicate — not because a server said so.
+- **A protocol.** Any run can be anchored on Solana as a replayable action trace — anchoring is
+  opt-in, one press — and once it is, the outcome can be re-derived by anyone, forever, without us.
+  Progression is minted because the chain recomputed the predicate — not because a server said so.
 
 The same replay serves a curious teenager on a leaderboard and a medical graduate who
 needs to prove competence to a residency programme in another country.
 
 ---
 
-## 🏆 Proven Traction & National Validation (2 Months Live)
+## 🏆 Traction — Embla's, not Vitals'
 
-Vitals is built upon an award-winning clinical simulation engine already in active production:
+Vitals started on 2026-08-22. Every figure in this section belongs to **Embla**, the clinical
+simulation engine Vitals is built on and reuses, which has been in production for months. It is
+cited because it is why a scoreable signal exists at all, not because Vitals earned it.
 
-- **1st Place Grand Champion @ NECTEC AI for Thai 2026** ([team01.aiforthai.in.th](https://team01.aiforthai.in.th))
-- **18 of Thailand’s 29 medical faculties with active learners** — counted by verified faculty; self-reported signup entries excluded.
-- **290+ Clinicians & Medical Students** (68% real activation rate).
-- **433 Completed Clinical Scenarios (671 runs)** scored across a catalog of **424 authored clinical scenarios**.
-- **Live Production Platform**: [embla.megawiz.co.th](https://embla.megawiz.co.th)
+- **1st Place Grand Champion @ NECTEC AI for Thai 2026** ([team01.aiforthai.in.th](https://team01.aiforthai.in.th)) — awarded to Embla.
+- **18 of Thailand’s 29 medical faculties have at least one active learner on Embla.** A faculty is
+  counted only when a learner account is verified against it; self-reported signup entries are
+  excluded, which is why this number is lower than the platform's raw institution count. **No faculty
+  has an institutional agreement with us; every user is an individual.**
+- **290+ clinicians and medical students on Embla** (68% activation rate).
+- **671 runs on Embla · 433 of them completed and scored · across a catalog of 424 authored clinical
+  scenarios.** Three different denominators, so they are printed separately rather than collapsed.
+- **Live production platform**: [embla.megawiz.co.th](https://embla.megawiz.co.th)
+
+**Vitals' own usage is close to nothing, and it is published rather than omitted:** the demo bay
+serves its raw counts at `/api/usage`, uncurated, including on the days they read one and one.
+Anchoring is opt-in, so even the anchored count there is a floor rather than a total.
 
 ---
 
@@ -118,6 +131,11 @@ labelled numbers, not one:
 Escrow-backed badge predicates are expressible over `det_score` alone. We state this split up front
 rather than letting someone find it — see [docs/RISKS.md](docs/RISKS.md) §3.
 
+**And the rubric is public on purpose, not by oversight.** A score you cannot re-derive is not a
+score — exam integrity here comes from commit–reveal, not from hiding the key. Publishing the rubric
+is exactly what makes the 40 deterministic points checkable by a stranger; what stops the retry cheat
+is the pre-encounter commitment, which works whether or not the candidate has read the rubric.
+
 ## Why Solana specifically
 
 Not decoration — the numbers only close on this chain:
@@ -177,6 +195,8 @@ We already have it; the sprint is spent making the signal verifiable.
 - [docs/GAMIFICATION.md](docs/GAMIFICATION.md) — progression as onchain computation, soulbound design, escrow, anti-farming
 - [docs/SPRINT_PLAN.md](docs/SPRINT_PLAN.md) — the 4-week build
 - [docs/RISKS.md](docs/RISKS.md) — what could sink this, including the ones we caused ourselves
+- [VERIFICATION.md](VERIFICATION.md) — clone, build, and re-derive a player's level from the chain
+  yourself: every command, and the real output it printed, including a claim the program refused
 
 ## Security
 

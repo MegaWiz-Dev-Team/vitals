@@ -213,7 +213,7 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
   <div class="hero">
     <span class="tag">Free for every learner, in every country, forever</span>
     <p class="whyfree">Free because the people who need a result they can verify are the ones who pay
-    for it &mdash; never the learner.</p>
+    for it &mdash; never the learner, in any country, ever.</p>
     <h1>A patient is dying on a clock.<br>You decide what happens next.</h1>
     <p class="sub">Ask them what happened. Examine them. Order the tests, give the drug you think they
     need &mdash; and the monitor beside the bed tells you, second by second, whether you were right.</p>
@@ -231,20 +231,24 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
     </a>
     <p class="reassure">You will probably lose her the first time. Almost everyone does &mdash; then you
     run it back. Nobody sees it but you.</p>
-    <p class="proof">Students from <b>18 of Thailand's 29 medical faculties</b> already train on the
-    engine underneath this.</p>
+    <p class="proof">Students from <b>18 of Thailand's 29 medical faculties</b> already train on
+    <b>Embla</b>, the production engine underneath this. That is Embla's record, not Vitals&rsquo;.</p>
+    <p class="proof" style="margin-top:.5rem">And to be exact about &ldquo;free&rdquo;: a donation buys
+    no seat, it buys a monthly <b>ceiling</b> on paid inference. When a month&rsquo;s ceiling is reached
+    the bay keeps running and only the patient&rsquo;s voice stops until the month turns &mdash;
+    <a href="/donate">the gauge is public</a>.</p>
   </div>
 
   <section>
     <h2>One run, four facts</h2>
     <p class="lede"><b>Anyone can play. Nobody can fake the replay.</b> A deterministic physiology
-    engine decides whether they live, and every run reduces to one hash anchored on Solana &mdash; so
-    anyone can replay the tape and get the same answer, without asking us.</p>
+    engine decides whether they live, and every run reduces to one hash you can anchor on Solana with
+    one press &mdash; so anyone can replay the tape and get the same answer, without asking us.</p>
     <div class="grid g4">
-      <div class="card"><span class="k">Talk to them</span><p>They answer in their own words. They can be wrong, and they can be too breathless to answer.</p></div>
+      <div class="card"><span class="k">Talk to them</span><p>They answer in their own words &mdash; that voice is a language model, and it is the only one here. It never touches the physiology or the score. They can be wrong, and they can be too breathless to answer.</p></div>
       <div class="card"><span class="k">Treat them</span><p>Orders, drugs, airway, fluids — a live bedside monitor moves the way the physiology moves.</p></div>
       <div class="card"><span class="k">They live or they don't</span><p>No script. A deterministic clinical automaton decides in real time, from what you did and when.</p></div>
-      <div class="card hl"><span class="k">The run is provable</span><p>Every case reduces to one hash. Replay the tape, get the same answer — no trust required.</p></div>
+      <div class="card hl"><span class="k">The run is provable</span><p>Every case reduces to one hash. Replay the tape and the outcome and the score come back identical — the patient's words do not. No trust required.</p></div>
     </div>
   </section>
 
@@ -307,9 +311,9 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
       <div class="st"><span class="dot"></span>Live on devnet — play it now</div>
       <ul>
         <li>Playable in ~60 seconds, no signup</li>
-        <li>Deterministic replay: same tape → same outcome, with no language model and no keyword matcher in the loop</li>
-        <li>Every run anchored on Solana; your level recomputed on-chain from Merkle proofs, not issued by a key</li>
-        <li>An independent verification tool, public and reproducible — a stranger re-derives your level straight from the chain</li>
+        <li>Deterministic replay: same tape → same outcome and same score, with no language model and no keyword matcher anywhere in the scoring path. The patient's voice <em>is</em> a model, so a replay reproduces what happened and what it was worth — never the words the patient chose</li>
+        <li>Any run can be anchored with one press — and once it is, your level is recomputed on-chain from Merkle proofs, not issued by a key. Anchoring is opt-in, so the public count is a floor and never a total; <a href="/api/usage">/api/usage</a> says so itself</li>
+        <li>An independent verification tool, public and reproducible — clone, build one binary, and a stranger re-derives your level straight from the chain without a key or an account. Every command and its real output is written down: <a href="https://github.com/MegaWiz-Dev-Team/vitals/blob/main/VERIFICATION.md">VERIFICATION.md</a></li>
       </ul>
     </div>
     <div class="phase now">
@@ -332,12 +336,20 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
 
   <section>
     <h2>Not a prototype</h2>
+    <p class="lede">The traction below belongs to <b>Embla</b> &mdash; the production clinical-simulation
+    engine Vitals is built on and reuses. It is here because it is why the signal exists at all, not
+    because Vitals earned it.</p>
     <div class="grid g4">
-      <div class="card stat"><span class="n">18 / 29</span><span class="l">Thai medical faculties with active learners on the engine underneath — verified faculties, not signup entries</span></div>
-      <div class="card stat"><span class="n">671</span><span class="l">scored runs across 433 authored clinical scenarios</span></div>
-      <div class="card stat"><span class="n">1st</span><span class="l">Grand Champion, NECTEC AI for Thai 2026</span></div>
-      <div class="card stat"><span class="n">~1,400</span><span class="l">years of human life associated with one additional doctor <a href="https://pubmed.ncbi.nlm.nih.gov/30776056/">(Basu et al., JAMA IM 2019)</a></span></div>
+      <div class="card stat"><span class="n">18 / 29</span><span class="l">Thai medical faculties with active learners <b>on Embla</b> — verified faculties, not signup entries</span></div>
+      <div class="card stat"><span class="n">671</span><span class="l">runs <b>on Embla</b> · 433 of them completed and scored · across 424 authored clinical scenarios</span></div>
+      <div class="card stat"><span class="n">1st</span><span class="l">Grand Champion, NECTEC AI for Thai 2026 — awarded to <b>Embla</b></span></div>
+      <div class="card stat"><span class="n">1 : 1,080</span><span class="l">people per doctor in Thailand — and 1 : 2,150 next door in Indonesia <a href="https://data.worldbank.org/indicator/SH.MED.PHYS.ZS">(World Bank, physicians per 1,000)</a></span></div>
     </div>
+    <p class="note" style="margin-top:1rem"><strong>And Vitals&rsquo; own numbers are close to nothing.</strong>
+    This bay opened in August 2026. Whatever it has actually seen — runs opened, runs finished, runs
+    anchored — is published live and uncurated at <a href="/api/usage">/api/usage</a>, including on the
+    days it reads one and one. Anchoring is opt-in there too, so even that anchored count is a floor.
+    We would rather you check the gap between the two blocks than find it.</p>
     <div class="mission">
       <p class="spine">A market for skill that can be verified.</p>
       <p><strong>Our mission: one per cent more doctors who actually reach patients, every
@@ -345,11 +357,20 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
       examination never reaches a patient, and that loss is what we shrink: one per cent of a
       graduating class is roughly one in six of the students who today leave because the work was
       too hard.</p>
-      <p>9.1% of medical students never finish, and the single largest cause is academic difficulty;
-      others finish but never pass the board. We find the learner who is going to fail <em>before</em>
-      they fail and route them to the practice that closes their specific gap — then make the evidence
+      <p>9.1% of medical students never finish &mdash; the
+      <a href="https://www.texilajournal.com/basic-medical-sciences/article/1307-attrition-rate-and">worldwide
+      attrition review</a> that reports it gives a range of 2.7&ndash;20.1% &mdash; and the single largest
+      cause is academic difficulty; others finish but never pass the board. We find the learner who
+      is going to fail <em>before</em> they fail and route them to the practice that closes their specific gap — then make the evidence
       of that practice something a residency in another country can trust without trusting us, or the
       school that produced it.</p>
+      <p style="font-size:.82rem;color:var(--ink-3);margin:.9rem 0 0">A number we used to lead with,
+      kept here with the wording it needs: across 3,142 <em>US</em> counties, every 10 additional
+      <em>primary care</em> physicians per 100,000 people was <em>associated</em> with 51.5 more days of
+      life expectancy — roughly 1,400 person-years across that whole population
+      <a href="https://pubmed.ncbi.nlm.nih.gov/30776056/">(Basu et al., JAMA Internal Medicine 2019)</a>.
+      It is a US primary-care association measured over populations, not an effect any one doctor
+      produces, and it is not what we lead with.</p>
     </div>
   </section>
 
@@ -357,14 +378,19 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
     <h2>Why a chain is load-bearing here</h2>
     <p class="stack">RUST &middot; SOLANA &middot; AGPL-3.0 &mdash; engine, program and client, open end to end</p>
     <div class="grid g3">
-      <div class="card"><span class="k">The program refuses its own user</span><p>Progression is recomputed on-chain from Merkle proofs. Claim a level you didn't earn and the program rejects it — no issuer key, no oracle.</p></div>
+      <div class="card"><span class="k">The program refuses its own user</span><p>Progression is recomputed on-chain from Merkle proofs. Claim a level you didn't earn and the program rejects it — no issuer key, no oracle. The <a href="https://github.com/MegaWiz-Dev-Team/vitals/blob/main/VERIFICATION.md">published walkthrough</a> ends on exactly that, against our own demo player: <span class="mono">claim Competent : REJECTED</span> — one proven attempt computes to <em>Advanced beginner</em>, so the claim is refused.</p></div>
       <div class="card"><span class="k">Proof that crosses borders</span><p>A residency programme in another country can verify a record without trusting us or the school that produced it.</p></div>
-      <div class="card"><span class="k">Donations the donor can audit</span><p>Money given for a scenario can only fund that scenario — enforced by the program, released against the delivered content hash.</p></div>
+      <div class="card"><span class="k">Donations the donor can audit</span><p>The treasury is one address anyone can read, and what this server has spent is published live on <a href="/donate">the donate page</a>. <em>Coming next:</em> program-enforced commissions — money given for a scenario could only be spent on that scenario, released against the delivered content hash. The program holds no money today; that instruction is not written yet.</p></div>
     </div>
     <p class="note" style="margin-top:1rem"><strong>Stated before anyone asks:</strong> 40 of 100 rubric
-    points are re-derivable; 60 are attested by named judges. We cannot prove who sat at the keyboard —
-    identity binding belongs to the credential issuer. And we do not grant standing: only a medical
-    board can make competence authoritative.</p>
+    points are re-derivable — re-run the pinned engine over the transcript and the same bytes come back.
+    The other 60 are judged today by a <strong>language model at a pinned version</strong>
+    (<span class="mono">gemma-4-26b</span>), and whoever signs the result states which model at which
+    version produced it. <strong>That is attestation, not proof</strong> — and no number of signatures
+    turns it into proof. The named-clinician layer under <em>Next</em> above is what replaces it, not
+    what describes it today. We cannot prove who sat at the keyboard — identity binding belongs to the
+    credential issuer. And we do not grant standing: only a medical board can make competence
+    authoritative.</p>
   </section>
 
   <section>

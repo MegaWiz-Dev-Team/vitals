@@ -108,14 +108,17 @@ padding:.28rem .8rem;font:inherit;font-size:.74rem;cursor:pointer}
 <h1>Keep it free for every learner.</h1>
 <p>Vitals never charges a learner, in any country. Donations pay for the compute behind every free
 playthrough and for new clinical scenarios — and they sit in an <strong>on-chain treasury anyone can
-audit</strong>, not in a black box.</p>
+audit</strong>, not in a black box. What a donation buys is a monthly <strong>ceiling</strong> on paid
+inference, not a seat and not a subscription: when the month&rsquo;s ceiling is reached the bay keeps
+running and only the patient&rsquo;s voice stops until the month turns.</p>
 </div>
 <div class="card">
-<span class="k">Treasury address · Solana (SOL or USDC)</span>
+<span class="k">Treasury address · Solana <strong>mainnet</strong> · real money (SOL or USDC)</span>
 <div class="addr"><span class="mono" id="addrText">9FJRwWnTNQXB9ff5SSmQKytCdVYqTQQPUz1b4zX9mt8y</span>
 <button class="btn" data-ga="copy-address" onclick="navigator.clipboard.writeText(document.getElementById('addrText').textContent).then(()=>{this.textContent='✓ copied';setTimeout(()=>this.textContent='copy',1500)})">copy</button></div>
 <div id="qr"></div>
-<p style="font-size:.85rem;color:var(--ink-2);text-align:center;margin:.2rem 0 0">Scan with Phantom, Solflare or any Solana wallet ·
+<p style="font-size:.85rem;color:var(--ink-2);text-align:center;margin:.2rem 0 0">Scan with Phantom, Solflare or any Solana wallet.
+<strong>This address lives on mainnet-beta: the QR sends real SOL, and the link below reads mainnet.</strong> ·
 <a href="https://explorer.solana.com/address/9FJRwWnTNQXB9ff5SSmQKytCdVYqTQQPUz1b4zX9mt8y">audit the treasury yourself</a></p>
 </div>
 <section class="card fuel" id="fuel" aria-live="polite">
@@ -135,12 +138,12 @@ from the model. That is paid inference, and it is where most of a donation goes.
 
 <div class="tiles">
 <div class="tile">
-<span class="k" style="color:var(--ink-3)">On-chain recording fees</span>
+<span class="k" style="color:var(--ink-3)">On-chain recording fees · <strong>devnet · play money</strong></span>
 <div class="big" id="fRelay">reading…<span class="unit" id="fRelayUnit">SOL in the fee relay</span></div>
 <p class="why" id="fRelayWhy"></p>
 </div>
 <div class="tile">
-<span class="k" style="color:var(--ink-3)">Treasury balance</span>
+<span class="k" style="color:var(--ink-3)">Treasury balance · <strong>mainnet · real money</strong></span>
 <div class="big" id="fVault">reading…<span class="unit" id="fVaultUnit">SOL at the address above</span></div>
 <p class="why" id="fVaultWhy"></p>
 </div>
@@ -152,10 +155,15 @@ Merkle tree and proven on chain — countable by anyone, including you.</p>
 </div>
 </div>
 
-<p class="caveat"><strong>Before that SOL figure impresses anyone:</strong> the chain this bay anchors
-to is <strong>devnet</strong>. Devnet SOL is minted free from a public faucet and is worth nothing —
-read it as a fuel gauge for transaction fees, not as an asset and not as money we hold. The bills a
-donation actually pays are model inference and hosting, and those are billed in ordinary currency.</p>
+<p class="caveat"><strong>Two chains on this page, and only one of them is money.</strong>
+The <strong>fee relay</strong> figure sits on <strong>devnet</strong>, the chain this bay anchors to:
+devnet SOL is minted free from a public faucet and is worth nothing — read it as a fuel gauge for
+transaction fees, not as an asset and not as money we hold. The <strong>treasury</strong> figure is the
+address printed at the top of this page, and that one is on <strong>mainnet</strong>: it is real money,
+the QR sends real SOL, and the explorer link carries no cluster because it reads mainnet. Every figure
+above prints the cluster it was actually read on, live, beside it — so you never have to take this
+paragraph&rsquo;s word for which is which. And the bills a donation actually pays are
+model inference and hosting, billed in ordinary currency rather than in SOL of either kind.</p>
 
 <p class="fuelfoot"><span id="fAge">reading…</span><span>·</span><span>read at most once a minute,
 then cached</span><button class="reread" id="fAgain" data-ga="fuel-reread">re-read</button>
