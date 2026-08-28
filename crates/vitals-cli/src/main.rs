@@ -7,7 +7,7 @@
 //! a leaf that must prove against a root it built itself.
 
 use borsh::BorshDeserialize;
-use solana_client::rpc_client::RpcClient;
+use solana_rpc_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
     instruction::{AccountMeta, Instruction as SolInstruction},

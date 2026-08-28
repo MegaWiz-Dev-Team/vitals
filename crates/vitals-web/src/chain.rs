@@ -9,7 +9,7 @@
 //! collapsed identity: PDAs are seeded on the player, so every player on a server shared one
 //! claim buffer and one progress account, and each person's level was the whole server's level.
 
-use solana_client::rpc_client::RpcClient;
+use solana_rpc_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
     instruction::{AccountMeta, Instruction as SolInstruction},

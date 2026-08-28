@@ -17,7 +17,7 @@ vitals-replay = { path = "../vitals-replay" }
 vitals-progress = { path = "../vitals-progress" }
 vitals-osce = { path = "../vitals-osce" }
 vitals-program = { path = "../vitals-program" }
-solana-client = "2"
+solana-rpc-client = "2"
 solana-sdk = "2"
 borsh = { version = "1", features = ["derive"] }
 

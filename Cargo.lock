@@ -7683,7 +7683,7 @@ version = "0.4.1"
 dependencies = [
  "borsh 1.8.0",
  "serde_json",
- "solana-client",
+ "solana-rpc-client",
  "solana-sdk",
  "vitals-osce",
  "vitals-program",
@@ -7750,7 +7750,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "solana-client",
+ "solana-rpc-client",
  "solana-sdk",
  "tiny_http",
  "ureq",

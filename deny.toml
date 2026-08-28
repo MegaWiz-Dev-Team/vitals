@@ -13,10 +13,17 @@ yanked = "deny"
 # the SDK. The list is exact ids on purpose: a NEW advisory still fails the build, and every
 # entry is owed a re-check at each SDK bump.
 ignore = [
-    "RUSTSEC-2021-0145", # atty — via solana clap tooling, unmaintained, no unsound use here
-    "RUSTSEC-2022-0093", # ed25519-dalek 1.x double-pubkey-sign — via solana-sdk keypair (client side)
+    "RUSTSEC-2021-0145", # atty — via env_logger 0.9 ← solana-logger ← solana-sdk. Unmaintained,
+                         # no fixed release exists; the unaligned read is cfg(windows) and the
+                         # server runs Linux, so the vulnerable code is not even compiled.
+    "RUSTSEC-2022-0093", # ed25519-dalek 1.x double-pubkey-sign — via solana-keypair ← solana-sdk.
+                         # The fix is 2.0, which arrives with solana-keypair 3.x, i.e. an SDK
+                         # major. The oracle needs a caller that signs under an attacker-chosen
+                         # public key; the relay signs with its own mounted key and nothing else.
     "RUSTSEC-2023-0126", # rsa Marvin — via test/rpc tooling, no RSA in this product
-    "RUSTSEC-2024-0344", # curve25519-dalek timing — program tree already at fixed 4.1.3; old copy in client tree
+    "RUSTSEC-2024-0344", # curve25519-dalek timing — the 3.2.0 copy, pulled only by ed25519-dalek 1.x
+                         # above; 3.x has no fixed release and 4.1.3 (fixed) is already what the
+                         # rest of the tree uses. Local timing side channel, not remote.
     "RUSTSEC-2024-0375", # atty successor advisory chain
     "RUSTSEC-2024-0388", # derivative unmaintained — proc-macro, build-time only
     "RUSTSEC-2024-0436", # paste unmaintained — proc-macro, build-time only
@@ -24,9 +31,15 @@ ignore = [
     "RUSTSEC-2025-0141", # solana client tree
     "RUSTSEC-2025-0161", # solana client tree
     "RUSTSEC-2026-0097", # solana client tree
-    "RUSTSEC-2026-0098", # rustls-webpki name constraints — RPC-over-TLS client path
+    # The three rustls-webpki advisories are all against 0.101.7, and the server no longer
+    # carries it: vitals-web depends on solana-rpc-client rather than the whole solana-client,
+    # which took the pubsub/websocket TLS stack (rustls 0.21 → webpki 0.101) out of the binary.
+    # What ships is 0.103.15, at or above the fix for all three. 0.101.7 survives only under
+    # solana-program-test, a dev-dependency, so these stay listed and stay out of production.
+    "RUSTSEC-2026-0098", # rustls-webpki name constraints — test tree only
     "RUSTSEC-2026-0099", # rustls-webpki wildcard — same
-    "RUSTSEC-2026-0104", # rustls-webpki CRL panic — same
+    "RUSTSEC-2026-0104", # rustls-webpki CRL panic — same, and it needs RevocationOptions,
+                         # which is opt-in and nothing here opts in
     "RUSTSEC-2026-0173", # solana client tree
     "RUSTSEC-2026-0186", # solana client tree
     "RUSTSEC-2026-0247", # solana client tree

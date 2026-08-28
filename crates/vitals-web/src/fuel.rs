@@ -21,7 +21,7 @@
 //!     transport errors quote the url they failed on. This endpoint is public and ungated, so a
 //!     failed read reports a fixed sentence naming the cluster and nothing else.
 
-use solana_client::rpc_client::RpcClient;
+use solana_rpc_client::rpc_client::RpcClient;
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 use std::str::FromStr;
 use std::time::{Duration, Instant};

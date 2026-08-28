@@ -35,7 +35,7 @@
 //! Overridable by environment for a local validator: `VITALS_RPC`, `VITALS_PROGRAM_ID`,
 //! `VITALS_TREE_ID`, `VITALS_CHAIN_API`.
 use borsh::BorshDeserialize;
-use solana_client::rpc_client::RpcClient;
+use solana_rpc_client::rpc_client::RpcClient;
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 use std::str::FromStr;
 use vitals_program::{
