@@ -55,6 +55,12 @@ const CHAIN_API: &str = "https://devnet.vitals.academy/api/chain";
 /// appear in `VERIFICATION.md`, which `tests/verify_tool.rs` checks offline on every `cargo test`,
 /// and an `--ignored` test in the same file compares it against the live server.
 const TREE_ID_FALLBACK: u64 = 488_905_120;
+/// Where the committed scenario archive sits in a clone.
+///
+/// Borrowed from the server's own constant rather than written out again, so the command this tool
+/// tells a stranger to run cannot drift from the directory the server reads and the Dockerfile
+/// ships. See [`print_scenario_check`].
+const SCE_ARCHIVE: &str = vitals_web::archive::DIR;
 
 /// Verified, and the numbers printed.
 const EXIT_OK: i32 = 0;
@@ -202,6 +208,70 @@ fn explain_stale_layout(pda: &Pubkey, tree_id: u64, len: usize, err: &std::io::E
     std::process::exit(EXIT_STALE_LAYOUT);
 }
 
+/// How to get the scenario bytes a leaf names, printed as a command the reader can actually run.
+///
+/// This block used to print
+///
+/// ```text
+/// curl -s https://devnet.vitals.academy/api/sce/<case> | shasum -a 256   # → <case>
+/// ```
+///
+/// and that command is now wrong for every hash this tool is likely to print. `/api/sce` serves
+/// **retired** scenarios only: a file that can still be sat is the mark sheet — every matcher
+/// keyword, every `(HARM)`, the thresholds that decide the outcome, `_note` fields naming the
+/// diagnosis — and handing it to a candidate mid-run defeats every seal on the rest of the API.
+/// So the endpoint answers `404 {"error":"that scenario is in active use"}` while a station is on
+/// the shelf, and today that is every case in the season. A stranger who followed the old line saw
+/// a 404 body whose sha256 is obviously not the hash we told them to expect, and concluded the
+/// proof was theatre. Printing nothing would have been better; printing this is better still.
+///
+/// The replacement does not need a server at all. [`SCE_ARCHIVE`] is committed to this repository,
+/// append-only, and named by digest, so the file a leaf points at is already on the disk of anyone
+/// who cloned the repo to build this binary — and hashing your own copy is the stronger check of
+/// the two, because a server can serve you bytes it serves nobody else and a public git history is
+/// far harder to keep two versions of. `VERIFICATION.md` §5 leads with the same route, and
+/// `tests/verify_tool.rs` fails the build if these two stop agreeing.
+fn print_scenario_check(cases: &[[u8; 32]]) {
+    // Distinct, in the order they were anchored: the check is per scenario file, not per attempt,
+    // so sitting one station three times must not print the same command three times.
+    let mut distinct: Vec<String> = Vec::new();
+    for c in cases {
+        let h = hex32(c);
+        if !distinct.contains(&h) {
+            distinct.push(h);
+        }
+    }
+    let Some(first) = distinct.first() else { return };
+
+    println!(
+        "\ncheck the scenario bytes those runs were computed over — from your own clone, with no\n\
+         server in the loop. Run this from the root of the repository you built this binary in:\n"
+    );
+    for h in &distinct {
+        // The expected digest goes on the next line, not in a trailing comment, because the
+        // comparison is the whole point: what `shasum` prints must be these 64 characters, which
+        // are also in the file name above and on the `case` line further up.
+        println!("  shasum -a 256 {SCE_ARCHIVE}/{h}.json");
+        println!("     must print → {h}");
+    }
+    println!(
+        "\nsha256sum instead of shasum -a 256 on Linux. Every scenario version an anchored run was\n\
+         played against is committed under {SCE_ARCHIVE}/, named by its own digest and never\n\
+         deleted, so a leaf written before an edit still resolves to the bytes it was computed\n\
+         over. INDEX.json maps each hash to the station file it was archived from, if you would\n\
+         rather hash that copy:\n\
+         \n\
+         \x20   grep -A1 {first} {SCE_ARCHIVE}/INDEX.json\n\
+         \n\
+         GET /api/sce/<hash> serves the same bytes over HTTP, but only once a case is retired:\n\
+         while a station can still be sat its scenario file is the mark sheet — every matcher,\n\
+         every harm, every threshold — so the server answers 404 'that scenario is in active use'\n\
+         rather than hand a candidate the answers mid-exam, and at the time of writing that is\n\
+         every case in the season. The clone above is the check that works either way, which is\n\
+         why it is the one printed. See VERIFICATION.md §5."
+    );
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "-h" || a == "--help") {
@@ -324,10 +394,10 @@ fn main() {
     );
     for (i, a) in claim.attempts.iter().enumerate() {
         // The full 32 bytes, not a four-byte tag. `case` *is* the sha256 of the scenario file the
-        // run was played against, so printed whole it is a URL: GET /api/sce/<this> returns the
-        // exact bytes, and their sha256 is this number again. That round trip is the last link in
-        // the chain from "a level on screen" to "a file you can read", and a truncated tag breaks
-        // it for no gain.
+        // run was played against, so printed whole it is a file name: the archived copy of that
+        // exact version is `conformance/sce-archive/<this>.json`, and hashing it gives this number
+        // back. That round trip is the last link in the chain from "a level on screen" to "a file
+        // you can read", and a truncated tag breaks it for no gain.
         println!("  #{i} case {}", hex32(&a.case));
         println!(
             "     outcome {}/{} · det {}/{} · difficulty {} · exam {}",
@@ -335,13 +405,7 @@ fn main() {
         );
         println!("     leaf {}", hex32(&a.leaf));
     }
-    if let Some(a) = claim.attempts.first() {
-        println!(
-            "\nfetch the scenario any of these was computed over, and check its hash yourself:\n  \
-             curl -s https://devnet.vitals.academy/api/sce/{h} | shasum -a 256   # → {h}",
-            h = hex32(&a.case)
-        );
-    }
+    print_scenario_check(&claim.attempts.iter().map(|a| a.case).collect::<Vec<_>>());
     let stars = vitals_progress::stars(&attempts, vitals_progress::STAR_PASS_BPS);
     println!(
         "\nstars (distinct exam cases cleared at det >= {}%): {stars}",

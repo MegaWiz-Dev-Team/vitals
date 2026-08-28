@@ -149,3 +149,105 @@ fn the_fallback_tree_is_still_the_live_one() {
          update TREE_ID_FALLBACK and the number in VERIFICATION.md to {live}."
     );
 }
+
+// ── the check the tool tells a stranger to run ──────────────────────────────────────────────────
+//
+// For every attempt it printed, `verify_player` used to print
+//
+//     curl -s https://devnet.vitals.academy/api/sce/<case> | shasum -a 256   # → <case>
+//
+// and that command stopped working the day `/api/sce` was narrowed to retired scenarios. A file
+// that can still be sat is a mark sheet — every matcher keyword, every `(HARM)`, the thresholds
+// that decide the outcome, `_note` fields naming the diagnosis — so the endpoint refuses it, and
+// every hash anchored on devnet today names a live case. The reader followed our own instruction,
+// hashed a 404 body, got a digest nothing like the one printed beside it, and had every reason to
+// conclude the proof was theatre. A verification tool that prints a failing command argues against
+// the thing it exists to prove, exactly as the stale tree id did.
+//
+// The replacement needs no server: the archive is committed, append-only and named by digest, so
+// the file a leaf points at is already in the clone the reader built this binary from. These tests
+// keep the printed command runnable and keep it agreeing with `VERIFICATION.md` §5.
+
+/// Every hash filed in the committed archive.
+fn archived_hashes() -> Vec<String> {
+    let dir = root().join(vitals_web::archive::DIR);
+    let rd = std::fs::read_dir(&dir)
+        .unwrap_or_else(|e| panic!("{} is not readable: {e}", dir.display()));
+    let mut v: Vec<String> = rd
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().to_str()?.strip_suffix(".json").map(str::to_string))
+        .filter(|n| n.len() == 64 && n.bytes().all(|b| b.is_ascii_hexdigit()))
+        .collect();
+    v.sort();
+    v
+}
+
+#[test]
+fn the_scenario_check_is_hashed_from_the_clone_not_fetched_from_the_endpoint() {
+    let src = tool_source();
+    assert!(
+        !src.contains("api/sce/{h}"),
+        "verify_player must not print a curl of /api/sce/<hash> as *the* check. That route serves \
+         retired scenarios only — a case still on the playable shelf is withheld, because the file \
+         is its own mark sheet — and every hash anchored on devnet today names a live case. The \
+         reader would hash a 404 body and read the mismatch as the proof being fake."
+    );
+    assert!(
+        src.contains("vitals_web::archive::DIR"),
+        "the archive path the tool prints must come from the server's own constant, so the command \
+         handed to a stranger cannot drift from the directory that holds the files"
+    );
+    assert!(
+        src.contains("shasum -a 256"),
+        "the tool must still print a hash-it-yourself command — the round trip from a leaf to a \
+         file you can read is the last link in the argument"
+    );
+}
+
+/// Not "the string looks plausible": the path the tool prints must name a file that is really in
+/// the clone, and hashing it must really give back the name. Checked for every hash the tool
+/// could ever print, which is every version the archive holds.
+#[test]
+fn the_printed_command_reproduces_the_hash_it_promises() {
+    use sha2::{Digest, Sha256};
+    let dir = root().join(vitals_web::archive::DIR);
+    let all = archived_hashes();
+    assert!(
+        all.len() >= 17,
+        "only {} versions in {} — the archive is append-only and a run anchored against a missing \
+         one has no route left at all, because the endpoint will not serve a live case either",
+        all.len(),
+        dir.display()
+    );
+    for h in &all {
+        // Exactly the path `print_scenario_check` formats.
+        let p = dir.join(format!("{h}.json"));
+        let bytes = std::fs::read(&p)
+            .unwrap_or_else(|e| panic!("verify_player prints `shasum -a 256 {}/{h}.json` and that file is not there: {e}", vitals_web::archive::DIR));
+        let got: String = Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(
+            got, *h,
+            "the command verify_player prints for {h} does not print {h} back — it prints {got}"
+        );
+    }
+}
+
+/// The tool and the walkthrough have to send a reader down the same road. §5 of `VERIFICATION.md`
+/// leads with the clone, and the tool now prints the clone; if either is rewritten to lead with
+/// the endpoint again, this is where it is caught.
+#[test]
+fn the_walkthrough_leads_with_the_same_check_the_tool_prints() {
+    let doc = walkthrough();
+    let dir = vitals_web::archive::DIR;
+    assert!(
+        doc.contains(&format!("shasum -a 256 {dir}/")),
+        "VERIFICATION.md must show the same `shasum -a 256 {dir}/<hash>.json` check that \
+         verify_player prints — a walkthrough describing a different route than the tool is the \
+         rot this file exists to catch"
+    );
+    assert!(
+        doc.contains("retired"),
+        "VERIFICATION.md must say that GET /api/sce/<hash> publishes a scenario only once its case \
+         is retired. Without that, a reader hits the 404 and concludes the chain is lying."
+    );
+}

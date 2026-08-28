@@ -44,14 +44,52 @@ stranger could fetch. "Deterministic, re-derivable by anyone" quietly meant "re-
 whoever has our repository and guesses the right commit".
 
 `sce-archive/<sce_hash>.json` is the copy of each version, named by its own digest, with
-`INDEX.json` mapping hash → the path it was archived from → its length. The server serves them at
+`INDEX.json` mapping hash → the path it was archived from → its length. Because the archive is
+committed, the route that resolves a hash needs no server at all — from the root of a clone:
+
+```bash
+grep -A1 <sce_hash> conformance/sce-archive/INDEX.json
+shasum -a 256 conformance/sce-archive/<sce_hash>.json     # → <sce_hash>
+```
+
+That is the check `verify_player` prints beside every attempt it reads off the chain, and the one
+`VERIFICATION.md` §5 walks through. It is the stronger of the two routes, not the fallback: the
+archive travels in a git history a stranger can diff, and we cannot serve one reader a different
+copy of it than we serve anyone else.
+
+### `GET /api/sce/<sce_hash>` — retired versions only
 
 ```
-GET /api/sce/<sce_hash>     →  the exact bytes whose sha256 is that hash
+GET /api/sce/<sce_hash>     →  200, the exact bytes whose sha256 is that hash — if that version
+                               has been retired
+                            →  404 {"error":"that scenario is in active use"} — if the case it
+                               names can still be sat
 ```
 
-which anyone can check with `sha256sum` on the reply. It is verified before it is sent: bytes that
+Anyone can check a 200 with `sha256sum` on the reply. It is verified before it is sent: bytes that
 do not hash to the requested value are a 404, never a wrong answer.
+
+**Why retirement gates it.** The same file that lets an outsider re-derive a score is the file that
+contains the answers. A scenario carries every intervention id, every matcher keyword in every
+language, every `(HARM)` the author wrote beside a wrong turn, the trigger thresholds that decide
+the outcome, and `_note` fields that name the diagnosis outright. The first cut of this route
+resolved through the live shelf as well as the archive — "a run anchored ten minutes ago names a
+file nobody has archived yet, and it has to resolve" — so a candidate could open a station, read
+`sce_hash` off their own screen, and GET the whole mark sheet in one unauthenticated request while
+the clock was still running. A star measured that way measures nothing.
+
+So the shelf is a **deny list**, checked first, read fresh on every request: a hash is refused
+while its case is playable, whether or not the archive also holds a copy — and it holds one for
+every case in the season, which is exactly why "serve from the archive" is not by itself the fix.
+Retirement is what publishes a case. Edit a scenario or withdraw it and the hash the old leaves
+name stops being sittable, so the bytes go out and those leaves stay checkable forever. At the time
+of writing nothing is retired, so the endpoint publishes nothing and the startup line says so
+(`0 publishable · 17 live and withheld`) rather than printing a count that reads like a working
+endpoint. That is the behaviour, not an outage.
+
+**How to verify a live case in the meantime:** the `shasum` above, on your own clone. It proves
+exactly what the fetch would have proved, with no server in the loop — so for a case in the current
+season the repository is not the backup, it is the route.
 
 **Append only. Never delete a file here** — deleting one destroys the evidence for every run that
 was anchored against it. Adding a version is a file drop plus a row in `INDEX.json`; nothing in
