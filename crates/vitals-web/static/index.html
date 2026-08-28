@@ -852,6 +852,16 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
    this is the absence of one. */
 .news[data-band="none"] .news-n{color:var(--ink-3)}
 .news[data-band="none"] .news-band{color:var(--alarm)}
+/* She is a child, and NEWS2 is not validated under 16 — the server sends the panel with no
+   score in it and the sentence to print instead. Neither of the two colours above is right:
+   the red belongs to a patient who has died, and the green of a low band is the reassurance
+   the whole thing exists to refuse. The caution colour, and a rail that is one hatched bar
+   rather than twenty unlit ticks — twenty unlit ticks are a picture of a NEWS2 of zero, which
+   is the best score there is and the exact wrong thing to draw under "not scored". */
+.news[data-band="na"] .news-n{color:var(--ink-3);font-size:1.5rem}
+.news[data-band="na"] .news-band{color:var(--warn)}
+.news[data-band="na"] .news-bar i{background:repeating-linear-gradient(115deg,
+  rgba(180,89,15,.32) 0 4px,transparent 4px 9px)}
 .clock2{font-family:"IBM Plex Mono",monospace;font-size:.78rem;font-variant-numeric:tabular-nums;
   color:var(--ink-2);flex:none}
 
@@ -2878,14 +2888,39 @@ function paint(v,named){
     finish(v);
     return;
   }
-  $('#news-n').textContent = n.total;
-  $('#news-band').textContent = n.band + ' risk';
-  $('#news-do').textContent = n.response;
-  $('#newsbox').dataset.band = n.band;
-  /* Twenty ticks, filled to the score. A bar that fills as the patient worsens reads the right
-     way round: more bar is more trouble. */
-  $('#news-bar').innerHTML = Array.from({length:20},(_,i)=>
-    `<i class="${i < n.total ? 'on':''}"></i>`).join('');
+  /* ── a patient this instrument does not read ────────────────────────────────
+     NEWS2 is an adult score and the RCP does not validate it under 16 — a well
+     three-year-old breathes 28 with a pulse of 118, which the adult table charges 5 for.
+     The server stopped scoring them (`news2::applies_to_age`) and now sends the panel with
+     `applies:false`, `total:null`, `band:"none"` and the sentence to print instead. It must
+     not come through the dead branch above: a null `news` means dead and the page does
+     considerably more than blank a number for that.
+
+     Three things this must not do. It must not print a number, which is why the server
+     sends null rather than a zero. It must not print twenty unlit ticks, which is a
+     picture of the best NEWS2 there is — the blank that "reads as reassurance" is exactly
+     what the sentence exists to refuse, and drawing it under the sentence would put it
+     back. And it must not wear the deceased branch's `band="none"` red, which says
+     emergency about a child a paediatrician would walk past. So: a dash, the caution
+     colour, a rail that is visibly not a reading, and the server's own sentence saying
+     which instrument is missing and why. `total==null` is read as well as `applies` so a
+     server that says one without the other still cannot print a bogus score. */
+  if(n.applies===false||n.total==null){
+    $('#news-n').textContent='—';
+    $('#news-band').textContent='not scored';
+    $('#news-do').textContent=n.response||'NEWS2 is not validated for this patient';
+    $('#newsbox').dataset.band='na';
+    $('#news-bar').innerHTML='<i></i>';
+  }else{
+    $('#news-n').textContent = n.total;
+    $('#news-band').textContent = n.band + ' risk';
+    $('#news-do').textContent = n.response;
+    $('#newsbox').dataset.band = n.band;
+    /* Twenty ticks, filled to the score. A bar that fills as the patient worsens reads the
+       right way round: more bar is more trouble. */
+    $('#news-bar').innerHTML = Array.from({length:20},(_,i)=>
+      `<i class="${i < n.total ? 'on':''}"></i>`).join('');
+  }
 
   /* A tray, not a row of tags. What a bedside shows is the thing on the patient, its setting,
      and how long it has been there — "Intubate ×" is an order you typed, not a tube in a throat. */
