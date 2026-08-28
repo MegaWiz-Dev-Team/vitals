@@ -1,0 +1,191 @@
+{
+ "_note": "OSCE station B2 — converted from embla-cases ddx-pericarditis-1 v1.0.0 (sha256:405ae47a26a67ddc). Presentation follows the deploy-safe form; the hidden block informed only the rubric (demo/rubrics/osce-b2.json). Clinically shaped, not clinically reviewed. The teaching is B's lesson run in reverse: ST elevation on the screen is a finding, not a diagnosis. A fourteen-year-old with a fever, a rub, and pain that has a favourite chair — diffuse saddle elevation belongs to pericarditis, and the station's kill is the STEMI reflex: a lytic into an inflamed pericardium bleeds into the sac.",
+ "setting": "ED",
+ "tick_seconds": 1.0,
+ "vitals0": { "hr": 105, "sbp": 118, "dbp": 76, "spo2": 98, "rr": 20, "temp": 38.2, "gcs": 15 },
+ "initial_state": "consult",
+ "states": [
+  {
+   "id": "consult",
+   "status": "stable",
+   "dynamics": [
+    { "var": "sbp", "rate_per_min": -7, "floor": 52,
+      "when": { "all": [ { "flag": "lysed" }, { "flag": "drained", "is": false } ] } },
+    { "var": "hr", "rate_per_min": 6, "ceil": 165, "when": { "flag": "lysed" } }
+   ],
+   "bands": [
+    { "status": "critical", "when": { "var": "sbp", "op": "lt", "value": 85 } }
+   ],
+   "transitions": [
+    { "to_state": "treated",
+      "when": { "all": [ { "flag": "nsaid_given" }, { "flag": "lysed", "is": false } ] } },
+    { "outcome": "death_arrest", "when": { "var": "sbp", "op": "lt", "value": 78 } }
+   ]
+  },
+  {
+   "id": "treated",
+   "status": "improving",
+   "dynamics": [
+    { "var": "hr",   "rate_per_min": -2,    "floor": 76 },
+    { "var": "temp", "rate_per_min": -0.05, "floor": 36.9 }
+   ],
+   "bands": [],
+   "transitions": []
+  }
+ ],
+ "interventions": [
+  {
+   "id": "ask_pain",
+   "label": "Ask about the pain",
+   "match": { "any_kw": ["pain", "hurt", "better", "position", "ปวด", "เจ็บ"] },
+   "effects": [ { "beat": "— \"Sharp, like a blade, right here. Worse flat on my back — better when I sit up and lean over my knees.\" A pain with a favourite chair." } ]
+  },
+  {
+   "id": "ask_breath",
+   "label": "Ask what breathing does",
+   "match": { "any_kw": ["breath", "หายใจ"] },
+   "effects": [ { "beat": "— \"Breathing in deep makes it stab. Small breaths are safer.\" Pleuritic, positional — nothing an artery does." } ]
+  },
+  {
+   "id": "ask_fever",
+   "label": "Ask about fever and the last two weeks",
+   "match": { "any_kw": ["fever", "cold", "sick", "flu", "virus", "ไข้"] },
+   "effects": [ { "beat": "— \"I had a cold last week. I've felt hot since yesterday.\" 38.2 on the chart of a fourteen-year-old." } ]
+  },
+  {
+   "id": "exam_heart",
+   "label": "Listen with him leaning forward",
+   "match": { "any_kw": ["listen", "auscult", "rub", "heart sound"] },
+   "effects": [ { "beat": "a scratchy rub over the left sternal edge, loudest leaning forward — leather creaking on leather, in time with the beat" } ]
+  },
+  {
+   "id": "ecg",
+   "label": "12-lead ECG",
+   "match": { "any_kw": ["ecg", "ekg", "12-lead"] },
+   "effects": [
+    { "flag": "ecg_done" },
+    { "beat": "st elevation — but look at the shape and the spread: saddle-backed, in almost every lead, pr segments sagging. no artery owns all twelve." }
+   ]
+  },
+  {
+   "id": "troponin",
+   "label": "Cardiac troponin",
+   "match": { "any_kw": ["troponin", "cardiac enzyme"] },
+   "effects": [ { "beat": "troponin barely above flat — a graze on the surface, not a dying wall" } ]
+  },
+  {
+   "id": "echo",
+   "label": "Bedside echocardiogram",
+   "match": { "any_kw": ["echo"] },
+   "effects": [
+    { "flag": "echo_done" },
+    { "beat": "a thin rim of fluid behind the heart, chambers filling well — no collapse, no tamponade tonight" }
+   ]
+  },
+  {
+   "id": "cxr",
+   "label": "Chest X-ray",
+   "match": { "any_kw": ["x-ray", "cxr", "chest film"] },
+   "effects": [ { "beat": "normal heart shadow, clear fields — nothing else to blame" } ]
+  },
+  {
+   "id": "nsaid",
+   "label": "NSAID by mouth",
+   "match": { "any_kw": ["ibuprofen", "nsaid", "naproxen", "indometacin", "indomethacin", "anti-inflammat"] },
+   "effects": [
+    { "flag": "nsaid_given" },
+    { "beat": "ibuprofen with food, round the clock — the treatment is against the fire, not against a clot" }
+   ]
+  },
+  {
+   "id": "colchicine",
+   "label": "Colchicine",
+   "match": { "any_kw": ["colchicin"] },
+   "effects": [ { "beat": "colchicine on board — fewer encores of this admission" } ]
+  },
+  {
+   "id": "pericardiocentesis",
+   "label": "Needle to the sac",
+   "match": { "any_kw": ["pericardiocent", "drain the sac", "needle to the sac", "tap the sac"] },
+   "effects": [
+    { "branch": [
+      { "if": { "flag": "lysed" },
+        "then": [
+         { "flag": "drained" },
+         { "delta": { "sbp": 18 }, "cap": 112 },
+         { "beat": "dark blood off the sac in a syringe — the pressure eases; the lesson costs a scar" }
+        ] }
+     ],
+     "else": [ { "beat": "there is nothing to drain — a thin rim, no tamponade; keep the needle" } ] }
+   ]
+  },
+  {
+   "id": "aspirin",
+   "label": "Aspirin (HARM here)",
+   "match": { "any_kw": ["aspirin", " asa"] },
+   "harm": "aspirin loaded into a febrile fourteen-year-old — the chest-pain reflex, plus reye's syndrome on the table",
+   "effects": []
+  },
+  {
+   "id": "cath_lab",
+   "label": "Activate the cath lab (HARM)",
+   "match": { "any_kw": ["cath", "pci", "angioplast", "activate"] },
+   "harm": "the lab spun up for a rub — diffuse elevation has no culprit artery to open",
+   "effects": []
+  },
+  {
+   "id": "thrombolysis",
+   "label": "Thrombolysis (HARM)",
+   "match": { "any_kw": ["thrombolys", "lytic", "alteplase", "tenecteplase", "streptokin", "reperfus"] },
+   "harm": "a lytic into an inflamed pericardium — the sac fills with blood",
+   "effects": [
+    { "flag": "lysed" },
+    { "delta": { "sbp": -18 }, "floor": 55 },
+    { "delta": { "hr": 18 }, "cap": 165 }
+   ]
+  },
+  {
+   "id": "dx_pericarditis",
+   "label": "Name the diagnosis",
+   "match": { "any_kw": ["pericarditis"] },
+   "effects": [ { "flag": "dx_named" }, { "beat": "acute pericarditis — the fever, the rub, the chair, and twelve leads that agree" } ]
+  },
+  {
+   "id": "dx_stemi",
+   "label": "Call it a STEMI",
+   "match": { "any_kw": ["stemi", "infarct", "heart attack", "acs", "coronary"] },
+   "effects": [ { "beat": "fourteen, febrile, a rub, and elevation in every lead — this is not a plumbing problem. look at the shape again." } ]
+  },
+  {
+   "id": "observe",
+   "label": "Admit for rest and observation",
+   "match": { "any_kw": ["admit", "observ", "ward", "rest"] },
+   "effects": [ { "flag": "observed" }, { "beat": "admitted for rest, the echo repeated tomorrow — sport can wait a month" } ]
+  }
+ ],
+ "triggers": [
+  {
+   "id": "rest_and_home",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "treated" },
+    { "var": "t_in_state", "op": "ge", "value": 150 }
+   ] },
+   "do": [ { "outcome": "win_discharge" } ]
+  },
+  {
+   "id": "drained_in_time",
+   "once": true,
+   "when": { "all": [
+    { "flag": "drained" },
+    { "var": "sbp", "op": "gt", "value": 90 }
+   ] },
+   "do": [ { "outcome": "win_icu" } ]
+  }
+ ],
+ "outcomes": [
+  { "id": "win_discharge", "kind": "win",   "label": "Read off twelve leads, treated with tablets — home to rest, echo booked" },
+  { "id": "win_icu",       "kind": "win",   "label": "The needle beat the bleed — alive, with a scar that was never needed" },
+  { "id": "death_arrest",  "kind": "death", "label": "Tamponade — the lytic found the one chest it should never touch" }
+ ]
+}

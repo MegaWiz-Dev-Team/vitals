@@ -1,0 +1,215 @@
+{
+ "_note": "OSCE station C2 — converted from embla-cases ddx-bronchospasm-acute-asthma-exacerbation-2 v1.0.0 (sha256:0824a0babe759093). Presentation follows the deploy-safe form; the hidden block informed only the rubric (demo/rubrics/osce-c2.json). Clinically shaped, not clinically reviewed. The teaching is the bronchodilator ladder with its feet on a number: measure the peak flow, climb — salbutamol, ipratropium — then measure again, and put a systemic steroid behind the neb before it wears off. Third attack this year on a reliever alone: the discharge conversation (controller + plan) is part of the medicine. The kill is a sedative for the 'panic' — her drive to breathe is the only thing holding her.",
+ "setting": "ER",
+ "tick_seconds": 1.0,
+ "vitals0": { "hr": 110, "sbp": 130, "dbp": 80, "spo2": 94, "rr": 24, "temp": 36.9, "gcs": 15 },
+ "variables": {
+  "pefr": { "init": 240, "min": 120, "max": 480 }
+ },
+ "initial_state": "consult",
+ "states": [
+  {
+   "id": "consult",
+   "status": "deteriorating",
+   "dynamics": [
+    { "var": "spo2", "rate_per_min": -0.5, "floor": 86, "when": { "flag": "neb1", "is": false } },
+    { "var": "pefr", "rate_per_min": -2,   "floor": 150, "when": { "flag": "neb1", "is": false } },
+    { "var": "hr",   "rate_per_min": 1.5,  "ceil": 155, "when": { "flag": "neb1", "is": false } }
+   ],
+   "bands": [
+    { "status": "critical", "when": { "var": "spo2", "op": "lt", "value": 91 } }
+   ],
+   "transitions": [
+    { "to_state": "responding", "when": { "flag": "neb1" } },
+    { "outcome": "death_arrest", "when": { "var": "spo2", "op": "lt", "value": 88 } }
+   ]
+  },
+  {
+   "id": "responding",
+   "status": "improving",
+   "dynamics": [
+    { "var": "spo2", "rate_per_min": 0.5, "ceil": 97 },
+    { "var": "hr",   "rate_per_min": -2,  "floor": 96 }
+   ],
+   "bands": [],
+   "transitions": [
+    { "outcome": "death_arrest", "when": { "var": "spo2", "op": "lt", "value": 88 } }
+   ]
+  }
+ ],
+ "interventions": [
+  {
+   "id": "ask_attacks",
+   "label": "Ask how often this happens",
+   "match": { "any_kw": ["often", "before", "controller", "inhaler", "how many times", "this year"] },
+   "effects": [ { "beat": "— \"Third time this year. I only have the blue inhaler — I puff it when it gets bad.\" A reliever with nothing behind it." } ]
+  },
+  {
+   "id": "ask_speech",
+   "label": "Ask her to finish a sentence",
+   "match": { "any_kw": ["sentence", "finish", "talk", "speak"] },
+   "effects": [ { "beat": "she answers in full sentences, pausing once for air — moderate, not yet severe, and worth writing down" } ]
+  },
+  {
+   "id": "exam_chest",
+   "label": "Listen to the chest",
+   "match": { "any_kw": ["listen", "auscult", "wheeze"] },
+   "effects": [ { "beat": "loud expiratory wheeze both sides, a long slow breath out — air that queues to leave" } ]
+  },
+  {
+   "id": "pefr",
+   "label": "Peak flow",
+   "match": { "any_kw": ["peak flow", "pefr", "peak expiratory"] },
+   "effects": [
+    { "branch": [
+      { "if": { "flag": "neb2" },
+        "then": [
+         { "flag": "reassessed" },
+         { "beat": "pefr 400 — 85% of predicted; the ladder worked, and the number proves it" }
+        ] },
+      { "if": { "flag": "neb1" },
+        "then": [
+         { "flag": "reassessed" },
+         { "beat": "pefr 310 — better, not done; the ladder has more rungs" }
+        ] }
+     ],
+     "else": [ { "beat": "pefr 240 — 73% of predicted, moderate obstruction; a number to come back to after every rung" } ] }
+   ]
+  },
+  {
+   "id": "oxygen",
+   "label": "Oxygen, titrated",
+   "match": { "any_kw": ["oxygen", "o2", "mask", "cannula"] },
+   "effects": [ { "delta": { "spo2": 2 }, "cap": 97 } ],
+   "equipment": "o2",
+   "equipment_setting": 4
+  },
+  {
+   "id": "ics_controller",
+   "label": "Controller — inhaled steroid + written plan",
+   "match": { "any_kw": ["inhaled", "ics", "budeson", "controller", "preventer", "action plan"] },
+   "effects": [
+    { "flag": "controller_planned" },
+    { "beat": "a brown preventer and a written action plan — the fourth attack gets cancelled, not survived" }
+   ]
+  },
+  {
+   "id": "prednisolone",
+   "label": "Systemic steroid",
+   "match": { "any_kw": ["prednis", "hydrocort", "methylpred", "steroid", "cortico"] },
+   "effects": [
+    { "flag": "steroid_given" },
+    { "beat": "prednisolone 40 mg swallowed — the twelve-hour fire brigade behind the neb" }
+   ]
+  },
+  {
+   "id": "neb_salbutamol",
+   "label": "Salbutamol neb",
+   "match": { "any_kw": ["salbutamol", "ventolin", "neb", "saba", "blue inhaler", "bronchodilat"], "not_kw": ["adren", "epinep"] },
+   "effects": [
+    { "branch": [
+      { "if": { "flag": "neb1" },
+        "then": [
+         { "flag": "neb2" },
+         { "delta": { "pefr": 50 }, "cap": 430 },
+         { "delta": { "spo2": 1 }, "cap": 97 },
+         { "beat": "back-to-back salbutamol — the chest opens another notch" }
+        ] }
+     ],
+     "else": [
+      { "flag": "neb1" },
+      { "delta": { "pefr": 70 }, "cap": 380 },
+      { "delta": { "spo2": 1 }, "cap": 97 },
+      { "beat": "first neb up and misting — she breathes it greedily" }
+     ] }
+   ]
+  },
+  {
+   "id": "ipratropium",
+   "label": "Ipratropium with the neb",
+   "match": { "any_kw": ["ipratrop", "atrovent", "anticholinerg"] },
+   "effects": [
+    { "branch": [
+      { "if": { "flag": "neb1" },
+        "then": [
+         { "flag": "neb2" },
+         { "delta": { "pefr": 40 }, "cap": 430 },
+         { "beat": "ipratropium joins the second neb — the next rung of the ladder" }
+        ] }
+     ],
+     "else": [ { "beat": "ipratropium rides with salbutamol, not instead of it — start the ladder first" } ] }
+   ]
+  },
+  {
+   "id": "magnesium",
+   "label": "IV magnesium",
+   "match": { "any_kw": ["magnesium", "mgso4"] },
+   "effects": [ { "beat": "magnesium dripping — the severe-attack card, kept warm in case the ladder stalls" } ]
+  },
+  {
+   "id": "cxr",
+   "label": "Chest X-ray",
+   "match": { "any_kw": ["x-ray", "cxr", "chest film"] },
+   "effects": [ { "beat": "clear film — no pneumothorax hiding behind the wheeze" } ]
+  },
+  {
+   "id": "dx_asthma",
+   "label": "Name the diagnosis",
+   "match": { "any_kw": ["asthma", "bronchospasm", "exacerbation"] },
+   "effects": [ { "flag": "dx_named" }, { "beat": "acute asthma exacerbation, moderate by the numbers — named with its grade" } ]
+  },
+  {
+   "id": "sedative",
+   "label": "Sedative for the panic (HARM)",
+   "match": { "any_kw": ["diazepam", "midazolam", "lorazep", "sedat", "valium", "calm her down with"] },
+   "harm": "a sedative on a tiring asthmatic — the drive to breathe was the only thing holding her",
+   "effects": [
+    { "delta": { "spo2": -4 }, "floor": 82 },
+    { "delta": { "rr": -6 }, "floor": 8 }
+   ]
+  },
+  {
+   "id": "discharge",
+   "label": "Home — if the ladder is climbed",
+   "match": { "any_kw": ["home", "discharge"] },
+   "effects": [
+    { "branch": [
+      { "if": { "all": [ { "flag": "neb1" }, { "flag": "steroid_given" }, { "flag": "reassessed" } ] },
+        "then": [ { "outcome": "win_discharge" } ] }
+     ],
+     "else": [ { "harm": "discharged mid-attack on a reliever alone — the third visit becomes a fourth" } ] }
+   ]
+  }
+ ],
+ "triggers": [
+  {
+   "id": "neb_wears_off",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "responding" },
+    { "var": "t_in_state", "op": "ge", "value": 360 },
+    { "flag": "steroid_given", "is": false }
+   ] },
+   "do": [
+    { "harm": "the neb wore off with nothing behind it — the wheeze walks back in" },
+    { "delta": { "pefr": -80 }, "floor": 150 },
+    { "delta": { "spo2": -3 }, "floor": 86 }
+   ]
+  },
+  {
+   "id": "settled_home",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "responding" },
+    { "flag": "steroid_given" },
+    { "flag": "reassessed" },
+    { "var": "t_in_state", "op": "ge", "value": 240 }
+   ] },
+   "do": [ { "outcome": "win_discharge" } ]
+  }
+ ],
+ "outcomes": [
+  { "id": "win_discharge", "kind": "win",   "label": "Ladder climbed, number rechecked, steroid behind it — home with a plan" },
+  { "id": "death_arrest",  "kind": "death", "label": "The airway closed on a chest that was still treatable" }
+ ]
+}

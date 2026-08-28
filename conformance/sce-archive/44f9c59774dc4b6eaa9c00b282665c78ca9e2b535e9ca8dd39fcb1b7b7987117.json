@@ -1,0 +1,568 @@
+{
+ "_note": "MOCK. Authored from the Code Embla series bible (EP-A, 'Time Is Muscle'). Clinically shaped but not clinically reviewed — a playable automaton for the Vitals demo, not teaching material.",
+ "setting": "ED",
+ "tick_seconds": 1.0,
+ "vitals0": {
+  "hr": 96,
+  "sbp": 142,
+  "dbp": 88,
+  "spo2": 96,
+  "rr": 20,
+  "temp": 36.8,
+  "gcs": 15
+ },
+ "variables": {
+  "myocardium": {
+   "init": 1.0,
+   "min": 0.0,
+   "max": 1.0
+  },
+  "rv_involvement": {
+   "init": 1.0,
+   "min": 0.0,
+   "max": 1.0
+  }
+ },
+ "initial_state": "chest_pain",
+ "states": [
+  {
+   "id": "chest_pain",
+   "status": "deteriorating",
+   "dynamics": [
+    {
+     "var": "myocardium",
+     "rate_per_min": -0.055,
+     "floor": 0.0,
+     "when": {
+      "flag": "reperfused",
+      "is": false
+     }
+    },
+    {
+     "var": "hr",
+     "rate_per_min": 1.5,
+     "ceil": 150,
+     "when": {
+      "flag": "reperfused",
+      "is": false
+     }
+    }
+   ],
+   "bands": [
+    {
+     "status": "improving",
+     "when": {
+      "flag": "reperfused"
+     }
+    },
+    {
+     "status": "critical",
+     "when": {
+      "any": [
+       {
+        "var": "myocardium",
+        "op": "lt",
+        "value": 0.4
+       },
+       {
+        "var": "sbp",
+        "op": "lt",
+        "value": 85
+       }
+      ]
+     }
+    }
+   ],
+   "transitions": [
+    {
+     "to_state": "cardiogenic_shock",
+     "when": {
+      "any": [
+       {
+        "var": "sbp",
+        "op": "lt",
+        "value": 75
+       },
+       {
+        "var": "myocardium",
+        "op": "lt",
+        "value": 0.25
+       }
+      ]
+     }
+    },
+    {
+     "to_state": "reperfused",
+     "when": {
+      "all": [
+       {
+        "flag": "reperfused"
+       },
+       {
+        "var": "sbp",
+        "op": "gt",
+        "value": 90
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "vf",
+   "status": "critical",
+   "dynamics": [
+    {
+     "var": "myocardium",
+     "rate_per_min": -0.5,
+     "floor": 0.0,
+     "when": {
+      "flag": "rosc",
+      "is": false
+     }
+    },
+    {
+     "var": "sbp",
+     "rate_per_min": -60,
+     "floor": 0.0,
+     "when": {
+      "flag": "rosc",
+      "is": false
+     }
+    }
+   ],
+   "bands": [],
+   "transitions": [
+    {
+     "to_state": "chest_pain",
+     "when": {
+      "flag": "rosc"
+     }
+    },
+    {
+     "to_state": "arrest",
+     "when": {
+      "var": "t_in_state",
+      "op": "ge",
+      "value": 90
+     }
+    }
+   ]
+  },
+  {
+   "id": "cardiogenic_shock",
+   "status": "critical",
+   "dynamics": [
+    {
+     "var": "sbp",
+     "rate_per_min": -8,
+     "floor": 0.0,
+     "when": {
+      "flag": "reperfused",
+      "is": false
+     }
+    }
+   ],
+   "bands": [],
+   "transitions": [
+    {
+     "to_state": "arrest",
+     "when": {
+      "var": "sbp",
+      "op": "lt",
+      "value": 45
+     }
+    },
+    {
+     "to_state": "reperfused",
+     "when": {
+      "flag": "reperfused"
+     }
+    }
+   ]
+  },
+  {
+   "id": "reperfused",
+   "status": "improving",
+   "dynamics": [
+    {
+     "var": "sbp",
+     "rate_per_min": 6,
+     "ceil": 130
+    },
+    {
+     "var": "hr",
+     "rate_per_min": -6,
+     "floor": 62
+    }
+   ],
+   "bands": [],
+   "transitions": []
+  },
+  {
+   "id": "arrest",
+   "status": "arrest",
+   "dynamics": [],
+   "bands": [],
+   "transitions": [
+    {
+     "outcome": "death_arrest",
+     "when": {
+      "var": "t_in_state",
+      "op": "ge",
+      "value": 1
+     }
+    }
+   ]
+  }
+ ],
+ "interventions": [
+  {
+   "id": "ecg",
+   "label": "12-lead ECG",
+   "match": {
+    "any_kw": [
+     "ecg",
+     "ekg",
+     "12-lead",
+     "twelve lead"
+    ]
+   },
+   "effects": [
+    {
+     "flag": "ecg_done"
+    },
+    {
+     "beat": "stemi_recognised"
+    }
+   ]
+  },
+  {
+   "id": "aspirin",
+   "label": "Aspirin 300mg chewed",
+   "match": {
+    "any_kw": [
+     "aspirin",
+     "asa"
+    ]
+   },
+   "effects": [
+    {
+     "delta": {
+      "myocardium": 0.04
+     },
+     "cap": 1.0
+    },
+    {
+     "flag": "antiplatelet"
+    }
+   ]
+  },
+  {
+   "id": "oxygen",
+   "label": "Oxygen if hypoxic",
+   "match": {
+    "any_kw": [
+     "oxygen",
+     "o2",
+     "mask",
+     "cannula"
+    ]
+   },
+   "effects": [
+    {
+     "delta": {
+      "spo2": 3
+     },
+     "cap": 99
+    }
+   ],
+   "equipment": "o2"
+  },
+  {
+   "id": "nitrate",
+   "label": "Nitrate — check the right ventricle first",
+   "match": {
+    "any_kw": [
+     "nitrate",
+     "gtn",
+     "ntg",
+     "nitroglycerin",
+     "isosorbide"
+    ]
+   },
+   "effects": [
+    {
+     "branch": [
+      {
+       "if": {
+        "var": "rv_involvement",
+        "op": "gt",
+        "value": 0.5
+       },
+       "then": [
+        {
+         "harm": "nitrate in RV infarct — preload collapse"
+        },
+        {
+         "delta": {
+          "sbp": -48
+         },
+         "floor": 0.0
+        },
+        {
+         "beat": "deteriorate"
+        }
+       ]
+      }
+     ],
+     "else": [
+      {
+       "delta": {
+        "sbp": -8
+       },
+       "floor": 0.0
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "heparin",
+   "label": "Anticoagulation",
+   "match": {
+    "any_kw": [
+     "heparin",
+     "enoxaparin",
+     "anticoag"
+    ]
+   },
+   "effects": [
+    {
+     "delta": {
+      "myocardium": 0.03
+     },
+     "cap": 1.0
+    }
+   ]
+  },
+  {
+   "id": "cath_lab",
+   "label": "Activate the cath lab — primary PCI",
+   "match": {
+    "any_kw": [
+     "cath",
+     "pci",
+     "angioplasty",
+     "balloon",
+     "reperfus",
+     "activate"
+    ]
+   },
+   "effects": [
+    {
+     "flag": "reperfused"
+    },
+    {
+     "delta": {
+      "sbp": 12
+     }
+    },
+    {
+     "beat": "reperfusion"
+    }
+   ]
+  },
+  {
+   "id": "thrombolysis",
+   "label": "Thrombolysis when PCI is out of reach",
+   "match": {
+    "any_kw": [
+     "thrombolys",
+     "lyse",
+     "alteplase",
+     "tenecteplase",
+     "streptokinase"
+    ]
+   },
+   "effects": [
+    {
+     "flag": "reperfused"
+    },
+    {
+     "delta": {
+      "myocardium": -0.05
+     },
+     "floor": 0.0
+    },
+    {
+     "beat": "reperfusion"
+    }
+   ]
+  },
+  {
+   "id": "defibrillate",
+   "label": "Defibrillate",
+   "match": {
+    "any_kw": [
+     "defib",
+     "shock",
+     "cardiovert",
+     "200j",
+     "joules"
+    ]
+   },
+   "effects": [
+    {
+     "branch": [
+      {
+       "if": {
+        "in_state": "vf"
+       },
+       "then": [
+        {
+         "flag": "rosc"
+        },
+        {
+         "set": {
+          "sbp": 88,
+          "hr": 104
+         }
+        },
+        {
+         "beat": "rosc"
+        }
+       ]
+      }
+     ],
+     "else": [
+      {
+       "harm": "unsynchronised shock to a perfusing rhythm"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cpr",
+   "label": "Chest compressions",
+   "match": {
+    "any_kw": [
+     "cpr",
+     "compress",
+     "resuscitat"
+    ]
+   },
+   "effects": [
+    {
+     "delta": {
+      "sbp": 18
+     },
+     "cap": 70
+    }
+   ]
+  },
+  {
+   "id": "troponin_wait",
+   "label": "Wait for troponin — the trap",
+   "match": {
+    "any_kw": [
+     "troponin",
+     "cardiac enzyme",
+     "wait for the lab"
+    ]
+   },
+   "effects": [
+    {
+     "beat": "delay"
+    }
+   ]
+  }
+ ],
+ "triggers": [
+  {
+   "id": "vf_onset",
+   "once": true,
+   "when": {
+    "all": [
+     {
+      "in_state": "chest_pain"
+     },
+     {
+      "var": "t_elapsed",
+      "op": "ge",
+      "value": 240
+     },
+     {
+      "flag": "rosc",
+      "is": false
+     }
+    ]
+   },
+   "do": [
+    {
+     "beat": "code_blue"
+    },
+    {
+     "to_state": "vf"
+    }
+   ]
+  },
+  {
+   "id": "muscle_saved",
+   "once": true,
+   "when": {
+    "all": [
+     {
+      "in_state": "reperfused"
+     },
+     {
+      "var": "t_in_state",
+      "op": "ge",
+      "value": 180
+     }
+    ]
+   },
+   "do": [
+    {
+     "branch": [
+      {
+       "if": {
+        "var": "myocardium",
+        "op": "gt",
+        "value": 0.6
+       },
+       "then": [
+        {
+         "outcome": "win_discharge"
+        }
+       ]
+      }
+     ],
+     "else": [
+      {
+       "outcome": "win_icu"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "outcomes": [
+  {
+   "id": "win_discharge",
+   "kind": "win",
+   "label": "Reperfused in time — muscle saved"
+  },
+  {
+   "id": "win_icu",
+   "kind": "win",
+   "label": "Reperfused late — ICU, impaired ventricle"
+  },
+  {
+   "id": "death_arrest",
+   "kind": "death",
+   "label": "Arrest — reperfusion never came"
+  }
+ ]
+}

@@ -1,0 +1,658 @@
+{
+ "_comment": "SCE block for EP1 severe anaphylaxis. Parity target: engine/src/physiology.rs Scenario::anaphylaxis_ep1 — every hardcoded Cfg param + Iv effect is reproduced here as data. Nests under a Case as the optional top-level `scenario` key. Parameters are illustrative, PENDING CLINICAL REVIEW (Resuscitation Council / WAO).",
+ "setting": "ED",
+ "tick_seconds": 1.0,
+ "vitals0": {
+  "hr": 128,
+  "sbp": 88,
+  "dbp": 54,
+  "spo2": 91,
+  "rr": 28,
+  "temp": 37,
+  "gcs": 15
+ },
+ "variables": {
+  "airway_patency": {
+   "init": 0.6,
+   "min": 0.0,
+   "max": 1.0
+  }
+ },
+ "initial_state": "acute",
+ "states": [
+  {
+   "id": "acute",
+   "status": "deteriorating",
+   "dynamics": [
+    {
+     "var": "airway_patency",
+     "rate_per_min": -0.08,
+     "floor": 0.0,
+     "when": {
+      "all": [
+       {
+        "flag": "adrenaline_active",
+        "is": false
+       },
+       {
+        "flag": "airway_secured",
+        "is": false
+       }
+      ]
+     }
+    },
+    {
+     "var": "sbp",
+     "rate_per_min": -6.0,
+     "floor": 0.0,
+     "when": {
+      "flag": "adrenaline_active",
+      "is": false
+     }
+    },
+    {
+     "var": "spo2",
+     "rate_per_min": -2.0,
+     "floor": 0.0,
+     "when": {
+      "flag": "adrenaline_active",
+      "is": false
+     }
+    }
+   ],
+   "bands": [
+    {
+     "status": "improving",
+     "when": {
+      "flag": "adrenaline_active"
+     }
+    },
+    {
+     "status": "critical",
+     "when": {
+      "any": [
+       {
+        "var": "airway_patency",
+        "op": "lt",
+        "value": 0.3
+       },
+       {
+        "var": "sbp",
+        "op": "lt",
+        "value": 60
+       },
+       {
+        "var": "spo2",
+        "op": "lt",
+        "value": 85
+       }
+      ]
+     }
+    }
+   ],
+   "transitions": [
+    {
+     "to_state": "arrest",
+     "when": {
+      "any": [
+       {
+        "var": "airway_patency",
+        "op": "lt",
+        "value": 0.15
+       },
+       {
+        "var": "sbp",
+        "op": "lt",
+        "value": 50
+       }
+      ]
+     }
+    },
+    {
+     "to_state": "recovered",
+     "when": {
+      "all": [
+       {
+        "var": "airway_patency",
+        "op": "gt",
+        "value": 0.7
+       },
+       {
+        "var": "sbp",
+        "op": "gt",
+        "value": 100
+       },
+       {
+        "var": "spo2",
+        "op": "gt",
+        "value": 94
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "recovered",
+   "status": "recovered",
+   "transitions": []
+  },
+  {
+   "id": "biphasic_controlled",
+   "status": "recovered",
+   "transitions": [
+    {
+     "outcome": "win_discharge",
+     "when": {
+      "var": "t_in_state",
+      "op": "ge",
+      "value": 180
+     }
+    }
+   ]
+  },
+  {
+   "id": "biphasic_decline",
+   "status": "deteriorating",
+   "dynamics": [
+    {
+     "var": "airway_patency",
+     "rate_per_min": -0.08,
+     "floor": 0.0,
+     "when": {
+      "flag": "airway_secured",
+      "is": false
+     }
+    },
+    {
+     "var": "sbp",
+     "rate_per_min": -6.0,
+     "floor": 0.0
+    },
+    {
+     "var": "spo2",
+     "rate_per_min": -2.0,
+     "floor": 0.0
+    }
+   ],
+   "bands": [
+    {
+     "status": "critical",
+     "when": {
+      "any": [
+       {
+        "var": "airway_patency",
+        "op": "lt",
+        "value": 0.3
+       },
+       {
+        "var": "sbp",
+        "op": "lt",
+        "value": 60
+       },
+       {
+        "var": "spo2",
+        "op": "lt",
+        "value": 85
+       }
+      ]
+     }
+    }
+   ],
+   "transitions": [
+    {
+     "outcome": "death_biphasic",
+     "when": {
+      "any": [
+       {
+        "var": "airway_patency",
+        "op": "lt",
+        "value": 0.15
+       },
+       {
+        "var": "sbp",
+        "op": "lt",
+        "value": 50
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "arrest",
+   "status": "arrest",
+   "_rhythm_note": "PEA, not VF. Anaphylactic arrest is overwhelmingly PEA or asystole — the heart is empty from vasodilation and capillary leak, not electrically chaotic. A monitor drawing VF here would teach the learner to shock, when the treatment is adrenaline, fluid and compressions.",
+   "rhythm": "pea",
+   "transitions": [
+    {
+     "outcome": "death_arrest",
+     "when": {
+      "var": "t_in_state",
+      "op": "ge",
+      "value": 180
+     }
+    }
+   ]
+  }
+ ],
+ "triggers": [
+  {
+   "id": "biphasic_onset",
+   "once": true,
+   "when": {
+    "all": [
+     {
+      "in_state": "recovered"
+     },
+     {
+      "var": "t_in_state",
+      "op": "ge",
+      "value": 120
+     }
+    ]
+   },
+   "do": [
+    {
+     "beat": "biphasic"
+    },
+    {
+     "branch": [
+      {
+       "if": {
+        "flag": "discharged"
+       },
+       "then": [
+        {
+         "to_state": "biphasic_decline"
+        }
+       ]
+      }
+     ],
+     "else": [
+      {
+       "to_state": "biphasic_controlled"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "o2_floor",
+   "once": false,
+   "when": {
+    "all": [
+     {
+      "flag": "o2_on"
+     },
+     {
+      "var": "spo2",
+      "op": "lt",
+      "value": 88
+     }
+    ]
+   },
+   "do": [
+    {
+     "set": {
+      "spo2": 88
+     }
+    }
+   ]
+  }
+ ],
+ "interventions": [
+  {
+   "id": "adrenaline_im",
+   "label": "IM adrenaline (rescue)",
+   "match": {
+    "all_groups": [
+     [
+      "adren",
+      "epinep",
+      "epipen",
+      "epi pen",
+      "epi-pen",
+      "อะดรีนาลีน",
+      "อะดรีนาลิน",
+      "อะดีนาลีน",
+      "อะดีนาลิน",
+      "เอพิเนฟ",
+      "เอพิเพน",
+      "เอพิ ",
+      "อีพิเพน",
+      "อีพิเนฟ",
+      "อีพิ "
+     ]
+    ],
+    "not_kw": [
+     "iv",
+     "push",
+     "เข้าเส้น",
+     "เส้นเลือด"
+    ]
+   },
+   "effects": [
+    {
+     "delta": {
+      "airway_patency": 0.35
+     },
+     "cap": 0.9
+    },
+    {
+     "delta": {
+      "sbp": 25
+     }
+    },
+    {
+     "delta": {
+      "spo2": 6
+     },
+     "cap": 99
+    },
+    {
+     "delta": {
+      "hr": 10
+     },
+     "cap": 160
+    },
+    {
+     "flag": "adrenaline_active",
+     "for_sec": 300
+    }
+   ]
+  },
+  {
+   "id": "adrenaline_iv_push",
+   "label": "IV-push 1:1000 adrenaline (HARM)",
+   "match": {
+    "all_groups": [
+     [
+      "adren",
+      "epinep",
+      "epipen",
+      "อะดรีนาลีน",
+      "อะดรีนาลิน",
+      "อะดีนาลีน",
+      "อะดีนาลิน",
+      "เอพิเนฟ",
+      "อีพิเนฟ"
+     ],
+     [
+      "iv",
+      "push",
+      "เข้าเส้น",
+      "เส้นเลือด"
+     ]
+    ]
+   },
+   "harm": "arrhythmia (IV push 1:1000)",
+   "effects": [
+    {
+     "delta": {
+      "hr": 40,
+      "sbp": -20
+     }
+    }
+   ]
+  },
+  {
+   "id": "oxygen",
+   "equipment": "o2",
+   "equipment_setting": 10,
+   "label": "supplemental O2",
+   "match": {
+    "any_kw": [
+     "oxygen",
+     "o2",
+     "ออกซิเจน",
+     "face mask",
+     "cannula"
+    ]
+   },
+   "effects": [
+    {
+     "delta": {
+      "spo2": 5
+     },
+     "cap": 99
+    },
+    {
+     "flag": "o2_on"
+    }
+   ]
+  },
+  {
+   "id": "fluids",
+   "equipment": "iv",
+   "equipment_setting": 999,
+   "label": "IV fluid bolus",
+   "match": {
+    "any_kw": [
+     "fluid",
+     "saline",
+     "น้ำเกลือ",
+     "สารน้ำ",
+     "crystalloid",
+     "bolus",
+     "nss",
+     "ringer"
+    ]
+   },
+   "effects": [
+    {
+     "delta": {
+      "sbp": 12
+     }
+    }
+   ]
+  },
+  {
+   "id": "supine",
+   "label": "supine + legs raised",
+   "match": {
+    "any_kw": [
+     "supine",
+     "นอนราบ",
+     "ยกขา",
+     "legs up"
+    ]
+   },
+   "effects": [
+    {
+     "delta": {
+      "sbp": 8
+     }
+    }
+   ]
+  },
+  {
+   "id": "stand",
+   "label": "stand / walk the hypotensive patient (HARM)",
+   "match": {
+    "any_kw": [
+     "stand",
+     "ลุก",
+     "เดิน",
+     "walk"
+    ]
+   },
+   "harm": "stand/walk collapse",
+   "effects": [
+    {
+     "delta": {
+      "sbp": -25
+     }
+    }
+   ]
+  },
+  {
+   "id": "intubate",
+   "equipment": "ett",
+   "label": "secure the airway",
+   "match": {
+    "any_kw": [
+     "intubat",
+     "ใส่ท่อ",
+     "ett",
+     "secure airway",
+     "airway"
+    ]
+   },
+   "effects": [
+    {
+     "flag": "airway_secured"
+    },
+    {
+     "branch": [
+      {
+       "if": {
+        "var": "airway_patency",
+        "op": "lt",
+        "value": 0.5
+       },
+       "then": [
+        {
+         "set": {
+          "airway_patency": 0.5
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "admit",
+   "label": "admit / observe",
+   "match": {
+    "any_kw": [
+     "admit",
+     "สังเกตอาการ",
+     "ward",
+     "observe",
+     "รับไว้",
+     "นอนรพ",
+     "นอนโรงพยาบาล"
+    ]
+   },
+   "effects": [
+    {
+     "flag": "observed"
+    }
+   ]
+  },
+  {
+   "id": "discharge",
+   "label": "discharge home",
+   "match": {
+    "any_kw": [
+     "discharge",
+     "กลับบ้าน",
+     "จำหน่าย",
+     "ให้กลับ"
+    ]
+   },
+   "effects": [
+    {
+     "flag": "discharged"
+    }
+   ]
+  },
+  {
+   "id": "antihistamine",
+   "label": "antihistamine (adjunct — no trajectory change)",
+   "match": {
+    "any_kw": [
+     "chlorphenir",
+     "cpm",
+     "antihistamine",
+     "คลอเฟ",
+     "แก้แพ้",
+     "diphenhydramine",
+     "loratadine"
+    ]
+   },
+   "effects": []
+  },
+  {
+   "id": "steroid",
+   "label": "steroid (adjunct — no trajectory change)",
+   "match": {
+    "any_kw": [
+     "hydrocortisone",
+     "dexamethasone",
+     "steroid",
+     "สเตียรอยด์",
+     "เดกซ่า",
+     "prednisolone"
+    ]
+   },
+   "effects": []
+  }
+ ],
+ "outcomes": [
+  {
+   "id": "win_discharge",
+   "kind": "win",
+   "label": "จำหน่ายปลอดภัยหลังพ้นช่วง biphasic"
+  },
+  {
+   "id": "death_arrest",
+   "kind": "death",
+   "label": "หัวใจหยุดเต้นจากภาวะ anaphylaxis ที่ไม่ได้รับ adrenaline ทัน"
+  },
+  {
+   "id": "death_biphasic",
+   "kind": "death",
+   "label": "เสียชีวิตจาก biphasic relapse หลังจำหน่ายก่อนเวลา"
+  }
+ ],
+ "debrief": {
+  "_comment": "What a clinician expects of this case, and by when. Targets belong here rather than in code: they are clinical judgement, they differ by scenario, and a doctor must be able to change one without a programmer. Everything the debrief reports without a target is a plain fact about the tape — a time, an order, a duration.",
+  "expect": [
+   {
+    "id": "adrenaline_im",
+    "label": "IM adrenaline",
+    "within_sec": 60,
+    "why": "First line, and delay to adrenaline is the strongest predictor of death in anaphylaxis."
+   },
+   {
+    "id": "oxygen",
+    "label": "supplemental oxygen",
+    "within_sec": 120,
+    "why": "Hypoxia is what kills first while the adrenaline is taking hold."
+   },
+   {
+    "id": "supine",
+    "label": "lay her flat, legs up",
+    "within_sec": 180,
+    "why": "Restores preload in distributive shock and costs nothing."
+   },
+   {
+    "id": "fluids",
+    "label": "IV fluid",
+    "within_sec": 300,
+    "why": "The vasodilated circulation needs volume as well as vasoconstriction."
+   },
+   {
+    "id": "admit",
+    "label": "admit for observation",
+    "why": "A biphasic reaction returns hours later. Sending her home is the trap this case is built around."
+   }
+  ],
+  "avoid": [
+   {
+    "id": "stand",
+    "label": "standing her up",
+    "why": "Sitting or standing a patient in anaphylactic shock empties the ventricle and can arrest them outright."
+   },
+   {
+    "id": "discharge",
+    "label": "discharging her early",
+    "why": "She looks better before the second phase, which is precisely when it comes back."
+   }
+  ]
+ }
+}

@@ -1,0 +1,87 @@
+[
+ {
+  "sce_hash": "4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d",
+  "path": "demo/stations/osce-a.sce.json",
+  "bytes": 6937
+ },
+ {
+  "sce_hash": "109bee5badd6e52955e4c8312f29be10c305f32f2ba777a445eff149d2747ea3",
+  "path": "demo/stations/osce-a2.sce.json",
+  "bytes": 8575
+ },
+ {
+  "sce_hash": "b61fbebc65f71eaead162fd377183044b4acf62a1a6f5e3f39658c900ed723e8",
+  "path": "demo/stations/osce-b.sce.json",
+  "bytes": 6616
+ },
+ {
+  "sce_hash": "abce636f126ed9588d03c6d8ecc7306bd628a5802e06c0f1a18a4f3c60639f2a",
+  "path": "demo/stations/osce-b2.sce.json",
+  "bytes": 7524
+ },
+ {
+  "sce_hash": "87fbc1290cb48f8ec78bb0d6b6efc80677ae6f9b9b26628fce4fb1b9c1b7d662",
+  "path": "demo/stations/osce-b3.sce.json",
+  "bytes": 8331
+ },
+ {
+  "sce_hash": "5c0e1270f68b9665be6ea7a90552129ee649712bfa77327c8fdb969adcaaceff",
+  "path": "demo/stations/osce-c.sce.json",
+  "bytes": 7920
+ },
+ {
+  "sce_hash": "90e52ac0e31d7ce60965ef1a2ef60302a695bf6baf0d5fa0be3431b0053cb642",
+  "path": "demo/stations/osce-c2.sce.json",
+  "bytes": 8163
+ },
+ {
+  "sce_hash": "ece6ed587279f3ae51dd6ccfbccb8ba0b47fb0ee8578e61eacd72e6702f122d7",
+  "path": "demo/stations/osce-c3.sce.json",
+  "bytes": 6822
+ },
+ {
+  "sce_hash": "b9bfa9c57e40dcc5dfc342431b8ae9b7f2836649876f721d2d0f62fe70a577fb",
+  "path": "demo/stations/osce-d.sce.json",
+  "bytes": 9445
+ },
+ {
+  "sce_hash": "b9bc24963c3ed5bf344c51bb1749155a1df4f10b59d6209c27ccb902686a5e68",
+  "path": "demo/stations/osce-d2.sce.json",
+  "bytes": 7836
+ },
+ {
+  "sce_hash": "6f7e620fc6ea084c6bb30bd9eaabd0d6fac574bc15ac189620c3d5bc42f414cc",
+  "path": "demo/stations/osce-d3.sce.json",
+  "bytes": 8041
+ },
+ {
+  "sce_hash": "145c0f6827c7f39ace39d8f5fd7bda33a92b996a7502367a81b03cd70a58e63d",
+  "path": "demo/stations/osce-d4.sce.json",
+  "bytes": 9336
+ },
+ {
+  "sce_hash": "44f9c59774dc4b6eaa9c00b282665c78ca9e2b535e9ca8dd39fcb1b7b7987117",
+  "path": "demo/scenarios/ep2-stemi.json",
+  "bytes": 8294
+ },
+ {
+  "sce_hash": "6e14f222b29b047d406be2e13841de60dddc12c2b7b9ee74bbc59a8357f27638",
+  "path": "demo/scenarios/ep3-epiglottitis.json",
+  "bytes": 6760
+ },
+ {
+  "sce_hash": "4f763103e02fa0480678a55a67bd0d1589a390235a24403c92e3f10b5747abbb",
+  "path": "demo/scenarios/ep4-pulmonary-embolism.json",
+  "bytes": 7557
+ },
+ {
+  "sce_hash": "aa1d8be0a5c8a69dc969337dd9979fc2207426797019d1b25bd84f40cf901545",
+  "path": "demo/scenarios/ep5-the-night-the-stars-fell.json",
+  "bytes": 6697
+ },
+ {
+  "sce_hash": "f9dbb7de0551815620d88e7b8ff66292e5fbdf565801c972e216ce329c380e45",
+  "path": "conformance/sce-anaphylaxis-ep1.json",
+  "bytes": 11939
+ }
+]

@@ -8,7 +8,7 @@
 //! and sessions in a map. The point is to make the automaton playable, not to ship a platform.
 
 mod chain;
-use vitals_web::{fuel, lang, meter, news2, patient, store};
+use vitals_web::{archive, fuel, lang, meter, news2, patient, store};
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -894,6 +894,23 @@ fn scenario_path(id: &str) -> std::path::PathBuf {
     }
 }
 
+/// Where the archive of past scenario versions lives on this deployment.
+///
+/// Under the scenario root, so it moves with `VITALS_SCENARIOS` exactly as the cases do — in the
+/// image that is `/app/conformance/sce-archive`, put there by the same `COPY` that ships the
+/// conformance vectors. See [`archive`] for why it must not live under `docs/`.
+fn sce_archive_dir() -> std::path::PathBuf {
+    scenario_root().join(archive::DIR)
+}
+
+/// The scenario files this server is playing right now, in shelf order.
+///
+/// The second place `/api/sce` looks. A run anchored ten minutes ago names a file nobody has
+/// archived yet, and that run is precisely the one a reviewer checks first.
+fn live_scenarios() -> Vec<std::path::PathBuf> {
+    every_case().into_iter().map(scenario_path).collect()
+}
+
 /// Every case this server can be asked to play, in shelf order: the five episodes and the twelve
 /// stations. One list, so "which cases have a voice" is answerable without guessing at ids.
 fn every_case() -> Vec<&'static str> {
@@ -1198,6 +1215,20 @@ fn main() {
     // What this bay may spend, resumed from the store so a deploy does not reset the month.
     let mut meter = meter::Meter::open(&store);
     println!("meter      {}", meter.describe());
+
+    // How many past scenario versions this deployment can hand back to a verifier. Printed
+    // because the failure mode is silent: an image built without `conformance/sce-archive`
+    // answers /api/sce with 404 for every historical hash and looks perfectly healthy doing it.
+    {
+        let dir = sce_archive_dir();
+        let n = archive::hashes(&dir).len();
+        println!(
+            "archive    {n} archived scenario version(s) at {} · {} live{}",
+            dir.display(),
+            live_scenarios().iter().filter(|p| p.exists()).count(),
+            if n == 0 { " — /api/sce can only answer for what is on the shelf today" } else { "" },
+        );
+    }
 
     // The star bar: an exam-mode case counts as cleared at or above this fraction of the
     // deterministic rubric, in basis points. The default is the canonical constant — the same
@@ -1912,6 +1943,42 @@ fn main() {
             .with_header(
                 Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=300"[..]).unwrap(),
             ),
+            // ── the scenario, addressed by its own hash ─────────────────────────
+            // Every leaf on chain names the scenario it was played against by sha256. Until this
+            // route existed, that name resolved to nothing: the disk held the current file, the
+            // old versions were nowhere, and "deterministic, re-derivable by anyone" meant
+            // "re-derivable by whoever has our repository and guesses the right commit". A leaf
+            // can now hand a stranger the exact bytes it was computed over.
+            //
+            // Public and ungated, like the chain it explains — a proof only we can serve the
+            // inputs for is not a proof. Verified before it is sent: `archive::find` re-hashes
+            // what it read and refuses anything that does not match, because bytes served under
+            // the wrong hash would make a verifier conclude the *chain* was lying.
+            (Method::Get, p) if p.starts_with("/api/sce/") => {
+                let want = p.trim_start_matches("/api/sce/");
+                match archive::find(want, &live_scenarios(), &sce_archive_dir()) {
+                    Some(text) => {
+                        let _ = req.respond(
+                            Response::from_string(text)
+                                .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap())
+                                // Content-addressed: these bytes cannot change without changing
+                                // the URL, which is the one case `immutable` is simply true.
+                                .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=31536000, immutable"[..]).unwrap()),
+                        );
+                        continue;
+                    }
+                    // One answer for "not a hash", "no such hash" and "the file under that name
+                    // is not that file". The caller's next move is the same in all three, and
+                    // the alternative is a probe that tells a stranger which files exist.
+                    None => json_code(
+                        serde_json::json!({
+                            "error": "no scenario with that hash",
+                            "want": "GET /api/sce/<64 hex sha256 of the scenario file>",
+                        }),
+                        404,
+                    ),
+                }
+            }
             // The month's spend, the ceiling and where donations go — public, because the
             // ceiling being visible is the point. Anyone can check what the bay has left.
             (Method::Get, "/api/meter") => json(meter.view()),
@@ -2771,7 +2838,10 @@ mod tests {
             assert!(guarded(p), "{p} makes the server sign or spend");
         }
         for p in ["/", "/play", "/api/new", "/api/step", "/api/kit", "/api/tape", "/api/chain",
-                  "/api/meter", "/api/fuel", "/api/stars", "/api/lang", "/donate"] {
+                  "/api/meter", "/api/fuel", "/api/stars", "/api/lang", "/donate",
+                  // Re-derivation is the product's whole claim. A token on it would mean
+                  // "re-derivable by anyone we gave a token to", which is not the claim.
+                  "/api/sce/0000000000000000000000000000000000000000000000000000000000000000"] {
             assert!(!guarded(p), "{p} is play, and a kiosk must not need a token to play");
         }
     }

@@ -10,6 +10,7 @@
 // stranger can confirm from one line. (vitals-program cannot carry this: Solana's entrypoint!
 // macro expands to the unsafe input deserialisation every program has.)
 #![forbid(unsafe_code)]
+pub mod archive;
 pub mod fuel;
 pub mod lang;
 pub mod meter;

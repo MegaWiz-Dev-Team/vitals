@@ -1,0 +1,240 @@
+{
+ "_note": "OSCE station D — converted from embla-cases embla-upper-gastrointestinal-bleeding-intern v1.0.0 (sha256:26ee2d8fd7027261). Presentation follows the deploy-safe form; the hidden block informed only the rubric (demo/rubrics/osce-d.json). Clinically shaped, not clinically reviewed. The teaching is the finale's core loop rehearsed on one patient: call the shock while he is still compensating, two large-bore lines before the fourth minute, crystalloid AND blood, then stop the source. The endoscopy suite is gated the way B's cath lab was — GI will not scope an empty tank — and the trap is the chest-pain reflex: a CAD history plus epigastric pain reads like EP2 until you feed aspirin to a bleeding stomach.",
+ "setting": "ED",
+ "tick_seconds": 1.0,
+ "vitals0": { "hr": 105, "sbp": 100, "dbp": 60, "spo2": 96, "rr": 20, "temp": 36.8, "gcs": 15 },
+ "initial_state": "consult",
+ "states": [
+  {
+   "id": "consult",
+   "status": "deteriorating",
+   "dynamics": [
+    { "var": "sbp",  "rate_per_min": -3,   "floor": 50, "when": { "flag": "bleeding_controlled", "is": false } },
+    { "var": "hr",   "rate_per_min": 2,    "ceil": 168, "when": { "flag": "bleeding_controlled", "is": false } },
+    { "var": "spo2", "rate_per_min": -0.2, "floor": 88, "when": { "flag": "bleeding_controlled", "is": false } }
+   ],
+   "bands": [
+    { "status": "critical", "when": { "var": "sbp", "op": "lt", "value": 80 } }
+   ],
+   "transitions": [
+    { "to_state": "controlled", "when": { "flag": "bleeding_controlled" } },
+    { "outcome": "death_arrest", "when": { "var": "sbp", "op": "lt", "value": 62 } }
+   ]
+  },
+  {
+   "id": "controlled",
+   "status": "improving",
+   "dynamics": [
+    { "var": "sbp",  "rate_per_min": 6,   "ceil": 118 },
+    { "var": "hr",   "rate_per_min": -6,  "floor": 88 },
+    { "var": "spo2", "rate_per_min": 0.5, "ceil": 98 }
+   ],
+   "bands": [],
+   "transitions": []
+  }
+ ],
+ "interventions": [
+  {
+   "id": "ask_meds",
+   "label": "Ask the daily medications",
+   "match": { "any_kw": ["pills", "medication", "medicine", "every day", "ยาอะไร"] },
+   "effects": [ { "beat": "— \"Heart pills. The white one and the pink one, every morning since the stent.\" Aspirin and clopidogrel, on a bleeding stomach." } ]
+  },
+  {
+   "id": "ask_blood",
+   "label": "Ask what came up, and what came out",
+   "match": { "any_kw": ["how much", "colour", "color", "glass", "vomit", "อาเจียน"] },
+   "effects": [ { "beat": "— \"A full glass of it, red like a fresh cut. And this morning the toilet was black tar.\"" } ]
+  },
+  {
+   "id": "ask_dizzy",
+   "label": "Ask about standing up",
+   "match": { "any_kw": ["dizz", "faint", "light-headed", "stand", "หน้ามืด"] },
+   "effects": [ { "beat": "— \"The room tips over when I stand. I went down on the bathroom floor.\" The pressure is lying; the story is not." } ]
+  },
+  {
+   "id": "exam_shock",
+   "label": "Feel his hands, look at his eyes",
+   "match": { "any_kw": ["hands", "eyes", "conjunctiv", "pale", "cold", "perfusion", "cap refill"] },
+   "effects": [ { "beat": "hands cold to the wrist, conjunctivae the colour of paper — he is compensating, and compensating is a countdown" } ]
+  },
+  {
+   "id": "exam_abdomen",
+   "label": "Press on the belly",
+   "match": { "any_kw": ["belly", "abdomen", "palpat"] },
+   "effects": [ { "beat": "soft, tender over the epigastrium, no guarding — nothing to cut tonight, something to scope" } ]
+  },
+  {
+   "id": "exam_dre",
+   "label": "Rectal exam",
+   "match": { "any_kw": ["rectal", "pr exam", "per rectum"] },
+   "effects": [ { "beat": "melena on the glove — an upper source, declared" } ]
+  },
+  {
+   "id": "cbc",
+   "label": "Full blood count",
+   "match": { "any_kw": ["cbc", "blood count", "full blood", "haemoglobin", "hemoglobin"] },
+   "effects": [ { "beat": "hb 8.5, haematocrit 26 — and he is still diluting; the number is yesterday's news" } ]
+  },
+  {
+   "id": "coags",
+   "label": "Coagulogram",
+   "match": { "any_kw": ["coag", "inr", "clotting"] },
+   "effects": [ { "beat": "inr 1.1, platelets fine — the problem is the two tablets, not the cascade" } ]
+  },
+  {
+   "id": "type_screen",
+   "label": "Group and crossmatch",
+   "match": { "any_kw": ["crossmatch", "cross-match", "group and", "type and screen", "type & screen"] },
+   "effects": [
+    { "flag": "blood_typed" },
+    { "beat": "group and screen away, four units crossmatching — the fridge clock starts" }
+   ]
+  },
+  {
+   "id": "two_lines",
+   "label": "Two large-bore lines",
+   "match": { "any_kw": ["large-bore", "large bore", "two lines", "second line", "cannula", "iv access", "14g", "16g"] },
+   "effects": [
+    { "flag": "lines_in" },
+    { "beat": "two grey cannulas, one in each antecubital fossa — the bore is the resuscitation" }
+   ],
+   "equipment": "iv",
+   "equipment_setting": 999
+  },
+  {
+   "id": "crystalloid",
+   "label": "Warmed crystalloid, wide open",
+   "match": { "any_kw": ["crystalloid", "saline", "ringer", "fluid", "wide open"] },
+   "effects": [
+    { "branch": [
+      { "if": { "flag": "lines_in" },
+        "then": [
+         { "flag": "fluids_given" },
+         { "delta": { "sbp": 12 }, "cap": 108 },
+         { "beat": "warmed crystalloid wide open through both barrels — the pressure answers" }
+        ] }
+     ],
+     "else": [
+      { "delta": { "sbp": 4 }, "cap": 100 },
+      { "beat": "a litre crawling through one thin green line — bore first, then volume" }
+     ] }
+   ]
+  },
+  {
+   "id": "transfuse",
+   "label": "Transfuse packed cells",
+   "match": { "any_kw": ["transfus", "packed cells", "prbc", "o neg", "red cells"] },
+   "effects": [
+    { "branch": [
+      { "if": { "flag": "blood_typed" },
+        "then": [
+         { "flag": "blood_running" },
+         { "delta": { "sbp": 8 }, "cap": 110 },
+         { "beat": "crossmatched cells up and running warm through the second line" }
+        ] }
+     ],
+     "else": [
+      { "flag": "blood_running" },
+      { "delta": { "sbp": 5 }, "cap": 108 },
+      { "beat": "o negative from the emergency drawer — the crossmatch owes you two more units" }
+     ] }
+   ]
+  },
+  {
+   "id": "ppi",
+   "label": "PPI, bolus then infusion",
+   "match": { "any_kw": ["pantopraz", "omepraz", "esomepraz", "ppi", "proton"] },
+   "effects": [
+    { "flag": "ppi_given" },
+    { "beat": "pantoprazole, bolus then the infusion — give the clot a ph it can live with" }
+   ]
+  },
+  {
+   "id": "hold_antiplatelets",
+   "label": "Hold the antiplatelets",
+   "match": { "any_kw": ["hold", "withhold", "stop the"] },
+   "effects": [ { "beat": "aspirin and clopidogrel held tonight — cardiology can have their argument in the morning" } ]
+  },
+  {
+   "id": "endoscopy",
+   "label": "Call GI — urgent endoscopy",
+   "match": { "any_kw": ["endoscop", "egd", "gastroscop", "scope", "call gi", "gastroenterolog"] },
+   "effects": [
+    { "branch": [
+      { "if": { "all": [
+         { "flag": "lines_in" },
+         { "flag": "fluids_given" },
+         { "flag": "blood_running" }
+        ] },
+        "then": [
+         { "flag": "bleeding_controlled" },
+         { "beat": "the scope finds a visible vessel on the lesser curve — clipped, injected, dry" }
+        ] }
+     ],
+     "else": [
+      { "beat": "gi, on the phone: 'not on an empty tank. lines, volume, blood — then i scope him.'" }
+     ] }
+   ]
+  },
+  {
+   "id": "dx_ugib",
+   "label": "Name the diagnosis",
+   "match": { "any_kw": ["upper gi", "ugib", "gi bleed", "peptic ulcer", "ulcer"] },
+   "effects": [ { "flag": "dx_named" }, { "beat": "an upper gi bleed on double antiplatelets — named, with the clock still running" } ]
+  },
+  {
+   "id": "dx_acs",
+   "label": "Call it a coronary",
+   "match": { "any_kw": ["coronary", "acs", "heart attack", "infarct", "stemi"] },
+   "effects": [ { "beat": "the old notes say stent — but the troponin will be quiet and the toilet was black. wrong organ, same aspirin." } ]
+  },
+  {
+   "id": "aspirin",
+   "label": "Aspirin (HARM)",
+   "match": { "any_kw": ["aspirin", " asa"], "not_kw": ["hold", "stop", "withhold"] },
+   "harm": "aspirin on top of clopidogrel into a bleeding stomach — the chest-pain reflex, doubled",
+   "effects": [ { "delta": { "sbp": -6 }, "floor": 50 } ]
+  }
+ ],
+ "triggers": [
+  {
+   "id": "shock_missed",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "consult" },
+    { "var": "t_elapsed", "op": "ge", "value": 240 },
+    { "not": { "done": "two_lines" } }
+   ] },
+   "do": [
+    { "harm": "four minutes of falling pressure on one thin green line — shock was called at the door, and the access never answered" }
+   ]
+  },
+  {
+   "id": "rebleed",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "consult" },
+    { "var": "t_elapsed", "op": "ge", "value": 300 }
+   ] },
+   "do": [
+    { "beat": "he retches again — fresh red, a full bowl of it; the sheet is soaked" },
+    { "delta": { "sbp": -18 }, "floor": 48 },
+    { "delta": { "hr": 12 }, "cap": 172 }
+   ]
+  },
+  {
+   "id": "unit_takes_him",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "controlled" },
+    { "var": "t_in_state", "op": "ge", "value": 150 }
+   ] },
+   "do": [ { "outcome": "win_icu" } ]
+  }
+ ],
+ "outcomes": [
+  { "id": "win_icu",      "kind": "win",   "label": "Volume, blood, and a clipped vessel — the ICU takes him warm" },
+  { "id": "death_arrest", "kind": "death", "label": "Exsanguination on a trolley — the lines never matched the loss" }
+ ]
+}

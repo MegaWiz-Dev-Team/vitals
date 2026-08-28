@@ -1,0 +1,193 @@
+{
+ "_note": "OSCE station D3 — converted from embla-cases ddx-p-anaphylaxis-1 v1.0.0 (sha256:dae926c523d9caa9). Presentation follows the deploy-safe form for the reaction itself (seafood exposure, urticaria, facial swelling, cramping gut, expiratory wheeze); per the season design (Station Sets v2 declared this member paediatric) the patient is re-aged to a six-year-old of twenty kilograms — the source case's adult frame does not carry the set's teaching point, and the note says so rather than hiding it. The hidden block informed only the rubric (demo/rubrics/osce-d3.json). Clinically shaped, not clinically reviewed. The season's first disease returns one last time, child-sized: the drug is the same, the dose is not. Weigh her, then draw 0.01 mg per kilo — the adult half-milligram is the classic pitfall, and here it is a scored harm even though she survives it. The adrenaline family sits first in the list so a dosed order is read as a dose, never as small talk about kilograms.",
+ "setting": "ER",
+ "tick_seconds": 1.0,
+ "vitals0": { "hr": 138, "sbp": 82, "dbp": 50, "spo2": 93, "rr": 30, "temp": 37.0, "gcs": 15 },
+ "initial_state": "consult",
+ "states": [
+  {
+   "id": "consult",
+   "status": "deteriorating",
+   "dynamics": [
+    { "var": "sbp",  "rate_per_min": -3,   "floor": 46, "when": { "flag": "adrenaline_given", "is": false } },
+    { "var": "spo2", "rate_per_min": -0.8, "floor": 80, "when": { "flag": "adrenaline_given", "is": false } },
+    { "var": "hr",   "rate_per_min": 3,    "ceil": 185, "when": { "flag": "adrenaline_given", "is": false } }
+   ],
+   "bands": [
+    { "status": "critical", "when": { "var": "sbp", "op": "lt", "value": 70 } }
+   ],
+   "transitions": [
+    { "to_state": "recovering", "when": { "flag": "adrenaline_given" } },
+    { "outcome": "death_arrest",
+      "when": { "any": [
+       { "var": "sbp",  "op": "lt", "value": 58 },
+       { "var": "spo2", "op": "lt", "value": 84 }
+      ] } }
+   ]
+  },
+  {
+   "id": "recovering",
+   "status": "improving",
+   "dynamics": [
+    { "var": "sbp",  "rate_per_min": 8,   "ceil": 104 },
+    { "var": "spo2", "rate_per_min": 1.5, "ceil": 98 },
+    { "var": "hr",   "rate_per_min": -8,  "floor": 110 }
+   ],
+   "bands": [],
+   "transitions": []
+  }
+ ],
+ "interventions": [
+  {
+   "id": "adrenaline_child",
+   "label": "Adrenaline 0.2 mg IM — 0.01/kg",
+   "match": { "all_groups": [["adren", "epinep", "epipen"], ["0.15", "0.2", "0.01", "weight", "kilo", "child", "paediatric", "pediatric", "junior", "per kg"]],
+              "not_kw": [" iv", "push", "intraven", "infus", "0.5", "500"] },
+   "effects": [
+    { "flag": "adrenaline_given" },
+    { "delta": { "sbp": 12 }, "cap": 104 },
+    { "delta": { "spo2": 2 }, "cap": 99 },
+    { "beat": "adrenaline 0.2 mg im, outer thigh — 0.01 a kilo, drawn to the twenty she weighs" }
+   ]
+  },
+  {
+   "id": "adrenaline_adult_dose",
+   "label": "Adrenaline 0.5 mg IM — adult dose (HARM)",
+   "match": { "all_groups": [["adren", "epinep", "epipen"], ["0.5", "500", "adult"]],
+              "not_kw": [" iv", "push", "intraven", "infus"] },
+   "harm": "half a milligram into a twenty-kilo child — an adult dose, two and a half times hers; the tachycardia that follows is yours",
+   "effects": [
+    { "flag": "adrenaline_given" },
+    { "delta": { "sbp": 14 }, "cap": 108 },
+    { "delta": { "hr": 35 }, "cap": 195 }
+   ]
+  },
+  {
+   "id": "adrenaline_iv_push",
+   "label": "IV-push adrenaline (HARM)",
+   "match": { "all_groups": [["adren", "epinep", "epipen"], [" iv", "push", "intraven", "infus"]] },
+   "harm": "iv push adrenaline — arrhythmia on a small beating heart",
+   "effects": [
+    { "delta": { "hr": 30 }, "cap": 195 },
+    { "delta": { "sbp": -10 }, "floor": 42 }
+   ]
+  },
+  {
+   "id": "adrenaline_undosed",
+   "label": "Adrenaline — no dose named",
+   "match": { "any_kw": ["adren", "epinep", "epipen"] },
+   "effects": [ { "beat": "the nurse holds the ampoule still: \"how much, doctor? she is twenty kilos.\" the drug waits on a number." } ]
+  },
+  {
+   "id": "ask_weight",
+   "label": "Ask her weight",
+   "match": { "any_kw": ["weigh", "weight", "kilo", " kg", "น้ำหนัก"] },
+   "effects": [
+    { "flag": "weight_known" },
+    { "beat": "— \"Twenty kilos, on the school scales last week,\" her mother says, already half-crying. The number every dose hangs on." }
+   ]
+  },
+  {
+   "id": "ask_exposure",
+   "label": "Ask what she ate",
+   "match": { "any_kw": ["ate", "eat", "food", "fair", "กิน"] },
+   "effects": [ { "beat": "— \"Prawn fritters at the school fair. She knows she mustn't — she is six, she forgot to ask.\" Thirty minutes ago." } ]
+  },
+  {
+   "id": "ask_allergy",
+   "label": "Ask about known allergies",
+   "match": { "any_kw": ["allerg", "แพ้"] },
+   "effects": [ { "beat": "— \"Shrimp, since she was two. It is written on a card in her school bag.\"" } ]
+  },
+  {
+   "id": "exam_skin",
+   "label": "Look at the skin",
+   "match": { "any_kw": ["skin", "rash", "wheal"] },
+   "effects": [ { "beat": "wheals climbing her neck and arms, lips swelling as you watch — she keeps licking them" } ]
+  },
+  {
+   "id": "exam_chest",
+   "label": "Listen to the chest",
+   "match": { "any_kw": ["listen", "auscult", "wheeze"] },
+   "effects": [ { "beat": "expiratory wheeze both sides, tugging under the little ribs" } ]
+  },
+  {
+   "id": "oxygen",
+   "label": "Oxygen",
+   "match": { "any_kw": ["oxygen", "o2", "mask", "cannula"] },
+   "effects": [ { "delta": { "spo2": 3 }, "cap": 99 } ],
+   "equipment": "o2",
+   "equipment_setting": 8
+  },
+  {
+   "id": "fluids",
+   "label": "Saline 20 mL/kg",
+   "match": { "any_kw": ["saline", "fluid", "bolus", "ringer", "20 ml/kg"] },
+   "effects": [
+    { "delta": { "sbp": 8 }, "cap": 100 },
+    { "beat": "saline 20 mils a kilo — four hundred, warmed, running through a small pink cannula" }
+   ],
+   "equipment": "iv",
+   "equipment_setting": 999
+  },
+  {
+   "id": "chlorpheniramine",
+   "label": "Antihistamine",
+   "match": { "any_kw": ["chlorphen", "antihist", "cetiriz", "lorata"] },
+   "effects": [ { "beat": "antihistamine for the itch — after the adrenaline, never instead of it" } ]
+  },
+  {
+   "id": "hydrocortisone",
+   "label": "Steroid",
+   "match": { "any_kw": ["hydrocort", "steroid", "dexameth"] },
+   "effects": [ { "beat": "steroid on board — for the late phase" } ]
+  },
+  {
+   "id": "dx_anaphylaxis",
+   "label": "Name the diagnosis",
+   "match": { "any_kw": ["anaphyla"] },
+   "effects": [ { "flag": "dx_named" }, { "beat": "anaphylaxis — the season's first disease, child-sized" } ]
+  },
+  {
+   "id": "observe",
+   "label": "Admit and watch for the second wave",
+   "match": { "any_kw": ["admit", "observ", "watch", "second wave", "monitor"] },
+   "effects": [ { "flag": "observed" }, { "beat": "admitted with mum on the bed beside her — the biphasic wave finds the nurses ready" } ]
+  },
+  {
+   "id": "discharge",
+   "label": "Send her home (HARM)",
+   "match": { "any_kw": ["discharge", "go home", "send her home"] },
+   "harm": "discharged during the observation window — biphasic reactions come back to children asleep in cars",
+   "effects": []
+  }
+ ],
+ "triggers": [
+  {
+   "id": "adrenaline_delayed",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "consult" },
+    { "var": "t_elapsed", "op": "ge", "value": 300 },
+    { "flag": "adrenaline_given", "is": false }
+   ] },
+   "do": [
+    { "harm": "adrenaline delayed — a child's airway closes faster than the argument about the dose" },
+    { "delta": { "sbp": -8 }, "floor": 46 }
+   ]
+  },
+  {
+   "id": "observed_and_home",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "recovering" },
+    { "var": "t_in_state", "op": "ge", "value": 150 }
+   ] },
+   "do": [ { "outcome": "win_discharge" } ]
+  }
+ ],
+ "outcomes": [
+  { "id": "win_discharge", "kind": "win",   "label": "Weighed, dosed to the kilo, watched — home with a junior auto-injector" },
+  { "id": "death_arrest",  "kind": "death", "label": "The smallest airway in the building, and the drug never came" }
+ ]
+}

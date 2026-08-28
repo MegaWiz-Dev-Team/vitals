@@ -1,0 +1,198 @@
+{
+ "_note": "OSCE station A — converted from embla-cases ddx-anaphylaxis-1 v1.0.0 (sha256:a744574cee3040da). Presentation follows the deploy-safe form; the hidden block informed only the rubric (demo/rubrics/osce-a.json). Clinically shaped, not clinically reviewed. History-taking is scored, so the ask chips are interventions here — asking IS an action at a station.",
+ "setting": "ED",
+ "tick_seconds": 1.0,
+ "vitals0": { "hr": 118, "sbp": 92, "dbp": 60, "spo2": 94, "rr": 22, "temp": 37.1, "gcs": 15 },
+ "initial_state": "consult",
+ "states": [
+  {
+   "id": "consult",
+   "status": "deteriorating",
+   "dynamics": [
+    { "var": "sbp",  "rate_per_min": -4,   "floor": 48, "when": { "flag": "adrenaline_given", "is": false } },
+    { "var": "spo2", "rate_per_min": -0.8, "floor": 80, "when": { "flag": "adrenaline_given", "is": false } },
+    { "var": "hr",   "rate_per_min": 2,    "ceil": 150, "when": { "flag": "adrenaline_given", "is": false } }
+   ],
+   "bands": [
+    { "status": "critical", "when": { "var": "sbp", "op": "lt", "value": 75 } }
+   ],
+   "transitions": [
+    { "to_state": "recovering", "when": { "flag": "adrenaline_given" } },
+    { "outcome": "death_arrest",
+      "when": { "any": [
+       { "var": "sbp",  "op": "lt", "value": 55 },
+       { "var": "spo2", "op": "lt", "value": 82 }
+      ] } }
+   ]
+  },
+  {
+   "id": "recovering",
+   "status": "improving",
+   "dynamics": [
+    { "var": "sbp",  "rate_per_min": 10,  "ceil": 122 },
+    { "var": "spo2", "rate_per_min": 1.5, "ceil": 98 },
+    { "var": "hr",   "rate_per_min": -6,  "floor": 92 }
+   ],
+   "bands": [],
+   "transitions": []
+  }
+ ],
+ "interventions": [
+  {
+   "id": "ask_allergy",
+   "label": "Ask about known allergies",
+   "match": { "any_kw": ["allerg", "แพ้"] },
+   "effects": [ { "beat": "— \"Shrimp. Since I was young. The doctor told me to stay off seafood.\"" } ]
+  },
+  {
+   "id": "ask_breathing",
+   "label": "Ask about the breathing",
+   "match": { "any_kw": ["breath", "หายใจ"] },
+   "effects": [ { "beat": "— \"Tight. I can hear myself whistle.\" A wheeze you can hear from the door." } ]
+  },
+  {
+   "id": "ask_exposure",
+   "label": "Ask what he ate",
+   "match": { "any_kw": ["what did you eat", "food", "buffet", "eaten", "กิน"] },
+   "effects": [ { "beat": "— \"…a seafood buffet, with the old crowd. Only a little.\" It started thirty minutes after." } ]
+  },
+  {
+   "id": "exam_skin",
+   "label": "Look at the skin",
+   "match": { "any_kw": ["skin", "rash", "wheal"] },
+   "effects": [ { "beat": "wheals over both arms, the neck, the face — forehead and right cheek swelling" } ]
+  },
+  {
+   "id": "exam_chest",
+   "label": "Listen to the chest",
+   "match": { "any_kw": ["listen", "auscult", "wheeze"] },
+   "effects": [ { "beat": "expiratory wheeze, both sides" } ]
+  },
+  {
+   "id": "adrenaline_im",
+   "label": "Adrenaline 0.5 mg IM",
+   "match": { "any_kw": ["adren", "epinep", "epipen"], "not_kw": [" iv", "push", "intraven", "infus"] },
+   "effects": [
+    { "flag": "adrenaline_given" },
+    { "delta": { "sbp": 15 }, "cap": 122 },
+    { "delta": { "spo2": 2 }, "cap": 99 },
+    { "beat": "adrenaline 0.5 mg im, outer thigh — no hesitation" }
+   ]
+  },
+  {
+   "id": "adrenaline_iv_push",
+   "label": "IV-push adrenaline (HARM)",
+   "match": { "all_groups": [["adren", "epinep", "epipen"], [" iv", "push", "intraven", "infus"]] },
+   "harm": "iv push adrenaline — arrhythmia on a beating heart",
+   "effects": [
+    { "delta": { "hr": 30 }, "cap": 170 },
+    { "delta": { "sbp": -15 }, "floor": 40 }
+   ]
+  },
+  {
+   "id": "oxygen",
+   "label": "High-flow oxygen",
+   "match": { "any_kw": ["oxygen", "o2", "mask", "cannula"] },
+   "effects": [ { "delta": { "spo2": 3 }, "cap": 99 } ],
+   "equipment": "o2",
+   "equipment_setting": 10
+  },
+  {
+   "id": "saline",
+   "label": "IV access + saline",
+   "match": { "any_kw": ["saline", "fluid", "bolus", "iv access"] },
+   "effects": [ { "delta": { "sbp": 6 }, "cap": 115 } ],
+   "equipment": "iv",
+   "equipment_setting": 999
+  },
+  {
+   "id": "supine",
+   "label": "Lay him flat, legs up",
+   "match": { "any_kw": ["lay", "flat", "legs up", "supine"] },
+   "effects": [ { "delta": { "sbp": 5 }, "cap": 115 } ]
+  },
+  {
+   "id": "chlorpheniramine",
+   "label": "Antihistamine",
+   "match": { "any_kw": ["chlorphen", "antihist", "cetiriz", "lorata"] },
+   "effects": [ { "beat": "antihistamine for the itch — it will not hold the pressure" } ]
+  },
+  {
+   "id": "hydrocortisone",
+   "label": "Steroid",
+   "match": { "any_kw": ["hydrocort", "steroid", "dexameth"] },
+   "effects": [ { "beat": "steroid on board — for the late phase, not for now" } ]
+  },
+  {
+   "id": "tryptase",
+   "label": "Serum tryptase",
+   "match": { "any_kw": ["tryptase"] },
+   "effects": [ { "beat": "tryptase 28.4 (ref < 11.4) — the mast cells have spoken" } ]
+  },
+  {
+   "id": "ecg",
+   "label": "12-lead ECG",
+   "match": { "any_kw": ["ecg", "ekg", "12-lead"] },
+   "effects": [ { "beat": "sinus tachycardia 118 — no ischaemia" } ]
+  },
+  {
+   "id": "cbc",
+   "label": "Full blood count",
+   "match": { "any_kw": ["cbc", "blood count", "full blood"] },
+   "effects": [ { "beat": "wbc 11.2, eosinophils up — nothing surgical" } ]
+  },
+  {
+   "id": "cxr",
+   "label": "Chest X-ray",
+   "match": { "any_kw": ["x-ray", "cxr", "chest film"] },
+   "effects": [ { "beat": "clear fields, normal heart shadow" } ]
+  },
+  {
+   "id": "dx_anaphylaxis",
+   "label": "Name the diagnosis",
+   "match": { "any_kw": ["anaphyla"] },
+   "effects": [ { "flag": "dx_named" }, { "beat": "anaphylaxis — named for what it is" } ]
+  },
+  {
+   "id": "observe",
+   "label": "Admit for observation",
+   "match": { "any_kw": ["admit", "observ", "monitor"] },
+   "effects": [ { "flag": "observed" }, { "beat": "kept under the nurses' eyes — the second wave is real" } ]
+  },
+  {
+   "id": "discharge",
+   "label": "Discharge home (HARM)",
+   "match": { "any_kw": ["discharge", "go home", "send him home"] },
+   "harm": "discharged during the observation window — biphasic reactions return to an empty bed",
+   "effects": []
+  }
+ ],
+ "triggers": [
+  {
+   "id": "adrenaline_delayed",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "consult" },
+    { "var": "t_elapsed", "op": "ge", "value": 300 },
+    { "not": { "done": "adrenaline_im" } }
+   ] },
+   "do": [
+    { "harm": "adrenaline delayed — anaphylaxis is treated the moment it is named" },
+    { "delta": { "sbp": -10 }, "floor": 48 }
+   ]
+  },
+  {
+   "id": "observed_and_home",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "recovering" },
+    { "var": "t_in_state", "op": "ge", "value": 150 }
+   ] },
+   "do": [ { "outcome": "win_discharge" } ]
+  }
+ ],
+ "outcomes": [
+  { "id": "win_discharge", "kind": "win",   "label": "Adrenaline on time — observed, home with an auto-injector" },
+  { "id": "death_arrest",  "kind": "death", "label": "The airway closed — adrenaline never came" }
+ ]
+}

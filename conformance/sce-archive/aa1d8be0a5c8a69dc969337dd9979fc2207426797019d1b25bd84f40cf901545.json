@@ -1,0 +1,447 @@
+{
+ "_note": "MOCK. Season finale from the series bible ('The Night the Stars Fell'). Mass casualty compressed into one automaton: `waiting` is the queue you are not treating while you stand here.",
+ "setting": "ED",
+ "tick_seconds": 1.0,
+ "vitals0": {
+  "hr": 132,
+  "sbp": 82,
+  "dbp": 48,
+  "spo2": 89,
+  "rr": 30,
+  "temp": 36.2,
+  "gcs": 13
+ },
+ "variables": {
+  "haemorrhage": {
+   "init": 0.7,
+   "min": 0.0,
+   "max": 1.0
+  },
+  "chest": {
+   "init": 0.5,
+   "min": 0.0,
+   "max": 1.0
+  },
+  "waiting": {
+   "init": 6.0,
+   "min": 0.0,
+   "max": 12.0
+  }
+ },
+ "initial_state": "blast",
+ "states": [
+  {
+   "id": "blast",
+   "status": "critical",
+   "dynamics": [
+    {
+     "var": "sbp",
+     "rate_per_min": -12,
+     "floor": 0.0,
+     "when": {
+      "flag": "haemostasis",
+      "is": false
+     }
+    },
+    {
+     "var": "spo2",
+     "rate_per_min": -2.5,
+     "floor": 0.0,
+     "when": {
+      "flag": "chest_decompressed",
+      "is": false
+     }
+    },
+    {
+     "var": "hr",
+     "rate_per_min": 4,
+     "ceil": 170,
+     "when": {
+      "flag": "haemostasis",
+      "is": false
+     }
+    },
+    {
+     "var": "waiting",
+     "rate_per_min": 0.4,
+     "ceil": 12.0,
+     "when": {
+      "flag": "triaged",
+      "is": false
+     }
+    }
+   ],
+   "bands": [
+    {
+     "status": "improving",
+     "when": {
+      "all": [
+       {
+        "flag": "haemostasis"
+       },
+       {
+        "flag": "chest_decompressed"
+       }
+      ]
+     }
+    },
+    {
+     "status": "deteriorating",
+     "when": {
+      "flag": "haemostasis"
+     }
+    }
+   ],
+   "transitions": [
+    {
+     "to_state": "exsanguinated",
+     "when": {
+      "var": "sbp",
+      "op": "lt",
+      "value": 45
+     }
+    },
+    {
+     "to_state": "stabilised",
+     "when": {
+      "all": [
+       {
+        "flag": "haemostasis"
+       },
+       {
+        "flag": "chest_decompressed"
+       },
+       {
+        "var": "sbp",
+        "op": "gt",
+        "value": 95
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "stabilised",
+   "status": "improving",
+   "dynamics": [
+    {
+     "var": "sbp",
+     "rate_per_min": 8,
+     "ceil": 118
+    },
+    {
+     "var": "spo2",
+     "rate_per_min": 4,
+     "ceil": 98
+    }
+   ],
+   "bands": [],
+   "transitions": []
+  },
+  {
+   "id": "exsanguinated",
+   "status": "arrest",
+   "dynamics": [],
+   "bands": [],
+   "transitions": [
+    {
+     "outcome": "death_arrest",
+     "when": {
+      "var": "t_in_state",
+      "op": "ge",
+      "value": 1
+     }
+    }
+   ]
+  }
+ ],
+ "interventions": [
+  {
+   "id": "triage",
+   "label": "Triage the room before touching anyone",
+   "match": {
+    "any_kw": [
+     "triage",
+     "sort",
+     "sieve",
+     "who is sickest",
+     "survey the room"
+    ]
+   },
+   "effects": [
+    {
+     "flag": "triaged"
+    },
+    {
+     "delta": {
+      "waiting": -2.0
+     },
+     "floor": 0.0
+    },
+    {
+     "beat": "triage_done"
+    }
+   ]
+  },
+  {
+   "id": "tourniquet",
+   "label": "Tourniquet the limb",
+   "match": {
+    "any_kw": [
+     "tourniquet",
+     "pressure",
+     "stop the bleeding",
+     "haemostat",
+     "hemostat",
+     "pack the wound"
+    ]
+   },
+   "effects": [
+    {
+     "flag": "haemostasis"
+    },
+    {
+     "delta": {
+      "haemorrhage": -0.5
+     },
+     "floor": 0.0
+    },
+    {
+     "delta": {
+      "sbp": 14
+     }
+    },
+    {
+     "beat": "haemostasis"
+    }
+   ]
+  },
+  {
+   "id": "chest_decompression",
+   "label": "Decompress the chest",
+   "match": {
+    "any_kw": [
+     "needle decompress",
+     "thoracostomy",
+     "chest drain",
+     "decompress",
+     "chest tube"
+    ]
+   },
+   "effects": [
+    {
+     "flag": "chest_decompressed"
+    },
+    {
+     "delta": {
+      "spo2": 8
+     },
+     "cap": 99
+    },
+    {
+     "delta": {
+      "chest": -0.4
+     },
+     "floor": 0.0
+    }
+   ]
+  },
+  {
+   "id": "transfuse",
+   "label": "Blood, not saline",
+   "match": {
+    "any_kw": [
+     "transfus",
+     "blood",
+     "prbc",
+     "massive transfusion",
+     "o negative"
+    ]
+   },
+   "effects": [
+    {
+     "delta": {
+      "sbp": 18
+     },
+     "cap": 118
+    }
+   ]
+  },
+  {
+   "id": "crystalloid_flood",
+   "label": "Flood with crystalloid — the trap",
+   "match": {
+    "any_kw": [
+     "saline",
+     "crystalloid",
+     "ringer",
+     "two litres",
+     "fluid bolus"
+    ]
+   },
+   "harm": "crystalloid resuscitation in haemorrhagic shock — dilutional coagulopathy",
+   "effects": [
+    {
+     "delta": {
+      "haemorrhage": 0.15
+     },
+     "cap": 1.0
+    },
+    {
+     "delta": {
+      "sbp": 4
+     }
+    }
+   ]
+  },
+  {
+   "id": "intubate",
+   "label": "Secure the airway",
+   "match": {
+    "any_kw": [
+     "intubate",
+     "rsi",
+     "secure the airway",
+     "ett"
+    ]
+   },
+   "effects": [
+    {
+     "delta": {
+      "spo2": 5
+     },
+     "cap": 99
+    }
+   ],
+   "equipment": "ett"
+  },
+  {
+   "id": "damage_control",
+   "label": "To theatre for damage control",
+   "match": {
+    "any_kw": [
+     "theatre",
+     "damage control",
+     "laparotomy",
+     "surgery",
+     "operating room",
+     " or "
+    ]
+   },
+   "effects": [
+    {
+     "branch": [
+      {
+       "if": {
+        "flag": "haemostasis"
+       },
+       "then": [
+        {
+         "flag": "definitive"
+        },
+        {
+         "beat": "to_theatre"
+        }
+       ]
+      }
+     ],
+     "else": [
+      {
+       "harm": "moved to theatre without controlling the bleeding"
+      },
+      {
+       "delta": {
+        "sbp": -18
+       },
+       "floor": 0.0
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "triggers": [
+  {
+   "id": "the_others",
+   "once": true,
+   "when": {
+    "all": [
+     {
+      "var": "waiting",
+      "op": "ge",
+      "value": 8.0
+     }
+    ]
+   },
+   "do": [
+    {
+     "beat": "others_waiting"
+    }
+   ]
+  },
+  {
+   "id": "outcome_check",
+   "once": true,
+   "when": {
+    "all": [
+     {
+      "in_state": "stabilised"
+     },
+     {
+      "var": "t_in_state",
+      "op": "ge",
+      "value": 240
+     }
+    ]
+   },
+   "do": [
+    {
+     "branch": [
+      {
+       "if": {
+        "all": [
+         {
+          "flag": "definitive"
+         },
+         {
+          "var": "waiting",
+          "op": "lt",
+          "value": 7.0
+         }
+        ]
+       },
+       "then": [
+        {
+         "outcome": "win_discharge"
+        }
+       ]
+      }
+     ],
+     "else": [
+      {
+       "outcome": "win_icu"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "outcomes": [
+  {
+   "id": "win_discharge",
+   "kind": "win",
+   "label": "Stabilised, to theatre, and the room kept moving"
+  },
+  {
+   "id": "win_icu",
+   "kind": "win",
+   "label": "This one lived — the queue paid for it"
+  },
+  {
+   "id": "death_arrest",
+   "kind": "death",
+   "label": "Bled out"
+  }
+ ]
+}

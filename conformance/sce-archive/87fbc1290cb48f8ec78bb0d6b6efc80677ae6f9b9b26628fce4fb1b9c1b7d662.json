@@ -1,0 +1,208 @@
+{
+ "_note": "OSCE station B3 — converted from embla-cases ddx-croup-1 v1.0.0 (sha256:77feb6529b4ab715). Presentation follows the deploy-safe form; the hidden block informed only the rubric (demo/rubrics/osce-b3.json). Clinically shaped, not clinically reviewed. The mild rung of the croup ladder, one step below C's drama: two days of a cold, then the second-night bark — grade her from the doorway, one dose of dexamethasone, an hour of watching, the safety-net speech, home. The traps are treatment-shaped: antibiotics for a virus, and a discharge with nothing behind it. The mist is held for the child who needs it — give the steroid late and she becomes that child.",
+ "setting": "ER",
+ "tick_seconds": 1.0,
+ "vitals0": { "hr": 118, "sbp": 98, "dbp": 62, "spo2": 98, "rr": 28, "temp": 37.2, "gcs": 15 },
+ "initial_state": "consult",
+ "states": [
+  {
+   "id": "consult",
+   "status": "stable",
+   "dynamics": [],
+   "bands": [],
+   "transitions": []
+  },
+  {
+   "id": "worsening",
+   "status": "deteriorating",
+   "dynamics": [
+    { "var": "spo2", "rate_per_min": -2.5, "floor": 86 },
+    { "var": "hr",   "rate_per_min": 6,    "ceil": 178 },
+    { "var": "rr",   "rate_per_min": 3,    "ceil": 60 }
+   ],
+   "bands": [
+    { "status": "critical", "when": { "var": "spo2", "op": "lt", "value": 92 } }
+   ],
+   "transitions": [
+    { "to_state": "settling", "when": { "flag": "neb_given" } },
+    { "outcome": "death_arrest", "when": { "var": "spo2", "op": "lt", "value": 88 } }
+   ]
+  },
+  {
+   "id": "settling",
+   "status": "improving",
+   "dynamics": [
+    { "var": "spo2", "rate_per_min": 2,  "ceil": 98 },
+    { "var": "hr",   "rate_per_min": -8, "floor": 112 },
+    { "var": "rr",   "rate_per_min": -2, "floor": 26 }
+   ],
+   "bands": [],
+   "transitions": []
+  }
+ ],
+ "interventions": [
+  {
+   "id": "ask_onset",
+   "label": "Ask how it started",
+   "match": { "any_kw": ["start", "when", "bark", "cold", "runny", "night", "เริ่ม"] },
+   "effects": [ { "beat": "— \"A runny nose for two days, no fever — then tonight she woke up barking like a little seal.\" The classic second night." } ]
+  },
+  {
+   "id": "ask_fever",
+   "label": "Ask about fever",
+   "match": { "any_kw": ["fever", "temperatur", "ไข้"] },
+   "effects": [ { "beat": "— \"No fever. 37.2 at home and again at triage.\" Cool — the first door away from the dangerous mimic." } ]
+  },
+  {
+   "id": "ask_drink",
+   "label": "Ask if she is drinking",
+   "match": { "any_kw": ["drink", "swallow", "drool", "milk", "ดื่ม", "น้ำลาย"] },
+   "effects": [ { "beat": "— \"She finished a whole bottle of milk in the waiting room.\" Swallowing happily — no drool, no tripod, no statue-child." } ]
+  },
+  {
+   "id": "severity_score",
+   "label": "Score the severity from the doorway",
+   "match": { "any_kw": ["doorway", "westley", "severity", "score her", "from the door", "work of breathing"] },
+   "effects": [ { "beat": "watched from the doorway on her mother's lap: a soft stridor only when she fusses, mild tugging below the ribs, colour good, chatting between coughs — westley 2, mild" } ]
+  },
+  {
+   "id": "exam_sats",
+   "label": "Check the saturations",
+   "match": { "any_kw": ["sat", "spo2", "oximet"] },
+   "effects": [ { "beat": "spo2 98 on air, the probe on a toe mid-cartoon — she barely looks up" } ]
+  },
+  {
+   "id": "exam_chest",
+   "label": "Listen to the chest",
+   "match": { "any_kw": ["listen", "auscult"] },
+   "effects": [ { "beat": "clear entry both sides under the bark — the noise is made above the chest, in the subglottis" } ]
+  },
+  {
+   "id": "xray_neck",
+   "label": "Neck and chest films",
+   "match": { "any_kw": ["x-ray", "xray", "film", "steeple", "cxr"] },
+   "effects": [ { "beat": "the steeple sign on the ap neck, a clean epiglottis on the lateral, chest clear — croup drawn in white" } ]
+  },
+  {
+   "id": "dexamethasone",
+   "label": "Dexamethasone by mouth",
+   "match": { "any_kw": ["dexameth", "steroid", "budeson"] },
+   "effects": [
+    { "flag": "dex_given" },
+    { "beat": "dexamethasone 0.15 mg/kg in syrup, swallowed on the first try — the one drug this whole visit is about" }
+   ]
+  },
+  {
+   "id": "neb_adrenaline",
+   "label": "Nebulised adrenaline",
+   "match": { "any_kw": ["nebulis", "nebuliz", "adren", "epinep", "mist"] },
+   "effects": [
+    { "branch": [
+      { "if": { "in_state": "worsening" },
+        "then": [
+         { "flag": "neb_given" },
+         { "delta": { "spo2": 2 }, "cap": 98 },
+         { "beat": "nebulised adrenaline through a soft mask — mist for a subglottis that stopped waiting" }
+        ] }
+     ],
+     "else": [ { "beat": "she is mild and settled on the lap — hold the mist for the child who needs it, and watch instead" } ] }
+   ]
+  },
+  {
+   "id": "keep_calm",
+   "label": "Keep her on mum's lap",
+   "match": { "any_kw": ["calm", "lap", "mum", "mother", "settle"] },
+   "effects": [ { "beat": "nothing touches her that does not need to — she stays on the lap, and the airway stays hers" } ]
+  },
+  {
+   "id": "observe_child",
+   "label": "Watch her for an hour",
+   "match": { "any_kw": ["watch her", "observ", "an hour", "monitor"] },
+   "effects": [
+    { "flag": "observed" },
+    { "beat": "a quiet hour by the nurses' station, probe on, mum in the chair — the bark already softer as the syrup works" }
+   ]
+  },
+  {
+   "id": "advise",
+   "label": "The safety-net speech",
+   "match": { "any_kw": ["advice", "advise", "safety", "come back", "warn"] },
+   "effects": [
+    { "flag": "advised" },
+    { "beat": "the night-two speech: no steam over a kettle, come straight back if the stridor sits at rest or the ribs pull hard — mum says it back word for word" }
+   ]
+  },
+  {
+   "id": "dx_croup",
+   "label": "Name the diagnosis",
+   "match": { "any_kw": ["croup", "laryngotracheo"] },
+   "effects": [ { "flag": "dx_named" }, { "beat": "mild croup — named, graded, and treated like what it is" } ]
+  },
+  {
+   "id": "dx_epiglottitis",
+   "label": "Call it epiglottitis",
+   "match": { "any_kw": ["epiglott"] },
+   "effects": [ { "beat": "epiglottitis? — she is loud, cool, drinking milk and barking. the lateral film already answered this. look again." } ]
+  },
+  {
+   "id": "antibiotics",
+   "label": "Antibiotics (HARM)",
+   "match": { "any_kw": ["antibiotic", "amoxicillin", "augmentin", "co-amoxiclav", "ceftriax", "azithro"] },
+   "harm": "antibiotics for a virus — the steeple was never bacterial, and the bottle teaches the family the wrong lesson",
+   "effects": []
+  },
+  {
+   "id": "discharge",
+   "label": "Send her home",
+   "match": { "any_kw": ["home", "discharge", "send her"] },
+   "effects": [
+    { "branch": [
+      { "if": { "all": [ { "done": "dexamethasone" }, { "done": "observe_child" } ] },
+        "then": [ { "outcome": "win_discharge" } ] }
+     ],
+     "else": [ { "harm": "home without the steroid or the hour of watching — night three is worse than night two" } ] }
+   ]
+  }
+ ],
+ "triggers": [
+  {
+   "id": "steroid_never_came",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "consult" },
+    { "var": "t_elapsed", "op": "ge", "value": 420 },
+    { "not": { "done": "dexamethasone" } }
+   ] },
+   "do": [
+    { "harm": "no steroid by the seventh minute — croup is a steroid disease, and the subglottis stopped waiting" },
+    { "beat": "the bark deepens — you can hear the stridor from the desk now, at rest" },
+    { "to_state": "worsening" }
+   ]
+  },
+  {
+   "id": "home_after_watch",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "consult" },
+    { "done": "dexamethasone" },
+    { "done": "observe_child" },
+    { "var": "t_elapsed", "op": "ge", "value": 300 }
+   ] },
+   "do": [ { "outcome": "win_discharge" } ]
+  },
+  {
+   "id": "settled_admit",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "settling" },
+    { "var": "t_in_state", "op": "ge", "value": 120 }
+   ] },
+   "do": [ { "outcome": "win_icu" } ]
+  }
+ ],
+ "outcomes": [
+  { "id": "win_discharge", "kind": "win",   "label": "One syrup, one quiet hour, one speech — home before the cartoon ends" },
+  { "id": "win_icu",       "kind": "win",   "label": "Rescued by the mist — admitted overnight; the syrup at the door would have kept her home" },
+  { "id": "death_arrest",  "kind": "death", "label": "A mild airway, left to tighten all night" }
+ ]
+}

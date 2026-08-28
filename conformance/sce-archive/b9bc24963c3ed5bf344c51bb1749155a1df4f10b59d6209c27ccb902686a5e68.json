@@ -1,0 +1,197 @@
+{
+ "_note": "OSCE station D2 — converted from embla-cases ddx-pulmonary-embolism-2 v1.0.0 (sha256:b397a41f3ffa93fe). Presentation follows the deploy-safe form; the hidden block informed only the rubric (demo/rubrics/osce-d2.json). Clinically shaped, not clinically reviewed. EP4's masquerader, rehearsed with the mask half off: cancer on hormone therapy, a swollen calf nobody asked about, a clear chest that should not be this hypoxic. The teaching is pretest thinking — Wells first, then the scan, then the anticoagulation the scan has earned. The d-dimer is a stall at high probability; lytics for a patient still holding her pressure are a bleed bought for nothing. Anticoagulation is gated on the CTPA the way B gated reperfusion on the ECG.",
+ "setting": "ED",
+ "tick_seconds": 1.0,
+ "vitals0": { "hr": 115, "sbp": 90, "dbp": 60, "spo2": 88, "rr": 26, "temp": 37.0, "gcs": 15 },
+ "initial_state": "consult",
+ "states": [
+  {
+   "id": "consult",
+   "status": "deteriorating",
+   "dynamics": [
+    { "var": "spo2", "rate_per_min": -0.5, "floor": 78, "when": { "flag": "anticoagulated", "is": false } },
+    { "var": "sbp",  "rate_per_min": -1.5, "floor": 60, "when": { "flag": "anticoagulated", "is": false } },
+    { "var": "hr",   "rate_per_min": 1.5,  "ceil": 160, "when": { "flag": "anticoagulated", "is": false } }
+   ],
+   "bands": [
+    { "status": "critical", "when": { "var": "spo2", "op": "lt", "value": 85 } }
+   ],
+   "transitions": [
+    { "to_state": "anticoagulated", "when": { "flag": "anticoagulated" } },
+    { "outcome": "death_arrest",
+      "when": { "any": [
+       { "var": "spo2", "op": "lt", "value": 80 },
+       { "var": "sbp",  "op": "lt", "value": 68 }
+      ] } }
+   ]
+  },
+  {
+   "id": "anticoagulated",
+   "status": "improving",
+   "dynamics": [
+    { "var": "spo2", "rate_per_min": 0.8, "ceil": 95 },
+    { "var": "hr",   "rate_per_min": -3,  "floor": 98 },
+    { "var": "sbp",  "rate_per_min": 2,   "ceil": 108 }
+   ],
+   "bands": [],
+   "transitions": []
+  }
+ ],
+ "interventions": [
+  {
+   "id": "ask_onset",
+   "label": "Ask how it started",
+   "match": { "any_kw": ["start", "when", "doing", "เริ่ม"] },
+   "effects": [ { "beat": "— \"It hit while I was hanging the washing — a stab with every breath, and I cannot get a full one in.\" Sudden, pleuritic, out of nowhere." } ]
+  },
+  {
+   "id": "ask_history",
+   "label": "Ask her illnesses and tablets",
+   "match": { "any_kw": ["illness", "tablet", "cancer", "medicat", "pills", "condition"] },
+   "effects": [ { "beat": "— \"Breast cancer, two years now. I take the hormone tablets every night.\" Malignancy and hormones — a clot's two best friends." } ]
+  },
+  {
+   "id": "exam_legs",
+   "label": "Examine the calves",
+   "match": { "any_kw": ["examine", "measure", "feel the calf", "feel her calf"] },
+   "effects": [ { "beat": "the right calf sits three centimetres fuller than the left, warm and tender — a source, wearing a sock" } ]
+  },
+  {
+   "id": "ask_legs",
+   "label": "Ask about her legs",
+   "match": { "any_kw": ["legs", "calf", "calves", "ขา"] },
+   "effects": [ { "beat": "— \"My right calf has been tight for a week. I thought it was the standing.\" Nobody had asked." } ]
+  },
+  {
+   "id": "exam_chest",
+   "label": "Listen to the chest",
+   "match": { "any_kw": ["listen", "auscult"] },
+   "effects": [ { "beat": "clear fields, both sides — a chest this clear has no business being this hypoxic" } ]
+  },
+  {
+   "id": "wells",
+   "label": "Wells score",
+   "match": { "any_kw": ["wells", "pretest", "probability", "score"] },
+   "effects": [
+    { "flag": "wells_done" },
+    { "beat": "cancer, a hundred and fifteen a minute, a swollen calf, nothing else it could be — wells 7, high. the next test is the scan, not the dimer." }
+   ]
+  },
+  {
+   "id": "ddimer",
+   "label": "D-dimer",
+   "match": { "any_kw": ["dimer", "d-dimer"] },
+   "effects": [ { "beat": "1200 — and it changes nothing: at high probability a dimer cannot rule out, it can only stall the scan" } ]
+  },
+  {
+   "id": "ecg",
+   "label": "12-lead ECG",
+   "match": { "any_kw": ["ecg", "ekg", "12-lead"] },
+   "effects": [ { "beat": "sinus tachycardia; an s1q3t3 if you squint — supportive, never diagnostic" } ]
+  },
+  {
+   "id": "cxr",
+   "label": "Chest X-ray",
+   "match": { "any_kw": ["x-ray", "xray", "cxr", "chest film"] },
+   "effects": [ { "beat": "a clean film — the great mimic leaves no shadow" } ]
+  },
+  {
+   "id": "ctpa",
+   "label": "CT pulmonary angiogram",
+   "match": { "any_kw": ["ctpa", "ct pulmonary", "angiogra", "ct chest"] },
+   "effects": [
+    { "flag": "pe_confirmed" },
+    { "beat": "a filling defect sits fat in the right pulmonary artery — the masquerader, unmasked in one pass of the gantry" }
+   ]
+  },
+  {
+   "id": "oxygen",
+   "label": "Oxygen",
+   "match": { "any_kw": ["oxygen", "o2", "mask", "cannula"] },
+   "effects": [ { "delta": { "spo2": 3 }, "cap": 94 } ],
+   "equipment": "o2",
+   "equipment_setting": 8
+  },
+  {
+   "id": "fluids",
+   "label": "A careful 500",
+   "match": { "any_kw": ["fluid", "saline", "bolus", "ringer"] },
+   "effects": [
+    { "delta": { "sbp": 4 }, "cap": 98 },
+    { "beat": "a careful 500 and no more — a strained right heart drowns in enthusiasm" }
+   ]
+  },
+  {
+   "id": "heparin",
+   "label": "Anticoagulation",
+   "match": { "any_kw": ["heparin", "enoxaparin", "anticoagul", "clexane", "lmwh", "apixaban", "rivaroxaban"] },
+   "effects": [
+    { "branch": [
+      { "if": { "flag": "pe_confirmed" },
+        "then": [
+         { "flag": "anticoagulated" },
+         { "beat": "low-molecular-weight heparin into the belly — the clot stops growing tonight" }
+        ] }
+     ],
+     "else": [ { "beat": "the scan first — name the clot, then starve it. heparin wants a target on film." } ] }
+   ]
+  },
+  {
+   "id": "thrombolysis",
+   "label": "Full-dose lytics (HARM)",
+   "match": { "any_kw": ["thrombolys", "lytic", "alteplase", "tenecteplase", "streptokin"] },
+   "harm": "lytics for a patient still holding her pressure — an intracranial bleed put on the table for nothing",
+   "effects": [
+    { "delta": { "sbp": -6 }, "floor": 60 }
+   ]
+  },
+  {
+   "id": "dx_pe",
+   "label": "Name the diagnosis",
+   "match": { "any_kw": ["pulmonary embol", "embolism", "clot on the lung", "clot in the lung"] },
+   "effects": [ { "flag": "dx_named" }, { "beat": "pulmonary embolism — the masquerader named while it still matters" } ]
+  },
+  {
+   "id": "reassure_discharge",
+   "label": "Reassure — anxiety (HARM)",
+   "match": { "any_kw": ["reassure", "anxiety", "panic", "discharge", "home"] },
+   "harm": "reassured as anxiety at 88% — the mimic's favourite exit",
+   "effects": []
+  },
+  {
+   "id": "admit",
+   "label": "Admit to the unit",
+   "match": { "any_kw": ["admit", "unit", "ward", "monitor"] },
+   "effects": [ { "flag": "observed" }, { "beat": "up to the unit on the infusion — the calf gets its ultrasound tomorrow" } ]
+  }
+ ],
+ "triggers": [
+  {
+   "id": "clot_extends",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "consult" },
+    { "var": "t_elapsed", "op": "ge", "value": 360 },
+    { "flag": "anticoagulated", "is": false }
+   ] },
+   "do": [
+    { "beat": "she greys mid-sentence — the next breath is faster and shallower than the last" },
+    { "delta": { "spo2": -4 }, "floor": 78 },
+    { "delta": { "hr": 10 }, "cap": 165 }
+   ]
+  },
+  {
+   "id": "unit_takes_her",
+   "once": true,
+   "when": { "all": [
+    { "in_state": "anticoagulated" },
+    { "var": "t_in_state", "op": "ge", "value": 150 }
+   ] },
+   "do": [ { "outcome": "win_icu" } ]
+  }
+ ],
+ "outcomes": [
+  { "id": "win_icu",      "kind": "win",   "label": "Scored, scanned, starved — the unit takes her on the infusion" },
+  { "id": "death_arrest", "kind": "death", "label": "The clot finished what the dimer was stalling" }
+ ]
+}
