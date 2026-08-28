@@ -1,0 +1,156 @@
+{
+ "ep": "osce-d3",
+ "mode": "exam",
+ "script": [
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "adren 0.15"
+  ],
+  [
+   "tick",
+   10.0
+  ],
+  [
+   "order",
+   "adren 0.5"
+  ],
+  [
+   "order",
+   "adren"
+  ],
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "weigh"
+  ],
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "ate"
+  ],
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "allerg"
+  ],
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "adren  iv"
+  ]
+ ],
+ "transcript": [
+  {
+   "kind": "order",
+   "t": "0:05",
+   "text": "adren 0.15",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:05",
+   "text": "adrenaline 0.2 mg im, outer thigh — 0.01 a kilo, drawn to the twenty she weighs",
+   "title": "threshold:adrenaline 0.2 mg im, outer thigh — 0.01 a kilo, drawn to the twenty she weighs"
+  },
+  {
+   "kind": "beat",
+   "t": "0:05",
+   "text": "{s} is turning around",
+   "title": "status:Improving"
+  },
+  {
+   "kind": "order",
+   "t": "0:15",
+   "text": "adren 0.5",
+   "title": ""
+  },
+  {
+   "kind": "harm",
+   "t": "0:15",
+   "text": "harm — half a milligram into a twenty-kilo child — an adult dose, two and a half times hers; the tachycardia that follows is yours",
+   "title": "harm:half a milligram into a twenty-kilo child — an adult dose, two and a half times hers; the tachycardia that follows is yours"
+  },
+  {
+   "kind": "order",
+   "t": "0:15",
+   "text": "adren",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:15",
+   "text": "the nurse holds the ampoule still: \"how much, doctor? she is twenty kilos.\" the drug waits on a number.",
+   "title": "threshold:the nurse holds the ampoule still: \"how much, doctor? she is twenty kilos.\" the drug waits on a number."
+  },
+  {
+   "kind": "order",
+   "t": "0:20",
+   "text": "weigh",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:20",
+   "text": "— \"Twenty kilos, on the school scales last week,\" her mother says, already half-crying. The number every dose hangs on.",
+   "title": "threshold:— \"Twenty kilos, on the school scales last week,\" her mother says, already half-crying. The number every dose hangs on."
+  },
+  {
+   "kind": "order",
+   "t": "0:25",
+   "text": "ate",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:25",
+   "text": "— \"Prawn fritters at the school fair. She knows she mustn't — she is six, she forgot to ask.\" Thirty minutes ago.",
+   "title": "threshold:— \"Prawn fritters at the school fair. She knows she mustn't — she is six, she forgot to ask.\" Thirty minutes ago."
+  },
+  {
+   "kind": "order",
+   "t": "0:30",
+   "text": "allerg",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:30",
+   "text": "— \"Shrimp, since she was two. It is written on a card in her school bag.\"",
+   "title": "threshold:— \"Shrimp, since she was two. It is written on a card in her school bag.\""
+  },
+  {
+   "kind": "order",
+   "t": "0:35",
+   "text": "adren  iv",
+   "title": ""
+  },
+  {
+   "kind": "harm",
+   "t": "0:35",
+   "text": "harm — iv push adrenaline — arrhythmia on a small beating heart",
+   "title": "harm:iv push adrenaline — arrhythmia on a small beating heart"
+  },
+  {
+   "kind": "end",
+   "t": "2:35",
+   "text": "{s} goes home",
+   "title": "terminal:WinDischarge"
+  }
+ ]
+}

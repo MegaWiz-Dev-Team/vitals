@@ -1,0 +1,162 @@
+{
+ "ep": "osce-c",
+ "mode": "exam",
+ "script": [
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "before"
+  ],
+  [
+   "tick",
+   10.0
+  ],
+  [
+   "order",
+   "throat"
+  ],
+  [
+   "order",
+   "fever"
+  ],
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "vaccin"
+  ],
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "worse"
+  ],
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "doorway"
+  ],
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   " iv"
+  ]
+ ],
+ "transcript": [
+  {
+   "kind": "order",
+   "t": "0:05",
+   "text": "before",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:05",
+   "text": "— \"Last year. The same bark, the same bad night. Her sister had it at this age too.\" The family knows this illness by name.",
+   "title": "threshold:— \"Last year. The same bark, the same bad night. Her sister had it at this age too.\" The family knows this illness by name."
+  },
+  {
+   "kind": "order",
+   "t": "0:15",
+   "text": "throat",
+   "title": ""
+  },
+  {
+   "kind": "harm",
+   "t": "0:15",
+   "text": "harm — the tongue depressor goes in — she screams, and the airway she was protecting clamps down",
+   "title": "harm:the tongue depressor goes in — she screams, and the airway she was protecting clamps down"
+  },
+  {
+   "kind": "beat",
+   "t": "0:15",
+   "text": "{s} is getting worse",
+   "title": "status:Deteriorating"
+  },
+  {
+   "kind": "order",
+   "t": "0:15",
+   "text": "fever",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:15",
+   "text": "— \"No fever. I checked twice — she runs cool.\" Afebrile: the first door away from epiglottitis.",
+   "title": "threshold:— \"No fever. I checked twice — she runs cool.\" Afebrile: the first door away from epiglottitis."
+  },
+  {
+   "kind": "order",
+   "t": "0:20",
+   "text": "vaccin",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:20",
+   "text": "— \"Every shot, on schedule, since she was born.\" Hib among them — the odds move further still.",
+   "title": "threshold:— \"Every shot, on schedule, since she was born.\" Hib among them — the odds move further still."
+  },
+  {
+   "kind": "order",
+   "t": "0:25",
+   "text": "worse",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:25",
+   "text": "— \"Nights. She sleeps, then sits up barking. By day she is almost herself.\" The croup pattern, word for word.",
+   "title": "threshold:— \"Nights. She sleeps, then sits up barking. By day she is almost herself.\" The croup pattern, word for word."
+  },
+  {
+   "kind": "order",
+   "t": "0:30",
+   "text": "doorway",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:30",
+   "text": "watched from the doorway, on her mother's lap: no stridor at rest, no retractions, colour good, drooling but chatting between coughs — westley 1, mild",
+   "title": "threshold:watched from the doorway, on her mother's lap: no stridor at rest, no retractions, colour good, drooling but chatting between coughs — westley 1, mild"
+  },
+  {
+   "kind": "order",
+   "t": "0:35",
+   "text": " iv",
+   "title": ""
+  },
+  {
+   "kind": "harm",
+   "t": "0:35",
+   "text": "harm — a needle hunt before the steroid — she fights, shrieking, and the stridor you did not have is here now",
+   "title": "harm:a needle hunt before the steroid — she fights, shrieking, and the stridor you did not have is here now"
+  },
+  {
+   "kind": "beat",
+   "t": "2:20",
+   "text": "{s} is crashing",
+   "title": "status:Critical"
+  },
+  {
+   "kind": "end",
+   "t": "4:20",
+   "text": "{s} dies",
+   "title": "terminal:DeathArrest"
+  }
+ ]
+}

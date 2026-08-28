@@ -1,0 +1,146 @@
+{
+ "ep": "osce-d4",
+ "mode": "exam",
+ "script": [
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "niece"
+  ],
+  [
+   "tick",
+   10.0
+  ],
+  [
+   "order",
+   "antibiotic"
+  ],
+  [
+   "order",
+   "perfusion"
+  ],
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "loin"
+  ],
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "lactate"
+  ],
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "culture"
+  ],
+  [
+   "tick",
+   5.0
+  ]
+ ],
+ "transcript": [
+  {
+   "kind": "order",
+   "t": "0:05",
+   "text": "niece",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:05",
+   "text": "— the niece: \"Fever and shaking since yesterday, hardly any water passed. Her kidney stones ached all last week.\" A story with an address on it.",
+   "title": "threshold:— the niece: \"Fever and shaking since yesterday, hardly any water passed. Her kidney stones ached all last week.\" A story with an address on it."
+  },
+  {
+   "kind": "order",
+   "t": "0:15",
+   "text": "antibiotic",
+   "title": ""
+  },
+  {
+   "kind": "harm",
+   "t": "0:15",
+   "text": "harm — the antibiotics flew before a single culture — the enemy will never be named",
+   "title": "harm:the antibiotics flew before a single culture — the enemy will never be named"
+  },
+  {
+   "kind": "order",
+   "t": "0:15",
+   "text": "perfusion",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:15",
+   "text": "mottled knees, arms cold to the elbow, refill four seconds — the periphery closed its doors an hour ago",
+   "title": "threshold:mottled knees, arms cold to the elbow, refill four seconds — the periphery closed its doors an hour ago"
+  },
+  {
+   "kind": "order",
+   "t": "0:20",
+   "text": "loin",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:20",
+   "text": "she flinches through the drowsiness at the right loin — cva tenderness, the pus signing its address",
+   "title": "threshold:she flinches through the drowsiness at the right loin — cva tenderness, the pus signing its address"
+  },
+  {
+   "kind": "order",
+   "t": "0:25",
+   "text": "lactate",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:25",
+   "text": "lactate 5.6 — the tissues running on debt; a number to clear, not just to file",
+   "title": "threshold:lactate 5.6 — the tissues running on debt; a number to clear, not just to file"
+  },
+  {
+   "kind": "order",
+   "t": "0:30",
+   "text": "culture",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:30",
+   "text": "two sets off different arms, urine bottled behind them — the lab gets its evidence before the bombardment",
+   "title": "threshold:two sets off different arms, urine bottled behind them — the lab gets its evidence before the bombardment"
+  },
+  {
+   "kind": "harm",
+   "t": "5:05",
+   "text": "harm — half the resuscitation is speed — five minutes of shock on dry lines",
+   "title": "harm:half the resuscitation is speed — five minutes of shock on dry lines"
+  },
+  {
+   "kind": "beat",
+   "t": "7:35",
+   "text": "{s} is crashing",
+   "title": "status:Critical"
+  },
+  {
+   "kind": "end",
+   "t": "11:05",
+   "text": "{s} dies",
+   "title": "terminal:DeathArrest"
+  }
+ ]
+}

@@ -1,0 +1,162 @@
+{
+ "ep": "osce-a",
+ "mode": "exam",
+ "script": [
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "allerg"
+  ],
+  [
+   "tick",
+   10.0
+  ],
+  [
+   "order",
+   "adren  iv"
+  ],
+  [
+   "order",
+   "breath"
+  ],
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "what did you eat"
+  ],
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "skin"
+  ],
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "listen"
+  ],
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "discharge"
+  ]
+ ],
+ "transcript": [
+  {
+   "kind": "order",
+   "t": "0:05",
+   "text": "allerg",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:05",
+   "text": "— \"Shrimp. Since I was young. The doctor told me to stay off seafood.\"",
+   "title": "threshold:— \"Shrimp. Since I was young. The doctor told me to stay off seafood.\""
+  },
+  {
+   "kind": "order",
+   "t": "0:15",
+   "text": "adren  iv",
+   "title": ""
+  },
+  {
+   "kind": "harm",
+   "t": "0:15",
+   "text": "harm — iv push adrenaline — arrhythmia on a beating heart",
+   "title": "harm:iv push adrenaline — arrhythmia on a beating heart"
+  },
+  {
+   "kind": "order",
+   "t": "0:15",
+   "text": "breath",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:15",
+   "text": "— \"Tight. I can hear myself whistle.\" A wheeze you can hear from the door.",
+   "title": "threshold:— \"Tight. I can hear myself whistle.\" A wheeze you can hear from the door."
+  },
+  {
+   "kind": "order",
+   "t": "0:20",
+   "text": "what did you eat",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:20",
+   "text": "— \"…a seafood buffet, with the old crowd. Only a little.\" It started thirty minutes after.",
+   "title": "threshold:— \"…a seafood buffet, with the old crowd. Only a little.\" It started thirty minutes after."
+  },
+  {
+   "kind": "order",
+   "t": "0:25",
+   "text": "skin",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:25",
+   "text": "wheals over both arms, the neck, the face — forehead and right cheek swelling",
+   "title": "threshold:wheals over both arms, the neck, the face — forehead and right cheek swelling"
+  },
+  {
+   "kind": "order",
+   "t": "0:30",
+   "text": "listen",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:30",
+   "text": "expiratory wheeze, both sides",
+   "title": "threshold:expiratory wheeze, both sides"
+  },
+  {
+   "kind": "beat",
+   "t": "0:35",
+   "text": "{s} is crashing",
+   "title": "status:Critical"
+  },
+  {
+   "kind": "order",
+   "t": "0:35",
+   "text": "discharge",
+   "title": ""
+  },
+  {
+   "kind": "harm",
+   "t": "0:35",
+   "text": "harm — discharged during the observation window — biphasic reactions return to an empty bed",
+   "title": "harm:discharged during the observation window — biphasic reactions return to an empty bed"
+  },
+  {
+   "kind": "harm",
+   "t": "5:05",
+   "text": "harm — adrenaline delayed — anaphylaxis is treated the moment it is named",
+   "title": "harm:adrenaline delayed — anaphylaxis is treated the moment it is named"
+  },
+  {
+   "kind": "end",
+   "t": "5:05",
+   "text": "{s} dies",
+   "title": "terminal:DeathArrest"
+  }
+ ]
+}

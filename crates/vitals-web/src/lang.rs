@@ -337,7 +337,11 @@ pub fn reply_is_in(lang: &Language, reply: &str) -> bool {
 const UI: &[Line] = &[
     Line { key: "ask_placeholder", tr: &[("th", "ถามคนไข้ได้เลย…")] },
     Line { key: "order_placeholder", tr: &[("th", "หรือพิมพ์คำสั่งเอง…")] },
-    Line { key: "harm_sealed", tr: &[("th", "⚠ บันทึกเหตุไม่พึงประสงค์ไว้แล้ว")] },
+    // `harm_sealed` used to sit here — "⚠ harm recorded", drawn over a harm line while the
+    // clock ran. The line it was drawn over is gone: a sealed run carries no harm beat and no
+    // harm row, because a marker landing the instant a candidate acts is the verdict itself
+    // whatever words are on it. A seal with nothing left to seal is a row nothing reads, and the
+    // test below is the reason it goes rather than lingers.
     // The two beat seals. Deliberately flat: "declined" and "noted" are facts about the
     // record, and any warmer wording would begin explaining — which is the whole of what is
     // being held back. They are the page's BEAT_DECLINED / BEAT_NOTED, which read them off

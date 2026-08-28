@@ -256,9 +256,12 @@ fn a_station_withholds_the_harm_sentence_until_the_bell() {
 
     assert!(!body.contains(FULL), "the harm sentence is still on the wire mid-run: {body}");
     assert_eq!(v["harm"].as_array().map(Vec::len), Some(0), "the harm list is not sealed: {v}");
+    // Not even the token. `harm:sealed` used to travel here and the feed drew it as
+    // "⚠ harm recorded" the instant the depressor went in — the sentence withheld and the
+    // verdict delivered anyway, on screen, where it did not even need a Network tab.
     let beats: Vec<&str> = v["beats"].as_array().expect("beats").iter()
         .filter_map(|b| b.as_str()).filter(|b| b.starts_with("harm")).collect();
-    assert_eq!(beats, vec!["harm:sealed"], "a harm beat says more than the token: {beats:?}");
+    assert!(beats.is_empty(), "a sealed reply still carries a harm beat: {beats:?}");
     // And the chart does not carry the row at all — see `a_sealed_chart_carries_no_harm_row`,
     // which is the property in its own right. A redacted row on a timestamped record hands over
     // the timing, and the timing is the answer.
@@ -474,8 +477,6 @@ fn the_two_doses_produce_charts_of_the_same_shape() {
 fn a_harm_the_clock_fired_is_sealed_the_same_way() {
     let s = Server::start();
     let id = s.open("osce-a");
-    let mut saw_harm_beat = false;
-
     for frame in 0..40 {
         let v = s.tick(&id, 30.0);
         if !v["outcome"].is_null() {
@@ -496,12 +497,15 @@ fn a_harm_the_clock_fired_is_sealed_the_same_way() {
                 "the harm list stayed sealed after the outcome: {v}"
             );
             assert!(frame > 0, "the case ended before a single sealed frame was read");
-            assert!(saw_harm_beat, "no harm ever fired, so this test proved nothing");
             return;
         }
-        saw_harm_beat |= v["beats"]
-            .as_array()
-            .is_some_and(|a| a.iter().any(|b| b.as_str().is_some_and(|b| b.starts_with("harm"))));
+        // The feed's channel is sealed on the same rule as the chart, so a harm the clock fired
+        // is as invisible mid-run as one an order caused. That a harm *did* fire is established
+        // at the bell above, where the rows and the list both have to be non-empty.
+        assert!(
+            !v["beats"].as_array().expect("beats").iter().any(|b| b.as_str().is_some_and(|b| b.starts_with("harm"))),
+            "a harm the clock fired reached a sealed feed: {v}"
+        );
         assert_eq!(
             v["chart"].as_array().expect("chart").iter().filter(|c| c["kind"] == "harm").count(),
             0,

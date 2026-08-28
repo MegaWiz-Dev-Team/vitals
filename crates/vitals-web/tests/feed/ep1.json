@@ -1,0 +1,132 @@
+{
+ "ep": "ep1",
+ "mode": "practice",
+ "script": [
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "adren"
+  ],
+  [
+   "tick",
+   10.0
+  ],
+  [
+   "order",
+   "adren iv"
+  ],
+  [
+   "order",
+   "oxygen"
+  ],
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "fluid"
+  ],
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "supine"
+  ],
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "intubat"
+  ],
+  [
+   "tick",
+   5.0
+  ],
+  [
+   "order",
+   "stand"
+  ]
+ ],
+ "transcript": [
+  {
+   "kind": "order",
+   "t": "0:05",
+   "text": "adren",
+   "title": ""
+  },
+  {
+   "kind": "beat",
+   "t": "0:05",
+   "text": "{s} settles",
+   "title": "status:Recovered"
+  },
+  {
+   "kind": "order",
+   "t": "0:15",
+   "text": "adren iv",
+   "title": ""
+  },
+  {
+   "kind": "harm",
+   "t": "0:15",
+   "text": "harm — arrhythmia (IV push 1:1000)",
+   "title": "harm:arrhythmia (IV push 1:1000)"
+  },
+  {
+   "kind": "order",
+   "t": "0:15",
+   "text": "oxygen",
+   "title": ""
+  },
+  {
+   "kind": "order",
+   "t": "0:20",
+   "text": "fluid",
+   "title": ""
+  },
+  {
+   "kind": "order",
+   "t": "0:25",
+   "text": "supine",
+   "title": ""
+  },
+  {
+   "kind": "order",
+   "t": "0:30",
+   "text": "intubat",
+   "title": ""
+  },
+  {
+   "kind": "order",
+   "t": "0:35",
+   "text": "stand",
+   "title": ""
+  },
+  {
+   "kind": "harm",
+   "t": "0:35",
+   "text": "harm — stand/walk collapse",
+   "title": "harm:stand/walk collapse"
+  },
+  {
+   "kind": "beat",
+   "t": "2:05",
+   "text": "the reaction comes back",
+   "title": "threshold:biphasic"
+  },
+  {
+   "kind": "end",
+   "t": "5:05",
+   "text": "{s} goes home",
+   "title": "terminal:WinDischarge"
+  }
+ ]
+}

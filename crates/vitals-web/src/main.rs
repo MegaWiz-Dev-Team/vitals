@@ -389,17 +389,14 @@ struct Note {
 }
 
 
-/// The one thing a sealed harm is allowed to say.
+/// How [`vitals_sce::render_beat`] spells a harm, and the prefix a sealed view drops on.
 ///
-/// It keeps the `harm:` prefix because that prefix is the page's own grammar — the feed reads it
-/// to know a line is a harm line and colour it, and `unsealHarm()` counts sealed lines against
-/// the full beats the bell delivers, so the count on both sides has to match. Everything after
-/// the prefix is a constant: one token, identical on every station and every harm, so nothing
-/// about *which* mistake it was can be recovered from its length, its wording or its repetition.
-///
-/// Used for [`View::beats`] alone. The chart does not redact a harm line, it does not have one —
-/// see [`HARM`].
-const HARM_SEALED: &str = "harm:sealed";
+/// This used to have a companion, `HARM_SEALED = "harm:sealed"` — the one thing a sealed harm
+/// was allowed to say. It said too much. A redacted line is still a line: the feed printed it as
+/// "⚠ harm recorded" the instant the candidate acted, which is the verdict the seal exists to
+/// withhold, delivered on screen rather than merely on the wire. Both the chart row and the feed
+/// line are now absent while sealed, and there is nothing left to redact *to*.
+const HARM_BEAT: &str = "harm:";
 
 /// The event kind the automaton stamps on a harm, and the row the sealed chart does not carry.
 ///
@@ -570,8 +567,25 @@ impl Session {
                 _ => None,
             })
             .collect();
-        let beats = if sealed {
-            self.beats.iter().map(|b| if b.starts_with("harm:") { HARM_SEALED.to_string() } else { b.clone() }).collect()
+        // ── the feed, on the same rule as the chart ─────────────────────────────
+        // A harm beat used to survive the seal as `harm:sealed`, and the feed printed it as
+        // "⚠ harm recorded" the second the candidate acted. That is a verdict, delivered on
+        // screen, mid-station — the more visible of the two halves of this leak, because the
+        // chart's needed a Network tab and this one did not. In a real OSCE the examiner does
+        // not lean over and say that. The honest signal is the one the body gives: she gets
+        // worse, the numbers move, and reading that is the skill being examined.
+        //
+        // So a sealed feed carries no harm line at all. **The sealed list is exactly the full
+        // list with the `harm:` entries removed, in order** — a subsequence, never a
+        // resequencing — which is the invariant `unsealHarm()` reconstructs the transcript
+        // from at the bell. Nothing here may reorder, renumber or pad it.
+        //
+        // Deliberately not an index or an id per beat. Either would have to be the position in
+        // the *full* list for the page to key on it, and then the gaps in the sequence a sealed
+        // reply carries would spell out where the harms were — the same leak in a form that
+        // takes one subtraction to read.
+        let beats: Vec<String> = if sealed {
+            self.beats.iter().filter(|b| !b.starts_with(HARM_BEAT)).cloned().collect()
         } else {
             self.beats.clone()
         };

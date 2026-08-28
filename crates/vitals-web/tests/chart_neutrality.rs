@@ -262,11 +262,28 @@ fn ordering_iv_push_adrenaline_on_osce_a_charts_the_order_and_seals_the_verdict(
         !v["chart"].as_array().expect("chart").iter().any(|c| c["kind"] == "harm"),
         "a harm row is back on a sealed chart: {v}"
     );
-    // The classification itself is untouched. It is on the feed's own channel, sealed to the
-    // one token, and the harm list and the mark sheet get all of it at the bell.
+    // Nor on the feed's channel, which used to carry `harm:sealed` and printed it as
+    // "⚠ harm recorded" the second the candidate acted.
     assert!(
-        v["beats"].as_array().expect("beats").iter().any(|b| b == "harm:sealed"),
-        "the harm stopped being recorded at all: {v}"
+        !v["beats"].as_array().expect("beats").iter().any(|b| b.as_str().is_some_and(|b| b.starts_with("harm"))),
+        "a harm beat is back on a sealed reply: {v}"
+    );
+    // The classification itself is untouched — the bell hands all of it over.
+    let end = {
+        let mut last = v.clone();
+        for _ in 0..40 {
+            last = s.tick(&id, 30.0);
+            if !last["outcome"].is_null() {
+                break;
+            }
+        }
+        last
+    };
+    assert!(
+        end["harm"].as_array().is_some_and(|a| a.iter().any(|h| h
+            .as_str()
+            .is_some_and(|h| h.contains("iv push adrenaline")))),
+        "the harm stopped being recorded at all: {end}"
     );
 }
 

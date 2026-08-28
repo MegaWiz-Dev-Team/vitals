@@ -2357,11 +2357,10 @@ async function setLang(id,remember){
     PACK={asks:d.asks||{},ui:d.ui||{},kit:d.kit||{}};
     if(d.lang) LANG=d.lang;
   }catch(e){ /* no pack is the English pack: every string below falls back to the original */ }
-  HARM_SEALED = PACK.ui.harm_sealed || '⚠ harm recorded';
-  /* The two beat seals, from the same pack as the harm seal and for the same reason: all three
-     are stand-ins the exam draws over words it will not say yet, and a seal that falls back to
-     English on a Thai bedside announces itself as a seal. The fallback stays anyway — a build
-     served with no pack at all still has to seal. */
+  /* The two beat seals, stand-ins the exam draws over words it will not say yet: a seal that
+     falls back to English on a Thai bedside announces itself as a seal. The fallback stays
+     anyway — a build served with no pack at all still has to seal. There used to be a third,
+     `harm_sealed`, drawn over a harm line; a sealed run has no harm line to draw it over now. */
   BEAT_DECLINED = PACK.ui.beat_declined || 'the order is declined';
   BEAT_NOTED = PACK.ui.beat_noted || 'noted on the record';
   TR={};
@@ -2398,8 +2397,6 @@ async function bootLang(){
    the after picture.
    The scenario files themselves are never touched: demo/ is the case, and a case must read the
    same to the engine, the replayer and the chain no matter who is looking at the screen. */
-let HARM_SEALED='⚠ harm recorded';   /* the pack replaces it — see setLang() */
-const harmShown=(text,ended)=>(examMode()&&!ended)?HARM_SEALED:text;
 
 /* ── the same rule, one step further: an exam does not tutor ──────────────────
    A beat is the case talking back, and most of what it says is observation — what the film
@@ -2453,6 +2450,32 @@ let id=null,timer=null,over=false,seen=0,mode='ask',asking=false,hard=false;
 /* How far into the chart the feed has already looked — `seen`'s opposite number, and reset in
    exactly the same places. Only drainBeats moves it. */
 let CHARTSEEN=0;
+/* ── the beats a sealed run can see ──────────────────────────────────────────
+   A sealed reply carries no harm beat at all — the server drops them rather than redacting
+   them, because "⚠ harm recorded" appearing in the feed the instant you act is the verdict
+   itself, and an examiner does not lean over and say that. What the seal leaves is exactly the
+   full list minus the `harm:` entries, in order, so this is the sequence `seen` walks whichever
+   side of the bell we are on: mid-run the server has already removed them, and at the bell we
+   remove them here. One monotonic list, one watermark, and the bell stops being a moment when
+   the array a counter is counting silently changes shape underneath it.
+
+   Only under exam. A practice episode is never sealed at either end — the server sends the harm
+   beat the moment it happens and the feed prints it there, because that line is the lesson and a
+   coach who will not say what went wrong is not coaching. The filter would have swallowed it and
+   handed it back at the bell, which is the seal leaking *into* practice by the back door. */
+const visBeats=v=>examMode()?(v.beats||[]).filter(b=>!b.startsWith('harm:')):(v.beats||[]);
+/* Where each paint left the feed. Pushed once per drainBeats and read only by unsealHarm, which
+   has to put back lines that were never written — so it needs to know which paint they belonged
+   to, and that is a fact about this page's own history, not about the case.
+
+   `vis` and `chart` are the two watermarks the paint ended on and `clock` its scenario time;
+   between them they pin a harm to one paint. An *ordered* harm is preceded in the chart by the
+   order that caused it, so `chart` jumps in the paint that carries it and nothing earlier can
+   claim it — which matters because an order does not advance the clock and the tick before it
+   reads the same second. A *clock-fired* harm moves no chart row, and there `clock` is what
+   separates one tick from the next. `tail` is the node to hang it off when the paint that owned
+   it wrote no beat of its own. */
+let PAINTS=[];
 const fmt=s=>`${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,'0')}`;
 
 let clockNow=0;
@@ -2971,7 +2994,7 @@ function renderChart(v,ended){
     ? v.chart.slice(-40).map(c=>
         `<div class="c ${c.kind}"><span class="t">${fmt(c.t)}</span>`
         +`<span class="c-k">${KIND[c.kind]||'EVENT'}</span>`
-        +`<span class="c-x">${c.kind==='harm'?harmShown(c.text,ended):c.text}</span></div>`).join('')
+        +`<span class="c-x">${c.text}</span></div>`).join('')
     : '<span class="muted">nothing recorded yet</span>';
   $('#chart').scrollTop=1e6;
 }
@@ -3176,7 +3199,10 @@ addEventListener('keydown',e=>{
 /* Everything the engine has said since the last look, as lines in the feed. Returns the new
    beats so the caller can decide whether the Director gets a turn. */
 function drainBeats(v,ended,named){
-  const fresh=v.beats.slice(seen);
+  /* Not `v.beats` — see visBeats. At the bell the reply grows the harm lines back, and slicing
+     the grown array by a watermark taken against the sealed one would re-print the whole run. */
+  const vis=visBeats(v);
+  const fresh=vis.slice(seen);
   /* Whether the case declined the order these answer is not inferred from the sentence — it is
      read off the chart, where the server already wrote it. An order the scenario answered with
      words and changed nothing by is recorded `action_refused`; that judgement is made in
@@ -3187,20 +3213,25 @@ function drainBeats(v,ended,named){
   CHARTSEEN=chart.length;
   const quiet = examMode() && !ended && (declined || !!named);
   fresh.forEach((b,n)=>{
+    /* A harm never reaches here while the clock runs — the server has already taken it out —
+       so there is no `sealed` branch left on this line. What arrives at the bell arrives whole.
+       Held beats keep their old discipline: the index, which is a number, and never the
+       sentence, because a title attribute is one hover away from being the answer key. */
     const k = b.startsWith('harm') ? 'harm' : b.startsWith('terminal') ? 'end' : 'beat';
-    /* The raw beat is not passed as the tooltip for a sealed harm — a title attribute is one
-       hover away from being the answer key the seal exists to close. Held beats keep the same
-       discipline: the index, which is a number, and never the sentence. */
-    const sealed = k==='harm' && examMode() && !ended;
     /* A line the page has its own words for — a status change, a threshold the case named — is
        a fact about the patient, not a mark, and it is never held. */
     const held = k==='beat' && quiet && !SAY[b];
-    const node=ev(k+(sealed||held?' sealed':''), k==='harm'?'⚠':k==='end'?'■':'·',
-      sealed?HARM_SEALED : held?(declined?BEAT_DECLINED:BEAT_NOTED) : say(b),
-      (sealed||held)?null:b);
+    const node=ev(k+(held?' sealed':''), k==='harm'?'⚠':k==='end'?'■':'·',
+      held?(declined?BEAT_DECLINED:BEAT_NOTED) : say(b),
+      held?null:b);
+    /* Every beat node, not only the held ones: unsealHarm counts these to find where a line
+       that was never written belongs. `bi` stays the held-beat lookup and is now an index into
+       the visible list, which is the list it is read back out of. */
+    node.dataset.bn=seen+n;
     if(held)node.dataset.bi=seen+n;
   });
-  seen=v.beats.length;
+  seen=vis.length;
+  PAINTS.push({vis:seen, chart:CHARTSEEN, clock:clockNow, tail:$('#chat').lastElementChild});
   return fresh;
 }
 /* The bell. Raised from both ends of paint() — the living patient's path and the dead one's —
@@ -3253,13 +3284,58 @@ function finish(v){
   if(win)settle(hand); else flatline(hand);
 }
 
-/* Deferred, not deleted. Every line the exam sealed is rewritten with the sentence the scenario
-   actually wrote, in beat order, the moment the case is over. */
+/* Deferred, not deleted — and now written rather than rewritten.
+   ------------------------------------------------------------------------------------------
+   This used to walk `#chat .ev.harm.sealed` and swap the text of each node for the sentence at
+   the matching position. There are no such nodes any more: a sealed run never wrote a harm line
+   at all, because a redacted one still told the candidate, on screen, the second they acted.
+   So the bell has to put the lines *in*, at the place each of them would have been written.
+
+   Three facts locate one harm, and all three are already tracked:
+
+     k  how many visible beats came before it        — its slot among the beat nodes
+     c  how many non-harm chart rows came before it   — which paint carried it, when an order
+                                                        caused it and the clock did not move
+     t  the scenario second it happened               — which paint carried it, when the clock
+                                                        caused it and the chart did not move
+
+   Find the paint, then place it: before the beat node of visible beat #k when that beat was
+   written by the same paint, and otherwise on the end of that paint's own block. The anchor
+   moves as we go so two harms in one paint keep their order. */
 function unsealHarm(v){
-  const full=(v.beats||[]).filter(b=>b.startsWith('harm:'));
-  document.querySelectorAll('#chat .ev.harm.sealed').forEach((n,i)=>{
-    if(full[i]!=null){ n.querySelector('.tx').textContent=say(full[i]); n.title=full[i]; }
-    n.classList.remove('sealed');
+  /* Practice already printed every one of these where it happened. */
+  if(!examMode()) return;
+  const all=v.beats||[];
+  const want=[]; let k=0;
+  for(const b of all){ if(b.startsWith('harm:')) want.push({b,k}); else k++; }
+  if(!want.length) return;
+  /* The chart is whole from the bell onwards, so this is where the clock and the running count
+     of everything-that-is-not-harm come from. Same order as the harm beats: the automaton
+     records the harm the moment it emits the beat. */
+  const rows=(v.chart||[]); const at=[]; let c=0;
+  for(const r of rows){ if(r.kind==='harm') at.push({t:r.t,c}); else c++; }
+  const chat=$('#chat');
+  want.forEach((w,i)=>{
+    const a=at[i]||{t:Infinity,c:w.k};
+    let p=0;
+    while(p<PAINTS.length-1 && !(PAINTS[p].chart>=a.c && PAINTS[p].clock>=a.t)) p++;
+    const before=PAINTS[p-1] ? PAINTS[p-1].vis : 0;
+    /* Written by this paint? Then the line goes in front of it. Otherwise this paint said
+       nothing after the harm and the line goes on the end of what it did say. */
+    const own = w.k>=before && w.k<PAINTS[p].vis;
+    const node=document.createElement('div');
+    node.className='ev harm';
+    node.innerHTML=`<span class="t">${fmt(a.t===Infinity?PAINTS[p].clock:a.t)}</span>`+
+                   `<span class="ic">⚠</span><span class="tx"></span><span class="rule"></span>`;
+    node.querySelector('.tx').textContent=say(w.b); node.title=w.b;
+    const mark=own ? chat.querySelector('.ev[data-bn="'+w.k+'"]') : null;
+    if(mark) chat.insertBefore(node,mark);
+    else if(PAINTS[p].tail && PAINTS[p].tail.parentNode===chat)
+      chat.insertBefore(node,PAINTS[p].tail.nextSibling);
+    else chat.appendChild(node);
+    /* Two harms in one paint: the second hangs off the first, not off the same anchor, or the
+       pair would come out backwards. */
+    PAINTS[p]={...PAINTS[p], tail:node};
   });
 }
 /* The same, for the lines the exam held back because they were teaching rather than observing.
@@ -3267,7 +3343,7 @@ function unsealHarm(v){
    and the index is what the node was given when it was written. The sentence itself was never
    in the DOM until now — which is the point of keeping a number there instead. */
 function unsealBeats(v){
-  const all=v.beats||[];
+  const all=visBeats(v);
   document.querySelectorAll('#chat .ev.beat.sealed[data-bi]').forEach(n=>{
     const b=all[+n.dataset.bi];
     if(b!=null){ n.querySelector('.tx').textContent=say(b); n.title=b; }
@@ -3355,7 +3431,7 @@ $('#start').onclick=async()=>{
   // Before the case exists, not after. A case opened while the key was still being generated
   // would belong to nobody, and a case that belongs to nobody answers to anyone holding its id.
   await identity();
-  stop(); over=false; seen=0; CHARTSEEN=0; clockNow=0; TR={}; emptyState(); $('#result').style.display='none';
+  stop(); over=false; seen=0; CHARTSEEN=0; PAINTS=[]; clockNow=0; TR={}; emptyState(); $('#result').style.display='none';
   /* Wiped, not just hidden: a mark sheet left in the DOM from the previous run is the answer
      key one devtools inspection away, and #result is display:none rather than gone. */
   $('#marks').innerHTML=''; $('#db').innerHTML=''; $('#reveal').textContent=''; $('#verdict').innerHTML='';
