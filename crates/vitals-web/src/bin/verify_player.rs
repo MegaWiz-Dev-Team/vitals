@@ -255,20 +255,16 @@ fn print_scenario_check(cases: &[[u8; 32]]) {
         println!("     must print → {h}");
     }
     println!(
-        "\nsha256sum instead of shasum -a 256 on Linux. Every scenario version an anchored run was\n\
-         played against is committed under {SCE_ARCHIVE}/, named by its own digest and never\n\
-         deleted, so a leaf written before an edit still resolves to the bytes it was computed\n\
-         over. INDEX.json maps each hash to the station file it was archived from, if you would\n\
-         rather hash that copy:\n\
+        "\nsha256sum instead of shasum -a 256 on Linux. Every version an anchored run was played\n\
+         against is committed under {SCE_ARCHIVE}/, named by its own digest and never\n\
+         deleted; INDEX.json maps each hash to the station file it came from:\n\
          \n\
          \x20   grep -A1 {first} {SCE_ARCHIVE}/INDEX.json\n\
          \n\
-         GET /api/sce/<hash> serves the same bytes over HTTP, but only once a case is retired:\n\
-         while a station can still be sat its scenario file is the mark sheet — every matcher,\n\
-         every harm, every threshold — so the server answers 404 'that scenario is in active use'\n\
-         rather than hand a candidate the answers mid-exam, and at the time of writing that is\n\
-         every case in the season. The clone above is the check that works either way, which is\n\
-         why it is the one printed. See VERIFICATION.md §5."
+         GET /api/sce/<hash> serves the same bytes over HTTP, but only once a case is retired — a\n\
+         station that can still be sat would be handing out its own mark sheet, so it answers 404\n\
+         'that scenario is in active use', and today that is every case in the season. The clone\n\
+         above is the check that works either way. See VERIFICATION.md §5."
     );
 }
 

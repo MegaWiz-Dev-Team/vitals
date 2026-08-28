@@ -10,7 +10,8 @@ what it is reading.
 
 Last run end to end on **2026-08-28**, against program
 `535FMHHZ4rp5hNmvSmdNFoaatLX82cCXHfRg3hpyBTSG` on devnet. Every output on this page is pasted from
-that run, unedited.
+that session, unedited. Where a command was run against a bay started out of this repository
+rather than against the public demo, it says so.
 
 ---
 
@@ -42,6 +43,7 @@ no player given — asking the chain who has proven anything on tree #488905120
 players with a claim buffer on this tree:
   3zi13rwSo1HDBYJxLKGzWQN3J2ebidC5QCfMhBwAxKTT  1 proven attempt
   ACYmqyxqS9SDLYMRNfxJwKAAV2nAC9UcmuhbGqndHVjj  1 proven attempt
+  DS23yn4DC1SWUVBGHbKPQWpcYqwXB8D9SXTJq277V1xk  1 proven attempt
   FtUggk4Bfoah25VQeyjTFZ5hoqeStqXPTLGStLf5Kihu  1 proven attempt
   H5dQxmKbAABfm7aaffXLjPPc16Q9ha6kUQNb2DXLDNGX  1 proven attempt
 
@@ -58,8 +60,22 @@ live ClaimAccount: 1 proven attempt
      outcome 100/100 · det 36/40 · difficulty 0 · exam true
      leaf 25473e2f26ae579424e888b009e115f6566a6935bdf9bbb0d817202aa329f87e
 
-fetch the scenario any of these was computed over, and check its hash yourself:
-  curl -s https://devnet.vitals.academy/api/sce/4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d | shasum -a 256   # → 4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d
+check the scenario bytes those runs were computed over — from your own clone, with no
+server in the loop. Run this from the root of the repository you built this binary in:
+
+  shasum -a 256 conformance/sce-archive/4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d.json
+     must print → 4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d
+
+sha256sum instead of shasum -a 256 on Linux. Every version an anchored run was played
+against is committed under conformance/sce-archive/, named by its own digest and never
+deleted; INDEX.json maps each hash to the station file it came from:
+
+    grep -A1 4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d conformance/sce-archive/INDEX.json
+
+GET /api/sce/<hash> serves the same bytes over HTTP, but only once a case is retired — a
+station that can still be sat would be handing out its own mark sheet, so it answers 404
+'that scenario is in active use', and today that is every case in the season. The clone
+above is the check that works either way. See VERIFICATION.md §5.
 
 stars (distinct exam cases cleared at det >= 70%): 1
 
@@ -68,10 +84,16 @@ summary: distinct 1 · hard 0 · avg 10000bps · computed = Advanced beginner
   claim Proficient : REJECTED (claimed Proficient, computed Advanced beginner)
 ```
 
-> The `curl` line in that output resolves **only once the case has been retired.** While a case
-> is still on the shelf its scenario file is a live mark sheet, and the server will not publish
-> it — see §5, which gives the check that works either way. The tool prints the URL for every
-> attempt because it cannot know, from a leaf, whether that case is still being sat.
+**Read the last two lines.** That is the tool asking our own on-chain `adjudicate` what would
+happen if this player claimed a level, and being told no — by the program we wrote, about a run
+on our own demo. One proven attempt does not support Competent, so the claim is refused, and
+there is nothing in this repository that can talk it into saying yes. §3 shows where each number
+in that answer comes from.
+
+The check the tool prints is a path in your clone, not a URL. `GET /api/sce/<hash>` publishes a
+scenario only once its case has been retired — while a station can still be sat, its file is the
+mark sheet — so for anything in the current season the repository is the route rather than the
+fallback. §5 does both, in that order.
 
 To check a specific player, or a specific tree:
 
@@ -109,7 +131,7 @@ already checked that the leaf is in the tree at the index claimed. The tool then
 
 | field | meaning |
 | --- | --- |
-| `case` | the **sha256 of the scenario file** the run was played against. §5 fetches those exact bytes and re-hashes them. Edit a scenario and its hash changes, so old leaves stop proving anything about the new version — which is the correct behaviour, not a bug. |
+| `case` | the **sha256 of the scenario file** the run was played against. §5 hashes your own copy of those exact bytes. Edit a scenario and its hash changes, so old leaves stop proving anything about the new version — which is the correct behaviour, not a bug. |
 | `outcome 100/100` | the outcome score, out of its maximum. This is what the level is computed from. |
 | `det 36/40` | the deterministic rubric score — replayed from the tape by the pinned engine, never accepted from a browser. This is what a star is measured against. Zero for practice runs; only an exam run is marked. |
 | `difficulty` | `0` student · `1` intern · `2` resident |
@@ -213,15 +235,38 @@ Content-addressed and ungated. It answers `200` with the exact bytes for a **ret
 one no longer on the playable shelf — and re-hashes what it read before sending, so it cannot
 serve you the wrong file under the right name. It can only serve the right bytes or nothing.
 
-For a case that can still be sat it answers `404`, and says why:
+For a case that can still be sat it answers `404`, and says why. This transcript is from a bay
+started out of this repository rather than from the public demo, so that it is reproducible from a
+clean checkout on any day rather than describing whatever one deployment happens to be serving:
 
 ```bash
-curl -s https://devnet.vitals.academy/api/sce/4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d
+VITALS_WEB_BIND=127.0.0.1:8791 cargo run -q -p vitals-web --bin vitals-web
 ```
+
+It stays in the foreground. Among the lines it prints on startup is how many versions it holds and
+how many of them it may publish — two different numbers, and the difference is the whole behaviour
+of this route (the absolute path is your own checkout's; the rest is verbatim):
+
+```
+archive    17 archived scenario version(s) at <your checkout>/conformance/sce-archive · 0 publishable · 17 live and withheld — /api/sce answers 404 for everything until a case is retired
+```
+
+Then, in another terminal:
+
+```bash
+curl -s http://127.0.0.1:8791/api/sce/4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d
+```
+
+One line, `404`:
+
 ```json
-{"error":"that scenario is in active use",
- "detail":"This hash names a case that can be sat right now, and the file is the mark sheet — every matcher, every harm, every threshold. It is published when the case is retired, and not before.",
- "verify_now":"Until then the bytes are in the repository and prove the same thing: clone it and run `shasum -a 256 <the scenario file>` — see VERIFICATION.md §5."}
+{"detail":"This hash names a case that can be sat right now, and the file is the mark sheet — every matcher, every harm, every threshold. It is published when the case is retired, and not before.","error":"that scenario is in active use","verify_now":"Until then the bytes are in the repository and prove the same thing: clone it and run `shasum -a 256 <the scenario file>` — see VERIFICATION.md §5."}
+```
+
+A hash nobody has ever produced gets a different, flatter `404`:
+
+```json
+{"error":"no scenario with that hash","want":"GET /api/sce/<64 hex sha256 of a retired scenario file>"}
 ```
 
 **Why the endpoint holds a live case back.** A scenario file is the answer key. It carries every
@@ -254,6 +299,9 @@ The tool does not panic at you. Two answers are expected and both explain themse
 (`det_score`, `det_max`), so a claim buffer written before that change cannot be read by a current
 build. Asking an old tree gives you this, and exit code `2`:
 
+```bash
+./target/release/verify_player 9iTTpzAHhVqsWSJU37rZuNU92sRSeBjjJ1LMLHRCPSFv 487877348
+```
 ```
 verifying 9iTTpzAHhVqsWSJU37rZuNU92sRSeBjjJ1LMLHRCPSFv · tree #487877348 · program 535FMHHZ4rp5hNmvSmdNFoaatLX82cCXHfRg3hpyBTSG · https://api.devnet.solana.com
 tree id from: command line
@@ -269,6 +317,14 @@ The records on tree #487877348 were written by an earlier ProvenAttempt layout �
 the deterministic rubric fields (det_score, det_max) were added — so every field after
 them is read at the wrong offset. Nothing is wrong with the chain: those bytes are
 exactly what was anchored. They predate the struct that would read them.
+
+Ask a tree written by the current layout instead. The server publishes which one that is:
+
+    curl -s https://devnet.vitals.academy/api/chain | tr ',' '\n' | grep tree_id
+    verify_player <PLAYER> <TREE_ID>
+
+Or run verify_player with no arguments and it will find the current tree, and the players
+on it, by itself.
 ```
 
 Those bytes are exactly what was anchored; the chain is not lying. Ask a current tree instead.
@@ -276,11 +332,24 @@ Those bytes are exactly what was anchored; the chain is not lying. Ask a current
 **Nothing proven on this tree.** The player exists but has no claim buffer on the tree you asked
 about — usually because they played on an earlier one. Exit code `1`:
 
+```bash
+./target/release/verify_player GNkxkveLHe6KQ8t57VdLZiU3jwVsJhGysws7CsYSopmS
 ```
-no ClaimAccount at GNkxkveLHe6KQ8t57VdLZiU3jwVsJhGysws7CsYSopmS — nothing proven on this tree
+```
+verifying GNkxkveLHe6KQ8t57VdLZiU3jwVsJhGysws7CsYSopmS · tree #488905120 · program 535FMHHZ4rp5hNmvSmdNFoaatLX82cCXHfRg3hpyBTSG · https://api.devnet.solana.com
+tree id from: live /api/chain
+
+started (commitments ever made) : none
+stored Progress (last claim)    : none claimed yet
+
+no ClaimAccount at GyqUPyhb3TcCwtKTx5WuNYK5tGH8HtWsi95ZeBP5QcpV — nothing proven on this tree
 This player may have played on an earlier tree. `verify_player` with no arguments
 lists who has records on tree #488905120.
 ```
+
+`GyqUPyhb3TcCwtKTx5WuNYK5tGH8HtWsi95ZeBP5QcpV` is not the player — it is the claim buffer's
+address, the PDA derived from that player and that tree. The tool names the account it looked at
+rather than the key you typed, so that you can check the derivation yourself.
 
 ---
 
@@ -318,7 +387,10 @@ does not say the player is a good doctor. It is evidence about practice, not a l
 
 `crates/vitals-web/tests/verify_tool.rs` keeps this page honest: it fails the workspace build if
 the tool's offline fallback tree stops being the number written above, if this file goes missing,
-or if the live lookup is ever replaced by a hardcoded default again. Its network half —
+or if the live lookup is ever replaced by a hardcoded default again. It also guards §5 — the check
+`verify_player` prints must be the clone, not a fetch from `/api/sce`; the path it prints must name
+a file that really is in the archive and really hashes to its own name; and this page must show the
+same command the tool does. Its network half —
 
 ```bash
 cargo test -p vitals-web --test verify_tool -- --ignored
