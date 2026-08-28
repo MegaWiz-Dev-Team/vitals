@@ -8,7 +8,7 @@
 //! and sessions in a map. The point is to make the automaton playable, not to ship a platform.
 
 mod chain;
-use vitals_web::{archive, fuel, lang, meter, news2, patient, reading, store};
+use vitals_web::{archive, fuel, lang, meter, news2, patient, reading, store, usage};
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -230,6 +230,24 @@ impl Session {
             saved_at: Some(std::time::Instant::now()),
         })
     }
+}
+
+/// Count a run that has just ended — once, on the edge, and never again.
+///
+/// `was_over` is read *before* the request touches the automaton, so the increment happens on the
+/// transition into a terminal state and nowhere else. A run resumed from disk after the bell
+/// replays into an outcome that is already set, so it arrives here with `was_over` true and is
+/// not counted a second time; a run that ends and is never touched again was counted by the very
+/// request that ended it.
+///
+/// The bucket is the case's own outcome id, not a label invented here — the scenario author's
+/// vocabulary is the only one that stays true when a case is rewritten.
+fn count_finish(u: &mut usage::Usage, s: &Session, was_over: bool, store: &store::Store) {
+    if was_over {
+        return;
+    }
+    let Some(o) = s.state.outcome() else { return };
+    u.finished(s.state.outcome_id().unwrap_or("unknown"), o.is_death(), store);
 }
 
 /// Write a run to disk. `urgent` is false only for a bare tick.
@@ -1240,6 +1258,12 @@ fn main() {
     let mut meter = meter::Meter::open(&store);
     println!("meter      {}", meter.describe());
 
+    // Runs opened and runs finished, resumed from the store. Deliberately not a count of
+    // people: there is no signup here, so there is nothing that is a person to count. See
+    // `usage::LIMITS`, which travels with every reply the endpoint gives.
+    let mut usage = usage::Usage::open(&store);
+    println!("usage      {}", usage.describe());
+
     // How many past scenario versions this deployment can hand back to a verifier. Printed
     // because the failure mode is silent: an image built without `conformance/sce-archive`
     // answers /api/sce with 404 for every historical hash and looks perfectly healthy doing it.
@@ -1586,6 +1610,9 @@ fn main() {
                 match new_session(&ep) {
                     Ok(mut s) => {
                         s.owner = param(&url, "player").and_then(|p| pubkey(&p)).map(|k| k.to_string());
+                        // One run opened. The key is a browser's, not a person's — it is folded
+                        // into a month-salted fingerprint and never stored as itself.
+                        usage.started(&ep, s.owner.as_deref(), &store);
                         let id = fresh_id();
                         let view = s.view(lang::language(param(&url, "lang").as_deref()));
                         let mut map = sessions.lock().unwrap();
@@ -1604,6 +1631,9 @@ fn main() {
                 match map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) {
                     None => no_such_session(),
                     Some(s) => {
+                        // Read before anything moves: the increment belongs to the transition
+                        // into a terminal state, not to every request made after it.
+                        let was_over = s.state.outcome().is_some();
                         let acted = param(&url, "do").is_some();
                         if let Some(act) = param(&url, "do") {
                             // Recognition happens here, once, and its answer goes on the tape beside the
@@ -1642,6 +1672,7 @@ fn main() {
                             s.tape.push(Step::Tick(dt));
                         }
                         let v = s.view(lang::language(param(&url, "lang").as_deref()));
+                        count_finish(&mut usage, s, was_over, &store);
                         persist(&store, &id, s, acted);
                         json(v)
                     }
@@ -1661,6 +1692,9 @@ fn main() {
                 match map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) {
                     None => no_such_session(),
                     Some(s) => {
+                        // The picker goes through the same matcher a typed order does, so it can
+                        // end a run the same way. Counted from the same edge.
+                        let was_over = s.state.outcome().is_some();
                         if off {
                             s.state.detach(&dev);
                             s.tape.push(Step::Off(dev.clone()));
@@ -1697,6 +1731,7 @@ fn main() {
                             }
                         }
                         let v = s.view(lang::language(param(&url, "lang").as_deref()));
+                        count_finish(&mut usage, s, was_over, &store);
                         persist(&store, &id, s, true);
                         json(v)
                     }
@@ -2005,6 +2040,33 @@ fn main() {
                         404,
                     ),
                 }
+            }
+            // ── how much this bay is used ───────────────────────────────────────
+            // Runs opened, runs finished, and how many distinct browsers were seen this month.
+            // Public and read-only, because a project that sells "check it yourself" and keeps
+            // its own usage private is arguing against itself.
+            //
+            // **It is not a count of people and it may never be quoted as one.** There is no
+            // signup here by design, so there is nothing that is a person: one shared box in a
+            // faculty is one device with fifty students behind it, and one person with a phone
+            // and a laptop is two. `usage::LIMITS` says so in the payload, every time — the
+            // numbers and the caveats are built in the same call so a bare integer cannot leave
+            // this server without them.
+            //
+            // No consent gate, and none needed: this is the server counting its own work. No IP,
+            // no user-agent, no identifier that follows a reader anywhere. That is what makes it
+            // a better instrument than the analytics tag, which loses everyone who declines.
+            (Method::Get, "/api/usage") => {
+                let t = tree.lock().unwrap();
+                let mut v = usage.view();
+                // The one figure on this page an outsider can verify without trusting us: the
+                // runs anchored on chain. Read from the same lock /api/chain and /api/fuel read,
+                // so the three can never disagree about how many there are.
+                v["anchored_on_chain"] = serde_json::json!(t.leaves.len());
+                v["anchored_on_chain_note"] =
+                    serde_json::json!("Anchoring is opt-in, so this is a floor, not a total — \
+                                       but it is the only number here anyone can check for themselves.");
+                json(v)
             }
             // The month's spend, the ceiling and where donations go — public, because the
             // ceiling being visible is the point. Anyone can check what the bay has left.
@@ -2865,7 +2927,7 @@ mod tests {
             assert!(guarded(p), "{p} makes the server sign or spend");
         }
         for p in ["/", "/play", "/api/new", "/api/step", "/api/kit", "/api/tape", "/api/chain",
-                  "/api/meter", "/api/fuel", "/api/stars", "/api/lang", "/donate",
+                  "/api/meter", "/api/fuel", "/api/stars", "/api/lang", "/api/usage", "/donate",
                   // Re-derivation is the product's whole claim. A token on it would mean
                   // "re-derivable by anyone we gave a token to", which is not the claim.
                   "/api/sce/0000000000000000000000000000000000000000000000000000000000000000"] {

@@ -18,3 +18,4 @@ pub mod news2;
 pub mod patient;
 pub mod reading;
 pub mod store;
+pub mod usage;
