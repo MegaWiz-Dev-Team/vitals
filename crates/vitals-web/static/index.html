@@ -3384,22 +3384,15 @@ $('#anchor').onclick=async()=>{
   /* The star the station card wears: earned here, by an anchor that really landed. */
   const st=starred(), e=$('#ep').value;
   if(!st.includes(e)){st.push(e);localStorage.setItem('vitals.starred',JSON.stringify(st));}
-  /* An exam that cleared a bar is a star the chain will certify in a moment. Floor the
-     tier locally now — a door must not stand shut in front of the room while two
-     signatures land — then ask /api/stars until the chain's answer catches up. Three-tier:
-     ≥95% of the rubric floors ★★★, ≥85% ★★, ≥70% ★; only ever upward. */
+  /* An exam that cleared a bar is a star the chain will certify in a moment. The tier was
+     already floored locally when the sheet was marked (see `bankTier`, called from
+     `showMarks`) — banking it again here is a no-op for a run that has not improved, and
+     the point of the call is the line below it: ask /api/stars until the chain's answer
+     catches up. Three-tier: ≥95% of the rubric floors ★★★, ≥85% ★★, ≥70% ★; only upward. */
   if(EXAMLIVE&&r.det&&r.det.max>0){
     const bps=bpsOf(r.det.score,r.det.max);
     const t=tierFor(bps);
-    if(t){
-      const ls=localStars();
-      if(!ls.includes(e)){ls.push(e);localStorage.setItem('vitals.stars',JSON.stringify(ls));}
-      const m=localTiers();
-      if((m[e]||0)<t){m[e]=t;localStorage.setItem('vitals.tiers',JSON.stringify(m));}
-      /* A star was just earned here. Tell the next shelf paint to hand it over one glyph
-         at a time, and to watch for the door it may have opened. */
-      POPFOR.add(e); DOORWATCH=true;
-    }
+    if(t) bankTier(e,t);
     /* What the next star costs, in the rubric's own points. A percentage tells you how you
        did; "3 points from your third star" tells you whether to sit it again — and the
        arithmetic is the server's, so the number is a promise the door will keep. */
@@ -3511,6 +3504,14 @@ async function showMarks(){
   if(!Array.isArray(m.items)||!m.items.length) return;
   const bps=m.bps||0, t=tierFor(bps), nb=nextBar(bps);
   const pct=(bps/100).toFixed(bps%100?1:0);
+  /* ── the star is banked here, by the sheet, not by the anchor ────────────────
+     This is the moment the run is *scored* — the server has walked the tape and sent back the
+     total the chain would carry — so this is the moment the tier is earned. Writing it here is
+     what lets a player who never anchors keep what they won: the anchor stays the on-chain
+     proof and stops being a toll gate on local progression. `bankTier` only ever raises the
+     floor, so a worse replay cannot take a star back, and `tierOf` still prefers the chain's
+     answer over this one wherever the chain has caught up. */
+  if(t&&m.max>0&&examMode()) bankTier($('#ep').value,t);
   /* The same sentence the anchor prints, available before anchoring and in practice —
      the arithmetic is the server's either way, so the two can never disagree. */
   let next;
@@ -3615,8 +3616,33 @@ const barRule=()=>`${STARBAR/100}% pass · ${EXBAR/100}% excellent · ${FLBAR/10
    in front of a shut door waiting for finality. vitals.tiers is the per-station floor and
    its values are simply tiers, so a 2 written under the two-tier rules still reads as ★★;
    vitals.stars is the older one-tier list, still read so nobody's door slams shut. */
-const localStars=()=>JSON.parse(localStorage.getItem('vitals.stars')||'[]');
+const localStars=()=>{try{return JSON.parse(localStorage.getItem('vitals.stars')||'[]')}catch(e){return[]}};
 const localTiers=()=>{try{return JSON.parse(localStorage.getItem('vitals.tiers')||'{}')}catch(e){return{}}};
+/* Bank the tier a run just earned, here, in the browser that watched it happen.
+   **This is called when the sheet is marked, not when the run is anchored.** It used to live
+   inside the anchor handler alone, and the effect was that the ordinary way out of a station —
+   the bell, the up-next card, "← episodes" — threw the stars away: a 40/40 came back to a shelf
+   reading ⭐0, a shut door and three empty glyphs, and `vitals.stars` was still null. Anchoring
+   is the *proof*, and it stays exactly that; it was never supposed to be the receipt a player
+   needs to keep their own progress. The chain remains the higher authority — `tierOf` takes the
+   max of this and `/api/stars` — so a floor written here is only ever an optimistic floor under
+   an answer that will overwrite it upward, and never a claim of provenance: the "anchored on
+   chain" ★ on the card is `vitals.starred`, which only the anchor writes.
+   Only ever upward, so sitting a station again and doing worse cannot take a star back. */
+function bankTier(e,t){
+  if(!e||!t)return false;
+  let moved=false;
+  try{
+    const ls=localStars();
+    if(!ls.includes(e)){ls.push(e);localStorage.setItem('vitals.stars',JSON.stringify(ls));moved=true;}
+    const m=localTiers();
+    if((m[e]||0)<t){m[e]=t;localStorage.setItem('vitals.tiers',JSON.stringify(m));moved=true;}
+  }catch(err){ /* a kiosk with storage off still plays; it just cannot remember */ }
+  /* A star was just earned here. Tell the next shelf paint to hand it over one glyph at a
+     time, and to watch for the door it may have opened. */
+  if(moved){ POPFOR.add(e); DOORWATCH=true; }
+  return moved;
+}
 /* One station's effective tier: the best of what the chain certifies and what this browser
    watched land, and never above the ceiling — a corrupted cache must not be able to open a
    door. Only ever asked about set members, so an episode's exam cannot leak in. */
