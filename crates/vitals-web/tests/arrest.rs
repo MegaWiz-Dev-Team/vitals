@@ -171,3 +171,64 @@ fn the_device_never_caches_a_cuff_reading_that_did_not_happen() {
     );
     assert!(html.contains("const cuffable = d.sbp != null && d.dbp != null"), "the cuff guard is gone");
 }
+
+// ── the trace ───────────────────────────────────────────────────────────────
+// One hand-drawn sinus strip used to be drawn over every state of every case. A station whose
+// patient is in PEA showed four textbook complexes marching along under a panel reading
+// "Arrest" — and a clinician who sees that stops trusting the rest of the screen.
+
+#[test]
+fn the_rail_draws_a_different_trace_for_every_rhythm_the_engine_can_declare() {
+    let html = page("index.html");
+    assert!(html.contains("const TRACES={"), "the rail has no rhythm table");
+    // Every rhythm `Rhythm::as_str` can produce needs a shape, or it silently falls back to
+    // sinus and the bug is back for that rhythm only.
+    for rhythm in ["sinus", "pea", "vt", "vf", "asystole"] {
+        assert!(
+            html.contains(&format!("  {rhythm}:")),
+            "the rail has no trace for {rhythm} — it would draw sinus over it"
+        );
+    }
+    assert!(html.contains("drawTrace(v);"), "the trace is never redrawn from the view");
+    // The sinus strip is read out of the markup rather than copied into the table, so the
+    // well-patient trace cannot drift away from the one in the SVG.
+    assert!(html.contains("const TR_SINUS="), "the sinus path was copied instead of read");
+    assert!(html.contains("sinus:TR_SINUS"), "sinus no longer uses the strip in the markup");
+}
+
+#[test]
+fn asystole_is_a_straight_line() {
+    let html = page("index.html");
+    assert!(
+        html.contains("asystole:'M0 28 H300'"),
+        "asystole draws something other than a flat line on the rail"
+    );
+}
+
+#[test]
+fn the_rail_names_the_rhythm_it_is_drawing() {
+    let html = page("index.html");
+    assert!(
+        html.contains("v.rhythm!=='sinus'?' · '+v.rhythm.toUpperCase()"),
+        "the strip changes shape without saying which rhythm it changed to"
+    );
+}
+
+/// Breathing stops when the heart does — on the device's impedance lane, which is the only
+/// place a respiratory waveform is drawn.
+///
+/// The lane already had the branch; what it never had was a zero to trigger it, because the
+/// automaton froze `rr` at whatever it held when the rhythm changed. EP1 arrested at 28 breaths
+/// a minute and the trace went on breathing calmly for the rest of the station.
+#[test]
+fn the_respiration_lane_flattens_when_the_heart_stops() {
+    let html = page("device/monitor.html");
+    assert!(
+        html.contains("if (V.rr > 0){ resp.shape = respShape;"),
+        "the respiration lane lost its apnoea branch"
+    );
+    assert!(
+        html.contains("resp.shape = () => 0;"),
+        "apnoea no longer draws a flat impedance trace"
+    );
+}

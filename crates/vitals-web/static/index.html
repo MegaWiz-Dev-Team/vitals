@@ -2796,7 +2796,12 @@ function paint(v,named){
      complexes at a countable rate with no pulse, and that is the whole trap. */
   setVital('#m-hr',v.hr); setVital('#m-spo2',v.spo2==null?'--':v.spo2+'%');
   setVital('#m-bp',v.sbp==null||v.dbp==null?'--':v.sbp+'/'+v.dbp); setVital('#m-rr',v.rr);
-  $('#mini-status').textContent=v.status;
+  drawTrace(v);
+  /* The strip says which rhythm it is drawing, the way the bedside lane does. Only when it is
+     not sinus — a label that is always on is a label nobody reads, and the point of this one is
+     that it appears at the moment the shape of the trace changes. */
+  $('#mini-status').textContent=v.status
+    +(v.rhythm&&v.rhythm!=='sinus'?' · '+v.rhythm.toUpperCase():'');
   /* She is getting worse. A class changing colour is a fact and nobody looks up for a
      fact; the room going red twice is the alarm the bay would actually be making. Only
      downward, and never after the bell — the border is a warning, not a verdict. */
@@ -4423,6 +4428,55 @@ function bootMonitor(){
   };
   raf=requestAnimationFrame(frame);
   return fin;
+}
+
+/* ── the rail's trace follows the rhythm ──────────────────────────────────────
+   It did not. One hand-drawn sinus strip was drawn over every state of every case, so a
+   station whose patient was in PEA showed four textbook complexes marching along under a
+   panel that said "Arrest" — and a clinician reading that screen stops reading the rest of
+   it. The rhythm is scenario content the engine already holds (`Rhythm::parse`, declared per
+   state), it now rides in the view, and this is the rail drawing what it is told rather than
+   what it assumes.
+
+   Four shapes, because four is what the difference between them is *for*:
+
+     sinus     the strip in the markup — organised, spiky, the one a well patient wears
+     pea       wide, slow, low complexes. Organised electricity, no output — which is the
+               finding, and the reason the drill is to feel for a pulse instead of reading
+               the screen. HR keeps its number beside it; SpO2 and BP are `--`.
+     vt        broad and regular and fast, the shape a defibrillator is for
+     vf        chaotic, no complexes at all — the same three-sine recipe the bedside device
+               draws at full size, so the sparkline and the strip cannot disagree
+     asystole  a straight line
+
+   The full-size device keeps its wandering asystole baseline (a real lead picks up chest
+   movement, which is why the protocol says confirm in two leads); at 28 pixels tall that
+   wander is invisible, so this one is drawn flat.
+
+   Presentation only. Nothing here reaches the tape, the replay, the leaf or the rubric. */
+const TR_SINUS=(()=>{const p=$('#mtrace');const w=p&&p.querySelector('.tr-w');
+  return w?w.getAttribute('d'):'M0 28 H300';})();
+/* A polyline across the strip, sampled from a shape function. Deterministic on purpose: the
+   path is written into the DOM once, and a trace that reshuffled itself on every paint would
+   flicker. */
+const tracePath=(f,step)=>{let d='M0 28';
+  for(let x=step;x<=300;x+=step)d+=' L'+x+' '+(28-f(x)).toFixed(1);
+  return d;};
+const TRACES={
+  sinus:TR_SINUS,
+  /* Two complexes where sinus has four, three times as wide and a third as tall. */
+  pea:'M0 28 H40 l10 -6 l12 12 l14 -10 l10 4 H150 l10 -6 l12 12 l14 -10 l10 4 H300',
+  vt:tracePath(x=>Math.sin(x*0.20)*10,3),
+  vf:tracePath(x=>Math.sin(x*0.55)*5+Math.sin(x*0.31+1.7)*3+Math.sin(x*0.93+0.4)*1.8,3),
+  asystole:'M0 28 H300',
+};
+function drawTrace(v){
+  const box=$('#mtrace'); if(!box)return;
+  const w=box.querySelector('.tr-w'); if(!w)return;
+  /* Unknown or absent rhythm degrades to sinus, not to a flat line: a rail that invents an
+     arrest is worse than one that misses it. */
+  const d=TRACES[String(v.rhythm||'sinus').toLowerCase()]||TRACES.sinus;
+  if(w.getAttribute('d')!==d)w.setAttribute('d',d);
 }
 
 /* ── she is getting worse ─────────────────────────────────────────────────────
