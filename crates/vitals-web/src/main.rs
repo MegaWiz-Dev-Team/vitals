@@ -8,7 +8,7 @@
 //! and sessions in a map. The point is to make the automaton playable, not to ship a platform.
 
 mod chain;
-use vitals_web::{archive, fuel, lang, meter, news2, patient, store};
+use vitals_web::{archive, fuel, lang, meter, news2, patient, reading, store};
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -268,13 +268,30 @@ const TREE: &str = "tree";
 #[derive(Serialize)]
 struct View {
     scenario: String,
+    /// Electrical, and so it survives an arrest — PEA is complexes at a countable rate with no
+    /// output behind them, and that disagreement is the finding.
     hr: f64,
-    sbp: f64,
-    dbp: f64,
-    spo2: f64,
+    /// `null` whenever there is no pulse to measure them against — see [`reading`]. The rail
+    /// prints `--` for a null; it must never print a number that was measured off blood that is
+    /// not moving, and the server not sending one is what makes that unarguable.
+    sbp: Option<f64>,
+    dbp: Option<f64>,
+    spo2: Option<f64>,
+    /// 0 through an arrest: a patient in cardiac arrest is not breathing, and a calm 28 per
+    /// minute over a flat pleth is the screen contradicting itself.
     rr: f64,
     temp: f64,
     gcs: u8,
+    /// Whether the heart is producing output. The one fact the rail and the bedside device have
+    /// to agree on, so both read it from the same place.
+    pulse: bool,
+    /// What the ECG is doing, verbatim from the scenario — `sinus`, `pea`, `vf`, `vt`,
+    /// `asystole`. The rail draws its trace from this rather than from the status, because a
+    /// strip labelled PEA with sinus complexes on it is a clinician's first and last impression.
+    rhythm: &'static str,
+    /// Whether a defibrillator can do anything for that rhythm. Carried so the rail cannot
+    /// re-derive it and get it wrong; shocking PEA costs compressions and adrenaline.
+    shockable: bool,
     status: String,
     beats: Vec<String>,
     /// The display line for each beat above, in the language the page asked for — the language
@@ -430,15 +447,22 @@ impl Session {
             self.beats.clone()
         };
 
+        // What a monitor could actually read off her, which is not the same thing as what the
+        // model holds. NEWS2 above is deliberately computed from the raw vector: a score is a
+        // clinical judgement about the patient, while this is a screen reporting its instruments.
+        let m = reading::Reading::of(&v).rounded();
         View {
             scenario: self.scenario.clone(),
-            hr: v.hr.round(),
-            sbp: v.sbp.round(),
-            dbp: v.dbp.round(),
-            spo2: v.spo2.round(),
-            rr: v.rr.round(),
-            temp: (v.temp * 10.0).round() / 10.0,
-            gcs: v.gcs,
+            hr: m.hr,
+            sbp: m.sbp,
+            dbp: m.dbp,
+            spo2: m.spo2,
+            rr: m.rr,
+            temp: m.temp,
+            gcs: m.gcs,
+            pulse: m.pulse,
+            rhythm: m.rhythm,
+            shockable: m.shockable,
             status: format!("{:?}", self.state.status),
             // Read off the sealed copy, not the live one: a translation of a withheld sentence
             // is the withheld sentence.
@@ -1526,17 +1550,20 @@ fn main() {
                 match map.get(&sid) {
                     None => json(serde_json::json!({})),
                     Some(s) => {
-                        let v = s.state.vitals;
-                        let r = v.rhythm;
+                        // The same reading the bay's own rail is served, from the same rule: a
+                        // saturation and a cuff pressure need flowing blood, so in an arrest they
+                        // are absent rather than stale. The device page has always keyed on
+                        // `pulse`; now it cannot disagree with the rail even if it stopped.
+                        let m = reading::Reading::of(&s.state.vitals);
                         json(serde_json::json!({
-                            "hr": v.hr, "spo2": v.spo2, "sbp": v.sbp, "dbp": v.dbp,
-                            "rr": v.rr, "temp": v.temp, "gcs": v.gcs,
+                            "hr": m.hr, "spo2": m.spo2, "sbp": m.sbp, "dbp": m.dbp,
+                            "rr": m.rr, "temp": m.temp, "gcs": m.gcs,
                             "status": format!("{:?}", s.state.status),
-                            "rhythm": r.as_str(),
+                            "rhythm": m.rhythm,
                             // A monitor that invents a pulse is worse than one that misses an
                             // arrest, so this comes from the rhythm rather than from the numbers.
-                            "pulse": r.perfusing(),
-                            "shockable": r.shockable(),
+                            "pulse": m.pulse,
+                            "shockable": m.shockable,
                             "paused": false,
                         }))
                     }

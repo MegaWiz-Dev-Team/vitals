@@ -374,8 +374,13 @@ async function poll(){
     const d = await r.json();
     if (d && d.hr != null){
       V = d; live = true;
-      // take a "cuff reading" on first sight and then every 3 minutes, like an ER cycle
-      if (!nibpAt || Date.now() - nibpAt > 180000){ nibpVal = [d.sbp, d.dbp]; nibpAt = Date.now(); }
+      // take a "cuff reading" on first sight and then every 3 minutes, like an ER cycle.
+      // A cuff cycled on a pulseless patient produces no reading at all, so the feed sends null
+      // and nothing is cached — otherwise the arrest's nulls would be stored and then printed as
+      // "0/0" for three minutes after the rhythm came back, which is a wrong number and not a
+      // missing one.
+      const cuffable = d.sbp != null && d.dbp != null;
+      if (cuffable && (!nibpAt || Date.now() - nibpAt > 180000)){ nibpVal = [d.sbp, d.dbp]; nibpAt = Date.now(); }
       $('#pt').textContent = [PT || 'UNIDENTIFIED', d.status || ''].filter(Boolean).join(' · ');
       $('#src').textContent = `feed: ${BASE || location.origin}/device/vitals · sid=${SID} · limits: ${band.label}`;
       $('#net').textContent = '';
@@ -386,5 +391,10 @@ async function poll(){
 poll(); setInterval(poll, 500);
 
 // A cuff cycles on demand, as it does at the bedside.
-addEventListener('keydown', e => { if (e.key.toLowerCase() === 'n' && live){ nibpVal=[V.sbp,V.dbp]; nibpAt=Date.now(); paint(); } });
+addEventListener('keydown', e => {
+  if (e.key.toLowerCase() !== 'n' || !live) return;
+  // A cuff cycled during an arrest fails to read; it does not read zero.
+  if (V.sbp != null && V.dbp != null){ nibpVal=[V.sbp,V.dbp]; nibpAt=Date.now(); }
+  paint();
+});
 </script>

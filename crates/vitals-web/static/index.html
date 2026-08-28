@@ -2789,8 +2789,13 @@ function paint(v,named){
   /* Through setVital, not straight to the DOM: while the monitor is booting these are
      the boot's moving target rather than the screen, so a count-up can never land on a
      reading that was already two seconds stale. */
-  setVital('#m-hr',v.hr); setVital('#m-spo2',v.spo2+'%');
-  setVital('#m-bp',v.sbp+'/'+v.dbp); setVital('#m-rr',v.rr);
+  /* A saturation and a cuff pressure are measurements of flowing blood. In PEA, VF or
+     pulseless VT there is none, so the server sends null and this rail prints `--` — the same
+     answer the bedside device has always given, which it used to contradict by printing
+     "SpO2 80%" and "BP 54/54" over a patient in cardiac arrest. HR keeps its number: PEA is
+     complexes at a countable rate with no pulse, and that is the whole trap. */
+  setVital('#m-hr',v.hr); setVital('#m-spo2',v.spo2==null?'--':v.spo2+'%');
+  setVital('#m-bp',v.sbp==null||v.dbp==null?'--':v.sbp+'/'+v.dbp); setVital('#m-rr',v.rr);
   $('#mini-status').textContent=v.status;
   /* She is getting worse. A class changing colour is a fact and nobody looks up for a
      fact; the room going red twice is the alarm the bay would actually be making. Only

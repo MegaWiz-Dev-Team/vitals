@@ -16,4 +16,5 @@ pub mod lang;
 pub mod meter;
 pub mod news2;
 pub mod patient;
+pub mod reading;
 pub mod store;
