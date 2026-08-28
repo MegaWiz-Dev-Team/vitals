@@ -396,7 +396,36 @@ struct Note {
 /// the full beats the bell delivers, so the count on both sides has to match. Everything after
 /// the prefix is a constant: one token, identical on every station and every harm, so nothing
 /// about *which* mistake it was can be recovered from its length, its wording or its repetition.
+///
+/// Used for [`View::beats`] alone. The chart does not redact a harm line, it does not have one —
+/// see [`HARM`].
 const HARM_SEALED: &str = "harm:sealed";
+
+/// The event kind the automaton stamps on a harm, and the row the sealed chart does not carry.
+///
+/// A redacted row is still a row. Under seal the chart read
+///
+/// ```text
+/// 0:12 | ORDER | IV-push adrenaline
+/// 0:12 | HARM  | ⚠ harm recorded
+/// ```
+///
+/// — the sentence withheld and the *timing* handed over, on the same second as the order that
+/// caused it. A candidate does not need to read the sentence to learn what the seal exists to
+/// withhold: a marker landing the instant they act says "that one was the mistake", which is the
+/// whole of what the mark sheet is going to say later. Redacting the word and leaving its shape
+/// is not redaction.
+///
+/// So under seal the row is filtered out of the chart entirely, before the bytes exist, and the
+/// two orders a station is built to tell apart produce charts of the same length, the same kinds
+/// and the same clock. After the bell every row comes back in full, because the debrief, the
+/// harm list and the mark sheet are what the seal was holding the case open for.
+///
+/// **Display only, and it must stay that way.** `SceState::harm_events` still records every harm,
+/// the tape still carries every order, `replay` recomputes the events from the tape and never
+/// from here, and the leaf hashes the replay. A run played under seal and the same run played
+/// unsealed anchor byte for byte identically — pinned by `exam_integrity`.
+const HARM: &str = "harm";
 
 /// The author's own annotation on a label — the part that grades the order rather than naming it.
 ///
@@ -497,6 +526,13 @@ impl Session {
         // whose whole lesson is *do not put the depressor in* was telling the candidate what
         // the depressor did, mid-run, in text.
         //
+        // The three now part company, because they are three different promises. `harm` — the
+        // result panel's list — is emptied. `beats` keeps one line per harm, redacted to
+        // [`HARM_SEALED`], because the feed is a live transcript and `unsealHarm()` rewrites
+        // those lines from position at the bell. `chart` carries **no harm row at all**: a
+        // redacted row on a timestamped record is the timing handed over with the sentence
+        // withheld, and the timing is the answer. See [`HARM`].
+        //
         // So the withholding happens here, before the bytes exist. It lasts exactly as long as
         // the clock: `outcome.is_none()` is the entire condition, and the moment the bell rings
         // the same call returns every sentence in full, because the mark sheet and the debrief
@@ -579,15 +615,18 @@ impl Session {
                 .state
                 .events()
                 .iter()
+                // ── the row goes, not just the sentence ────────────────────────────
+                // The seal used to redact the harm line and keep it, on the reasoning that
+                // *something went wrong, at this second* is a fact the monitor is showing
+                // anyway. It is not: the monitor shows a patient getting worse, and it does not
+                // stamp that on the same second as one named order and call it HARM. The kept
+                // row did, one line under the order that caused it, which is the answer the
+                // sentence was being withheld to protect. See [`HARM`].
+                .filter(|e| !(sealed && e.kind == HARM))
                 .map(|e| Note {
                     t: e.t_sec,
                     kind: e.kind.clone(),
-                    // The chart keeps the line and the clock — that harm happened, and when,
-                    // is a fact the patient is showing on the monitor anyway. What it does not
-                    // keep, until the bell, is the sentence that says which mistake it was.
-                    text: if sealed && e.kind == "harm" {
-                        HARM_SEALED.to_string()
-                    } else if self.state.is_intervention(&e.text) {
+                    text: if self.state.is_intervention(&e.text) {
                         // An order, recorded by id. Never the id itself: the case's own label,
                         // or what the player typed to reach it, and only then — for a case that
                         // named nothing and an order nobody typed — the id, which by then is the

@@ -212,8 +212,10 @@ fn no_chart_line_grades_the_order_that_produced_it() {
         charted += lines.len();
 
         for line in &lines {
+            // No exemption for `harm:sealed` any more: a sealed chart has no harm row to
+            // exempt. See `a_sealed_chart_carries_no_harm_row` in `exam_integrity`.
             assert!(
-                !line.to_ascii_uppercase().contains("HARM") || line == "harm:sealed",
+                !line.to_ascii_uppercase().contains("HARM"),
                 "{ep}: the chart printed {line:?} — the candidate has just been told, mid-run, \
                  that the order they gave was the mistake"
             );
@@ -253,9 +255,19 @@ fn ordering_iv_push_adrenaline_on_osce_a_charts_the_order_and_seals_the_verdict(
         !lines.iter().any(|l| l.contains("(HARM")),
         "the order line still carries the author's verdict: {lines:?}"
     );
-    // The classification itself is untouched — the harm is on the record, sealed, and the seal
-    // is the only thing standing between the candidate and the answer.
-    assert!(lines.iter().any(|l| l == "harm:sealed"), "the harm stopped being recorded: {lines:?}");
+    // The chart carries no harm row at all now — not the sentence, not a redacted stand-in.
+    // A row stamped `HARM` on the same second as the order is the verdict again, in the one
+    // column that cannot say it, and the seal that only took the words off left the shape.
+    assert!(
+        !v["chart"].as_array().expect("chart").iter().any(|c| c["kind"] == "harm"),
+        "a harm row is back on a sealed chart: {v}"
+    );
+    // The classification itself is untouched. It is on the feed's own channel, sealed to the
+    // one token, and the harm list and the mark sheet get all of it at the bell.
+    assert!(
+        v["beats"].as_array().expect("beats").iter().any(|b| b == "harm:sealed"),
+        "the harm stopped being recorded at all: {v}"
+    );
 }
 
 /// OSCE D3 is the station this mattered most on: two adrenaline doses, one for a twenty-kilo
@@ -282,8 +294,10 @@ fn the_paediatric_dose_station_charts_both_doses_the_same_way() {
         "the paediatric dose is not charted as what was ordered: {b:?}"
     );
 
-    // The two charts differ in the dose the candidate chose and in nothing that grades it.
+    // The two charts differ in the dose the candidate chose and in nothing that grades it —
+    // and that now includes the row itself, which is gone rather than redacted.
     for line in a.iter().chain(b.iter()) {
-        assert!(!line.contains("HARM") || line == "harm:sealed", "{line:?} grades the choice");
+        assert!(!line.contains("HARM"), "{line:?} grades the choice");
     }
+    assert_eq!(a.len(), b.len(), "the wrong dose charts a different number of rows: {a:?} / {b:?}");
 }
