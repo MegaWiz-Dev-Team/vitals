@@ -1900,14 +1900,24 @@ const SEASON=[
     `spec` is the circuit band a real OSCE door wears (emergency · paediatrics), not the Eir
     organ specialty: an "eir-<organ system>" band printed over the bed answers this station's own
     trap before the candidate has touched the patient. */
+ /* `line` is not decoration. `stemHtml` prints it as **presents**, which is the last thing a
+    candidate reads before the clock starts, so it is the briefing — and these two had each
+    other's. A was being briefed on abdominal cramps its patient does not have (nothing in
+    `demo/stations/osce-a.sce.json` asks about the gut, and nothing in `demo/rubrics/osce-a.json`
+    pays for it), while A2 — whose own card leads on the gut — was briefed with no mention of it
+    at all, which is the one detail its case turns on.
+    A straight swap does not fix it and was not enough: A2's line says "as she talks", and A is a
+    man of seventy-one. Each line below is written from its own `.sce.json` and checked against
+    it — A's second finding is what its own `ask_breathing` and `exam_chest` return, A2's first
+    is what its own `ask_bowels` returns — and each now agrees with the title on its own card. */
  {id:'osce-a',n:'OSCE A',sn:'S1 · OSCE A',t:'Rash and facial swelling after a meal — M 71',tier:'student',station:true,
   spec:'emergency',rt:'an 8-minute station',mins:8,
-  who:'Somchai · M 71', line:'urticaria head to toe, face swelling, cramping belly pain',
+  who:'Somchai · M 71', line:'urticaria head to toe, face swelling, a wheeze you can hear',
   place:'OSCE station · Nurse Mali examining',
   d:'Thirty minutes after a meal he will not talk about. Seventy-one, sweating, and the swelling has not stopped moving. Nurse Mali is marking.'},
  {id:'osce-a2',n:'OSCE A2',sn:'S1 · OSCE A2',t:'Belly cramps, loose stools, swollen face — F 68',tier:'student',station:true,
   spec:'emergency',rt:'an 8-minute station',mins:8,
-  who:'Somsri · F 68', line:'wheals and a swelling face, scratching as she talks',
+  who:'Somsri · F 68', line:'cramping belly pain, loose stools, wheals and a swelling face',
   place:'OSCE station · Nurse Mali marking',
   d:'She arrives looking like food poisoning. Sixty-eight, and her face has changed shape since breakfast.'},
  /* Key art, from EP2 on: `art` is the 16:9 billboard crop and `art2` the 3:2 one a narrow
