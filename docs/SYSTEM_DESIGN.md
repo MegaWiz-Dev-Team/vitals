@@ -65,7 +65,7 @@ One loop, not two modes.
 is also the demo: a non-clinical judge understands the product in sixty seconds. **built** (story
 mode exists; the ungated first scenario is **new here**).
 
-**[3] is the product.** 433 authored cases, 18 faculties, 671 scored runs. **built, in Embla.**
+**[3] is the product.** 433 authored cases, 18 faculties, 671 scored runs (25 Aug 2026). **built, in Embla.**
 
 **[4] is the mechanism nobody else has.** The unlock is not a server flag. `Progress` carries
 `distinct_cases`, `level`, `attempts_counted`; `ClaimProgress` already recomputes rather than

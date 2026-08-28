@@ -36,10 +36,13 @@ cited because it is why a scoreable signal exists at all, not because Vitals ear
   excluded, which is why this number is lower than the platform's raw institution count. **No faculty
   has an institutional agreement with us; every user is an individual.**
 - **290+ clinicians and medical students on Embla** (68% activation rate).
-- **671 runs on Embla · a catalog of 433 authored clinical cases · 384 of them validated · across
-  23 specialties.** Different denominators, so they are printed separately rather than collapsed: a
-  run is an attempt, not a case, and an authored case is not a validated one. How many of those 671
-  runs were completed and scored is not a figure we have verified, so it is not printed.
+- **671 scored runs on Embla (as of 25 Aug 2026) · a catalog of 433 authored clinical cases · 384
+  of them validated · across 23 specialties.** Different denominators, so they are printed
+  separately rather than collapsed: a run is not a case, and an authored case is not a validated
+  one. Every one of the 671 is an encounter that ran all the way to grading — Embla persists an
+  attempt row only after the examiner returns a score, so an abandoned, timed-out or ungraded
+  encounter is never counted. The runs figure is a snapshot and only grows; the case counts come
+  from the case registry.
 - **Live production platform**: [embla.megawiz.co.th](https://embla.megawiz.co.th)
 
 **Vitals' own usage is close to nothing, and it is published rather than omitted:** the demo bay
