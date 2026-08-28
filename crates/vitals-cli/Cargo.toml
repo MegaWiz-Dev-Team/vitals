@@ -8,7 +8,7 @@ license.workspace = true
 
 [dependencies]
 solana-rpc-client = "2"
-solana-sdk = "2"
+solana-sdk = "4"
 borsh = { version = "1", features = ["derive"] }
 vitals-program = { path = "../vitals-program" }
 vitals-progress = { path = "../vitals-progress" }
