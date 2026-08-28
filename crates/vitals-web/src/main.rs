@@ -947,8 +947,9 @@ fn sce_archive_dir() -> std::path::PathBuf {
 
 /// The scenario files this server is playing right now, in shelf order.
 ///
-/// The second place `/api/sce` looks. A run anchored ten minutes ago names a file nobody has
-/// archived yet, and that run is precisely the one a reviewer checks first.
+/// `/api/sce`'s **deny list**, not its second lookup. A file on this list is a mark sheet a
+/// candidate can still be marked against, so its hash is refused however many copies of it the
+/// archive holds. See [`archive`] for what that costs a verifier and what they do instead.
 fn live_scenarios() -> Vec<std::path::PathBuf> {
     every_case().into_iter().map(scenario_path).collect()
 }
@@ -1267,14 +1268,22 @@ fn main() {
     // How many past scenario versions this deployment can hand back to a verifier. Printed
     // because the failure mode is silent: an image built without `conformance/sce-archive`
     // answers /api/sce with 404 for every historical hash and looks perfectly healthy doing it.
+    //
+    // Two numbers, because they are different and the difference is the endpoint's whole
+    // behaviour: what the archive *holds*, and what it will *publish*. A case still on the shelf
+    // is withheld however many copies of it the archive has — see `archive` — so a season whose
+    // every file is both live and archived publishes nothing, and a line reading "17 archived"
+    // would have looked like a working endpoint on exactly that deployment.
     {
         let dir = sce_archive_dir();
-        let n = archive::hashes(&dir).len();
+        let live = live_scenarios();
+        let held = archive::hashes(&dir).len();
+        let open = archive::servable(&live, &dir).len();
         println!(
-            "archive    {n} archived scenario version(s) at {} · {} live{}",
+            "archive    {held} archived scenario version(s) at {} · {open} publishable · {} live and withheld{}",
             dir.display(),
-            live_scenarios().iter().filter(|p| p.exists()).count(),
-            if n == 0 { " — /api/sce can only answer for what is on the shelf today" } else { "" },
+            live.iter().filter(|p| p.exists()).count(),
+            if open == 0 { " — /api/sce answers 404 for everything until a case is retired" } else { "" },
         );
     }
 
@@ -2012,14 +2021,33 @@ fn main() {
             // "re-derivable by whoever has our repository and guesses the right commit". A leaf
             // can now hand a stranger the exact bytes it was computed over.
             //
+            // **Retired versions only.** The first cut of this route resolved through the shelf
+            // as well, "so today's runs are re-derivable before anyone remembers to archive
+            // them" — and a scenario file is the answer key. A candidate could open a station,
+            // read `sce_hash` off their own view, and GET every intervention id, every matcher
+            // keyword, every `(HARM)` beside a wrong turn, the trigger thresholds that decide the
+            // outcome, and the `_note` that names the diagnosis — mid-run, unauthenticated,
+            // while the seal below was carefully withholding one sentence at a time. It is the
+            // same leak `bank_case` was pulled off `/api/chain` to stop, in a worse form, and it
+            // reached further than that one: `/api/marks` and `/api/debrief` open at the bell,
+            // and this opened before it.
+            //
+            // So `archive::answer` treats the shelf as a deny list. A case that can still be sat
+            // is refused whether or not the archive holds a copy — and it does hold one for every
+            // case in the season, which is exactly why "serve from the archive" is not by itself
+            // the fix. What is left is what has been retired, and a case that cannot be sat costs
+            // nobody a mark. `VERIFICATION.md` §5 says so, and says what to do instead: a live
+            // case's bytes are in the repository, and `shasum` on your own clone proves the same
+            // thing this endpoint would have.
+            //
             // Public and ungated, like the chain it explains — a proof only we can serve the
-            // inputs for is not a proof. Verified before it is sent: `archive::find` re-hashes
+            // inputs for is not a proof. Verified before it is sent: `archive::answer` re-hashes
             // what it read and refuses anything that does not match, because bytes served under
             // the wrong hash would make a verifier conclude the *chain* was lying.
             (Method::Get, p) if p.starts_with("/api/sce/") => {
                 let want = p.trim_start_matches("/api/sce/");
-                match archive::find(want, &live_scenarios(), &sce_archive_dir()) {
-                    Some(text) => {
+                match archive::answer(want, &live_scenarios(), &sce_archive_dir()) {
+                    archive::Answer::Retired(text) => {
                         let _ = req.respond(
                             Response::from_string(text)
                                 .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap())
@@ -2029,13 +2057,31 @@ fn main() {
                         );
                         continue;
                     }
+                    // A case that is still being sat. Said plainly rather than folded into "no
+                    // such hash", because the caller is a verifier holding a leaf and silence
+                    // would send them looking for a bug in the chain. It discloses nothing: they
+                    // already hold the hash, and the reply says nothing whatever about the file.
+                    archive::Answer::InPlay => json_code(
+                        serde_json::json!({
+                            "error": "that scenario is in active use",
+                            "detail": "This hash names a case that can be sat right now, and the \
+                                       file is the mark sheet — every matcher, every harm, every \
+                                       threshold. It is published when the case is retired, and \
+                                       not before.",
+                            "verify_now": "Until then the bytes are in the repository and prove \
+                                           the same thing: clone it and run \
+                                           `shasum -a 256 <the scenario file>` — see \
+                                           VERIFICATION.md §5.",
+                        }),
+                        404,
+                    ),
                     // One answer for "not a hash", "no such hash" and "the file under that name
                     // is not that file". The caller's next move is the same in all three, and
                     // the alternative is a probe that tells a stranger which files exist.
-                    None => json_code(
+                    archive::Answer::Unknown => json_code(
                         serde_json::json!({
                             "error": "no scenario with that hash",
-                            "want": "GET /api/sce/<64 hex sha256 of the scenario file>",
+                            "want": "GET /api/sce/<64 hex sha256 of a retired scenario file>",
                         }),
                         404,
                     ),

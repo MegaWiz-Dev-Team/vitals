@@ -68,6 +68,11 @@ summary: distinct 1 · hard 0 · avg 10000bps · computed = Advanced beginner
   claim Proficient : REJECTED (claimed Proficient, computed Advanced beginner)
 ```
 
+> The `curl` line in that output resolves **only once the case has been retired.** While a case
+> is still on the shelf its scenario file is a live mark sheet, and the server will not publish
+> it — see §5, which gives the check that works either way. The tool prints the URL for every
+> attempt because it cannot know, from a leaf, whether that case is still being sat.
+
 To check a specific player, or a specific tree:
 
 ```bash
@@ -168,40 +173,78 @@ Claim buffers are the 1285-byte accounts; the first 32 bytes are the player.
 
 ## 5. Check the scenario bytes yourself
 
-The `case` hash on each attempt is the sha256 of the scenario file the run was computed over. That
-hash resolves to the exact bytes, content-addressed, over a public and ungated endpoint:
+The `case` hash on each attempt is the sha256 of the scenario file the run was computed over.
+There are two ways to get those bytes. **The first works for every case, and it is the one to
+reach for.**
+
+### From your clone — always
+
+Every version any anchored run was played against is committed to this repository under
+`conformance/sce-archive/`, named by its own digest, with `INDEX.json` mapping each hash to the
+path it was archived from. Nothing there is ever deleted.
 
 ```bash
-curl -s https://devnet.vitals.academy/api/sce/4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d -o case.json
-shasum -a 256 case.json
-wc -c case.json
+grep -A1 4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d conformance/sce-archive/INDEX.json
+shasum -a 256 conformance/sce-archive/4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d.json
+shasum -a 256 demo/stations/osce-a.sce.json
 ```
 
 Real output:
 
 ```
-4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d  case.json
-    6937 case.json
+  "sce_hash": "4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d",
+  "path": "demo/stations/osce-a.sce.json",
+4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d  conformance/sce-archive/4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d.json
+4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d  demo/stations/osce-a.sce.json
 ```
 
-The hash of the bytes you were served equals the hash written into the leaf on chain. The server
-re-hashes what it reads before sending it and refuses anything that does not match, so it cannot
+The hash of the bytes in your clone equals the hash written into the leaf on chain, and you did
+not have to trust a server to tell you so. This is a stronger check than the endpoint below, not
+a weaker one: the archive travels in a git history you can diff, and we cannot serve you a
+different copy of it than we serve anyone else.
+
+### From the server — retired versions only
+
+```
+GET /api/sce/<hash>
+```
+
+Content-addressed and ungated. It answers `200` with the exact bytes for a **retired** version —
+one no longer on the playable shelf — and re-hashes what it read before sending, so it cannot
 serve you the wrong file under the right name. It can only serve the right bytes or nothing.
 
-Old versions count too: the archive under `conformance/sce-archive/` is committed to this
-repository and ships in the image, so a leaf anchored against a scenario that has since been
-edited still resolves. `conformance/sce-archive/INDEX.json` maps each hash to the path it came
-from. If you would rather not fetch at all, hash the file in your own clone:
+For a case that can still be sat it answers `404`, and says why:
 
 ```bash
-shasum -a 256 demo/stations/osce-a.sce.json
+curl -s https://devnet.vitals.academy/api/sce/4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d
+```
+```json
+{"error":"that scenario is in active use",
+ "detail":"This hash names a case that can be sat right now, and the file is the mark sheet — every matcher, every harm, every threshold. It is published when the case is retired, and not before.",
+ "verify_now":"Until then the bytes are in the repository and prove the same thing: clone it and run `shasum -a 256 <the scenario file>` — see VERIFICATION.md §5."}
 ```
 
-`GET /api/sce/<hash>` answers `404` with the same message for "not a hash", "no such hash" and
-"the file under that name is not that file" — the caller's next move is identical in all three,
-and a distinguishing error would tell a stranger which files exist.
+**Why the endpoint holds a live case back.** A scenario file is the answer key. It carries every
+intervention id, every matcher keyword in every language, every `(HARM)` the author wrote beside
+a wrong turn, the trigger thresholds that decide the outcome, and `_note` fields that name the
+diagnosis outright. This route used to resolve through the live shelf as well as the archive, so
+a candidate could open a station, read `sce_hash` off their own screen, and fetch the whole mark
+sheet in one unauthenticated request while the clock was still running. A star measured that way
+measures nothing. The shelf is now a deny list: a hash is refused while its case is playable,
+whether or not the archive also holds it — and today the archive holds a copy of every case in
+the season, so at the time of writing the endpoint publishes nothing and every hash on the shelf
+404s. That is the behaviour, not an outage.
 
----
+Retirement is what publishes a case. Edit a scenario or withdraw it, and the hash the old leaves
+name stops being sittable — so the bytes go out, and the leaves anchored against it stay
+checkable forever.
+
+`GET /api/sce/<hash>` answers `404` with one message for "not a hash", "no such hash" and "the
+file under that name is not that file" — the caller's next move is identical in all three, and a
+distinguishing error would tell a stranger which files exist. "In active use" is held apart from
+those, because that caller is holding a leaf and a bare "no such hash" would send them looking
+for a bug in the chain; it discloses nothing they did not already have, and nothing at all about
+the file.
 
 ## 6. When it does not print a result
 
@@ -248,9 +291,11 @@ devnet, read by a binary you compiled from source you can read, and recomputed b
 functions the on-chain program runs. Point it at any RPC you like with `VITALS_RPC=…` — including
 your own node — and the answer must not change.
 
-**Trusting us for:** that `devnet.vitals.academy` serves the scenario bytes at all. It cannot serve
-you *wrong* bytes — you hash them yourself and compare against the leaf — but it could serve
-nothing. The archive is committed to this repository as a second copy for exactly that reason.
+**Trusting us for:** nothing about the scenario bytes, if you use the clone. The archive under
+`conformance/sce-archive/` is committed here and every version an anchored run was played against
+is in it, so the file a leaf names is in your hands, not ours. The endpoint is a convenience on
+top of that, and it deliberately withholds any case that can still be sat (§5) — so for a case in
+the current season the repository is not the backup, it is the route.
 
 **Not proven by any of this:** `judged_score`, the rubric's judged half, is a self-asserted number
 in the record. No attestation mechanism exists for it yet, nothing on chain consumes it, and it
