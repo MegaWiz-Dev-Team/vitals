@@ -3953,7 +3953,7 @@ function paintSeason(){
     b.addEventListener('touchstart',()=>motionOn(b),{passive:true});
   });
   $('#coin-n').textContent=cleared().length;
-  renderHero(); paintSets(); paintRing(); probeTrailers();
+  renderHero(); paintSets(); paintRing(); teaserWatch();
 }
 
 /* ── A2b · the deck ───────────────────────────────────────────────────────────
@@ -4025,6 +4025,9 @@ function cfGo(n){
   CFV.i=Math.max(0,Math.min(cards.length-1,n));
   CFV.key=cfKey(cards[CFV.i],CFV.i);
   cfPaint();
+  /* The deck stopping somewhere is the only thing that makes one card worth asking the
+     server a question about — see `teaserWatch`. */
+  teaserWatch();
 }
 /* Where you are, said in words. Seventeen dots would be seventeen targets and no
    answer; this is one line that names the card and admits when it is shut. */
@@ -4304,23 +4307,73 @@ function motionOff(tile){
 }
 
 /* ── A5 · the trailer flag ────────────────────────────────────────────────────
-   The Watch-trailer door exists only when the asset does: each locked entry is
-   probed once per visit for /clip/<id>_teaser.mp4, and the fetch is aborted the
-   moment the verdict is in, so a probe never downloads a film. When the T2 teasers
-   land on the volume (EP5 first, per SERIES_UX D) the buttons appear by themselves. */
+   The Watch-trailer door exists only when the asset does, and the page has no list to
+   read: `/clip/` serves a file if it is on the volume and 404s if it is not, and there is
+   no manifest endpoint to ask instead. So the door is still discovered by asking — but it
+   asks about one card, when there is a reason to, and remembers the answer.
+
+   **What it used to do.** `probeTrailers()` swept every locked entry on every shelf paint.
+   Seventeen fetches, all 404, none of them cached (a 404 carries no `Cache-Control`), and
+   `paintSeason` runs two or three times a load — the cached set table, then the chain's
+   answer — with no re-entrancy guard on an async sweep, so a single shelf load put 26 to 30
+   console errors on the record. Nothing looked broken, because the still-image fallback is
+   the design; that is the problem. A console with thirty expected errors in it is a console
+   nobody reads the real one out of.
+
+   **What it does now.** Zero requests to paint a shelf. One request when the deck settles
+   on a locked card the player has actually browsed to, and only if this browser does not
+   already know the answer — `vitals.teasers` keeps it for a day, which is the same day the
+   server asks for on a hit (`Cache-Control: public, max-age=86400`), so a teaser that lands
+   is found within a day at the outside and usually on the next visit. No list is hardcoded
+   and nothing has to be edited when the T2 teasers arrive on the volume (EP5 first, per
+   SERIES_UX D): the button still appears by itself, on the card being looked at.
+
+   The fetch is still aborted the moment the verdict is in, so a probe never downloads a
+   film, and a negative answer is remembered exactly like a positive one — the whole point
+   is to stop asking a question whose answer is already known. */
 const TRAILER={};
-async function probeTrailers(){
-  let hit=false;
-  for(const[i,e]of SEASON.entries()){
-    if(open_(i)||TRAILER[e.id]!==undefined)continue;
-    try{
-      const ctl=new AbortController();
-      const r=await fetch('/clip/'+e.id+'_teaser.mp4',{signal:ctl.signal});
-      TRAILER[e.id]=r.ok; ctl.abort();
-    }catch(err){ TRAILER[e.id]=false; }
-    if(TRAILER[e.id])hit=true;
-  }
-  if(hit)paintSeason();
+const TEASER_TTL=864e5;          /* a day, matching the server's own max-age on a hit */
+let TEASER_INFLIGHT=null;        /* one probe at a time; a swipe must not open sixteen */
+/* What this browser last learned, by id. Reading is best-effort: a kiosk with storage off
+   simply asks once per page load instead of once per day, which is still not seventeen. */
+function teaserCache(){
+  try{ const c=JSON.parse(localStorage.getItem('vitals.teasers')||'null');
+    if(c&&c.at&&Date.now()-c.at<TEASER_TTL&&c.ids)return c; }catch(e){}
+  return null;
+}
+function teaserRemember(id,ok){
+  try{ const c=teaserCache()||{at:Date.now(),ids:{}};
+    c.ids[id]=ok; localStorage.setItem('vitals.teasers',JSON.stringify(c));
+  }catch(e){}
+}
+/* Ask about one entry, at most once. Returns nothing; a hit repaints the shelf, which is
+   the only visible consequence there is. */
+async function probeTrailer(id){
+  if(!id||TRAILER[id]!==undefined||TEASER_INFLIGHT)return;
+  const c=teaserCache();
+  if(c&&c.ids[id]!==undefined){ TRAILER[id]=c.ids[id]; if(TRAILER[id])paintSeason(); return; }
+  TEASER_INFLIGHT=id;
+  try{
+    const ctl=new AbortController();
+    const r=await fetch('/clip/'+id+'_teaser.mp4',{signal:ctl.signal});
+    TRAILER[id]=r.ok; ctl.abort();
+  }catch(err){ TRAILER[id]=false; }
+  finally{ TEASER_INFLIGHT=null; }
+  teaserRemember(id,TRAILER[id]);
+  if(TRAILER[id])paintSeason();
+}
+/* The deck settling on a card is the moment that card is worth a question — it is the one
+   in front of the player, at full size, with its own trailer door. Debounced, so swiping
+   the length of the season asks about where the thumb stopped and not about the fifteen
+   cards it went past. */
+let TEASER_WAIT=null;
+function teaserWatch(){
+  clearTimeout(TEASER_WAIT);
+  TEASER_WAIT=setTimeout(()=>{
+    const el=cfList()[CFV.i];
+    const id=el&&el.dataset.ep;
+    if(id&&el.classList.contains('lock'))probeTrailer(id);
+  },420);
 }
 function playTrailer(epId){
   const e=SEASON.find(x=>x.id===epId)||{};
