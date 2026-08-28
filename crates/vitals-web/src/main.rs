@@ -382,6 +382,59 @@ struct Note {
 /// about *which* mistake it was can be recovered from its length, its wording or its repetition.
 const HARM_SEALED: &str = "harm:sealed";
 
+/// The author's own annotation on a label — the part that grades the order rather than naming it.
+///
+/// Nineteen labels across twelve stations end in one, in three shapes: `(HARM)`, `(HARM here)`,
+/// and one with real text in front of it, `Adrenaline 0.5 mg IM — adult dose (HARM)`. Matched on
+/// the opening word of the parenthetical so all three fall to one rule and `— adult dose` — which
+/// is a description of the order, not a verdict on it, and is the mirror of the label on the
+/// correct dose — survives.
+const VERDICT: &str = "HARM";
+
+/// A label with the author's verdict taken off it.
+///
+/// Commit 52d29e4 replaced the intervention id on the chart with the case author's label, to stop
+/// the chart printing the rubric's own needles (`exam_throat`, `adrenaline_undosed`). It was the
+/// right move and it carried a second thing across: the labels are the author's working notes,
+/// and half of them say what the author thinks of the order.
+///
+///     0:12 | ORDER | IV-push adrenaline (HARM)
+///     0:12 | HARM  | ⚠ harm recorded
+///
+/// The harm sentence is sealed. The order line above it was not, so the chart — the one surface
+/// in an exam that has to stay neutral — told the candidate mid-run that they had just got it
+/// wrong. On `osce-d3` that is the whole station: two adrenaline doses, one paediatric and one
+/// adult, and the chart named which one was the trap the instant either was given.
+///
+/// So the verdict comes off before the string reaches the screen, always — after the bell too,
+/// because the debrief already has the harm sentence, the harm list and the mark sheet, and a
+/// verdict stapled to an order line adds nothing there that is not said better elsewhere.
+///
+/// **Display only.** The harm classification is a property of the intervention in the scenario
+/// file and is untouched: the tape keeps the id, `harm_events` keeps the sentence, the rubric
+/// keeps its `no_harm` checks and the leaf hashes the same bytes it always did. A run charted
+/// through this function and one charted without it anchor identically.
+fn neutral_label(label: &str) -> &str {
+    let mut s = label.trim_end();
+    // A loop, not a single strip: an author who writes `(HARM) (HARM here)` gets both taken off
+    // rather than one, and the result is checked by the test that reads every label off the disk.
+    loop {
+        let Some(open) = s.rfind('(') else { return s };
+        let Some(inner) = s.strip_suffix(')').map(|t| &t[open + 1..]) else { return s };
+        if !inner.trim_start().to_ascii_uppercase().starts_with(VERDICT) {
+            return s;
+        }
+        let next = s[..open].trim_end();
+        // Never strip a label down to nothing. A label that is *only* a verdict has no neutral
+        // form, so the caller falls through to what the player typed rather than to an empty
+        // chart line — and the test below fails so the author is told.
+        if next.is_empty() {
+            return s;
+        }
+        s = next;
+    }
+}
+
 impl Session {
     /// A full snapshot of the run, in the language the page asked for.
     ///
@@ -517,11 +570,17 @@ impl Session {
                         // or what the player typed to reach it, and only then — for a case that
                         // named nothing and an order nobody typed — the id, which by then is the
                         // only word anyone has for it.
+                        //
+                        // The author's label goes through `neutral_label` first. It is written
+                        // for the author's own eye and half of them carry the verdict in the
+                        // name — `Look in the throat (HARM)` — so printing it straight told the
+                        // candidate they had just made the mistake, on the order line, one line
+                        // above the harm sentence the seal had gone to some trouble to withhold.
                         self.state
                             .intervention_label(&e.text)
-                            .or_else(|| said.get(e.text.as_str()).copied())
-                            .unwrap_or(&e.text)
-                            .to_string()
+                            .map(|l| neutral_label(l).to_string())
+                            .or_else(|| said.get(e.text.as_str()).map(|t| t.to_string()))
+                            .unwrap_or_else(|| e.text.clone())
                     } else {
                         // Already a line rather than an id — the defibrillator writes its own.
                         e.text.clone()
@@ -3590,6 +3649,121 @@ mod tests {
     fn kit_phrases_without_a_setting_still_read_as_orders() {
         assert_eq!(kit_phrase("ett", None).as_deref(), Some("intubate, secure the airway"));
         assert!(kit_phrase("o2", None).unwrap().contains("10 lpm"), "falls back to the scenario dose");
+    }
+
+    // ── the chart's own words ───────────────────────────────────────────────
+    //
+    // The chart prints the case author's label for an order. The labels are the author's working
+    // notes and nineteen of them carry the author's verdict in the name — so the chart, the one
+    // surface in an exam that has to stay neutral, was marking the candidate's work in front of
+    // them, one line above the harm sentence the seal was withholding. See `neutral_label`.
+
+    /// `(case id, intervention id, the author's label)` for every case on this disk.
+    ///
+    /// Read from the scenario files rather than from a list here, so a station added tomorrow —
+    /// or a label edited tomorrow — is covered without anyone remembering to come back.
+    fn every_authored_label() -> Vec<(&'static str, String, String)> {
+        let mut out = Vec::new();
+        for ep in every_case() {
+            let path = scenario_path(ep);
+            // A declared-but-unpublished member is a coming-soon card, not a missing file.
+            let Ok(text) = std::fs::read_to_string(&path) else { continue };
+            let v: serde_json::Value =
+                serde_json::from_str(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            for iv in v["interventions"].as_array().into_iter().flatten() {
+                let (Some(id), Some(label)) = (iv["id"].as_str(), iv["label"].as_str()) else { continue };
+                out.push((ep, id.to_string(), label.to_string()));
+            }
+        }
+        assert!(out.len() > 200, "the scenario files stopped being read: {} labels", out.len());
+        out
+    }
+
+    /// **The regression, pinned against the disk.** A future case author who writes `(HARM)` into
+    /// a label — the natural thing to do, and what nineteen of them already do — cannot make that
+    /// verdict reach a candidate's chart without this failing.
+    #[test]
+    fn no_authored_label_reaches_the_chart_carrying_a_verdict() {
+        let mut annotated = 0;
+        for (ep, id, label) in every_authored_label() {
+            let shown = neutral_label(&label);
+            assert!(
+                !shown.to_ascii_uppercase().contains(VERDICT),
+                "{ep}/{id}: the chart would print {shown:?} — that is the author grading the \
+                 candidate's order on the order line. Write the verdict in `harm:`, which is \
+                 sealed until the bell, not in `label`, which is not."
+            );
+            assert!(!shown.is_empty(), "{ep}/{id}: {label:?} was stripped down to nothing");
+            assert!(
+                !shown.ends_with('(') && !shown.ends_with('—') && !shown.ends_with('-'),
+                "{ep}/{id}: {label:?} rendered as {shown:?}, which is a sentence cut in half"
+            );
+            if shown != label {
+                annotated += 1;
+            }
+        }
+        assert!(
+            annotated >= 19,
+            "only {annotated} annotated labels were found and stripped; the audit found 19 across \
+             twelve stations plus EP1's two. If the count fell because the labels were rewritten, \
+             lower it — if it fell because the stripping stopped matching them, do not."
+        );
+    }
+
+    /// The nineteen, written out, because "it no longer contains HARM" is not the same claim as
+    /// "it still names the order the candidate gave". Every one of these is a chart line a real
+    /// run produces.
+    #[test]
+    fn the_annotated_labels_render_as_the_order_and_nothing_else() {
+        for (before, after) in [
+            ("IV-push adrenaline (HARM)", "IV-push adrenaline"),
+            ("Discharge home (HARM)", "Discharge home"),
+            ("Reassure and discharge (HARM)", "Reassure and discharge"),
+            ("Aspirin (HARM here)", "Aspirin"),
+            ("Activate the cath lab (HARM)", "Activate the cath lab"),
+            ("Thrombolysis (HARM)", "Thrombolysis"),
+            ("Antibiotics (HARM)", "Antibiotics"),
+            ("Look in the throat (HARM)", "Look in the throat"),
+            ("A drip and bloods first (HARM)", "A drip and bloods first"),
+            ("Sedative for the panic (HARM)", "Sedative for the panic"),
+            ("Home with tablets (HARM)", "Home with tablets"),
+            ("Aspirin (HARM)", "Aspirin"),
+            ("Full-dose lytics (HARM)", "Full-dose lytics"),
+            ("Reassure — anxiety (HARM)", "Reassure — anxiety"),
+            ("Send her home (HARM)", "Send her home"),
+            ("IV-push 1:1000 adrenaline (HARM)", "IV-push 1:1000 adrenaline"),
+            ("stand / walk the hypotensive patient (HARM)", "stand / walk the hypotensive patient"),
+            // OSCE D3's pair, which *is* the station: 0.2 mg to the kilo, or the adult 0.5. The
+            // dose stays on both — it is what was ordered — and only the grade comes off, so the
+            // chart cannot be read to find out which one was the trap.
+            ("Adrenaline 0.5 mg IM — adult dose (HARM)", "Adrenaline 0.5 mg IM — adult dose"),
+            ("Adrenaline 0.2 mg IM — 0.01/kg", "Adrenaline 0.2 mg IM — 0.01/kg"),
+        ] {
+            assert_eq!(neutral_label(before), after, "{before:?}");
+        }
+    }
+
+    /// A parenthesis is not a verdict. These are labels that say what the order *was*, and the
+    /// stripping may not reach into them — a chart that prints "Risk-stratified" where the case
+    /// said "Risk-stratified (Wells / PERC)" has lost the order, not a grade.
+    #[test]
+    fn a_parenthetical_that_is_not_a_verdict_survives() {
+        for keep in [
+            "Risk-stratified (Wells / PERC)",
+            "Confirmed the diagnosis (CTPA)",
+            "Decompressed the chest (tension pneumothorax)",
+            "Transfused blood (not crystalloid)",
+            "Did not distress the child (no forced cannulation)",
+            "Haemorrhage control first (tourniquet / pressure)",
+            "Called the airway team (ENT / anaesthesia) early",
+            "Patient reperfused (survives)",
+            "Adrenaline — no dose named",
+        ] {
+            assert_eq!(neutral_label(keep), keep, "a plain label was cut");
+        }
+        // Lower case, and a label that is only a verdict: neither may end as an empty line.
+        assert_eq!(neutral_label("Aspirin (harm)"), "Aspirin", "the check is on the word, not its case");
+        assert_eq!(neutral_label("(HARM)"), "(HARM)", "a label with no order in it has no neutral form");
     }
 
 }
