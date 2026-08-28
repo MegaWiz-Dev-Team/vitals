@@ -3395,14 +3395,12 @@ $('#anchor').onclick=async()=>{
     if(t) bankTier(e,t);
     /* What the next star costs, in the rubric's own points. A percentage tells you how you
        did; "3 points from your third star" tells you whether to sit it again — and the
-       arithmetic is the server's, so the number is a promise the door will keep. */
-    const nb=nextBar(bps), pct=(bps/100).toFixed(bps%100?1:0);
-    const ord=['first','second','third'][t];
-    v.innerHTML+=nb==null
-      ? `<span class="g">${starGlyph(t)} ${pct}% — flawless. There is nothing above this one.</span>`
-      : `<span class="g">${starGlyph(t)} ${pct}% — ${Math.max(1,Math.ceil(nb*r.det.max/10000)-r.det.score)} `
-        +`point${Math.ceil(nb*r.det.max/10000)-r.det.score===1?'':'s'} from your ${ord} star. `
-        +`Sit it again and the better run is the one that counts.</span>`;
+       arithmetic is the server's, so the number is a promise the door will keep. It is the
+       same sentence the mark sheet prints, from the same function, because two spellings of
+       one verdict is two verdicts. */
+    const pct=(bps/100).toFixed(bps%100?1:0);
+    v.innerHTML+=`<span class="g">${starGlyph(t)} ${pct}% — `
+      +`${nextLine(r.det.score,r.det.max,true)}</span>`;
   }
   refreshStars();
   $('#anchor').textContent='anchored'; ['#c1','#c2','#c3','#c4'].forEach(s=>$(s).disabled=false); chainState();
@@ -3502,7 +3500,7 @@ async function showMarks(){
      because where the case came from is true whether or not there was a sheet to mark. */
   showProvenance(m);
   if(!Array.isArray(m.items)||!m.items.length) return;
-  const bps=m.bps||0, t=tierFor(bps), nb=nextBar(bps);
+  const bps=m.bps||0, t=tierFor(bps);
   const pct=(bps/100).toFixed(bps%100?1:0);
   /* ── the star is banked here, by the sheet, not by the anchor ────────────────
      This is the moment the run is *scored* — the server has walked the tape and sent back the
@@ -3522,12 +3520,7 @@ async function showMarks(){
     next=`The patient died. ${m.capped_from} of ${m.max} were earned; a station where she dies `
       +'cannot pass, whatever else was right.';
   }
-  else if(nb==null) next='Flawless. There is nothing above this one.';
-  else{
-    const need=Math.max(1,Math.ceil(nb*m.max/10000)-m.score);
-    next=`${need} point${need===1?'':'s'} from your ${['first','second','third'][t]} star.`
-      +(m.exam?' Sit it again and the better run is the one that counts.':'');
-  }
+  else next=nextLine(m.score,m.max,!!m.exam);
   /* The stars land one at a time here too. This is the first place the run's own result
      is stated, and three glyphs appearing together is a number; three arriving in turn
      is the thing being awarded. */
@@ -3608,6 +3601,32 @@ const TIERMAX=3;   /* what one case can be worth; a set's ceiling is members × 
 const bpsOf=(score,max)=>max>0?Math.floor(score*10000/max):0;
 const tierFor=bps=>bps>=FLBAR?3:bps>=EXBAR?2:bps>=STARBAR?1:0;
 const nextBar=bps=>bps>=FLBAR?null:bps>=EXBAR?FLBAR:bps>=STARBAR?EXBAR:STARBAR;
+/* What is still on the table, in one sentence — the mark sheet's head and the anchor's
+   verdict both print this, so the two can never say different things about the same run.
+
+   **"Flawless" means the sheet is full, and nothing less.** The third star is priced at 95%,
+   not 100%, and the head used to ask `nextBar` — which has no bar above ★★★ to name and so
+   answers null for everything from 95% up. A 38/40 therefore read exactly like a 40/40:
+   "Flawless. There is nothing above this one." printed directly above
+   `✗ Supporting workup — ECG, CBC or CXR 0/2`. A headline may not contradict a row below it,
+   and a candidate told they were flawless does not come back for the two marks.
+
+   So the top of the ladder is two sentences rather than one. The star is won either way —
+   that is what the glyphs beside this say — and where the sheet is not full, this says what
+   is left instead of claiming there is nothing. `max - score` is the honest count: it is the
+   sheet's own arithmetic, so anything over-ordering took off is on the table too, which it is. */
+function nextLine(score,max,exam){
+  const again=exam?' Sit it again and the better run is the one that counts.':'';
+  const bps=bpsOf(score,max), t=tierFor(bps), nb=nextBar(bps);
+  if(nb==null){
+    const left=Math.max(0,max-score);
+    return left===0
+      ? 'Flawless. There is nothing above this one.'
+      : `The top tier — and ${left} mark${left===1?'':'s'} still on the table.`+again;
+  }
+  const need=Math.max(1,Math.ceil(nb*max/10000)-score);
+  return `${need} point${need===1?'':'s'} from your ${['first','second','third'][t]} star.`+again;
+}
 /* The rule, in the words a player reads it in — one sentence, built from the live bars so
    it can never claim a threshold the server is not actually using. */
 const barRule=()=>`${STARBAR/100}% pass · ${EXBAR/100}% excellent · ${FLBAR/100}% flawless`;
