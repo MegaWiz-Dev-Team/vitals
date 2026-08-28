@@ -36,8 +36,10 @@ cited because it is why a scoreable signal exists at all, not because Vitals ear
   excluded, which is why this number is lower than the platform's raw institution count. **No faculty
   has an institutional agreement with us; every user is an individual.**
 - **290+ clinicians and medical students on Embla** (68% activation rate).
-- **671 runs on Embla · 433 of them completed and scored · across a catalog of 424 authored clinical
-  scenarios.** Three different denominators, so they are printed separately rather than collapsed.
+- **671 runs on Embla · a catalog of 433 authored clinical cases · 384 of them validated · across
+  23 specialties.** Different denominators, so they are printed separately rather than collapsed: a
+  run is an attempt, not a case, and an authored case is not a validated one. How many of those 671
+  runs were completed and scored is not a figure we have verified, so it is not printed.
 - **Live production platform**: [embla.megawiz.co.th](https://embla.megawiz.co.th)
 
 **Vitals' own usage is close to nothing, and it is published rather than omitted:** the demo bay
@@ -162,8 +164,8 @@ Not decoration — the numbers only close on this chain:
 - **`embla-engine`** (Rust) — virtual-patient encounter state machine, deterministic rubric
   scoring (`sop_score.rs`, `meq_grade.rs`, `examiner.rs`), competency derivation with Dreyfus
   levels (`competency.rs`), psychometrics, and the hash-chained audit log (`audit.rs`).
-- **205 authored OSCE cases** across 12 specialties, plus JSON schemas for cases, SCEs,
-  exams, and competency blueprints.
+- **433 authored clinical cases across 23 specialties**, 384 of them validated, plus JSON schemas
+  for cases, SCEs, exams, and competency blueprints.
 - **A designed game layer** — XP curve, Dreyfus skill trees, badges, ranked/practice modes, and
   anti-cheese guardrails (distinct-case and difficulty gates, a variance cap) that turn out to
   double as anti-farming rules once badges carry escrow money.
