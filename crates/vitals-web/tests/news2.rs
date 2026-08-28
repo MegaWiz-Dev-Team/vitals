@@ -11,6 +11,64 @@
 
 use vitals_web::news2 as news;
 
+/// The age every case in this file is about. The published table is an adult table; the rows
+/// below are that table, so every patient in them is an adult and says so.
+const ADULT: Option<f64> = Some(40.0);
+
+// ── who the table is for ────────────────────────────────────────────────────
+//
+// The Royal College of Physicians publishes NEWS2 as an adult score and says it is not validated
+// under 16. It is not a caution: the thresholds are wrong for a child, and applying them to one
+// produces a confident number that is nonsense in the direction of alarm.
+
+/// A well three-year-old, from `osce-b3`: HR 118, RR 28, SpO2 98 on air, BP 98/62. Every one of
+/// those is normal for three. The adult table charges her 3 + 2 + 2 and calls for an emergency
+/// response, on a child the bedside monitor beside it correctly reports as MONITORING.
+#[test]
+fn a_three_year_old_gets_no_score_rather_than_an_adults() {
+    let child = news::Obs {
+        age_years: Some(3.0),
+        rr: 28.0, spo2: 98.0, on_oxygen: false, sbp: 98.0, hr: 118.0, temp: 37.2, gcs: 15,
+    };
+    assert!(news::score(&child).is_none(), "a three-year-old was scored on the adult table");
+
+    // …and this is what the adult table would have said about her, which is the whole problem.
+    let as_adult = news::Obs { age_years: ADULT, ..child };
+    let s = news::score(&as_adult).expect("the adult table still works");
+    assert_eq!(s.total, 7, "the numbers this station used to print");
+    assert_eq!(s.band, news::Band::High);
+}
+
+/// Sixteen is the boundary the publication draws, and it is drawn on the sixteenth birthday.
+#[test]
+fn sixteen_is_scored_and_the_day_before_is_not() {
+    let at = |years: f64| {
+        news::score(&news::Obs {
+            age_years: Some(years),
+            rr: 16.0, spo2: 98.0, on_oxygen: false, sbp: 120.0, hr: 70.0, temp: 36.8, gcs: 15,
+        })
+    };
+    assert_eq!(news::ADULT_FROM_YEARS, 16.0);
+    assert!(at(16.0).is_some(), "sixteen is an adult for this score");
+    assert!(at(15.9).is_none(), "under sixteen was scored");
+    assert!(at(0.0).is_none(), "a newborn was scored");
+    // The published default for a patient whose age nobody wrote down.
+    assert!(news::applies_to_age(None), "an undeclared age is scored as an adult");
+}
+
+/// Nothing here invents a paediatric score. PEWS is a different instrument with age-banded
+/// charts and local variation, and picking one is a clinical decision, not a rendering one — so
+/// the honest output is no number and a sentence saying which instrument is missing.
+#[test]
+fn what_stands_in_for_the_score_does_not_reassure() {
+    let m = news::NOT_VALIDATED.to_lowercase();
+    assert!(m.contains("not validated"), "{m:?}");
+    assert!(m.contains("16"), "{m:?} does not say who it is not validated for");
+    for soothing in ["stable", "normal", "no concern", "low risk", "fine", "well"] {
+        assert!(!m.contains(soothing), "{m:?} reads as reassurance about a child who may be sick");
+    }
+}
+
 /// Respiration rate: ≤8 → 3, 9–11 → 1, 12–20 → 0, 21–24 → 2, ≥25 → 3
 #[test]
 fn respiration_rate_scores_at_the_published_boundaries() {
@@ -72,7 +130,7 @@ fn being_on_oxygen_costs_two() {
 
 #[test]
 fn a_well_adult_on_air_scores_zero() {
-    let s = news::score(&news::Obs { rr: 16.0, spo2: 98.0, on_oxygen: false, sbp: 120.0, hr: 70.0, temp: 36.8, gcs: 15 });
+    let s = news::score(&news::Obs { age_years: ADULT, rr: 16.0, spo2: 98.0, on_oxygen: false, sbp: 120.0, hr: 70.0, temp: 36.8, gcs: 15 }).expect("an adult is scored");
     assert_eq!(s.total, 0);
     assert_eq!(s.band, news::Band::Low);
 }
@@ -80,7 +138,7 @@ fn a_well_adult_on_air_scores_zero() {
 /// EP1's patient shortly after the sting: tachycardic, hypotensive, hypoxic, on oxygen.
 #[test]
 fn a_patient_in_anaphylaxis_scores_high_and_says_so() {
-    let s = news::score(&news::Obs { rr: 28.0, spo2: 90.0, on_oxygen: true, sbp: 86.0, hr: 128.0, temp: 36.9, gcs: 15 });
+    let s = news::score(&news::Obs { age_years: ADULT, rr: 28.0, spo2: 90.0, on_oxygen: true, sbp: 86.0, hr: 128.0, temp: 36.9, gcs: 15 }).expect("an adult is scored");
     // 3 (rr) + 3 (spo2) + 2 (oxygen) + 3 (sbp) + 2 (hr) + 0 + 0
     assert_eq!(s.total, 13);
     assert_eq!(s.band, news::Band::High);
@@ -91,7 +149,7 @@ fn a_patient_in_anaphylaxis_scores_high_and_says_so() {
 /// averaging is exactly what the old percentage did.
 #[test]
 fn one_extreme_observation_escalates_on_its_own() {
-    let s = news::score(&news::Obs { rr: 16.0, spo2: 98.0, on_oxygen: false, sbp: 88.0, hr: 70.0, temp: 36.8, gcs: 15 });
+    let s = news::score(&news::Obs { age_years: ADULT, rr: 16.0, spo2: 98.0, on_oxygen: false, sbp: 88.0, hr: 70.0, temp: 36.8, gcs: 15 }).expect("an adult is scored");
     assert_eq!(s.total, 3);
     assert_eq!(s.worst, 3, "the systolic alone is a 3");
     assert_eq!(s.band, news::Band::Medium, "a single 3 is not a low-risk patient");
@@ -111,8 +169,8 @@ fn the_bands_follow_the_published_thresholds() {
 /// Nothing may fall off the end of the table.
 #[test]
 fn absurd_readings_still_score() {
-    let s = news::score(&news::Obs { rr: 0.0, spo2: 0.0, on_oxygen: true, sbp: 0.0, hr: 0.0, temp: -50.0, gcs: 3 });
+    let s = news::score(&news::Obs { age_years: ADULT, rr: 0.0, spo2: 0.0, on_oxygen: true, sbp: 0.0, hr: 0.0, temp: -50.0, gcs: 3 }).expect("an adult is scored");
     assert_eq!(s.total, 3 + 3 + 2 + 3 + 3 + 3 + 3);
-    let s = news::score(&news::Obs { rr: 999.0, spo2: 200.0, on_oxygen: false, sbp: 999.0, hr: 999.0, temp: 99.0, gcs: 15 });
+    let s = news::score(&news::Obs { age_years: ADULT, rr: 999.0, spo2: 200.0, on_oxygen: false, sbp: 999.0, hr: 999.0, temp: 99.0, gcs: 15 }).expect("an adult is scored");
     assert_eq!(s.total, (3 + 3 + 3 + 2));
 }

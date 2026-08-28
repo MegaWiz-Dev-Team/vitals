@@ -8,10 +8,53 @@
 //!
 //! Every boundary here is from the published table. The tests in `tests/news2.rs` are that table
 //! written out, so they are the specification and this is the implementation of it.
+//!
+//! ## Who it is for
+//!
+//! **Adults.** The Royal College of Physicians says so in the publication itself: NEWS2 is not
+//! validated in patients under 16, and the reason is not caution — it is that the thresholds are
+//! wrong for a child. A well three-year-old breathes 28 a minute with a pulse of 118 and a
+//! systolic of 98; put those through the table below and you get RR 3, HR 2, SBP 2, and a total
+//! of 7 with "emergency response" beside it, on a child a paediatrician would walk past.
+//!
+//! This module had no idea how old anyone was, so it did exactly that on `osce-b3` — the bedside
+//! monitor beside it correctly showing the 3–5 year bands, no alarm, MONITORING, and the patient
+//! banner reading "Stable". Three instruments on one screen, one of them screaming.
+//!
+//! So [`Obs`] carries the age and [`score`] returns nothing for a child. **It does not invent a
+//! paediatric score.** PEWS exists, it is not NEWS2, its charts are age-banded and locally
+//! varied, and choosing one is a clinical decision that does not belong in a rendering path.
+//! Showing nothing, and saying why, is the honest answer — and it is what [`NOT_VALIDATED`] is
+//! for, because a blank box where a score used to be reads as reassurance and this is not that.
+
+/// The youngest patient NEWS2 was validated for.
+pub const ADULT_FROM_YEARS: f64 = 16.0;
+
+/// What a screen says where the score would have gone.
+///
+/// A sentence rather than a blank, and a sentence that does not reassure: "no score" and an empty
+/// panel both read as "nothing to worry about" on a child who may be very sick indeed. This says
+/// which instrument is missing and why, and leaves the judgement where it belongs.
+pub const NOT_VALIDATED: &str = "NEWS2 is not validated under 16";
+
+/// May NEWS2 be reported for a patient of this age?
+///
+/// `None` — a case that declares no age — is treated as an adult, which is the published default
+/// and what every screen here did before ages existed. That is only safe because the case table
+/// declares an age for every case and a test fails if one is missing; without it, "no age" would
+/// become the way a child gets scored as an adult again.
+pub fn applies_to_age(age_years: Option<f64>) -> bool {
+    age_years.is_none_or(|a| a >= ADULT_FROM_YEARS)
+}
 
 /// One set of observations, as a nurse would record them.
 #[derive(Debug, Clone, Copy)]
 pub struct Obs {
+    /// How old the patient is, in years. Not an observation — it decides whether the observations
+    /// may be scored at all. It sits in the same struct as the vitals precisely so that nobody
+    /// can assemble a patient for scoring without having answered the question: the bug this
+    /// field exists to end was `Obs` having no way to express a three-year-old.
+    pub age_years: Option<f64>,
     pub rr: f64,
     pub spo2: f64,
     /// Whether the patient is on supplemental oxygen at all. Worth points on its own.
@@ -136,7 +179,14 @@ pub fn band_for(total: u32, worst: u32) -> Band {
     }
 }
 
-pub fn score(o: &Obs) -> Score {
+/// The score, or nothing at all for a patient NEWS2 does not cover.
+///
+/// `None` is not "zero" and not "unknown": it is "this instrument does not read this patient".
+/// See [`NOT_VALIDATED`] for what to put on the screen in its place.
+pub fn score(o: &Obs) -> Option<Score> {
+    if !applies_to_age(o.age_years) {
+        return None;
+    }
     let parts = [
         resp(o.rr),
         spo2(o.spo2),
@@ -151,5 +201,5 @@ pub fn score(o: &Obs) -> Score {
     // worst single observation — but taking the max over everything is simpler than special
     // cases and reaches the same answer.
     let worst = parts.iter().copied().max().unwrap_or(0);
-    Score { total, worst, band: band_for(total, worst) }
+    Some(Score { total, worst, band: band_for(total, worst) })
 }

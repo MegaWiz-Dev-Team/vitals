@@ -345,16 +345,32 @@ struct View {
     /// one catastrophic derangement and six normal readings came out looking well. That is the
     /// mistake the real score exists to prevent.
     ///
-    /// `None` once she has died. It is an *early warning* score — it exists to decide whether
-    /// somebody needs to come and how fast, and there is nothing left to warn about.
+    /// `None` **once she has died, and for no other reason.** It is an *early warning* score — it
+    /// exists to decide whether somebody needs to come and how fast, and there is nothing left to
+    /// warn about. The page reads a null here as a death and does considerably more than blank a
+    /// number: it raises the result panel and stops painting. A patient NEWS2 does not cover is
+    /// not a dead patient, so she gets a [`News`] with `applies: false` instead.
     news: Option<News>,
 }
 
+/// The NEWS2 panel, as the page receives it.
+///
+/// Present for every living patient — `null` means dead and nothing else, and the page's dead
+/// branch does more than blank a number, so a paediatric patient may never be sent through it.
 #[derive(Serialize)]
 struct News {
-    total: u32,
-    worst: u32,
+    /// Whether NEWS2 covers this patient at all. `false` for anyone under 16, where the score is
+    /// not validated: [`total`](News::total) and [`worst`](News::worst) are then `null`, `band`
+    /// is `"none"`, and `response` carries the sentence to show in the score's place.
+    applies: bool,
+    /// `null` exactly when `applies` is false. Never a zero standing in for "no score" — a zero
+    /// is the best NEWS2 a patient can have, and printing one over a child is the reassurance
+    /// this whole field exists to refuse.
+    total: Option<u32>,
+    worst: Option<u32>,
+    /// `"low"`, `"medium"`, `"high"` — or `"none"` when the score does not apply.
     band: &'static str,
+    /// What the score asks you to do about it, or why there is no score.
     response: &'static str,
 }
 
@@ -464,6 +480,12 @@ impl Session {
         // patient as holding 96% on air, and the score is built to say so.
         let on_oxygen = self.state.has_equipment("o2") || self.state.has_equipment("ett");
         let obs = news2::Obs {
+            // Who she is, not what she is doing — and the only thing on this line that decides
+            // whether the rest of it may be scored at all. `osce-b3` is three; the adult table
+            // charged her 3 for a respiration rate that is normal for three, 2 for a pulse that
+            // is normal for three, and 2 for a systolic that is normal for three, and printed
+            // "7 · HIGH RISK · emergency response" beside a banner reading "Stable".
+            age_years: patient_age(&self.ep),
             rr: v.rr, spo2: v.spo2, on_oxygen, sbp: v.sbp, hr: v.hr, temp: v.temp, gcs: v.gcs,
         };
         let n = news2::score(&obs);
@@ -587,11 +609,25 @@ impl Session {
                     },
                 })
                 .collect(),
-            news: (self.state.status != vitals_sce::PatientStatus::Dead).then(|| News {
-                total: n.total,
-                worst: n.worst,
-                band: n.band.as_str(),
-                response: n.band.response(),
+            // Absent only for the dead — see [`View::news`]. A living patient always gets the
+            // panel, because a panel that vanishes is a panel a reader fills in for themselves.
+            news: (self.state.status != vitals_sce::PatientStatus::Dead).then(|| match n {
+                Some(n) => News {
+                    applies: true,
+                    total: Some(n.total),
+                    worst: Some(n.worst),
+                    band: n.band.as_str(),
+                    response: n.band.response(),
+                },
+                // A child. No score, and a sentence saying which instrument is missing rather
+                // than a blank that reads as reassurance.
+                None => News {
+                    applies: false,
+                    total: None,
+                    worst: None,
+                    band: "none",
+                    response: news2::NOT_VALIDATED,
+                },
             }),
         }
     }
@@ -1019,6 +1055,51 @@ fn every_case() -> Vec<&'static str> {
     let mut v = vec!["ep1", "ep2", "ep3", "ep4", "ep5"];
     v.extend(SETS.iter().flat_map(|s| s.members.iter()).map(|m| m.id));
     v
+}
+
+/// How old the patient in each case is, in years.
+///
+/// **Not in the scenario file.** `sce_hash = sha256(<the whole file>)` is the case's identity on
+/// chain, so a field cannot be added to one without minting a different case and orphaning every
+/// proof already anchored against it. **Not only in the persona file** either: EP2 through EP5
+/// have no authored dialogue anywhere in this repository and so have no persona, and EP3's
+/// patient is five years old — precisely one of the four this table exists for. So the ages live
+/// here, beside the rest of the case table, with a test that pins every one of them against the
+/// persona that does exist and a second that fails if a case is added without one.
+///
+/// It reaches exactly one decision: whether [`news2`] may report a score at all. The bedside
+/// monitor bands its alarm limits by age off the season table on the page (commit ecbdff2); this
+/// is the same fact on the server side, and the numbers are the same numbers, because a screen
+/// whose monitor says "3–5 YR · HR 80–140 · no alarm" beside a NEWS2 of 7 has already lost the
+/// reader whatever the panels individually claim.
+const AGES: &[(&str, f64)] = &[
+    ("ep1", 19.0),  // Ing · F 19
+    ("ep2", 58.0),  // Prasit · M 58
+    ("ep3", 5.0),   // Khaopun · M 5
+    ("ep4", 34.0),  // Mali · F 34
+    ("ep5", 47.0),  // Boonsong · M 47
+    ("osce-a", 71.0),   // Somchai · M 71
+    ("osce-a2", 68.0),  // Somsri · F 68
+    ("osce-b", 25.0),   // Somchai Jaidee · M 25
+    ("osce-b2", 14.0),  // Tan · M 14
+    ("osce-b3", 3.0),   // Pim · F 3
+    ("osce-c", 6.0),    // Fon · F 6
+    ("osce-c2", 53.0),  // Wasana · F 53
+    ("osce-c3", 25.0),  // Waen · F 25
+    ("osce-d", 62.0),   // Somchai Jaiman · M 62
+    ("osce-d2", 55.0),  // Somsri Jaidee · F 55
+    ("osce-d3", 6.0),   // Beam · F 6
+    ("osce-d4", 72.0),  // Pranom · F 72
+];
+
+/// How old this case's patient is, if the table says.
+///
+/// `None` for a case nobody has declared an age for, which [`news2::applies_to_age`] treats as an
+/// adult — the published default, and what every screen here did before ages existed. The test
+/// that every case is in [`AGES`] is what stops "no age" becoming the way a child is scored as an
+/// adult a second time.
+fn patient_age(ep: &str) -> Option<f64> {
+    AGES.iter().find(|(id, _)| *id == ep).map(|(_, years)| *years)
 }
 
 /// Where a case's **persona** lives — the character the model is asked to play.
@@ -3741,6 +3822,63 @@ mod tests {
         ] {
             assert_eq!(neutral_label(before), after, "{before:?}");
         }
+    }
+
+    // ── how old the patient is ──────────────────────────────────────────────
+    //
+    // One decision hangs off this: whether NEWS2 may report a score. It is an adult score, and
+    // it is not validated under 16 — see `news2`. `osce-b3` is three years old and was being
+    // handed "7 · HIGH RISK · emergency response" on vitals that are normal for three.
+
+    /// Nothing may be added to the shelf without saying how old its patient is. This is the test
+    /// that makes "no age declared means adult" a safe default rather than a back door.
+    #[test]
+    fn every_case_declares_how_old_its_patient_is() {
+        for ep in every_case() {
+            assert!(
+                patient_age(ep).is_some(),
+                "{ep} has no age in AGES, so NEWS2 would score its patient on the adult table \
+                 whoever that patient is"
+            );
+        }
+        for (id, _) in AGES {
+            assert!(every_case().contains(id), "AGES names {id}, which is not a case any more");
+        }
+    }
+
+    /// The age in the table is the age the patient gives when she is asked. A server that scores
+    /// a fourteen-year-old as an adult while her own persona says fourteen is one screen
+    /// disagreeing with itself, which is how this bug reached production in the first place.
+    #[test]
+    fn the_declared_age_is_the_age_the_patient_says_she_is() {
+        let mut checked = 0;
+        for ep in every_case() {
+            let Ok(text) = std::fs::read_to_string(persona_path(ep)) else { continue };
+            let v: serde_json::Value = serde_json::from_str(&text).expect("a persona");
+            let Some(said) = v["patient"]["age"].as_f64() else { continue };
+            assert_eq!(
+                patient_age(ep),
+                Some(said),
+                "{ep}: the persona says {said} and AGES says {:?}",
+                patient_age(ep)
+            );
+            checked += 1;
+        }
+        assert!(checked >= 13, "only {checked} personas were read; the cross-check stopped working");
+    }
+
+    /// The five the score must refuse, named, so a case cannot quietly leave the list.
+    #[test]
+    fn the_children_on_the_shelf_are_not_given_an_adult_score() {
+        let under: Vec<&str> = every_case()
+            .into_iter()
+            .filter(|ep| !news2::applies_to_age(patient_age(ep)))
+            .collect();
+        assert_eq!(
+            under,
+            vec!["ep3", "osce-b2", "osce-b3", "osce-c", "osce-d3"],
+            "the set of paediatric cases changed — b2 is fourteen, which the original audit missed"
+        );
     }
 
     /// A parenthesis is not a verdict. These are labels that say what the order *was*, and the
