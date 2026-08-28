@@ -7679,7 +7679,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vitals-cli"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "borsh 1.8.0",
  "serde_json",
@@ -7694,7 +7694,7 @@ dependencies = [
 
 [[package]]
 name = "vitals-osce"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "serde",
  "serde_json",
@@ -7705,7 +7705,7 @@ dependencies = [
 
 [[package]]
 name = "vitals-program"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "borsh 1.8.0",
  "solana-program",
@@ -7717,7 +7717,7 @@ dependencies = [
 
 [[package]]
 name = "vitals-progress"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "sha2 0.10.9",
  "solana-program",
@@ -7725,7 +7725,7 @@ dependencies = [
 
 [[package]]
 name = "vitals-replay"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "serde",
  "sha2 0.10.9",
@@ -7735,7 +7735,7 @@ dependencies = [
 
 [[package]]
 name = "vitals-sce"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "serde",
  "serde_json",
@@ -7744,7 +7744,7 @@ dependencies = [
 
 [[package]]
 name = "vitals-web"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "borsh 1.8.0",
  "serde",
