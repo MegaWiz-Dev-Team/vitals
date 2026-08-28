@@ -99,3 +99,52 @@ This directory is under `conformance/` and not under `docs/` deliberately: `docs
 both `.gitignore` and `.dockerignore`, so an archive kept there reaches no clone and no image, and
 the endpoint would 404 for every historical hash in production. `crates/vitals-web/src/archive.rs`
 has a test that pins the Dockerfile's `COPY conformance`.
+
+## Authoring rules that are not in the schema
+
+`Sce::validate` catches what is malformed — an effect naming an outcome the file never declares, a
+transition to a state that does not exist. What follows is the other kind: a scenario that
+validates, runs, scores correctly, and still leaks. There is nothing in the engine that can enforce
+these, because from the engine's side nothing is wrong.
+
+### Every intervention gets a narrative beat — including the harmful ones
+
+Every entry in `interventions` carries a `{"beat": "..."}` effect. Not only the right answer: the
+trap, the wrong dose, the premature discharge, the order that changes nothing. If a harmful order
+genuinely has nothing to narrate, **the beat still has to exist and it has to read as
+unremarkable** — the room noting what was done, in the register the file already uses for a
+correct order with no physiological consequence.
+
+**Why:** the engine emits exactly the beats the file declares, so an intervention with no beat
+returns a reply one line shorter than every other order — and if the silent orders are the harmful
+ones, silence is the answer key. Silence must never correlate with wrongness.
+
+That is measured, not theorised. Across the twelve stations shipped in August 2026 a reply with no
+new beat was roughly 14× more likely to follow a harmful order than a harmless one, entirely
+because the traps had been written without beats while the right answers had them —
+`docs/RISKS.md` §11 has the numbers and why the existing cases are not being edited to fix it.
+
+Two things the rule does **not** ask for. The beat must not announce the harm: *"the tongue
+depressor goes in — she screams"* is what the `harm` field is for, and `harm` is withheld until the
+bell in exam mode. And the beat must not read differently from the ones around it — a line that is
+conspicuously flat is the same signal with one extra step in front of it.
+
+### Retiring and re-issuing a station
+
+A scenario is edited when it is retired and re-issued, and not before: any edit changes
+`sce_hash`, and `sce_hash` is the case's identity on chain, so editing a live case orphans every
+proof anchored against it. Retirement is therefore also the only moment at which the rules above
+can be applied to a case that is already on the shelf, and the audit belongs there.
+
+Before a re-issued version goes back on the shelf:
+
+1. **Every declared harm has a beat.** Walk `interventions` and the `harm` effects in `triggers`:
+   each one that can be reached by a candidate must leave a narrative beat behind it, and that beat
+   must be indistinguishable in tone from the beats a correct order produces. This is the step that
+   closes `docs/RISKS.md` §11 for that station, and it is the reason the station is being touched.
+2. **Archive the outgoing version** — copy it to `sce-archive/<its own sha256>.json` and add its
+   row to `INDEX.json`. Append only; the old file stays forever, because the leaves that name it do.
+3. **Check the new hash is not already archived** — `shasum -a 256` the new file and grep
+   `INDEX.json`. A collision means nothing changed and the re-issue is a no-op.
+4. The retired hash now answers `GET /api/sce/<sce_hash>` and the new one does not, because the new
+   one is sittable. Nothing in the server needs editing for either.

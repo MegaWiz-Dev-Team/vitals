@@ -172,3 +172,59 @@ regardless of how well each piece works.
 Everything else is a consequence of that. If a feature cannot be introduced as a consequence of that
 sentence, cut it from the pitch even if it is built.
 
+
+## 11. Silence in the reply still marks a harmful order — measured, disclosed, not closed yet
+
+The harm marker is sealed during a station. As of 2026-08-29 the chart carries no harm row, the
+encounter feed carries no harm line, and the result panel's list is empty until the bell
+(`1a9728e`, `39a08bb`). A candidate is no longer told mid-station that an order was wrong.
+
+**What was not sealed is the absence.** Measured across all twelve stations, every reachable
+order, one fresh run each:
+
+    P(no beat in the reply | the order was harmful)   0.82    18/22
+    P(no beat in the reply | the order was harmless)  0.06    11/176
+
+So the **number of narrative beats in the JSON reply** still separates a harmful order from a
+harmless one, at a likelihood ratio of roughly 14×. Order the trap and nothing comes back; order
+anything else and a `threshold:` line usually does.
+
+**The cause is case content, not code.** An author writes the right answer a narrative line —
+*"adrenaline 0.5 mg im, outer thigh — no hesitation"* — and writes the trap beside it none, because
+the trap felt like it had nothing to say. In the files themselves, 19 of the 19 harmful
+interventions declared across the twelve stations carry no `beat` effect against 13 of 179
+harmless ones — a cleaner split than the runtime figures above, which are over reachable orders in
+a live run, where a handful of harms arrive from `triggers` instead and a handful of orders pick up
+a beat from a state change. No line of the engine treats a harmful order differently. The engine
+emits what the file told it to emit, and the file is quiet in exactly one place.
+
+**What it takes to exploit.** Open a network tab, count the beats in `/api/step`, and infer across
+runs — because 0.82 is not 1.0, one silent reply is evidence and not an answer. It is invisible on
+screen, it survives no single observation, and it costs a candidate the attention they were meant
+to be spending on the patient. It is strictly weaker than what it replaced, which was a visible
+certainty delivered unprompted. It is still real, and it is still a channel the exam did not
+intend to open.
+
+**What it would cost to close today.** Two routes, both worse than the leak:
+
+- *Give the traps their missing beats.* That means editing the scenario files, and `sce_hash` is
+  `sha256(<the whole scenario file>)` — the case's identity on chain. Every proof already anchored
+  against those cases would name a file that no longer exists, including the run a judge is asked
+  to re-derive from the video. See `conformance/README.md`.
+- *Suppress `threshold:` beats in exam mode.* Those lines are the ECG read, the auscultation
+  finding, the afebrile child, the nurse asking how many milligrams. They are the examination.
+  Deleting them to hide a correlation would delete the thing being examined.
+
+**When it closes.** At authoring time, and it lands when a station is next retired and re-issued —
+which is when its hash legitimately changes anyway. The rule is written down where the next author
+will meet it (`conformance/README.md`, *Authoring rules that are not in the schema*): **every
+intervention gets a narrative beat, including the harmful ones**, and the re-issue checklist audits
+for it before a station goes back on the shelf. Nothing about this is waiting on a decision; it is
+waiting on the next hash change, deliberately.
+
+**What is not a leak, and will not be treated as one.** A candidate can tell they did harm by
+watching the patient. On `osce-d3` the adult dose in a twenty-kilo child runs her to HR 171 where
+the correct dose holds 136; on `osce-a` IV-push adrenaline drops him to 76 systolic. Nothing labels
+those numbers, nothing timestamps them against a named order, nothing calls them harm. **Noticing
+that the patient got worse after what you did is the skill being examined**, and it is not going to
+be hidden. A monitor that stayed flat through a mistake would be the actual integrity failure.
