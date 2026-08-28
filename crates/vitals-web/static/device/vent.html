@@ -34,9 +34,8 @@
   .lane .note{position:absolute;right:10px;top:6px;font-size:10px;color:var(--dim)}
   .lane .note.bad{color:var(--warn)}
 
-  /* Scrolls rather than clips. What fell off the bottom was the SET block and the sentence saying
-     what the peak-to-plateau gap MEANS — the one reading on this panel a learner cannot work out
-     from the number alone. */
+  /* Scrolls rather than clips. What fell off the bottom was the SET block and the read under
+     it, which are the two things on this panel anybody came to it for. */
   .nums{display:flex;flex-direction:column;min-height:0;overflow-y:auto;overflow-x:hidden}
   .grp{padding:4px 12px 6px;border-bottom:1px solid #131e28}
   .grp h4{margin:0 0 4px;font-size:10px;letter-spacing:1.2px;color:var(--dim);font-weight:700}
@@ -125,10 +124,10 @@ const $ = s => document.querySelector(s);
 const P = new URLSearchParams(location.search);
 const BASE = P.get('base') || '';
 const SID  = P.get('sid')  || 'default';
-// Whether this pane is standing in an exam room. A ventilator displays; it does not tutor — so
-// under exam the panel prints its readings and stops, and in practice it goes on to say what
-// they mean. Nothing else about the pane changes: same waveforms, same alarms, same numbers.
-const EXAM = P.get('exam') === '1';
+// There is deliberately no exam flag on this pane, and no interpretation in this file. A
+// ventilator displays; it does not tutor — and whether it may tutor on a given run is the
+// server's answer, arriving with the feed, never a query parameter the reader could edit off
+// the end of the iframe URL. See VENT_READ_WIDE in main.rs.
 
 // Settings live on the ventilator, as they do at the bedside — the engine is not asked what the
 // vent is set to. Lung-protective start for a 19-year-old female: 6 mL/kg of ~65 kg IBW.
@@ -294,13 +293,14 @@ function paint(){
   $('#fnote').textContent = trapping ? 'expiratory flow has not returned to zero' : '';
   $('#fnote').className = 'note' + (trapping ? ' bad' : '');
 
-  // In practice the panel says what the reading means: a number a learner cannot interpret is
-  // decoration. Under exam it says only what it measured.
-  $('#hint').innerHTML = EXAM
-    ? `Ppeak − Pplat = <b>${Math.round(gap)}</b> cmH₂O`
-    : gap > 15
-      ? 'Ppeak high but <b>Pplat normal</b> → airway resistance, not stiff lungs — think bronchospasm or a blocked tube'
-      : 'Ppeak and Pplat are close — airway resistance is not the problem';
+  // The panel always says what it measured. Whether it also says what that means is not this
+  // file's decision: the sentences ride in on the feed or they do not exist here at all, so a
+  // pane that may not interpret has nothing to interpret with — not a hidden branch, not an
+  // empty string, nothing in the bytes.
+  const read = V && V.vent_read;
+  $('#hint').innerHTML = read
+    ? (gap > 15 ? read.wide : read.narrow)
+    : `Ppeak − Pplat = <b>${Math.round(gap)}</b> cmH₂O`;
 }
 
 // ── feed ──────────────────────────────────────────────────────────────────────

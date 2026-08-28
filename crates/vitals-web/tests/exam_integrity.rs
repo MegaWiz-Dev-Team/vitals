@@ -82,6 +82,32 @@ impl Server {
         self.json(&format!("/api/step?id={id}&tick={dt}"))
     }
 
+    /// A raw body, unparsed — the bytes a browser or a `curl` actually receives.
+    fn text(&self, path: &str) -> String {
+        let url = format!("http://127.0.0.1:{}{path}", self.port);
+        ureq::get(&url).call().map(|r| r.into_string().unwrap_or_default()).unwrap_or_else(|e| {
+            match e {
+                ureq::Error::Status(_, r) => r.into_string().unwrap_or_default(),
+                other => panic!("{url}: {other}"),
+            }
+        })
+    }
+
+    /// The device feed, fetched the way a pane fetches it: one header, naming a session — or
+    /// naming none, which is the first thing anybody poking at this would try.
+    fn feed(&self, sid: Option<&str>) -> String {
+        let url = format!("http://127.0.0.1:{}/device/vitals", self.port);
+        let req = ureq::get(&url);
+        let req = match sid {
+            Some(s) => req.set("x-embla-session", s),
+            None => req,
+        };
+        req.call().map(|r| r.into_string().unwrap_or_default()).unwrap_or_else(|e| match e {
+            ureq::Error::Status(_, r) => r.into_string().unwrap_or_default(),
+            other => panic!("{url}: {other}"),
+        })
+    }
+
     fn play_out(&self, id: &str) -> serde_json::Value {
         let mut v = serde_json::Value::Null;
         for _ in 0..40 {
@@ -120,6 +146,125 @@ fn bank_ids() -> Vec<String> {
     }
     assert!(out.len() >= 12, "the set table stopped parsing: {out:?}");
     out
+}
+
+/// The two sentences the ventilator pane is allowed to say only outside the seal, read out of
+/// the server's own source so a reworded const cannot quietly stop being tested.
+fn vent_reads() -> Vec<String> {
+    let src = std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/main.rs"),
+    )
+    .expect("main.rs");
+    let mut out = Vec::new();
+    for name in ["VENT_READ_WIDE", "VENT_READ_NARROW"] {
+        let at = src.find(&format!("const {name}: &str = \"")).unwrap_or_else(|| panic!("{name} is gone"));
+        let body = &src[at + src[at..].find('"').unwrap() + 1..];
+        let end = body.find("\";").expect("an unterminated const");
+        // Rust's line continuation: a trailing backslash eats the newline and the indent after it.
+        let mut text = String::new();
+        let mut chars = body[..end].chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '\\' {
+                while chars.peek().is_some_and(|c| c.is_whitespace()) {
+                    chars.next();
+                }
+            } else {
+                text.push(c);
+            }
+        }
+        out.push(text);
+    }
+    assert_eq!(out.len(), 2, "the vent read constants stopped parsing: {out:?}");
+    out
+}
+
+/// **A gate the candidate holds is not a gate.**
+///
+/// `device/vent.html` shipped the interpretation of the peak-to-plateau gap — *think
+/// bronchospasm or a blocked tube* — as a string in the file, and chose whether to render it
+/// from `P.get('exam') === '1'`. The pane is an iframe whose URL the page builds, so the
+/// candidate did not have to defeat anything: the sentence was in view-source whatever the
+/// branch decided, and the branch itself was steered by a parameter they could delete.
+///
+/// Reading the peak-to-plateau gap is the mark at a ventilator station. So the pane holds no
+/// interpretation at all now: the words are the server's, they ride in on the feed the pane
+/// already polls, and [`Session::sealed`] — the same predicate the harm list, the feed and the
+/// chart are withheld by — decides whether they are sent. Sealed means the key is absent.
+///
+/// Everything below is asserted against the bytes, because the bytes are what a `curl` gets.
+#[test]
+fn a_sealed_station_is_never_handed_the_ventilator_read() {
+    let s = Server::start();
+    let reads = vent_reads();
+    // Paraphrases too: the exact const is pinned above, and these catch a rewrite that keeps
+    // the answer while changing the wording.
+    let fragments = ["think bronchospasm", "not stiff lungs", "blocked tube"];
+
+    // ── the pane, as the browser receives it ────────────────────────────────────────────────
+    // No session, no headers, no cookie — this is the whole file, served to anyone.
+    for pane in ["vent", "monitor", "pump"] {
+        let html = s.text(&format!("/device/{pane}"));
+        assert!(html.len() > 500, "/device/{pane} served nothing: {html:?}");
+        for r in &reads {
+            assert!(!html.contains(r.as_str()), "/device/{pane} ships the read in its own bytes");
+        }
+        for f in fragments {
+            assert!(!html.contains(f), "/device/{pane} ships {f:?} in its own bytes");
+        }
+        // A pane that can read whether it is in an exam is a pane that can be told it is not.
+        // The word may appear in prose; what may not appear is any way of *asking* the URL.
+        for gate in ["get('exam')", "get(\"exam\")", "exam=1", "exam'] ", "EXAM ="] {
+            assert!(!html.contains(gate), "/device/{pane} reads its own seal from {gate:?}");
+        }
+    }
+
+    // ── a station, mid-run ──────────────────────────────────────────────────────────────────
+    // Sealed by definition: `osce-a` is a set member, so this holds on a bay with no chain
+    // configured at all — which is exactly the deployment a visitor reaches first.
+    let id = s.open("osce-a");
+    let sealed = s.feed(Some(&id));
+    assert!(sealed.contains("\"hr\""), "the instrument stopped reporting: {sealed}");
+    assert!(!sealed.contains("vent_read"), "a sealed feed carries the key: {sealed}");
+    for r in &reads {
+        assert!(!sealed.contains(r.as_str()), "a sealed feed carries the read: {sealed}");
+    }
+
+    // ── the bypasses ────────────────────────────────────────────────────────────────────────
+    // No session named at all, and a session id that never existed: both answer the empty
+    // document, so there is no unsealed default to fall into.
+    for (what, body) in [("no session", s.feed(None)), ("a forged id", s.feed(Some(&"f".repeat(32))))] {
+        assert!(!body.contains("vent_read"), "{what} was handed the read: {body}");
+        for r in &reads {
+            assert!(!body.contains(r.as_str()), "{what} was handed the read: {body}");
+        }
+    }
+    // The old flag, forged onto the pane URL and onto the feed. Neither is read by anything.
+    for q in ["?exam=0", "?exam=1"] {
+        let html = s.text(&format!("/device/vent{q}"));
+        for r in &reads {
+            assert!(!html.contains(r.as_str()), "/device/vent{q} answered differently");
+        }
+    }
+
+    // ── practice keeps everything ───────────────────────────────────────────────────────────
+    // The sentence is why the panel was built. An episode is not a station and is never sealed,
+    // so it is handed both branches and picks between them itself.
+    let ep1 = s.open("ep1");
+    let practice = s.feed(Some(&ep1));
+    assert!(practice.contains("vent_read"), "practice lost its teaching: {practice}");
+    for r in &reads {
+        assert!(practice.contains(r.as_str()), "practice lost a branch of the read: {practice}");
+    }
+
+    // ── the bell, not forever ───────────────────────────────────────────────────────────────
+    // Sealing lasts exactly as long as the clock, the same way the mark sheet does. The query
+    // parameter never did this: it was fixed when the iframe was built and stayed fixed.
+    s.play_out(&id);
+    let after = s.feed(Some(&id));
+    assert!(after.contains("vent_read"), "the read stayed sealed after the outcome: {after}");
+    for r in &reads {
+        assert!(after.contains(r.as_str()), "the read stayed sealed after the outcome: {after}");
+    }
 }
 
 /// **The worst leak the audit found.** `/api/chain` is unauthenticated, needs no session, and is

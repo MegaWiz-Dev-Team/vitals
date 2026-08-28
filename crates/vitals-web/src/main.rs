@@ -478,6 +478,24 @@ fn neutral_label(label: &str) -> &str {
 }
 
 impl Session {
+    /// Is this run sealed *right now*? The one definition, asked by everything that withholds.
+    ///
+    /// [`Session::view`] asks it before serialising the harm list, the feed and the chart.
+    /// `/device/vitals` asks it before handing a device pane any words that interpret a reading.
+    /// Two callers and one predicate on purpose: a second copy of "is this sealed" is a second
+    /// answer waiting to disagree with the first, and this repo has already paid for that once —
+    /// the page's `examMode()` and the server's `exam_mode` disagreed about every station until
+    /// the station table was folded into the condition below.
+    ///
+    /// An exam by declaration (`exam_mode`, which is set from a landed chain commitment and
+    /// nowhere else) or an exam by definition (a member of a station set, true even on a bay with
+    /// no chain configured) — and only while the clock is still running. `outcome.is_some()` is
+    /// the bell, and the bell is where sealing stops rather than where it starts: the mark sheet
+    /// and the debrief are what an unlimited-retry model is for.
+    fn sealed(&self) -> bool {
+        (self.exam_mode || set_member(&self.ep).is_some()) && self.state.outcome().is_none()
+    }
+
     /// A full snapshot of the run, in the language the page asked for.
     ///
     /// `lang` reaches exactly one field ([`View::tr`]) and nothing else. Every number, every id,
@@ -548,7 +566,7 @@ impl Session {
         // first. A station is an exam by definition; that is already the page's own rule
         // (`examMode()` is true for anything with `station` set), and this is the server
         // finally agreeing with it rather than trusting it.
-        let sealed = (self.exam_mode || set_member(&self.ep).is_some()) && outcome.is_none();
+        let sealed = self.sealed();
         // ── the chart says what was ordered, not what the rubric calls it ───────
         // The engine records an order by intervention id, because an id is what replay and the
         // rubric need. The chart then printed that id: `adrenaline_undosed`, `dx_epiglottitis`,
@@ -1781,7 +1799,7 @@ fn main() {
                         // are absent rather than stale. The device page has always keyed on
                         // `pulse`; now it cannot disagree with the rail even if it stopped.
                         let m = reading::Reading::of(&s.state.vitals);
-                        json(serde_json::json!({
+                        let mut body = serde_json::json!({
                             "hr": m.hr, "spo2": m.spo2, "sbp": m.sbp, "dbp": m.dbp,
                             "rr": m.rr, "temp": m.temp, "gcs": m.gcs,
                             "status": format!("{:?}", s.state.status),
@@ -1791,7 +1809,22 @@ fn main() {
                             "pulse": m.pulse,
                             "shockable": m.shockable,
                             "paused": false,
-                        }))
+                        });
+                        // A device pane holds no words it is not allowed to show, so the words
+                        // are sent to it — or they are not. The numbers always travel: an exam
+                        // hides no instrument, and a ventilator that would not show its own
+                        // pressures is not a ventilator. What travels only outside the seal is
+                        // the sentence that says what the pressures mean, because reading them
+                        // is the thing being marked. Absent, not null and not conditional: a
+                        // sealed reply has no such key, so there is nothing to notice and
+                        // nothing to flip. See [`VENT_READ_WIDE`].
+                        if !s.sealed() {
+                            body["vent_read"] = serde_json::json!({
+                                "wide": VENT_READ_WIDE,
+                                "narrow": VENT_READ_NARROW,
+                            });
+                        }
+                        json(body)
                     }
                 }
             }
@@ -2912,6 +2945,27 @@ struct PendingWork {
 /// APIs and its session state live on the devnet host. One instance serves both names, so the
 /// split is the Host header — an allowlist of exactly one special name, with every other name
 /// (devnet, run.app, localhost) keeping the full app unchanged.
+/// What the ventilator pane says the peak-to-plateau gap means, held here rather than there.
+///
+/// `static/device/vent.html` is served whole to anyone who asks for it, so every string in it is
+/// readable in view-source whether or not the pane is willing to render it. These two sentences
+/// were in that file, behind `const EXAM = P.get('exam') === '1'` — a gate the reader holds. A
+/// candidate did not have to attack it: dropping `&exam=1` off the iframe URL was enough, and
+/// reading the source was enough even without that.
+///
+/// So the pane holds no interpretation at all now. It is handed these two lines, or it is handed
+/// nothing and prints the number it measured. Under [`Session::sealed`] it is handed nothing, and
+/// the key is absent from the reply rather than empty — there is no field to notice, no branch to
+/// flip, and nothing in the bytes to read.
+///
+/// The gap itself is not secret and is not withheld: an exam does not hide the instrument, and a
+/// real ventilator displays both pressures. What is withheld is the sentence that reads them,
+/// because reading them is the mark.
+const VENT_READ_WIDE: &str = "Ppeak high but <b>Pplat normal</b> → airway resistance, \
+     not stiff lungs — think bronchospasm or a blocked tube";
+/// The other half of [`VENT_READ_WIDE`] — the same rule, the reassuring branch.
+const VENT_READ_NARROW: &str = "Ppeak and Pplat are close — airway resistance is not the problem";
+
 const APEX: &str = "vitals.academy";
 const GAME_ORIGIN: &str = "https://devnet.vitals.academy";
 
@@ -3371,6 +3425,57 @@ mod tests {
                  `osce-d3` pays a candidate to ask for"
             );
         }
+    }
+
+    /// A device pane may not hold text it is not always allowed to show.
+    ///
+    /// `vent.html` shipped the interpretation of the peak-to-plateau gap — the reading a
+    /// ventilator station exists to mark — and decided whether to render it from
+    /// `P.get('exam') === '1'`. Both halves of that were wrong. The string was in the served
+    /// file whatever the branch did, so view-source read it; and the branch was steered by a
+    /// query parameter on an iframe URL, so dropping `&exam=1` was not even an attack.
+    ///
+    /// The sentences live in [`VENT_READ_WIDE`] and [`VENT_READ_NARROW`] now and reach a pane
+    /// only on the feed, only when [`Session::sealed`] is false. This test is the one that
+    /// fails if either ever comes back into a file the candidate is served: it checks the
+    /// panes exactly as the browser receives them, and it checks that no pane has re-hung a
+    /// gate on something the reader controls.
+    #[test]
+    fn a_device_pane_holds_no_reading_it_may_have_to_withhold() {
+        const PANES: &[(&str, &str)] =
+            &[("vent", VENT), ("monitor", MONITOR), ("pump", PUMP)];
+        // The sentences themselves, and the phrases that carry the answer even paraphrased.
+        const READS: &[&str] = &[
+            VENT_READ_WIDE,
+            VENT_READ_NARROW,
+            "think bronchospasm",
+            "not stiff lungs",
+            "airway resistance is not the problem",
+        ];
+        for (name, page) in PANES {
+            for needle in READS {
+                assert!(
+                    !page.contains(needle),
+                    "device/{name}.html ships an interpretation — {needle:?} — and every string \
+                     in that file is one view-source away from the candidate reading it"
+                );
+            }
+            // A gate the reader holds is not a gate. No pane may decide what to withhold from
+            // its own URL: the seal is the server's answer, and it arrives on the feed.
+            for gate in ["P.get('exam')", "get('exam')", "exam=1"] {
+                assert!(
+                    !page.contains(gate),
+                    "device/{name}.html gates on {gate:?}, which is a query parameter the \
+                     candidate can edit off the end of the iframe URL"
+                );
+            }
+        }
+        // And the bay does not offer one either — the parameter is gone from the URL it builds,
+        // so there is nothing for a pane to start reading again.
+        assert!(
+            !PAGE.contains("&exam=1"),
+            "the page still hangs an exam flag on a device URL"
+        );
     }
 
     /// Same rule, the other half of the card: the band is what a circuit prints on the door, and

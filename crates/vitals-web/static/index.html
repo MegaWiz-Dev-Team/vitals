@@ -3480,14 +3480,16 @@ $('#mic').onclick=()=>{
    panel interprets its own numbers out loud — it names causes for the pressure it is showing
    — which is teaching in practice and the answer read off the wall at a station. The devices
    stay dumb about the case itself: no diagnosis, no rubric, nothing but a name, an age and a flag. */
+/* No exam flag rides on this URL. A pane used to be told whether to withhold its teaching by a
+   query parameter appended here, which put the seal in the candidate's own address bar; the
+   panes are told by the server now, on the feed they already poll. */
 const deviceSrc=dev=>{
   const e=ep();
   const a=ageOf(e);
   return '/device/'+dev+'?sid='+encodeURIComponent(id)
     +'&pt='+encodeURIComponent(e.who||'')
     +(a==null?'':'&age='+a)
-    +'&bed='+encodeURIComponent(bedOf(e))
-    +(examMode()?'&exam=1':'');
+    +'&bed='+encodeURIComponent(bedOf(e));
 };
 document.querySelectorAll('.dev').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('.dev').forEach(x=>x.classList.toggle('on',x===b));
