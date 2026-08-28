@@ -1614,12 +1614,11 @@ a.give:hover{filter:brightness(1.06)}
     </div>
 
     <!-- A disposition is a clinical decision. It does not belong in a row with the mute button.
-         It was one checkbox, and the checkbox said "Admit for observation" — the right answer,
-         in those words, on every one of the seventeen cases, worth the disposition mark on most
-         of the twelve mark sheets for a single click by a candidate who had decided nothing.
-         A decision with one option on the ballot is not a decision. Four now — four places a
-         patient can go, at least one of them wrong wherever you are standing, none of them
-         arguing for itself. Written at one level for the same reason the order chips are. -->
+         It was a single checkbox, and a decision with one option on the ballot is not a
+         decision — it is a mark collected by clicking, by a candidate who had decided nothing.
+         Four now — four places a patient can go, at least one of them wrong wherever you are
+         standing, none of them arguing for itself. Written at one level for the same reason the
+         order chips are. -->
     <div class="panel dispo">
       <div class="k">disposition</div>
       <div class="dispo-opts" id="dispo-opts">
@@ -1927,7 +1926,7 @@ const SEASON=[
     to be examined on it. A cross-reference is a hint with a story wrapped round it; the shelf
     is outside the exam room and the exam has already started by the time it is read.
     `t` used to be the case name — the diagnosis, spelled out, as the headline — and that string
-    rides the player bar for the whole exam while the rubric pays four points for naming the
+    rides the player bar for the whole exam while the rubric is paying for naming the
     diagnosis. It is the stem now, and the answer is revealed after the outcome instead (REVEAL,
     below). Half of these blurbs used to read back demo/rubrics item for item — the order of the
     workup, the drug and the dose to draw off a weight the candidate is paid to ask for — which
@@ -1940,14 +1939,10 @@ const SEASON=[
     trap before the candidate has touched the patient. */
  /* `line` is not decoration. `stemHtml` prints it as **presents**, which is the last thing a
     candidate reads before the clock starts, so it is the briefing — and these two had each
-    other's. A was being briefed on abdominal cramps its patient does not have (nothing in
-    `demo/stations/osce-a.sce.json` asks about the gut, and nothing in `demo/rubrics/osce-a.json`
-    pays for it), while A2 — whose own card leads on the gut — was briefed with no mention of it
-    at all, which is the one detail its case turns on.
-    A straight swap does not fix it and was not enough: A2's line says "as she talks", and A is a
-    man of seventy-one. Each line below is written from its own `.sce.json` and checked against
-    it — A's second finding is what its own `ask_breathing` and `exam_chest` return, A2's first
-    is what its own `ask_bowels` returns — and each now agrees with the title on its own card. */
+    other's, each one briefed on a presentation belonging to the other case.
+    A straight swap does not fix it and was not enough: the lines also disagreed with their own
+    patients about who they are. Each line below is written from its own `.sce.json`, says only
+    what that scenario actually answers, and agrees with the title on its own card. */
  {id:'osce-a',n:'OSCE A',sn:'S1 · OSCE A',t:'Rash and facial swelling after a meal — M 71',tier:'student',station:true,
   spec:'emergency',rt:'an 8-minute station',mins:8,
   who:'Somchai · M 71', line:'urticaria head to toe, face swelling, a wheeze you can hear',
@@ -2360,7 +2355,7 @@ async function setLang(id,remember){
   /* The two beat seals, stand-ins the exam draws over words it will not say yet: a seal that
      falls back to English on a Thai bedside announces itself as a seal. The fallback stays
      anyway — a build served with no pack at all still has to seal. There used to be a third,
-     `harm_sealed`, drawn over a harm line; a sealed run has no harm line to draw it over now. */
+     `harm_sealed`; it no longer has a line of its own to draw itself over. */
   BEAT_DECLINED = PACK.ui.beat_declined || 'the order is declined';
   BEAT_NOTED = PACK.ui.beat_noted || 'noted on the record';
   TR={};
@@ -2389,9 +2384,9 @@ async function bootLang(){
    During an exam it is a coach leaning over the desk — the rubric is at that moment paying for
    the very thing the beat just named. No example is written out here: the page is served to the
    candidate, so a quoted harm line in this comment is the same leak one file earlier.
-   So: while a station is running, harm is reported the way the bedside reports it — something
-   went wrong, at this time, and the patient will show you the rest. The full sentence is not
-   deleted, it is deferred: the debrief prints every harm in full for both modes, because
+   So: while a station is running the sentence is not said, and the patient shows you the rest —
+   which is the signal an examiner would leave in the room. The full sentence is not deleted, it
+   is deferred: the debrief prints every harm in full for both modes, because
    feedback after the bell is what an exam is for. `over` and `v.outcome` are both consulted so
    the last paint of a run — the one that draws the chart under the result panel — is already
    the after picture.
@@ -2404,11 +2399,8 @@ async function bootLang(){
    observation but marking:
 
      * the order the case declined, whose sentence explains the gate it failed and what has to
-       happen first. Read together, those refusals are the station's running order, handed over
-       one wrong guess at a time;
-     * the reply to a differential the candidate named, which is the reasoning that settles it
-       — the findings that rule the guess out, and an instruction to look again. A candidate
-       could walk down the whole list and be told, in turn, why each one is wrong.
+       happen first;
+     * the reply to a differential the candidate named, which is the reasoning that settles it.
 
    Under exam, before the bell, both are facts without their sentence: the order was declined,
    or the answer is on the record. Deferred, never deleted — `unsealBeats` rewrites every one of
@@ -2450,14 +2442,10 @@ let id=null,timer=null,over=false,seen=0,mode='ask',asking=false,hard=false;
 /* How far into the chart the feed has already looked — `seen`'s opposite number, and reset in
    exactly the same places. Only drainBeats moves it. */
 let CHARTSEEN=0;
-/* ── the beats a sealed run can see ──────────────────────────────────────────
-   A sealed reply carries no harm beat at all — the server drops them rather than redacting
-   them, because "⚠ harm recorded" appearing in the feed the instant you act is the verdict
-   itself, and an examiner does not lean over and say that. What the seal leaves is exactly the
-   full list minus the `harm:` entries, in order, so this is the sequence `seen` walks whichever
-   side of the bell we are on: mid-run the server has already removed them, and at the bell we
-   remove them here. One monotonic list, one watermark, and the bell stops being a moment when
-   the array a counter is counting silently changes shape underneath it.
+/* ── the sequence `seen` walks ───────────────────────────────────────────────
+   The same list on both sides of the bell, so the bell stops being a moment when the array a
+   counter is counting silently changes shape underneath it. One monotonic list, one watermark.
+   What the exam seal covers, and why it holds the way it does, is docs/RISKS.md §11.
 
    Only under exam. A practice episode is never sealed at either end — the server sends the harm
    beat the moment it happens and the feed prints it there, because that line is the lesson and a
@@ -3089,10 +3077,8 @@ function stemHtml(e){
     /* Deliberately the generic candidate instruction and not a per-case one: a task
        written for this station would have to say what the station is about. */
     +'<p class="stem-task">Assess and manage this patient.</p>'
-    /* "The harm sentences", not "harm": the words are sealed, the fact is not quite — a
-       harmful order still tends to come back with no beat at all, which a reader counting
-       replies can notice (docs/RISKS.md §11). Promising more than that would be a promise
-       the exam cannot keep. */
+    /* The wording here is narrower than it reads, deliberately. docs/RISKS.md §11 before
+       widening it. */
     +'<p class="stem-f"><b>★ exam conditions</b> — this attempt is declared on chain before '
     +'it is played, and the score is derived from the tape afterwards. The harm sentences '
     +'and the mark sheet stay sealed until the bell.</p>';
@@ -3203,8 +3189,8 @@ addEventListener('keydown',e=>{
 /* Everything the engine has said since the last look, as lines in the feed. Returns the new
    beats so the caller can decide whether the Director gets a turn. */
 function drainBeats(v,ended,named){
-  /* Not `v.beats` — see visBeats. At the bell the reply grows the harm lines back, and slicing
-     the grown array by a watermark taken against the sealed one would re-print the whole run. */
+  /* Not `v.beats` — see visBeats. The two lists are not the same length either side of the
+     bell, and slicing the longer by a watermark taken against the shorter re-prints the run. */
   const vis=visBeats(v);
   const fresh=vis.slice(seen);
   /* Whether the case declined the order these answer is not inferred from the sentence — it is
@@ -3217,9 +3203,8 @@ function drainBeats(v,ended,named){
   CHARTSEEN=chart.length;
   const quiet = examMode() && !ended && (declined || !!named);
   fresh.forEach((b,n)=>{
-    /* A harm never reaches here while the clock runs — the server has already taken it out —
-       so there is no `sealed` branch left on this line. What arrives at the bell arrives whole.
-       Held beats keep their old discipline: the index, which is a number, and never the
+    /* There is no `sealed` branch left on this line: what arrives at the bell arrives whole.
+       Held beats keep their old discipline — the index, which is a number, and never the
        sentence, because a title attribute is one hover away from being the answer key. */
     const k = b.startsWith('harm') ? 'harm' : b.startsWith('terminal') ? 'end' : 'beat';
     /* A line the page has its own words for — a status change, a threshold the case named — is
@@ -3291,9 +3276,8 @@ function finish(v){
 /* Deferred, not deleted — and now written rather than rewritten.
    ------------------------------------------------------------------------------------------
    This used to walk `#chat .ev.harm.sealed` and swap the text of each node for the sentence at
-   the matching position. There are no such nodes any more: a sealed run never wrote a harm line
-   at all, because a redacted one still told the candidate, on screen, the second they acted.
-   So the bell has to put the lines *in*, at the place each of them would have been written.
+   the matching position. There are no such nodes any more, so the bell has to put the lines
+   *in*, at the place each of them would have been written.
 
    Three facts locate one harm, and all three are already tracked:
 
@@ -3689,8 +3673,7 @@ async function showMarks(){
 
 /* The answer, at the only moment it is free to give. A station's card, title card and player
    bar carry the stem now — age, sex, complaint, what you could see from the doorway — because
-   the mark sheet is paying two to four points for naming the diagnosis and a title that names it
-   pays them first. Here the clock has stopped and the leaf is computed, so the candidate is
+   the mark sheet pays for naming the diagnosis and a title that names it pays first. Here the clock has stopped and the leaf is computed, so the candidate is
    simply told, beside where the case came from: this is what it was. Episodes have no entry —
    their titles are drama, not diagnosis — and they get no line, exactly like provenance. */
 function showReveal(){

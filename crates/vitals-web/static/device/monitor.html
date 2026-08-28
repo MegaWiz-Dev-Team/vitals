@@ -337,8 +337,8 @@ function paint(){
     el.classList.toggle('alarm', !!alarm); el.classList.toggle('off', !!off);
   };
   const pulse = hasPulse();
-  // HR keeps its number in PEA — the complexes are real and countable, and hiding them would hide
-  // the trap. SpO₂ and NIBP do not: both need a pulse to measure anything at all.
+  // HR keeps its number in PEA — the complexes are real and countable, and hiding them would
+  // hide a finding the bedside does show. SpO₂ and NIBP do not: both need a pulse to measure.
   set('#n-hr',   V.hr   ? Math.round(V.hr)   : '--', out(V.hr, LIM.hr),     !live);
   set('#n-spo2', pulse && V.spo2 ? Math.round(V.spo2) : '--', pulse && out(V.spo2, LIM.spo2), !live || !pulse);
   set('#n-rr',   V.rr   ? Math.round(V.rr)   : '--', out(V.rr, LIM.rr),     !live);
