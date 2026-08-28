@@ -3089,9 +3089,13 @@ function stemHtml(e){
     /* Deliberately the generic candidate instruction and not a per-case one: a task
        written for this station would have to say what the station is about. */
     +'<p class="stem-task">Assess and manage this patient.</p>'
+    /* "The harm sentences", not "harm": the words are sealed, the fact is not quite — a
+       harmful order still tends to come back with no beat at all, which a reader counting
+       replies can notice (docs/RISKS.md §11). Promising more than that would be a promise
+       the exam cannot keep. */
     +'<p class="stem-f"><b>★ exam conditions</b> — this attempt is declared on chain before '
-    +'it is played, and the score is derived from the tape afterwards. Harm and the mark '
-    +'sheet stay sealed until the bell.</p>';
+    +'it is played, and the score is derived from the tape afterwards. The harm sentences '
+    +'and the mark sheet stay sealed until the bell.</p>';
 }
 function renderStage(){
   const E=ep(), art=document.querySelector('.pt-art');
