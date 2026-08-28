@@ -8,7 +8,7 @@
 //! and sessions in a map. The point is to make the automaton playable, not to ship a platform.
 
 mod chain;
-use vitals_web::{lang, meter, news2, patient, store};
+use vitals_web::{fuel, lang, meter, news2, patient, store};
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -1296,6 +1296,11 @@ fn main() {
         }
         None => println!("chain      not connected — set VITALS_PROGRAM_ID and start a validator to anchor"),
     }
+    // What the donate page shows beside the address: the relay's balance and the treasury's,
+    // read by the server rather than the browser (CORS, and a public RPC rate-limits per caller)
+    // and cached, because this endpoint is public and ungated by design.
+    let mut fuel = fuel::Fuel::open();
+    println!("fuel       {}", fuel.describe());
     // Signed halves waiting on the browser, keyed by player. Never persisted: a blockhash goes
     // stale in about a minute, so a pending transaction that outlives the process is worthless.
     let pendings: Arc<Mutex<HashMap<String, PendingWork>>> = Arc::new(Mutex::new(HashMap::new()));
@@ -1910,6 +1915,27 @@ fn main() {
             // The month's spend, the ceiling and where donations go — public, because the
             // ceiling being visible is the point. Anyone can check what the bay has left.
             (Method::Get, "/api/meter") => json(meter.view()),
+            // What the money has bought, in one reading: the month's patient turns against the
+            // ceiling, the relay's balance and the runs it still pays for, the treasury, and the
+            // count already anchored. Public and ungated on purpose — a fuel gauge only anyone
+            // can read is a fuel gauge, and one only we can read is a claim.
+            //
+            // The numbers are joined here rather than in the page because three of the four
+            // already have a single source in this process (the meter, the leaf list, the
+            // relay's own key) and the fourth needs an RPC call the browser must not make.
+            (Method::Get, "/api/fuel") => {
+                let t = tree.lock().unwrap();
+                let mut v = fuel.view(chain.as_ref().map(|c| c.relay_pubkey()).as_deref());
+                // The expensive one, and the one the page leads with: a patient turn is paid
+                // inference, and the ceiling is what stops a stranger spending the month.
+                v["turns"] = meter.view();
+                // Runs already on chain. The same count /api/chain serves, from the same lock,
+                // so the two pages can never disagree about how many there are.
+                v["anchored"] = serde_json::json!(t.leaves.len());
+                v["tree_id"] = serde_json::json!(t.tree_id);
+                v["connected"] = serde_json::json!(chain.is_some());
+                json(v)
+            }
             // The treasury page, always — no env var in this handler, so there is nothing to
             // misconfigure into a loop. The visit is counted: page views of /donate are the
             // conversion this side can measure honestly; the money itself is audited on chain.
@@ -2530,17 +2556,7 @@ fn bind_addr(platform_port: Option<&str>, configured: Option<&str>) -> String {
 /// the public endpoints all carry their cluster's name, and anything unrecognised is reported
 /// as what it is rather than guessed.
 fn cluster_of(rpc: &str) -> &'static str {
-    if rpc.contains("devnet") {
-        "devnet"
-    } else if rpc.contains("testnet") {
-        "testnet"
-    } else if rpc.contains("mainnet") {
-        "mainnet"
-    } else if rpc.contains("127.0.0.1") || rpc.contains("localhost") {
-        "localnet"
-    } else {
-        "custom"
-    }
+    fuel::cluster_of(rpc)
 }
 
 /// A player key as the browser sends it: base58, and it has to be a real curve point or the
@@ -2755,7 +2771,7 @@ mod tests {
             assert!(guarded(p), "{p} makes the server sign or spend");
         }
         for p in ["/", "/play", "/api/new", "/api/step", "/api/kit", "/api/tape", "/api/chain",
-                  "/api/meter", "/api/stars", "/api/lang", "/donate"] {
+                  "/api/meter", "/api/fuel", "/api/stars", "/api/lang", "/donate"] {
             assert!(!guarded(p), "{p} is play, and a kiosk must not need a token to play");
         }
     }

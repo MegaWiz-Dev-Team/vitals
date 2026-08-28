@@ -76,6 +76,30 @@ font-family:Archivo,Arial,sans-serif;cursor:pointer;font-size:.9rem}
 .k{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--proven);font-weight:600}
 .note{background:var(--surface-2);border:1px dashed var(--rule);border-radius:10px;padding:.9rem 1.1rem;font-size:.88rem;color:var(--ink-2)}
 footer{border-top:1px solid var(--rule);margin-top:2rem;padding:1.2rem 0 2rem;font-size:.82rem;color:var(--ink-3)}
+/* ── the fuel gauge: what the money has actually bought, in numbers ────────── */
+.fuel h2{font-size:1.08rem;margin:.3rem 0 .25rem}
+.fuel .lede{font-size:.85rem;color:var(--ink-2);margin:0 0 .9rem}
+.gauge,.tile{background:var(--surface-2);border:1px solid var(--rule);border-radius:10px;padding:.85rem 1rem;min-width:0}
+.gauge{margin:0 0 .7rem}
+.tiles{display:grid;gap:.7rem;align-items:start;grid-template-columns:repeat(auto-fit,minmax(11.5rem,1fr))}
+.big{font-family:Archivo,Arial,sans-serif;font-weight:800;letter-spacing:-.01em;line-height:1.12;
+font-size:clamp(1.45rem,5.6vw,1.9rem);overflow-wrap:anywhere}
+.tile .big{font-size:clamp(1.15rem,4.4vw,1.4rem)}
+.unit{display:block;font-size:.78rem;color:var(--ink-3);font-weight:400;margin-top:.2rem;
+font-family:"IBM Plex Sans",Arial,sans-serif;line-height:1.45}
+.bar{height:8px;border-radius:10px;background:var(--rule);overflow:hidden;margin:.6rem 0 .1rem}
+.bar i{display:block;height:100%;background:var(--proven);border-radius:10px}
+.why{font-size:.76rem;color:var(--ink-3);line-height:1.55;margin:.45rem 0 0}
+.why a{word-break:break-word}
+.why .mono{font-size:.72rem;word-break:break-all}
+.gone{font-size:.9rem;font-weight:600;color:var(--attested);font-family:Archivo,Arial,sans-serif}
+.caveat{font-size:.8rem;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--rule);
+border-left:3px solid var(--attested);border-radius:10px;padding:.7rem .9rem;margin:.85rem 0 0;line-height:1.55}
+.fuelfoot{display:flex;flex-wrap:wrap;gap:.55rem .8rem;align-items:center;font-size:.74rem;
+color:var(--ink-3);margin:.8rem 0 0}
+.reread{background:none;border:1px solid var(--rule);color:var(--ink-2);border-radius:10px;
+padding:.28rem .8rem;font:inherit;font-size:.74rem;cursor:pointer}
+.reread:hover{border-color:var(--proven);color:var(--proven)}
 </style>
 </head>
 <body><div class="wrap">
@@ -94,6 +118,49 @@ audit</strong>, not in a black box.</p>
 <p style="font-size:.85rem;color:var(--ink-2);text-align:center;margin:.2rem 0 0">Scan with Phantom, Solflare or any Solana wallet ·
 <a href="https://explorer.solana.com/address/9FJRwWnTNQXB9ff5SSmQKytCdVYqTQQPUz1b4zX9mt8y">audit the treasury yourself</a></p>
 </div>
+<section class="card fuel" id="fuel" aria-live="polite">
+<span class="k">What the money buys · read live, not written by hand</span>
+<h2>How much fuel is in the tank right now.</h2>
+<p class="lede">Every figure below is read when you open this page — the meter from this server, the
+balances from the chain. If a number cannot be read, this page says so instead of showing you an
+old one.</p>
+
+<div class="gauge">
+<span class="k" style="color:var(--ink-3)">Patient conversation this month · the expensive one</span>
+<div class="big" id="fTurns">reading…<span class="unit" id="fTurnsUnit">turns used of the monthly ceiling</span></div>
+<div class="bar" id="fBarWrap" hidden><i id="fBar" style="width:0"></i></div>
+<p class="why" id="fTurnsWhy">One turn is one thing a learner says to the patient and one answer back
+from the model. That is paid inference, and it is where most of a donation goes.</p>
+</div>
+
+<div class="tiles">
+<div class="tile">
+<span class="k" style="color:var(--ink-3)">On-chain recording fees</span>
+<div class="big" id="fRelay">reading…<span class="unit" id="fRelayUnit">SOL in the fee relay</span></div>
+<p class="why" id="fRelayWhy"></p>
+</div>
+<div class="tile">
+<span class="k" style="color:var(--ink-3)">Treasury balance</span>
+<div class="big" id="fVault">reading…<span class="unit" id="fVaultUnit">SOL at the address above</span></div>
+<p class="why" id="fVaultWhy"></p>
+</div>
+<div class="tile">
+<span class="k" style="color:var(--ink-3)">Runs recorded on chain</span>
+<div class="big" id="fAnchored">reading…<span class="unit" id="fAnchoredUnit">runs anchored by this server</span></div>
+<p class="why" id="fAnchoredWhy">Each one is a finished attempt reduced to a leaf in this server's
+Merkle tree and proven on chain — countable by anyone, including you.</p>
+</div>
+</div>
+
+<p class="caveat"><strong>Before that SOL figure impresses anyone:</strong> the chain this bay anchors
+to is <strong>devnet</strong>. Devnet SOL is minted free from a public faucet and is worth nothing —
+read it as a fuel gauge for transaction fees, not as an asset and not as money we hold. The bills a
+donation actually pays are model inference and hosting, and those are billed in ordinary currency.</p>
+
+<p class="fuelfoot"><span id="fAge">reading…</span><span>·</span><span>read at most once a minute,
+then cached</span><button class="reread" id="fAgain" data-ga="fuel-reread">re-read</button>
+<a href="/api/fuel">the raw numbers</a></p>
+</section>
 <div class="note"><strong>Where it goes:</strong> inference for free play, and commissioning new scenarios.
 <strong>Coming next:</strong> program-enforced commissions — money given for a specific scenario can
 only be spent on that scenario, released against the delivered content hash. A funder recomputes our
@@ -2400,4 +2467,139 @@ var qrcode = function() {
 }));
 var qr=qrcode(0,'M');qr.addData('solana:9FJRwWnTNQXB9ff5SSmQKytCdVYqTQQPUz1b4zX9mt8y');qr.make();
 document.getElementById('qr').innerHTML=qr.createImgTag(5,8);
+
+/* ── the fuel gauge renderer ───────────────────────────────────────────────────
+   Four numbers beside the donation address, none of them typed in: the month's patient
+   turns against the ceiling, the relay's balance and the runs it still pays for, the
+   treasury, and the count already anchored. All four come from /api/fuel, which reads
+   the meter and the chain on the server — the browser must not call a public RPC itself
+   (CORS on a good day, a per-visitor rate-limit ban on a bad one).
+
+   Three rules this renderer keeps, because the page is an argument about checkability:
+     · a field shows a number or a stated failure, and never a number left from last time
+     · every figure carries its unit, and every derived figure carries its divisor
+     · nothing is rounded into looking better — SOL arrives as an exact decimal string
+       from the server and is printed verbatim, lamports and all
+*/
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  /* Split/join rather than a regex: the page's own test scanner reads this file as text, and a
+     regex literal carrying a quote character reads to it as an unterminated string. */
+  function esc(s){return String(s).split('&').join('&amp;').split('<').join('&lt;')
+    .split('>').join('&gt;').split('"').join('&quot;')}
+  function num(n){return Number(n).toLocaleString('en-US')}
+  function link(href,text){return '<a href="'+esc(href)+'">'+esc(text)+'</a>'}
+  /* value is escaped; unit is markup this file wrote. */
+  function set(id,value,unitHtml){
+    $(id).innerHTML=esc(value)+'<span class="unit">'+unitHtml+'</span>';
+  }
+  /* A reading that did not arrive. Says so in words, keeps the way to check it, and
+     leaves no digit behind that could be mistaken for current. */
+  function lost(id,unitHtml,why,whyHtml){
+    $(id).innerHTML='<span class="gone">could not read this just now</span>'+
+      '<span class="unit">'+unitHtml+'</span>';
+    if(why)$(why).innerHTML=whyHtml;
+  }
+  /* Enough places to keep a 0.05% reading from printing as 0%, no more. */
+  function pct(x){return x>=10?x.toFixed(1):x>=1?x.toFixed(2):x.toFixed(3)}
+
+  var TREASURY=document.getElementById('addrText').textContent.trim();
+  var AUDIT='https://explorer.solana.com/address/'+TREASURY;
+
+  function render(d){
+    var t=d.turns||{},r=d.relay||{},v=d.treasury||{},c=d.cost||{};
+
+    /* 1 · the month's patient turns — paid inference, so it leads. */
+    if(typeof t.used==='number'&&t.cap){
+      set('fTurns',num(t.used)+' / '+num(t.cap),
+          'turns used of this month\u2019s ceiling ('+esc(t.month||'')+')');
+      $('fBarWrap').hidden=false;
+      $('fBar').style.width=Math.min(100,t.used/t.cap*100)+'%';
+      $('fTurnsWhy').innerHTML='<strong>'+num(t.remaining)+' turns left this month</strong> — '+
+        pct(t.used/t.cap*100)+'% of the ceiling spent. One turn is one thing a learner says to the '+
+        'patient and one answer back from the model: paid inference, and where most of a donation '+
+        'goes. The ceiling caps spending, not play — when it is reached the bay keeps running and '+
+        'only the patient\u2019s voice stops. '+link('/api/meter','the meter, unfiltered');
+    }else if(typeof t.used==='number'){
+      set('fTurns',num(t.used),'turns spoken this month ('+esc(t.month||'')+') \u2014 '+
+          'no monthly ceiling is set on this server');
+      $('fBarWrap').hidden=true;
+      $('fTurnsWhy').innerHTML='One turn is one thing a learner says to the patient and one answer '+
+        'back from the model. '+link('/api/meter','the meter, unfiltered');
+    }else{
+      $('fBarWrap').hidden=true;
+      lost('fTurns','turns used of the monthly ceiling','fTurnsWhy',
+           'This server did not report a meter reading. '+link('/api/meter','try the meter directly'));
+    }
+
+    /* 2 · the relay's fuel, and the runs it buys at a divisor printed in full. */
+    if(typeof r.lamports==='number'){
+      set('fRelay',r.sol,'SOL in the fee relay, on '+esc(r.cluster||'?'));
+      $('fRelayWhy').innerHTML='<strong>\u2248 '+num(r.runs_left)+' more runs can be recorded.</strong> '+
+        'Divided at '+num(c.lamports_per_run)+' lamports per run: '+num(c.fee_lamports_per_tx)+
+        ' lamports a transaction \u00d7 '+c.tx_per_run+' transactions (anchor, prove, and opening a '+
+        'first-time account). Most runs send two, so the runway quoted here is the cautious one. '+
+        'Exact balance '+num(r.lamports)+' lamports.'+
+        (r.address?'<br><span class="mono">'+esc(r.address)+'</span> '+
+          (r.explorer?'\u00b7 '+link(r.explorer,'verify on the explorer'):''):'');
+    }else{
+      lost('fRelay','SOL in the fee relay'+(r.cluster?', on '+esc(r.cluster):''),'fRelayWhy',
+        esc(r.error||'this server did not report a relay balance')+'. '+
+        (r.explorer?'<br><span class="mono">'+esc(r.address)+'</span> \u00b7 '+
+          link(r.explorer,'read the balance off the explorer instead'):''));
+    }
+
+    /* 3 · the treasury, at the address printed above this section. */
+    if(typeof v.lamports==='number'){
+      set('fVault',v.sol,'SOL at the address above, on '+esc(v.cluster||'?'));
+      $('fVaultWhy').innerHTML='Exactly what that address holds right now: '+num(v.lamports)+
+        ' lamports, nothing rounded and nothing added. '+
+        (v.lamports===0?'It is empty, and this page will keep saying so until it is not. ':'')+
+        link(v.explorer||AUDIT,'audit it yourself');
+    }else{
+      lost('fVault','SOL at the address above','fVaultWhy',
+        esc(v.error||'this server did not report a treasury balance')+'. '+
+        link(v.explorer||AUDIT,'read it off the explorer instead'));
+    }
+
+    /* 4 · what has actually been written down. */
+    if(typeof d.anchored==='number'){
+      set('fAnchored',num(d.anchored),d.connected
+        ? 'runs anchored by this server \u00b7 tree #'+esc(d.tree_id)
+        : 'runs anchored \u2014 this server has no chain configured, so nothing new is being written');
+    }else{
+      lost('fAnchored','runs anchored by this server');
+    }
+
+    $('fAge').textContent=d.age_secs?'chain read '+num(d.age_secs)+' s ago':'chain read just now';
+  }
+
+  /* The server itself unreachable. Every figure goes, the reasons stay, and the one address
+     a reader can check without us is still linked. */
+  function down(){
+    $('fBarWrap').hidden=true;
+    lost('fTurns','turns used of the monthly ceiling','fTurnsWhy',
+         'This page could not reach the server just now, so it has no reading to show you. '+
+         'It would rather say that than leave an old number on screen.');
+    lost('fRelay','SOL in the fee relay','fRelayWhy','No reading — the server did not answer.');
+    lost('fVault','SOL at the address above','fVaultWhy',
+         'No reading \u2014 the server did not answer. '+link(AUDIT,'audit the address yourself'));
+    lost('fAnchored','runs anchored by this server');
+    $('fAge').textContent='the server did not answer';
+  }
+
+  function load(){
+    $('fAgain').disabled=true;
+    var ctl=('AbortController' in window)?new AbortController():null;
+    /* Two balance reads with a five-second server-side patience each, plus the trip. */
+    var bell=setTimeout(function(){if(ctl)ctl.abort()},20000);
+    fetch('/api/fuel',{cache:'no-store',signal:ctl?ctl.signal:undefined})
+      .then(function(r){if(!r.ok)throw new Error(r.status);return r.json()})
+      .then(render)
+      .catch(down)
+      .then(function(){clearTimeout(bell);$('fAgain').disabled=false});
+  }
+  $('fAgain').addEventListener('click',load);
+  load();
+})();
 </script></body></html>

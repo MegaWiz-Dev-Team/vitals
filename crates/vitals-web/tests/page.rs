@@ -431,3 +431,134 @@ fn the_bay_tells_the_monitor_how_old_the_patient_is() {
     assert!(html.contains("'&age='+a"), "the age never reaches the device");
     assert!(html.contains("'&bed='+encodeURIComponent(bedOf(e))"), "the bed label never reaches it");
 }
+
+// ── the donate page's fuel gauge ────────────────────────────────────────────
+//
+// Four numbers sit beside the donation address: the month's patient turns, the relay's balance
+// and the runs it still buys, the treasury, and the count already anchored. Every one of them is
+// fetched, never written — which is precisely why they are worth guarding mechanically. A
+// hardcoded figure on this page is not a cosmetic bug; it is the page lying about the one thing
+// it exists to prove.
+
+fn donate() -> String {
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/donate.html");
+    std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
+}
+
+/// The renderer, without the vendored QR library it shares a `<script>` with.
+fn fuel_js(html: &str) -> &str {
+    let a = html.find("/* ── the fuel gauge renderer").expect("the fuel gauge renderer is gone");
+    let b = html[a..].find("</script>").expect("unterminated <script>") + a;
+    &html[a..b]
+}
+
+/// The same failure that takes the bay's page down takes this one's: a SyntaxError anywhere kills
+/// the whole script, and then the gauge sits at "reading…" forever with no error in sight.
+#[test]
+fn the_fuel_renderer_balances_its_brackets() {
+    let html = donate();
+    let js = code_only(fuel_js(&html));
+    let mut stack: Vec<char> = Vec::new();
+    for c in js.chars() {
+        match c {
+            '(' | '[' | '{' => stack.push(c),
+            ')' | ']' | '}' => {
+                let want = match c {
+                    ')' => '(',
+                    ']' => '[',
+                    _ => '{',
+                };
+                assert_eq!(stack.pop(), Some(want), "'{c}' closes the wrong thing");
+            }
+            _ => {}
+        }
+    }
+    assert!(stack.is_empty(), "unclosed {stack:?}");
+}
+
+/// Every id the renderer writes into has to exist, or the first `.innerHTML` throws and the rest
+/// of the gauge — including the failure branch that would have explained itself — never runs.
+#[test]
+fn every_id_the_gauge_writes_into_exists_in_the_markup() {
+    let html = donate();
+    let js = fuel_js(&html);
+    let mut missing = Vec::new();
+    for (i, _) in js.match_indices("$('") {
+        let rest = &js[i + 3..];
+        let Some(end) = rest.find('\'') else { continue };
+        let id = &rest[..end];
+        if !html.contains(&format!("id=\"{id}\"")) {
+            missing.push(id.to_string());
+        }
+    }
+    missing.sort();
+    missing.dedup();
+    assert!(missing.is_empty(), "the gauge writes into ids that do not exist: {missing:?}");
+}
+
+/// Not one figure on this page may be typed in.
+///
+/// The whole argument of the section is "read live, not written by hand", and a literal that
+/// happens to be true on the day it was written is the exact way that argument dies quietly.
+#[test]
+fn no_figure_on_the_donate_page_is_hardcoded() {
+    let html = donate();
+    let js = fuel_js(&html);
+    // The balances the server was returning while this was built, and the meter's ceiling. None
+    // of them may appear as text: they arrive from /api/fuel or they do not appear at all.
+    for literal in ["5.713747680", "190,458", "5,713,747,680", "20,000", "19,991", "0.000000000"] {
+        assert!(!html.contains(literal), "{literal} is written into the page instead of read");
+    }
+    // The divisor is the server's constant, printed from the payload — never a second copy that
+    // can drift away from the one the arithmetic actually used.
+    assert!(js.contains("num(c.lamports_per_run)"), "the page stopped printing the server's divisor");
+    assert!(js.contains("num(c.fee_lamports_per_tx)"), "the per-transaction fee is not shown");
+    assert!(js.contains("c.tx_per_run"), "the transactions-per-run assumption is not shown");
+    assert!(
+        js.contains("num(r.lamports)"),
+        "the exact lamport balance is not shown — SOL alone cannot be checked against an explorer"
+    );
+}
+
+/// A reading that did not arrive must say so. All four, every time.
+///
+/// The failure this pins is the tempting one: leave the last good number on screen when the RPC
+/// blinks. That turns a stale figure into a current claim, which is worse than an empty box.
+#[test]
+fn every_reading_has_a_branch_that_admits_it_failed() {
+    let html = donate();
+    let js = fuel_js(&html);
+    for id in ["fTurns", "fRelay", "fVault", "fAnchored"] {
+        assert!(js.contains(&format!("lost('{id}'")), "{id} has no failure branch");
+    }
+    assert!(js.contains(".catch(down)"), "an unreachable server leaves the old numbers on screen");
+    assert!(js.contains("could not read this just now"), "a failure has to say so in words");
+    // A failure keeps the way to check it by hand: the explorer, and the meter behind the turns.
+    assert!(js.contains("audit the address yourself"), "a failed treasury read loses its explorer link");
+}
+
+/// Devnet SOL is minted free from a faucet. A balance shown without that sentence reads as an
+/// asset, and this page is asking for money.
+#[test]
+fn the_page_says_out_loud_that_devnet_sol_is_not_money() {
+    let html = donate();
+    assert!(html.contains("minted free from a public faucet"), "the faucet caveat is gone");
+    assert!(
+        html.contains("model inference and hosting"),
+        "the page stopped naming what donations actually pay for"
+    );
+    assert!(html.contains("fuel gauge"), "the SOL figure lost the framing that keeps it honest");
+}
+
+/// The things that were already on this page before the gauge arrived, and that a donation
+/// depends on. A gauge that displaces the address is a gauge that costs money.
+#[test]
+fn the_gauge_did_not_displace_the_donation_itself() {
+    let html = donate();
+    assert!(html.contains("id=\"addrText\""), "the treasury address is gone");
+    assert!(html.contains("9FJRwWnTNQXB9ff5SSmQKytCdVYqTQQPUz1b4zX9mt8y"), "the address changed");
+    assert!(html.contains("data-ga=\"copy-address\""), "the copy button is gone");
+    assert!(html.contains("id=\"qr\""), "the Solana Pay QR is gone");
+    assert!(html.contains("audit the treasury yourself"), "the explorer link is gone");
+    assert!(html.contains("solana:9FJRwWnTNQXB9ff5SSmQKytCdVYqTQQPUz1b4zX9mt8y"), "the QR payload changed");
+}
