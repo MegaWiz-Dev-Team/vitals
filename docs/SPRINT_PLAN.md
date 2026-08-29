@@ -1,7 +1,7 @@
 # vitals — 4-Week Sprint Plan
 
-Target: a Colosseum Eternal submission (4-week timed sprint, weekly 1-minute video update),
-or the next scheduled hackathon if the Eternal window closes first — see RISKS §1.
+Target: a four-week timed sprint with a weekly one-minute video update, run against whichever
+submission window the calendar actually offers — see RISKS §1.
 
 Rule for the whole sprint: **anything not demoable on the last day does not get built.**
 The head start is real but it is a head start on the *engine*, not on the chain layer.
@@ -49,7 +49,7 @@ domain, thresholds untuned. An institutional credential needs an institution on 
 anything; progression does not. Cut recorded deliberately, stated in the submission.
 
 - [ ] SAS schema + issuance path for one domain
-- ~~Mainnet-beta deploy~~ — ตัดโดยมติ 26 ส.ค. (DECISIONS.md): ส่งแข่งบน devnet; mainnet trigger = เส้นเงินจริง เหมือนเดิม
+- ~~Mainnet-beta deploy~~ — ตัดโดยมติ 26 ส.ค.: ส่งแข่งบน devnet; mainnet trigger = เส้นเงินจริง เหมือนเดิม
 - [ ] `proof-check` public verify page
 - [ ] Demo video (see below)
 - [ ] Open-source release: AGPL-3.0 program + SDK + published case schema
