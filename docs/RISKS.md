@@ -115,8 +115,8 @@ system to leak in the first place. This is a defensible position, but only if st
 - **Inference stays local.** Eir/clinical reasoning runs on Heimdall; cloud LLM is not an option.
   The onchain layer must never require shipping clinical content off the box for a demo's convenience.
 - **No student PII onchain** — PDPA. Performance data is personal data.
-- **Datasets stay internal.** Embla corpora live on the T7 SSD and do not ship in a public repo.
-  Open-sourcing the program and SDK does not mean open-sourcing the case library or the KB.
+- **Datasets stay internal.** The Embla corpora do not ship in a public repo. Open-sourcing the
+  program and SDK does not mean open-sourcing the case library or the KB.
 - **License is AGPL-3.0 + Commercial**, never MIT/Apache. This satisfies the open-source criterion
   without giving the commercial position away.
 - **Naming.** `vitals` extends an existing component rather than claiming a new Norse name.
