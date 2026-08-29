@@ -39,6 +39,14 @@ pub enum Role {
 }
 
 impl Role {
+    /// The wire spelling, and the one that goes into [`Submission::identity`].
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Role::Student => "student",
+            Role::Physician => "physician",
+        }
+    }
+
     pub fn parse(s: &str) -> Option<Role> {
         match s {
             "student" => Some(Role::Student),
@@ -183,32 +191,22 @@ impl Submission {
         if answers.is_empty() && notes.trim().is_empty() {
             return Err("empty");
         }
-        let name = take("name", 120);
-        Ok(Submission {
-            id: Submission::key(
-                at,
-                &format!(
-                    "{name}\u{1f}{}\u{1f}{notes}",
-                    answers
-                        .iter()
-                        // The chosen option is hashed beside the prose, not instead of it. Two
-                        // reviewers who pick opposite branches of the same ruling and type
-                        // nothing would otherwise hash identically — same ids, same empty
-                        // answers — and the second one filed would land on the first one's key.
-                        .map(|a| format!("{}={}\u{1d}{}", a.id, a.chose, a.said))
-                        .collect::<Vec<_>>()
-                        .join("\u{1e}")
-                ),
-            ),
+        let mut s = Submission {
+            // Filled in below, from the finished record. The key cannot be assembled here from
+            // loose locals without writing out the list of identifying fields a second time, and
+            // a second list is exactly how `role` came to be in one of them and not the other.
+            id: String::new(),
             at,
             role,
-            name,
+            name: take("name", 120),
             contact: take("contact", 200),
             anonymous: v.get("anonymous").and_then(|x| x.as_bool()).unwrap_or(false),
             answers,
             notes,
             revision: take("revision", 64),
-        })
+        };
+        s.id = Submission::key(at, &s.identity());
+        Ok(s)
     }
 
     /// The half of the key that is a hash of the content, without the second it arrived in.
@@ -216,22 +214,59 @@ impl Submission {
         self.id.split_once('-').map(|(_, h)| h).unwrap_or("")
     }
 
-    /// The same answers from the same person — what makes two submissions one review.
+    /// **Everything that makes this review this review and not another one.**
     ///
-    /// Compared field by field, not by the six bytes of hash in the key. The hash is enough to
-    /// *find* a candidate cheaply and not enough to act on one: acting on a collision would mean
-    /// overwriting a different reviewer's answers with this reviewer's, which is the one outcome
-    /// this whole module is arranged to prevent.
+    /// One definition, read in exactly two places: hashed into the key, and compared when a
+    /// resend is matched against what is already filed. It is one function because it was two,
+    /// and the two disagreed. The sameness test compared `role`; the key never hashed it. So a
+    /// physician and a student who answered the same question the same way in the same second
+    /// computed the *same key*, the sameness test correctly said they were different reviews —
+    /// and the write went to the key anyway, replacing one with the other. Both were told 200.
+    /// That was not a hypothetical: the first production smoke test did it, and the physician's
+    /// record is gone.
+    ///
+    /// Fields are length-prefixed rather than separator-joined. A separator scheme is unambiguous
+    /// only while nobody types the separator, and being unambiguous is this string's entire job.
+    ///
+    /// **What is deliberately absent, and why.** `contact`, `anonymous` and `revision` are not
+    /// here, and that is the difference between *a different review* and *the same review, sent
+    /// again with a correction*. A physician who resends after fixing a typo in their LINE id, or
+    /// after ticking “do not name me”, has not written a second review — and because these are
+    /// absent, [`Submission::file`] recognises the resend and updates the record in place instead
+    /// of filing them twice. `Answer::asked` and `Answer::chose_label` are absent for a related
+    /// reason: they are the *form's* words, not the reviewer's, and an edit to the form's wording
+    /// must not turn one review into two.
+    ///
+    /// The limit this leaves, stated rather than hidden: two different people who leave the name
+    /// blank and answer identically are one record here. Nothing on this endpoint can tell them
+    /// apart — it has no caller identity by design — and merging is the safer of the two wrong
+    /// answers, because the alternative duplicates every honest resend.
+    fn identity(&self) -> String {
+        let mut out = String::new();
+        fn field(out: &mut String, s: &str) {
+            out.push_str(&s.chars().count().to_string());
+            out.push(':');
+            out.push_str(s);
+        }
+        field(&mut out, self.role.as_str());
+        field(&mut out, &self.name);
+        field(&mut out, &self.notes);
+        field(&mut out, &self.answers.len().to_string());
+        for a in &self.answers {
+            field(&mut out, &a.id);
+            field(&mut out, &a.chose);
+            field(&mut out, &a.said);
+        }
+        out
+    }
+
+    /// The same review from the same person, sent again.
+    ///
+    /// Exact string equality on [`Submission::identity`], not a hash comparison: the six bytes in
+    /// the key are enough to *find* a candidate cheaply and never enough to act on one, because
+    /// acting on a collision would overwrite a different reviewer's answers with this one's.
     fn says_the_same_as(&self, other: &Submission) -> bool {
-        self.role == other.role
-            && self.name == other.name
-            && self.notes == other.notes
-            && self.answers.len() == other.answers.len()
-            && self
-                .answers
-                .iter()
-                .zip(&other.answers)
-                .all(|(a, b)| a.id == b.id && a.said == b.said && a.chose == b.chose)
+        self.identity() == other.identity()
     }
 
     /// File this submission, recognising a resend of one already stored.
@@ -399,6 +434,122 @@ mod tests {
         let a = Submission::from_json(&body(r#","notes":"เหมือนกัน""#), 99).unwrap();
         let b = Submission::from_json(&body(r#","notes":"เหมือนกัน""#), 99).unwrap();
         assert_eq!(a.id, b.id);
+    }
+
+    /// A full submission with every field populated, for the decision table below.
+    fn full() -> serde_json::Value {
+        serde_json::json!({
+            "role": "physician",
+            "name": "นพ.ศิรวิทย์ ตันศิริ",
+            "contact": "LINE: sirawit.t",
+            "anonymous": false,
+            "answers": [{
+                "id": "r-ep2", "asked": "1.1 · ep2 — STEMI, จุดจบที่หัวใจหยุดเต้น",
+                "chose": "asys", "chose_label": "ยืนยัน — asystole เป็นจุดจบร่วมของทั้งสองทาง",
+                "said": "ตกลงตามนี้ครับ"
+            }],
+            "notes": "หมายเหตุเพิ่มเติม",
+            "revision": "vitals 0.6.0"
+        })
+    }
+
+    /// **Which fields make two submissions two reviews, and which make them one review twice.**
+    ///
+    /// The table exists because `role` was missing from it and nobody could see that it was. The
+    /// sameness test compared `role`, the key did not hash it, and the first production smoke
+    /// test — a physician and a student answering one question the same way in the same second —
+    /// put both on one key and left one record. The physician's answers are gone and the server
+    /// returned 200 to both of them.
+    ///
+    /// So the question is not "is `role` in the key now". It is "is there a third field with the
+    /// same property", and the only way to answer that once is to write down the whole table and
+    /// let a new field fail it. A field added to `Submission` and to `identity` fails the second
+    /// half; a field added to `Submission` and *not* to `identity` fails the first.
+    #[test]
+    fn the_fields_that_make_two_reviews_two_are_exactly_these() {
+        let base = Submission::from_json(&full(), 1_000).unwrap();
+
+        // ── identifying: change it and this is a different review ───────────────────────────
+        // Each of these is something a reviewer chose or wrote. Two submissions differing in any
+        // one of them are two people, or one person who changed their answer — never a resend.
+        let identifying: Vec<(&str, serde_json::Value)> = vec![
+            ("role", serde_json::json!("student")),
+            ("name", serde_json::json!("มุก")),
+            ("notes", serde_json::json!("หมายเหตุคนละอัน")),
+        ];
+        for (field, val) in identifying {
+            let mut v = full();
+            v[field] = val;
+            let other = Submission::from_json(&v, 1_000).unwrap();
+            assert_ne!(other.id, base.id, "`{field}` does not reach the key — two reviewers who \
+                differ only in it land on one record and the second erases the first");
+            assert!(!base.says_the_same_as(&other), "`{field}` is not part of sameness");
+        }
+        // The same, inside an answer.
+        for field in ["id", "chose", "said"] {
+            let mut v = full();
+            v["answers"][0][field] = serde_json::json!("something-else-entirely");
+            let other = Submission::from_json(&v, 1_000).unwrap();
+            assert_ne!(other.id, base.id, "answer `{field}` does not reach the key");
+            assert!(!base.says_the_same_as(&other), "answer `{field}` is not part of sameness");
+        }
+        // And answering one more question is a different review, not a resend of this one.
+        let mut v = full();
+        v["answers"].as_array_mut().unwrap().push(serde_json::json!({
+            "id": "r-ep4", "asked": "1.4", "chose": "pea", "said": ""
+        }));
+        let more = Submission::from_json(&v, 1_000).unwrap();
+        assert_ne!(more.id, base.id, "an extra answer does not reach the key");
+
+        // ── not identifying: change it and this is the same review, corrected ───────────────
+        // These are either housekeeping the reviewer may fix on a resend, or the form's own
+        // words rather than theirs. Hashing them would file an honest correction as a duplicate.
+        let housekeeping: Vec<(&str, serde_json::Value)> = vec![
+            ("contact", serde_json::json!("โทร 08x-xxx-xxxx")),
+            ("anonymous", serde_json::json!(true)),
+            ("revision", serde_json::json!("vitals 9.9.9")),
+        ];
+        for (field, val) in housekeeping {
+            let mut v = full();
+            v[field] = val;
+            let other = Submission::from_json(&v, 1_000).unwrap();
+            assert_eq!(other.id, base.id, "`{field}` reaches the key — a reviewer correcting it \
+                on a resend would be filed twice instead of updated");
+            assert!(base.says_the_same_as(&other), "`{field}` wrongly counts as a new review");
+        }
+        for field in ["asked", "chose_label"] {
+            let mut v = full();
+            v["answers"][0][field] = serde_json::json!("the form was reworded since");
+            let other = Submission::from_json(&v, 1_000).unwrap();
+            assert_eq!(other.id, base.id, "answer `{field}` reaches the key — rewording the form \
+                would split one review into two");
+            assert!(base.says_the_same_as(&other), "answer `{field}` wrongly counts as new");
+        }
+    }
+
+    /// The production failure, reproduced at the smallest scale that shows it.
+    ///
+    /// A physician and a student, the same second, the same answer to the same question. Before
+    /// `role` reached the key these were one document, and which of the two survived depended
+    /// only on which arrived second.
+    #[test]
+    fn a_physician_and_a_student_who_answer_alike_are_two_records() {
+        let store = tmp("roles");
+        let one = |role: &str| {
+            let mut v = full();
+            v["role"] = serde_json::json!(role);
+            Submission::from_json(&v, 1_787_991_448).unwrap().file(&store).unwrap()
+        };
+        let doc = one("physician");
+        let stu = one("student");
+        assert_ne!(doc.id, stu.id, "one key for two reviewers");
+        assert_eq!(store.keys(KIND).len(), 2, "the second submission erased the first");
+
+        // Both are still readable, and each still says who wrote it.
+        let a: Submission = store.get(KIND, &doc.id).expect("the physician's record");
+        let b: Submission = store.get(KIND, &stu.id).expect("the student's record");
+        assert_eq!(a.role, Role::Physician);
+        assert_eq!(b.role, Role::Student);
     }
 
     fn tmp(name: &str) -> Store {

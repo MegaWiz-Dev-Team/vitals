@@ -48,6 +48,34 @@ def clamp(v, n):
     return (v if isinstance(v, str) else "")[:n]
 
 
+def identity(rec):
+    """Everything that makes this review this review — mirrors `Submission::identity` exactly.
+
+    Length-prefixed, not separator-joined: a separator scheme is unambiguous only while nobody
+    types the separator, and being unambiguous is this string's whole job.
+
+    `role` is the first field and it is here because it was once missing from the Rust side's
+    key: a physician and a student who answered the same question the same way in the same second
+    computed one key, and the second submission replaced the first while both were told 200.
+    `contact`, `anonymous`, `revision`, `asked` and `chose_label` are deliberately absent — they
+    are corrections to a review, or the form's own words, not a different review.
+    """
+    out = []
+
+    def f(text):
+        out.append(f"{len(text)}:{text}")
+
+    f(rec["role"])
+    f(rec["name"])
+    f(rec["notes"])
+    f(str(len(rec["answers"])))
+    for a in rec["answers"]:
+        f(a["id"])
+        f(a["chose"])
+        f(a["said"])
+    return "".join(out)
+
+
 def key(at, content):
     d = hashlib.sha256(content.encode("utf-8")).digest()
     return f"{at:010d}-{d[:6].hex()}"
@@ -80,36 +108,32 @@ def build(raw, at):
     if not answers and not notes.strip():
         raise ValueError("empty: nothing was answered")
 
-    name = clamp(raw.get("name"), LIMITS["name"])
-    # Mirrors `Submission::key` exactly, chosen option included: two reviewers who pick opposite
-    # branches of one ruling and write nothing would otherwise hash the same and overwrite.
-    joined = "\x1e".join(f"{a['id']}={a['chose']}\x1d{a['said']}" for a in answers)
-    return {
-        "id": key(at, f"{name}\x1f{joined}\x1f{notes}"),
+    rec = {
+        "id": "",  # filled from the finished record, so the field list is written once
         "at": at,
         "role": role,
-        "name": name,
+        "name": clamp(raw.get("name"), LIMITS["name"]),
         "contact": clamp(raw.get("contact"), LIMITS["contact"]),
         "anonymous": bool(raw.get("anonymous")),
         "answers": answers,
         "notes": notes,
         "revision": clamp(raw.get("revision"), LIMITS["revision"]),
     }
+    rec["id"] = key(at, identity(rec))
+    return rec
 
 
 def says_the_same_as(a, b):
-    """The same answers from the same person — what makes two submissions one review.
+    """The same review from the same person, sent again.
 
-    Field by field, not by the six bytes of hash in the key: the hash finds a candidate cheaply,
-    and acting on a collision would overwrite a different reviewer's answers with this one's.
+    Exact equality on `identity`, not on the six bytes of hash in the key: the hash finds a
+    candidate cheaply, and acting on a collision would overwrite a different reviewer's answers
+    with this one's.
     """
-    if (a.get("role"), a.get("name"), a.get("notes")) != (b.get("role"), b.get("name"), b.get("notes")):
-        return False
-    x, y = a.get("answers") or [], b.get("answers") or []
-    return len(x) == len(y) and all(
-        (p.get("id"), p.get("said"), p.get("chose")) == (q.get("id"), q.get("said"), q.get("chose"))
-        for p, q in zip(x, y)
-    )
+    try:
+        return identity(a) == identity(b)
+    except (KeyError, TypeError):
+        return False  # a record this script cannot read is not one it may overwrite
 
 
 def already_filed(out, rec):

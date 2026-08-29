@@ -634,3 +634,92 @@ fn a_review_is_never_swept() {
     assert_eq!(vitals_web::store::class_of(vitals_web::review::KIND), vitals_web::store::Class::Durable);
     assert_eq!(vitals_web::review::KIND, "review");
 }
+
+/// **The two ways in must derive the same key from the same review, byte for byte.**
+///
+/// `scripts/file-review.py` files a review that came back by hand — over LINE, by email, from a
+/// copy of the page the server never served. If its key derivation drifts from `review.rs`, the
+/// same review arriving both ways becomes two records, which is the failure the whole keying
+/// scheme exists to prevent, and nothing until now compared the two implementations.
+///
+/// This matters most right after the derivation changes. It changed twice this week: once to add
+/// the chosen option, once to add `role` after a physician's smoke submission was overwritten by
+/// a student's. Both times the Python side had to move with it, and both times the only thing
+/// that would have caught a mistake is this.
+#[test]
+fn the_hand_filing_script_derives_the_same_key_as_the_server() {
+    if std::process::Command::new("python3").arg("--version").output().is_err() {
+        eprintln!("skipping: no python3 — CI has one, and gates.sh skips optional tools the same way");
+        return;
+    }
+    let s = Server::start();
+    // Two reviewers whose submissions differ only by role: the exact pair that collided.
+    for role in ["physician", "student"] {
+        let body = serde_json::json!({
+            "role": role,
+            "name": "นพ.ศิรวิทย์ ตันศิริ",
+            "contact": "LINE: sirawit.t",
+            "answers": [{
+                "id": "r-ep2", "asked": "1.1 · ep2 — STEMI, จุดจบที่หัวใจหยุดเต้น",
+                "chose": "asys", "chose_label": "ยืนยัน — asystole", "said": "ตกลงตามนี้ครับ"
+            }],
+            "notes": "หมายเหตุ",
+        })
+        .to_string();
+        let (code, reply) = s.post("/api/review", body.as_bytes());
+        assert_eq!(code, 200, "{reply}");
+        let over_the_wire = reply["id"].as_str().expect("an id").to_string();
+        let at: u64 = over_the_wire.split('-').next().unwrap().parse().unwrap();
+
+        let dir = std::env::temp_dir().join(format!("vitals-parity-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let input = dir.join(format!("{role}.json"));
+        std::fs::write(&input, &body).expect("write input");
+        let out = std::process::Command::new("python3")
+            .arg(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/file-review.py"))
+            .arg("--dry-run")
+            .arg("--at")
+            .arg(at.to_string())
+            .arg(&input)
+            .output()
+            .expect("run file-review.py");
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        assert!(
+            out.status.success(),
+            "file-review.py failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            text.contains(&over_the_wire),
+            "the hand-filing script derived a different key for the same {role} review.\n  \
+             server: {over_the_wire}\n  script: {}",
+            text.trim()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    assert_eq!(s.filed().len(), 2, "the two roles did not stay two records");
+}
+
+/// The production failure, over HTTP, exactly as it was hit: two roles, identical content, one
+/// second. Two records must exist on disk afterwards — and each must still say who wrote it.
+#[test]
+fn two_roles_answering_alike_in_one_second_are_two_records() {
+    let s = Server::start();
+    let body = |role: &str| {
+        serde_json::json!({
+            "role": role, "name": "smoke test — ignore",
+            "answers": [{ "id": "r-ep2", "asked": "smoke", "chose": "a",
+                          "chose_label": "ยืนยัน", "said": "ทดสอบภาษาไทย ครับ" }],
+        })
+        .to_string()
+    };
+    let (a, ra) = s.post("/api/review", body("physician").as_bytes());
+    let (b, rb) = s.post("/api/review", body("student").as_bytes());
+    assert_eq!((a, b), (200, 200));
+    assert_ne!(ra["id"], rb["id"], "one key for a physician and a student");
+    let filed = s.filed();
+    assert_eq!(filed.len(), 2, "a student's answer replaced a physician's");
+    let mut roles: Vec<&str> = filed.iter().map(|(_, r)| r["role"].as_str().unwrap()).collect();
+    roles.sort();
+    assert_eq!(roles, vec!["physician", "student"]);
+}
