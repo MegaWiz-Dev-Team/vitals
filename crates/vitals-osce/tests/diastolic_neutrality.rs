@@ -74,7 +74,17 @@ const PINNED: &[Pin] = &[
     Pin { case: "demo/stations/osce-d2.sce.json", rubric: "demo/rubrics/osce-d2.json", outcome: "DeathArrest", score: "8/40", leaf: "94df2fc1f10d7390928e021485ea459372e5ac604b168c7750862e61076ccdc0" },
     Pin { case: "demo/stations/osce-d3.sce.json", rubric: "demo/rubrics/osce-d3.json", outcome: "DeathArrest", score: "10/40", leaf: "27aa65997a6d479a057dcb68b941a0523ca2ea5682618d867abe15379fa5f9f3" },
     Pin { case: "demo/stations/osce-d4.sce.json", rubric: "demo/rubrics/osce-d4.json", outcome: "DeathArrest", score: "5/40", leaf: "a95f6ce76f4f33f296da1ea65f6c2779b6f8abd5afed4cd09bd5cdd87bdd7fe6" },
-    Pin { case: "demo/scenarios/ep2-stemi.json", rubric: "demo/rubrics/ep2-stemi.json", outcome: "DeathArrest", score: "10/40", leaf: "f142bc45bb93bc336917fd81092601c66a727668eb23cb6552405781939eda9b" },
+    // ── re-issued 2026-08-29, when the defibrillator moved into the engine ──────────────────
+    // The leaf moved and nothing about the *run* did: same tape, same beats, same harms, same
+    // ending, same 10/40. A leaf commits to `sce_hash`, `ep2`'s file was re-issued, and that is
+    // the whole of the difference — was
+    // `f142bc45bb93bc336917fd81092601c66a727668eb23cb6552405781939eda9b`, against
+    // `e39de235…1426d`, which is archived under `conformance/sce-archive/` and stays there.
+    // `crates/vitals-replay/tests/shock_tape.rs` replays this same tape against every archived
+    // version and holds each of those leaves where it was, which is the check that matters for a
+    // run somebody has already anchored: an anchored run names the bytes it was played against,
+    // and those bytes did not move.
+    Pin { case: "demo/scenarios/ep2-stemi.json", rubric: "demo/rubrics/ep2-stemi.json", outcome: "DeathArrest", score: "10/40", leaf: "aa59eb3a797490a330b84bbc93de0738a42331829a7c2baaef00bbbb7bec3c29" },
     Pin { case: "demo/scenarios/ep3-epiglottitis.json", rubric: "demo/rubrics/ep3-epiglottitis.json", outcome: "DeathArrest", score: "14/40", leaf: "76e2338f3d42345feed1f8654a0e0e8641a55d5e66d088ea1dfe8396bee52327" },
     Pin { case: "demo/scenarios/ep4-pulmonary-embolism.json", rubric: "demo/rubrics/ep4-pulmonary-embolism.json", outcome: "DeathArrest", score: "13/40", leaf: "691bddb158c16a02b7a6c81904f28caba1cfe88dce95250490aed1e17def5e2b" },
     Pin { case: "demo/scenarios/ep5-the-night-the-stars-fell.json", rubric: "demo/rubrics/ep5-the-night-the-stars-fell.json", outcome: "DeathArrest", score: "9/40", leaf: "4f3d0873a520a389cb029cd64f42319a0be5f596328da385089d4bb685ae2a3c" },

@@ -75,6 +75,11 @@
   "bytes": 10607
  },
  {
+  "sce_hash": "3c4359e677049054381cd9d41edab11af7e789a3703c0abc2306a226ed863b7e",
+  "path": "demo/scenarios/ep2-stemi.json",
+  "bytes": 10285
+ },
+ {
   "sce_hash": "242a0c9f770e22b87031fa0c2917346d47839ff133385b1251fa9d9df341bf28",
   "path": "demo/scenarios/ep3-epiglottitis.json",
   "bytes": 6759
