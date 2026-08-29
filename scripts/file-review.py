@@ -37,7 +37,10 @@ ROLES = ("student", "physician")
 # Same clamps as review.rs, and counted in characters for the same reason: a byte clamp cuts a
 # Thai character in half and the record comes back as mojibake.
 LIMITS = {"name": 120, "contact": 200, "notes": 8000, "revision": 64}
-ANSWER_LIMITS = {"id": 64, "asked": 400, "said": 4000}
+# `asked` holds the whole item as it was shown — the four lines the review documents put in front
+# of every ruling, not a one-line question — so its clamp is `review::ASKED_MAX`, not the 400 it
+# was when the form asked one-line questions.
+ANSWER_LIMITS = {"id": 64, "asked": 4000, "chose": 32, "chose_label": 300, "said": 4000}
 MAX_ANSWERS = 80
 
 
@@ -59,11 +62,17 @@ def build(raw, at):
     answers = []
     for a in (raw.get("answers") or [])[:MAX_ANSWERS]:
         said = clamp(a.get("said"), ANSWER_LIMITS["said"])
-        if not said.strip():
-            continue  # an unanswered question is not an answer
+        chose = clamp(a.get("chose"), ANSWER_LIMITS["chose"])
+        # An unanswered question is still not an answer — but picking an option is an answer even
+        # with the box empty, and it is the one both documents ask for most often: "what you are
+        # doing now is correct". Dropping it here would make agreement read as silence.
+        if not said.strip() and not chose:
+            continue
         answers.append({
             "id": clamp(a.get("id"), ANSWER_LIMITS["id"]),
             "asked": clamp(a.get("asked"), ANSWER_LIMITS["asked"]),
+            "chose": chose,
+            "chose_label": clamp(a.get("chose_label"), ANSWER_LIMITS["chose_label"]),
             "said": said,
         })
 
@@ -72,7 +81,9 @@ def build(raw, at):
         raise ValueError("empty: nothing was answered")
 
     name = clamp(raw.get("name"), LIMITS["name"])
-    joined = "\x1e".join(f"{a['id']}={a['said']}" for a in answers)
+    # Mirrors `Submission::key` exactly, chosen option included: two reviewers who pick opposite
+    # branches of one ruling and write nothing would otherwise hash the same and overwrite.
+    joined = "\x1e".join(f"{a['id']}={a['chose']}\x1d{a['said']}" for a in answers)
     return {
         "id": key(at, f"{name}\x1f{joined}\x1f{notes}"),
         "at": at,
@@ -96,7 +107,8 @@ def says_the_same_as(a, b):
         return False
     x, y = a.get("answers") or [], b.get("answers") or []
     return len(x) == len(y) and all(
-        (p.get("id"), p.get("said")) == (q.get("id"), q.get("said")) for p, q in zip(x, y)
+        (p.get("id"), p.get("said"), p.get("chose")) == (q.get("id"), q.get("said"), q.get("chose"))
+        for p, q in zip(x, y)
     )
 
 

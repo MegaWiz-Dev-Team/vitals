@@ -49,17 +49,25 @@ const BUILD_STAMP: &str = "__VITALS_BUILD__";
 const BUILD: &str = concat!("vitals ", env!("CARGO_PKG_VERSION"));
 /// How much of a reviewer's submission this server will read.
 ///
-/// 256 KiB. The form's own clamps bound an honest submission: sixteen questions at four thousand
-/// characters each, plus an eight-thousand-character notes box, plus the question text stored
-/// beside every answer — and Thai costs three bytes a character in UTF-8. That is about 224KB at
-/// the absolute maximum, which no reviewer will come close to; the cap sits above it with room,
-/// so anything that trips it is not a review.
+/// **1 MiB**, and the number is measured rather than guessed. The physician's list is the
+/// twenty-eight rulings his review document asks for, each carrying the four lines that document
+/// puts in front of a ruling — what the system does now, why we think it is wrong, what we would
+/// change it to, the question — so that he can answer from a phone with nothing open beside him.
+/// Filling every one of those to the store's four-thousand-character clamp, in Thai at three
+/// bytes a character, with a chosen option on every item, produces **381 KiB**; the student's
+/// eleven items produce 178 KiB. The cap sits at two and a half times the larger of them, so a
+/// reviewer cannot reach it and anything that does is not a review.
+///
+/// It was 256 KiB when the form asked sixteen one-line questions. Carrying the documents' own
+/// items multiplied both the number of items and the context stored beside each answer, and a cap
+/// left at the old number would have started refusing exactly the submissions worth having: the
+/// long ones, from the reviewer who answered everything.
 ///
 /// Enforced by refusing, never by truncating. A review cut short still *looks* like a review — it
 /// parses, it stores, it reads as though the reviewer simply stopped writing — and nobody, least
 /// of all the physician whose ruling lost its second half, ever finds out. A 413 is visible: the
 /// page keeps the draft and hands the answers back to be sent by hand.
-const REVIEW_MAX: usize = 256 * 1024;
+const REVIEW_MAX: usize = 1024 * 1024;
 /// The pitch, served by the same process that serves the bay.
 ///
 /// Baked in rather than read from disk. Twice in one day a path that existed on the build machine

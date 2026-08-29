@@ -53,11 +53,53 @@ impl Role {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Answer {
     pub id: String,
-    /// The question text as it was shown. Storing it costs a few bytes and means an answer is
-    /// still readable after the form is rewritten.
+    /// The item as it was shown — not the question line alone, but the four lines the review
+    /// documents put in front of every ruling: what the system does now, why we think it may be
+    /// wrong, what we would change it to, and the question.
+    ///
+    /// Storing all of it is what lets a reviewer work from the form on a phone with no document
+    /// open beside them, and what lets the answer still be read a month later against the thing
+    /// it was about. The clamp is [`ASKED_MAX`], sized for those four lines rather than for a
+    /// one-line question.
     pub asked: String,
+    /// Which of the item's named answers was picked, by id — `""` when the item offered none, or
+    /// when the reviewer only wrote prose.
+    ///
+    /// The review documents keep asking for a branch: *(ก) or (ข)*, *asystole or PEA*, *confirm
+    /// or change*. Reading that back out of prose means someone re-reading every answer to find
+    /// out which way a ruling went, which is exactly the work these documents were written to
+    /// avoid. So the branch is stored as a value.
+    ///
+    /// It is also what makes **agreement recordable**. Both documents say plainly that "what you
+    /// are doing now is correct" is an answer worth as much as any other; with prose alone it
+    /// arrives as silence, indistinguishable from an item the reviewer never reached, and we
+    /// would go back and ask them a second time.
+    #[serde(default)]
+    pub chose: String,
+    /// That option's wording as it was shown, kept for the same reason [`Answer::asked`] is: an
+    /// id means nothing on its own, and a later edit to the form must not be able to re-label a
+    /// choice somebody already made.
+    #[serde(default)]
+    pub chose_label: String,
     pub said: String,
 }
+
+impl Answer {
+    /// Did the reviewer do anything here? Picking an option counts, on its own.
+    fn answered(&self) -> bool {
+        !self.said.trim().is_empty() || !self.chose.is_empty()
+    }
+}
+
+/// How much of one item's shown text is kept.
+///
+/// Four lines of context, not a question. `osce-d3`'s allergy ruling quotes the teacher's script
+/// and the station's contradicting line; หมวด 2 quotes a four-row table of heart rates. Four
+/// hundred characters — the clamp this field shipped with — held about a third of the shortest of
+/// them, and would have cut the rest away silently, leaving an answer whose question nobody could
+/// reconstruct. `tests/page.rs` holds every item the form actually asks under this number, so a
+/// question that outgrows it fails a gate instead of losing its context on the way to disk.
+pub const ASKED_MAX: usize = 4000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Submission {
@@ -117,16 +159,24 @@ impl Submission {
         let mut answers = Vec::new();
         if let Some(arr) = v.get("answers").and_then(|a| a.as_array()) {
             for a in arr.iter().take(80) {
-                let said: String =
-                    a.get("said").and_then(|x| x.as_str()).unwrap_or("").chars().take(4000).collect();
-                if said.trim().is_empty() {
-                    continue; // an unanswered question is not an answer
+                let field = |k: &str, max: usize| -> String {
+                    a.get(k).and_then(|x| x.as_str()).unwrap_or("").chars().take(max).collect()
+                };
+                let answer = Answer {
+                    id: field("id", 64),
+                    asked: field("asked", ASKED_MAX),
+                    chose: field("chose", 32),
+                    chose_label: field("chose_label", 300),
+                    said: field("said", 4000),
+                };
+                // An unanswered question is still not an answer — but *picking an option* is an
+                // answer even with the box left empty, and it is the most common one the two
+                // review documents ask for: "what you are doing now is correct". Dropping it
+                // here would put that back where it was, indistinguishable from silence.
+                if !answer.answered() {
+                    continue;
                 }
-                answers.push(Answer {
-                    id: a.get("id").and_then(|x| x.as_str()).unwrap_or("").chars().take(64).collect(),
-                    asked: a.get("asked").and_then(|x| x.as_str()).unwrap_or("").chars().take(400).collect(),
-                    said,
-                });
+                answers.push(answer);
             }
         }
         let notes = take("notes", 8000);
@@ -139,7 +189,15 @@ impl Submission {
                 at,
                 &format!(
                     "{name}\u{1f}{}\u{1f}{notes}",
-                    answers.iter().map(|a| format!("{}={}", a.id, a.said)).collect::<Vec<_>>().join("\u{1e}")
+                    answers
+                        .iter()
+                        // The chosen option is hashed beside the prose, not instead of it. Two
+                        // reviewers who pick opposite branches of the same ruling and type
+                        // nothing would otherwise hash identically — same ids, same empty
+                        // answers — and the second one filed would land on the first one's key.
+                        .map(|a| format!("{}={}\u{1d}{}", a.id, a.chose, a.said))
+                        .collect::<Vec<_>>()
+                        .join("\u{1e}")
                 ),
             ),
             at,
@@ -173,7 +231,7 @@ impl Submission {
                 .answers
                 .iter()
                 .zip(&other.answers)
-                .all(|(a, b)| a.id == b.id && a.said == b.said)
+                .all(|(a, b)| a.id == b.id && a.said == b.said && a.chose == b.chose)
     }
 
     /// File this submission, recognising a resend of one already stored.
@@ -257,6 +315,63 @@ mod tests {
         let v: serde_json::Value =
             serde_json::from_str(r#"{"role":"dean","notes":"hello"}"#).unwrap();
         assert_eq!(Submission::from_json(&v, 1).unwrap_err(), "role");
+    }
+
+    /// **Agreeing is an answer, and it must not read as silence.**
+    ///
+    /// Both review documents say it in as many words — "ตอบว่า 'ที่ทำอยู่นั่นแหละถูกแล้ว' ก็เป็น
+    /// คำตอบที่มีค่าเท่ากันครับ". With prose alone that answer arrives as an empty box, gets
+    /// dropped as unanswered, and is indistinguishable from a ruling the physician never reached
+    /// — so we would go back and ask him a second time for something he already told us.
+    #[test]
+    fn agreeing_with_the_current_behaviour_is_recorded() {
+        let v: serde_json::Value = serde_json::from_str(
+            r#"{"role":"physician","answers":[
+                 {"id":"r-ep4","asked":"ep4 — pulmonary embolism","chose":"pea",
+                  "chose_label":"ยืนยัน — PEA","said":""},
+                 {"id":"r-ep5","asked":"ep5 — บาดเจ็บ","said":"  "}
+               ]}"#,
+        )
+        .unwrap();
+        let s = Submission::from_json(&v, 1).unwrap();
+        assert_eq!(s.answers.len(), 1, "a picked option was dropped as if nothing was said");
+        assert_eq!(s.answers[0].id, "r-ep4");
+        assert_eq!(s.answers[0].chose, "pea");
+        // The wording travels with the id for the same reason the question does: an id alone
+        // cannot be read, and a later edit to the form must not re-label an old choice.
+        assert_eq!(s.answers[0].chose_label, "ยืนยัน — PEA");
+        assert!(s.answers[0].said.is_empty());
+    }
+
+    /// Two physicians ruling opposite ways on the same item, neither writing prose, must not
+    /// land on one key — which is what happens if only the ids and the empty boxes are hashed.
+    #[test]
+    fn opposite_branches_of_one_ruling_are_two_records() {
+        let one = |chose: &str| -> Submission {
+            let v: serde_json::Value = serde_json::from_str(&format!(
+                r#"{{"role":"physician","answers":[{{"id":"win-means","asked":"“ชนะ” แปลว่าอะไร","chose":"{chose}","said":""}}]}}"#
+            ))
+            .unwrap();
+            Submission::from_json(&v, 500).unwrap()
+        };
+        assert_ne!(one("a").id, one("b").id, "two opposite rulings hashed to one key");
+        assert_eq!(one("a").id, one("a").id);
+    }
+
+    /// The four lines the review documents put in front of every ruling have to survive. The
+    /// clamp this field shipped with held four hundred characters, which is a question and not
+    /// an item — and it cut silently, so the answer would have arrived without the thing it was
+    /// an answer to.
+    #[test]
+    fn an_item_keeps_the_context_and_not_just_the_question() {
+        let ctx = "ตอนนี้: ".to_string() + &"ก".repeat(1500) + "\nคำถาม: ควรเป็นเท่าไหร่ครับ";
+        let v: serde_json::Value = serde_json::json!({
+            "role": "physician",
+            "answers": [{ "id": "gcs-cases", "asked": ctx, "said": "ลง 1 แต้มทุก 2 นาที" }],
+        });
+        let s = Submission::from_json(&v, 1).unwrap();
+        assert_eq!(s.answers[0].asked, ctx, "the item's context was cut");
+        assert!(ctx.chars().count() > 400, "this test has to exceed the old clamp to mean anything");
     }
 
     #[test]

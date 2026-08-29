@@ -164,8 +164,10 @@ fn student_body(notes: &str) -> String {
         "name": "มุก",
         "contact": "LINE: mook",
         "answers": [
-            { "id": "s2", "asked": "คนไข้พูดจาเป็นธรรมชาติไหม คนไข้ไทยจริงพูดแบบนี้หรือเปล่า",
-              "said": "สมชายไม่มี “ครับ” เลยสักคำ ฟังแล้วห้วนกว่าคนไข้จริงครับ" },
+            { "id": "th-krap-a",
+              "asked": "7 · คำลงท้าย — สมชาย (osce-a, 71 ปี) ไม่มี “ครับ” เลยสักคำ",
+              "chose": "some", "chose_label": "ควรมีบ้าง — บอกว่าตรงไหนข้างล่าง",
+              "said": "ควรมีตรงประโยคแรกกับตอนที่ยอมให้ข้อมูลค่ะ ที่เหลือห้วนได้" },
         ],
         "notes": notes,
         "revision": "vitals 0.5.1",
@@ -183,10 +185,16 @@ fn the_form_is_served_at_one_url() {
     let s = Server::start();
     let (code, html) = s.get("/review");
     assert_eq!(code, 200, "the form did not open");
-    // A question from each role's list: the page carries both, and picks between them in the
-    // browser. If either half went missing the reviewer meets a form with no questions in it.
-    assert!(html.contains("เกณฑ์เวลา adrenaline"), "the physician's questions are not on the page");
-    assert!(html.contains("เล่นแล้วรู้สึกเหมือนอยู่เวร ER จริงไหม"), "the student's questions are not on the page");
+    // The page carries both lists and picks between them in the browser. These are the items each
+    // document opens with — the physician's most dangerous section, and the student's first
+    // flagged line — plus the two things the documents said the old form could not carry: the
+    // context that lets a reviewer answer without the document open, and a way to agree.
+    assert!(html.contains("ep2 — STEMI, จุดจบที่หัวใจหยุดเต้น"), "หมวด 1 is not on the page");
+    assert!(html.contains("leather creaking on leather"), "the student's flagged lines are not on the page");
+    assert!(html.contains("ทำไมเราคิดว่าอาจผิด"), "the items carry no context to answer from");
+    assert!(html.contains("ยืนยัน — PEA"), "there is no way to agree with what we already do");
+    assert!(html.contains("อัดเสียงส่งกลับมาทางเดิม"), "the invitation to answer by voice is gone");
+    assert!(!html.contains("type=\"file\""), "the form grew an upload it cannot honour");
     assert!(html.contains("/api/review"), "the form does not know where to post");
 }
 
@@ -288,37 +296,49 @@ fn thai_arrives_as_the_characters_that_were_typed() {
 
 /// A full review at the form's own ceiling, which is what the cap has to fit.
 ///
-/// Sixteen student questions, every box filled to the four thousand characters `review.rs` keeps,
-/// plus the eight-thousand-character notes box — in Thai, at three bytes a character. This is the
-/// largest submission the form can produce, it is about 224KB, and it must be *taken*, not
-/// refused: a reviewer who fills every box is the reviewer we most want to hear from.
+/// The physician's list is the twenty-eight rulings his document asks for, each carrying that
+/// document's four lines of context so he can answer from a phone with nothing open beside him.
+/// Every box filled to the four thousand characters `review.rs` keeps, an option picked on every
+/// item, the eight-thousand-character notes box, all in Thai at three bytes a character: the page
+/// itself produces 381 KiB at that ceiling, measured. It must be *taken*, not refused — a
+/// reviewer who answered everything is the one we most want to hear from, and he is also the one
+/// a cap left at the old 256 KiB would have turned away.
 #[test]
 fn the_largest_review_the_form_can_produce_is_taken_whole() {
     let s = Server::start();
-    let answers: Vec<serde_json::Value> = (1..=16)
+    let answers: Vec<serde_json::Value> = (1..=28)
         .map(|i| {
             serde_json::json!({
-                "id": format!("s{i}"),
-                "asked": "คำถามที่ยาวที่สุดในฟอร์ม".repeat(4),
+                "id": format!("r-{i}"),
+                // The four lines, at the length the longest real item reaches.
+                "asked": "ตอนนี้ระบบทำอะไร · ทำไมเราคิดว่าอาจผิด · เราจะแก้เป็น · คำถาม ".repeat(19),
+                "chose": "asys",
+                "chose_label": "ยืนยัน — asystole เป็นจุดจบร่วมของทั้งสองทาง",
                 "said": "ก".repeat(4000),
             })
         })
         .collect();
     let body = serde_json::json!({
-        "role": "student", "name": "มุก",
+        "role": "physician", "name": "นพ.ศิรวิทย์ ตันศิริ",
         "answers": answers, "notes": "ข".repeat(8000),
     })
     .to_string();
-    assert!(body.len() > 200_000, "the ceiling case is not actually large: {}", body.len());
+    assert!(
+        body.len() > 380 * 1024,
+        "the ceiling case is smaller than the page can actually produce: {} bytes",
+        body.len()
+    );
 
     let (code, reply) = s.post("/api/review", body.as_bytes());
     assert_eq!(code, 200, "a full review was refused at {} bytes: {reply}", body.len());
 
     let filed = s.filed();
     let rec = &filed[0].1;
-    assert_eq!(rec["answers"].as_array().unwrap().len(), 16, "answers were dropped");
+    assert_eq!(rec["answers"].as_array().unwrap().len(), 28, "answers were dropped");
     for a in rec["answers"].as_array().unwrap() {
         assert_eq!(a["said"].as_str().unwrap().chars().count(), 4000, "an answer was cut short");
+        assert!(a["asked"].as_str().unwrap().chars().count() > 400, "the item's context was cut");
+        assert_eq!(a["chose"], "asys", "the chosen branch was dropped");
     }
     assert_eq!(rec["notes"].as_str().unwrap().chars().count(), 8000);
 }
@@ -329,7 +349,7 @@ fn the_largest_review_the_form_can_produce_is_taken_whole() {
 /// of it is a refusal with a number in it — never a shorter record that looks whole.
 #[test]
 fn the_cap_is_a_line_and_the_far_side_of_it_is_refused() {
-    const CAP: usize = 256 * 1024;
+    const CAP: usize = 1024 * 1024;
     // Padding in ASCII so the arithmetic is exact; the Thai path is proven above.
     let body = |n: usize| {
         let (head, tail) = (r#"{"role":"physician","notes":""#, r#""}"#);
@@ -402,6 +422,74 @@ fn an_empty_submission_is_refused_and_says_which_way_it_was_empty() {
     assert_eq!(code, 400);
     assert_eq!(reply["error"], "not json");
     assert!(s.filed().is_empty(), "a refused submission left something on disk");
+}
+
+/// **Agreeing arrives, and it arrives as agreement.**
+///
+/// The physician's document ranks หมวด 1 as the most dangerous thing in it and asks him to
+/// *confirm* four arrest rhythms we have already chosen. Confirming is the likeliest answer to
+/// all four — and before the form carried a branch it was the one answer that could not be sent:
+/// an empty box, dropped as unanswered, indistinguishable from four rulings he never reached. We
+/// would have gone back and asked him again for something he had already told us.
+#[test]
+fn agreement_arrives_and_is_not_mistaken_for_silence() {
+    let s = Server::start();
+    let body = serde_json::json!({
+        "role": "physician",
+        "name": "นพ.ศิรวิทย์ ตันศิริ",
+        "answers": [
+            // Three confirmed with nothing typed, one confirmed with a note, one left alone.
+            { "id": "r-ep2", "asked": "1.1 · ep2 — STEMI, จุดจบที่หัวใจหยุดเต้น",
+              "chose": "asys", "chose_label": "ยืนยัน — asystole เป็นจุดจบร่วมของทั้งสองทาง", "said": "" },
+            { "id": "r-ep5", "asked": "1.3 · ep5 — บาดเจ็บ เสียเลือดจนหมด",
+              "chose": "pea", "chose_label": "ยืนยัน — PEA", "said": "" },
+            { "id": "r-ep4", "asked": "1.4 · ep4 — pulmonary embolism",
+              "chose": "pea", "chose_label": "ยืนยัน — PEA", "said": "" },
+            { "id": "r-ep3", "asked": "1.2 · ep3 — เด็ก 5 ขวบ, epiglottitis",
+              "chose": "asys", "chose_label": "asystole — และให้เคสพาชีพจรลงก่อน",
+              "said": "ให้ลงจาก 148 → 60 ใน 90 วินาทีก่อนเข้า arrest ครับ" },
+            { "id": "news2-under16", "asked": "3.1 · NEWS2 กับผู้ป่วยอายุต่ำกว่า 16 ปี", "said": "" }
+        ],
+    })
+    .to_string();
+    let (code, reply) = s.post("/api/review", body.as_bytes());
+    assert_eq!(code, 200, "{reply}");
+
+    let rec = &s.filed()[0].1;
+    let answers = rec["answers"].as_array().unwrap();
+    assert_eq!(answers.len(), 4, "an item answered only by picking an option was dropped");
+    let ids: Vec<&str> = answers.iter().map(|a| a["id"].as_str().unwrap()).collect();
+    assert!(!ids.contains(&"news2-under16"), "an item the reviewer never touched was stored");
+
+    // The branch is a value, not prose somebody has to re-read to find out which way it went.
+    let ep2 = answers.iter().find(|a| a["id"] == "r-ep2").unwrap();
+    assert_eq!(ep2["chose"], "asys");
+    assert_eq!(ep2["chose_label"], "ยืนยัน — asystole เป็นจุดจบร่วมของทั้งสองทาง");
+    assert_eq!(ep2["said"], "", "agreement was recorded as prose it never was");
+    // And a branch with prose beside it keeps both.
+    let ep3 = answers.iter().find(|a| a["id"] == "r-ep3").unwrap();
+    assert_eq!(ep3["chose"], "asys");
+    assert!(ep3["said"].as_str().unwrap().contains("148 → 60"));
+}
+
+/// Two physicians ruling opposite ways, neither writing a word, are two records — not one
+/// overwriting the other because their empty boxes hashed the same.
+#[test]
+fn opposite_rulings_with_no_prose_are_two_records() {
+    let s = Server::start();
+    let one = |chose: &str, name: &str| {
+        serde_json::json!({
+            "role": "physician", "name": name,
+            "answers": [{ "id": "win-means", "asked": "2.1 · “ชนะ” ในเกมนี้ ควรแปลว่าอะไร",
+                          "chose": chose, "chose_label": "…", "said": "" }],
+        })
+        .to_string()
+    };
+    let (a, ra) = s.post("/api/review", one("a", "อาจารย์ ก").as_bytes());
+    let (b, rb) = s.post("/api/review", one("b", "อาจารย์ ข").as_bytes());
+    assert_eq!((a, b), (200, 200));
+    assert_ne!(ra["id"], rb["id"]);
+    assert_eq!(s.filed().len(), 2, "one ruling overwrote the other");
 }
 
 // ── the same reviewer, twice ────────────────────────────────────────────────────────────────

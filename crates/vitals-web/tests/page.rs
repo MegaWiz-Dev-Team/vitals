@@ -657,3 +657,78 @@ fn the_gauge_did_not_displace_the_donation_itself() {
     assert!(html.contains("audit the treasury yourself"), "the explorer link is gone");
     assert!(html.contains("solana:9FJRwWnTNQXB9ff5SSmQKytCdVYqTQQPUz1b4zX9mt8y"), "the QR payload changed");
 }
+
+/// Every item the review form asks fits the clamp the store keeps it under.
+///
+/// `review::Answer::asked` no longer holds a question — it holds the whole item as it was shown,
+/// the four lines the review documents put in front of every ruling, because a reviewer has to be
+/// able to answer from a phone with nothing open beside them. The clamp cuts silently, so an item
+/// that outgrew it would arrive stored without the half of itself that says what was being asked,
+/// and the answer would be unreadable a month later with nobody able to say why.
+///
+/// The measurement is deliberately an over-estimate: it sums *every* string in the item, including
+/// the group heading, the group note and the option labels, none of which travel inside `asked`.
+/// Failing this test means an item is close enough to the clamp to look at, not that it is over.
+#[test]
+fn every_item_the_review_form_asks_fits_the_clamp_the_store_keeps() {
+    let html = review_page();
+    let js = script(&html);
+    let start = js.find("var QS = {").expect("the question table");
+    let table = &js[start..];
+    let items: Vec<&str> = table.split("\n      { ").skip(1).collect();
+    assert!(items.len() > 30, "only found {} items — the split stopped working", items.len());
+
+    let mut worst = (0usize, "");
+    for item in &items {
+        // Item text up to the next item; strings are plain double-quoted, because the table uses
+        // typographic quotes (“ ”) inside its prose for exactly this reason.
+        let mut total = 0usize;
+        let mut rest = *item;
+        while let Some(a) = rest.find('"') {
+            let after = &rest[a + 1..];
+            let Some(b) = after.find('"') else { break };
+            total += after[..b].chars().count();
+            rest = &after[b + 1..];
+        }
+        let id = item.split("id:\"").nth(1).and_then(|s| s.split('"').next()).unwrap_or("?");
+        if total > worst.0 {
+            worst = (total, id);
+        }
+    }
+    assert!(
+        worst.0 < 4000,
+        "item `{}` sums to {} characters, at or past review::ASKED_MAX (4000) — it would be cut \
+         on the way to disk, and the answer would arrive without its question",
+        worst.1,
+        worst.0
+    );
+    println!("longest item: {} at {} characters", worst.1, worst.0);
+}
+
+/// The form must offer a way to say "what you are doing now is correct".
+///
+/// Both review documents say it in as many words, and before the options existed that answer had
+/// nowhere to go: it arrived as an empty box, was dropped as unanswered, and read exactly like an
+/// item the reviewer never reached. A form that loses it costs a second round of asking.
+#[test]
+fn every_ruling_offers_a_way_to_agree_with_what_we_already_do() {
+    let html = review_page();
+    let js = script(&html);
+    let table = &js[js.find("var QS = {").expect("the question table")..];
+    let items: Vec<&str> = table.split("\n      { ").skip(1).collect();
+    let mut optionless = Vec::new();
+    for item in &items {
+        let id = item.split("id:\"").nth(1).and_then(|s| s.split('"').next()).unwrap_or("?");
+        if !item.contains("opts:[") {
+            optionless.push(id.to_string());
+        }
+    }
+    // One item has no options on purpose: the open question at the end of the student's document,
+    // which asks whether the patients sound like people. There is no branch to pick there, and
+    // offering one would be the form telling her what shape her answer should take.
+    assert_eq!(
+        optionless,
+        vec!["people"],
+        "these items give the reviewer no way to answer without writing prose: {optionless:?}"
+    );
+}
