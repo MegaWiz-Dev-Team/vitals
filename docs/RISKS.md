@@ -2,43 +2,27 @@
 
 Ordered by what actually kills the project, not by likelihood.
 
-## 1. Timing — resolved 2026-08-23
+## 1. Timing — the calendar is external, and it was read wrong once
 
-The countdown is the deadline to **start the timer**, not to submit. Read off colosseum.com and
-its Eternal FAQ, which is client-rendered and therefore has to be read with a real browser — which
-is why the first attempt could not settle it.
+The dates this project runs against are set outside it. That is not the interesting part. The
+interesting part is that this file recorded them as unknown when they had been published all
+along, a plan was made against dates that were not the real ones on 2026-08-24, and it was
+reversed the same day once the real ones surfaced.
 
-    Eternal window closes    2026-09-07 ~07:00       ← last moment to start a sprint
-    start today              submit by 2026-09-20
-    start on the last day    submit by 2026-10-05
+Two things caused that and both are cheap to avoid next time. The pages carrying the dates are
+client-rendered, so a fetch returns an empty shell and a real browser is needed to read them —
+the first attempt came back with nothing and that was taken for "not published". And once a date
+was assumed rather than read, everything downstream of it was planned against the assumption
+without anyone going back to check the input.
 
-Eternal is not the hackathon. It is a self-initiated 4-week sprint between the two hackathons
-Colosseum runs each year: sign up, click the stopwatch, post a one-minute video update every week,
-submit at the end. It is judged on *"ability to prioritize, iterate, and ship"*, so the four weeks
-are themselves the exhibit — starting the clock with the work already finished leaves nothing to
-show in the weekly updates.
+**The rule this leaves behind:** read the calendar off the source, with a browser that runs the
+page, before deciding anything against it — and re-read it before acting on a decision that is
+more than a day old.
 
-The prize is not the one on the front page. The Eternal Award is **$25,000 non-dilutive USDC**
-every six months; the $250,000 is investment from the accelerator's fund, which is a separate
-outcome. Teams that have raised venture capital for the submitted product are not eligible.
-
-Colosseum's own FAQ says they *"highly encourage all builders to participate in [the two annual
-hackathons] to increase their odds of being selected for the accelerator program."*
-
-**Decision taken 2026-08-23, reaffirmed 2026-08-24:** skip this Eternal window, target the fall
-hackathon. The dates turned out to be published all along — this file recorded them as unknown,
-which was wrong: **spring ran 6 Apr – 11 May; the fall hackathon runs 28 Sep – 2 Nov 2026.**
-
-That settles the calendar: **five weeks of preparation (now → 27 Sep), then a five-week
-hackathon.** The same ten weeks Eternal-then-hackathon would have taken, but as one submission
-twice as good rather than two half as good — and the odds are better in the main event by the
-organiser's own account. The decision briefly flipped to "start Eternal now" on 2026-08-24 and was
-reversed the same day when the real dates surfaced, since the main argument for Eternal (that it
-was the only deadline available) turned out to be false.
-
-Resubmitting an earlier entry is allowed *"if it has materially changed — a clear pivot,
-substantial progress made over several months, and/or meaningful traction."* A pivot must link the
-prior submission and explain what changed.
+What survives as a constraint is the shape rather than the dates: a fixed preparation window and
+then a fixed, short build window, neither of which this project sets. §8 is the direct consequence
+— it is the scope that fits inside that — and every other section in this file is written against
+that clock rather than an open-ended one.
 
 ## 2. Patent novelty — the constraint is real, the conflict was not
 
