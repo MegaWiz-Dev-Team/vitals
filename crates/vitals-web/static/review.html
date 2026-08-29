@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
+<!-- Replaced by the server on the way out (main.rs: BUILD_STAMP). A copy that still carries the
+     placeholder was not served by us — mailed, opened off disk, published somewhere — and has
+     nothing to post to, so the send button hands the answers back instead. -->
+<meta name="build" content="__VITALS_BUILD__">
 <title>ตรวจ Vitals</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -78,6 +82,8 @@
   .linky{font:inherit;font-size:14.5px;background:0;border:0;padding:0;color:var(--accent);
     cursor:pointer;text-decoration:underline;text-underline-offset:3px;align-self:flex-start}
   #blob{min-height:170px;font-size:13px;line-height:1.55}
+  .gauge{margin-top:8px;text-align:right;font-size:13px}
+  .gauge.full{color:var(--flag);font-weight:600;text-align:left}
 </style>
 </head>
 <body>
@@ -124,7 +130,7 @@
 
     <section id="questions" class="group" style="margin-top:22px"></section>
 
-    <section class="card" style="margin-top:22px">
+    <section class="card" style="margin-top:22px" id="notecard">
       <label><span class="qlabel">อย่างอื่นที่อยากบอก</span>
         <span class="sub">ไม่เข้าข้อไหนก็เขียนตรงนี้ — ช่องนี้มักเป็นช่องที่มีประโยชน์ที่สุด</span>
         <textarea id="notes" style="min-height:120px"></textarea>
@@ -219,8 +225,14 @@
   // This page is also handed out as a standalone copy — mailed, or published where a reviewer
   // can reach it without the server. Off our own host there is nothing to post to, so the send
   // button hands the answers back instead of failing first and explaining afterwards.
-  var HOST = location.hostname;
-  var CANPOST = /(^|\.)vitals\.academy$/.test(HOST) || HOST === "localhost" || HOST === "127.0.0.1";
+  //
+  // Asked of the build stamp, not of the hostname. A hostname allowlist was one deploy away from
+  // being wrong in the direction that costs a review: the same binary answers on the run.app name
+  // too, and a reviewer handed that link would have been shown the copy-it-out path with a live
+  // route sitting right there. The stamp is the server saying "I served this", which is exactly
+  // the question being asked.
+  var BUILD = ((document.querySelector('meta[name="build"]') || {}).content || "").trim();
+  var CANPOST = !!BUILD && BUILD.indexOf("__") !== 0;
 
   // Where that standalone copy is published, the page is not allowed to start a download itself —
   // it has to ask the host to hand the file over. Everywhere else a blob link is the whole story.
@@ -230,6 +242,36 @@
       SAVE = d;
       if (!d) $("dl").hidden = true; // nothing here can hand over a file — copying still can
     }, function(){ $("dl").hidden = true; });
+  }
+
+  // What the store actually keeps, to the character. `review.rs` clamps an answer at 4,000
+  // characters and the notes box at 8,000 — counted in characters and not bytes, so a Thai
+  // character is never cut in half — but a clamp the reviewer cannot see is the same loss as a
+  // truncated body: it parses, it stores, it reads as though they stopped writing, and nobody
+  // finds out. So the box refuses the character past the limit and says so, on screen, while
+  // they are still holding the text.
+  var SAID_MAX = 4000, NOTES_MAX = 8000;
+
+  // A counter that stays out of the way until it matters, and a hard stop at the limit.
+  function gauge(ta, max){
+    ta.maxLength = max;
+    var g = document.createElement("p");
+    g.className = "sub gauge";
+    ta._tell = function(){
+      var n = ta.value.length, full = n >= max;
+      g.hidden = n < max * 0.8;
+      g.className = "sub gauge" + (full ? " full" : "");
+      g.textContent = full
+        ? "ช่องนี้เต็มแล้วที่ " + max + " ตัวอักษร — พิมพ์ต่อไม่ได้ ส่วนที่เหลือเขียนต่อในช่อง “อย่างอื่นที่อยากบอก” ข้างล่างได้ครับ"
+        : n + " / " + max;
+    };
+    ta.addEventListener("input", function(){ keep(); ta._tell(); });
+    ta._tell();
+    return g;
+  }
+  // Values set from a restored draft do not fire `input`, so the counters are told by hand.
+  function tellAll(){
+    document.querySelectorAll("textarea").forEach(function(t){ if (t._tell) t._tell(); });
   }
 
   function draft(){
@@ -266,9 +308,9 @@
       head.appendChild(n); head.appendChild(txt);
       var ta = document.createElement("textarea");
       ta.dataset.q = q[0]; ta.dataset.asked = q[1];
-      ta.addEventListener("input", keep);
       lab.appendChild(head); lab.appendChild(ta);
-      card.appendChild(lab); box.appendChild(card);
+      card.appendChild(lab); card.appendChild(gauge(ta, SAID_MAX));
+      box.appendChild(card);
     });
 
     var d = draft();
@@ -280,6 +322,7 @@
       });
       $("state").textContent = "กู้ร่างที่ค้างไว้แล้ว";
     }
+    tellAll();
     $("form").hidden = false; $("bar").hidden = false;
     if (!CANPOST){
       $("send").textContent = "รวมคำตอบ";
@@ -291,8 +334,9 @@
 
   $("r-student").addEventListener("click", function(){ build("student"); });
   $("r-physician").addEventListener("click", function(){ build("physician"); });
-  ["name","contact","notes"].forEach(function(id){ $(id).addEventListener("input", keep); });
+  ["name","contact"].forEach(function(id){ $(id).addEventListener("input", keep); });
   $("anonymous").addEventListener("change", keep);
+  $("notecard").appendChild(gauge($("notes"), NOTES_MAX));
 
   // Exactly what the server would have been posted. The same shape travels either way, so an
   // answer copied out by hand and one that arrived over the wire are the same record.
@@ -304,7 +348,7 @@
     return {
       role: role, name: $("name").value.trim(), contact: $("contact").value.trim(),
       anonymous: $("anonymous").checked, answers: answers, notes: $("notes").value.trim(),
-      revision: (document.querySelector('meta[name="build"]') || {}).content || ""
+      revision: CANPOST ? BUILD : ""
     };
   }
   function empty(p){ return !p.answers.length && !p.notes; }
@@ -393,6 +437,14 @@
         "คำตอบทั้งหมดยังอยู่ครบในกล่องข้างล่าง คัดลอกแล้ววางส่งกลับมาทาง LINE หรืออีเมลได้เลย ร่างในเครื่องก็ยังอยู่ ปิดหน้านี้ได้");
     });
   });
+
+  // Nobody reviews a product in one sitting. A physician answers three of twelve, is called away,
+  // and comes back tomorrow — and the draft on this machine is worthless if the way back to it is
+  // to remember which of two buttons they pressed yesterday. So the page opens where they left
+  // off, with their own words already in the boxes, and the role picker stays above it in case
+  // they came back to answer as the other one.
+  var back = draft();
+  if (back.role === "student" || back.role === "physician") build(back.role);
 })();
 </script>
 </body>

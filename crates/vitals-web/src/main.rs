@@ -8,7 +8,7 @@
 //! and sessions in a map. The point is to make the automaton playable, not to ship a platform.
 
 mod chain;
-use vitals_web::{archive, fuel, lang, meter, news2, patient, reading, store, usage};
+use vitals_web::{archive, fuel, lang, meter, news2, patient, reading, review, store, usage};
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -28,6 +28,38 @@ const LANDING: &str = include_str!("../static/landing.html");
 /// Where the money goes: the treasury address, a Solana Pay QR, and the explorer link to audit
 /// it. Baked into the binary like the landing — a donation page that can 404 is a donation lost.
 const DONATE: &str = include_str!("../static/donate.html");
+/// The reviewer's form, served by the same process that stores what it collects.
+///
+/// Baked in for the same reason the landing is: the two people this page exists for are a
+/// student and a physician who were handed one link, and a form that 404s is a review that never
+/// arrives. It also travels as a standalone file — mailed, or opened straight off disk — and
+/// tells the two copies apart by whether the server stamped [`BUILD_STAMP`] into it: a stamped
+/// copy posts to `/api/review`, an unstamped one hands the reviewer their answers to send by
+/// hand. Neither can lose what was typed.
+const REVIEW: &str = include_str!("../static/review.html");
+/// The placeholder the served copy of [`REVIEW`] has replaced, and the standalone copy still
+/// carries. The page reads it to decide whether there is a server behind it.
+const BUILD_STAMP: &str = "__VITALS_BUILD__";
+/// Which build a reviewer saw, stamped into [`REVIEW`] and carried back on the submission.
+///
+/// `review::Submission::revision` exists so an answer can be read against the thing that produced
+/// it: "the timing felt wrong" means one thing against 0.5.1 and another against whatever ships
+/// after the physician's rulings land. Without a stamp the field arrives empty and every answer
+/// looks like it was written about the current build, whenever anyone happens to read it.
+const BUILD: &str = concat!("vitals ", env!("CARGO_PKG_VERSION"));
+/// How much of a reviewer's submission this server will read.
+///
+/// 256 KiB. The form's own clamps bound an honest submission: sixteen questions at four thousand
+/// characters each, plus an eight-thousand-character notes box, plus the question text stored
+/// beside every answer — and Thai costs three bytes a character in UTF-8. That is about 224KB at
+/// the absolute maximum, which no reviewer will come close to; the cap sits above it with room,
+/// so anything that trips it is not a review.
+///
+/// Enforced by refusing, never by truncating. A review cut short still *looks* like a review — it
+/// parses, it stores, it reads as though the reviewer simply stopped writing — and nobody, least
+/// of all the physician whose ruling lost its second half, ever finds out. A 413 is visible: the
+/// page keeps the draft and hands the answers back to be sent by hand.
+const REVIEW_MAX: usize = 256 * 1024;
 /// The pitch, served by the same process that serves the bay.
 ///
 /// Baked in rather than read from disk. Twice in one day a path that existed on the build machine
@@ -1541,6 +1573,48 @@ fn bearer_ok(req: &tiny_http::Request, token: &Option<String>) -> bool {
         .unwrap_or(false)
 }
 
+/// Why a request body was refused. Both are the caller's, and neither is a 500.
+enum BadBody {
+    /// Past the limit it was given. Refused whole rather than cut to fit — see [`REVIEW_MAX`].
+    TooLong,
+    /// Not UTF-8, or the connection died mid-body. Either way what arrived is not what was
+    /// typed, and there is no honest way to store it.
+    ///
+    /// Deliberately not `String::from_utf8_lossy`, which is what the query-string decoder does
+    /// one screen up and is right *there*: a mangled clinical order is a word that matches
+    /// nothing and is visible on the tape. Here it would be half a Thai character replaced by
+    /// `` in the middle of a physician's ruling, stored as though it were what they wrote.
+    NotText,
+}
+
+/// Read at most `max` bytes of a request body, as text.
+///
+/// `take(max + 1)` rather than trusting `Content-Length`: a declared length is a claim the caller
+/// makes, and a chunked body declares nothing at all. Reading exactly one byte past the limit is
+/// what makes "too long" detectable without ever holding more than the limit plus one.
+fn read_body(req: &mut tiny_http::Request, max: usize) -> Result<String, BadBody> {
+    use std::io::Read;
+    let mut buf = Vec::new();
+    if req.as_reader().take(max as u64 + 1).read_to_end(&mut buf).is_err() {
+        return Err(BadBody::NotText);
+    }
+    if buf.len() > max {
+        return Err(BadBody::TooLong);
+    }
+    String::from_utf8(buf).map_err(|_| BadBody::NotText)
+}
+
+/// Unix seconds, server-side.
+///
+/// A client clock is not evidence of anything, which is why `review::Submission::at` is stamped
+/// here and not read off the body — and why the key a submission sorts under is derived from it.
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
 fn main() {
     // Not 8090. On the machine this is developed on that port is already three things — a
     // syn-sentry web app, an eir-fhir container publishing on the host, and the service port the
@@ -1761,7 +1835,9 @@ fn main() {
     let mut said: Vec<Instant> = Vec::new();
     const SAY_PER_MIN: usize = 20;
 
-    for req in server.incoming_requests() {
+    // `mut` for exactly one route: reading a request body needs the request mutably, and the
+    // match below borrows it for the whole of its scrutinee. See `/api/review`.
+    for mut req in server.incoming_requests() {
         let url = req.url().to_string();
         let path = url.split('?').next().unwrap_or("/").to_string();
 
@@ -1788,6 +1864,85 @@ fn main() {
                     .with_status_code(401)
                     .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap()),
             );
+            continue;
+        }
+        // ── the reviewer's answers: the one route in this server that reads a body ──────────
+        //
+        // Everything else is a GET with query parameters, including the player's own free text
+        // (`/api/say?q=…`). This one cannot be. A reviewer's answers run to eight thousand Thai
+        // characters in a box, percent-encoding Thai costs nine bytes a character, and a full
+        // submission would be roughly 72KB in one URL — past every browser's limit and most
+        // proxies'. Splitting it per question only moves the failure into the notes box.
+        //
+        // It sits *here*, ahead of the match, because that is the entire architectural change:
+        // `Request::as_reader` needs `&mut req`, and the match below borrows `req` immutably for
+        // as long as its scrutinee lives. One block in front of the loop's match, rather than a
+        // second shape of handler inside it.
+        //
+        // **There is no caller identity, deliberately, and none is invented here.** Every other
+        // notion of "who is this" in this server answers a question a review does not ask: the
+        // session id says which run in progress this is, and `player` says whose run it is —
+        // both are about a run, and a review is not attached to one. The two people this exists
+        // for have no player key, no account and no wallet, and requiring either would mean the
+        // review does not arrive. `role` and `name` in the body are self-declared attribution,
+        // not authentication; `name` is optional so an uncomfortable answer can still be sent.
+        // The two identity mechanisms that *do* apply are reused rather than duplicated: the
+        // route is declared public in `guarded` alongside every other route, pinned by the test
+        // that reads that table, and the caller is counted by the same `client_addr` window
+        // `/api/new` already uses.
+        //
+        // Nothing here touches a session, the tape, the tree or a rubric. A reviewer's opinion is
+        // data recorded alongside a run and never an input to one; `tests/review.rs` proves the
+        // leaf and the mark sheet are byte-identical across a submission.
+        if req.method() == &Method::Post && path == "/api/review" {
+            // Storage, not inference, so the window and not the ceiling — the same call
+            // `/api/new` makes. Generous next to the two or three submissions a real reviewer
+            // sends, and the only thing standing between a public endpoint and a full disk.
+            if let meter::Verdict::SlowDown { retry_secs } =
+                meter.allow_free(&format!("review:{}", client_addr(&req)), &store)
+            {
+                let _ = req.respond(json_code(
+                    serde_json::json!({
+                        "error": "too many submissions from this address — give it a minute",
+                        "retry_in": retry_secs,
+                    }),
+                    429,
+                ));
+                continue;
+            }
+            let resp = match read_body(&mut req, REVIEW_MAX) {
+                Err(BadBody::TooLong) => json_code(
+                    serde_json::json!({ "error": "too long", "limit": REVIEW_MAX }),
+                    413,
+                ),
+                Err(BadBody::NotText) => {
+                    json_code(serde_json::json!({ "error": "unreadable" }), 400)
+                }
+                Ok(text) => match serde_json::from_str::<serde_json::Value>(&text) {
+                    Err(_) => json_code(serde_json::json!({ "error": "not json" }), 400),
+                    // Every refusal `review.rs` can make is the caller's, and each says which
+                    // one it was: a form that posts the wrong shape has to be debuggable by
+                    // whoever is holding it, and "empty" is a real answer to a real mistake.
+                    Ok(v) => match review::Submission::from_json(&v, now_secs()) {
+                        Err(e) => json_code(serde_json::json!({ "error": e }), 400),
+                        // `file`, not a bare put: a reviewer who taps Send twice on a bad
+                        // connection gets one record, and the id it quotes back is the record
+                        // that is actually on disk — on a resend that is the first one's.
+                        Ok(s) => match s.file(&store) {
+                            Ok(filed) => json(serde_json::json!({
+                                "ok": true, "id": filed.id, "answers": filed.answers.len(),
+                            })),
+                            // The page hands the reviewer their answers to copy out on any
+                            // non-200. That is the whole reason this is allowed to fail.
+                            Err(_) => json_code(
+                                serde_json::json!({ "error": "could not store" }),
+                                500,
+                            ),
+                        },
+                    },
+                },
+            };
+            let _ = req.respond(resp);
             continue;
         }
         if path == "/api/say" {
@@ -2624,6 +2779,21 @@ fn main() {
                 meter.click(&store);
                 html(DONATE)
             }
+            // ── the form itself ─────────────────────────────────────────────────
+            // One URL and nothing else. The two reviewers this is for are a final-year student
+            // and a physician: a link that opens and works is the entire brief, and any step
+            // between the link and the first question is a step at which the review does not
+            // happen.
+            //
+            // Stamped on the way out. The stamp is both the build the answers were written
+            // about and the page's own evidence that there is a server behind it — an unstamped
+            // copy (mailed, opened off disk, published) falls back to handing the reviewer their
+            // answers to send by hand, which is what kept this usable before the route existed.
+            //
+            // Ungated, like the bay. A token here would protect nothing — everything on the page
+            // is a question we are asking — and would stop the page opening for the two people
+            // it was written for. `guarding_covers_everything_that_spends_or_signs` holds it.
+            (Method::Get, "/review") => html(&REVIEW.replace(BUILD_STAMP, BUILD)),
             (Method::Get, "/api/chain") => {
                 let t = tree.lock().unwrap();
                 let who = param(&url, "player").and_then(|p| pubkey(&p));
@@ -3472,6 +3642,10 @@ mod tests {
         }
         for p in ["/", "/play", "/api/new", "/api/step", "/api/finish", "/api/kit", "/api/tape", "/api/chain",
                   "/api/meter", "/api/fuel", "/api/stars", "/api/lang", "/api/usage", "/donate",
+                  // The reviewer's form and the route it posts to. A student and a physician
+                  // were handed one link; a token on either is a review that never arrives, and
+                  // "tell us what is wrong" is not a thing anyone should need an account for.
+                  "/review", "/api/review",
                   // Re-derivation is the product's whole claim. A token on it would mean
                   // "re-derivable by anyone we gave a token to", which is not the claim.
                   "/api/sce/0000000000000000000000000000000000000000000000000000000000000000"] {

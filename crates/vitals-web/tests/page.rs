@@ -14,9 +14,25 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-fn page() -> String {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/index.html");
+fn static_page(name: &str) -> String {
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static").join(name);
     std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
+}
+
+fn page() -> String {
+    static_page("index.html")
+}
+
+/// The reviewer's form. Hand-written HTML and JavaScript like the bay's, served by the same
+/// binary, and read by two people who cannot be asked to open a console when it does not work.
+fn review_page() -> String {
+    static_page("review.html")
+}
+
+/// Every hand-written page this binary serves that carries a script, by the name it is served
+/// under. A page added here inherits the three checks below and costs nothing else.
+fn scripted_pages() -> Vec<(&'static str, String)> {
+    vec![("index.html", page()), ("review.html", review_page())]
 }
 
 /// Everything between the first `<script>` and its `</script>`.
@@ -110,33 +126,37 @@ fn code_only(js: &str) -> String {
 /// closes something that was never opened.
 #[test]
 fn brackets_balance() {
-    let js = code_only(script(&page()));
-    let mut stack: Vec<(char, usize)> = Vec::new();
-    let mut line = 1usize;
-    for c in js.chars() {
-        if c == '\n' {
-            line += 1;
-        }
-        match c {
-            '(' | '[' | '{' => stack.push((c, line)),
-            ')' | ']' | '}' => {
-                let want = match c {
-                    ')' => '(',
-                    ']' => '[',
-                    _ => '{',
-                };
-                match stack.pop() {
-                    Some((open, _)) if open == want => {}
-                    Some((open, at)) => {
-                        panic!("line {line}: '{c}' closes '{open}' opened on line {at}")
-                    }
-                    None => panic!("line {line}: '{c}' closes nothing — leftover from an edit?"),
-                }
+    for (name, html) in scripted_pages() {
+        let js = code_only(script(&html));
+        let mut stack: Vec<(char, usize)> = Vec::new();
+        let mut line = 1usize;
+        for c in js.chars() {
+            if c == '\n' {
+                line += 1;
             }
-            _ => {}
+            match c {
+                '(' | '[' | '{' => stack.push((c, line)),
+                ')' | ']' | '}' => {
+                    let want = match c {
+                        ')' => '(',
+                        ']' => '[',
+                        _ => '{',
+                    };
+                    match stack.pop() {
+                        Some((open, _)) if open == want => {}
+                        Some((open, at)) => {
+                            panic!("{name} line {line}: '{c}' closes '{open}' opened on line {at}")
+                        }
+                        None => {
+                            panic!("{name} line {line}: '{c}' closes nothing — leftover from an edit?")
+                        }
+                    }
+                }
+                _ => {}
+            }
         }
+        assert!(stack.is_empty(), "{name}: unclosed {:?}", stack);
     }
-    assert!(stack.is_empty(), "unclosed {:?}", stack);
 }
 
 /// `const show = …` next to the page's own `function show(status, kit)` is a SyntaxError, and a
@@ -195,15 +215,53 @@ fn every_selector_points_at_something() {
 /// second one is dead markup that looks alive.
 #[test]
 fn no_id_is_declared_twice() {
-    let html = page();
-    let mut seen: HashMap<String, usize> = HashMap::new();
-    for (i, _) in html.match_indices("id=\"") {
-        let rest = &html[i + 4..];
-        let Some(end) = rest.find('"') else { continue };
-        *seen.entry(rest[..end].to_string()).or_default() += 1;
+    for (name, html) in scripted_pages() {
+        let mut seen: HashMap<String, usize> = HashMap::new();
+        for (i, _) in html.match_indices("id=\"") {
+            let rest = &html[i + 4..];
+            let Some(end) = rest.find('"') else { continue };
+            *seen.entry(rest[..end].to_string()).or_default() += 1;
+        }
+        let dupes: Vec<_> =
+            seen.iter().filter(|(_, n)| **n > 1).map(|(k, n)| format!("{k} × {n}")).collect();
+        assert!(dupes.is_empty(), "{name}: duplicate ids: {dupes:?}");
     }
-    let dupes: Vec<_> = seen.iter().filter(|(_, n)| **n > 1).map(|(k, n)| format!("{k} × {n}")).collect();
-    assert!(dupes.is_empty(), "duplicate ids: {dupes:?}");
+}
+
+/// The reviewer's form binds by `$("id")` rather than the bay's `$('#id')`, and the failure is
+/// the same one: `getElementById` returns null, the assignment throws while the script is still
+/// setting itself up, and every handler after it is never bound. On this page that means a
+/// physician opens the link, types for an hour and finds that Send does nothing.
+#[test]
+fn every_handle_on_the_review_form_points_at_something() {
+    let html = review_page();
+    let js = script(&html);
+    let mut missing = Vec::new();
+    for (i, _) in js.match_indices("$(\"") {
+        let rest = &js[i + 3..];
+        let Some(end) = rest.find('"') else { continue };
+        let id = &rest[..end];
+        if !html.contains(&format!("id=\"{id}\"")) {
+            missing.push(id.to_string());
+        }
+    }
+    missing.sort();
+    missing.dedup();
+    assert!(missing.is_empty(), "review.html binds ids that do not exist: {missing:?}");
+}
+
+/// The stamp the server replaces has to still be there for it to be replaced.
+///
+/// It is load-bearing twice over: it carries which build a reviewer's answers were written about,
+/// and its *absence* after substitution is how the page knows it was served rather than mailed —
+/// so a copy with no placeholder posts nowhere and a copy that never got stamped posts into the
+/// void. `main.rs` holds the other half of this constant.
+#[test]
+fn the_build_placeholder_survives() {
+    assert!(
+        review_page().contains("__VITALS_BUILD__"),
+        "review.html lost the stamp the server substitutes"
+    );
 }
 
 /// The token the server injects has to still be there for it to be injected into.

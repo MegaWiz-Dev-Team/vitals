@@ -314,6 +314,45 @@ impl Store {
         self.list_disk(kind)
     }
 
+    /// The keys under `kind`, without reading what is in them.
+    ///
+    /// [`Store::list`] deserialises every record, which is the right shape for restoring sessions
+    /// at boot and the wrong one for a question that is only about keys. A public endpoint that
+    /// has to ask "is this already filed?" on every request should not pay to parse every
+    /// document beside it — and on this store a review can be a fifth of a megabyte.
+    pub fn keys(&self, kind: &str) -> Vec<String> {
+        if let Backend::Firestore { base } = &self.backend {
+            let Ok(tok) = self.token() else { return Vec::new() };
+            let mut out = Vec::new();
+            let mut page = String::new();
+            loop {
+                // `mask.fieldPaths=` asks Firestore for no fields at all, so a page of keys costs
+                // a page of names rather than a page of records.
+                let url = format!("{base}/{kind}?pageSize=300&mask.fieldPaths={page}");
+                let Ok(r) = ureq::get(&url).set("Authorization", &format!("Bearer {tok}")).call()
+                else {
+                    break;
+                };
+                let Ok(v): Result<serde_json::Value, _> = r.into_json() else { break };
+                for d in v["documents"].as_array().unwrap_or(&Vec::new()) {
+                    if let Some(name) = d["name"].as_str().and_then(|n| n.rsplit('/').next()) {
+                        out.push(name.to_string());
+                    }
+                }
+                match v["nextPageToken"].as_str().filter(|t| !t.is_empty()) {
+                    Some(t) => page = format!("&pageToken={t}"),
+                    None => break,
+                }
+            }
+            return out;
+        }
+        let Ok(rd) = std::fs::read_dir(self.dir(kind)) else { return Vec::new() };
+        rd.flatten()
+            .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("json"))
+            .filter_map(|e| e.path().file_stem().and_then(|s| s.to_str()).map(str::to_string))
+            .collect()
+    }
+
     fn list_disk<T: DeserializeOwned>(&self, kind: &str) -> Vec<(String, T)> {
         let Ok(rd) = std::fs::read_dir(self.dir(kind)) else {
             return Vec::new();
@@ -418,6 +457,22 @@ mod tests {
         assert_eq!(class_of("sess"), Class::Ephemeral);
         assert_eq!(class_of("tree"), Class::Durable);
         assert_eq!(class_of("meter"), Class::Durable);
+    }
+
+    /// Keys without records: the same set `list` would report, and nothing parsed to get it.
+    /// A record this build cannot deserialise still has a key, and a caller asking "is this key
+    /// taken?" has to be told yes — otherwise it writes over it.
+    #[test]
+    fn keys_are_listed_without_reading_the_records() {
+        let s = Store::open(tmp("keys-list")).unwrap();
+        s.put("sess", "one", &7u8).unwrap();
+        s.put("sess", "two", &8u8).unwrap();
+        std::fs::write(s.dir("sess").join("broken.json"), b"{not json").unwrap();
+        std::fs::write(s.dir("sess").join("notes.txt"), b"ignored").unwrap();
+        let mut got = s.keys("sess");
+        got.sort();
+        assert_eq!(got, vec!["broken", "one", "two"]);
+        assert!(s.keys("nothing-here").is_empty());
     }
 
     #[test]

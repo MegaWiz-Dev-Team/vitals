@@ -8,24 +8,20 @@
 //! Nothing here is a clinical record. It is opinion about the product, kept so the team can act
 //! on it and so a reviewer never has to say the same thing twice.
 //!
-//! # Wiring
-//!
-//! Nothing below is urgent. `static/review.html` also hands the reviewer their answers as JSON to
-//! send back by hand, and `scripts/file-review.py` files that JSON under the same key this module
-//! would have written — so reviews can arrive before this is wired, and the two routes cannot
-//! produce two records of the same review.
-//!
-//! When it is wired: `pub mod review;` in `lib.rs`, `const REVIEW: &str =
-//! include_str!("../static/review.html");` in `main.rs`, then
-//!
-//! ```text
-//! (Method::Get,  "/review")     => html(REVIEW),
-//! (Method::Post, "/api/review") => ... Submission::from_json(&body, now)?.save(&store)
-//! ```
+//! # The two ways in
 //!
 //! `/api/review` is the first route in this server that reads a request body — every other one
-//! takes query parameters — and it is public on purpose: a reviewer should not need an account to
-//! tell us what is wrong. Both routes belong in the no-token list in `main.rs`'s test.
+//! takes query parameters, and a reviewer's answers are roughly 72KB once percent-encoded, which
+//! fits in no URL. It is public on purpose and has no caller identity at all: a reviewer should
+//! not need an account to tell us what is wrong, `role` and `name` are self-declared attribution
+//! rather than authentication, and `name` is optional so an uncomfortable answer can still be
+//! sent. See the route in `main.rs` for why no existing identity mechanism was borrowed for it.
+//!
+//! The other way in stays open, because a reviewer is not always somewhere the server is:
+//! `static/review.html` hands the answers back as JSON when it was not served by us, and
+//! `scripts/file-review.py` files that JSON under the same key this module derives — byte for
+//! byte, and with the same replace-in-place rule as [`Submission::file`] — so the same review
+//! arriving by both routes cannot become two records.
 
 use serde::{Deserialize, Serialize};
 
@@ -92,8 +88,11 @@ impl Submission {
     /// A key that sorts by time and is derived from the content.
     ///
     /// Time alone is not enough: two reviewers finishing in the same second would land on the same
-    /// key and the second write would erase the first. Hashing the content also makes a resend
-    /// idempotent — a reviewer who taps Send twice on a flaky connection gets one record, not two.
+    /// key and the second write would erase the first. Hashing the content makes a resend
+    /// *identifiable* — two keys sharing a suffix are the same answers twice — which is not the
+    /// same as making it idempotent, and the difference is [`Submission::file`]'s job. The key
+    /// alone cannot do it: a reviewer who taps Send again two seconds later is at a different
+    /// second, so the key is different, so the write lands beside the first instead of on it.
     fn key(at: u64, content: &str) -> String {
         use sha2::{Digest, Sha256};
         let d = Sha256::digest(content.as_bytes());
@@ -154,8 +153,63 @@ impl Submission {
         })
     }
 
-    pub fn save(&self, store: &Store) -> std::io::Result<()> {
-        store.put(KIND, &self.id, self)
+    /// The half of the key that is a hash of the content, without the second it arrived in.
+    fn fingerprint(&self) -> &str {
+        self.id.split_once('-').map(|(_, h)| h).unwrap_or("")
+    }
+
+    /// The same answers from the same person — what makes two submissions one review.
+    ///
+    /// Compared field by field, not by the six bytes of hash in the key. The hash is enough to
+    /// *find* a candidate cheaply and not enough to act on one: acting on a collision would mean
+    /// overwriting a different reviewer's answers with this reviewer's, which is the one outcome
+    /// this whole module is arranged to prevent.
+    fn says_the_same_as(&self, other: &Submission) -> bool {
+        self.role == other.role
+            && self.name == other.name
+            && self.notes == other.notes
+            && self.answers.len() == other.answers.len()
+            && self
+                .answers
+                .iter()
+                .zip(&other.answers)
+                .all(|(a, b)| a.id == b.id && a.said == b.said)
+    }
+
+    /// File this submission, recognising a resend of one already stored.
+    ///
+    /// The one way to write a review, because two ways is how a store ends up with two records of
+    /// one thing. Tapping Send again on a bad connection is the ordinary case rather than the rare
+    /// one — the button is at the end of an hour of typing, and the reviewer has no way to tell a
+    /// slow reply from a lost one. Two records of one review is not a tidiness problem: these are
+    /// read to decide what to change, and one physician read twice looks exactly like two
+    /// physicians agreeing.
+    ///
+    /// A match is **replaced in place**, keeping the key and the arrival time it already had, so
+    /// the record still says when the review first came in and the file still agrees with its own
+    /// `id`. Replaced rather than skipped: a physician who resends after ticking *do not name me*
+    /// changed something the key does not hash, and dropping that send would leave them named.
+    ///
+    /// Returns the record as it was actually stored — which is what the reply should quote, since
+    /// on a resend it is not the record that was handed in.
+    pub fn file(&self, store: &Store) -> std::io::Result<Submission> {
+        let mut out = self.clone();
+        // Keys first, records second. This runs on a public endpoint on every submission, and a
+        // review can be a fifth of a megabyte; only the one key that could be a resend is read.
+        let mine = format!("-{}", self.fingerprint());
+        for key in store.keys(KIND).into_iter().filter(|k| k.ends_with(&mine)) {
+            match store.get::<Submission>(KIND, &key) {
+                Some(prev) if prev.says_the_same_as(self) => {
+                    out.id = key;
+                    out.at = prev.at;
+                    break;
+                }
+                // A record this build cannot read is not a record it may overwrite.
+                _ => continue,
+            }
+        }
+        store.put(KIND, &out.id, &out)?;
+        Ok(out)
     }
 }
 
@@ -230,5 +284,65 @@ mod tests {
         let a = Submission::from_json(&body(r#","notes":"เหมือนกัน""#), 99).unwrap();
         let b = Submission::from_json(&body(r#","notes":"เหมือนกัน""#), 99).unwrap();
         assert_eq!(a.id, b.id);
+    }
+
+    fn tmp(name: &str) -> Store {
+        let p = std::env::temp_dir().join(format!("vitals-review-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&p);
+        Store::open(p).expect("store")
+    }
+
+    /// The failure the key alone cannot prevent, and the reason [`Submission::file`] exists.
+    ///
+    /// A reviewer taps Send, sees nothing happen, and taps it again — eighteen seconds later, in
+    /// the real measurement this test was written from. Identical answers, a different second, a
+    /// different key, two records. The keys even said they were the same review: they shared the
+    /// content hash. Nothing was reading them.
+    #[test]
+    fn a_resend_seconds_later_is_still_one_record() {
+        let store = tmp("resend");
+        let first = Submission::from_json(&body(r#","notes":"ส่งครั้งแรก""#), 1_787_988_636)
+            .unwrap()
+            .file(&store)
+            .unwrap();
+        let again = Submission::from_json(&body(r#","notes":"ส่งครั้งแรก""#), 1_787_988_654)
+            .unwrap()
+            .file(&store)
+            .unwrap();
+
+        assert_ne!(
+            Submission::key(1_787_988_654, "x"),
+            Submission::key(1_787_988_636, "x"),
+            "the two sends must be at different seconds or this test proves nothing"
+        );
+        assert_eq!(again.id, first.id, "the resend was filed under a second key");
+        assert_eq!(again.at, first.at, "the resend restamped when the review arrived");
+        assert_eq!(store.keys(KIND).len(), 1, "one review, two records");
+    }
+
+    /// Replaced, not skipped. A physician who resends after ticking *do not name me* changed
+    /// something the key does not hash, and a skipped write would leave them named in the file
+    /// the rubric credits reviewers from.
+    #[test]
+    fn a_resend_carries_the_later_wishes_of_the_reviewer() {
+        let store = tmp("anon");
+        Submission::from_json(&body(r#","notes":"ตรวจแล้ว""#), 10).unwrap().file(&store).unwrap();
+        let second = Submission::from_json(&body(r#","notes":"ตรวจแล้ว","anonymous":true"#), 20)
+            .unwrap()
+            .file(&store)
+            .unwrap();
+        assert_eq!(store.keys(KIND).len(), 1);
+        let stored: Submission = store.get(KIND, &second.id).expect("the record");
+        assert!(stored.anonymous, "the reviewer's second thoughts were dropped");
+        assert_eq!(stored.at, 10, "the record forgot when the review arrived");
+    }
+
+    /// Two reviews that are not the same review stay two, however close together they land.
+    #[test]
+    fn a_different_answer_is_a_different_record() {
+        let store = tmp("distinct");
+        Submission::from_json(&body(r#","notes":"หนึ่ง""#), 42).unwrap().file(&store).unwrap();
+        Submission::from_json(&body(r#","notes":"สอง""#), 42).unwrap().file(&store).unwrap();
+        assert_eq!(store.keys(KIND).len(), 2, "a second review overwrote the first");
     }
 }
