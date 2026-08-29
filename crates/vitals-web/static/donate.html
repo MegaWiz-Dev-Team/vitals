@@ -93,6 +93,17 @@ font-family:"IBM Plex Sans",Arial,sans-serif;line-height:1.45}
 .why a{word-break:break-word}
 .why .mono{font-size:.72rem;word-break:break-all}
 .gone{font-size:.9rem;font-weight:600;color:var(--attested);font-family:Archivo,Arial,sans-serif}
+/* Two assets in one tile. The rule is not decoration: it is what stops a reader's eye running
+   the SOL figure and the USDC figure together into a total that does not exist. */
+/* The treasury carries two figures where its neighbours carry one, so it gets two columns to
+   put them in. Stacked in a narrow tile they crowd, and two numbers crowded together is the
+   arrangement most likely to be read as one. */
+@media (min-width:32rem){.tile.pair{grid-column:span 2}}
+.split{height:1px;background:var(--rule);margin:.75rem 0 .65rem}
+.apart{border-top:1px dashed var(--rule);padding-top:.5rem;margin-top:.7rem}
+.addrnote{font-size:.78rem;color:var(--ink-3);line-height:1.55;margin:.6rem 0 0;text-align:center}
+.addrnote .mono{font-size:.72rem;word-break:break-all}
+.alarm{color:var(--attested)}
 .caveat{font-size:.8rem;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--rule);
 border-left:3px solid var(--attested);border-radius:10px;padding:.7rem .9rem;margin:.85rem 0 0;line-height:1.55}
 .fuelfoot{display:flex;flex-wrap:wrap;gap:.55rem .8rem;align-items:center;font-size:.74rem;
@@ -113,13 +124,21 @@ inference, not a seat and not a subscription: when the month&rsquo;s ceiling is 
 running and only the patient&rsquo;s voice stops until the month turns.</p>
 </div>
 <div class="card">
-<span class="k">Treasury address · Solana <strong>mainnet</strong> · real money (SOL or USDC)</span>
+<span class="k">Treasury address · Solana <strong>mainnet</strong> · real money · SOL and USDC</span>
 <div class="addr"><span class="mono" id="addrText">9FJRwWnTNQXB9ff5SSmQKytCdVYqTQQPUz1b4zX9mt8y</span>
 <button class="btn" data-ga="copy-address" onclick="navigator.clipboard.writeText(document.getElementById('addrText').textContent).then(()=>{this.textContent='✓ copied';setTimeout(()=>this.textContent='copy',1500)})">copy</button></div>
 <div id="qr"></div>
 <p style="font-size:.85rem;color:var(--ink-2);text-align:center;margin:.2rem 0 0">Scan with Phantom, Solflare or any Solana wallet.
 <strong>This address lives on mainnet-beta: the QR sends real SOL, and the link below reads mainnet.</strong> ·
-<a href="https://explorer.solana.com/address/9FJRwWnTNQXB9ff5SSmQKytCdVYqTQQPUz1b4zX9mt8y">audit the treasury yourself</a></p>
+<a id="auditLink" href="https://explorer.solana.com/address/9FJRwWnTNQXB9ff5SSmQKytCdVYqTQQPUz1b4zX9mt8y">audit the treasury yourself</a></p>
+<p class="addrnote">Sending <strong>USDC</strong>? The same address. Your wallet puts dollars in the
+USDC token account this address owns, and the first transfer is what creates that account — so until
+someone sends, there is nothing there to read, and the panel below prints that as zero rather than as a
+fault. It reads <strong>Circle&rsquo;s USDC only</strong>, and names the mint it used: other stablecoins,
+and bridged or wrapped dollars, are different tokens and would appear in neither figure. Please don&rsquo;t
+send those — an amount this page cannot show you is an amount you cannot audit, which is the whole point
+of the address being here.</p>
+<p class="addrnote" id="addrCheck">checking this address against the one the balances are read at&hellip;</p>
 </div>
 <section class="card fuel" id="fuel" aria-live="polite">
 <span class="k">What the money buys · read live, not written by hand</span>
@@ -142,10 +161,16 @@ from the model. That is paid inference, and it is where most of a donation goes.
 <div class="big" id="fRelay">reading…<span class="unit" id="fRelayUnit">SOL in the fee relay</span></div>
 <p class="why" id="fRelayWhy"></p>
 </div>
-<div class="tile">
+<div class="tile pair">
 <span class="k" style="color:var(--ink-3)">Treasury balance · <strong>mainnet · real money</strong></span>
 <div class="big" id="fVault">reading…<span class="unit" id="fVaultUnit">SOL at the address above</span></div>
 <p class="why" id="fVaultWhy"></p>
+<div class="split"></div>
+<div class="big" id="fVaultUsdc">reading…<span class="unit" id="fVaultUsdcUnit">USDC at the address above</span></div>
+<p class="why" id="fVaultUsdcWhy"></p>
+<p class="why apart"><strong>Two holdings, not one balance.</strong> SOL and USDC are different assets
+and neither figure is part of the other. This page never adds them: it carries no exchange rate, so a
+combined number would be the one figure here you could not re-derive.</p>
 </div>
 <div class="tile">
 <span class="k" style="color:var(--ink-3)">Runs recorded on chain</span>
@@ -158,12 +183,15 @@ Merkle tree and proven on chain — countable by anyone, including you.</p>
 <p class="caveat"><strong>Two chains on this page, and only one of them is money.</strong>
 The <strong>fee relay</strong> figure sits on <strong>devnet</strong>, the chain this bay anchors to:
 devnet SOL is minted free from a public faucet and is worth nothing — read it as a fuel gauge for
-transaction fees, not as an asset and not as money we hold. The <strong>treasury</strong> figure is the
+transaction fees, not as an asset and not as money we hold. The <strong>treasury</strong> figures are the
 address printed at the top of this page, and that one is on <strong>mainnet</strong>: it is real money,
-the QR sends real SOL, and the explorer link carries no cluster because it reads mainnet. Every figure
-above prints the cluster it was actually read on, live, beside it — so you never have to take this
-paragraph&rsquo;s word for which is which. And the bills a donation actually pays are
-model inference and hosting, billed in ordinary currency rather than in SOL of either kind.</p>
+the QR sends real SOL, and the explorer link carries no cluster because it reads mainnet. There are two
+of those figures because the address holds two things: <strong>SOL</strong> sits at the address itself,
+and <strong>USDC</strong> sits in the token account that address owns — a separate account, printed and
+linked separately, which the first dollar to arrive is what creates. They are never added together.
+Every figure above prints the cluster it was actually read on, live, beside it — so you never have to
+take this paragraph&rsquo;s word for which is which. And the bills a donation actually pays are
+model inference and hosting, billed in ordinary currency rather than in SOL or USDC.</p>
 
 <p class="fuelfoot"><span id="fAge">reading…</span><span>·</span><span>read at most once a minute,
 then cached</span><button class="reread" id="fAgain" data-ga="fuel-reread">re-read</button>
@@ -2473,9 +2501,6 @@ var qrcode = function() {
 }(function () {
     return qrcode;
 }));
-var qr=qrcode(0,'M');qr.addData('solana:9FJRwWnTNQXB9ff5SSmQKytCdVYqTQQPUz1b4zX9mt8y');qr.make();
-document.getElementById('qr').innerHTML=qr.createImgTag(5,8);
-
 /* ── the fuel gauge renderer ───────────────────────────────────────────────────
    Four numbers beside the donation address, none of them typed in: the month's patient
    turns against the ceiling, the relay's balance and the runs it still pays for, the
@@ -2511,11 +2536,69 @@ document.getElementById('qr').innerHTML=qr.createImgTag(5,8);
   /* Enough places to keep a 0.05% reading from printing as 0%, no more. */
   function pct(x){return x>=10?x.toFixed(1):x>=1?x.toFixed(2):x.toFixed(3)}
 
-  var TREASURY=document.getElementById('addrText').textContent.trim();
-  var AUDIT='https://explorer.solana.com/address/'+TREASURY;
+  /* ── one address, and this page's half of keeping it one ─────────────────────
+     The page prints the treasury, encodes it in the QR, links it to an explorer, and labels the
+     balances below it "at the address above". That is one fact in four places — and the server
+     has an override, VITALS_TREASURY, that moves the balance without moving any of the other
+     three. The mismatch it would produce is silent by construction: a page that looks entirely
+     normal, showing address A above address B's money.
+
+     So there is one literal here, in the form a wallet reads, and the printed address, the QR
+     and the link are all cut from it. Then /api/fuel names the address it actually read the
+     balances at; if that is not this one, all three are rebuilt from the server's and the page
+     says so out loud, because a treasury that is not the one on the page is news rather than a
+     detail. The other half of the guard is in Rust: a test in fuel.rs reads this file and fails
+     the build unless this literal, the address printed above and the server's TREASURY constant
+     are the same string. */
+  var PAY='solana:9FJRwWnTNQXB9ff5SSmQKytCdVYqTQQPUz1b4zX9mt8y';
+  var SCHEME=PAY.slice(0,PAY.indexOf(':')+1);
+  var shown='';
+
+  function audit(a){return 'https://explorer.solana.com/address/'+a}
+
+  /* Address, QR and link, all three from the one string handed in — never one of them without
+     the other two, which is the only way they cannot disagree. */
+  function paintAddress(a){
+    if(!a||a===shown)return;
+    shown=a;
+    $('addrText').textContent=a;
+    $('auditLink').href=audit(a);
+    var q=qrcode(0,'M');q.addData(SCHEME+a);q.make();
+    $('qr').innerHTML=q.createImgTag(5,8);
+  }
+
+  /* What the server read, against what this page printed. Same string: the label under the
+     figures is true, and the page says it checked rather than leaving that invisible. Different:
+     the print, the QR and the link move to the server's, because the money below is the money at
+     that address and a donor is being asked to send to whatever is on screen. */
+  function reconcile(a){
+    if(!a){
+      $('addrCheck').innerHTML='<strong class="alarm">Unchecked.</strong> This server did not name '+
+        'the treasury it reads, so nothing has confirmed the address above \u2014 it is only the one '+
+        'this page shipped with. '+link(audit(shown),'check it on the explorer before you send');
+      return;
+    }
+    if(a===shown){
+      $('addrCheck').innerHTML='Checked: the balances below were read at this exact address.';
+      return;
+    }
+    var was=shown;
+    paintAddress(a);
+    $('addrCheck').innerHTML='<strong class="alarm">The address above has been replaced.</strong> '+
+      'This page shipped with <span class="mono">'+esc(was)+'</span>, but this server reads its '+
+      'treasury at <span class="mono">'+esc(a)+'</span>. The printed address, the QR and the '+
+      'explorer link have all been rebuilt from the one the figures below actually came from, '+
+      'rather than leave you a QR and a balance that quietly disagree. If that is not the '+
+      'treasury you meant to pay, send nothing.';
+  }
+
+  paintAddress(PAY.slice(SCHEME.length));
 
   function render(d){
     var t=d.turns||{},r=d.relay||{},v=d.treasury||{},c=d.cost||{};
+
+    /* 0 · the address, before any figure that calls itself "at the address above". */
+    reconcile(v.address);
 
     /* 1 · the month's patient turns — paid inference, so it leads. */
     if(typeof t.used==='number'&&t.cap){
@@ -2557,17 +2640,43 @@ document.getElementById('qr').innerHTML=qr.createImgTag(5,8);
           link(r.explorer,'read the balance off the explorer instead'):''));
     }
 
-    /* 3 · the treasury, at the address printed above this section. */
+    /* 3 · the treasury, at the address printed above this section — two assets, two figures.
+       They are rendered apart, in their own units, at their own addresses, and nothing here
+       combines them: the page carries no exchange rate, so a total would be the one number on
+       it a reader could not re-derive, and the one most likely to be read as everything. */
     if(typeof v.lamports==='number'){
       set('fVault',v.sol,'SOL at the address above, on '+esc(v.cluster||'?'));
-      $('fVaultWhy').innerHTML='Exactly what that address holds right now: '+num(v.lamports)+
+      $('fVaultWhy').innerHTML='Exactly what that address holds in SOL right now: '+num(v.lamports)+
         ' lamports, nothing rounded and nothing added. '+
-        (v.lamports===0?'It is empty, and this page will keep saying so until it is not. ':'')+
-        link(v.explorer||AUDIT,'audit it yourself');
+        (v.lamports===0?'No SOL yet, and this page will keep saying so until there is. ':'')+
+        link(v.explorer||audit(shown),'audit the SOL yourself');
     }else{
       lost('fVault','SOL at the address above','fVaultWhy',
         esc(v.error||'this server did not report a treasury balance')+'. '+
-        link(v.explorer||AUDIT,'read it off the explorer instead'));
+        link(v.explorer||audit(shown),'read it off the explorer instead'));
+    }
+
+    /* The dollars, in their own account: the token account this address owns, which the first
+       transfer is what creates. So "no account" is a true zero and prints as one. A failure is
+       not — it says so, because a zero shown to somebody who has just sent money reads as "it
+       never arrived", and that is the exact reading this panel exists to make impossible. */
+    var u=v.usdc||{};
+    if(typeof u.micro==='number'){
+      set('fVaultUsdc',u.amount,'USDC at the address above, on '+esc(v.cluster||'?'));
+      $('fVaultUsdcWhy').innerHTML='Exactly what that address holds in USDC right now: '+num(u.micro)+
+        ' base units at '+esc(u.decimals)+' decimals, nothing rounded and nothing added. '+
+        (u.micro===0?'No USDC yet \u2014 a wallet creates this token account with the first transfer, '+
+          'so until someone sends there is nothing on chain to hold any. ':'')+
+        'Read from the token account this address owns for '+
+        (u.mint_explorer?link(u.mint_explorer,'Circle\u2019s USDC mint'):'Circle\u2019s USDC mint')+
+        ' <span class="mono">'+esc(u.mint||'')+'</span>'+
+        (u.account?', which is<br><span class="mono">'+esc(u.account)+'</span> ':'. ')+
+        (u.explorer?'\u00b7 '+link(u.explorer,'audit the USDC yourself'):'');
+    }else{
+      lost('fVaultUsdc','USDC at the address above','fVaultUsdcWhy',
+        esc(u.error||'this server did not report a USDC balance')+'. '+
+        (u.explorer?link(u.explorer,'read the token account off the explorer instead')
+                   :link(audit(shown),'audit the address yourself')));
     }
 
     /* 4 · what has actually been written down. */
@@ -2591,16 +2700,22 @@ document.getElementById('qr').innerHTML=qr.createImgTag(5,8);
          'It would rather say that than leave an old number on screen.');
     lost('fRelay','SOL in the fee relay','fRelayWhy','No reading — the server did not answer.');
     lost('fVault','SOL at the address above','fVaultWhy',
-         'No reading \u2014 the server did not answer. '+link(AUDIT,'audit the address yourself'));
+         'No reading \u2014 the server did not answer. '+link(audit(shown),'audit the address yourself'));
+    lost('fVaultUsdc','USDC at the address above','fVaultUsdcWhy',
+         'No reading \u2014 the server did not answer. The dollars sit in a token account this '+
+         'address owns, which the explorer lists under the address itself.');
     lost('fAnchored','runs anchored by this server');
     $('fAge').textContent='the server did not answer';
+    reconcile('');
   }
 
   function load(){
     $('fAgain').disabled=true;
     var ctl=('AbortController' in window)?new AbortController():null;
-    /* Two balance reads with a five-second server-side patience each, plus the trip. */
-    var bell=setTimeout(function(){if(ctl)ctl.abort()},20000);
+    /* Three balance reads now — the relay's, the treasury's SOL and its USDC — each with a
+       five-second server-side patience, plus the trip. The dollars are only dialled when the
+       treasury's SOL has just answered, so an unreachable chain still costs two, not three. */
+    var bell=setTimeout(function(){if(ctl)ctl.abort()},25000);
     fetch('/api/fuel',{cache:'no-store',signal:ctl?ctl.signal:undefined})
       .then(function(r){if(!r.ok)throw new Error(r.status);return r.json()})
       .then(render)
