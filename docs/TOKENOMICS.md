@@ -119,4 +119,4 @@ flowchart TD
 
 A tradeable "Expert in Cardiology" is credential fraud with extra steps.
 
-Progression tokens in Vitals use Token-2022 **NonTransferable** extensions. They cannot be sold, transferred, or rented. Access to training is open and permissionless. The token secures computation; it never replaces the clinician.
+Progression in Vitals is not a token at all: the program writes a PDA it owns, so there is nothing to sell, transfer or rent. The design that named a token used Token-2022 **NonTransferable** extensions to reach the same end; the built version reaches it by having no token. Access to training is open and permissionless. The token secures computation; it never replaces the clinician.

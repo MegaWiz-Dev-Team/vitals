@@ -8,7 +8,7 @@ The head start is real but it is a head start on the *engine*, not on the chain 
 
 ## Week 1 — the chain skeleton
 
-- [ ] Anchor program scaffold; `CaseAccount` publish/update/deprecate on devnet
+- [ ] Program scaffold; `CaseAccount` publish/update/deprecate on devnet
 - [ ] Commit instruction + PDA, rent-reclaim on reveal
 - [ ] `proof-sdk` skeleton: wallet connect, read registry, gasless relayer (fee payer)
 - [ ] Wire Embla client → commit before encounter starts (behind a feature flag)

@@ -4,11 +4,19 @@
 > we are not shipping "credentials **and also** NFTs". We are shipping one verifiable attempt
 > record, read at three zoom levels.
 
-| Resolution | Artifact | Stakes | Who can mint | Onchain form |
+| Resolution | Artifact | Stakes | Who can write it | Onchain form, as designed |
 |---|---|---|---|---|
 | **Attempt** | anchor leaf | raw evidence | verifier | compressed leaf (Bubblegum) — not an NFT, no wallet clutter |
 | **Progression** | skill-tree / profile / badge | low, continuous | **anyone, permissionlessly** | soulbound Token-2022 + cNFT |
 | **Competency** | credential | high, institutional | accredited issuer | SAS attestation |
+
+> **What of that runs today, before you read any further.** The attempt leaf and the progression
+> record. The leaf goes into a fixed-depth Merkle tree the program keeps itself rather than a
+> Bubblegum tree, so a proof is checkable with nothing but hashes and no indexer; progression is a
+> PDA the program writes rather than a mint. `crates/vitals-program` contains no mint, no token, no
+> cNFT and no Token-2022 — grep it. The last column is the design and the rest of this document
+> elaborates it; the README's architecture table says which primitives are running and which are
+> drawings, and why the built version departs from this one.
 
 ## 1. Why the gamification layer is the strongest onchain piece — not the weakest
 
@@ -31,9 +39,10 @@ pub fn dreyfus(avg: f64, distinct: usize, hard: usize, variance: f64) -> &'stati
 No database lookup, no server opinion, no randomness. `xp_for`, `level_for` and `dreyfus` map a
 list of attempts to a level, and they already have unit tests pinning the thresholds.
 
-That means the predicate can live **inside the Anchor program**. The program is handed merkle
-proofs for a set of anchored attempts, recomputes the level itself, and mints only if the claim
-holds. There is no trusted issuer in the progression layer at all.
+That means the predicate can live **inside the program** — and does. The program is handed merkle
+proofs for a set of anchored attempts, recomputes the level itself, and writes the progression
+record only if the claim holds. Nothing is minted; there is no token to mint. There is no trusted
+issuer in the progression layer at all.
 
 The distinction that matters to a judge:
 
@@ -88,11 +97,13 @@ identity object across any front-end built on the registry.
 (from Embla's `GAME_DESIGN.md`). Each is a predicate over anchored attempts. Compressed cNFTs, so
 minting a badge for every student costs effectively nothing and we never have to ration them.
 
-### All of it soulbound — deliberately
+### All of it untransferable — deliberately
 
-Token-2022 **NonTransferable** extension, no exceptions. A tradeable "Expert in Cardiology" badge
-is credential fraud with extra steps, and a marketplace for it would be the single fastest way to
-make this project worthless.
+The design above reached that with the Token-2022 **NonTransferable** extension, no exceptions.
+What is built reaches it more cheaply: progression is a PDA the program owns, so there is no token
+to transfer in the first place. Either way a tradeable "Expert in Cardiology" badge is credential
+fraud with extra steps, and a marketplace for it would be the single fastest way to make this
+project worthless.
 
 Worth saying out loud in the pitch: *we are giving up secondary-market volume on purpose.* Judges
 have seen a hundred teams reach for tradability because it makes the tokenomics slide easier.
@@ -152,10 +163,11 @@ bounty predicates, and require ranked mode. Add as a flag on the predicate, not 
 
 ## 5. Implementation note — floats do not belong in the program
 
-`dreyfus()` takes `f64` (avg, variance). Porting it to an Anchor program means converting to
+`dreyfus()` takes `f64` (avg, variance). Porting it into the program meant converting to
 fixed-point integers: avg in basis points, variance in the same scale, thresholds
-`5000/6500/7500/8500` and `14400`. The Rust engine keeps its `f64` version; the program gets an
-integer twin, and a shared test vector proves the two agree on every threshold boundary.
+`5000/6500/7500/8500` and `14400`. The Rust engine keeps its `f64` version; the program got an
+integer twin — `vitals-progress` — and a shared test vector proves the two agree on every
+threshold boundary.
 
 Do this as a property test against the existing `dreyfus_stages()` unit test, not by eye. Boundary
 disagreement between the two implementations is the most likely silent bug in the whole project,

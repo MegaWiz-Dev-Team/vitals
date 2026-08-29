@@ -1,5 +1,14 @@
 # vitals — Architecture
 
+> **What is running here, and what is a drawing.** This file is the protocol design, and the built
+> system departs from it deliberately in three places a reader should know before the first
+> diagram. Anchoring uses a fixed-depth Merkle tree the program keeps itself, not a Bubblegum
+> tree, so a proof is checkable on a laptop with no indexer and no network. Progression is a PDA
+> the program writes, not a mint — `crates/vitals-program` contains no mint, no token, no cNFT and
+> no Token-2022, and no Anchor either: it is a native `solana-program` entrypoint. The Case
+> Registry, the royalty split and the SAS credential are designed and not built. The README's
+> architecture table carries the same split, primitive by primitive.
+
 ## 1. Trust model (start here)
 
 The question every judge will ask: *what stops a student from writing themselves a passing grade?*
@@ -56,7 +65,7 @@ flowchart TD
     subgraph OnChain ["ON-CHAIN (Solana Program & Accounts)"]
         Tree["Concurrent Merkle Tree<br/><i>(Bubblegum State Compression)</i>"]
         Program["Native Vitals Program<br/><i>(Recomputes Level Predicates)</i>"]
-        Progression["Progression PDA & Mint<br/><i>(Token-2022 NonTransferable)</i>"]
+        Progression["Progression PDA<br/><i>(program-owned record — no token)</i>"]
         Refusal{"Claim vs Arithmetic"}
 
         Leaf -->|Append Leaf| Tree
@@ -76,7 +85,7 @@ flowchart TD
 
 ## 3. Onchain accounts
 
-### Case Registry (Anchor program)
+### Case Registry (a second Solana program — designed, not built)
 
 ```mermaid
 classDiagram
@@ -130,11 +139,11 @@ classDiagram
 
 #### Attempt Anchor (`CommitAccount` & `RevealTree`)
 - **PDA**: `["commit", case_pubkey, student_pubkey, nonce]` (Closed upon reveal to reclaim rent).
-- **RevealTree**: Metaplex Bubblegum concurrent Merkle tree. Costs ~$110 per 1M compressed attempt writes.
+- **RevealTree**: designed as a Metaplex Bubblegum concurrent Merkle tree, ~$110 per 1M compressed attempt writes. Built as a fixed-depth tree the program keeps itself, so a proof needs no indexer.
 
 #### Progression Layer (`ProgressionAccount` & `SkillTreeAccount`)
 - **PDA**: `["prog", student_pubkey]` & `["skill", student_pubkey, specialty_id]`
-- **Soulbound Mint**: Token-2022 with `NonTransferable` extension.
+- **No mint**: the design named a Token-2022 `NonTransferable` mint. The built version has no token at all — the PDA above is the record, so there is nothing to transfer.
 - **Self-Grading Rejection**: `claim_progress` recomputes the level predicate directly from Merkle proofs inside the Solana program runtime.
 
 ---

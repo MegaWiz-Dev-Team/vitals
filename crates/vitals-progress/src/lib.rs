@@ -10,8 +10,9 @@
 //! that float and integer arithmetic are most likely to disagree on. **A silent disagreement here
 //! denies a student a level they earned**, which is the worst failure this project has.
 //!
-//! `no_std` and allocation-free: it compiles unchanged into the Anchor program, the verifier, and
-//! the wasm on the public verify page.
+//! `no_std` and allocation-free: it compiles unchanged into the Solana program (a native
+//! `solana-program` entrypoint — there is no Anchor in this workspace), the verifier, and the wasm
+//! on the public verify page.
 
 // No unsafe, enforced rather than observed. Nothing in scoring and the Merkle tree needs it, and in a codebase whose
 // product is verifiability, "the compiler checked every memory access" should be a property a

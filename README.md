@@ -86,7 +86,7 @@ the argument, but a reader who greps this repository for them should meet this s
 | **Attempt Anchor** | Commit–reveal per attempt: pre-commit before the encounter, hash of `(transcript, rubric result, engine version, model id)` after. Nothing personal onchain — hashes only. | `Commit` · `AnchorReplay` · `ProveAttempt`, over a fixed-depth incremental Merkle tree the program keeps itself | **shipped** |
 | **Progression** | XP, levels, Dreyfus skill trees and badges — granted **permissionlessly**, because the program recomputes the predicate from anchored attempts instead of trusting a server, and rejects a claim its own arithmetic disagrees with. | `ClaimProgress`, written to a PDA per account and specialty. Not a token: nothing here is transferable, so there is nothing to sell | **shipped** |
 | *(off-chain)* **Verifier** | Re-runs the deterministic rubric over a revealed transcript and confirms it reproduces the anchored score. | `vitals-replay` (Rust), and the same arithmetic compiled to wasm on the verify page | **shipped** |
-| **Case Registry** | Authors publish cases; content stays off-chain, only `case_id + content_hash + rubric_hash + price + royalty split` goes onchain. Any front-end can read it. | Anchor program + Token-2022 | designed, not built |
+| **Case Registry** | Authors publish cases; content stays off-chain, only `case_id + content_hash + rubric_hash + price + royalty split` goes onchain. Any front-end can read it. | a second Solana program + Token-2022 | designed, not built |
 | **Competency Credential** | Clear N attempts above threshold → an accredited issuer attests "OSCE-Cardio-L2" to the student's wallet. Reusable across apps without exposing the underlying data. | [Solana Attestation Service](https://solana.com/news/solana-attestation-service) | designed, not built |
 
 Two primitives are named here that this repository deliberately does *not* use. Production-scale
@@ -125,7 +125,7 @@ The novelty is **exam integrity as a mechanism**, not storage:
   n-of-m verifier quorum.
 - **Progression is computed, not granted.** Embla's `xp_for`, `level_for` and `dreyfus` are pure
   functions over attempt history with unit-tested thresholds. An integer twin of them runs *inside
-  the Anchor program*: `claim_progress` takes merkle proofs, the program recomputes the level, and
+  the program itself*: `claim_progress` takes merkle proofs, the program recomputes the level, and
   writes the record only if its own arithmetic agrees. Every other achievement NFT is minted
   because a server said so — ours is not minted at all: it is a PDA the program declines to write
   when the maths disagrees, and there is nothing to transfer. See [docs/GAMIFICATION.md](docs/GAMIFICATION.md).

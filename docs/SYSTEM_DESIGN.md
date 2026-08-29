@@ -105,7 +105,7 @@ Each layer answers one specific way the thing could be a lie.
 | The score is whatever the vendor says | **Deterministic 40 points.** Re-run the pinned engine over the revealed transcript, get the same bytes | **built** — `vitals-sce`, `vitals-replay` |
 | The judged part is a black box | **Attested, never claimed as re-derivable.** Signers state which model at which version. More signers, more confidence — never proof | **specified** |
 | The learner scores themselves | Scoring runs in a verifier holding the issuer key; high-stakes attempts can require n-of-m | **specified** |
-| Progression granted by a friendly server | The program recomputes the predicate from merkle proofs and mints only if its own arithmetic agrees | **built** |
+| Progression granted by a friendly server | The program recomputes the predicate from merkle proofs and writes the progression record only if its own arithmetic agrees. Nothing is minted — the record is a PDA and there is no token | **built** |
 | A different keyboard, a different hash | Learner input canonicalised | **built** — `f6d6458` |
 | Replay re-interprets an ambiguous order | What the order resolved to is recorded, not re-derived | **built** — `eb65f2b` |
 | Two implementations quietly diverge | Conformance vectors bind them; neither depends on the other | **built** — `conformance/` |
