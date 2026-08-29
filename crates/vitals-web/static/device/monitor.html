@@ -121,6 +121,17 @@ let live = false;
 const rhythm   = () => (V.rhythm || 'sinus').toLowerCase();
 const hasPulse = () => V.pulse !== false;
 
+// ── the clock this pane counts ─────────────────────────────────────────────────
+// The scenario clock, in seconds, exactly as `pump.html` reads it off the same feed: *the pump's
+// clock is the scenario's clock, not the browser's*. Everything on this screen that measures a
+// duration measures it on this one, so the bedside and the bay cannot end up narrating the same
+// station at two different speeds.
+//
+// `null` when the feed carries no scenario clock, and every reader below has to handle that
+// rather than fall back to `Date.now()` — falling back is precisely the bug this replaced.
+const caseClock = () => (V && Number.isFinite(V.t_sec) ? V.t_sec : null);
+const mmss = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+
 // What the rhythm is called on the strip, and whether it is the kind you shock.
 const RHYTHM_LABEL = {
   sinus:'SINUS', vf:'VF', vt:'VT', pea:'PEA', asystole:'ASYSTOLE',
@@ -329,7 +340,22 @@ lim('#n-nibp', `${LIM.sbp[0]}–${LIM.sbp[1]}`);
 lim('#n-rr',   `${LIM.rr[0]}–${LIM.rr[1]}`);
 
 // NIBP is intermittent on a real monitor — it shows the last cuff reading and how long ago it
-// was taken, not a live number. Faking it as continuous is a tell.
+// was taken, not a live number. Faking it as continuous is a tell. It stays a snapshot here; what
+// changed is the clock the snapshot is dated on.
+//
+// The cuff used to re-cycle on `Date.now() - nibpAt > 180000` — three minutes of *wall* time —
+// while the case runs several times faster than the wall. An eight-minute station therefore
+// almost never re-cycled it: at the moment the bay's own strip read 58/38, this pane was still
+// printing 92/60, the pressure the patient walked in with, with "· 24 s ago" underneath it
+// counting a different clock from the 0:56 at the top of the same screen. Two panels on one
+// screen disagreeing about the blood pressure by 34 mmHg is the same failure `reading.rs` was
+// written to close, one number along.
+//
+// So the cycle is three minutes of the *case's* clock, and the age is in the case's seconds.
+// Pause the station and the reading stops ageing, which is what pausing a station ought to mean.
+// `nibpAt` is a scenario second, or `null` for a reading taken when no scenario clock was on the
+// feed — see `paint`, which prints no age it cannot measure.
+const CUFF_CYCLE_SEC = 180;
 let nibpAt = null, nibpVal = null;
 function paint(){
   const set = (id, txt, alarm, off) => {
@@ -348,8 +374,14 @@ function paint(){
     $('#s-nibp').textContent = 'no reading';
   } else if (nibpVal){
     set('#n-nibp', `${Math.round(nibpVal[0])}/${Math.round(nibpVal[1])}`, out(nibpVal[0], LIM.sbp), false);
-    const ago = Math.round((Date.now() - nibpAt)/1000);
-    $('#s-nibp').textContent = `mmHg · ${ago < 60 ? ago + ' s' : Math.round(ago/60) + ' min'} ago`;
+    // Scenario seconds, both ends. A cuff with no clock to date its reading against says nothing
+    // rather than something wrong: an undated snapshot is honest, and "24 s ago" measured on a
+    // clock the rest of the station is not being run on is not.
+    const now = caseClock();
+    const ago = now == null || nibpAt == null ? null : Math.max(0, Math.round(now - nibpAt));
+    $('#s-nibp').textContent = ago == null
+      ? 'mmHg'
+      : `mmHg · ${ago < 60 ? ago + ' s' : Math.round(ago / 60) + ' min'} ago`;
   } else { set('#n-nibp', '--', false, true); }
 
   $('#r-lab').textContent = live ? (RHYTHM_LABEL[rhythm()] || rhythm().toUpperCase()) : '';
@@ -365,7 +397,14 @@ function paint(){
     : arrest ? `⚠ ${RHYTHM_LABEL[rhythm()] || 'ARREST'} — ${V.shockable ? 'SHOCKABLE' : 'NO PULSE · NOT SHOCKABLE'}`
     : (alarms ? `⚠ ${alarms} ALARM` : 'MONITORING');
 }
-setInterval(() => { $('#clock').textContent = new Date().toLocaleTimeString('en-GB'); }, 1000);
+// Time of day is genuinely a wall clock on a bedside unit and stays one. The case clock goes
+// beside it, because a pane that dates a reading in scenario seconds has to show what it is
+// counting — and because this is the same number the bay prints, so the two screens now say 0:56
+// together instead of each keeping its own time.
+setInterval(() => {
+  const t = caseClock();
+  $('#clock').textContent = new Date().toLocaleTimeString('en-GB') + (t == null ? '' : ` · ${mmss(t)}`);
+}, 1000);
 
 // ── feed ───────────────────────────────────────────────────────────────────────
 async function poll(){
@@ -374,13 +413,21 @@ async function poll(){
     const d = await r.json();
     if (d && d.hr != null){
       V = d; live = true;
-      // take a "cuff reading" on first sight and then every 3 minutes, like an ER cycle.
-      // A cuff cycled on a pulseless patient produces no reading at all, so the feed sends null
-      // and nothing is cached — otherwise the arrest's nulls would be stored and then printed as
-      // "0/0" for three minutes after the rhythm came back, which is a wrong number and not a
-      // missing one.
+      // take a "cuff reading" on first sight and then every 3 minutes of the CASE's clock, like
+      // an ER cycle. A cuff cycled on a pulseless patient produces no reading at all, so the feed
+      // sends null and nothing is cached — otherwise the arrest's nulls would be stored and then
+      // printed as "0/0" for three minutes after the rhythm came back, which is a wrong number
+      // and not a missing one.
       const cuffable = d.sbp != null && d.dbp != null;
-      if (cuffable && (!nibpAt || Date.now() - nibpAt > 180000)){ nibpVal = [d.sbp, d.dbp]; nibpAt = Date.now(); }
+      const now = caseClock();
+      // Three conditions, in the order they can happen: nothing has ever been read; the case
+      // clock went backwards, which means this is a different run in the same bed and the old
+      // reading is not this patient's; or the cycle is up. A pane with no case clock takes its
+      // first reading and then waits — it does not re-cycle on a clock nobody else is watching,
+      // and `N` still cycles it by hand.
+      const due = nibpVal == null
+        || (now != null && nibpAt != null && (now < nibpAt || now - nibpAt >= CUFF_CYCLE_SEC));
+      if (cuffable && due){ nibpVal = [d.sbp, d.dbp]; nibpAt = now; }
       $('#pt').textContent = [PT || 'UNIDENTIFIED', d.status || ''].filter(Boolean).join(' · ');
       $('#src').textContent = `feed: ${BASE || location.origin}/device/vitals · sid=${SID} · limits: ${band.label}`;
       $('#net').textContent = '';
@@ -394,7 +441,7 @@ poll(); setInterval(poll, 500);
 addEventListener('keydown', e => {
   if (e.key.toLowerCase() !== 'n' || !live) return;
   // A cuff cycled during an arrest fails to read; it does not read zero.
-  if (V.sbp != null && V.dbp != null){ nibpVal=[V.sbp,V.dbp]; nibpAt=Date.now(); }
+  if (V.sbp != null && V.dbp != null){ nibpVal=[V.sbp,V.dbp]; nibpAt=caseClock(); }
   paint();
 });
 </script>
