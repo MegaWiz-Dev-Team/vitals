@@ -1,11 +1,23 @@
 //! Every number this engine can put on a screen, against the patient it claims to belong to.
 //!
 //! We shipped `58/58` — a systolic equal to its diastolic, on a conscious talking patient — and
-//! nobody noticed until a producer looked at a screenshot. The sweep that followed found 931
-//! impossible readings across eight of the seventeen cases, four of them at zero pulse pressure.
-//! The commit titled *"a pressure of 58/58 is not a low one, it is not a pressure"* fixed that
-//! one. This file is the net for the next one, and it is built on the
-//! principle that made the first one so expensive: a clinician who sees one impossible number
+//! nobody noticed until a producer looked at a screenshot. The sweep that followed found two
+//! different things, and reporting them as one number overstates the serious half more than
+//! threefold:
+//!
+//!   * **308 readings with no pulse pressure at all**, across **five** of the seventeen cases —
+//!     `ep1`, `ep2`, `ep4`, `ep5`, `osce-a`. Every one of the 308 was exactly zero, not merely
+//!     narrow. That is the impossible count, and it is the one that matters.
+//!   * **981 readings outside the plausible band**, across **seven** cases — those five plus
+//!     `osce-d` and `osce-d3`. It is the 308 above plus 673 more that were narrower than 10 mmHg,
+//!     which is implausible for this shelf rather than impossible for a body.
+//!
+//! The commit titled *"a pressure of 58/58 is not a low one, it is not a pressure"* fixed the
+//! cause. Both figures are this file's own output rather than a recollection of it, and they are
+//! re-measurable: check that commit's parent out into a worktree, drop this file in, and run it.
+//!
+//! This file is the net for the next one, and it is built on the principle that made the first one
+//! so expensive: a clinician who sees one impossible number
 //! stops believing every number, so an impossible number must never be something a human has to
 //! spot.
 //!
