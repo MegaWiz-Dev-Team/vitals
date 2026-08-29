@@ -9,8 +9,15 @@
 use std::time::Duration;
 use vitals_web::store::{self, Class, Store};
 
+/// A state directory nobody else is using.
+///
+/// The pid is the point. This was a fixed `vitals-dur-{name}`, so two `cargo test` runs against
+/// one checkout — a gate and a developer, or two agents — shared these directories and each
+/// `remove_dir_all`'d the other's mid-write. The suite then failed for a reason that had nothing
+/// to do with the change being gated, which is the one thing a gate must never do. Every other
+/// harness in this repo already carries `process::id()`; this one now does too.
 fn tmp(name: &str) -> std::path::PathBuf {
-    let p = std::env::temp_dir().join(format!("vitals-dur-{name}"));
+    let p = std::env::temp_dir().join(format!("vitals-dur-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
     p
 }

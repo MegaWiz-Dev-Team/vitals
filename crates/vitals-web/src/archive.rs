@@ -192,7 +192,9 @@ mod tests {
         // The failure this guards: an archive entry copied under a hash that is not its own.
         // Serving it would hand a verifier bytes that re-derive a different leaf, and the
         // verifier would conclude the chain was wrong rather than the archive.
-        let tmp = std::env::temp_dir().join("vitals-archive-liar");
+        // Per-process: this test writes a fixture and then deletes the directory, so a fixed
+        // path had it wiping the fixture of a concurrent `cargo test` run on the same checkout.
+        let tmp = std::env::temp_dir().join(format!("vitals-archive-liar-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         let lie = "b".repeat(64);

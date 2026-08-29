@@ -221,7 +221,9 @@ mod tests {
     use super::*;
 
     fn store(name: &str) -> Store {
-        let p = std::env::temp_dir().join(format!("vitals-meter-{name}"));
+        // Per-process: a fixed path let a second `cargo test` run against this checkout
+        // delete this one's directory mid-write. See `tests/durability.rs`.
+        let p = std::env::temp_dir().join(format!("vitals-meter-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&p);
         Store::with(crate::store::Backend::Disk { root: p }).unwrap()
     }
