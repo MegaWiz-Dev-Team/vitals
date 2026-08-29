@@ -825,6 +825,8 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
    order that landed, so it wears neither the action rule nor the harm one. */
 .chart .c.action_refused{border-left-color:var(--ink-3)}
 .chart .c.action_refused .c-k,.chart .c.action_refused .c-x{color:var(--ink-3)}
+.chart .c.shock{border-left-color:var(--act)}
+.chart .c.shock .c-k{color:var(--act)}
 .chart .c.harm{border-left-color:var(--warn)}
 .chart .c.harm .c-k,.chart .c.harm .c-x{color:var(--warn)}
 .chart .c.outcome{border-left-color:var(--alarm)}
@@ -2341,6 +2343,10 @@ const SAY={
  "threshold:biphasic":"the reaction comes back","threshold:going_quiet":"{s} goes quiet — that is worse",
  "threshold:stemi_recognised":"the ECG tells the truth","threshold:collapse":"{s} collapses",
  "threshold:code_blue":"the monitor alarms — code blue","threshold:rosc":"a rhythm comes back",
+ /* Written by the engine, not by a case, and identical whatever the shock did — the rhythm it
+    went into and what happened next are on the chart and on the strip. A line that only appeared
+    when the shock was right would be the answer key. */
+ "threshold:shock":"the shock goes in",
  "terminal:WinDischarge":"{s} goes home","terminal:WinIcu":"{s} lives — ICU",
  "terminal:DeathArrest":"{s} dies","terminal:DeathBiphasic":"{s} dies at home",
  /* Not a beat. `render_beat` cannot produce this string and the engine never emits it — the
@@ -3030,7 +3036,11 @@ function paint(v,named){
 /* Orders and events are different kinds of fact and a real chart never runs them together in
    one column of lowercase fragments. The tag says which, and the rule down the left carries it
    at a glance. */
-const KIND={action:'ORDER', action_refused:'REFUSED', equipment:'DEVICE', harm:'HARM', outcome:'OUTCOME'};
+const KIND={action:'ORDER', action_refused:'REFUSED', equipment:'DEVICE', harm:'HARM', outcome:'OUTCOME',
+ /* A shock is not an order in the sense the mark sheet means — `vitals-osce` reads `action`
+    rows as intervention ids — so it carries its own kind all the way to here. On the chart it
+    reads like what it is: a thing that was done, at a second, at an energy. */
+ shock:'SHOCK'};
 function renderChart(v,ended){
   $('#chart').innerHTML = v.chart.length
     ? v.chart.slice(-40).map(c=>

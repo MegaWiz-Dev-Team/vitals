@@ -2201,30 +2201,46 @@ fn main() {
                                 // matcher then rules on. So a translation can add recognition and can
                                 // never redirect an order a case author already spelled out.
                                 let id = resolve_order(&s.state, &act);
-                                // By id, not by text: the id is what the tape carries and what replay
-                                // re-runs, so the run on screen and the run a verifier recomputes are the
-                                // same run even when the words that started it were in another language.
-                                let emitted = if id.is_empty() {
-                                    s.state.apply(&act)
+                                // ── the defibrillator, when the case did not claim the words ──
+                                // Second, never first, so the rule above holds for it too: a
+                                // station that defines its own shock intervention keeps it. Only
+                                // when the scenario has declined does the order reach the
+                                // physiology — which is what makes typing "shock" on `ep4` chart
+                                // the same thing that pressing the button on `ep4` charts, on a
+                                // case whose author never wrote the word.
+                                if let Some(j) = id.is_empty().then(|| shock_order(&act)).flatten() {
+                                    let (_, emitted) = s.state.defibrillate(j);
+                                    s.beats.extend(emitted.iter().map(render_beat));
+                                    // The joules, not the phrase. Recognition happened here,
+                                    // once, exactly as it does for `Step::Act`.
+                                    s.tape.push(Step::Shock(j));
                                 } else {
-                                    s.state.apply_id(&id)
-                                };
-                                s.beats.extend(emitted.iter().map(render_beat));
-                                s.tape.push(Step::acted(&act, &id));
-                                // The picture the order asked for, if this station has one. It hangs
-                                // off the id the tape already carries and goes nowhere near it — the
-                                // line above is the whole of what replay will ever see.
-                                if let Some(f) = film_for(&s.ep, &id) {
-                                    if !s.films.iter().any(|x| x.file == f.file) {
-                                        s.films.push(f);
+                                    // By id, not by text: the id is what the tape carries and what
+                                    // replay re-runs, so the run on screen and the run a verifier
+                                    // recomputes are the same run even when the words that started
+                                    // it were in another language.
+                                    let emitted = if id.is_empty() {
+                                        s.state.apply(&act)
+                                    } else {
+                                        s.state.apply_id(&id)
+                                    };
+                                    s.beats.extend(emitted.iter().map(render_beat));
+                                    s.tape.push(Step::acted(&act, &id));
+                                    // The picture the order asked for, if this station has one. It
+                                    // hangs off the id the tape already carries and goes nowhere
+                                    // near it — the line above is the whole of what replay sees.
+                                    if let Some(f) = film_for(&s.ep, &id) {
+                                        if !s.films.iter().any(|x| x.file == f.file) {
+                                            s.films.push(f);
+                                        }
                                     }
                                 }
-                        }
-                        if let Some(dt) = param(&url, "tick").and_then(|v| v.parse::<f64>().ok()) {
-                            let emitted = s.state.tick(dt);
-                            s.beats.extend(emitted.iter().map(render_beat));
-                            s.tape.push(Step::Tick(dt));
-                        }
+                            }
+                            if let Some(dt) = param(&url, "tick").and_then(|v| v.parse::<f64>().ok()) {
+                                let emitted = s.state.tick(dt);
+                                s.beats.extend(emitted.iter().map(render_beat));
+                                s.tape.push(Step::Tick(dt));
+                            }
                         }
                         // ── the announced time limit, actually ringing the bell ─────────────
                         // The tick that carries the clock past what the card advertises is the
@@ -2299,6 +2315,24 @@ fn main() {
                         if was_over {
                             // Time has been called. Nothing more goes on the patient, and
                             // nothing more goes on the tape.
+                        } else if dev == "defib" {
+                            // ── not a device, and never was ──────────────────────────────
+                            // It attaches nothing, it has no `off`, and what it does depends on
+                            // a rhythm rather than on a catalogue. Everything below this line
+                            // asks the equipment list what is already on the patient, and for a
+                            // defibrillator every one of those answers is meaningless.
+                            //
+                            // The phrase is still minted, and then read back by the same
+                            // recogniser a typed order goes through — so the button cannot drift
+                            // away from the words. `kit_phrase("defib", Some(200))` is
+                            // "defibrillate 200 j", and typing that produces this identical step.
+                            let j = kit_phrase(&dev, set)
+                                .as_deref()
+                                .and_then(shock_order)
+                                .unwrap_or(DEFIB_JOULES);
+                            let (_, emitted) = s.state.defibrillate(j);
+                            s.beats.extend(emitted.iter().map(render_beat));
+                            s.tape.push(Step::Shock(j));
                         } else if off {
                             s.state.detach(&dev);
                             s.tape.push(Step::Off(dev.clone()));
@@ -3491,9 +3525,85 @@ fn kit_phrase(dev: &str, set: Option<f64>) -> Option<String> {
         "iv" => format!("iv access normal saline {} ml/hr", set.unwrap_or(999.0) as i64),
         "ett" => "intubate, secure the airway".to_string(),
         "supine" => "lay her flat, legs up".to_string(),
-        "defib" => format!("defibrillate {} j", set.unwrap_or(200.0) as i64),
+        "defib" => format!("defibrillate {} j", set.unwrap_or(DEFIB_JOULES) as i64),
         _ => return None,
     })
+}
+
+// ── the defibrillator ───────────────────────────────────────────────────────
+//
+// The one order on the tray that is not an order. Everything else in `kit_phrase` is a sentence
+// the *scenario* rules on: the case says what oxygen does to this patient, and a case that never
+// mentions oxygen is entitled to ignore it. Shockability is not like that. Whether a rhythm can
+// be shocked is physiology — `Rhythm::shockable` — and routing it through each case's own
+// `interventions` list is how the shelf ended up where it was: `ep2` branched on the *name of a
+// state*, and `ep3`, `ep4` and `ep5` declared no `defibrillate` at all, so pressing the button on
+// a five-year-old in cardiac arrest charted nothing, scored nothing and appeared in no debrief.
+//
+// So the button and the typed order both end at `SceState::defibrillate`, and both write the
+// same `Step::Shock` on the tape. What is deliberately *not* changed is who answers first: the
+// scenario's matcher still rules on the text, and only when it declines does the engine's own route open.
+// A station that defines its own shock intervention keeps it, unchanged, and every rubric in the
+// repo scores exactly as it did.
+
+/// What the defibrillator delivers when nobody said. The page's own default preset.
+const DEFIB_JOULES: f64 = 200.0;
+
+/// Words that mean "deliver a shock", and the ones that mean the *other* kind of shock.
+///
+/// Shaped like a scenario `Matcher` because that is the shape this repo already argues about:
+/// `any_kw` plus `not_kw`. The exclusions are the whole reason it is not a bare substring test —
+/// "cardiogenic shock", "septic shock", "she is in shock" and "shock index" are all things a
+/// candidate types on a station where nobody wants 200 joules delivered, and on `ep5`, whose
+/// patient is exsanguinating, they are things a candidate types *often*.
+///
+/// The keywords are `ep2`'s own, taken off the intervention this replaced, so a learner who
+/// reached the old one reaches this.
+const SHOCK_KW: [&str; 5] = ["defib", "shock", "cardiovert", "joule", "200j"];
+const NOT_SHOCK_KW: [&str; 11] = [
+    "cardiogenic", "septic", "hypovol", "haemorrhagic", "hemorrhagic", "distributive",
+    "neurogenic", "spinal shock", "obstructive shock", "shock index", "in shock",
+];
+
+/// Does this text name a defibrillator?
+fn names_a_shock(text: &str) -> bool {
+    let t = vitals_sce::text::canon(text).to_lowercase();
+    SHOCK_KW.iter().any(|k| t.contains(k)) && !NOT_SHOCK_KW.iter().any(|k| t.contains(k))
+}
+
+/// The energy an order asks for, in joules, if it names one a defibrillator could deliver.
+///
+/// Read off the text the learner actually typed rather than off the language layer's canonical
+/// English, so "ช็อกไฟฟ้า 360" keeps its 360 — `lang::canonical_order` answers *whether* a phrase
+/// is a shock, and would flatten every one of them to the same headword.
+fn joules_in(text: &str) -> Option<f64> {
+    let t = vitals_sce::text::canon(text);
+    let mut best = None;
+    let mut n = String::new();
+    for c in t.chars().chain(std::iter::once(' ')) {
+        if c.is_ascii_digit() {
+            n.push(c);
+            continue;
+        }
+        if !n.is_empty() {
+            // A defibrillator's dial: nothing outside this is an energy, so a year, a bed
+            // number or a saturation cannot be read as one.
+            if let Ok(v) = n.parse::<f64>() {
+                if (1.0..=1000.0).contains(&v) && best.is_none() {
+                    best = Some(v);
+                }
+            }
+            n.clear();
+        }
+    }
+    best
+}
+
+/// The shock an order asks for, if it is one — through the language layer, like every order.
+fn shock_order(act: &str) -> Option<f64> {
+    let named = names_a_shock(act)
+        || lang::canonical_order(act).is_some_and(names_a_shock);
+    named.then(|| joules_in(act).unwrap_or(DEFIB_JOULES))
 }
 
 #[cfg(test)]

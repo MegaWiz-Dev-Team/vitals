@@ -185,6 +185,12 @@ const BEATS: &[Line] = &[
     Line { key: "terminal:WinIcu", tr: &[("th", "ผู้ป่วยรอด — ย้ายเข้า ICU")] },
     Line { key: "terminal:DeathArrest", tr: &[("th", "ผู้ป่วยเสียชีวิต")] },
     Line { key: "terminal:DeathBiphasic", tr: &[("th", "ผู้ป่วยเสียชีวิตที่บ้านจากการแพ้ระลอกสอง")] },
+    // The defibrillator's own beat, and the only one the engine writes for an order rather than
+    // for the passage of time. Deliberately says nothing about whether the shock worked: it is
+    // emitted before the rhythm is consulted, identically for a shock into VF and a shock into
+    // asystole, because a feed that is one line shorter after the wrong answer is the answer key
+    // (`conformance/README.md`).
+    Line { key: "threshold:shock", tr: &[("th", "ปล่อยกระแสไฟฟ้าแล้ว")] },
     // EP1 — conformance/sce-anaphylaxis-ep1.json. Its whole scripted surface: one threshold beat
     // and the two harms. The patient's *words* in EP1 do not come through here at all — she is
     // played by a model, and the model is told which language to speak in (`patient.rs`).
@@ -1751,6 +1757,26 @@ mod tests {
         let en = default_language();
         assert!(reply_is_in(en, "I can't breathe."));
         assert!(reply_is_in(en, "หายใจไม่ออกเลยค่ะ"));
+    }
+
+    /// The runtime's own vocabulary — the beats no scenario file declares and
+    /// `every_scripted_beat_of_every_case_has_a_thai_line` therefore cannot see.
+    ///
+    /// `threshold:shock` is the one that made this worth asserting: it is written by
+    /// `SceState::defibrillate` rather than by a case, so it appears in no scenario file and
+    /// would have shipped in English to every Thai candidate who pressed the button.
+    #[test]
+    fn the_beats_the_engine_writes_itself_are_translated_too() {
+        let th = language(Some("th"));
+        for key in [
+            "threshold:shock",
+            "status:Arrest",
+            "status:Critical",
+            "terminal:DeathArrest",
+            "terminal:WinDischarge",
+        ] {
+            assert!(beat(th, key).is_some(), "no Thai for the engine's own {key:?}");
+        }
     }
 
     /// A beat key is a *rendered beat*, not a free-form label. Anything else silently never
