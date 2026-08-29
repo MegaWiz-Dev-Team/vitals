@@ -17,7 +17,7 @@ Vitals is two things that turn out to be the same thing:
   rather than an arbitrary timer. No medical vocabulary required to feel the stakes.
 - **A protocol.** Any run can be anchored on Solana as a replayable action trace — anchoring is
   opt-in, one press — and once it is, the outcome can be re-derived by anyone, forever, without us.
-  Progression is minted because the chain recomputed the predicate — not because a server said so.
+  Progression is granted because the chain recomputed the predicate — not because a server said so.
 
 The same replay serves a curious teenager on a leaderboard and a medical graduate who
 needs to prove competence to a residency programme in another country.
@@ -126,8 +126,9 @@ The novelty is **exam integrity as a mechanism**, not storage:
 - **Progression is computed, not granted.** Embla's `xp_for`, `level_for` and `dreyfus` are pure
   functions over attempt history with unit-tested thresholds. An integer twin of them runs *inside
   the Anchor program*: `claim_progress` takes merkle proofs, the program recomputes the level, and
-  mints only if its own arithmetic agrees. Every other achievement NFT is minted because a server
-  said so — ours because the chain checked. See [docs/GAMIFICATION.md](docs/GAMIFICATION.md).
+  writes the record only if its own arithmetic agrees. Every other achievement NFT is minted
+  because a server said so — ours is not minted at all: it is a PDA the program declines to write
+  when the maths disagrees, and there is nothing to transfer. See [docs/GAMIFICATION.md](docs/GAMIFICATION.md).
 - **The hash chain already exists.** `embla-engine` ships a hash-chained append-only audit log
   (`engine/src/audit.rs`) with a canonical hash recipe cross-validated between its Rust and
   Python implementations. Today it is tamper-evident *to whoever holds the log*. Anchoring the
@@ -156,8 +157,12 @@ is the pre-encounter commitment, which works whether or not the candidate has re
 Not decoration — the numbers only close on this chain:
 
 - **Volume.** ~25k Thai medical students × ~200 cases = millions of attempt anchors per year,
-  and that is one country. Per-write cost has to be ~$0.0001 or the model is dead.
-  Solana state compression mints ~1M compressed records for roughly **$110** total.
+  and that is one country. Per-write cost has to be ~$0.0001 or the model is dead, and Solana
+  state compression writes ~1M compressed records for roughly **$110** — about that figure.
+  This demo does not reach it: it anchors through the program's own Merkle tree at 3 transactions
+  a run, **30,000 lamports** — which is $0.0001 only if SOL is worth about three dollars. That is
+  the gap the table above calls "production-scale anchoring belongs on Bubblegum", stated as a
+  number rather than as a preference.
 - **Micropayments.** Case authors earn ฿0.5–2 per attempt. Card rails eat that whole amount in
   fees; Solana settles it with change left over. This is what makes an open case marketplace
   possible at all.
