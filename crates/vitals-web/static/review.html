@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>ตรวจ Vitals</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+  :root{
+    --paper:#F6F9F9; --card:#FFFFFF; --ink:#0E1D22; --dim:#5A6E73; --line:#DCE6E7;
+    --accent:#0F7A6D; --accent-soft:#E4F2EF; --flag:#A8413A; --flag-soft:#F7E9E7;
+    --mark:#8A5B12; --mark-soft:#FBF1DF;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --paper:#0C1719; --card:#132225; --ink:#E6EFEF; --dim:#93A8AC; --line:#22383C;
+    --accent:#4ECFB8; --accent-soft:#14312E; --flag:#E8837A; --flag-soft:#341F1D;
+    --mark:#E0B15F; --mark-soft:#2E2415;
+  }}
+  :root[data-theme="dark"]{
+    --paper:#0C1719; --card:#132225; --ink:#E6EFEF; --dim:#93A8AC; --line:#22383C;
+    --accent:#4ECFB8; --accent-soft:#14312E; --flag:#E8837A; --flag-soft:#341F1D;
+    --mark:#E0B15F; --mark-soft:#2E2415;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font-family:"IBM Plex Sans Thai","Helvetica Neue",sans-serif;font-size:17px;line-height:1.7;
+    -webkit-text-size-adjust:100%}
+  .wrap{max-width:44rem;margin:0 auto;padding:30px 18px 140px;display:flex;flex-direction:column;gap:26px}
+  .mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.92em}
+  h1{font-size:clamp(26px,6.4vw,34px);margin:0;font-weight:700;letter-spacing:-.01em;text-wrap:balance}
+  h2{font-size:19px;margin:0;font-weight:600}
+  p{margin:0}
+  .eyebrow{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:600}
+  .sub{font-size:14.5px;color:var(--dim)}
+  section{display:flex;flex-direction:column;gap:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .note{background:var(--accent-soft);border-radius:14px;padding:16px 18px}
+  .warn{background:var(--flag-soft);border-left:3px solid var(--flag);border-radius:0 12px 12px 0;padding:16px 18px}
+  .warn strong{color:var(--flag)}
+
+  .roles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .roles button{font:inherit;font-weight:600;cursor:pointer;padding:16px 12px;border-radius:13px;
+    border:1.5px solid var(--line);background:var(--card);color:var(--ink);text-align:left;line-height:1.4}
+  .roles button small{display:block;font-weight:400;font-size:13.5px;color:var(--dim);margin-top:3px}
+  .roles button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+  .roles button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  label{display:flex;flex-direction:column;gap:7px}
+  .qlabel{font-weight:600;display:flex;gap:9px;align-items:flex-start}
+  .qn{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--accent);flex:none;padding-top:3px;min-width:1.7em}
+  textarea,input[type=text]{font:inherit;width:100%;background:var(--paper);color:var(--ink);
+    border:1px solid var(--line);border-radius:11px;padding:11px 13px;resize:vertical}
+  textarea{min-height:76px}
+  textarea:focus,input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+  .group{display:flex;flex-direction:column;gap:18px}
+  .cb{flex-direction:row;align-items:flex-start;gap:10px}
+  .cb input{margin-top:6px;width:19px;height:19px;accent-color:var(--accent);flex:none}
+
+  .bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);
+    padding:12px 18px calc(12px + env(safe-area-inset-bottom));display:flex;gap:12px;align-items:center;
+    justify-content:space-between}
+  .bar .state{font-size:13.5px;color:var(--dim)}
+  .bar button{font:inherit;font-weight:600;font-size:17px;cursor:pointer;border:0;border-radius:11px;
+    padding:13px 22px;background:var(--accent);color:var(--paper)}
+  .bar button[disabled]{opacity:.45;cursor:default}
+  .done{background:var(--accent-soft);border-radius:14px;padding:22px 18px;text-align:center}
+  [hidden]{display:none !important}
+  a{color:var(--accent)}
+
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .row button{font:inherit;font-weight:600;font-size:16px;cursor:pointer;border-radius:11px;padding:12px 20px}
+  .row .go{border:0;background:var(--accent);color:var(--paper)}
+  .row .ghost{border:1.5px solid var(--line);background:var(--card);color:var(--ink)}
+  .row button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .linky{font:inherit;font-size:14.5px;background:0;border:0;padding:0;color:var(--accent);
+    cursor:pointer;text-decoration:underline;text-underline-offset:3px;align-self:flex-start}
+  #blob{min-height:170px;font-size:13px;line-height:1.55}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header style="display:flex;flex-direction:column;gap:10px">
+    <span class="eyebrow">Vitals · ใบตรวจ</span>
+    <h1 id="title">ตรวจ Vitals</h1>
+    <p class="sub" id="lede">เลือกก่อนว่าคุณตรวจในบทบาทไหน — คำถามจะเปลี่ยนตามบทบาท</p>
+  </header>
+
+  <section id="pick">
+    <div class="roles">
+      <button type="button" id="r-student" aria-pressed="false">
+        นักศึกษาแพทย์
+        <small>ความสมจริง · ความยาก · OSCE จริง</small>
+      </button>
+      <button type="button" id="r-physician" aria-pressed="false">
+        แพทย์
+        <small>ขนาดยา · เกณฑ์คะแนน · รหัสโรค</small>
+      </button>
+    </div>
+  </section>
+
+  <div id="form" hidden>
+
+    <div class="warn" id="scope"></div>
+
+    <section class="card">
+      <div class="group">
+        <label>ชื่อ <span class="sub">(ไม่ใส่ก็ได้ — ความเห็นที่ไม่ลงชื่อก็ยังมีค่า)</span>
+          <input type="text" id="name" autocomplete="name">
+        </label>
+        <label>ช่องทางติดต่อกลับ <span class="sub">(ถ้าอยากให้เราถามต่อได้)</span>
+          <input type="text" id="contact" autocomplete="off">
+        </label>
+        <label class="cb" id="anonwrap" hidden>
+          <input type="checkbox" id="anonymous">
+          <span>ตรวจให้ แต่<strong>ไม่ประสงค์ให้ระบุชื่อ</strong>ในไฟล์เกณฑ์ให้คะแนน
+            <span class="sub" style="display:block">เราจะใช้คำว่า “ตรวจโดยแพทย์เวชปฏิบัติ” แทน</span></span>
+        </label>
+      </div>
+    </section>
+
+    <section id="questions" class="group" style="margin-top:22px"></section>
+
+    <section class="card" style="margin-top:22px">
+      <label><span class="qlabel">อย่างอื่นที่อยากบอก</span>
+        <span class="sub">ไม่เข้าข้อไหนก็เขียนตรงนี้ — ช่องนี้มักเป็นช่องที่มีประโยชน์ที่สุด</span>
+        <textarea id="notes" style="min-height:120px"></textarea>
+      </label>
+    </section>
+
+    <div class="note" style="margin-top:22px">
+      <p class="sub"><strong>เก็บอะไรบ้าง:</strong> คำตอบ ชื่อและช่องทางติดต่อถ้ากรอก และเวลาที่ส่ง
+        · ไม่เก็บ IP ไม่ติดตามการใช้งาน · ใช้ภายในทีมเพื่อแก้ผลิตภัณฑ์เท่านั้น</p>
+    </div>
+
+    <button type="button" class="linky" id="alt" style="margin-top:16px">หรือคัดลอกคำตอบไปส่งเองทาง LINE</button>
+
+    <!-- Also reached when the send button cannot talk to the server. A reviewer who has just
+         typed for forty minutes must never be told only that it failed. -->
+    <section class="card" id="export" hidden style="margin-top:22px;gap:14px">
+      <h2 id="exhead">ส่งคำตอบกลับเอง</h2>
+      <p class="sub" id="exwhy">คำตอบทั้งหมดอยู่ในกล่องข้างล่าง — คัดลอกแล้ววางส่งกลับมาทาง LINE หรืออีเมลได้เลย</p>
+      <div class="row">
+        <button type="button" class="go" id="copy">คัดลอกคำตอบ</button>
+        <button type="button" class="ghost" id="dl">บันทึกเป็นไฟล์</button>
+      </div>
+      <textarea id="blob" class="mono" readonly aria-label="คำตอบทั้งหมดในรูปแบบ JSON"></textarea>
+      <p class="sub">ถ้าปุ่มบันทึกไฟล์ไม่ทำงาน (บางแอปเปิดหน้าเว็บในตัวเองและกันการดาวน์โหลด)
+        ให้ใช้ปุ่มคัดลอกแทนได้เลย ผลลัพธ์เหมือนกัน</p>
+    </section>
+
+  </div>
+
+  <div id="thanks" class="done" hidden>
+    <h2 style="color:var(--accent)">ส่งแล้ว ขอบคุณมากครับ 🙏</h2>
+    <p class="sub" style="margin-top:8px">ถ้านึกอะไรได้อีก เปิดหน้านี้ส่งเพิ่มได้เลย</p>
+  </div>
+
+</div>
+
+<div class="bar" id="bar" hidden>
+  <span class="state" id="state">บันทึกร่างอัตโนมัติ</span>
+  <button type="button" id="send">ส่ง</button>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var QS = {
+    student: [
+      ["s1","เล่นแล้วรู้สึกเหมือนอยู่เวร ER จริงไหม ตรงไหนที่ “ไม่ใช่” ที่สุด"],
+      ["s2","คนไข้พูดจาเป็นธรรมชาติไหม คนไข้ไทยจริงพูดแบบนี้หรือเปล่า"],
+      ["s3","ค่าสัญญาณชีพเปลี่ยนแบบที่เคยเห็นข้างเตียงไหม"],
+      ["s4","ภาพคนไข้ดูเหมือนคนไข้ไทยใน ER ไทยไหม"],
+      ["s5","ยากไปหรือง่ายไปสำหรับนักศึกษาปี 6"],
+      ["s6","ปี 4–5 เล่นได้ไหม หรือต้องปี 6 ขึ้นไป"],
+      ["s7","เวลาที่ให้เหมาะไหม (ตอนละ 12 นาที · สถานีละ 8 นาที)"],
+      ["s8","สถานีในเกมเหมือน OSCE ที่สอบจริงแค่ไหน ต่างตรงไหน"],
+      ["s9","เกณฑ์ผ่านที่ 70% ตรงกับที่ใช้จริงไหม"],
+      ["s10","เกมให้คะแนนการซักประวัติด้วย — OSCE จริงให้แบบนี้ไหม"],
+      ["s11","อะไรที่ OSCE จริงมี แต่เกมยังไม่มี"],
+      ["s12","หน้า debrief อ่านแล้วเข้าใจไหมว่าตัวเองพลาดอะไร"],
+      ["s13","อ่านแล้วรู้ไหมว่าต้องไปทบทวนเรื่องอะไรต่อ"],
+      ["s14","คำอธิบายสั้น ๆ ที่ให้มามีประโยชน์ไหม หรือรู้อยู่แล้ว"],
+      ["s15","ถ้ามีอันนี้ตอนเรียน จะใช้ไหม ใช้ตอนไหน"],
+      ["s16","ถ้าบอกได้ข้อเดียวว่า “แก้อันนี้ก่อนเลย” จะบอกว่าอะไร"]
+    ],
+    physician: [
+      ["p1","เกณฑ์เวลา adrenaline — ตอนหลักตั้งไว้ 1 นาที สถานีสอบตั้งไว้ 5 นาที ทั้งที่เป็น anaphylaxis เหมือนกัน ควรเป็นเท่าไหร่ทั้งสองที่"],
+      ["p2","เด็กหญิง 6 ขวบ 20 กก. — เกมให้คะแนน 0.01 mg/kg = 0.2 mg IM และหักคะแนนถ้าใช้ขนาดผู้ใหญ่ 0.5 mg (หักแม้เด็กรอด) ตัวเลขถูกไหม การหักคะแนนเหมาะสมไหม"],
+      ["p3","เคสเด็กข้างต้นดัดแปลงจากเคสผู้ใหญ่ชาย 71 ปี — differential, red flags และการตรวจที่ควรสั่ง ยังใช้กับเด็ก 6 ขวบได้ หรือต้องแก้"],
+      ["p4","Dengue — ในคลังใช้ทั้ง A90 (ไข้เดงกี) และ A91 (ไข้เลือดออกเดงกี) กับเคสชื่อเดียวกัน เคสที่มี warning signs ควรเป็นรหัสใด"],
+      ["p5","รหัส ICD ใช้คนละระดับใน 8 โรค (เช่น I26 กับ I26.9) ควรยึดระดับไหนเป็นมาตรฐาน"],
+      ["p6","เกณฑ์ผ่าน 70% เท่ากันทุกสถานี เหมาะไหม ควรต่างตามชั้นปีหรือไม่"],
+      ["p-o2-acs","ออกซิเจนใน ACS — เคส STEMI เริ่มที่ SpO₂ 96% ตอนนี้การให้ออกซิเจนไม่ได้คะแนนและไม่ถูกหักคะแนน (อิง AVOID · DETO2X-AMI) ควรนับเป็น harm ด้วยไหม หรือแค่ไม่ให้คะแนนก็พอ"],
+      ["p-ecg-stemi","ECG ของ STEMI เฉียบพลัน — คลังฟิล์มเรามาจาก PTB-XL ซึ่งส่วนใหญ่เป็น old MI เคส STEMI จึงยังไม่แสดงฟิล์มเลย ยืนยันว่าไม่แสดงดีกว่าเอา old MI มาใช้แทนใช่ไหม และถ้าทราบแหล่ง ECG สอนที่เปิดให้ใช้ได้ (acute inferior STEMI) รบกวนชี้แหล่งด้วย"],
+      ["p7","จากเกณฑ์ให้คะแนนที่อ่าน — ข้อที่ได้คะแนนสูงสุดในแต่ละเคส ใช่สิ่งที่สำคัญที่สุดจริงไหม"],
+      ["p8","มีอะไรที่สำคัญแต่ไม่ได้ให้คะแนนเลยไหม"],
+      ["p9","มีข้อไหนที่ให้คะแนนแต่ไม่ควรให้ หรือให้มากเกินไปไหม"],
+      ["p10","แบบจำลองสรีรวิทยาที่เสนอ (ชีพจรเร็วขึ้นเพื่อชดเชย แล้วช้าลงเมื่อความดันพัง) อัตราและจุดพลิกเหมาะสมไหม"]
+    ]
+  };
+  var SCOPE = {
+    student: "<p><strong>สิ่งที่ไม่ได้ขอให้รับผิดชอบ</strong></p><p style='margin-top:8px'>ไม่ต้องรับรองความถูกต้องทางคลินิก — ขนาดยา น้ำหนักคะแนน รหัสโรค เป็นงานของแพทย์ที่มีใบประกอบวิชาชีพ · ถ้าเห็นอะไรที่คิดว่าผิด บอกได้เต็มที่ในฐานะข้อสังเกต ไม่ใช่การรับรอง</p>",
+    physician: "<p><strong>สิ่งที่ขอ และไม่ขอ</strong></p><p style='margin-top:8px'><strong>ขอ:</strong> ตรวจว่าเนื้อหาและเกณฑ์ให้คะแนนถูกต้องตามเวชปฏิบัติหรือไม่</p><p style='margin-top:8px'><strong>ไม่ขอ:</strong> ไม่ได้ขอให้รับรองว่าใช้แทนการสอบจริงได้ และไม่ได้ขอให้รับผิดชอบผลการเรียนของนักศึกษาที่ใช้</p>"
+  };
+  var TITLE = { student:"เล่นแล้วบอกเราหน่อย", physician:"คำถามที่เราเดาเองไม่ได้" };
+  var LEDE = {
+    student:"เล่นที่ devnet.vitals.academy ก่อน แล้วค่อยตอบ — ตอบเท่าที่อยากตอบ ข้อไหนไม่มีความเห็นข้ามได้",
+    physician:"ตอบได้เลยโดยไม่ต้องเปิดเกม — ข้อ 1–8 คือจุดที่เราติดและเดาเองไม่ได้ ข้อ 9–12 ตอบทีหลังได้"
+  };
+
+  var $ = function(id){ return document.getElementById(id); };
+  var role = null, KEY = "vitals-review-draft";
+
+  // This page is also handed out as a standalone copy — mailed, or published where a reviewer
+  // can reach it without the server. Off our own host there is nothing to post to, so the send
+  // button hands the answers back instead of failing first and explaining afterwards.
+  var HOST = location.hostname;
+  var CANPOST = /(^|\.)vitals\.academy$/.test(HOST) || HOST === "localhost" || HOST === "127.0.0.1";
+
+  // Where that standalone copy is published, the page is not allowed to start a download itself —
+  // it has to ask the host to hand the file over. Everywhere else a blob link is the whole story.
+  var VIEWER = !!(window.claude && window.claude.use), SAVE = null;
+  if (VIEWER){
+    window.claude.use("downloads").then(function(d){
+      SAVE = d;
+      if (!d) $("dl").hidden = true; // nothing here can hand over a file — copying still can
+    }, function(){ $("dl").hidden = true; });
+  }
+
+  function draft(){
+    try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch(e){ return {}; }
+  }
+  function keep(){
+    var d = { role: role, name: $("name").value, contact: $("contact").value,
+              anonymous: $("anonymous").checked, notes: $("notes").value, a: {} };
+    document.querySelectorAll("textarea[data-q]").forEach(function(t){ d.a[t.dataset.q] = t.value; });
+    try { localStorage.setItem(KEY, JSON.stringify(d)); } catch(e){}
+    $("state").textContent = "บันทึกร่างแล้ว";
+  }
+
+  function build(r){
+    role = r;
+    $("r-student").setAttribute("aria-pressed", String(r === "student"));
+    $("r-physician").setAttribute("aria-pressed", String(r === "physician"));
+    $("title").textContent = TITLE[r];
+    $("lede").textContent = LEDE[r];
+    $("scope").innerHTML = SCOPE[r];
+    $("anonwrap").hidden = (r !== "physician");
+
+    var box = $("questions");
+    box.textContent = "";
+    QS[r].forEach(function(q, i){
+      var card = document.createElement("section");
+      card.className = "card";
+      var lab = document.createElement("label");
+      var head = document.createElement("span");
+      head.className = "qlabel";
+      var n = document.createElement("span");
+      n.className = "qn"; n.textContent = (i + 1);
+      var txt = document.createElement("span"); txt.textContent = q[1];
+      head.appendChild(n); head.appendChild(txt);
+      var ta = document.createElement("textarea");
+      ta.dataset.q = q[0]; ta.dataset.asked = q[1];
+      ta.addEventListener("input", keep);
+      lab.appendChild(head); lab.appendChild(ta);
+      card.appendChild(lab); box.appendChild(card);
+    });
+
+    var d = draft();
+    if (d.role === r){
+      $("name").value = d.name || ""; $("contact").value = d.contact || "";
+      $("anonymous").checked = !!d.anonymous; $("notes").value = d.notes || "";
+      document.querySelectorAll("textarea[data-q]").forEach(function(t){
+        if (d.a && d.a[t.dataset.q]) t.value = d.a[t.dataset.q];
+      });
+      $("state").textContent = "กู้ร่างที่ค้างไว้แล้ว";
+    }
+    $("form").hidden = false; $("bar").hidden = false;
+    if (!CANPOST){
+      $("send").textContent = "รวมคำตอบ";
+      $("alt").hidden = true; // the send button already does this
+      $("state").textContent = "บันทึกร่างอัตโนมัติ · ส่งกลับด้วยการคัดลอก";
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  $("r-student").addEventListener("click", function(){ build("student"); });
+  $("r-physician").addEventListener("click", function(){ build("physician"); });
+  ["name","contact","notes"].forEach(function(id){ $(id).addEventListener("input", keep); });
+  $("anonymous").addEventListener("change", keep);
+
+  // Exactly what the server would have been posted. The same shape travels either way, so an
+  // answer copied out by hand and one that arrived over the wire are the same record.
+  function payload(){
+    var answers = [];
+    document.querySelectorAll("textarea[data-q]").forEach(function(t){
+      if (t.value.trim()) answers.push({ id: t.dataset.q, asked: t.dataset.asked, said: t.value.trim() });
+    });
+    return {
+      role: role, name: $("name").value.trim(), contact: $("contact").value.trim(),
+      anonymous: $("anonymous").checked, answers: answers, notes: $("notes").value.trim(),
+      revision: (document.querySelector('meta[name="build"]') || {}).content || ""
+    };
+  }
+  function empty(p){ return !p.answers.length && !p.notes; }
+
+  function showExport(head, why){
+    var p = payload();
+    // Thai stays readable: JSON.stringify does not escape it, so the reviewer can see their own
+    // words in the box and knows what they are sending.
+    $("blob").value = JSON.stringify(p, null, 2);
+    if (head) $("exhead").textContent = head;
+    if (why) $("exwhy").textContent = why;
+    $("export").hidden = false;
+    $("export").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  $("alt").addEventListener("click", function(){
+    if (!role) return;
+    var p = payload();
+    if (empty(p)){ $("state").textContent = "ยังไม่ได้ตอบข้อไหนเลย"; return; }
+    showExport(null, null);
+  });
+
+  $("copy").addEventListener("click", function(){
+    var ta = $("blob"), done = function(){ $("copy").textContent = "คัดลอกแล้ว ✓"; };
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(ta.value).then(done, function(){ legacy(); });
+    } else legacy();
+    function legacy(){
+      ta.removeAttribute("readonly"); ta.focus(); ta.select();
+      try { document.execCommand("copy"); done(); }
+      catch(e){ $("copy").textContent = "เลือกข้อความในกล่องแล้วคัดลอกเอง"; }
+      ta.setAttribute("readonly", "");
+    }
+  });
+
+  $("dl").addEventListener("click", function(){
+    var filename = "vitals-review-" + (role || "x") + "-" + new Date().toISOString().slice(0, 10) + ".json";
+    var text = $("blob").value;
+    if (VIEWER){
+      if (!SAVE){ $("dl").textContent = "บันทึกไฟล์ไม่ได้ที่นี่ — ใช้ปุ่มคัดลอก"; return; }
+      $("dl").disabled = true;
+      SAVE.save({ filename: filename, data: text }).then(function(){
+        $("dl").textContent = "บันทึกแล้ว ✓";
+      }, function(err){
+        // Declining the prompt is a choice, not a failure — say nothing and leave the button be.
+        $("dl").textContent = (err && err.code === "declined")
+          ? "บันทึกเป็นไฟล์" : "บันทึกไฟล์ไม่ได้ — ใช้ปุ่มคัดลอก";
+      }).then(function(){ $("dl").disabled = false; });
+      return;
+    }
+    var url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+    var a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+  });
+
+  $("send").addEventListener("click", function(){
+    if (!role) return;
+    var p = payload();
+    if (empty(p)){ $("state").textContent = "ยังไม่ได้ตอบข้อไหนเลย"; return; }
+    if (!CANPOST){
+      showExport("คำตอบพร้อมส่งกลับแล้ว",
+        "คัดลอกทั้งก้อนแล้ววางส่งกลับมาทาง LINE หรืออีเมลได้เลย — ร่างยังอยู่ในเครื่อง กลับมาแก้ทีหลังได้");
+      $("state").textContent = "รวมคำตอบแล้ว";
+      return;
+    }
+    $("send").disabled = true;
+    $("state").textContent = "กำลังส่ง…";
+    fetch("/api/review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(p)
+    }).then(function(res){
+      if (!res.ok) throw new Error(res.status);
+      try { localStorage.removeItem(KEY); } catch(e){}
+      $("form").hidden = true; $("bar").hidden = true; $("pick").hidden = true;
+      $("thanks").hidden = false;
+      window.scrollTo({ top: 0 });
+    }).catch(function(){
+      // Not an error the reviewer can act on, and they have just spent an hour typing. Hand them
+      // the answers instead of a retry button: copying them out always works, the server may not.
+      $("send").disabled = false;
+      $("state").textContent = "ส่งเข้าเซิร์ฟเวอร์ไม่ได้";
+      showExport("ส่งเข้าเซิร์ฟเวอร์ไม่ได้ — แต่คำตอบไม่หาย",
+        "คำตอบทั้งหมดยังอยู่ครบในกล่องข้างล่าง คัดลอกแล้ววางส่งกลับมาทาง LINE หรืออีเมลได้เลย ร่างในเครื่องก็ยังอยู่ ปิดหน้านี้ได้");
+    });
+  });
+})();
+</script>
+</body>
+</html>
