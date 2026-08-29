@@ -1,0 +1,444 @@
+{
+ "_note": "MOCK. Authored from the series bible (EP-B, 'Don't Make Him Cry'). The lesson is counter-intuitive: almost every reflex action agitates the child and closes the airway.",
+ "setting": "ED",
+ "tick_seconds": 1.0,
+ "vitals0": {
+  "hr": 148,
+  "sbp": 96,
+  "dbp": 58,
+  "spo2": 93,
+  "rr": 34,
+  "temp": 39.4,
+  "gcs": 15
+ },
+ "variables": {
+  "airway": {
+   "init": 0.55,
+   "min": 0.0,
+   "max": 1.0
+  },
+  "agitation": {
+   "init": 0.2,
+   "min": 0.0,
+   "max": 1.0
+  }
+ },
+ "initial_state": "tripod",
+ "states": [
+  {
+   "id": "tripod",
+   "status": "deteriorating",
+   "dynamics": [
+    {
+     "var": "airway",
+     "rate_per_min": -0.05,
+     "floor": 0.0,
+     "when": {
+      "flag": "airway_secured",
+      "is": false
+     }
+    },
+    {
+     "var": "airway",
+     "rate_per_min": -0.22,
+     "floor": 0.0,
+     "when": {
+      "all": [
+       {
+        "var": "agitation",
+        "op": "gt",
+        "value": 0.5
+       },
+       {
+        "flag": "airway_secured",
+        "is": false
+       }
+      ]
+     }
+    },
+    {
+     "var": "agitation",
+     "rate_per_min": -0.05,
+     "floor": 0.0,
+     "when": {
+      "flag": "calm"
+     }
+    },
+    {
+     "var": "spo2",
+     "rate_per_min": -1.5,
+     "floor": 0.0,
+     "when": {
+      "var": "airway",
+      "op": "lt",
+      "value": 0.4
+     }
+    }
+   ],
+   "bands": [
+    {
+     "status": "improving",
+     "when": {
+      "flag": "airway_secured"
+     }
+    },
+    {
+     "status": "critical",
+     "when": {
+      "any": [
+       {
+        "var": "airway",
+        "op": "lt",
+        "value": 0.3
+       },
+       {
+        "var": "spo2",
+        "op": "lt",
+        "value": 88
+       }
+      ]
+     }
+    }
+   ],
+   "transitions": [
+    {
+     "to_state": "obstructed",
+     "when": {
+      "var": "airway",
+      "op": "lt",
+      "value": 0.12
+     }
+    },
+    {
+     "to_state": "secured",
+     "when": {
+      "flag": "airway_secured"
+     }
+    }
+   ]
+  },
+  {
+   "id": "secured",
+   "status": "improving",
+   "dynamics": [
+    {
+     "var": "spo2",
+     "rate_per_min": 5,
+     "ceil": 99
+    },
+    {
+     "var": "hr",
+     "rate_per_min": -8,
+     "floor": 100
+    }
+   ],
+   "bands": [],
+   "transitions": []
+  },
+  {
+   "id": "obstructed",
+   "status": "arrest",
+   "dynamics": [],
+   "bands": [],
+   "transitions": [
+    {
+     "outcome": "death_arrest",
+     "when": {
+      "var": "t_in_state",
+      "op": "ge",
+      "value": 1
+     }
+    }
+   ]
+  }
+ ],
+ "interventions": [
+  {
+   "id": "tongue_depressor",
+   "label": "Examine the throat — do not",
+   "match": {
+    "any_kw": [
+     "tongue depressor",
+     "look in the throat",
+     "examine the throat",
+     "spatula",
+     "inspect the airway"
+    ]
+   },
+   "harm": "throat examination provoked laryngospasm",
+   "effects": [
+    {
+     "delta": {
+      "airway": -0.4
+     },
+     "floor": 0.0
+    },
+    {
+     "delta": {
+      "agitation": 0.4
+     },
+     "cap": 1.0
+    },
+    {
+     "beat": "deteriorate"
+    }
+   ]
+  },
+  {
+   "id": "iv_access",
+   "label": "Cannulate now — do not",
+   "match": {
+    "any_kw": [
+     "iv access",
+     "cannula",
+     "venflon",
+     "take blood",
+     "bloods",
+     "iv line"
+    ]
+   },
+   "harm": "cannulation distressed the child",
+   "effects": [
+    {
+     "delta": {
+      "agitation": 0.35
+     },
+     "cap": 1.0
+    }
+   ]
+  },
+  {
+   "id": "separate_mother",
+   "label": "Take the child from the mother — do not",
+   "match": {
+    "any_kw": [
+     "separate",
+     "take him from",
+     "ask the mother to wait",
+     "mother outside"
+    ]
+   },
+   "harm": "separating the child from the mother",
+   "effects": [
+    {
+     "delta": {
+      "agitation": 0.4
+     },
+     "cap": 1.0
+    }
+   ]
+  },
+  {
+   "id": "position_of_comfort",
+   "label": "Leave him where he is",
+   "match": {
+    "any_kw": [
+     "position of comfort",
+     "leave him",
+     "let him sit",
+     "keep him calm",
+     "do not disturb",
+     "stay with mother"
+    ]
+   },
+   "effects": [
+    {
+     "flag": "calm"
+    },
+    {
+     "delta": {
+      "agitation": -0.15
+     },
+     "floor": 0.0
+    }
+   ]
+  },
+  {
+   "id": "blow_by_oxygen",
+   "label": "Blow-by oxygen",
+   "match": {
+    "any_kw": [
+     "blow-by",
+     "blow by",
+     "oxygen",
+     "o2"
+    ]
+   },
+   "effects": [
+    {
+     "delta": {
+      "spo2": 4
+     },
+     "cap": 99
+    }
+   ],
+   "equipment": "o2"
+  },
+  {
+   "id": "call_airway_team",
+   "label": "Call ENT and anaesthesia",
+   "match": {
+    "any_kw": [
+     "ent",
+     "anaesthe",
+     "anesthe",
+     "airway team",
+     "theatre",
+     "or ",
+     "operating room"
+    ]
+   },
+   "effects": [
+    {
+     "flag": "airway_team"
+    },
+    {
+     "beat": "team_called"
+    }
+   ]
+  },
+  {
+   "id": "secure_airway",
+   "label": "Secure the airway",
+   "match": {
+    "any_kw": [
+     "intubate",
+     "secure the airway",
+     "ett",
+     "tracheostomy",
+     "surgical airway"
+    ]
+   },
+   "effects": [
+    {
+     "branch": [
+      {
+       "if": {
+        "flag": "airway_team"
+       },
+       "then": [
+        {
+         "flag": "airway_secured"
+        },
+        {
+         "delta": {
+          "spo2": 6
+         },
+         "cap": 99
+        },
+        {
+         "beat": "airway_secured"
+        }
+       ]
+      }
+     ],
+     "else": [
+      {
+       "harm": "uncontrolled intubation attempt"
+      },
+      {
+       "delta": {
+        "airway": -0.3
+       },
+       "floor": 0.0
+      }
+     ]
+    }
+   ],
+   "equipment": "ett"
+  },
+  {
+   "id": "ceftriaxone",
+   "label": "Ceftriaxone",
+   "match": {
+    "any_kw": [
+     "ceftriaxone",
+     "antibiotic",
+     "abx"
+    ]
+   },
+   "effects": [
+    {
+     "flag": "antibiotics"
+    }
+   ]
+  }
+ ],
+ "triggers": [
+  {
+   "id": "ominous_quiet",
+   "once": true,
+   "when": {
+    "all": [
+     {
+      "in_state": "tripod"
+     },
+     {
+      "var": "airway",
+      "op": "lt",
+      "value": 0.32
+     }
+    ]
+   },
+   "do": [
+    {
+     "beat": "going_quiet"
+    }
+   ]
+  },
+  {
+   "id": "recovery",
+   "once": true,
+   "when": {
+    "all": [
+     {
+      "in_state": "secured"
+     },
+     {
+      "var": "t_in_state",
+      "op": "ge",
+      "value": 240
+     }
+    ]
+   },
+   "do": [
+    {
+     "branch": [
+      {
+       "if": {
+        "flag": "antibiotics"
+       },
+       "then": [
+        {
+         "outcome": "win_discharge"
+        }
+       ]
+      }
+     ],
+     "else": [
+      {
+       "outcome": "win_icu"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "outcomes": [
+  {
+   "id": "win_discharge",
+   "kind": "win",
+   "label": "Airway secured under control, treated"
+  },
+  {
+   "id": "win_icu",
+   "kind": "win",
+   "label": "Airway secured, antibiotics delayed"
+  },
+  {
+   "id": "death_arrest",
+   "kind": "lose",
+   "label": "Complete obstruction"
+  }
+ ]
+}

@@ -261,10 +261,12 @@ fn print_scenario_check(cases: &[[u8; 32]]) {
          \n\
          \x20   grep -A1 {first} {SCE_ARCHIVE}/INDEX.json\n\
          \n\
-         GET /api/sce/<hash> serves the same bytes over HTTP, but only once a case is retired — a\n\
-         station that can still be sat would be handing out its own mark sheet, so it answers 404\n\
-         'that scenario is in active use', and today that is every case in the season. The clone\n\
-         above is the check that works either way. See VERIFICATION.md §5."
+         GET /api/sce/<hash> serves the same bytes over HTTP, but only once the *case* that\n\
+         version belongs to has left the shelf. A station that can still be sat would be handing\n\
+         out its own mark sheet — and so would the version it replaced, which differs from it by\n\
+         whatever the last edit touched — so every version of a live case is withheld together\n\
+         and answers 404. Today that is every case in the season. The clone above is the check\n\
+         that works either way. See VERIFICATION.md §5."
     );
 }
 

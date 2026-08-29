@@ -354,6 +354,41 @@ mod tests {
         assert_eq!(servable(&[], &a).len(), hashes(&a).len(), "an empty shelf withholds nothing");
     }
 
+    /// The versions that anchored runs on devnet actually name, which the archive must never
+    /// stop holding.
+    ///
+    /// These four are the previous versions of EP2–EP5, retired by `3f6faf7` on 2026-08-28 — the
+    /// `"kind": "lose"` fix — whose commit message recorded the belief that "the only anchored
+    /// runs today are osce-a". That was checked against one Merkle tree. Across every
+    /// `ClaimAccount` the program owns there were **eleven** leaves naming these four hashes, on
+    /// trees #488253275, #488321238 and #487877348, and the edit orphaned all of them: for four
+    /// months the digest in those leaves resolved to no file any stranger could fetch.
+    ///
+    /// Pinned here by hash so the archive cannot quietly lose them again. A failure means an
+    /// anchored run has stopped being re-derivable, which is the one thing this directory exists
+    /// to prevent.
+    #[test]
+    fn the_versions_anchored_runs_name_are_still_here() {
+        let a = archive();
+        for (h, case) in [
+            ("36b6d1c22d41c681eb0edb565d58ff32e1f32b24d4d074ee7db2220d80b6be72", "demo/scenarios/ep2-stemi.json"),
+            ("242a0c9f770e22b87031fa0c2917346d47839ff133385b1251fa9d9df341bf28", "demo/scenarios/ep3-epiglottitis.json"),
+            ("0a74511e605d02ec2ec5ff1d23705fea54b7d01b66db0997f7782a3096adeb7f", "demo/scenarios/ep4-pulmonary-embolism.json"),
+            ("9433956764028dd157b71c5c0a1f06333ca107ece26b781f4b311811d2229f33", "demo/scenarios/ep5-the-night-the-stars-fell.json"),
+        ] {
+            // The bytes are there and they are the bytes the chain named.
+            let Answer::Retired(text) = answer(h, &[], &a) else {
+                panic!("{h} is named by an anchored leaf and is not in the archive")
+            };
+            assert_eq!(hex(&sce_hash(&text)), h);
+            // …and the index says which case, or the endpoint cannot tell live from retired.
+            assert_eq!(index(&a).get(h).map(|p| p.to_string_lossy().to_string()).as_deref(), Some(case));
+            // …and while that case is on the shelf it stays withheld, which is what made
+            // restoring these safe to do while EP2-EP5 are still being sat.
+            assert_eq!(answer(h, &shelf(), &a), Answer::Superseded);
+        }
+    }
+
     /// The audit, run against the real archive on every `cargo test`: nothing this deployment
     /// would publish belongs to a case a candidate can still sit.
     ///

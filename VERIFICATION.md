@@ -72,10 +72,12 @@ deleted; INDEX.json maps each hash to the station file it came from:
 
     grep -A1 4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d conformance/sce-archive/INDEX.json
 
-GET /api/sce/<hash> serves the same bytes over HTTP, but only once a case is retired — a
-station that can still be sat would be handing out its own mark sheet, so it answers 404
-'that scenario is in active use', and today that is every case in the season. The clone
-above is the check that works either way. See VERIFICATION.md §5.
+GET /api/sce/<hash> serves the same bytes over HTTP, but only once the *case* that
+version belongs to has left the shelf. A station that can still be sat would be handing
+out its own mark sheet — and so would the version it replaced, which differs from it by
+whatever the last edit touched — so every version of a live case is withheld together
+and answers 404. Today that is every case in the season. The clone above is the check
+that works either way. See VERIFICATION.md §5.
 
 stars (distinct exam cases cleared at det >= 70%): 1
 
@@ -231,9 +233,17 @@ different copy of it than we serve anyone else.
 GET /api/sce/<hash>
 ```
 
-Content-addressed and ungated. It answers `200` with the exact bytes for a **retired** version —
-one no longer on the playable shelf — and re-hashes what it read before sending, so it cannot
-serve you the wrong file under the right name. It can only serve the right bytes or nothing.
+Content-addressed and ungated. It answers `200` with the exact bytes for a version of a
+**retired case** — one no longer on the playable shelf — and re-hashes what it read before
+sending, so it cannot serve you the wrong file under the right name. It can only serve the right
+bytes or nothing.
+
+Retirement is a fact about a **case**, not about a byte sequence. Editing a scenario rotates its
+hash and retires nothing: the version it replaced is still that case's mark sheet, differing only
+by whatever the edit touched. So every version of a live case is withheld together and they all
+publish on the day the case leaves the shelf. Asking for a superseded version of a live case is
+its own `404`, held apart from "these bytes are on the shelf", because a verifier holding a leaf
+from an older version needs to know their leaf names something real.
 
 For a case that can still be sat it answers `404`, and says why. This transcript is from a bay
 started out of this repository rather than from the public demo, so that it is reproducible from a
@@ -248,7 +258,7 @@ how many of them it may publish — two different numbers, and the difference is
 of this route (the absolute path is your own checkout's; the rest is verbatim):
 
 ```
-archive    17 archived scenario version(s) at <your checkout>/conformance/sce-archive · 0 publishable · 17 live and withheld — /api/sce answers 404 for everything until a case is retired
+archive    21 archived scenario version(s) at <your checkout>/conformance/sce-archive · 0 publishable · 17 live and withheld — /api/sce answers 404 for everything until a case is retired
 ```
 
 Then, in another terminal:

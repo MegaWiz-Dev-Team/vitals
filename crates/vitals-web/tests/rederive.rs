@@ -228,6 +228,10 @@ fn the_case_you_are_playing_is_refused_by_the_hash_it_reports() {
 /// The INDEX is a map from hash to the path it was archived from. Every row has to name bytes
 /// that hash to it — checked on disk, because whether the *server* will publish a row is a
 /// question about the shelf, not about the archive.
+///
+/// It is a list of **versions**, not of cases, so it is longer than the season and gets longer
+/// every time a case is re-issued. What has to hold is that nothing is missing: every file on the
+/// shelf is indexed, and every row resolves.
 #[test]
 fn every_row_of_the_index_names_the_bytes_it_says_it_does() {
     let dir = repo().join("conformance/sce-archive");
@@ -235,7 +239,21 @@ fn every_row_of_the_index_names_the_bytes_it_says_it_does() {
         serde_json::from_str(&std::fs::read_to_string(dir.join("INDEX.json")).expect("INDEX.json"))
             .expect("INDEX.json parses");
     let rows = index.as_array().expect("INDEX.json is a list");
-    assert_eq!(rows.len(), 17, "the index is not the season any more");
+    let indexed: std::collections::BTreeSet<String> =
+        rows.iter().filter_map(|r| r["sce_hash"].as_str().map(str::to_string)).collect();
+    assert_eq!(indexed.len(), rows.len(), "a hash is indexed twice");
+    // Every case in the season, at its current bytes. A row per version on top of that is the
+    // archive doing its job, so the count itself is not pinned.
+    for dir in ["demo/stations", "demo/scenarios"] {
+        for e in std::fs::read_dir(repo().join(dir)).expect("a shelf") {
+            let f = e.expect("dir entry").path();
+            if f.extension().is_some_and(|x| x == "json") {
+                let h = sha256_hex(&std::fs::read(&f).expect("read"));
+                assert!(indexed.contains(&h), "{} is on the shelf and not in INDEX.json", f.display());
+            }
+        }
+    }
+    assert!(rows.len() >= 17, "the index lost rows: {}", rows.len());
     for row in rows {
         let hash = row["sce_hash"].as_str().expect("a row with no hash");
         let from = row["path"].as_str().unwrap_or("?");
