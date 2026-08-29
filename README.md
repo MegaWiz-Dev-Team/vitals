@@ -77,21 +77,31 @@ Digital credentials have been tried. They fail for two reasons:
 An open protocol that turns clinical-skill practice into **portable, tamper-evident,
 independently re-scorable competency records** — and pays case authors per attempt.
 
-Three onchain primitives, one off-chain engine:
+Four onchain primitives and one off-chain engine — with a column saying which of them you can
+run today. Two of the five are designed and not built; they are kept here because the design is
+the argument, but a reader who greps this repository for them should meet this sentence first.
 
-| Layer | What it does | Solana primitive |
-|---|---|---|
-| **Case Registry** | Authors publish cases; content stays off-chain, only `case_id + content_hash + rubric_hash + price + royalty split` goes onchain. Any front-end can read it. | Anchor program + Token-2022 |
-| **Attempt Anchor** | Commit–reveal per attempt: pre-commit before the encounter, hash of `(transcript, rubric result, engine version, model id)` after. Nothing personal onchain — hashes only. | State compression (Bubblegum concurrent merkle tree) |
-| **Progression** | XP, levels, Dreyfus skill trees and badges — minted **permissionlessly**, because the program recomputes the predicate from anchored attempts instead of trusting a server. Soulbound. | Token-2022 NonTransferable + cNFT |
-| **Competency Credential** | Clear N attempts above threshold → an accredited issuer attests "OSCE-Cardio-L2" to the student's wallet. Reusable across apps without exposing the underlying data. | [Solana Attestation Service](https://solana.com/news/solana-attestation-service) |
-| *(off-chain)* **Verifier** | Re-runs the deterministic rubric over a revealed transcript and confirms it reproduces the anchored score. | `embla-engine` (Rust) |
+| Layer | What it does | Built with | Status |
+|---|---|---|---|
+| **Attempt Anchor** | Commit–reveal per attempt: pre-commit before the encounter, hash of `(transcript, rubric result, engine version, model id)` after. Nothing personal onchain — hashes only. | `Commit` · `AnchorReplay` · `ProveAttempt`, over a fixed-depth incremental Merkle tree the program keeps itself | **shipped** |
+| **Progression** | XP, levels, Dreyfus skill trees and badges — granted **permissionlessly**, because the program recomputes the predicate from anchored attempts instead of trusting a server, and rejects a claim its own arithmetic disagrees with. | `ClaimProgress`, written to a PDA per account and specialty. Not a token: nothing here is transferable, so there is nothing to sell | **shipped** |
+| *(off-chain)* **Verifier** | Re-runs the deterministic rubric over a revealed transcript and confirms it reproduces the anchored score. | `vitals-replay` (Rust), and the same arithmetic compiled to wasm on the verify page | **shipped** |
+| **Case Registry** | Authors publish cases; content stays off-chain, only `case_id + content_hash + rubric_hash + price + royalty split` goes onchain. Any front-end can read it. | Anchor program + Token-2022 | designed, not built |
+| **Competency Credential** | Clear N attempts above threshold → an accredited issuer attests "OSCE-Cardio-L2" to the student's wallet. Reusable across apps without exposing the underlying data. | [Solana Attestation Service](https://solana.com/news/solana-attestation-service) | designed, not built |
+
+Two primitives are named here that this repository deliberately does *not* use. Production-scale
+anchoring belongs on **Bubblegum**, but Bubblegum needs an indexer to read, and a demo that
+cannot be verified on a laptop with no network is not a demo of verifiability — so the tree is
+in the program, and a proof is checkable with nothing but hashes. Progression could have been a
+**Token-2022 non-transferable mint**; it is a PDA instead, because the useful property was never
+the token, it was that the chain recomputes the predicate and can refuse. Adding a mint would
+add a thing to look at, not a thing to check.
 
 ## One anchored record, three resolutions
 
 Everything here is the same attempt data read at three zoom levels — not three products:
 
-| Resolution | Stakes | Who can mint |
+| Resolution | Stakes | Who can write it |
 |---|---|---|
 | **Attempt** — the anchored leaf | raw evidence | verifier |
 | **Progression** — level, skill tree, badge | low, continuous | **anyone; the program checks the maths** |
@@ -154,8 +164,9 @@ Not decoration — the numbers only close on this chain:
 - **Latency is UX.** The after-action report appears seconds after the encounter ends. The
   attestation has to land inside that window or the credential feels like paperwork instead of
   a result.
-- **Composability.** Built on SAS + Bubblegum + Token-2022 against an open case registry, so a
-  competing trainer can read the same cases and issue against the same credential schema.
+- **Composability.** The registry and the credential are meant to land on SAS, Bubblegum and
+  Token-2022 — designed, not built, as the table above says — so that a competing trainer can
+  read the same cases and issue against the same credential schema.
   We want to be a protocol with one reference client, not a walled app.
 - **Gasless for students.** Fee-payer relayer — a med student never touches SOL, never sees a
   seed phrase, and does not need to know any of this is happening.
