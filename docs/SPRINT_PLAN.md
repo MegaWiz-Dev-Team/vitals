@@ -53,7 +53,7 @@ anything; progression does not. Cut recorded deliberately, stated in the submiss
 - [ ] `proof-check` public verify page
 - [ ] Demo video (see below)
 - [ ] Open-source release: AGPL-3.0 program + SDK + published case schema
-- [ ] Submission write-up + repo hygiene — judges read the repo, not just the video
+- [ ] Submission write-up + repo hygiene — the repo is part of what ships, not a byproduct of it
 - [ ] Onboard **3 real case authors** — start Week 1, land by now
 
 ## Weekly video updates (required by Eternal)
@@ -63,12 +63,16 @@ W1 a case appearing onchain · W2 a score becoming an anchored attestation · W3
 refusing a level-up claim, then accepting the honest one** · W4 the full loop plus a stranger
 verifying it on a machine that has never touched our database.
 
-W3 is the money shot. Show the failed claim first.
+W3 is the week the whole demo rests on, which is why it gets the whole week. Show the refused
+claim before the accepted one: a program turning down a claim it can check is the one part of
+this that cannot be mocked up, and it is worth more than the happy path.
 
 ## Explicitly out of scope
 
 ZK selective disclosure ("top decile without revealing the score") · verifier-node DePIN with
 staking · any fungible token · mobile app · new clinical content · **tradeable badges, ever**.
 
-The first five are v2 lines and a judge respects a stated cut more than a half-built feature.
+The first five are v2 lines. A cut stated up front beats a half-built feature: the half-built
+one costs the same maintenance as a whole one, has to be explained every time it is seen, and
+still does not do the job.
 The last is not a scope cut, it is a design decision — see [GAMIFICATION.md](GAMIFICATION.md) §2.
