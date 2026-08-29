@@ -35,7 +35,10 @@ cited because it is why a scoreable signal exists at all, not because Vitals ear
   counted only when a learner account is verified against it; self-reported signup entries are
   excluded, which is why this number is lower than the platform's raw institution count. **No faculty
   has an institutional agreement with us; every user is an individual.**
-- **290+ clinicians and medical students on Embla** (68% activation rate).
+- **290+ clinicians and medical students on Embla.** Individual accounts rather than
+  institutional seats — the same population the runs below come from. It is a floor and stays
+  one: it is the standing headcount carried across our own documents, not a figure any current
+  export re-derives, so no rate is computed from it.
 - **671 scored runs on Embla (as of 25 Aug 2026) · a catalog of 433 authored clinical cases · 384
   of them validated · across 23 specialties.** Different denominators, so they are printed
   separately rather than collapsed: a run is not a case, and an authored case is not a validated
