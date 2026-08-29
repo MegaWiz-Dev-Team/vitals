@@ -10,25 +10,33 @@ your record.** Those are two different verbs and keeping them apart is the whole
 ### 1 · Progression — the default, and always free
 
 Clear EP1 and EP2 opens. This is the path the game is built around and it costs nothing, ever.
-It is `required_badge` on the scenario registry: the prerequisite lives on chain, so a competing
-front-end honours the same gate without asking us.
+Today the gate is the app's and runs client-side. The design moves it on chain as `required_badge`
+on the scenario registry — `designed, not built`, and no such field exists in
+`crates/vitals-program` — so that the prerequisite would sit where a competing front-end honours
+the same gate without asking us.
 
 **No token is involved.** A learner with no money, no wallet and no sponsor plays the entire
 season by being good at it.
 
-### 2 · Sponsor — the token flows, the player still pays nothing
+### 2 · Sponsor — `designed, not built`: the token would flow, the player would still pay nothing
 
-An institution, an alumni fund or a specialty college opens an episode **for a whole cohort**.
-They pay; the author is paid per replay; every player in that bay sees it unlocked.
+An institution, an alumni fund or a specialty college would open an episode **for a whole cohort**.
+They would pay; the author would be paid per replay; every player in that bay would see it unlocked.
 
-This is the flow the token was designed for, and note who is *not* in it: the player. They do not
-hold $VIGIL, do not see a wallet, and are not aware anything was transacted.
+This is the flow the token was designed for, and note who is *not* in it: the player. They would
+not hold $VIGIL, would not see a wallet, and would not be aware anything had been transacted.
+
+There is nothing to hold. **$VIGIL does not exist** — no mint, no bond account, no staking
+instruction and no slashing instruction anywhere in this repository — and
+[SPRINT_PLAN.md](SPRINT_PLAN.md) lists **any fungible token** among the explicit scope cuts, as a
+v2 line. [TOKENOMICS.md](TOKENOMICS.md) is that design written out under the same label, and it is
+worth reading before anyone reinvents it.
 
 ### 3 · Impulse — consumer tier only, and strictly cosmetic to standing
 
-Someone playing for entertainment who does not want to grind can open an episode directly.
+Someone playing for entertainment who does not want to grind could open an episode directly.
 That is a normal consumer game transaction and there is nothing wrong with it — **provided it
-buys the story and never the standing.**
+buys the story and never the standing.** No payment path is built; this one is a drawing too.
 
 The safeguard is already built and already enforced on chain:
 
@@ -55,9 +63,10 @@ is worth nothing, and it is worth nothing *retroactively*, including for everyon
 properly.
 
 That is why [PLAY.md](PLAY.md) says the fun layer and the credential layer share data and never
-share incentives, why the arena is called **3R** and the token **$VIGIL** so they do not even share
-a name, and why the distinct-case gate exists: grinding a favourite episode buys a better *time*
-and never a better *standing*.
+share incentives, why the arena would be named **3R** and the token **$VIGIL** so that not even the
+names would touch — neither name exists in `crates/` or `demo/` — and why the distinct-case gate
+exists: grinding a favourite episode buys a better *time* and never a better *standing*. The last
+of those is built; the first two are the design keeping its distance in advance.
 
 ## Current state
 
@@ -67,5 +76,6 @@ and never a better *standing*.
 | `required_badge` on the scenario registry | designed, not built |
 | Sponsor unlock + author royalty | designed, not built |
 | Impulse unlock | designed, not built, and deliberately last |
+| $VIGIL, the 3R arena, and any fungible token | designed, not built — see [TOKENOMICS.md](TOKENOMICS.md) |
 
 The order matters. The free path shipped first because it is the one the design depends on.

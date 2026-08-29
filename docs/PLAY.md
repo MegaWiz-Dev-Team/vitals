@@ -28,12 +28,18 @@ you are still deciding. One monitor stabilising, one still falling.
 No other medical simulator can do this, and it costs nothing to build, because determinism was
 already required for the credential.
 
-## 3. The board is called 3R
+## 3. The board would be called 3R — `designed, not built`
 
-The arena has its own name — **3R**, which is "ER" read back. Not $VIGIL, deliberately: players
-never hold the token and never see it, so the competitive surface and the bonding asset should not
-even share a word. The 3R board is where you rank. $VIGIL is what a verifier stakes to be allowed
-to say your run happened.
+In the design the arena gets its own name — **3R**, which is "ER" read back. Not $VIGIL,
+deliberately: players would never hold the token and never see it, so the competitive surface and
+the bonding asset should not even share a word. The 3R board would be where you rank; $VIGIL would
+be what a verifier stakes to be allowed to say your run happened.
+
+Neither exists. `3R` appears nowhere in `crates/` or `demo/`, and there is no token: no mint, no
+bond account, no staking instruction and no slashing instruction anywhere in this repository, with
+**any fungible token** among [SPRINT_PLAN.md](SPRINT_PLAN.md)'s explicit scope cuts. The design and
+the reason for it are in [TOKENOMICS.md](TOKENOMICS.md). The separation is worth deciding now,
+while both halves are still drawings, because it is the kind of thing a shipped name never undoes.
 
 ## 4. Door-to-drug is a speedrun category the profession already keeps
 
@@ -124,3 +130,4 @@ honest, which most quest logs are not.
 | Anchored replay per run | **built** |
 | Harm on the record | **built** — it already changes the leaf |
 | Ghost racing · speedrun categories · daily seed · co-op consult · death card · quest log | designed here, none built |
+| The 3R board · $VIGIL and the verification market it bonds | designed, not built — [TOKENOMICS.md](TOKENOMICS.md) |
