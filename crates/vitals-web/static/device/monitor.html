@@ -8,9 +8,12 @@
   :root{
     --ecg:#31d84a; --pleth:#37cfe0; --resp:#f4e04d; --nibp:#ffffff; --temp:#c9d1d9;
     --alarm:#ff4b4b; --warn:#ffb02e; --ink:#e6edf3; --dim:#7d8894; --grid:#1b2430;
+    /* The ground a lane is drawn on. The label chip is this colour with alpha, so a
+       change to the panel carries the chip with it instead of leaving it behind. */
+    --panel:#04070a;
   }
   *{box-sizing:border-box} html,body{margin:0;height:100%}
-  body{background:#04070a;color:var(--ink);font-family:"Helvetica Neue",Arial,sans-serif;
+  body{background:var(--panel);color:var(--ink);font-family:"Helvetica Neue",Arial,sans-serif;
        display:flex;flex-direction:column;overflow:hidden;-webkit-font-smoothing:antialiased}
 
   header{display:flex;align-items:center;gap:14px;padding:6px 14px;background:#0a1119;
@@ -35,8 +38,7 @@
      rather than by moving: no vertical space is taken from a lane that has none to give, and
      the trace still passes behind it the way it does on the bedside unit. */
   .lane .tag,.lane .scale{position:absolute;top:6px;z-index:1;
-    background:rgba(6,11,16,.82);padding:1px 5px;border-radius:3px;
-    -webkit-backdrop-filter:blur(1px);backdrop-filter:blur(1px)}
+    background:color-mix(in srgb,var(--panel) 82%,transparent);padding:1px 5px;border-radius:3px}
   .lane .tag{left:10px;font-size:11px;font-weight:700;letter-spacing:.6px}
   .lane .scale{right:10px;font-size:10px;color:var(--dim)}
   /* The rhythm name sits on the strip beside the lead, where a monitor prints it. */
