@@ -7,46 +7,117 @@
 [advisories]
 version = 2
 yanked = "deny"
-# Every id below arrives through the Solana SDK at versions pinned upstream — the deployed
-# program's own dependency tree is solana-program + borsh + this workspace, and the signing/TLS
-# advisories sit in the client and test tooling. The alternative to ignoring them is vendoring
-# the SDK. The list is exact ids on purpose: a NEW advisory still fails the build, and every
-# entry is owed a re-check at each SDK bump.
+
+# cargo-deny 0.20 gives each informational class its own scope, and the two defaults are not the
+# same: `unmaintained` defaults to "all", `unsound` to "workspace" — meaning unsound advisories are
+# only reported against crates this workspace depends on *directly*. Every unsound advisory below
+# is transitive through the Solana SDK, so on the default six of them silently stopped being
+# checked, and the six matching ids in `ignore` stopped matching anything. Nothing left the tree;
+# the check stopped looking. "all" turns it back on, and it is the only setting under which the
+# list below describes something real.
+unsound = "all"
+
+# An ignore that matches nothing is a documentation defect, not a vulnerability — but it is exactly
+# how we learned this file had gone stale, and we only learned it because an unrelated error turned
+# the job red first. A warning inside a green job is invisible; this one survived a release. The
+# cost of making it an error is that a RustSec editorial change — a withdrawn advisory, a narrowed
+# affected range — can turn CI red on a commit that changed nothing. That is a real cost, and it is
+# the cheaper one: the failure is loud, immediate, and fixed by deleting a line in this file, while
+# the failure it prevents is silent and open-ended. `yanked = "deny"` above makes the same trade for
+# the same reason.
+#
+# This setting is only safe *together with* `unsound = "all"`. Turn the scope back to the default
+# and six of the ids below stop matching, and the only way to make this error go green is to delete
+# true documentation of six unsound crates that are still in the tree. The two move together.
+unused-ignored-advisory = "deny"
+
+# Every id below arrives through the Solana SDK at versions pinned upstream. The alternative to
+# ignoring them is vendoring the SDK. The list is exact ids on purpose: a NEW advisory still fails
+# the build, and every entry is owed a re-check at each SDK bump.
+#
+# Each entry says where the crate actually is, because "the solana client tree" is not a fact
+# anyone can act on. Three placements, verified with `cargo tree`:
+#
+#   [ships] reachable from vitals-web / vitals-cli over normal edges — it is in the running server.
+#   [build] a proc-macro: it runs inside the compiler and links nothing into any binary.
+#   [dev]   reachable only through solana-program-test, which is a dev-dependency of vitals-program.
+#           It is compiled for `cargo test` and appears in no shipped artifact.
+#
+# vitals-program itself (the BPF cdylib) depends on solana-program + borsh + vitals-progress and
+# nothing else; where an id also reaches that, the entry says so.
 ignore = [
-    "RUSTSEC-2021-0145", # atty — via env_logger 0.9 ← solana-logger ← solana-sdk. Unmaintained,
-                         # no fixed release exists; the unaligned read is cfg(windows) and the
-                         # server runs Linux, so the vulnerable code is not even compiled.
-    "RUSTSEC-2022-0093", # ed25519-dalek 1.x double-pubkey-sign — via solana-keypair ← solana-sdk.
-                         # The fix is 2.0, which arrives with solana-keypair 3.x, i.e. an SDK
-                         # major. The oracle needs a caller that signs under an attacker-chosen
-                         # public key; the relay signs with its own mounted key and nothing else.
-    "RUSTSEC-2023-0126", # rsa Marvin — via test/rpc tooling, no RSA in this product
-    "RUSTSEC-2024-0344", # curve25519-dalek timing — the 3.2.0 copy, pulled only by ed25519-dalek 1.x
-                         # above; 3.x has no fixed release and 4.1.3 (fixed) is already what the
-                         # rest of the tree uses. Local timing side channel, not remote.
-    "RUSTSEC-2024-0375", # atty successor advisory chain
-    "RUSTSEC-2024-0388", # derivative unmaintained — proc-macro, build-time only
-    "RUSTSEC-2024-0436", # paste unmaintained — proc-macro, build-time only
-    "RUSTSEC-2025-0119", # tonic — rpc client path only
-    "RUSTSEC-2025-0141", # solana client tree
-    "RUSTSEC-2025-0161", # solana client tree
-    "RUSTSEC-2026-0097", # solana client tree
-    # The three rustls-webpki advisories are all against 0.101.7, and the server no longer
-    # carries it: vitals-web depends on solana-rpc-client rather than the whole solana-client,
-    # which took the pubsub/websocket TLS stack (rustls 0.21 → webpki 0.101) out of the binary.
-    # What ships is 0.103.15, at or above the fix for all three. 0.101.7 survives only under
-    # solana-program-test, a dev-dependency, so these stay listed and stay out of production.
-    "RUSTSEC-2026-0098", # rustls-webpki name constraints — test tree only
-    "RUSTSEC-2026-0099", # rustls-webpki wildcard — same
-    "RUSTSEC-2026-0104", # rustls-webpki CRL panic — same, and it needs RevocationOptions,
-                         # which is opt-in and nothing here opts in
-    "RUSTSEC-2026-0173", # solana client tree
-    "RUSTSEC-2026-0186", # solana client tree
-    "RUSTSEC-2026-0247", # solana client tree
-    "RUSTSEC-2026-0248", # solana client tree
-    "RUSTSEC-2026-0251", # solana client tree
-    "RUSTSEC-2026-0253", # solana client tree
-    "RUSTSEC-2026-0255", # bincode — via solana zk sdk, not used by this workspace directly
+    "RUSTSEC-2021-0145", # [ships] atty 0.2.14 potential unaligned read — env_logger 0.9 ←
+                         # solana-logger ← solana-genesis-config ← solana-sdk. No fixed release
+                         # exists. The advisory is scoped `os = ["windows"]` and the read is behind
+                         # cfg(windows); the server runs Linux, so it is not even compiled.
+    "RUSTSEC-2022-0093", # [ships] ed25519-dalek 1.0.1 double-public-key signing oracle —
+                         # ed25519-dalek-bip32 ← solana-keypair ← solana-sdk. The fix is 2.0, which
+                         # arrives with solana-keypair 3.x, i.e. an SDK major. The oracle needs a
+                         # caller that signs under an attacker-chosen public key; the relay signs
+                         # with its own mounted key and nothing else.
+    "RUSTSEC-2023-0126", # [dev] im 15.1.0 aliasing violation in OrdSet insertion — solana-runtime ←
+                         # solana-banks-server ← solana-program-test. This advisory is against `im`,
+                         # not `rsa`: the comment that stood here named the wrong crate, and there
+                         # is no rsa anywhere in the tree. Upstream archived, no fix.
+    "RUSTSEC-2024-0344", # [ships] curve25519-dalek 3.2.0 timing variability in Scalar sub — pulled
+                         # only by the ed25519-dalek 1.x above. The 3.x line has no fixed release,
+                         # and 4.1.3 (fixed) is already what the rest of the tree uses, vitals-program
+                         # included. Local timing side channel, not remote.
+    "RUSTSEC-2024-0375", # [ships] atty unmaintained — same path as RUSTSEC-2021-0145 above.
+    "RUSTSEC-2024-0388", # [build] derivative 2.2.0 unmaintained — a proc-macro under ark-ff/ark-ec ←
+                         # ark-bn254 ← solana-bn254 ← solana-sdk. It runs in the compiler; none of
+                         # it is linked into a binary.
+    "RUSTSEC-2024-0436", # [build] paste 1.0.15 unmaintained — proc-macro under ark-ff, same
+                         # ark-bn254 ← solana-bn254 ← solana-sdk path. Build-time only.
+    "RUSTSEC-2025-0119", # [ships] number_prefix 0.4.0 unmaintained — indicatif 0.17 ←
+                         # solana-rpc-client. This advisory is against `number_prefix`, not `tonic`:
+                         # the comment that stood here named the wrong crate, and there is no tonic
+                         # in the tree. It formats byte counts for a progress bar nothing here draws.
+    "RUSTSEC-2025-0141", # [ships] bincode 1.3.3 unmaintained — solana-account ← solana-rpc-client,
+                         # and solana-account-info ← solana-program into vitals-program as well. It
+                         # is how the SDK encodes accounts. Unmaintained, not vulnerable.
+    "RUSTSEC-2025-0161", # [ships] libsecp256k1 0.6.0 unmaintained — solana-secp256k1-program ←
+                         # solana-precompiles ← solana-sdk, and the same precompile reaches
+                         # vitals-program. Nothing here signs or verifies secp256k1; it is linked
+                         # because the SDK enumerates every precompile.
+    "RUSTSEC-2026-0097", # [ships] rand 0.7.3 unsound with a custom logger — via the ed25519-dalek
+                         # 1.x above, not "the client tree". The UB needs the `log` feature plus a
+                         # custom logger that calls thread_rng and reseeds inside it; our copy
+                         # enables alloc/default/getrandom/getrandom_package/libc/std and not `log`.
+                         # No fix in the 0.7 line — patched starts at 0.8.6, and the 0.8.x and
+                         # 0.10.x copies in this tree are already past it.
+    # The three rustls-webpki advisories are all against 0.101.7, and no shipped binary carries it:
+    # vitals-web depends on solana-rpc-client rather than the whole solana-client, which took the
+    # pubsub/websocket TLS stack (rustls 0.21 → rustls-webpki 0.101) out of the tree. What ships is
+    # rustls-webpki 0.103.15, at or above the fix for all three. 0.101.7 survives only under
+    # tokio-tungstenite ← solana-pubsub-client ← solana-client ← solana-banks-server ←
+    # solana-program-test, i.e. the dev-dependency. It never came in over an "RPC-over-TLS client
+    # path"; it came in over the websocket subscription client this workspace does not use.
+    "RUSTSEC-2026-0098", # [dev] rustls-webpki — name constraints wrongly accepted for URI names
+    "RUSTSEC-2026-0099", # [dev] rustls-webpki — name constraints accepted for wildcard certs
+    "RUSTSEC-2026-0104", # [dev] rustls-webpki — reachable panic parsing a CRL, and it needs
+                         # RevocationOptions, which is opt-in and nothing here opts in.
+    "RUSTSEC-2026-0173", # [dev] proc-macro-error2 2.0.1 unmaintained — aquamarine 0.6, a diagram
+                         # proc-macro, ← solana-runtime ← solana-program-test.
+    "RUSTSEC-2026-0186", # [ships] memmap2 0.5.10 unchecked pointer offset — solana-genesis-config ←
+                         # solana-sdk. Fixed in 0.9.11 and there is no fix in the 0.5 line (0.9.11
+                         # is in the tree too, on the dev side under solana-accounts-db). The
+                         # affected calls are advise_range/flush_range and their unchecked variants;
+                         # no code in this workspace touches memmap2, and the bad pointer is handed
+                         # to madvise/msync rather than dereferenced.
+    "RUSTSEC-2026-0247", # [dev] bitmaps 2.1.0 unmaintained — im 15.1.0 and sized-chunks ←
+                         # solana-runtime ← solana-program-test.
+    "RUSTSEC-2026-0248", # [dev] im 15.1.0 unmaintained — same path as RUSTSEC-2023-0126 above.
+    "RUSTSEC-2026-0251", # [dev] sized-chunks 0.6.5 unmaintained — im 15.1.0 ← solana-runtime ←
+                         # solana-program-test.
+    "RUSTSEC-2026-0253", # [dev] lru 0.7.8 use-after-free when a key's Drop panics inside pop() —
+                         # solana-tpu-client-next ← solana-send-transaction-service ←
+                         # solana-banks-server ← solana-program-test. Fixed in 0.18.2; the SDK pin
+                         # resolves 0.7.8. Reachable only via catch_unwind around a panicking Drop.
+    "RUSTSEC-2026-0255", # [dev] sized-chunks 0.6.5 panic-safety unsoundness in Chunk/RingBuffer/
+                         # InlineArray — same path as RUSTSEC-2026-0251. This advisory is against
+                         # `sized-chunks`, not `bincode`: the comment that stood here named the
+                         # wrong crate. Upstream archived, no fix.
 ]
 
 [licenses]
