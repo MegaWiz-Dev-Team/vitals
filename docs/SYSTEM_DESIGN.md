@@ -208,14 +208,15 @@ On cloud APIs that cost grows linearly with usage, forever — which is the shap
 product that cannot survive donations. On Asgard it becomes **capital cost plus electricity**, and
 that is the difference between a donation model that works and one that does not.
 
-**Decision 4 puts it precisely: cloud for the public demo, Asgard nodes for base load as they come
+**The split is precise: cloud for the public demo, Asgard nodes for base load as they come
 online.** The demo cannot wait for hardware; the base load should not stay on a meter.
 
 And it connects to a finding from §7's economics that has nothing to do with computers: **the
 faculties refused a licence purchase, but hosting a node is a different budget line with a
 different approval path.** An institution that cannot buy software can often buy equipment, or
 fund it from a research grant. That distributes the inference cost to institutions while the
-learner stays free — which is the only arrangement that satisfies both decision 1 and the mission.
+learner stays free — which is the only arrangement that satisfies both §11's rule that the
+learner never pays and the mission.
 
 ### Mimir — the content engine, and the join already exists
 
@@ -308,18 +309,15 @@ funding and it costs nothing extra to build, because §4 and §5 already build i
 
 ### It points at different doors than venture money
 
-Donation funding is **non-dilutive-shaped**. That has direct consequences for
-the funding options:
+Donation funding is **non-dilutive-shaped**, and that shape is the one this design needs. Money
+that expects a return eventually expects a paywall, and the first thing a paywall takes back is
+the sentence above it: free to the learner everywhere. Prizes for open-source work, public-goods
+and foundation grants, and global health and medical education funders all ask for the product
+this document already describes rather than for a different one — which is why they are the doors
+worth knocking on, and why a door that would change the product is not a better door for paying
+more.
 
-| Door | Shape | Fit |
-|---|---|---|
-| Colosseum accelerator, $250,000 | pre-seed **investment**, equity, return expectation | **now questionable** — decision #9 was taken assuming venture shape |
-| Eternal Award, $25,000 | **non-dilutive** USDC | good fit |
-| Public Goods Award, $10,000 | prize, open-source | **now a free shot** — decision 3 opened the repo, so it costs no novelty trade |
-| Solana Foundation grants, Superteam | non-dilutive, explicitly for public goods | good fit |
-| Global health / medical education funders | grants | the long-term base |
-
-**And the institutional finding may be narrower than it looked.** Faculties declined an undisclosed
+**And the institutional finding may be narrower than it looked.** Faculties declined a
 *procurement*. Procurement is one budget line with one approval path. Research collaboration,
 alumni funds, and CSR are different budget lines with different approvals — a faculty that cannot
 buy software may still fund a study. "They will not pay" was tested; "they will not give" was not.
