@@ -550,7 +550,8 @@ impl Session {
             .iter()
             .map(|s| match s {
                 Step::Tick(dt) => *dt,
-                Step::Do(_) | Step::Act { .. } | Step::Ask(_) | Step::Set(..) | Step::Off(_) => 0.0,
+                Step::Do(_) | Step::Act { .. } | Step::Ask(_) | Step::Set(..) | Step::Off(_)
+                | Step::Shock(_) => 0.0,
             })
             .sum()
     }
@@ -2512,6 +2513,7 @@ fn main() {
                             Step::Ask(t) => serde_json::json!({"ask": t}),
                             Step::Set(id, v) => serde_json::json!({"set": id, "to": v}),
                             Step::Off(id) => serde_json::json!({"off": id}),
+                            Step::Shock(j) => serde_json::json!({"shock": j}),
                         }).collect::<Vec<_>>()
                     })),
                 }

@@ -59,6 +59,19 @@ pub enum Step {
     /// Same reason, and worse: `"remove o2"` matches the oxygen intervention's own keyword and
     /// puts the mask back on. A tape that says the opposite of what happened is not a record.
     Off(String),
+    /// A shock, at the joules the learner dialled.
+    ///
+    /// Straight at the physiology, past the matcher, for the reason the whole defibrillator
+    /// change exists: whether a rhythm can be shocked is a fact the engine holds, and routing the
+    /// button through each case's own `interventions` list made it content — so `ep2` branched on
+    /// a *state name* and `ep3`, `ep4` and `ep5` declared nothing at all and swallowed the order
+    /// whole. One step, one meaning, on every case on the shelf.
+    ///
+    /// Not a `Do` carrying `"defibrillate 200 j"` either. That text is what a learner types and
+    /// what the kit mints, and it is recognised *once* — while the run is being played, exactly
+    /// like [`Step::Act`] — so the tape records the shock rather than a phrase a later build
+    /// might read differently.
+    Shock(f64),
 }
 
 /// The reduction of a run: everything discrete, nothing continuous.
@@ -112,6 +125,8 @@ pub fn resume(sce_json: &str, tape: &[Step]) -> Result<(SceState, Replay), Strin
                 st.detach(id);
                 Vec::new()
             }
+            // The one step that reaches the physiology without asking the scenario anything.
+            Step::Shock(joules) => st.defibrillate(*joules).1,
         };
         for b in emitted {
             beats.push(render_beat(&b));
@@ -188,6 +203,13 @@ pub fn leaf(sce_hash: &[u8; 32], tape: &[Step], r: &Replay) -> [u8; 32] {
             // as it did before dials were on the tape, so leaves anchored earlier still verify.
             Step::Set(id, v) => h.update(format!("s{id}={}\n", (v * 1000.0).round() as i64)),
             Step::Off(id) => h.update(format!("x{id}\n")),
+            // The fourth prefix added under the same bargain as `D`, `a` and `s` before it: a
+            // tape with no shock on it produces exactly the bytes it produced before shocks
+            // existed, so every leaf already anchored still verifies. Quantised to millijoules
+            // like every other float on the tape, for the same reason — the tape records the
+            // number the learner dialled, and a float that round-trips differently must not
+            // change the leaf. `tests/shock_tape.rs` is what holds that claim up.
+            Step::Shock(joules) => h.update(format!("j{}\n", (joules * 1000.0).round() as i64)),
         }
     }
 
@@ -364,6 +386,13 @@ pub fn debrief(sce_json: &str, tape: &[Step]) -> Result<Debrief, String> {
 
     // Harm, blamed on the order recorded immediately before it. The automaton records the order
     // first and then the harm it caused, so "immediately before" is the cause and not a guess.
+    //
+    // A shock counts as an order here even though it is not an `action` — `vitals_sce::SHOCK`
+    // has a kind of its own so that no rubric silently starts marking it, and that is a fact
+    // about scoring, not about causation. Left out, a wrong shock's harm would be blamed on
+    // whatever the candidate happened to order in the same second, which is a debrief naming
+    // the wrong mistake.
+    let cause = |k: &str| k == "action" || k == vitals_sce::runtime::SHOCK;
     let mut harms = Vec::new();
     for (i, e) in events.iter().enumerate() {
         if e.kind != "harm" {
@@ -372,7 +401,7 @@ pub fn debrief(sce_json: &str, tape: &[Step]) -> Result<Debrief, String> {
         let caused_by = events[..i]
             .iter()
             .rev()
-            .find(|p| p.kind == "action")
+            .find(|p| cause(&p.kind))
             .filter(|p| (e.t_sec - p.t_sec).abs() < 1e-6)
             .map(|p| p.text.clone());
         harms.push(HarmAt { text: e.text.clone(), at: e.t_sec, caused_by });

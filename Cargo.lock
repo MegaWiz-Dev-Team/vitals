@@ -7728,6 +7728,7 @@ name = "vitals-replay"
 version = "0.6.3"
 dependencies = [
  "serde",
+ "serde_json",
  "sha2 0.10.9",
  "vitals-progress",
  "vitals-sce",

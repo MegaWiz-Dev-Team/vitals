@@ -86,6 +86,7 @@ fn show(label: &str, sce_json: &str, h: &[u8; 32], tape: &[Step]) -> [u8; 32] {
             Step::Act { text, id } => println!("   >  {text}  [{id}]"),
             Step::Set(id, v) => println!("   ~  {id} -> {v:.0}"),
             Step::Off(id) => println!("   x  {id} off"),
+            Step::Shock(j) => println!("   !  shock {j:.0} J"),
         }
     }
     println!("   beats    {}", if r.beats.is_empty() { "—".into() } else { r.beats.join(" → ") });

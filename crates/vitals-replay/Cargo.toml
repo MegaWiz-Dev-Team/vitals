@@ -12,6 +12,12 @@ vitals-sce = { path = "../vitals-sce" }
 vitals-progress = { path = "../vitals-progress" }
 sha2 = "0.10"
 
+# Tests only. The library's dependency surface is deliberately serde + sha2 + the standard
+# collections, because it has to build from a fresh clone and compile to wasm for the verify
+# page; a dev-dependency reaches neither.
+[dev-dependencies]
+serde_json = "1"
+
 [[bin]]
 name = "vitals-replay"
 path = "src/main.rs"
