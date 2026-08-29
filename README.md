@@ -144,8 +144,10 @@ labelled numbers, not one:
 - `judged_score` (60) — **verifier-quorum attested.** Signers state which model at which version
   produced the dimension scores. More signers means more confidence; it never means re-derivable.
 
-Escrow-backed badge predicates are expressible over `det_score` alone. We state this split up front
-rather than letting someone find it — see [docs/RISKS.md](docs/RISKS.md) §3.
+A badge predicate a sponsor could put money behind is expressible over `det_score` alone, so the
+money would never ride on the attested half. *Coming next*, and stated as such: the program holds
+no money today; that instruction is not written yet. We state the split up front rather than
+letting someone find it — see [docs/RISKS.md](docs/RISKS.md) §3.
 
 **And the rubric is public on purpose, not by oversight.** A score you cannot re-derive is not a
 score — exam integrity here comes from commit–reveal, not from hiding the key. Publishing the rubric
@@ -187,7 +189,7 @@ Not decoration — the numbers only close on this chain:
   for cases, SCEs, exams, and competency blueprints.
 - **A designed game layer** — XP curve, Dreyfus skill trees, badges, ranked/practice modes, and
   anti-cheese guardrails (distinct-case and difficulty gates, a variance cap) that turn out to
-  double as anti-farming rules once badges carry escrow money.
+  double as anti-farming rules if a badge ever carries sponsor money.
 - A working client, scoring standard, and a real user population to test with.
 
 Most hackathon teams spend four weeks building the thing that produces the signal.
@@ -213,7 +215,7 @@ We already have it; the sprint is spent making the signal verifiable.
 ## Docs
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — protocol design, accounts, flows, open questions
-- [docs/GAMIFICATION.md](docs/GAMIFICATION.md) — progression as onchain computation, soulbound design, escrow, anti-farming
+- [docs/GAMIFICATION.md](docs/GAMIFICATION.md) — progression as onchain computation, badge design, sponsor-funded bounties (coming next, not built), anti-farming
 - [docs/SPRINT_PLAN.md](docs/SPRINT_PLAN.md) — the 4-week build
 - [docs/RISKS.md](docs/RISKS.md) — what could sink this, including the ones we caused ourselves
 - [VERIFICATION.md](VERIFICATION.md) — clone, build, and re-derive a player's level from the chain

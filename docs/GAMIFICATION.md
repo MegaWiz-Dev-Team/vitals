@@ -109,14 +109,18 @@ Three mechanisms, in order of how much they need the chain:
 registry rather than in our client. This is the composability criterion made concrete: a competing
 trainer inherits the gating for free.
 
-### Scholarship escrow (the part with real money in it)
+### Scholarship bounties (the part with real money in it — *coming next*, not built)
 
-A sponsor — alumni fund, hospital, specialty college, medical school — funds a bounty:
+**The program holds no money today; that instruction is not written yet.** Everything in this
+subsection is the design for it, not a description of something running.
+
+A sponsor — alumni fund, hospital, specialty college, medical school — would fund a bounty:
 
 > "First 100 students to reach Emergency Medicine · Proficient this academic year: ฿5,000 each."
 
-The escrow releases on a **provably attained** badge. No committee, no application form, no trusted
-distributor, and the sponsor can verify every payout without seeing a single student's transcript.
+The bounty would pay out on a **provably attained** badge. No committee, no application form, no
+trusted distributor, and the sponsor could verify every payout without seeing a single student's
+transcript.
 Thai medical schools already run scholarship budgets with no good mechanism for skill-based
 distribution; this is the mechanism.
 
@@ -131,7 +135,7 @@ the score — is ZK and belongs in v2. Do not promise it in a four-week pitch.
 
 ## 4. Anti-farming
 
-Badges with escrow money behind them will be farmed. The defences are mostly already in the engine:
+Badges with sponsor money behind them would be farmed. The defences are mostly already in the engine:
 
 - **Distinct cases, not attempts.** `dreyfus` requires `distinct >= 3/5/8`; replaying one easy case
   a hundred times moves nothing.
@@ -143,8 +147,8 @@ Badges with escrow money behind them will be farmed. The defences are mostly alr
   a farmed badge carries a visible attempt count next to it. Farming becomes legible rather than
   preventable, which is the more honest goal.
 
-New defence needed for escrow-backed badges: **count first attempts only** for bounty predicates,
-and require ranked mode. Add as a flag on the predicate, not a change to `competency.rs`.
+New defence needed before a badge can carry sponsor money: **count first attempts only** for
+bounty predicates, and require ranked mode. Add as a flag on the predicate, not a change to `competency.rs`.
 
 ## 5. Implementation note — floats do not belong in the program
 
@@ -166,4 +170,4 @@ recomputable onchain, and visually obvious in a 3-minute video, whereas an insti
 needs an institution on stage to mean anything.
 
 Revised weighting: Week 1 chain skeleton · Week 2 verifier + anchors · **Week 3 progression program
-+ soulbound mints + escrow demo** · Week 4 credential stub, polish, submission.
++ soulbound mints + bounty demo** · Week 4 credential stub, polish, submission.

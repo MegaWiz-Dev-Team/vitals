@@ -324,11 +324,18 @@ buy software may still fund a study. "They will not pay" was tested; "they will 
 
 ### Donations are visible, earmarked, and enforced — not reported
 
+**specified — not in the program.** What runs today is the counting: the treasury is one address
+anyone can read, and what this server has spent is published live on the donate page. Nothing on
+chain earmarks a donation or holds it against delivery. *Coming next:* program-enforced
+commissions — money given for a scenario could only be spent on that scenario, released against
+the delivered content hash. The program holds no money today; that instruction is not written yet,
+and everything below this line is that design rather than a description of it running.
+
 **Founder's call, 2026-08-24: transparent donation tracking, and when a threshold is reached the
 money produces the next story scenario.**
 
-The mechanism, in the same shape as everything else in this document — the program enforces it, so
-nobody has to trust a report.
+The mechanism, in the same shape as everything else in this document — the program would enforce
+it, so nobody would have to trust a report.
 
 ```
 Treasury      PDA · the general fund: inference, verification, operations
@@ -341,13 +348,14 @@ Donate { commission_id? }     into the general fund, or earmarked to one scenari
 ReleaseCommission             pays out ONLY once the scenario's content hash is registered
 ```
 
-Three properties fall out of that, and each answers a specific way donation funding normally fails:
+Three properties would fall out of that, and each answers a specific way donation funding normally
+fails:
 
-| Donation funding usually fails because… | Here |
+| Donation funding usually fails because… | Here, once the instruction exists |
 |---|---|
-| the donor cannot see whether the money arrived, or what it did | inflows *and* outflows are both on chain; a donor recomputes rather than reads a report |
-| "earmarked" is a promise the organisation can quietly break | **the program refuses to spend a scenario's fund on anything else** |
-| "we delivered" is asserted by the recipient | `ReleaseCommission` requires the delivered content hash — payment is gated on the thing existing |
+| the donor cannot see whether the money arrived, or what it did | inflows *and* outflows would both be on chain; a donor recomputes rather than reads a report |
+| "earmarked" is a promise the organisation can quietly break | **the program would refuse to spend a scenario's fund on anything else** |
+| "we delivered" is asserted by the recipient | `ReleaseCommission` would require the delivered content hash — payment gated on the thing existing |
 
 **A donor-facing page is required, not optional.** Raw chain data is public but not legible; the
 public surface — raised, goal, what it funds, what shipped — is the product of this feature, and
@@ -396,12 +404,12 @@ earning has both the motive and the means to fund the next cohort. Alumni giving
 recurring base in education, and this system happens to know exactly who its alumni are and what
 it did for them.
 
-Two more that come with earmarking specifically:
+Two more that would come with earmarking specifically:
 
-- **A public goal that stalls is a public failure.** Announcing a threshold commits us to a number
-  in front of everyone. That is the price of the transparency being worth anything, and it should
-  be paid deliberately rather than discovered.
-- **Earmarked money can strand.** Funds committed to scenario 7 cannot pay the inference bill that
+- **A public goal that stalls is a public failure.** Announcing a threshold would commit us to a
+  number in front of everyone. That is the price of the transparency being worth anything, and it
+  should be paid deliberately rather than discovered.
+- **Earmarked money can strand.** Funds committed to scenario 7 could not pay the inference bill that
   keeps the service running. The general-fund/commission split has to be stated up front — donors
   choosing where money goes is the feature, and a system that can only fund scenarios while it
   starves is the failure mode.

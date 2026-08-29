@@ -36,11 +36,12 @@ onchain, and visually obvious. It gets the whole week.
 - [ ] `claim_progress` instruction: merkle proofs in → program recomputes → mint/advance or fail
 - [ ] Soulbound mints: Token-2022 NonTransferable — skill-tree per specialty, profile, badges (cNFT)
 - [ ] `required_badge` gate on `CaseAccount`
-- [ ] Scholarship escrow: sponsor funds a bounty, released on a provably attained badge
+- [ ] Scholarship bounty: a sponsor funds it, it pays out on a provably attained badge — no
+      instruction holds money against delivery today, and this one is not written yet
 - [ ] USDC royalty split on reveal; prepaid pool for institutional seats
 
-Exit: a student levels up, the chain recomputes and agrees, a soulbound token advances, and an
-escrowed bounty pays out with no human in the loop.
+Exit: a student levels up, the chain recomputes and agrees, a soulbound token advances, and a
+funded bounty pays out with no human in the loop.
 
 ## Week 4 — credential stub, polish, submission
 

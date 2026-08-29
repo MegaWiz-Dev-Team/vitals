@@ -91,7 +91,8 @@ pub struct Attempt {
     /// Points available for `score`. Zero max scores as zero, matching upstream `norm`.
     pub max: u32,
     /// The deterministic rubric score — the re-derivable 40. `docs/RISKS.md` §3: only this is
-    /// anchored as re-derivable, so only this may earn a star or drive an escrow-backed claim. Zero
+    /// anchored as re-derivable, so only this may earn a star — or, if sponsor money is ever put
+    /// behind a badge, drive that claim too. Nothing on chain holds money against delivery today. Zero
     /// for a run that was not marked against a rubric (i.e. any non-exam run).
     pub det_score: u16,
     /// Points available for `det_score` (the rubric's total).

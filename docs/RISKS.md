@@ -85,8 +85,9 @@ hardware; it is not reproducible across MLX versions, Metal kernel changes, or b
   over this transcript and got these dimension scores." Multiple independent verifiers raise
   confidence; none of them make it re-derivable.
 
-The credential carries both numbers **and their provenance labels**. Badge predicates that sit
-behind escrow money should be expressible over `det_score` alone.
+The credential carries both numbers **and their provenance labels**. A badge predicate that would
+sit behind sponsor money should be expressible over `det_score` alone — a rule written for the day
+that money exists. The program holds no money today; that instruction is not written yet.
 
 This is a stronger position than the vague version, not a weaker one: knowing exactly which points
 are proof and which are attestation is a more sophisticated answer than any competitor will give.
@@ -136,20 +137,22 @@ The engine head start creates a temptation to promise the ZK selective-disclosur
 DePIN verifier network, and a token. Four weeks buys the commit–reveal loop, the credential, and
 the payment split. Nothing else.
 
-## 9. Escrow money turns badges into a farming target
+## 9. Sponsor money would turn badges into a farming target
 
-Scholarship escrow (GAMIFICATION §3) gives badges cash value, which invites grinding, shared
+Scholarship bounties (GAMIFICATION §3 — *coming next*, not built) would give badges cash value,
+which invites grinding, shared
 accounts, and script-driven attempts. The engine's existing gates help — distinct-case requirements,
 difficulty weighting, the variance cap, exam-mode weighting — and commit–reveal makes the attempt
 denominator public, so a farmed badge carries a visible attempt count.
 
-That makes farming **legible**, not impossible. Escrow-backed predicates need first-attempts-only
-and ranked-mode flags on top. Do not ship a bounty against a practice-mode predicate.
+That makes farming **legible**, not impossible. A predicate with sponsor money behind it would
+need first-attempts-only and ranked-mode flags on top. Do not ship a bounty against a
+practice-mode predicate.
 
 ## 10. The pitch can become a grab-bag
 
 Credentials, attempt anchors, progression NFTs, badge-gated cases, author royalties, scholarship
-escrow — six things. A judge who cannot restate the project in one sentence scores it as unfocused
+bounties — six things. A judge who cannot restate the project in one sentence scores it as unfocused
 regardless of how well each piece works.
 
 **The sentence:** *one anchored record, read at three resolutions — attempt, progression, credential.*
