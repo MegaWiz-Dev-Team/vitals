@@ -197,8 +197,11 @@ We already have it; the sprint is spent making the signal verifiable.
 
 ## Boundaries (deliberate)
 
-- **Nothing tradeable.** All progression tokens are non-transferable by construction. A market for
-  "Expert in Cardiology" would make the whole system worthless, so we forgo the volume.
+- **Nothing tradeable.** Progression is a record the program owns, not a token — the table above
+  says the same thing. There is nothing to transfer and nothing to sell, by construction rather
+  than by policy: no instruction moves a `Progress` account, and no mint exists to hold a
+  transfer flag in the first place. A market for "Expert in Cardiology" would make the whole
+  system worthless, so we forgo the volume.
 - **No patient data, ever.** Virtual patients are synthetic (DDXPlus, CC-BY-4.0). No PHI
   exists in this system to leak.
 - **No student PII onchain.** Hashes and pubkeys only. Student performance data is personal
