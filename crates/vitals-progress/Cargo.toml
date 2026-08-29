@@ -14,7 +14,7 @@ solana = ["dep:solana-program"]
 
 [dependencies]
 sha2 = { version = "0.10", default-features = false }
-solana-program = { version = "2", optional = true }
+solana-program = { version = "4", optional = true }
 
 [lints]
 workspace = true
