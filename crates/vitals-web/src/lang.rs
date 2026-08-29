@@ -82,9 +82,36 @@ pub const LANGUAGES: &[Language] = &[
 /// Never fails and never 400s. A language tag is a preference arriving from a browser; an
 /// unknown one means somebody's `localStorage` is older than this build, and the answer to that
 /// is the case in English, not an error page in the middle of a resuscitation.
+///
+/// # A region is not a different language
+///
+/// The tag is matched on its **primary subtag, case-insensitively**, so `th`, `th-TH`, `th_TH`
+/// and `TH` all reach Thai. This used to be an exact match on the whole string, and the three
+/// places a tag actually comes from are not the picker: a hand-typed URL, a browser handing over
+/// its `navigator.language` (which is `th-TH` on a Thai phone, never bare `th`), and a
+/// `localStorage` value written by an older build. Every one of those put a Thai speaker in
+/// front of an English patient with a full Thai pack sitting right here, silently — the failure
+/// looked like a patient who would not speak Thai rather than like a tag nobody parsed.
+///
+/// The underscore is in there because `th_TH` is what a POSIX locale looks like, and a tag
+/// copied out of one reaches this function often enough to be worth a character.
+///
+/// What has *not* changed is the answer for a tag this build genuinely has no pack for: `kl`
+/// falls back to the language the cases are authored in, and [`pack`] hands back no table rather
+/// than a table of blanks. Matching wider only ever moves a tag from "no pack" to a pack that
+/// exists; it never invents one.
+///
+/// Note the returned language's `id` is the canonical one (`th`, not `th-TH`), and `/api/lang`
+/// echoes it as `lang` — which the page adopts — so a stale `localStorage` heals on first load
+/// rather than staying a variant for ever.
 pub fn language(id: Option<&str>) -> &'static Language {
-    let want = id.unwrap_or_default();
-    LANGUAGES.iter().find(|l| l.id == want).unwrap_or(&LANGUAGES[0])
+    // Primary subtag only: everything from the first separator on is region, script or variant,
+    // and none of those change which pack answers.
+    let want = id.unwrap_or_default().split(['-', '_']).next().unwrap_or_default();
+    LANGUAGES
+        .iter()
+        .find(|l| l.id.eq_ignore_ascii_case(want))
+        .unwrap_or(&LANGUAGES[0])
 }
 
 /// The language the case files themselves are written in.
@@ -1501,10 +1528,10 @@ mod tests {
     /// An unknown or absent tag is a preference this build does not have, not an error. It plays
     /// in the language the case was written in.
     ///
-    /// Exact match on the primary subtag, deliberately: `th-TH` and `TH` are *not* Thai here.
-    /// The picker only ever sends an id out of [`LANGUAGES`], so the only way a variant arrives
-    /// is a hand-written URL or a stale `localStorage`, and answering those in English is the
-    /// same answer as answering `kl` — the language the case was authored in.
+    /// `kl` is the case worth naming: a real tag, correctly formed, for a language this build
+    /// has no pack for. It is the *only* reason to fall back now that `th-TH` and `TH` resolve
+    /// (see `a_thai_tag_reaches_thai_whatever_shape_it_arrives_in`) — widening the match moved
+    /// the variants of a language we have onto its pack, and moved nothing else.
     ///
     /// **And it falls back to the original, never to a blank.** That is the half worth pinning:
     /// an unknown tag resolves to the default, `beat` returns `None` for the default by
@@ -1513,7 +1540,17 @@ mod tests {
     /// nothing to say rather than a case nobody has translated.
     #[test]
     fn an_unknown_language_falls_back_rather_than_failing() {
-        for bad in [None, Some(""), Some("kl"), Some("th-TH"), Some("TH"), Some("../../etc/passwd")] {
+        for bad in [
+            None,
+            Some(""),
+            Some("kl"),
+            // A region on a language we still do not have is no more matchable than the bare
+            // tag: widening the match must not turn an unknown language into a known one.
+            Some("kl-GL"),
+            Some("KL"),
+            Some("-"),
+            Some("../../etc/passwd"),
+        ] {
             let l = language(bad);
             assert_eq!(l.id, default_language().id, "{bad:?} did not fall back");
             // Nothing on the wire, so the page keeps the English it already holds.
@@ -1529,6 +1566,47 @@ mod tests {
             }
         }
         assert_eq!(language(Some("th")).id, "th");
+    }
+
+    /// A Thai speaker gets a Thai patient however the tag reached us.
+    ///
+    /// This is the bug this test exists for, and it was invisible from the inside: the picker
+    /// only ever sends `th`, so every hand-run check passed while the three tags that arrive
+    /// from *outside* the picker — a typed URL, `navigator.language` (`th-TH` on a Thai phone,
+    /// never bare `th`), a POSIX-shaped `th_TH` — landed a Thai learner on an English patient
+    /// with the whole Thai pack sitting one row away. Nothing failed; the patient just answered
+    /// in English, which reads as a broken patient rather than an unparsed tag.
+    ///
+    /// Resolving is not enough on its own, so this checks the pack came with it: an id of `th`
+    /// and an empty `asks` would be the same silence in a different place.
+    #[test]
+    fn a_thai_tag_reaches_thai_whatever_shape_it_arrives_in() {
+        let th = language(Some("th"));
+        for tag in ["th", "th-TH", "th_TH", "TH", "Th", "tH-th", "th-Thai-TH", "th-"] {
+            let l = language(Some(tag));
+            assert_eq!(l.id, "th", "{tag} did not reach Thai — an English patient for a Thai learner");
+            // The id alone proves nothing; the pack is what the bedside actually speaks.
+            let p = pack(l);
+            assert_eq!(p["lang"], "th", "{tag}: the page would keep asking under the variant");
+            for t in ["asks", "ui", "kit"] {
+                assert!(
+                    p[t].as_object().is_some_and(|m| !m.is_empty()),
+                    "{tag}: resolved to Thai and came back with an empty {t}"
+                );
+            }
+            // And the same beats, not merely a language that claims the same id.
+            assert_eq!(beat(l, "threshold:biphasic"), beat(th, "threshold:biphasic"), "{tag}");
+        }
+        // The default is matched the same way, so an `en-GB` browser is not a fallback by luck.
+        for tag in ["en", "en-GB", "EN", "en_US"] {
+            assert_eq!(language(Some(tag)).id, "en", "{tag}");
+        }
+        // Region tolerance is not prefix matching. `tha` is a different subtag from `th` —
+        // matching it would hand `thai-something` to Thai and, the day a `t` language lands,
+        // hand it every tag beginning with `t`.
+        assert_eq!(language(Some("tha")).id, default_language().id, "a longer subtag matched");
+        assert_eq!(language(Some("t")).id, default_language().id, "a shorter subtag matched");
+        assert_eq!(language(Some("thai")).id, default_language().id, "a longer subtag matched");
     }
 
     /// A beat with no row still shows the original rather than nothing.
