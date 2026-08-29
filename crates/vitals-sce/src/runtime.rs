@@ -233,6 +233,9 @@ pub struct SceState {
     equipment: Vec<Equipment>,
     /// Everything that happened, in order, stamped with the scenario clock.
     events: Vec<Event>,
+    /// `dbp₀/sbp₀`, when the engine is the one deriving the diastolic; `None` when this case
+    /// drives `dbp` itself and the engine keeps its hands off. See [`SceState::normalise`].
+    dbp_ratio: Option<f64>,
 }
 
 impl SceState {
@@ -244,6 +247,12 @@ impl SceState {
         let vars = sce.variables.iter().map(|(k, a)| (k.clone(), a.init)).collect();
         let state_idx = sce.states.iter().position(|s| s.id == sce.initial_state).unwrap_or(0);
         let status = sce.states.get(state_idx).and_then(|s| s.status.as_deref()).map(parse_status).unwrap_or(PatientStatus::Stable);
+        // Whether the engine derives the diastolic is a property of the authored file, so it is
+        // decided once, here, and never re-asked while the run is moving. A `vitals0` the ratio
+        // cannot be read off — a zero or a negative systolic, or a diastolic that is already at
+        // or above it — is left alone for the clamp below to deal with.
+        let dbp_ratio = (!writes_dbp(&sce) && v0.sbp > 0.0 && v0.dbp > 0.0 && v0.dbp < v0.sbp)
+            .then(|| v0.dbp / v0.sbp);
         let mut st = SceState {
             sce: Arc::new(sce),
             vitals,
@@ -260,6 +269,7 @@ impl SceState {
             outcome_id: None,
             equipment: Vec::new(),
             events: Vec::new(),
+            dbp_ratio,
         };
         let sce_rc = Arc::clone(&st.sce);
         st.adopt_state_rhythm(&sce_rc);
@@ -418,6 +428,10 @@ impl SceState {
             self.take_first_transition(sce, &mut beats);
             self.update_status(sce, &mut beats);
         }
+        // A trigger or an edge can move the systolic too, and `apply_dynamics` above ran before
+        // either of them. Without this the pair would spend the rest of the tick disagreeing —
+        // which is exactly the window a monitor polls in.
+        self.normalise();
         beats
     }
 
@@ -526,6 +540,9 @@ impl SceState {
         // rescue can promote immediately (the old apply() re-checked is_safe)
         self.take_first_transition(sce, &mut beats);
         self.update_status(sce, &mut beats);
+        // An order that moves the systolic moves the pair. Fluids going in is the obvious one:
+        // the pressure the learner reads back must not be half of the one they produced.
+        self.normalise();
         beats
     }
 
@@ -545,13 +562,41 @@ impl SceState {
         self.normalise();
     }
 
-    /// Keep the vitals arithmetically possible.
+    /// Keep the vitals arithmetically possible — and keep the blood pressure a blood pressure.
     ///
     /// Systolic and diastolic are separate variables that a scenario drives independently, and
     /// nothing stopped one crossing the other: shock drops systolic faster, and `50/54` reached
     /// the screen. That is not a severe blood pressure, it is not a blood pressure at all.
     /// Narrow pulse pressure in shock is real; inverted pulse pressure is a bug.
+    ///
+    /// The clamp at the bottom was written as the guard rail for that, and it was being *hit*,
+    /// which is the real finding. Almost every case declares dynamics for `sbp` and none at all
+    /// for `dbp`, so the systolic marched down while the diastolic stood exactly where `vitals0`
+    /// left it: `osce-a`, untreated, ran `88/60`, `84/60`, `80/60`, `76/60`, `62/60` and then
+    /// `58/58`. A pulse pressure of zero is not a low blood pressure — it is a number no patient
+    /// has ever had, and it is the first thing a clinician stops at.
+    ///
+    /// So when the case does not drive `dbp` itself, the diastolic follows the systolic in the
+    /// ratio this patient arrived with, `dbp₀/sbp₀`. Two reasons for that rule and not another:
+    ///
+    ///   * It is **neutral**. It says only that this patient's two pressures belong together —
+    ///     which the case already said when it wrote `vitals0` — and invents no number of its
+    ///     own. Distributive shock drops the diastolic disproportionately and cardiogenic shock
+    ///     narrows the pulse pressure early; choosing between those is a clinical decision that
+    ///     belongs in the scenario file and to the clinician who reviews it, not in an engine
+    ///     that cannot see the diagnosis.
+    ///   * Being a ratio rather than a fixed offset, the pulse pressure **narrows as the
+    ///     pressure falls**, which is the direction every kind of shock moves, without committing
+    ///     to how far. It reaches zero only when the systolic does — and a systolic of zero is a
+    ///     patient for whom `reading.rs` reports no cuff reading at all.
+    ///
+    /// A case that drives its own `dbp` keeps full control; see [`writes_dbp`] for what counts as
+    /// driving it. The clamp stays underneath both, as the backstop it was meant to be rather
+    /// than the thing producing the reading.
     fn normalise(&mut self) {
+        if let Some(k) = self.dbp_ratio {
+            self.vitals.dbp = self.vitals.sbp * k;
+        }
         if self.vitals.dbp > self.vitals.sbp {
             self.vitals.dbp = self.vitals.sbp;
         }
@@ -768,6 +813,39 @@ impl SceState {
             }
         }
     }
+}
+
+/// The one variable a case has to write to take its own diastolic back off the engine.
+const DBP: &str = "dbp";
+
+/// Does this scenario say anything about its own diastolic?
+///
+/// Not only `dynamics`. A `set` or a `delta` on `dbp` — in an intervention, a trigger or a
+/// transition, including inside the arms of a `branch` — is a case stating what the diastolic
+/// does just as plainly as a dynamic is, and an engine that overwrote it on the next tick would
+/// be silently discarding an authored number. So any authored write at all hands the diastolic
+/// back to the case, for that scenario, permanently.
+///
+/// As of this commit no case in the repo writes `dbp` anywhere: across the twelve stations, the
+/// four season scenarios and the conformance copy of EP1, the only occurrence of the name is the
+/// `vitals0` line. Which is the whole reason the derivation cannot move an outcome — nothing
+/// reads it either.
+fn writes_dbp(sce: &Sce) -> bool {
+    fn in_effects(es: &[Effect]) -> bool {
+        es.iter().any(|e| match e {
+            Effect::Delta { delta, .. } => delta.contains_key(DBP),
+            Effect::Set { set } => set.contains_key(DBP),
+            Effect::Branch { branch, els } => {
+                branch.iter().any(|a| in_effects(&a.then)) || in_effects(els)
+            }
+            _ => false,
+        })
+    }
+    sce.states.iter().any(|s| {
+        s.dynamics.iter().any(|d| d.var == DBP)
+            || s.transitions.iter().any(|t| in_effects(&t.doo))
+    }) || sce.triggers.iter().any(|t| in_effects(&t.doo))
+        || sce.interventions.iter().any(|i| in_effects(&i.effects))
 }
 
 fn parse_status(s: &str) -> PatientStatus {
