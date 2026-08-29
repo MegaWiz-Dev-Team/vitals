@@ -38,7 +38,7 @@ Honesty here is what makes the rest credible.
 |---|---|
 | Attrition from **academic difficulty** (cited by 55.7%, more than any other reason) | **Yes — primary lever** |
 | The **19-point pass gap** for international graduates | **Yes — second lever, and the more measurable one** |
-| Attrition from psychological morbidity (40%), isolation (20%), finance | **Marginally at best.** A reason to come back is not treatment. Do not claim it |
+| Attrition from psychological morbidity (cited by 40%), isolation (20%), finance | **Marginally at best.** A reason to come back is not treatment. Do not claim it |
 | Too few medical school places | **No.** We do not create training capacity |
 | **Maldistribution** — a doctor who qualifies in Jakarta may emigrate | **No.** This is the largest thing we do not fix, and someone will ask |
 | Granting standing to a credential | **No.** Only a board can do that |

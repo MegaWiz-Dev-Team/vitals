@@ -46,16 +46,18 @@ qualifier it is two different measures pretending to be one.
 
 Global average attrition **9.1%** (range 2.7–20.1%; a second review reports 11.1%).
 
-> Causes: **academic difficulty 55.7%** · psychological morbidity 40% · absenteeism 30% ·
-> social isolation 20%
+> Reasons cited, multi-response: **academic difficulty 55.7%** · psychological morbidity 40% ·
+> absenteeism 30% · social isolation 20%
 
 Those four sum to 145.7%, so they are **not a partition** — a student who leaves can be counted
 under more than one. Read 55.7% as *the most frequently cited* cause, never as "55.7% of dropouts
-and nothing else". Any arithmetic that treats it as a clean slice (the 1-in-6 in §3) inherits that
-looseness and must be labelled accordingly.
+and nothing else". Any arithmetic that *divides* by it inherits a denominator that does not exist.
+That is what removed the 1-in-6 from §3 rather than caveating it: no label rescues a quotient whose
+denominator is not a quantity.
 
-The largest single cause of losing a future doctor is academic difficulty. That is the one cause a
-system which detects weakness early and routes targeted practice can act on.
+Academic difficulty is the reason cited most often for losing a future doctor — cited, not
+apportioned. It is also the one reason a system which detects weakness early and routes targeted
+practice can act on, which is why it is our lever even though its size is unknown.
 
 ### The 42–63% figure — **verified 2026-08-25, and it does not mean what it looked like**
 
@@ -109,6 +111,12 @@ care service areas, 306 hospital referral regions, 2005–2015:
 
 Also associated with each +10 PCPs per 100,000: cardiovascular mortality −0.9%, cancer mortality
 −1.0%, respiratory mortality −1.4%.
+
+**Do not add those three.** They are separate cause-specific associations, not slices of one total,
+and −3.3% "all-cause mortality" is not a figure this study reports. Same trap as the dropout
+reasons in §1c, different dataset: a list of per-category percentages is not a partition unless the
+source says it is. Neither of these sets appears on an artefact in summed or apportioned form —
+keep it that way.
 
 ### The arithmetic — **constructed**, shown in full so it can be checked
 
@@ -236,15 +244,51 @@ a tenth" survives the range moving. Carry the range with the input whenever the 
 the review that reports 9.1% gives **2.7–20.1%**, and a second review reports **11.1%** (§1c) — so
 the line is offered as scale, not as a projection.
 
-Then, in plain weight and after the caveat, never as the headline: since academic difficulty is the
-most frequently cited cause at 55.7%, a tenth of attrition is **roughly 1 in 6 of the students who
-currently leave because the work was too hard.** That figure is **illustrative arithmetic, not a
-forecast.** It assumes attrition is the only lever, that graduates scale linearly, and that 55.7%
-is a clean slice of dropouts when the reported causes overlap and sum to 145.7% (§1c). The deck and
-the landing page both carry it in exactly that shape; match them.
+And the identity has a second face, which is the one to say out loud: **1 in 10 of everyone who
+leaves today, whatever their reason.**
 
-A target a person can picture and argue with beats a percentage on its own — but only while the
-picture is labelled as one.
+```
+attrition 9.1% → 8.191%   →  0.909 of the 9.1 who leave now stay
+0.909 / 9.1               =  1 in 10.01
+```
+
+Once as a rate, once as people. It introduces no denominator the attrition rate did not already
+have, and "whatever their reason" is load-bearing — it stops the line being read back as a slice of
+any one cause.
+
+### The 1-in-6 — **removed 2026-08-29, and the reason generalises**
+
+This section used to reach "roughly 1 in 6 of the students who currently leave because the work was
+too hard" by dividing that tenth by academic difficulty's 55.7%. **That denominator does not
+exist.** 55.7% is the share of leavers who *cited* academic difficulty in a multi-response review,
+not the share of leaving it accounts for. The four reported reasons sum to 145.7% (§1c), so they
+overlap, no subgroup can be sized from them, and a quotient taken from one of them means nothing.
+It was a category error, not a modelling assumption.
+
+Worth recording separately, because it is the more expensive mistake: for one day this section
+carried the caveat *"illustrative arithmetic, not a forecast — it assumes attrition is the only
+lever and that graduates scale linearly."* Both of those are true statements about a different
+claim. A reader who checked the source found a defect one step earlier and worse than the one we
+had disclosed, having been told we had looked. **A disclosure that names the wrong limitation costs
+more than no disclosure**, because it converts an error into a demonstration of false diligence.
+
+**The general rule, which is not about this number.** A percentage attached to a *reason*, a
+*cause*, or a *factor* in survey data is usually a citation frequency and usually multi-response.
+Add the categories up before dividing by any of them. If they exceed 100% the group has no clean
+size, and nothing may be apportioned to it — cite it, never apportion it.
+
+**What the artefacts now say.** Match these; do not restore what they replaced:
+
+- slide 04 and the landing page: **1% = cutting attrition by about a tenth — 1 in 10 of everyone
+  who leaves today, whatever their reason.**
+- 55.7% survives on both as *the reason cited most often*, marked **cited, not apportioned**, with
+  the 145.7% sum printed beside it so a reader who adds the four numbers finds we said it first.
+- `THEORY_OF_CHANGE.md` §2 no longer writes `(55.7% of 9.1%)` — the category error as literal
+  multiplication, in the table declaring which problems we act on. §5 no longer narrows the target
+  to "for academic reasons".
+
+A target a person can picture beats a percentage on its own — and the picture is strongest when it
+is the identity restated, not an estimate layered on top of it.
 
 ---
 
@@ -262,8 +306,12 @@ picture is labelled as one.
   developing-world average. Use the 41.5% → 3.3% form.**
 - **Physician density is not associated with reduced maternal mortality** once other factors are
   controlled. Claim infant mortality only.
-- **The 1-in-6 arithmetic is illustrative**, not a forecast. It assumes attrition is the only lever,
-  that graduates scale linearly, and that 55.7% is a clean slice of dropouts — which it is not.
+- **The 1-in-6 arithmetic is removed, not caveated** (§3). It divided the tenth by 55.7% as though
+  that were a share of dropouts; it is a citation frequency, so the denominator never existed. Note
+  what it was replaced by rather than what it claimed: **1 in 10 of everyone who leaves** is the
+  same identity restated and needs no cause-partition. And note the failure mode — for one day this
+  file caveated it as "assumes attrition is the only lever and that graduates scale linearly",
+  which described a different claim. **Naming the wrong limitation is worse than naming none.**
 - **9.1% attrition is a point estimate inside a wide range.** The same review gives 2.7–20.1% and a
   second review reports 11.1%. Every calculation starting from 9.1% inherits that width; carry the
   range wherever the number is stated.
