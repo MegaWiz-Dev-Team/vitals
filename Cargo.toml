@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/vitals-progress", "crates/vitals-program", "crates/vitals-cli", "crates/vitals-replay", "crates/vitals-sce", "crates/vitals-web", "crates/vitals-osce"]
 
 [workspace.package]
-version = "0.4.3"
+version = "0.5.0"
 edition = "2021"
 license = "AGPL-3.0-or-later"
 
