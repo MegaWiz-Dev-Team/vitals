@@ -70,6 +70,11 @@
   "bytes": 8294
  },
  {
+  "sce_hash": "e39de235c0a2ddb92b954930944029e8b02ff5ef13eb16dcaf9271942ac1426d",
+  "path": "demo/scenarios/ep2-stemi.json",
+  "bytes": 10607
+ },
+ {
   "sce_hash": "242a0c9f770e22b87031fa0c2917346d47839ff133385b1251fa9d9df341bf28",
   "path": "demo/scenarios/ep3-epiglottitis.json",
   "bytes": 6759
@@ -78,6 +83,11 @@
   "sce_hash": "6e14f222b29b047d406be2e13841de60dddc12c2b7b9ee74bbc59a8357f27638",
   "path": "demo/scenarios/ep3-epiglottitis.json",
   "bytes": 6760
+ },
+ {
+  "sce_hash": "3b54e3af94e2d225a06468dee1e005441f16a905fd9596244db04cb7891f8fc8",
+  "path": "demo/scenarios/ep3-epiglottitis.json",
+  "bytes": 7558
  },
  {
   "sce_hash": "0a74511e605d02ec2ec5ff1d23705fea54b7d01b66db0997f7782a3096adeb7f",
@@ -90,6 +100,11 @@
   "bytes": 7557
  },
  {
+  "sce_hash": "91efb325fc8e06e541d6837189d6a992562a53e97ae57d32cd6fd8d0c8b6c3f0",
+  "path": "demo/scenarios/ep4-pulmonary-embolism.json",
+  "bytes": 7980
+ },
+ {
   "sce_hash": "9433956764028dd157b71c5c0a1f06333ca107ece26b781f4b311811d2229f33",
   "path": "demo/scenarios/ep5-the-night-the-stars-fell.json",
   "bytes": 6696
@@ -98,6 +113,11 @@
   "sce_hash": "aa1d8be0a5c8a69dc969337dd9979fc2207426797019d1b25bd84f40cf901545",
   "path": "demo/scenarios/ep5-the-night-the-stars-fell.json",
   "bytes": 6697
+ },
+ {
+  "sce_hash": "c1788b378cf400595a94ca3e97eba47bfbc0e558d7ad07af71ff2c419d2334a8",
+  "path": "demo/scenarios/ep5-the-night-the-stars-fell.json",
+  "bytes": 7457
  },
  {
   "sce_hash": "f9dbb7de0551815620d88e7b8ff66292e5fbdf565801c972e216ce329c380e45",

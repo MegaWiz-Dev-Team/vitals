@@ -7,7 +7,7 @@
     { "label": "Aspirin given",                      "type": "action",     "needle": "aspirin",                   "points": 6 },
     { "label": "Reperfusion — primary PCI or lytics","type": "action_any", "any_of": ["cath", "thrombolys"],      "points": 12 },
     { "label": "Avoided nitrate in RV infarct",      "type": "no_harm",    "needle": "nitrate in RV infarct",     "points": 5 },
-    { "label": "Avoided shock to a perfusing rhythm","type": "no_harm",    "needle": "unsynchronised shock",      "points": 5 },
+    { "label": "Avoided an unsynchronised shock outside VF","type": "no_harm", "needle": "unsynchronised shock",  "points": 5 },
     { "label": "Patient reperfused (survives)",      "type": "outcome",    "any_of": ["win_discharge", "win_icu"],"points": 6 }
   ]
 }

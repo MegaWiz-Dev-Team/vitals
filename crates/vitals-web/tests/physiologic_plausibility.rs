@@ -858,11 +858,6 @@ fn a_case_moves_its_vitals_the_way_its_status_says_it_is_moving_them() {
 /// Checked twice: statically, so an author finds it, and on the walk, so nobody can argue about
 /// whether the state is reachable.
 #[test]
-#[ignore = "DEFECT: ep2, ep3, ep4 and ep5 each declare an `arrest` state with no `rhythm`, so the \
-            engine holds the rhythm at sinus and the monitor prints a pulse, a blood pressure, a \
-            saturation and a respiratory rate over a patient in cardiac arrest. ep2 also names a \
-            state `vf` and never declares VF. Reported, not fixed — the rhythm each arrest is in \
-            is scenario content and a clinical decision (ep1 documents its own PEA and why)."]
 fn a_patient_in_arrest_has_no_pulse() {
     let mut bad = Vec::new();
 
@@ -918,9 +913,6 @@ fn a_patient_in_arrest_has_no_pulse() {
 /// A candidate who defibrillates a patient the screen has just labelled `ARREST` should not be
 /// the one charted for it.
 #[test]
-#[ignore = "DEFECT: the same missing `rhythm` as `a_patient_in_arrest_has_no_pulse`. Shocking \
-            ep2, ep3, ep4 or ep5 at the moment the engine declares an arrest is recorded as harm \
-            to a perfusing patient."]
 fn defibrillating_a_declared_arrest_is_not_charted_as_harm() {
     let mut bad = Vec::new();
     for case in CASES {

@@ -1088,6 +1088,13 @@ const BEATS: &[Line] = &[
         key: "harm:unsynchronised shock to a perfusing rhythm",
         tr: &[("th", "ช็อกไฟฟ้าแบบไม่ sync ใส่จังหวะหัวใจที่ยังมีเลือดไปเลี้ยง")],
     },
+    Line {
+        key: "harm:unsynchronised shock into asystole — not shockable, and it cost compressions and adrenaline",
+        tr: &[(
+            "th",
+            "ช็อกไฟฟ้าใส่ asystole — ไม่ใช่จังหวะที่ช็อกได้ และต้องหยุดกดหน้าอกกับเสีย adrenaline ไป",
+        )],
+    },
     Line { key: "threshold:delay", tr: &[("th", "ล่าช้า")] },
     Line { key: "threshold:code_blue", tr: &[("th", "มอนิเตอร์ร้องเตือน — code blue")] },
 

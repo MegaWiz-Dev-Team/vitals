@@ -74,10 +74,10 @@ const PINNED: &[Pin] = &[
     Pin { case: "demo/stations/osce-d2.sce.json", rubric: "demo/rubrics/osce-d2.json", outcome: "DeathArrest", score: "8/40", leaf: "94df2fc1f10d7390928e021485ea459372e5ac604b168c7750862e61076ccdc0" },
     Pin { case: "demo/stations/osce-d3.sce.json", rubric: "demo/rubrics/osce-d3.json", outcome: "DeathArrest", score: "10/40", leaf: "27aa65997a6d479a057dcb68b941a0523ca2ea5682618d867abe15379fa5f9f3" },
     Pin { case: "demo/stations/osce-d4.sce.json", rubric: "demo/rubrics/osce-d4.json", outcome: "DeathArrest", score: "5/40", leaf: "a95f6ce76f4f33f296da1ea65f6c2779b6f8abd5afed4cd09bd5cdd87bdd7fe6" },
-    Pin { case: "demo/scenarios/ep2-stemi.json", rubric: "demo/rubrics/ep2-stemi.json", outcome: "DeathArrest", score: "10/40", leaf: "3ab88e8638844f301e3e7c2dde504111608ecc246f08fd3e407b02a58296e881" },
-    Pin { case: "demo/scenarios/ep3-epiglottitis.json", rubric: "demo/rubrics/ep3-epiglottitis.json", outcome: "DeathArrest", score: "14/40", leaf: "b9df18ce6afbb19a0fd2c097d7812c4595ffa45e1b93e28b9ad28b303f0cccae" },
-    Pin { case: "demo/scenarios/ep4-pulmonary-embolism.json", rubric: "demo/rubrics/ep4-pulmonary-embolism.json", outcome: "DeathArrest", score: "13/40", leaf: "40e79bdae36aa3e9b651b5e41064935bacc912a29567b7a6d35269b7241faf23" },
-    Pin { case: "demo/scenarios/ep5-the-night-the-stars-fell.json", rubric: "demo/rubrics/ep5-the-night-the-stars-fell.json", outcome: "DeathArrest", score: "9/40", leaf: "051621546c4ec9b08ac3f696f1771ac914115bb98a052f845cc4686cfb08c5f8" },
+    Pin { case: "demo/scenarios/ep2-stemi.json", rubric: "demo/rubrics/ep2-stemi.json", outcome: "DeathArrest", score: "10/40", leaf: "f142bc45bb93bc336917fd81092601c66a727668eb23cb6552405781939eda9b" },
+    Pin { case: "demo/scenarios/ep3-epiglottitis.json", rubric: "demo/rubrics/ep3-epiglottitis.json", outcome: "DeathArrest", score: "14/40", leaf: "76e2338f3d42345feed1f8654a0e0e8641a55d5e66d088ea1dfe8396bee52327" },
+    Pin { case: "demo/scenarios/ep4-pulmonary-embolism.json", rubric: "demo/rubrics/ep4-pulmonary-embolism.json", outcome: "DeathArrest", score: "13/40", leaf: "691bddb158c16a02b7a6c81904f28caba1cfe88dce95250490aed1e17def5e2b" },
+    Pin { case: "demo/scenarios/ep5-the-night-the-stars-fell.json", rubric: "demo/rubrics/ep5-the-night-the-stars-fell.json", outcome: "DeathArrest", score: "9/40", leaf: "4f3d0873a520a389cb029cd64f42319a0be5f596328da385089d4bb685ae2a3c" },
     Pin { case: "conformance/sce-anaphylaxis-ep1.json", rubric: "", outcome: "WinDischarge", score: "-", leaf: "37a15be328e050407baefacb2de1367dd35777d7e2153f98b915419c3fa239cb" },
 ];
 
