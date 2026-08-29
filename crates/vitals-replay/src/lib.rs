@@ -16,6 +16,9 @@
 // stranger can confirm from one line. (vitals-program cannot carry this: Solana's entrypoint!
 // macro expands to the unsafe input deserialisation every program has.)
 #![forbid(unsafe_code)]
+pub mod bell;
+pub use bell::{horizon, ring, rung, Horizon, Rang, BELL_CEILING_SEC, BELL_TICK};
+
 use vitals_sce::{render_beat, Sce, SceState};
 use sha2::{Digest, Sha256};
 

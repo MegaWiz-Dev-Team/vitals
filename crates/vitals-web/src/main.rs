@@ -243,12 +243,21 @@ impl Session {
 /// The bucket is the case's own outcome id, not a label invented here — the scenario author's
 /// vocabulary is the only one that stays true when a case is rewritten.
 fn count_finish(u: &mut usage::Usage, s: &Session, was_over: bool, store: &store::Store) {
-    if was_over {
+    if was_over || !s.over() {
         return;
     }
-    let Some(o) = s.state.outcome() else { return };
-    u.finished(s.state.outcome_id().unwrap_or("unknown"), o.is_death(), store);
+    match s.state.outcome() {
+        Some(o) => u.finished(s.state.outcome_id().unwrap_or("unknown"), o.is_death(), store),
+        // A run the clock ended. It has no outcome id to borrow, because the case never reached
+        // one of its own endings — so it is counted under a name of its own rather than folded
+        // into somebody else's ending or, as before this existed, not counted at all.
+        None => u.finished(TIME_CALLED, false, store),
+    }
 }
+
+/// The bucket a run the clock ended is counted under. Not a scenario's word, because no scenario
+/// says it: it is what happened when none of them did.
+const TIME_CALLED: &str = "time_called";
 
 /// Write a run to disk. `urgent` is false only for a bare tick.
 fn persist(store: &store::Store, id: &str, s: &mut Session, urgent: bool) {
@@ -331,7 +340,18 @@ struct View {
     films: Vec<&'static Film>,
     harm: Vec<String>,
     outcome: Option<String>,
+    /// Whether the encounter is finished — [`Session::over`], the one predicate.
+    ///
+    /// **Not the same fact as `outcome`.** A run can be over with no terminal at all: time was
+    /// called on a patient the case was never going to resolve, which is what happens on
+    /// `osce-b2` and `osce-c` and what used to leave them running for ever. The page reads this
+    /// and never `outcome` to decide whether the clock has stopped, the result panel is due and
+    /// the mark sheet may be asked for.
+    over: bool,
     elapsed: f64,
+    /// What the station advertises, in simulated seconds — the same figure the shelf card
+    /// prints as `mins`, served so the page has one authority for it rather than two.
+    limit: f64,
     /// Only once the run is over — a run in progress has nothing to anchor yet.
     leaf: Option<String>,
     sce_hash: String,
@@ -478,6 +498,79 @@ fn neutral_label(label: &str) -> &str {
 }
 
 impl Session {
+    /// Simulated seconds this run has been going. Summed off the tape, never held as a field:
+    /// the tape is the truth and everything else is what the tape computes.
+    fn elapsed(&self) -> f64 {
+        self.tape
+            .iter()
+            .map(|s| match s {
+                Step::Tick(dt) => *dt,
+                Step::Do(_) | Step::Act { .. } | Step::Ask(_) | Step::Set(..) | Step::Off(_) => 0.0,
+            })
+            .sum()
+    }
+
+    /// How long this station gives the candidate, in simulated seconds. See [`RUNTIME_MINUTES`].
+    fn limit_sec(&self) -> f64 {
+        runtime_sec(&self.ep)
+    }
+
+    /// **Is this run over?** The one predicate, and the only thing anything may ask.
+    ///
+    /// It used to be `state.outcome().is_none()`, written out four times — in [`Session::sealed`],
+    /// in `/api/marks`, in `/api/debrief` and in `/api/anchor` — and it was wrong in the same way
+    /// in all four: it asked whether *the patient* had reached a terminal state, when the question
+    /// is whether *the encounter* is finished. Those are not the same question, and two of the
+    /// twelve stations are the proof. `osce-b2` and `osce-c` declare no ending a candidate can
+    /// reach by standing still, so the patient never reached a terminal state, so the run was
+    /// never over, so the mark sheet never opened. The candidate sat in a sealed room for ever.
+    ///
+    /// A run is over when the patient reached one of the case's own endings, **or** when the
+    /// clock the station advertises has run out. Both are read off the tape, so a run rebuilt
+    /// from disk and a run still in memory answer identically, and so does a verifier holding
+    /// nothing but the tape.
+    ///
+    /// The second arm is only ever observed *after* [`Session::ring_the_bell`] has run the
+    /// encounter forward, because the crossing and the ringing happen inside the same request.
+    /// Nothing reads this and finds a run whose patient was left mid-slide.
+    fn over(&self) -> bool {
+        self.state.outcome().is_some() || self.elapsed() >= self.limit_sec()
+    }
+
+    /// **The ending.** Stop taking input, and run the encounter on to its conclusion.
+    ///
+    /// The whole design of the finish control is in the two words *run on*. A finish that froze
+    /// the clock and scored the current state would be a cheat code: a candidate watching a
+    /// patient slide toward arrest presses it one second before the arrest, dodges
+    /// `vitals_osce::death_cap` and banks a pass on a patient their management was killing.
+    /// `osce-d4` is the worked example — a run that treats the sepsis but never starts the
+    /// pressor scores 29 of 40 and arrests at sixteen simulated minutes, and the cap takes it to
+    /// 27, which is a fail. Frozen at fourteen minutes it would have been a pass.
+    ///
+    /// So the bell does not stop the patient. It appends ordinary [`Step::Tick`]s — the same 2 s
+    /// the live loop sends at a station — until the case reaches one of its own endings, or until
+    /// nothing about her is going to change again ([`vitals_replay::bell`] for what bounds it).
+    /// The tape it leaves behind is byte-identical to the tape of a candidate who stood at the
+    /// bedside and did nothing until the same moment, which is exactly what finishing early is.
+    /// Nothing records that the button was pressed: that is a fact about the candidate, and
+    /// putting it on the tape would make an early finish score differently from a late one.
+    ///
+    /// The state and the beats are rebuilt from the tape afterwards rather than carried forward
+    /// from the live machine, so the run on screen and the run a verifier recomputes cannot part
+    /// company here of all places.
+    fn ring_the_bell(&mut self) -> Result<(), String> {
+        let until = self.limit_sec();
+        let (added, _, _) = vitals_replay::ring(&self.sce_json, &mut self.state, until)?;
+        if added.is_empty() {
+            return Ok(());
+        }
+        self.tape.extend(added);
+        let (state, r) = resume(&self.sce_json, &self.tape)?;
+        self.state = state;
+        self.beats = r.beats;
+        Ok(())
+    }
+
     /// Is this run sealed *right now*? The one definition, asked by everything that withholds.
     ///
     /// [`Session::view`] asks it before serialising the harm list, the feed and the chart.
@@ -489,11 +582,15 @@ impl Session {
     ///
     /// An exam by declaration (`exam_mode`, which is set from a landed chain commitment and
     /// nowhere else) or an exam by definition (a member of a station set, true even on a bay with
-    /// no chain configured) — and only while the clock is still running. `outcome.is_some()` is
-    /// the bell, and the bell is where sealing stops rather than where it starts: the mark sheet
-    /// and the debrief are what an unlimited-retry model is for.
+    /// no chain configured) — and only while the clock is still running. [`Session::over`] is the
+    /// bell, and the bell is where sealing stops rather than where it starts: the mark sheet and
+    /// the debrief are what an unlimited-retry model is for.
+    ///
+    /// It used to read `outcome.is_none()` here, which sealed two stations for ever: `osce-b2`
+    /// and `osce-c` reach no terminal outcome a candidate can get to by standing still, so the
+    /// condition never went false and the sheet never opened.
     fn sealed(&self) -> bool {
-        (self.exam_mode || set_member(&self.ep).is_some()) && self.state.outcome().is_none()
+        (self.exam_mode || set_member(&self.ep).is_some()) && !self.over()
     }
 
     /// A full snapshot of the run, in the language the page asked for.
@@ -504,22 +601,19 @@ impl Session {
     /// pins, and the reason a Thai run and an English run of the same case can be compared at all.
     fn view(&self, lang: &lang::Language) -> View {
         let v = self.state.vitals;
-        let elapsed: f64 = self
-            .tape
-            .iter()
-            .map(|s| match s {
-                Step::Tick(dt) => *dt,
-                Step::Do(_) | Step::Act { .. } | Step::Ask(_) | Step::Set(..) | Step::Off(_) => 0.0,
-            })
-            .sum();
+        let elapsed = self.elapsed();
+        let over = self.over();
         let outcome = self.state.outcome().map(|o| format!("{o:?}"));
         // Derived by replaying the tape, not by reading the live state. Assembling a Replay by
         // hand here would show the player a leaf computed one way while the verifier computes it
         // another, and a leaf that depends on which side of the wire you stand on proves nothing.
-        let leaf_hex = outcome.as_ref().and_then(|_| {
+        // Gated on the run being over rather than on the patient having died or gone home: a
+        // station where time was called has a tape, a replay and a leaf like any other, and
+        // `leaf()` has always had a spelling for a run with no terminal (`outcome:-`).
+        let leaf_hex = over.then(|| {
             let r = replay(&self.sce_json, &self.tape).ok()?;
             Some(hex(&leaf(&sce_hash(&self.sce_json), &self.tape, &r)))
-        });
+        }).flatten();
         // Supplemental oxygen is worth points of its own: holding 96% on a mask is not the same
         // patient as holding 96% on air, and the score is built to say so.
         let on_oxygen = self.state.has_equipment("o2") || self.state.has_equipment("ett");
@@ -634,7 +728,9 @@ impl Session {
             // running under exam; whole from the bell onwards.
             harm: if sealed { Vec::new() } else { self.state.harm_events.clone() },
             outcome,
+            over,
             elapsed,
+            limit: self.limit_sec(),
             leaf: leaf_hex,
             sce_hash: hex(&sce_hash(&self.sce_json)),
             equipment: self
@@ -1261,6 +1357,43 @@ fn station_label(id: &str) -> String {
     id.to_uppercase()
 }
 
+/// How long each entry on the shelf advertises, in whole minutes.
+///
+/// The number was decoration. The card said "a 10-minute station", the page drew a progress bar
+/// against it, and nothing on either side of the wire enforced it — which is how `osce-b2` and
+/// `osce-c`, neither of which declares an ending edge a candidate can reach by standing still,
+/// ran to sixty simulated minutes in an audit with the mark sheet still sealed.
+///
+/// It is the server's number now, and it means one thing: **how long the candidate gets to
+/// work.** It is a floor under the ending and not a guillotine over the case — see
+/// [`Session::ring_the_bell`], which stops taking input at this mark and then lets the patient
+/// finish going wherever she was going. A station whose failing narrative arrests at 11.6
+/// simulated minutes still arrests; it simply does so with nobody left in the room.
+///
+/// Measured against what the twelve stations actually do, every one of them can be *passed* in
+/// under half its advertised time (2.8–5.0 minutes of orders on a competent run). Nothing here
+/// stops a case mid-narrative to satisfy a label, and no label was moved to satisfy a case.
+///
+/// The page keeps its own copy — it is a static file and paints the shelf before it has spoken
+/// to the server — and `the_shelf_card_and_the_server_agree_about_the_clock` is what holds the
+/// two together, exactly as it does for the stem.
+const RUNTIME_MINUTES: &[(&str, u32)] = &[
+    ("ep1", 12), ("ep2", 12), ("ep3", 14), ("ep4", 12), ("ep5", 18),
+    ("osce-a", 8), ("osce-a2", 8),
+    ("osce-b", 10), ("osce-b2", 10), ("osce-b3", 10),
+    ("osce-c", 10), ("osce-c2", 10), ("osce-c3", 10),
+    ("osce-d", 12), ("osce-d2", 12), ("osce-d3", 10), ("osce-d4", 14),
+];
+
+/// The advertised duration of one case, in simulated seconds.
+///
+/// An id nobody has declared falls back to EP1's twelve minutes, for the same reason [`title`]
+/// falls back to EP1: an unknown id already plays the EP1 scenario.
+fn runtime_sec(ep: &str) -> f64 {
+    let m = RUNTIME_MINUTES.iter().find(|(id, _)| *id == ep).map(|(_, m)| *m).unwrap_or(12);
+    m as f64 * 60.0
+}
+
 fn difficulty(ep: &str) -> Difficulty {
     // A set member's tier is declared once, in SETS — the shelf chip and the XP weight read
     // the same field, and a Phase-5b member needs no arm here.
@@ -1803,6 +1936,15 @@ fn main() {
                             "hr": m.hr, "spo2": m.spo2, "sbp": m.sbp, "dbp": m.dbp,
                             "rr": m.rr, "temp": m.temp, "gcs": m.gcs,
                             "status": format!("{:?}", s.state.status),
+                            // The scenario clock, which is the only clock anything at this
+                            // bedside may date a reading against. The bay ticks two to three
+                            // scenario seconds every 700 ms of wall time, so a pane left to
+                            // `Date.now()` ages its reading against a clock nobody else on the
+                            // screen is watching: the cuff printed the pressure the patient
+                            // walked in with, "24 s ago", beside a bay clock reading 0:56.
+                            // `pump.html` has read this field since it was written and has been
+                            // getting `undefined` — which is its 0 mL infused, on every run.
+                            "t_sec": s.state.t_sec(),
                             "rhythm": m.rhythm,
                             // A monitor that invents a pulse is worse than one that misses an
                             // arrest, so this comes from the rhythm rather than from the numbers.
@@ -1867,48 +2009,102 @@ fn main() {
                     None => no_such_session(),
                     Some(s) => {
                         // Read before anything moves: the increment belongs to the transition
-                        // into a terminal state, not to every request made after it.
-                        let was_over = s.state.outcome().is_some();
-                        let acted = param(&url, "do").is_some();
-                        if let Some(act) = param(&url, "do") {
-                            // Recognition happens here, once, and its answer goes on the tape beside the
-                            // words. An order nobody understood is recorded as exactly that — an
-                            // empty resolution — so replay stays faithful to a run in which nothing
-                            // happened, even after the matcher learns the phrase.
-                            //
-                            // The scenario's own matcher answers first and its answer is final. Only
-                            // when *it* declines does the language layer get a turn, and all it may do
-                            // is offer the English order a non-English phrase names — which the same
-                            // matcher then rules on. So a translation can add recognition and can
-                            // never redirect an order a case author already spelled out.
-                            let id = resolve_order(&s.state, &act);
-                            // By id, not by text: the id is what the tape carries and what replay
-                            // re-runs, so the run on screen and the run a verifier recomputes are the
-                            // same run even when the words that started it were in another language.
-                            let emitted = if id.is_empty() {
-                                s.state.apply(&act)
-                            } else {
-                                s.state.apply_id(&id)
-                            };
-                            s.beats.extend(emitted.iter().map(render_beat));
-                            s.tape.push(Step::acted(&act, &id));
-                            // The picture the order asked for, if this station has one. It hangs
-                            // off the id the tape already carries and goes nowhere near it — the
-                            // line above is the whole of what replay will ever see.
-                            if let Some(f) = film_for(&s.ep, &id) {
-                                if !s.films.iter().any(|x| x.file == f.file) {
-                                    s.films.push(f);
+                        // into a finished run, not to every request made after it. It is also
+                        // what decides whether this request is the one that rings the bell.
+                        let was_over = s.over();
+                        let acted = !was_over && param(&url, "do").is_some();
+                        // ── nothing lands on a run that is already over ─────────────────────
+                        // Post-bell orders and ticks used to go on the tape: the engine ignored
+                        // them, but `Step::Tick` was pushed unconditionally, so a client that
+                        // kept polling grew the tape — and the tape is the leaf. A finished run
+                        // has to hash the same however long the browser is left open, and a
+                        // candidate must not be able to keep working after time is called.
+                        if !was_over {
+                            if let Some(act) = param(&url, "do") {
+                                // Recognition happens here, once, and its answer goes on the tape beside the
+                                // words. An order nobody understood is recorded as exactly that — an
+                                // empty resolution — so replay stays faithful to a run in which nothing
+                                // happened, even after the matcher learns the phrase.
+                                //
+                                // The scenario's own matcher answers first and its answer is final. Only
+                                // when *it* declines does the language layer get a turn, and all it may do
+                                // is offer the English order a non-English phrase names — which the same
+                                // matcher then rules on. So a translation can add recognition and can
+                                // never redirect an order a case author already spelled out.
+                                let id = resolve_order(&s.state, &act);
+                                // By id, not by text: the id is what the tape carries and what replay
+                                // re-runs, so the run on screen and the run a verifier recomputes are the
+                                // same run even when the words that started it were in another language.
+                                let emitted = if id.is_empty() {
+                                    s.state.apply(&act)
+                                } else {
+                                    s.state.apply_id(&id)
+                                };
+                                s.beats.extend(emitted.iter().map(render_beat));
+                                s.tape.push(Step::acted(&act, &id));
+                                // The picture the order asked for, if this station has one. It hangs
+                                // off the id the tape already carries and goes nowhere near it — the
+                                // line above is the whole of what replay will ever see.
+                                if let Some(f) = film_for(&s.ep, &id) {
+                                    if !s.films.iter().any(|x| x.file == f.file) {
+                                        s.films.push(f);
+                                    }
                                 }
-                            }
                         }
                         if let Some(dt) = param(&url, "tick").and_then(|v| v.parse::<f64>().ok()) {
                             let emitted = s.state.tick(dt);
                             s.beats.extend(emitted.iter().map(render_beat));
                             s.tape.push(Step::Tick(dt));
                         }
+                        }
+                        // ── the announced time limit, actually ringing the bell ─────────────
+                        // The tick that carries the clock past what the card advertises is the
+                        // tick that ends the station, in the same request, so nothing ever reads
+                        // a run that is `over` and has not been resolved. On the crossing only:
+                        // once `over` the branch above stops the tape, so this cannot fire twice.
+                        if !was_over && s.over() {
+                            if let Err(e) = s.ring_the_bell() {
+                                eprintln!("could not ring the bell on {id}: {e}");
+                            }
+                        }
                         let v = s.view(lang::language(param(&url, "lang").as_deref()));
                         count_finish(&mut usage, s, was_over, &store);
-                        persist(&store, &id, s, acted);
+                        // Nothing to write for a run that was already over: it took nothing on
+                        // this request, so the bytes on disk are the bytes already there. A poll
+                        // left running against a finished case must not be a write per second.
+                        if !was_over {
+                            persist(&store, &id, s, acted || s.over());
+                        }
+                        json(v)
+                    }
+                }
+            }
+            // ── the candidate says they are done ────────────────────────────────
+            // The control the bay did not have. Embla's `← จบเคส` is not it: that abandons the
+            // encounter without submitting or scoring, which is an escape hatch and not a finish.
+            //
+            // This ends the attempt the only honest way — see [`Session::ring_the_bell`]. It
+            // takes no argument beyond the run: there is nothing to choose, because choosing
+            // when to stop the patient is the cheat this exists to make impossible.
+            (Method::Get, "/api/finish") => {
+                let id = param(&url, "id").unwrap_or_default();
+                let caller = param(&url, "player");
+                let mut map = sessions.lock().unwrap();
+                match map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) {
+                    None => no_such_session(),
+                    Some(s) => {
+                        let was_over = s.over();
+                        if !was_over {
+                            if let Err(e) = s.ring_the_bell() {
+                                let _ = req.respond(json(serde_json::json!({ "error": e })));
+                                continue;
+                            }
+                        }
+                        let v = s.view(lang::language(param(&url, "lang").as_deref()));
+                        count_finish(&mut usage, s, was_over, &store);
+                        if !was_over {
+                            persist(&store, &id, s, true);
+                        }
                         json(v)
                     }
                 }
@@ -1928,9 +2124,13 @@ fn main() {
                     None => no_such_session(),
                     Some(s) => {
                         // The picker goes through the same matcher a typed order does, so it can
-                        // end a run the same way. Counted from the same edge.
-                        let was_over = s.state.outcome().is_some();
-                        if off {
+                        // end a run the same way. Counted from the same edge — and, like `/api/step`,
+                        // it lands nothing at all on a run the bell has already ended.
+                        let was_over = s.over();
+                        if was_over {
+                            // Time has been called. Nothing more goes on the patient, and
+                            // nothing more goes on the tape.
+                        } else if off {
                             s.state.detach(&dev);
                             s.tape.push(Step::Off(dev.clone()));
                         } else if s.state.has_equipment(&dev)
@@ -1965,9 +2165,16 @@ fn main() {
                                 }
                             }
                         }
+                        if !was_over && s.over() {
+                            if let Err(e) = s.ring_the_bell() {
+                                eprintln!("could not ring the bell on {id}: {e}");
+                            }
+                        }
                         let v = s.view(lang::language(param(&url, "lang").as_deref()));
                         count_finish(&mut usage, s, was_over, &store);
-                        persist(&store, &id, s, true);
+                        if !was_over {
+                            persist(&store, &id, s, true);
+                        }
                         json(v)
                     }
                 }
@@ -1990,7 +2197,7 @@ fn main() {
                     // The page only ever asks after the bell, but the page is a file anyone can
                     // read and edit; this is the refusal that holds. The wording matches
                     // /api/marks so the two seals read as one rule rather than two accidents.
-                    Some(s) if s.state.outcome().is_none() => json(serde_json::json!({
+                    Some(s) if !s.over() => json(serde_json::json!({
                         "sealed": true,
                         "error": "the debrief opens when the case is over",
                     })),
@@ -2035,7 +2242,7 @@ fn main() {
                 let map = sessions.lock().unwrap();
                 match map.get(&id).filter(|s| s.answers_to(caller.as_deref())) {
                     None => no_such_session(),
-                    Some(s) if s.state.outcome().is_none() => json(serde_json::json!({
+                    Some(s) if !s.over() => json(serde_json::json!({
                         "sealed": true,
                         "error": "the mark sheet opens when the case is over",
                     })),
@@ -2515,7 +2722,7 @@ fn main() {
                     let _ = req.respond(no_such_session());
                     continue;
                 };
-                if s.state.outcome().is_none() {
+                if !s.over() {
                     let _ = req.respond(json(serde_json::json!({ "error": "the run has not finished" })));
                     continue;
                 }
@@ -3219,7 +3426,7 @@ mod tests {
         for p in ["/api/anchor", "/api/claim", "/api/commit", "/api/say"] {
             assert!(guarded(p), "{p} makes the server sign or spend");
         }
-        for p in ["/", "/play", "/api/new", "/api/step", "/api/kit", "/api/tape", "/api/chain",
+        for p in ["/", "/play", "/api/new", "/api/step", "/api/finish", "/api/kit", "/api/tape", "/api/chain",
                   "/api/meter", "/api/fuel", "/api/stars", "/api/lang", "/api/usage", "/donate",
                   // Re-derivation is the product's whole claim. A token on it would mean
                   // "re-derivable by anyone we gave a token to", which is not the claim.
@@ -3257,6 +3464,106 @@ mod tests {
         assert_eq!(difficulty("osce-b"), Difficulty::Intern);
         assert_eq!(difficulty("osce-c"), Difficulty::Resident);
         assert_eq!(difficulty("osce-d"), Difficulty::Intern);
+    }
+
+    /// **The clock the card advertises and the clock the server keeps are one number.**
+    ///
+    /// It was never one number, because it was never a number the server had. `mins` lived only
+    /// in the page, where it drew a progress bar; nothing on this side had heard of it, so
+    /// "a 10-minute station" was a caption. It is enforced now — [`Session::over`] reads
+    /// [`RUNTIME_MINUTES`] — and the moment a caption becomes a rule, the two copies of it have
+    /// to be held together or a card will advertise one duration while the bell rings on
+    /// another.
+    ///
+    /// Neither copy can go. The page is served as a static file and paints its shelf before it
+    /// has spoken to the server; the server needs the figure with no page in the room (the bell
+    /// itself). So they stay two copies with one value, and this is what says so — the same
+    /// arrangement, and the same reason, as `the_shelf_card_and_the_server_print_the_same_stem`.
+    #[test]
+    fn the_shelf_card_and_the_server_agree_about_the_clock() {
+        // The array itself, and not the rest of the file after it: `{id:'…'` occurs elsewhere,
+        // and a count taken over the tail would be counting something else.
+        let season = PAGE
+            .split_once("const SEASON=[")
+            .map(|(_, rest)| rest)
+            .and_then(|rest| rest.split_once("\n];"))
+            .map(|(arr, _)| arr)
+            .expect("SEASON is gone from the page");
+        let card_mins = |id: &str| -> u32 {
+            let at = season
+                .find(&format!("{{id:'{id}',"))
+                .unwrap_or_else(|| panic!("{id} has no card in SEASON"));
+            let rest = &season[at..];
+            let from = rest.find(",mins:").unwrap_or_else(|| panic!("{id}'s card has no mins")) + 6;
+            let to = from + rest[from..].find(|c: char| !c.is_ascii_digit()).unwrap_or(0);
+            rest[from..to].parse().unwrap_or_else(|_| panic!("{id}'s mins is not a number"))
+        };
+        for (id, mins) in RUNTIME_MINUTES {
+            assert_eq!(card_mins(id), *mins, "{id}: the card and the bell disagree about the clock");
+        }
+        // And the table covers the whole shelf. A case the server has no duration for would
+        // fall back to twelve minutes and ring a bell nobody advertised.
+        let cards = season.matches("{id:'").count();
+        assert_eq!(
+            cards,
+            RUNTIME_MINUTES.len(),
+            "the shelf has {cards} entries and the server times {}",
+            RUNTIME_MINUTES.len()
+        );
+    }
+
+    /// A duration that cannot be met is a lie on the card, so this is measured rather than
+    /// asserted from memory: every station has to be *passable* well inside what it advertises.
+    ///
+    /// It is the check that matters for the bell, and it is not the same as asking whether the
+    /// case *ends* inside it. Four stations' failing narratives arrest one to four minutes after
+    /// their card's mark, and that is correct — the candidate's time is up, the patient's is not,
+    /// and `Session::ring_the_bell` lets her finish going where she was going. What would be
+    /// wrong is a station a candidate could not complete in the time on the door.
+    #[test]
+    fn every_station_can_be_passed_inside_the_time_its_card_advertises() {
+        // The definitive order for each station — what turns the case around — given at once.
+        // Enough to reach the win; the point is the clock, not the mark sheet.
+        const CURE: &[(&str, &[&str])] = &[
+            ("osce-a", &["adrenaline_im"]),
+            ("osce-a2", &["adrenaline_im"]),
+            ("osce-b", &["ecg", "cath_lab"]),
+            ("osce-b2", &["nsaid"]),
+            ("osce-b3", &["dexamethasone", "observe_child"]),
+            ("osce-c", &["dexamethasone", "observe_child"]),
+            ("osce-c2", &["neb_salbutamol", "prednisolone", "ipratropium", "pefr"]),
+            ("osce-c3", &["antibiotics", "admit_ward"]),
+            ("osce-d", &["two_lines", "crystalloid", "type_screen", "transfuse", "endoscopy"]),
+            ("osce-d2", &["wells", "ctpa", "heparin"]),
+            ("osce-d3", &["adrenaline_child"]),
+            ("osce-d4", &["two_lines", "cultures", "fluids", "antibiotics", "norepinephrine",
+                          "source_control", "icu_bed"]),
+        ];
+        for (ep, cure) in CURE {
+            let j = std::fs::read_to_string(scenario_path(ep)).expect("scenario");
+            let mut tape: Vec<Step> = Vec::new();
+            for o in *cure {
+                tape.push(Step::Act { text: (*o).into(), id: (*o).into() });
+                for _ in 0..5 {
+                    tape.push(Step::Tick(2.0));
+                }
+            }
+            let limit = runtime_sec(ep);
+            let (whole, _) = vitals_replay::rung(&j, &tape, limit).expect("ring");
+            let r = replay(&j, &whole).expect("replay");
+            assert_eq!(
+                r.outcome.as_deref().map(|o| o.starts_with("Win")),
+                Some(true),
+                "{ep}: the model answer does not reach a win — {:?}",
+                r.outcome
+            );
+            assert!(
+                r.sim_seconds <= limit,
+                "{ep} advertises {:.0} minutes and cannot be completed inside them: the win                  lands at {:.1}",
+                limit / 60.0,
+                r.sim_seconds / 60.0
+            );
+        }
     }
 
     /// Every station is nameable in the save list, not just the four somebody typed out.

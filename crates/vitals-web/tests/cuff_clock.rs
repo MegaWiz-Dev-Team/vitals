@@ -97,10 +97,9 @@ fn a_reading_with_no_clock_behind_it_is_printed_without_an_age() {
 ///     "t_sec": s.state.t_sec(),
 /// ```
 ///
-/// That file belongs to another change in flight, so this test is `#[ignore]`d rather than red:
-/// run it with `--ignored` to see what is missing, and un-ignore it when the field lands.
+/// The field has landed, so this runs with everything else. An ignored test nobody turns on is
+/// a comment with extra steps.
 #[test]
-#[ignore = "/device/vitals does not carry t_sec yet — one line in main.rs, see the doc comment"]
 fn the_device_feed_carries_the_scenario_clock() {
     let s = server::Server::start();
     let id = s.json("/api/new?ep=ep1")["id"].as_str().expect("a session id").to_string();

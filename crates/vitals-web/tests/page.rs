@@ -207,6 +207,43 @@ fn no_id_is_declared_twice() {
 }
 
 /// The token the server injects has to still be there for it to be injected into.
+/// **Where the control that ends an attempt is, and where it is not.**
+///
+/// This ends somebody's exam. The top bar holds `← episodes` and `restart` — two plain pills a
+/// thumb's width apart, neither of which costs anything — and a third one beside them would be
+/// the one irreversible act in the bay wearing the same coat as the two harmless ones, in the
+/// one row of the page a hand passes over on the way to somewhere else.
+///
+/// So it lives at the foot of the working column instead — under history, orders, kit, chart and
+/// disposition, which is the order the work actually happens in — and it arms before it fires.
+/// Both of those are decisions rather than accidents, and a test is the only thing that keeps a
+/// decision from being tidied away by the next person moving buttons around.
+#[test]
+fn the_control_that_ends_an_attempt_is_not_in_the_row_with_restart() {
+    let html = page();
+    let bar = {
+        let a = html.find("<div class=\"bar\">").expect("no player bar");
+        let b = html[a..].find("</div>").expect("unterminated bar") + a;
+        &html[a..b]
+    };
+    assert!(bar.contains("id=\"back\"") && bar.contains("id=\"start\""),
+            "the bar stopped holding the two buttons this test is measuring against");
+    assert!(!bar.contains("id=\"endrun\""),
+            "the control that ends the attempt has moved into the row with restart");
+    // It is in the rail, after the disposition — the last thing in the column, not the first.
+    let rail = html.find("<aside class=\"rail\">").expect("no rail");
+    let end = html.find("id=\"endrun\"").expect("the finish control is gone from the page");
+    let dispo = html.find("class=\"panel dispo\"").expect("no disposition panel");
+    assert!(rail < dispo && dispo < end, "the finish control moved out from under the disposition");
+
+    // And it arms rather than fires: the handler adds a class on the first press and only calls
+    // the endpoint on the second.
+    let h = html.find("$('#endrun').onclick").expect("nothing is bound to the finish control");
+    let body = &html[h..h + 400];
+    assert!(body.contains("armed"), "the finish control fires on one press");
+    assert!(html.contains("/api/finish"), "the page never asks the server to finish anything");
+}
+
 #[test]
 fn the_token_placeholder_survives() {
     assert!(page().contains("__VITALS_TOKEN__"), "the server replaces this at serve time");

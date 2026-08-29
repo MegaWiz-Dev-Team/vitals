@@ -933,13 +933,28 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
 .sheet-f .sp{margin-left:auto}
 .btn.danger{color:var(--alarm);border-color:#EFD3D0}
 .btn.danger:hover{background:var(--alarm-soft);border-color:var(--alarm)}
+/* The finish control. Wider than anything else in the column and the only thing on the page
+   wearing the alarm colour as an outline, so it reads as the one irreversible act in the bay
+   rather than as another order. Armed it fills in, which is the whole of the second press's
+   warning — a button that has changed colour under the finger is not a button anybody presses
+   twice by accident. */
+.endp{display:grid;gap:.4rem}
+.btn.end{width:100%;border-color:var(--alarm);color:var(--alarm);font-weight:700}
+.btn.end:hover:not(:disabled){background:var(--alarm-soft);border-color:var(--alarm)}
+.btn.end.armed{background:var(--alarm);border-color:var(--alarm);color:#fff}
+.btn.end.armed:hover{background:var(--alarm);color:#fff}
+.endnote{color:var(--ink-2);font-size:.76rem;line-height:1.35;font-style:normal}
 
 /* ── outcome ── */
 .result{grid-column:1/-1;display:none;background:var(--card);border:1px solid var(--line);
   border-left:4px solid var(--act);border-radius:11px;padding:1rem 1.1rem}
 .result.lose{border-left-color:var(--alarm)}
+/* Time called. Neither of the other two: nothing is claimed about how she ended up, because
+   nothing is known — the marks below are the whole of what this run says. */
+.result.called{border-left-color:var(--ink-2)}
 .result h2{margin:0 0 .15rem;font-family:Archivo,sans-serif;font-size:1.3rem;font-weight:800}
 .result.win h2{color:var(--act)} .result.lose h2{color:var(--alarm)}
+.result.called h2{color:var(--ink-2)}
 .result .sub{color:var(--ink-2);font-size:.88rem}
 .leaf{font-family:"IBM Plex Mono",monospace;font-size:.65rem;color:var(--ink-2);word-break:break-all;
   background:var(--card-2);border:1px solid var(--line);padding:.5rem .6rem;border-radius:6px;margin:.6rem 0}
@@ -1633,6 +1648,27 @@ a.give:hover{filter:brightness(1.06)}
       <em id="dispo-why" class="dispo-why"></em>
       <button class="btn" id="sound" title="the clips carry their own room tone">🔇 sound off</button>
     </div>
+
+    <!-- ── the end of the attempt ────────────────────────────────────────────────
+         Deliberately not in the top bar. That row holds "← episodes" and "restart", two
+         plain pills a thumb's width apart, and a third one beside them would be the control
+         that ends somebody's exam sitting where the two harmless ones are. It is here instead:
+         the foot of the column the candidate works down — history, orders, kit, chart,
+         disposition, done — which is the order the act happens in and the place a hand is
+         already resting when the decision is made.
+
+         And it arms rather than fires. One press says what will happen and starts a short
+         window; the second press inside that window ends the attempt. Nothing else on this
+         page needs confirming, because nothing else on this page cannot be undone.
+
+         What it does *not* do is stop the patient: see /api/finish. Ending resolves the
+         encounter forward, so pressing this a second before an arrest buys nothing at all. -->
+    <div class="panel endp">
+      <div class="k">the station</div>
+      <button class="btn end" id="endrun" data-ga="finish" disabled
+              aria-describedby="endnote">I have finished</button>
+      <em class="endnote" id="endnote">Ends the attempt. The case plays out from here and the marks are computed.</em>
+    </div>
   </aside>
 
 <div class="veil" id="veil" hidden>
@@ -2306,7 +2342,12 @@ const SAY={
  "threshold:stemi_recognised":"the ECG tells the truth","threshold:collapse":"{s} collapses",
  "threshold:code_blue":"the monitor alarms — code blue","threshold:rosc":"a rhythm comes back",
  "terminal:WinDischarge":"{s} goes home","terminal:WinIcu":"{s} lives — ICU",
- "terminal:DeathArrest":"{s} dies","terminal:DeathBiphasic":"{s} dies at home"
+ "terminal:DeathArrest":"{s} dies","terminal:DeathBiphasic":"{s} dies at home",
+ /* Not a beat. `render_beat` cannot produce this string and the engine never emits it — the
+    run simply has no terminal, and this is what the panel says instead of leaving its
+    headline empty. It is here beside the four real endings so the wording is read against
+    them: time was called, and nothing is being claimed about how she ended up. */
+ "terminal:TimeCalled":"time — the station ends"
 };
 /* The line a beat is read in: the run's own translation first, then the page's English, then the
    raw beat with its kind stripped. Three fallbacks deep and none of them can be empty, because a
@@ -2837,7 +2878,7 @@ function paint(v,named){
      case with no translation — both of which mean "show what the case author wrote". */
   if(v.tr) Object.assign(TR, v.tr);
   /* B9 · the player bar: on air while the case runs, ended when it is over. */
-  const onAir=!over&&!v.outcome;
+  const onAir=!over&&!v.over;
   $('#ep-name').innerHTML=(E.sn||E.n)+' · '+E.t
     +' · <span class="live'+(onAir?'':' end')+'">'+(onAir?'LIVE':'ENDED')+'</span>'
     +(EXAMLIVE?' <span class="live exam">OSCE EXAM</span>':'');
@@ -2865,7 +2906,7 @@ function paint(v,named){
      fact; the room going red twice is the alarm the bay would actually be making. Only
      downward, and never after the bell — the border is a warning, not a verdict. */
   const rk=RANK[v.status]||0;
-  if(rk>lastRank&&rk>=2&&!over&&!v.outcome)alarmPulse();
+  if(rk>lastRank&&rk>=2&&!over&&!v.over)alarmPulse();
   lastRank=rk;
   $('#clock').textContent=fmt(v.elapsed); clockNow=v.elapsed;
 
@@ -2884,7 +2925,7 @@ function paint(v,named){
        heart rate on a corpse. */
     $('#news-n').textContent='—';
     $('#news-band').textContent = v.outcome && v.outcome.startsWith('Death') ? 'deceased' : 'no score';
-    $('#news-do').textContent = say('terminal:'+v.outcome);
+    $('#news-do').textContent = say('terminal:'+(v.outcome||'TimeCalled'));
     $('#newsbox').dataset.band='none';
     $('#news-bar').innerHTML = Array.from({length:20},()=>'<i></i>').join('');
     $('#clock').textContent = fmt(v.elapsed);
@@ -2965,7 +3006,7 @@ function paint(v,named){
 
   /* The chart repaints every tick, so it flips to the full harm text by itself on the last
      paint of the run — the one that raises the result panel. */
-  const ended = over || !!v.outcome;
+  const ended = over || !!v.over;
   renderChart(v, ended);
   renderFilms(v);
   const fresh = drainBeats(v, ended, named);
@@ -3226,28 +3267,37 @@ function drainBeats(v,ended,named){
 /* The bell. Raised from both ends of paint() — the living patient's path and the dead one's —
    because a run that ended is a run that gets its score, its leaf and its debrief either way. */
 function finish(v){
-  if(!v.outcome || over) return;
-  over=true; stop();
+  /* `v.over` and not `v.outcome`. They are different facts: a run can be over with no terminal
+     at all — time was called on a patient the case was never going to resolve — and reading
+     `outcome` here is exactly what left `osce-b2` and `osce-c` running for ever with the mark
+     sheet shut. The server owns the predicate (`Session::over`); this reads its answer. */
+  if(!v.over || over) return;
+  over=true; stop(); disarmEnd();
   /* The film stops being the thing the screen is for. It borrowed height from the transcript
      while it was being read; the verdict is what wants the room now, and the frame gives it
      back rather than holding a hundred-and-fifty-pixel radiograph over a squeezed debrief.
      The film stays on the stage — just at the frame's ordinary share of it. */
   renderStage();
-  const win=v.outcome.startsWith('Win');
+  /* Three endings, not two. She lived, she died, or the clock ran out on a patient who is
+     exactly as she was left — and that last one must not be dressed as either of the others:
+     a flatline over a living patient is a lie, and a green panel over a station nobody
+     finished is a different one. */
+  const win=!!v.outcome&&v.outcome.startsWith('Win');
+  const died=!!v.outcome&&v.outcome.startsWith('Death');
   /* The panel is built now and shown later. Everything below fills it — including two
      async fetches — while it is still display:none, so by the time the sweep uncovers
      it the verdict is whole rather than assembling itself in front of the player. */
-  $('#result').className='result '+(win?'win':'lose');
+  $('#result').className='result '+(win?'win':(died?'lose':'called'));
   /* Every sealed line in the feed now says what it was. Matched by position against the run's
      own harm beats, which is the order they were appended in. */
   unsealHarm(v); unsealBeats(v);
   showDebrief(); showProvenance(null); showMarks(); showReveal();
-  $('#outcome').textContent=say('terminal:'+v.outcome);
-  $('#outnote').textContent=(v.harm.length?'Harm on the record: '+v.harm.join(', '):'No harm recorded.')+'  ·  '+v.outcome;
+  $('#outcome').textContent=say('terminal:'+(v.outcome||'TimeCalled'));
+  $('#outnote').textContent=(v.harm.length?'Harm on the record: '+v.harm.join(', '):'No harm recorded.')+'  ·  '+(v.outcome||'no terminal — time called');
   $('#leaf').textContent=v.leaf;
   $('#verdict').innerHTML=''; $('#anchor').textContent='anchor this run on chain'; $('#anchor').disabled=false;
   ['#c1','#c2','#c3','#c4'].forEach(s=>$(s).disabled=true);
-  $('#cmd').disabled=true; $('#send').disabled=true; $('#pause').disabled=true;
+  $('#cmd').disabled=true; $('#send').disabled=true; $('#pause').disabled=true; $('#endrun').disabled=true;
   if(win){ const c=cleared(), e=$('#ep').value;
     if(!c.includes(e)){c.push(e);localStorage.setItem('vitals.cleared',JSON.stringify(c));} }
   chainState();
@@ -3270,7 +3320,7 @@ function finish(v){
     $('#vig').className='vig hide';
   };
   const hand=()=>{ if(!live())return; sweep(reveal,()=>{ if(live())endFlow(win); }); };
-  if(win)settle(hand); else flatline(hand);
+  if(died)flatline(hand); else settle(hand);
 }
 
 /* Deferred, not deleted — and now written rather than rewritten.
@@ -3349,7 +3399,7 @@ async function step(q,named){
    itself (`text`) is untouched: it is what the matcher reads and what the tape keeps.
    `named` is threaded, not stashed in a module variable, because the tick loop paints too and a
    flag set here would be consumed by whichever paint happened to land first. */
-function doOrder(text,shown,named){ ev('order','▸',shown||text);
+function doOrder(text,shown,named){ disarmEnd(); ev('order','▸',shown||text);
   step('&do='+encodeURIComponent(text), named===undefined?namesADiagnosis(text):named); }
 async function askHer(q){
   if(asking||!id)return; asking=true; $('#send').disabled=true;
@@ -3371,6 +3421,45 @@ async function askHer(q){
 }
 const run =()=>timer=setInterval(()=>step('&tick='+(hard?3:2)),700);
 const stop=()=>{clearInterval(timer);timer=null};
+
+/* ── "I have finished" ────────────────────────────────────────────────────────
+   Two presses, because there is one thing on this page that cannot be taken back and this is
+   it. The first arms and says so; the second, inside ARM_MS, ends the attempt. Anything else
+   the candidate does — an order, a restart, the window of time running out — disarms it, so a
+   press left lying around does not fire into the run five minutes later.
+
+   The button does not decide anything about the patient. It calls /api/finish, and the server
+   runs the encounter on to wherever what the candidate did was going to take her. Pressing it
+   one second before an arrest and standing there through the arrest produce the same tape, the
+   same leaf and the same marks — which is why it needs no penalty and can carry no advantage. */
+const ARM_MS=6000;
+let armT=null;
+const ENDLABEL='I have finished';
+function disarmEnd(){
+  if(armT){clearTimeout(armT);armT=null}
+  const b=$('#endrun'); if(!b)return;
+  b.classList.remove('armed'); b.textContent=ENDLABEL;
+  $('#endnote').textContent=PACK.ui.end_note||'Ends the attempt. The case plays out from here and the marks are computed.';
+}
+async function endRun(){
+  if(!id||over)return;
+  disarmEnd();
+  $('#endrun').disabled=true;
+  ev('note','·',PACK.ui.time_called||'time — the station ends');
+  gtag('event','case_finish',{ep:$('#ep').value,at:Math.round(clockNow)});
+  const v=await (await fetch('/api/finish?id='+id+asMe()+langQ())).json();
+  if(v.error){$('#endrun').disabled=false;return ev('note','—',v.error)}
+  paint(v);
+}
+$('#endrun').onclick=()=>{
+  if(!id||over)return;
+  const b=$('#endrun');
+  if(b.classList.contains('armed'))return endRun();
+  b.classList.add('armed');
+  b.textContent=PACK.ui.end_confirm||'press again to end';
+  $('#endnote').textContent=PACK.ui.end_warn||'The case plays out from where you leave it — this cannot be undone.';
+  armT=setTimeout(disarmEnd,ARM_MS);
+};
 
 /* ── the two buttons a station does not have ──────────────────────────────────
    `hold` stops the clock. `easy/hard` picks how fast the patient deteriorates. Both are
@@ -3420,6 +3509,7 @@ $('#start').onclick=async()=>{
   // would belong to nobody, and a case that belongs to nobody answers to anyone holding its id.
   await identity();
   stop(); over=false; seen=0; CHARTSEEN=0; PAINTS=[]; clockNow=0; TR={}; emptyState(); $('#result').style.display='none';
+  disarmEnd(); $('#endrun').disabled=false;
   /* Wiped, not just hidden: a mark sheet left in the DOM from the previous run is the answer
      key one devtools inspection away, and #result is display:none rather than gone. */
   $('#marks').innerHTML=''; $('#db').innerHTML=''; $('#reveal').textContent=''; $('#verdict').innerHTML='';

@@ -350,6 +350,16 @@ const UI: &[Line] = &[
     Line { key: "beat_noted", tr: &[("th", "บันทึกไว้ในระเบียนแล้ว")] },
     Line { key: "off_language", tr: &[("th", "— คนไข้ตอบกลับมาเป็นภาษาอื่น")] },
     Line { key: "picker_label", tr: &[("th", "ภาษาที่คนไข้พูด")] },
+    // ── ending the attempt ───────────────────────────────────────────────────
+    // The one control in the bay that cannot be taken back, and the three lines around it: what
+    // it does, what the second press does, and what the feed says the moment it fires. Worded
+    // to say that the case goes on rather than stops, because that is the whole difference
+    // between this and an abandon — and a candidate who thinks they are freezing the patient
+    // will use it as if they were.
+    Line { key: "end_note", tr: &[("th", "จบการสอบสถานีนี้ เคสจะเดินต่อจากจุดนี้แล้วคิดคะแนน")] },
+    Line { key: "end_confirm", tr: &[("th", "กดอีกครั้งเพื่อจบ")] },
+    Line { key: "end_warn", tr: &[("th", "เคสจะเดินต่อจากจุดที่คุณหยุด — ย้อนกลับไม่ได้")] },
+    Line { key: "time_called", tr: &[("th", "หมดเวลา — จบสถานี")] },
 ];
 
 /// ── the kit ──────────────────────────────────────────────────────────────────

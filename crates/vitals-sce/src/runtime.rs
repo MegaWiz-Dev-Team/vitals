@@ -225,6 +225,8 @@ pub struct SceState {
     state_idx: usize,
     t_elapsed: f64,
     t_in_state: f64,
+    /// Sim-seconds since anything moved — see [`SceState::quiet_for`].
+    quiet: f64,
     done: BTreeSet<String>,
     fired: BTreeSet<String>,       // triggers already fired (for `once`)
     outcome: Option<Outcome>,
@@ -263,6 +265,7 @@ impl SceState {
             state_idx,
             t_elapsed: 0.0,
             t_in_state: 0.0,
+            quiet: 0.0,
             done: BTreeSet::new(),
             fired: BTreeSet::new(),
             outcome: None,
@@ -284,6 +287,20 @@ impl SceState {
     /// Read any live variable by name — a vital, a custom hidden axis
     /// (e.g. `"airway_patency"`), or a pseudo-clock. For the HUD/stats.
     pub fn var(&self, name: &str) -> f64 { self.get_var(name) }
+
+    /// Sim-seconds since anything about this patient last moved.
+    ///
+    /// Zero the moment a vital, a hidden axis, the status, the state, a beat, a harm, an order
+    /// or a piece of equipment changes; otherwise it grows with the clock. It answers the one
+    /// question an ending has to ask of a case that declares no ending of its own — *is anything
+    /// still going to happen?* — and it is a property of the machine rather than of whoever is
+    /// watching, so a run rebuilt from its tape reports the same number as the run that was
+    /// played. That is what makes finishing early and standing there until the bell produce the
+    /// same tape rather than two tapes that differ by a tick.
+    ///
+    /// **Nowhere near the leaf.** It is derived from state the leaf already commits to, it emits
+    /// no beat, writes no event and appears in no reduction; `vitals_replay::leaf` cannot see it.
+    pub fn quiet_for(&self) -> f64 { self.quiet }
 
     // ── equipment ──────────────────────────────────────────────────────────
     //
@@ -330,6 +347,7 @@ impl SceState {
     pub fn record(&mut self, kind: &str, text: impl Into<String>) {
         let t = self.t_elapsed;
         self.events.push(Event { t_sec: t, kind: kind.to_string(), text: text.into() });
+        self.quiet = 0.0;
     }
 
     pub fn events(&self) -> &[Event] { &self.events }
@@ -402,6 +420,10 @@ impl SceState {
         if self.outcome.is_some() { return beats; }
         let sce_rc = Arc::clone(&self.sce);
         let sce: &Sce = &sce_rc;
+        // Everything one tick is able to move, read before it moves — see [`SceState::quiet_for`].
+        // Cloning the axis map once a tick is what it costs to be able to say "nothing happened"
+        // without keeping a second definition of what "something" is.
+        let was = self.moving_parts();
 
         self.t_elapsed += dt;
         self.t_in_state += dt;
@@ -432,7 +454,14 @@ impl SceState {
         // either of them. Without this the pair would spend the rest of the tick disagreeing —
         // which is exactly the window a monitor polls in.
         self.normalise();
+        if beats.is_empty() && self.moving_parts() == was { self.quiet += dt } else { self.quiet = 0.0 }
         beats
+    }
+
+    /// Everything a tick can move, as one comparable value. Only [`SceState::quiet_for`] reads it.
+    fn moving_parts(&self) -> (Vitals, PatientStatus, usize, usize, usize, BTreeMap<String, f64>, usize) {
+        (self.vitals, self.status, self.state_idx, self.events.len(),
+         self.harm_events.len(), self.vars.clone(), self.equipment.len())
     }
 
     /// Record a trainee action and apply its physiologic effect.
@@ -476,6 +505,9 @@ impl SceState {
     fn fire(&mut self, i: Option<usize>) -> Vec<NarrativeBeat> {
         let mut beats = Vec::new();
         if self.outcome.is_some() { return beats; }
+        // An order is something happening, whether or not the case answers it — the learner is
+        // still working, and a station does not run out from under somebody who is still working.
+        self.quiet = 0.0;
         let sce_rc = Arc::clone(&self.sce);
         let sce: &Sce = &sce_rc;
 
