@@ -168,7 +168,7 @@ routed to the stations that fix it   →  the specific gap closes, not a general
                                      →  fewer leave for academic reasons        [lever 1]
                                      →  more pass the licensing examination     [lever 2]
                                      →  more newly LICENSED doctors
-one doctor ≈ ~1,400 person-years     →  and the effect is larger where doctors are scarcest
+1 doctor : 1,080 people (Thailand)   →  and each one added matters more where doctors are scarcest
 outcome loop                         →  and we can prove which parts of this are true
 ```
 
