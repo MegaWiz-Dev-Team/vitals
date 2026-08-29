@@ -3,7 +3,7 @@
 **A patient is dying on a clock and you decide what happens next.
 Anyone can play. Nobody can fake the replay.**
 
-> v0.3.0 · kickoff 2026-08-22 · Rust throughout · SPDX **`AGPL-3.0-or-later`**, plus a commercial
+> v0.6.0 · kickoff 2026-08-22 · Rust throughout · SPDX **`AGPL-3.0-or-later`**, plus a commercial
 > licence (the same pair the workspace manifest declares).
 > Built on the encounter engine and physiology automaton from **Embla** and **Embla Cloud**, which
 > ship today at [embla.megawiz.co.th](https://embla.megawiz.co.th). Those are separate private
@@ -77,15 +77,16 @@ Digital credentials have been tried. They fail for two reasons:
 An open protocol that turns clinical-skill practice into **portable, tamper-evident,
 independently re-scorable competency records** — and pays case authors per attempt.
 
-Four onchain primitives and one off-chain engine — with a column saying which of them you can
-run today. Two of the five are designed and not built; they are kept here because the design is
+Five onchain primitives and one off-chain engine — with a column saying which of them you can
+run today. Three of the six are designed and not built; they are kept here because the design is
 the argument, but a reader who greps this repository for them should meet this sentence first.
 
 | Layer | What it does | Built with | Status |
 |---|---|---|---|
-| **Attempt Anchor** | Commit–reveal per attempt: pre-commit before the encounter, hash of `(transcript, rubric result, engine version, model id)` after. Nothing personal onchain — hashes only. | `Commit` · `AnchorReplay` · `ProveAttempt`, over a fixed-depth incremental Merkle tree the program keeps itself | **shipped** |
-| **Progression** | XP, levels, Dreyfus skill trees and badges — granted **permissionlessly**, because the program recomputes the predicate from anchored attempts instead of trusting a server, and rejects a claim its own arithmetic disagrees with. | `ClaimProgress`, written to a PDA per account and specialty. Not a token: nothing here is transferable, so there is nothing to sell | **shipped** |
+| **Attempt Anchor** | Commit–reveal per attempt: pre-commit before the encounter, then one leaf over `(player, sce_hash, run_hash, rubric_hash, outcome, harm, det and judged scores)`. The scenario and the rubric are pinned by hash; there is no `engine_ver` or `model_id` field, and the only version byte in the record is `vt02`, the encoding's own tag. Nothing personal onchain — hashes only. | `Commit` · `AnchorReplay` · `ProveAttempt`, over a fixed-depth incremental Merkle tree the program keeps itself | **shipped** |
+| **Progression** | XP, level and a Dreyfus stage per specialty — granted **permissionlessly**, because the program recomputes the predicate from anchored attempts instead of trusting a server, and rejects a claim its own arithmetic disagrees with. Badges are not among them: the `Progress` account holds a stage, a distinct-case count, an attempt count and XP, and nothing else. | `ClaimProgress`, written to a `Progress` PDA at `["prog", id, specialty]`. Not a token: nothing here is transferable, so there is nothing to sell | **shipped** |
 | *(off-chain)* **Verifier** | Re-runs the deterministic rubric over a revealed transcript and confirms it reproduces the anchored score. | `vitals-replay` (Rust), and the same arithmetic compiled to wasm on the verify page | **shipped** |
+| **Achievement badges** | A predicate over anchored attempts — `Sharp Historian`, `Red-flag Hawk` — that a front-end could read and a sponsor could put money behind. | no account holds one today; the nearest built thing is the star tally the server derives off-chain from proven attempts | designed, not built |
 | **Case Registry** | Authors publish cases; content stays off-chain, only `case_id + content_hash + rubric_hash + price + royalty split` goes onchain. Any front-end can read it. | a second Solana program + Token-2022 | designed, not built |
 | **Competency Credential** | Clear N attempts above threshold → an accredited issuer attests "OSCE-Cardio-L2" to the student's wallet. Reusable across apps without exposing the underlying data. | [Solana Attestation Service](https://solana.com/news/solana-attestation-service) | designed, not built |
 
@@ -113,16 +114,20 @@ If a feature cannot be introduced as a consequence of that sentence, it does not
 
 The novelty is **exam integrity as a mechanism**, not storage:
 
-- **Commit–reveal kills the retry cheat.** The client commits `hash(case_id ‖ student ‖ nonce)`
+- **Commit–reveal kills the retry cheat.** The client commits `hash(case ‖ player ‖ nonce ‖ mode)`
   *before* the encounter starts. You cannot practise five times and then anchor only the good
-  run — the chain already knows how many times you started.
+  run — the chain already knows how many times you started, and the count lives in an account that
+  is never closed for its rent, so it can only go up. The mode byte is inside the hash for the same
+  reason: whether a run was an exam is decided before it is played, not after the outcome is known.
 - **Deterministic scoring makes the score disputable.** Embla's rubric scorer is deterministic
-  and the engine/model version is pinned in the anchor, so a second party can re-run the same
-  transcript and must get the same number. A credential you can *re-derive* is worth more than
-  a credential you can only *read*.
-- **The student cannot self-sign.** Scoring runs in a verifier that holds the issuer key
-  (the school's Embla box, or a protocol verifier node). High-stakes attempts can require an
-  n-of-m verifier quorum.
+  and the anchor pins the scenario and the rubric by hash, so a second party can re-run the same
+  transcript against the same two and must get the same number. A credential you can *re-derive*
+  is worth more than a credential you can only *read*.
+- **The student cannot self-sign a leaf anyone reads.** An anchoring tree is a PDA derived from
+  the operator's key, so a run is evidence only relative to whose tree it sits in: a student who
+  funds their own tree anchors into an account no relying party looks at. The program holds no
+  issuer key of its own — `ClaimProgress` is a pure function of proven attempts, so nobody can
+  lean on it. An n-of-m verifier quorum over a single leaf is designed, not built.
 - **Progression is computed, not granted.** Embla's `xp_for`, `level_for` and `dreyfus` are pure
   functions over attempt history with unit-tested thresholds. An integer twin of them runs *inside
   the program itself*: `claim_progress` takes merkle proofs, the program recomputes the level, and
@@ -139,10 +144,14 @@ The novelty is **exam integrity as a mechanism**, not storage:
 Embla's rubric is **40 points deterministic and 60 points LLM-judged**. So the anchor carries two
 labelled numbers, not one:
 
-- `det_score` (40) — **re-derivable.** Re-run `embla-engine` at the pinned version, get the same
-  bytes. This is the strong claim.
-- `judged_score` (60) — **verifier-quorum attested.** Signers state which model at which version
-  produced the dimension scores. More signers means more confidence; it never means re-derivable.
+- `det_score` (40) — **re-derivable.** The leaf pins `sce_hash` and `rubric_hash`, so re-running
+  the same scenario against the same rubric reproduces the same bytes. This is the strong claim.
+  Being exact about the limit: what is pinned is the *content* of the scenario and of the rubric,
+  not the version of the engine that ran them — no field carries an engine version or a model id.
+- `judged_score` (60) — **attested, not derived.** The record carries the number and what it was
+  out of, and `judged_max == 0` states that nothing here needed a witness at all. Recording which
+  model at which version signed it, and requiring more than one signer, is designed, not built:
+  no field holds either today.
 
 A badge predicate a sponsor could put money behind is expressible over `det_score` alone, so the
 money would never ride on the attested half. *Coming next*, and stated as such: the program holds
