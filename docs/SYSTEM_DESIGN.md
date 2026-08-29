@@ -322,7 +322,7 @@ more.
 alumni funds, and CSR are different budget lines with different approvals — a faculty that cannot
 buy software may still fund a study. "They will not pay" was tested; "they will not give" was not.
 
-### Donations are visible, earmarked, and enforced — not reported
+### Making donations visible, earmarked and enforced — not reported
 
 **specified — not in the program.** What runs today is the counting: the treasury is one address
 anyone can read, and what this server has spent is published live on the donate page. Nothing on
