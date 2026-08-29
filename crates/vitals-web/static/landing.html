@@ -187,6 +187,21 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
   background:linear-gradient(to left,rgba(0,0,0,.9),rgba(0,0,0,0) 88%);
   transition:opacity .45s ease}
 .cf-card[data-side="r"] .cf-shade{background:linear-gradient(to right,rgba(0,0,0,.9),rgba(0,0,0,0) 88%)}
+/* The teaser is behind a click, never autoplay. Four cases at ~2.5 MB each is nine megabytes
+   to a student on mobile data who has not asked for any of it — and the teasers carry music,
+   which a browser refuses to autoplay anyway. The control only appears on the centred card,
+   so it reads as "this one", and the file is not fetched until it is pressed. */
+.cf-play{position:absolute;left:50%;top:calc(var(--cf-w) / 3);transform:translate(-50%,-50%);
+  width:3rem;height:3rem;border-radius:50%;border:0;cursor:pointer;padding:0;
+  background:rgba(8,20,26,.6);color:#fff;font-size:.95rem;line-height:1;
+  display:none;place-items:center;transition:background .2s ease}
+.cf-card[data-live] .cf-play{display:grid}
+/* …but not once the film it starts is running underneath it. */
+.cf-card[data-film] .cf-play{display:none}
+.cf-play:hover{background:rgba(8,20,26,.85)}
+.cf-play:focus-visible{outline:2px solid var(--proven);outline-offset:3px}
+.cf-card video{display:block;width:100%;height:calc(var(--cf-w) * 2 / 3);object-fit:cover;
+  background:#000}
 .cf-nav{display:flex;align-items:center;justify-content:center;gap:.9rem}
 .cf-btn{width:2.4rem;height:2.4rem;display:flex;align-items:center;justify-content:center;
   border:1px solid var(--rule);border-radius:10px;background:var(--surface);color:var(--ink);
@@ -258,36 +273,40 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
     is what changes.</p>
     <div class="cf" id="cf" tabindex="0" role="group"
       aria-label="Season one cases &mdash; carousel of four episodes; use the left and right arrow keys to move between them">
-      <article class="cf-card" data-ga="landing_case_ep2">
+      <article class="cf-card" data-ep="ep2" data-ga="landing_case_ep2">
         <img src="img/ep2_prasit_3x2.jpg" alt="Prasit, 58, a hospital driver, on the trolley in the emergency department with crushing chest pain." loading="lazy" decoding="async" draggable="false">
         <div class="cf-meta">
           <h3>Time Is Muscle</h3>
           <p class="mono cf-who">EP2 &middot; Prasit &middot; M 58 &middot; 12 min</p>
         </div>
+        <button class="cf-play" type="button" data-ga="landing_teaser_ep2" aria-label="Play the teaser for this case">&#9654;</button>
         <div class="cf-shade" aria-hidden="true"></div>
       </article>
-      <article class="cf-card" data-ga="landing_case_ep3">
+      <article class="cf-card" data-ep="ep3" data-ga="landing_case_ep3">
         <img src="img/ep3_khaopun_3x2.jpg" alt="Khaopun, 5, sitting bolt upright and drooling in the paediatric bay, refusing to lie down." loading="lazy" decoding="async" draggable="false">
         <div class="cf-meta">
           <h3>Don't Make Him Cry</h3>
           <p class="mono cf-who">EP3 &middot; Khaopun &middot; M 5 &middot; 14 min</p>
         </div>
+        <button class="cf-play" type="button" data-ga="landing_teaser_ep3" aria-label="Play the teaser for this case">&#9654;</button>
         <div class="cf-shade" aria-hidden="true"></div>
       </article>
-      <article class="cf-card" data-ga="landing_case_ep4">
+      <article class="cf-card" data-ep="ep4" data-ga="landing_case_ep4">
         <img src="img/ep4_mali_3x2.jpg" alt="Mali, 34, a nurse still in uniform, breathless in the emergency department." loading="lazy" decoding="async" draggable="false">
         <div class="cf-meta">
           <h3>The Masquerader</h3>
           <p class="mono cf-who">EP4 &middot; Mali &middot; F 34 &middot; 12 min</p>
         </div>
+        <button class="cf-play" type="button" data-ga="landing_teaser_ep4" aria-label="Play the teaser for this case">&#9654;</button>
         <div class="cf-shade" aria-hidden="true"></div>
       </article>
-      <article class="cf-card" data-ga="landing_case_ep5">
+      <article class="cf-card" data-ep="ep5" data-ga="landing_case_ep5">
         <img src="img/ep5_boonsong_3x2.jpg" alt="Boonsong, 47, the fireworks foreman, bleeding in resus on a mass-casualty night." loading="lazy" decoding="async" draggable="false">
         <div class="cf-meta">
           <h3>The Night the Stars Fell</h3>
           <p class="mono cf-who">EP5 &middot; Boonsong &middot; M 47 &middot; 18 min</p>
         </div>
+        <button class="cf-play" type="button" data-ga="landing_teaser_ep5" aria-label="Play the teaser for this case">&#9654;</button>
         <div class="cf-shade" aria-hidden="true"></div>
       </article>
     </div>
@@ -336,7 +355,11 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
 
   <section>
     <h2>Not a prototype</h2>
-    <p class="lede">The traction below belongs to <b>Embla</b> &mdash; the production clinical-simulation
+    <!-- This one opens a tab, unlike the link to the same site in the footer. A reader who
+         clicks here is checking whether Embla is real, mid-argument; sending them away from the
+         page that is making the argument is how the argument gets abandoned. A footer link is
+         read when someone is already finished. -->
+    <p class="lede">The traction below belongs to <a href="https://embla.megawiz.co.th" target="_blank" rel="noopener" data-ga="landing_embla_site"><b>Embla</b></a> &mdash; the production clinical-simulation
     engine Vitals is built on and reuses. It is here because it is why the signal exists at all, not
     because Vitals earned it.</p>
     <div class="grid g4">
@@ -439,17 +462,47 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
       c.style.zIndex=String(100-a);
       c.setAttribute('aria-hidden',far?'true':'false');
       c.setAttribute('data-side',off<0?'l':'r');
+      if(off===0)c.setAttribute('data-live','');else c.removeAttribute('data-live');
       c.querySelector('.cf-shade').style.opacity=String(Math.min(a*0.38,0.78));
     });
     dots.forEach(function(d,i){
       if(i===cur)d.setAttribute('aria-current','true'); else d.removeAttribute('aria-current');
     });
   }
-  function go(n){cur=(n%N+N)%N;paint();}
+  /* One teaser at a time, and it dies when the ring moves: a video playing on a card that has
+     turned away is sound coming from nowhere, and a second one is two. Swapping the <img> back
+     also releases the decoder rather than leaving four of them parked. */
+  function stopFilm(){
+    var v=box.querySelector('.cf-card video'); if(!v)return;
+    var c=v.parentNode; v.pause(); c.removeChild(v);
+    c.removeAttribute('data-film');
+    var img=c.querySelector('img'); if(img)img.style.display='';
+  }
+  function playFilm(card){
+    stopFilm();
+    var id=card.getAttribute('data-ep'); if(!id)return;
+    var img=card.querySelector('img'); if(img)img.style.display='none';
+    var v=document.createElement('video');
+    v.src='/clip/'+id+'_teaser.mp4';
+    v.controls=true; v.autoplay=true; v.playsInline=true; v.preload='auto';
+    /* A missing or unreachable teaser puts the still back rather than leaving a black hole
+       where the case art was. */
+    v.addEventListener('error',stopFilm);
+    v.addEventListener('ended',stopFilm);
+    card.setAttribute('data-film','');
+    card.insertBefore(v,card.firstChild);
+  }
+
+  function go(n){stopFilm();cur=(n%N+N)%N;paint();}
 
   box.addEventListener('click',function(e){
-    var c=e.target.closest&&e.target.closest('.cf-card');
-    if(c&&!moved)go(cards.indexOf(c));
+    if(!e.target.closest)return;
+    /* The play control is checked first: it sits inside a card, and letting the card handler
+       run would re-centre the card and tear the film down in the same click that started it. */
+    var p=e.target.closest('.cf-play');
+    if(p&&!moved){ playFilm(p.closest('.cf-card')); e.stopPropagation(); return; }
+    var c=e.target.closest('.cf-card');
+    if(c&&!moved&&cards.indexOf(c)!==cur)go(cards.indexOf(c));
   });
   box.addEventListener('keydown',function(e){
     if(e.key==='ArrowLeft'){go(cur-1);e.preventDefault();}
