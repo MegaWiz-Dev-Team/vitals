@@ -38,3 +38,9 @@ docs/DECISIONS.md
 bench/p2_probes.txt
 bench/p2_results.md
 pitch/*backup*.html
+
+# One-shot deck/script mutation scripts. `pitch/deck.html` is maintained by hand and is the
+# artefact; these were written against revisions of it that no longer exist, and they carry
+# figures the README has since corrected. They stay on disk and out of the tracked surface —
+# see the note in pitch/build-pdf.sh.
+pitch/*.py
