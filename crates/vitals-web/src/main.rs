@@ -2508,6 +2508,45 @@ fn main() {
                         }),
                         404,
                     ),
+                    // A past version of a case that is still being sat. The distinction from
+                    // `InPlay` is the whole of the fix: the caller's hash is real, it is in the
+                    // archive, and it is still withheld — because the case it belongs to has
+                    // not retired, only rotated. Told plainly, or a verifier holding a leaf
+                    // from an older version concludes their leaf names nothing.
+                    archive::Answer::Superseded => json_code(
+                        serde_json::json!({
+                            "error": "that scenario is a version of a case in active use",
+                            "detail": "This hash names an earlier version of a case that can be \
+                                       sat right now. Editing a case rotates its hash; it does \
+                                       not retire it — and an old version is the same mark \
+                                       sheet, carrying every matcher, every harm and every \
+                                       threshold the live one does. Every version of a case is \
+                                       published together, on the day the case leaves the shelf.",
+                            "verify_now": "Your leaf is still checkable today: the bytes are in \
+                                           the repository's committed archive. Clone it and run \
+                                           `shasum -a 256 conformance/sce-archive/<hash>.json` \
+                                           — see VERIFICATION.md §5.",
+                        }),
+                        404,
+                    ),
+                    // In the archive, unattributed. An operator problem, not a caller problem,
+                    // so the reply says what is missing instead of pretending the file is not
+                    // there — and it still withholds, because an unattributed version cannot be
+                    // shown not to be a live case's answer key.
+                    archive::Answer::Unattributed => json_code(
+                        serde_json::json!({
+                            "error": "that scenario cannot be attributed to a case",
+                            "detail": "The archive holds this version and no INDEX.json row says \
+                                       which case it is a version of, so this deployment cannot \
+                                       tell whether the case is still being sat. It is withheld \
+                                       until it can. Adding the row publishes it.",
+                            "verify_now": "The bytes are in the repository's committed archive \
+                                           either way: `shasum -a 256 \
+                                           conformance/sce-archive/<hash>.json` — see \
+                                           VERIFICATION.md §5.",
+                        }),
+                        404,
+                    ),
                     // One answer for "not a hash", "no such hash" and "the file under that name
                     // is not that file". The caller's next move is the same in all three, and
                     // the alternative is a probe that tells a stranger which files exist.

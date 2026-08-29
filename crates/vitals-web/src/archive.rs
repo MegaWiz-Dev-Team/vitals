@@ -9,9 +9,9 @@
 //!
 //! This module closes it, for the cases it is allowed to close it for. A hash resolves through
 //! exactly one place — `conformance/sce-archive/<hash>.json`, the append-only archive of every
-//! version that has ever produced an anchored run — and only when that version is **retired**.
-//! **Nothing in the archive is ever deleted**: deleting a file there destroys the evidence for
-//! the runs that were played against it.
+//! version that has ever produced an anchored run — and only when the **case** that version
+//! belongs to has left the shelf. **Nothing in the archive is ever deleted**: deleting a file
+//! there destroys the evidence for the runs that were played against it.
 //!
 //! ## Why a live scenario is never served
 //!
@@ -26,10 +26,29 @@
 //!
 //! So the shelf is a **deny list**, not a fallback. [`answer`] hashes every scenario the server
 //! is playing right now and refuses anything that matches one, whether or not the archive also
-//! holds it. What is left is the retired versions: a case that has been edited or withdrawn can
-//! no longer be sat, so publishing it costs nobody a mark, and the leaves anchored against it
-//! stay checkable forever. Verification of an anchored, retired case keeps working. A candidate
-//! mid-exam gets a 404 that says the scenario is in play.
+//! holds it.
+//!
+//! ## Retirement is a fact about a case, not about a byte sequence
+//!
+//! That deny list used to be the whole rule, and byte equality was the wrong test for it. A
+//! scenario's identity is its own sha256, so **any edit mints a new hash** and leaves the old
+//! one matching nothing on the shelf. The old rule read that as "retired" and published it. But
+//! nothing had retired: one file in a live case had rotated, and the version it replaced was
+//! still, in every respect that matters, that case's mark sheet.
+//!
+//! It was measured, not theorised. `ep2`'s previous version differs from the one on the shelf by
+//! three lines of `rhythm` — the same ten intervention ids, the same matcher keywords, the same
+//! `nitrate in RV infarct` trap at the same `rv_involvement > 0.5` threshold. Editing the live
+//! case would have started answering `GET /api/sce/44f9c597…` with `200` and all of it, to
+//! anyone, while the station was still sittable. The endpoint built to stop a candidate reading
+//! their own mark sheet would have been opened by the act of fixing a case.
+//!
+//! So [`answer`] asks the question retirement actually poses — *can this case still be sat?* —
+//! and answers it from `INDEX.json`, which already recorded which file each version was archived
+//! from and which nothing had ever read. Every version of a live case is withheld together
+//! ([`Answer::Superseded`]), and they all become publishable on the same day: the day the case
+//! comes off the shelf. Verification of an anchored, retired case keeps working. A candidate
+//! mid-exam gets a 404 that says the scenario is in play, whichever version they asked for.
 //!
 //! The cost is stated where a verifier will read it (`VERIFICATION.md` §5): while a case is on
 //! the shelf, its bytes come from the repository — `shasum -a 256 demo/stations/osce-a.sce.json`
@@ -44,6 +63,7 @@
 //! no build, in no image, and in nobody's clone — an endpoint serving from it would 404 for every
 //! hash in production. `conformance/` is committed and the Dockerfile copies it whole.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use vitals_replay::{hex, sce_hash};
 
@@ -63,26 +83,92 @@ pub fn is_hash(s: &str) -> bool {
 }
 
 /// What this deployment may say about one hash.
+///
+/// Three of the four are refusals, and they are kept apart on purpose. The caller is usually a
+/// verifier holding a leaf, so "no such hash" for a hash that plainly exists would send them
+/// hunting for a bug in the chain. Each refusal says which situation they are in; none of them
+/// says anything whatever about the file's contents.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Answer {
-    /// A retired version: archived, and on nobody's shelf. The bytes, verified.
+    /// A retired version: archived, and its case has left the shelf. The bytes, verified.
     Retired(String),
-    /// A scenario the server is playing right now. Withheld until it is retired — see the module
-    /// header. Held apart from [`Answer::Unknown`] so the refusal can explain itself: the caller
-    /// is usually a verifier holding a leaf, and "no such hash" would send them hunting for a
-    /// bug that is not there. It discloses nothing a leaf does not already carry — the hash came
-    /// from the chain or from their own run — and nothing whatever about the file's contents.
+    /// These exact bytes are on the shelf right now.
     InPlay,
+    /// A **past** version of a case that is still on the shelf.
+    ///
+    /// This is the arm the byte-equality rule did not have, and its absence was the bug. A
+    /// scenario's identity on chain is its own sha256, so any edit mints a new hash and leaves
+    /// the old one matching nothing on the shelf — which the old rule read as "retired" and
+    /// published. But the case had not retired; one file in it had rotated. `ep2`'s previous
+    /// version differed from the live one by three lines of `rhythm`, and serving it handed out
+    /// every matcher, every threshold and every `harm` of a station a candidate could still be
+    /// sitting. Retirement is a fact about a **case**, not about a byte sequence.
+    Superseded,
+    /// In the archive, and no `INDEX.json` row says which case it belongs to.
+    ///
+    /// Withheld while anything at all is playable, because a version that cannot be attributed
+    /// cannot be shown not to be a live case's mark sheet. Fails closed: the cost of the wrong
+    /// guess in one direction is a verifier who has to clone the repository, and in the other it
+    /// is handing a candidate the answers. Adding the row publishes it.
+    Unattributed,
     /// Not a hash, no such hash, or a file under a name that is not its own.
     Unknown,
+}
+
+/// Which case each archived version belongs to — `hash` → the path it was archived from.
+///
+/// Read from the archive's own `INDEX.json`, which already carried this fact and which nothing
+/// consumed. It is the only thing on disk that ties a superseded version to the case it is a
+/// version *of*: the bytes cannot say so themselves, and the file name is a digest.
+///
+/// Read fresh on every call, like the shelf and for the same reason — a deny list that caches is
+/// a deny list that goes stale in the unsafe direction.
+pub fn index(archive: &Path) -> BTreeMap<String, PathBuf> {
+    let Ok(text) = std::fs::read_to_string(archive.join("INDEX.json")) else {
+        return BTreeMap::new();
+    };
+    let Ok(rows) = serde_json::from_str::<Vec<serde_json::Value>>(&text) else {
+        return BTreeMap::new();
+    };
+    rows.iter()
+        .filter_map(|r| {
+            let h = r.get("sce_hash")?.as_str()?.to_ascii_lowercase();
+            let p = r.get("path")?.as_str()?;
+            is_hash(&h).then(|| (h, PathBuf::from(p)))
+        })
+        .collect()
+}
+
+/// Is `want` a version of a case that is on the shelf right now?
+///
+/// `INDEX.json` records a repo-relative path (`demo/scenarios/ep2-stemi.json`); the shelf holds
+/// absolute ones under whatever `VITALS_SCENARIOS` points at. Compared with [`Path::ends_with`],
+/// which matches whole path components from the right, so `.../demo/scenarios/ep2-stemi.json`
+/// matches and a file that merely ends in the same characters does not.
+fn is_a_live_case(want: &str, live: &[PathBuf], archive: &Path) -> Option<bool> {
+    let of = index(archive).get(want)?.clone();
+    // `exists`, because the shelf is a list of *declared* cases and a declared case whose file is
+    // not on disk is not sittable — that is what "coming soon" looks like, and it is also what
+    // withdrawing a case looks like. Retiring one is deleting its file; if a missing file still
+    // counted as live, nothing could ever be published.
+    Some(live.iter().any(|p| p.ends_with(&of) && p.exists()))
 }
 
 /// What to answer for `want`.
 ///
 /// `live` is every scenario the server can be asked to play *today*; `archive` is the directory
-/// of past versions. `live` is a deny list and is checked first: a hash that is on the shelf is
-/// refused even when the archive also holds a copy of it, because the archive holding it does
-/// not make sitting the station any less of an exam.
+/// of past versions. `live` is a deny list and is checked first, in two passes, because a case
+/// is bigger than a byte sequence:
+///
+/// 1. **These bytes are on the shelf.** [`Answer::InPlay`].
+/// 2. **These bytes are a past version of something on the shelf** — `INDEX.json` names the file
+///    it was archived from, and that file is still playable. [`Answer::Superseded`]. This is the
+///    pass the endpoint shipped without, and without it every edit to a live case published the
+///    version it replaced. Editing is not retiring.
+///
+/// What is left is a version whose case has genuinely left the shelf, which is the only thing
+/// this endpoint may publish. A version the index cannot attribute is refused rather than
+/// guessed at ([`Answer::Unattributed`]).
 ///
 /// Anything returned is verified — hashed again here, and a file that does not hash to `want` is
 /// treated as absent. That is not belt-and-braces: the archive is named by hash, so a mis-named
@@ -99,9 +185,18 @@ pub fn answer(want: &str, live: &[PathBuf], archive: &Path) -> Answer {
     if live.iter().any(|p| verified(p, &want).is_some()) {
         return Answer::InPlay;
     }
-    match verified(&archive.join(format!("{want}.json")), &want) {
-        Some(text) => Answer::Retired(text),
-        None => Answer::Unknown,
+    // Only versions the archive actually holds can be published, so everything below is about a
+    // file that is there; a hash that is not there is Unknown whatever the index says.
+    let Some(text) = verified(&archive.join(format!("{want}.json")), &want) else {
+        return Answer::Unknown;
+    };
+    match is_a_live_case(&want, live, archive) {
+        Some(true) => Answer::Superseded,
+        // Attributed, and its case is off the shelf. The one publishable state.
+        Some(false) => Answer::Retired(text),
+        // No row. Safe only when there is nothing it could be a mark sheet for.
+        None if live.is_empty() => Answer::Retired(text),
+        None => Answer::Unattributed,
     }
 }
 
@@ -128,11 +223,14 @@ pub fn hashes(archive: &Path) -> Vec<String> {
     v
 }
 
-/// Every hash this deployment will actually hand over: archived, and retired.
+/// Every hash this deployment will actually hand over: archived, and belonging to a case that
+/// has left the shelf.
 ///
 /// The startup line prints this rather than [`hashes`] because the two are different numbers and
-/// the difference is the whole point — an archive of seventeen files that are all still on the
-/// shelf serves nothing, and a line that said "17 archived" would read like a working endpoint.
+/// the difference is the whole point — an archive whose every file belongs to a case still in
+/// the season serves nothing, and a line that said "21 archived" would read like a working
+/// endpoint. It counts *versions of retired cases*, so a case with four archived versions moves
+/// this number by four on the day it retires and by nothing at all when it is edited.
 pub fn servable(live: &[PathBuf], archive: &Path) -> Vec<String> {
     hashes(archive)
         .into_iter()
@@ -254,6 +352,97 @@ mod tests {
         let a = archive();
         assert!(servable(&shelf(), &a).is_empty(), "a case that is on the shelf today is being published");
         assert_eq!(servable(&[], &a).len(), hashes(&a).len(), "an empty shelf withholds nothing");
+    }
+
+    /// The audit, run against the real archive on every `cargo test`: nothing this deployment
+    /// would publish belongs to a case a candidate can still sit.
+    ///
+    /// Stated over `index()` rather than over bytes, because bytes were the broken test. A
+    /// version is a live case's mark sheet when the file it was archived *from* is on the shelf,
+    /// however far its contents have since drifted from the copy there.
+    #[test]
+    fn nothing_publishable_belongs_to_a_case_still_on_the_shelf() {
+        let a = archive();
+        let live = shelf();
+        let idx = index(&a);
+        let mut leaking = Vec::new();
+        for h in servable(&live, &a) {
+            if let Some(of) = idx.get(&h) {
+                if live.iter().any(|p| p.ends_with(of)) {
+                    leaking.push(format!("{h} is published and is a version of {}", of.display()));
+                }
+            }
+        }
+        assert!(leaking.is_empty(), "{leaking:#?}");
+    }
+
+    /// Every archived version is attributable. A row missing from `INDEX.json` is not a
+    /// cosmetic omission — it is the only thing that ties a digest to the case it is a version
+    /// of, so without it the endpoint cannot tell a retired file from a live one and refuses.
+    #[test]
+    fn every_archived_version_says_which_case_it_belongs_to() {
+        let a = archive();
+        let idx = index(&a);
+        let orphans: Vec<String> =
+            hashes(&a).into_iter().filter(|h| !idx.contains_key(h)).collect();
+        assert!(orphans.is_empty(), "archived with no INDEX.json row: {orphans:#?}");
+    }
+
+    /// The bug this rule was written for, with the shapes it actually had.
+    ///
+    /// A previous version of `ep2` — same case, different bytes — must be refused for exactly as
+    /// long as `ep2` can be sat, and must say *which* refusal it is.
+    #[test]
+    fn a_previous_version_of_a_live_case_is_withheld() {
+        let (dir, past) = superseded_fixture("withheld");
+        let ep2 = root().join("demo/scenarios/ep2-stemi.json");
+
+        assert_eq!(answer(&past, std::slice::from_ref(&ep2), &dir), Answer::Superseded,
+            "a past version of a station still on the shelf was published");
+
+        // …and the day ep2 leaves the season, the same bytes publish.
+        let Answer::Retired(text) = answer(&past, &[], &dir) else {
+            panic!("a version of a retired case still would not publish")
+        };
+        assert_eq!(hex(&sce_hash(&text)), past);
+    }
+
+    /// A version whose case cannot be established is refused while anything is playable, and is
+    /// held apart from "no such hash" so the operator is told to add the row rather than sent
+    /// looking for a missing file.
+    #[test]
+    fn a_version_the_index_cannot_attribute_is_withheld() {
+        let (dir, past) = superseded_fixture("unattributed");
+        std::fs::write(dir.join("INDEX.json"), "[]").unwrap();
+        let ep2 = root().join("demo/scenarios/ep2-stemi.json");
+        assert_eq!(answer(&past, &[ep2], &dir), Answer::Unattributed);
+        // Nothing playable, nothing it could be the answers to.
+        assert!(matches!(answer(&past, &[], &dir), Answer::Retired(_)));
+    }
+
+    /// An archive holding one superseded version of `ep2`, and its index row. Returns the
+    /// directory and the hash of the past version.
+    fn superseded_fixture(tag: &str) -> (PathBuf, String) {
+        let dir = std::env::temp_dir()
+            .join(format!("vitals-archive-superseded-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // A real past version: today's ep2 with one field dropped, which is the size of edit
+        // that rotated the hash in the first place.
+        let now = std::fs::read_to_string(root().join("demo/scenarios/ep2-stemi.json")).unwrap();
+        let past = now.replace("\"setting\": \"ED\",\n", "");
+        assert_ne!(past, now, "the fixture stopped differing from the live file");
+        let h = hex(&sce_hash(&past));
+        std::fs::write(dir.join(format!("{h}.json")), &past).unwrap();
+        std::fs::write(
+            dir.join("INDEX.json"),
+            serde_json::to_string_pretty(&serde_json::json!([{
+                "sce_hash": h,
+                "path": "demo/scenarios/ep2-stemi.json",
+                "bytes": past.len(),
+            }])).unwrap(),
+        ).unwrap();
+        (dir, h)
     }
 
     /// Every scenario file this repository can play, found from the disk rather than from

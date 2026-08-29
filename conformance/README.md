@@ -57,13 +57,17 @@ That is the check `verify_player` prints beside every attempt it reads off the c
 archive travels in a git history a stranger can diff, and we cannot serve one reader a different
 copy of it than we serve anyone else.
 
-### `GET /api/sce/<sce_hash>` — retired versions only
+### `GET /api/sce/<sce_hash>` — versions of retired **cases** only
 
 ```
-GET /api/sce/<sce_hash>     →  200, the exact bytes whose sha256 is that hash — if that version
-                               has been retired
-                            →  404 {"error":"that scenario is in active use"} — if the case it
-                               names can still be sat
+GET /api/sce/<sce_hash>     →  200, the exact bytes whose sha256 is that hash — if the CASE that
+                               version belongs to has left the shelf
+                            →  404 "that scenario is in active use" — these bytes are on the
+                               shelf right now
+                            →  404 "…is a version of a case in active use" — an earlier version
+                               of a case that can still be sat
+                            →  404 "…cannot be attributed to a case" — archived with no
+                               INDEX.json row, so the server cannot tell which case it is of
 ```
 
 Anyone can check a 200 with `sha256sum` on the reply. It is verified before it is sent: bytes that
@@ -81,11 +85,27 @@ the clock was still running. A star measured that way measures nothing.
 So the shelf is a **deny list**, checked first, read fresh on every request: a hash is refused
 while its case is playable, whether or not the archive also holds a copy — and it holds one for
 every case in the season, which is exactly why "serve from the archive" is not by itself the fix.
-Retirement is what publishes a case. Edit a scenario or withdraw it and the hash the old leaves
-name stops being sittable, so the bytes go out and those leaves stay checkable forever. At the time
-of writing nothing is retired, so the endpoint publishes nothing and the startup line says so
-(`0 publishable · 17 live and withheld`) rather than printing a count that reads like a working
-endpoint. That is the behaviour, not an outage.
+
+**Retirement is a fact about a case, not about a byte sequence.** The first cut of this rule tested
+byte equality against the shelf, and that is not the same question. A scenario's identity is its own
+sha256, so *any* edit mints a new hash and leaves the old one matching nothing on the shelf — which
+that rule read as "retired" and published. Nothing had retired; one file in a live case had rotated,
+and the version it replaced was still that case's mark sheet in every respect that matters. Measured
+on the real thing: `ep2`'s previous version differs from the live one by three lines of `rhythm` —
+the same ten intervention ids, the same matcher keywords, the same `nitrate in RV infarct` trap at
+the same threshold. Under the old rule, fixing a live case would have opened the endpoint that
+exists to keep a candidate off their own mark sheet.
+
+So the deny list asks the question retirement actually poses — *can this case still be sat?* — and
+answers it from `INDEX.json`, which already recorded the file each version was archived from. Every
+version of a live case is withheld together, and they all publish on the same day: the day that case
+comes off the shelf. **Editing a case publishes nothing.** A version with no `INDEX.json` row is
+refused too, because an unattributed version cannot be shown not to be a live case's answer key —
+adding the row is what publishes it.
+
+At the time of writing no case has retired, so the endpoint publishes nothing and the startup line
+says so (`0 publishable · 21 live and withheld`) rather than printing a count that reads like a
+working endpoint. That is the behaviour, not an outage.
 
 **How to verify a live case in the meantime:** the `shasum` above, on your own clone. It proves
 exactly what the fetch would have proved, with no server in the loop — so for a case in the current
@@ -146,5 +166,7 @@ Before a re-issued version goes back on the shelf:
    row to `INDEX.json`. Append only; the old file stays forever, because the leaves that name it do.
 3. **Check the new hash is not already archived** — `shasum -a 256` the new file and grep
    `INDEX.json`. A collision means nothing changed and the re-issue is a no-op.
-4. The retired hash now answers `GET /api/sce/<sce_hash>` and the new one does not, because the new
-   one is sittable. Nothing in the server needs editing for either.
+4. **Neither hash answers `GET /api/sce/<sce_hash>` yet**, and that is correct: re-issuing a
+   station rotates its hash, it does not retire the case. Both versions stay withheld — together —
+   until the case itself leaves the shelf, at which point every version of it publishes at once.
+   Nothing in the server needs editing for either.
