@@ -39,6 +39,20 @@ pub enum Cond {
     InState { in_state: String },
     /// an intervention with this id has been applied at least once
     Done { done: String },
+    /// the patient is in this cardiac rhythm right now (`sinus|vf|vt|pea|asystole`)
+    ///
+    /// The engine already owns the rhythm — states declare it, the monitor reads it, and
+    /// [`crate::runtime::SceState::defibrillate`] is the only thing that changes it without a
+    /// state edge. This is the case's way of *asking*. It exists because the defibrillator is
+    /// physiology rather than content: the engine converts VF to sinus and cannot know what the
+    /// case wants to happen next, so the case has to be able to key an edge on the rhythm the
+    /// shock produced.
+    ///
+    /// Deliberately not a flag the engine sets. A flag named `rosc` would reserve a word in the
+    /// author's own namespace, cover exactly one of the five rhythms, and — being sticky — go on
+    /// reading true after a patient who was resuscitated arrests a second time. The rhythm is
+    /// live truth, reads in both polarities through `not`, and needs no engine vocabulary.
+    Rhythm { rhythm: String },
 }
 
 /// One mutation / flag / beat / transition / branch a state, trigger or
@@ -337,6 +351,14 @@ fn cond_vars(c: Option<&Cond>, vars: &BTreeSet<String>, where_: &str, errs: &mut
         Cond::Cmp { var, .. } => {
             if !vars.contains(var) {
                 errs.push(format!("{where_}: unknown var '{var}'"));
+            }
+        }
+        // A rhythm this engine cannot parse is the silent kind of authoring mistake: the
+        // condition simply never holds, so the edge never fires and the case runs on looking
+        // healthy. Caught here, where the author finds it.
+        Cond::Rhythm { rhythm } => {
+            if crate::runtime::Rhythm::parse(rhythm).is_none() {
+                errs.push(format!("{where_}: unknown rhythm '{rhythm}'"));
             }
         }
         Cond::Flag { .. } | Cond::InState { .. } | Cond::Done { .. } => {}

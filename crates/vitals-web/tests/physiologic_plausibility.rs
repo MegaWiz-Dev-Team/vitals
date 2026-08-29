@@ -943,7 +943,9 @@ fn defibrillating_a_declared_arrest_is_not_charted_as_harm() {
             }
         }
         let Some(t) = reached else { continue };
-        let r = st.defibrillate(200.0);
+        // Asked rather than delivered. `shock_result` is the same decision `defibrillate` makes
+        // and costs the patient nothing, so this reads the physiology without changing it.
+        let r = st.shock_result();
         if r == ShockResult::Perfusing {
             bad.push((
                 case.to_string(),

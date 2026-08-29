@@ -186,6 +186,20 @@ pub const ACTION: &str = "action";
 /// filters strictly on `kind == "action"`, giving the refusal its own name is the whole fix.
 pub const ACTION_REFUSED: &str = "action_refused";
 
+/// The event kind a defibrillation is recorded under.
+///
+/// **Not `action`, and the reason is the mark sheet rather than taste.** `vitals-osce` reads
+/// `action` events as intervention *ids*: `Check::NoUnindicated` collects them and charges three
+/// marks for every one the rubric neither pays for nor clears, on all twelve stations. A shock is
+/// not an intervention — [`SceState::defibrillate`] exists precisely because shockability is
+/// physiology and not content — so filing it under `action` would put an engine-written sentence
+/// into a list of ids and take marks off stations nobody reviewed for it.
+///
+/// Its own kind therefore leaves every rubric in the repo scoring exactly as it did, and leaves
+/// the decision about what a shock is *worth* where it belongs: with the clinical reviewer.
+/// What it is not is invisible — it is on the chart, at its second, on every case.
+pub const SHOCK: &str = "shock";
+
 /// What one intervention's effects actually did, as opposed to what they said.
 ///
 /// Collected while the effects run and thrown away immediately after; nothing here reaches the
@@ -386,32 +400,110 @@ impl SceState {
 
     // ── defibrillation ─────────────────────────────────────────────────────
 
-    /// Deliver a shock. Returns what it actually did.
+    /// The beat every shock emits, whatever it did.
+    ///
+    /// Uniform on purpose. `conformance/README.md` — "silence must never correlate with
+    /// wrongness" — is a rule about authored beats, and it applies with more force to one the
+    /// engine writes: if only the shock that worked said anything, the length of the reply would
+    /// be the answer key. This announces that the shock went in and nothing else; what it did is
+    /// on the chart, and what it cost is sealed until the bell.
+    pub const SHOCK_BEAT: &str = "shock";
+
+    /// What a shock would do to this patient right now, without delivering one.
+    ///
+    /// Split out so a caller can ask the question — a test, a rail deciding whether to light the
+    /// button — without the answer costing the patient a shock.
+    pub fn shock_result(&self) -> ShockResult {
+        let r = self.vitals.rhythm;
+        if r.perfusing() {
+            ShockResult::Perfusing
+        } else if r.shockable() {
+            ShockResult::Converted
+        } else {
+            ShockResult::NotShockable
+        }
+    }
+
+    /// Deliver a shock. Returns what it actually did, and the beats it produced.
     ///
     /// Deliberately NOT a scenario intervention. Whether a rhythm can be shocked is physiology, not
     /// content — if every scenario author had to re-declare it, one of them would eventually let a
-    /// student shock asystole and be told "good job".
+    /// student shock asystole and be told "good job". Three of the four season episodes proved the
+    /// other half of that: they declared no `defibrillate` intervention at all, so the kit button
+    /// on a child in cardiac arrest charted nothing, scored nothing and debriefed nothing.
     ///
-    /// An inappropriate shock is charted as harm rather than ignored. Ignoring it teaches that
-    /// pressing the button is free, when the cost is the ten seconds off the chest and the
-    /// adrenaline not given.
-    pub fn defibrillate(&mut self, joules: f64) -> ShockResult {
+    /// **Every shock is charted, and every shock is charted the same way.** One [`SHOCK`] row
+    /// naming the joules, the rhythm it went into and what the monitor did — which is what the
+    /// screen already shows, so it grades nothing and leaks nothing. An inappropriate shock adds a
+    /// `harm` row on top, and that one is sealed until the bell like every other harm; it says
+    /// what the shock *cost* rather than what the candidate got wrong, because a chart a candidate
+    /// reads mid-station may not be a running mark sheet.
+    ///
+    /// **It moves the automaton, like [`SceState::fire`] does.** Converting a rhythm and then
+    /// leaving the machine where it was is how a defibrillated EP2 used to die anyway: the shock
+    /// took the patient out of ventricular fibrillation and nothing took her out of the *state*
+    /// named for it, so ninety seconds later she degenerated to asystole with a sinus rhythm on
+    /// the monitor. A case keys the edge on [`Cond::Rhythm`].
+    pub fn defibrillate(&mut self, joules: f64) -> (ShockResult, Vec<NarrativeBeat>) {
+        let mut beats = Vec::new();
+        // Time has been called on this patient one way or another. Nothing more happens to her —
+        // the same guard `fire` and `tick` open with.
+        if self.outcome.is_some() {
+            return (self.shock_result(), beats);
+        }
+        // Somebody is working. See `fire`.
+        self.quiet = 0.0;
         let r = self.vitals.rhythm;
-        if r.perfusing() {
-            let h = format!("shock {joules:.0} J delivered to a perfusing patient — dangerous");
-            self.harm_events.push(h.clone());
-            self.record("harm", h);
-            return ShockResult::Perfusing;
+        let result = self.shock_result();
+
+        beats.push(NarrativeBeat::Threshold(Self::SHOCK_BEAT.to_string()));
+        if result == ShockResult::Converted {
+            self.vitals.rhythm = Rhythm::Sinus;
         }
-        if !r.shockable() {
-            let h = format!("shock {joules:.0} J into {} — not shockable, and it cost compressions and adrenaline", r.as_str());
-            self.harm_events.push(h.clone());
-            self.record("harm", h);
-            return ShockResult::NotShockable;
+        // ── one template, no branch ────────────────────────────────────────────────
+        // The chart row is written from the same sentence whatever the shock did: the energy,
+        // the rhythm it went into, and the rhythm on the monitor afterwards. Both halves are
+        // things the strip is already drawing, so it grades nothing and reveals nothing — and
+        // because there is no second spelling, a right shock and a wrong one cannot produce rows
+        // of different lengths, which is the tell one word at a time.
+        self.record(SHOCK, format!(
+            "defibrillate {joules:.0} J into {} — rhythm now {}",
+            r.as_str(),
+            self.vitals.rhythm.as_str(),
+        ));
+
+        // The harm sentences keep the words "unsynchronised shock". EP2's rubric scores
+        // `no_harm` on that substring and it is the only needle any sheet in the repo has for a
+        // wrong shock; the wording moved out of the scenario file and into the engine, and it
+        // must not take the five marks with it. Both sentences say what the shock cost.
+        match result {
+            ShockResult::Perfusing => {
+                self.harm(format!(
+                    "unsynchronised shock {joules:.0} J to a perfusing rhythm — it can drive a \
+                     pulse into ventricular fibrillation"), &mut beats);
+            }
+            ShockResult::NotShockable => {
+                self.harm(format!(
+                    "unsynchronised shock {joules:.0} J into {} — not shockable, and it cost \
+                     compressions and adrenaline", r.as_str()), &mut beats);
+            }
+            ShockResult::Converted => {}
         }
-        self.record("action", format!("defibrillate {joules:.0} J — rhythm back to sinus"));
-        self.vitals.rhythm = Rhythm::Sinus;
-        ShockResult::Converted
+
+        let sce_rc = Arc::clone(&self.sce);
+        let sce: &Sce = &sce_rc;
+        self.take_first_transition(sce, &mut beats);
+        self.update_status(sce, &mut beats);
+        self.normalise();
+        (result, beats)
+    }
+
+    /// Record one harm the engine itself decided on: the list the leaf hashes, the timeline the
+    /// chart reads, and the beat the feed carries, from one call so they cannot drift apart.
+    fn harm(&mut self, text: String, beats: &mut Vec<NarrativeBeat>) {
+        self.harm_events.push(text.clone());
+        self.record("harm", text.clone());
+        beats.push(NarrativeBeat::Harm(text));
     }
 
     /// Advance the soft real-time clock by `dt` seconds.
@@ -681,9 +773,7 @@ impl SceState {
                 Effect::Beat { beat } => beats.push(NarrativeBeat::Threshold(beat.clone())),
                 Effect::Harm { harm } => {
                     trace.touched = true;
-                    self.harm_events.push(harm.clone());
-                    self.record("harm", harm.clone());
-                    beats.push(NarrativeBeat::Harm(harm.clone()));
+                    self.harm(harm.clone(), beats);
                 }
                 Effect::ToState { to_state } => { trace.touched = true; self.change_state(sce, to_state); changed = true; }
                 Effect::Outcome { outcome } => { trace.touched = true; self.terminate(sce, outcome, beats); changed = true; }
@@ -812,6 +902,9 @@ impl SceState {
             Cond::Flag { flag, is } => self.flag_active(flag) == *is,
             Cond::InState { in_state } => sce.states[self.state_idx].id == *in_state,
             Cond::Done { done } => self.done.contains(done),
+            // An unparseable rhythm never matches rather than matching everything.
+            // `Sce::validate` refuses the file, so this is the belt to that brace.
+            Cond::Rhythm { rhythm } => Rhythm::parse(rhythm) == Some(self.vitals.rhythm),
         }
     }
 

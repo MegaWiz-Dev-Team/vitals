@@ -110,7 +110,9 @@ fn cond(c: Option<&Cond>, h: &mut Horizon) {
             "t_in_state" => h.t_in_state = h.t_in_state.max(*value),
             _ => {}
         },
-        Cond::Flag { .. } | Cond::InState { .. } | Cond::Done { .. } => {}
+        // None of these carries a clock. A rhythm condition in particular is settled by a
+        // defibrillator or a state edge, never by waiting, so it moves no horizon.
+        Cond::Flag { .. } | Cond::InState { .. } | Cond::Done { .. } | Cond::Rhythm { .. } => {}
     }
 }
 
