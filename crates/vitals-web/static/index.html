@@ -2690,13 +2690,22 @@ const CUT={ cold_open:'ep1_cold_open', trigger:'ep1_trigger', harm:'ep1_harm', b
   DeathArrest:'ep1_death_arrest', DeathBiphasic:'ep1_death_biphasic' };
 const LOOPS=new Set(['deteriorating','critical','improving','recovered','arrest']);
 let loopNow='', cutting=false, film=true, lastShown='stable';
+/* Clip names that came back 404, so each one is asked for once and no more. Declared here with
+   the rest of the film state rather than beside the handler that fills it: `show()` reads it,
+   and a `const` read above its own declaration line only works by accident of call order. */
+const missing=new Set();
 
-function stateClip(status,kit){
+/* Only EP1 was filmed with a clip per piece of equipment on the patient. The others are built
+   from their key art, so asking for a `_o2` variant they do not have would cost a 404 and the
+   loop for the rest of that state. */
+const KIT_VARIANTS=new Set(['ep1']);
+function stateClip(status,kit,epId){
   const s=(status||'stable').toLowerCase();
   if(!LOOPS.has(s)) return null;
   const on=new Set(kit.map(k=>k.id));
-  const suffix = on.has('ett') && s==='deteriorating' ? '_ett' : on.has('o2') ? '_o2' : '';
-  return 'ep1_state_'+s+suffix;
+  const suffix = KIT_VARIANTS.has(epId)
+    ? (on.has('ett') && s==='deteriorating' ? '_ett' : on.has('o2') ? '_o2' : '') : '';
+  return epId+'_state_'+s+suffix;
 }
 /* How far down the room has gone, for an episode whose one frame cannot go anywhere. Only
    the states EP1 has a different still for: everything else is the shot as it was taken. */
@@ -2785,18 +2794,22 @@ $('#fallback').addEventListener('error',()=>{
 function show(status,kit){
   lastShown=(status||'stable').toLowerCase();
   const E=ep();
-  // Only EP1 has film — and only while the film actually loads. A deploy without the clips
-  // must degrade to the stills, not to a black frame, which is what it did on Cloud Run.
-  if(E.id!=='ep1' || !film){ $('#loop').classList.remove('on'); paintStill(E); return; }
-  const want=stateClip(status,kit||[]);
-  if(!want){ $('#loop').classList.remove('on'); paintStill(E); return; }
+  // Film where there is film, stills everywhere else. A deploy without the clips must degrade
+  // to the stills, not to a black frame, which is what it did on Cloud Run.
+  if(!film){ $('#loop').classList.remove('on'); paintStill(E); return; }
+  const want=stateClip(status,kit||[],E.id);
+  if(!want || missing.has(want)){ $('#loop').classList.remove('on'); paintStill(E); return; }
   setStill('');
   if(want!==loopNow){ loopNow=want; $('#loop').src='/clip/'+want+'.mp4'; $('#loop').play().catch(()=>{}); }
   $('#loop').classList.add('on');
 }
-/* One failed clip turns the film off for the visit: every later state change takes the still
-   path instead of re-requesting files that are not there. The still keeps tracking status. */
-$('#loop').addEventListener('error',()=>{ film=false; loopNow='';
+/* A failed clip is remembered by name, not taken as proof that there is no film at all.
+   EP1 was shot with a clip for every state; the episodes after it are built from their key art
+   and only have the two states that art can honestly play. Killing film on the first miss meant
+   the film stopped the moment a patient improved — the player got half a reel and then silence,
+   which is worse than stills throughout. Each name is asked for once; the still keeps tracking
+   status either way. */
+$('#loop').addEventListener('error',()=>{ if(loopNow) missing.add(loopNow); loopNow='';
   $('#loop').classList.remove('on'); paintStill(ep()); });
 $('#cut').addEventListener('error',()=>{ film=false;
   $('#cut').classList.remove('on'); $('#cut-tag').classList.remove('on'); cutting=false; });
