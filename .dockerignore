@@ -1,11 +1,10 @@
 target/
 .git/
 state/
-# The deck and the script are compiled into the binary, so they have to reach the build.
-# Everything else in pitch/ is renders and video that would only make the image bigger.
+# The deck is compiled into the binary, so it has to reach the build. Everything else in pitch/
+# is renders, video, and the speaking notes — none of which belong inside a served image.
 pitch/*
 !pitch/deck.html
-!pitch/script.html
 docs/
 demo/clips/
 **/*.mp4

@@ -9,8 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
-# The deck and the speaking script are compiled into the binary, so they are build inputs and not
-# runtime files. `.dockerignore` lets exactly these two through.
+# The deck is compiled into the binary, so it is a build input and not a runtime file.
+# `.dockerignore` lets that one file through and nothing else out of pitch/.
 COPY pitch ./pitch
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \

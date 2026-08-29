@@ -224,11 +224,19 @@ fn the_deck_is_served() {
     assert!(html.contains("VITALS") || html.contains("Vitals"), "this is not the Vitals deck");
 }
 
+/// The speaking script is **not** served, and this test exists so it cannot come back by
+/// accident. `pitch/script.html` is the presenter's notes — what to say and what not to say in
+/// front of whoever is listening — and it was compiled into the binary and answered at
+/// `/slides/script` with no token in front of it. The deck is the public artefact; the notes
+/// behind it are not.
 #[test]
-fn the_speaking_script_is_served_too() {
+fn the_speaking_script_is_not_served() {
     let s = Server::start();
-    let html = s.get("/slides/script");
-    assert!(html.contains("60-second cut"), "the script's own section is missing");
+    assert_eq!(s.get("/slides/script"), "not found", "the speaking script is being served again");
+    assert!(
+        !s.get("/slides").contains("60-second cut"),
+        "the script's own section came back on the deck route"
+    );
 }
 
 /// The deck gets arrow keys when it is served, and the file on disk keeps none of it — that file
