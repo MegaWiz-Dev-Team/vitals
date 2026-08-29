@@ -3,7 +3,8 @@
 //! We shipped `58/58` — a systolic equal to its diastolic, on a conscious talking patient — and
 //! nobody noticed until a producer looked at a screenshot. The sweep that followed found 931
 //! impossible readings across eight of the seventeen cases, four of them at zero pulse pressure.
-//! `136342d` fixed that one. This file is the net for the next one, and it is built on the
+//! The commit titled *"a pressure of 58/58 is not a low one, it is not a pressure"* fixed that
+//! one. This file is the net for the next one, and it is built on the
 //! principle that made the first one so expensive: a clinician who sees one impossible number
 //! stops believing every number, so an impossible number must never be something a human has to
 //! spot.

@@ -163,8 +163,10 @@ sentence, cut it from the pitch even if it is built.
 ## 11. Silence in the reply still marks a harmful order — measured, disclosed, not closed yet
 
 The harm marker is sealed during a station. As of 2026-08-29 the chart carries no harm row, the
-encounter feed carries no harm line, and the result panel's list is empty until the bell
-(`1a9728e`, `39a08bb`). A candidate is no longer told mid-station that an order was wrong.
+encounter feed carries no harm line, and the result panel's list is empty until the bell — the
+two commits titled *"a sealed chart carries no harm row, not a redacted one"* and *"a sealed run
+says nothing about harm on screen either"*. A candidate is no longer told mid-station that an
+order was wrong.
 
 **What was not sealed is the absence.** Measured across all twelve stations, every reachable
 order, one fresh run each:

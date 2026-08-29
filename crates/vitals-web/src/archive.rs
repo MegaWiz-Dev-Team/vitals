@@ -357,8 +357,9 @@ mod tests {
     /// The versions that anchored runs on devnet actually name, which the archive must never
     /// stop holding.
     ///
-    /// These four are the previous versions of EP2–EP5, retired by `3f6faf7` on 2026-08-28 — the
-    /// `"kind": "lose"` fix — whose commit message recorded the belief that "the only anchored
+    /// These four are the previous versions of EP2–EP5, retired on 2026-08-28 by the
+    /// `"kind": "lose"` fix — the commit titled *"a patient the script has killed stops having a
+    /// heartbeat"* — whose message recorded the belief that "the only anchored
     /// runs today are osce-a". That was checked against one Merkle tree. Across every
     /// `ClaimAccount` the program owns there were **eleven** leaves naming these four hashes, on
     /// trees #488253275, #488321238 and #487877348, and the edit orphaned all of them: for four

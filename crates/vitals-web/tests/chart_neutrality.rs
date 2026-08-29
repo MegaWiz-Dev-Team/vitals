@@ -1,6 +1,7 @@
 //! The chart is a record of orders, not a running mark sheet.
 //!
-//! Commit 52d29e4 stopped the chart printing intervention ids — `exam_throat`, `dx_anaphylaxis`,
+//! The commit titled *"the chart says what was ordered, not what the rubric calls it"* stopped
+//! the chart printing intervention ids — `exam_throat`, `dx_anaphylaxis`,
 //! `adrenaline_undosed` — because an id is the rubric's own needle and names what is being
 //! marked. It printed the case author's label instead, and the labels are the author's working
 //! notes. Nineteen of them, across twelve stations, end in the author's verdict:

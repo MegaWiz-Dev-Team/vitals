@@ -106,8 +106,8 @@ Each layer answers one specific way the thing could be a lie.
 | The judged part is a black box | **Attested, never claimed as re-derivable.** Signers state which model at which version. More signers, more confidence — never proof | **specified** |
 | The learner scores themselves | Scoring runs in a verifier holding the issuer key; high-stakes attempts can require n-of-m | **specified** |
 | Progression granted by a friendly server | The program recomputes the predicate from merkle proofs and writes the progression record only if its own arithmetic agrees. Nothing is minted — the record is a PDA and there is no token | **built** |
-| A different keyboard, a different hash | Learner input canonicalised | **built** — `f6d6458` |
-| Replay re-interprets an ambiguous order | What the order resolved to is recorded, not re-derived | **built** — `eb65f2b` |
+| A different keyboard, a different hash | Learner input canonicalised | **built** — `vitals-sce/src/text.rs`, pinned by `vitals-replay/tests/normalisation.rs` |
+| Replay re-interprets an ambiguous order | What the order resolved to is recorded, not re-derived | **built** — pinned by `vitals-replay/tests/resolved_action.rs` |
 | Two implementations quietly diverge | Conformance vectors bind them; neither depends on the other | **built** — `conformance/` |
 | We quietly drop the learners who failed | Pre-registrations and payouts both on chain; anyone can count | **specified** — §5 |
 

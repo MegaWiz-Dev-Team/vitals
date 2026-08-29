@@ -7,7 +7,8 @@
 //! respiration rate, 2 for the pulse and 2 for the systolic, and the Royal College of Physicians
 //! says in the publication itself that the table is not validated under 16.
 //!
-//! Commit ecbdff2 banded the monitor's alarm limits by age and missed this path: the view built
+//! The commit titled *"a three-year-old is not a small adult"* banded the monitor's alarm limits
+//! by age and missed this path: the view built
 //! `news2::Obs` without an age at all, and `news2` had no way to receive one. The audit named
 //! four cases; there are five. `osce-b2` is Tan, fourteen, and the adult table scored him
 //! `2 · LOW RISK · routine observations` — which is the same instrument being wrong in the more
