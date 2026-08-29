@@ -36,7 +36,7 @@ Honesty here is what makes the rest credible.
 
 | Problem | Do we act on it? |
 |---|---|
-| Attrition from **academic difficulty** (55.7% of 9.1%) | **Yes — primary lever** |
+| Attrition from **academic difficulty** (cited by 55.7%, more than any other reason) | **Yes — primary lever** |
 | The **19-point pass gap** for international graduates | **Yes — second lever, and the more measurable one** |
 | Attrition from psychological morbidity (40%), isolation (20%), finance | **Marginally at best.** A reason to come back is not treatment. Do not claim it |
 | Too few medical school places | **No.** We do not create training capacity |
@@ -137,8 +137,9 @@ Three things fall out of closing it, and each is a claim a competitor cannot mak
 
 ## 5. Is the required effect plausible?
 
-The target from `PROBLEM_AND_SCALE.md` §3: attrition 9.1% → 8.2%, which is **saving about 1 in 6
-of the students who currently leave for academic reasons.**
+The target from `PROBLEM_AND_SCALE.md` §3: attrition 9.1% → 8.2%, which is **saving about 1 in 10
+of the students who currently leave, whatever their reason.** Not a share of the academic-difficulty
+group: the reported causes overlap and sum to 145.7% (§1c), so that group has no clean size.
 
 What the literature says about this class of intervention:
 
