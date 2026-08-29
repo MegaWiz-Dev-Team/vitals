@@ -4048,26 +4048,40 @@ mod tests {
         );
     }
 
-    /// A case with no rows in the table reads exactly as it did before the table existed. Every
-    /// station is in this state today and none of them may break because of it.
+    /// A station reads in the language it was asked in, and the run underneath does not move.
+    ///
+    /// This used to assert the other half — that OSCE-B3's scripted lines came back
+    /// *untranslated* — which was true while `BEATS` held three rows against the season. It is
+    /// not any more: every scripted beat of every case on the shelf now has a Thai line, pinned
+    /// against the scenario files themselves by
+    /// `lang::tests::every_scripted_beat_of_every_case_has_a_thai_line`, and the fallback for a
+    /// case that has none is pinned there too.
+    ///
+    /// What survives is the half that always mattered here, and it is this file's half rather
+    /// than that one's: the translation is a coat over the run. Same beats, same spelling, same
+    /// order, same leaf — whichever language the page asked in.
     #[test]
     fn a_case_with_no_translation_still_plays() {
         let th = lang::language(Some("th"));
-        let mut s = new_session("osce-b3").expect("a station with no rows of its own");
+        let mut s = new_session("osce-b3").expect("a station");
         play(&mut s, &["dexamethasone syrup", "score her from the doorway"], 30.0);
         let v = s.view(th);
+        let en = s.view(lang::language(Some("en")));
         assert!(!v.beats.is_empty(), "the station still speaks");
-        // Its scripted lines are untranslated, so what the page shows is the English the case
-        // author wrote — which is the designed state, not a hole.
+        // The canonical beats are the run. They are what replay re-derives and what the leaf
+        // hashes, so they must be byte-identical either side of the picker — the translation
+        // rides beside them in `tr` and never in place of them.
+        assert_eq!(v.beats, en.beats, "the beats themselves changed language");
+        assert_eq!(v.leaf, en.leaf);
+        assert!(en.tr.is_none(), "the language the case was written in sent a translation");
         for b in &v.beats {
             if b.starts_with("threshold:") {
                 assert!(
-                    v.tr.as_ref().is_none_or(|t| !t.contains_key(b)),
-                    "{b} claims a translation this round did not write",
+                    v.tr.as_ref().is_some_and(|t| t.contains_key(b)),
+                    "{b} reached a Thai bedside in English",
                 );
             }
         }
-        assert_eq!(v.leaf, s.view(lang::language(Some("en"))).leaf);
     }
 
     /// A learner who reads Thai buttons types Thai orders. Those must reach the same intervention
