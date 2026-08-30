@@ -30,7 +30,7 @@ Vitals started on 2026-08-22. Every figure in this section belongs to **Embla**,
 simulation engine Vitals is built on and reuses, which has been in production for months. It is
 cited because it is why a scoreable signal exists at all, not because Vitals earned it.
 
-- **1st Place Grand Champion @ NECTEC AI for Thai 2026** ([team01.aiforthai.in.th](https://team01.aiforthai.in.th)) — awarded to Embla.
+- **1st Place @ NECTEC AI for Thai 2026** ([announced by NECTEC](https://www.facebook.com/NECTEC/posts/pfbid02jyg4DWDoWsGpnXC6Gi6CcpjsDpHf5mxh1vkrxmSSN8FaAwoW89dBMx1i5GR1tTLWl)) — awarded to Embla.
 - **18 of Thailand’s 29 medical faculties have at least one active learner on Embla.** A faculty is
   counted only when a learner account is verified against it; self-reported signup entries are
   excluded, which is why this number is lower than the platform's raw institution count. **No faculty
