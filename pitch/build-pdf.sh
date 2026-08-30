@@ -18,10 +18,24 @@
 # `deck-12slides-backup.html`, prints a success line, exits 0, and replaces a corrected deck with
 # its August ancestor — a regression that reads as a build step. Their absence here is the fix,
 # not a gap. Do not re-add them, and do not repair their anchors so they run again.
+#
+# `thumbs/slide-NN.png` are rasterised here, out of the PDF this script has just rendered, for the
+# same reason. They used to be produced on their own, from their own copy of the deck's text, and
+# seven of the nine drifted — three of them still showing claims the deck had since retracted. The
+# fix is not a reminder to regenerate them; it is that the only thing they can be made from is the
+# PDF, and the only thing that makes the PDF is the loop below. Do not give them a second source.
+# If this step is ever moved out of this script, the drift comes back the same day.
 set -euo pipefail
 
 CHROME="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 [ -x "$CHROME" ] || { echo "Chrome not found at $CHROME — set CHROME=..." >&2; exit 1; }
+
+# Fatal rather than skipped, deliberately: a skip leaves stale thumbs on disk looking current,
+# which is the exact failure this step exists to remove.
+command -v pdftoppm >/dev/null 2>&1 || {
+  echo "pdftoppm not found — brew install poppler (the thumbs are rendered from the PDF)" >&2
+  exit 1
+}
 
 cd "$(dirname "$0")"
 here="$PWD"
@@ -39,4 +53,25 @@ print(len(re.findall(rb'/Type\s*/Page[^s]', open(sys.argv[1],'rb').read())))
 PY
 )
   echo "Vitals-$f.pdf — $pages pages"
+
+  if [ "$f" = deck ]; then
+    # One PNG per page, at the page's own 72dpi size, so a thumb cannot say anything the page
+    # does not. -scale-to-* pins the output so the size does not drift with the renderer.
+    mkdir -p "$here/thumbs"
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    for n in $(seq 1 "$pages"); do
+      pdftoppm -png -f "$n" -l "$n" -scale-to-x 936 -scale-to-y 528 \
+        "$here/Vitals-$f.pdf" "$tmp/p"
+      mv "$tmp"/p-*.png "$(printf '%s/thumbs/slide-%02d.png' "$here" "$n")"
+    done
+    # A deck that loses a slide must lose its thumb with it, or the stalest one outlives the claim.
+    for stale in "$here"/thumbs/slide-*.png; do
+      [ -e "$stale" ] || continue
+      k=$(basename "$stale" .png); k=${k#slide-}
+      [ "$((10#$k))" -le "$pages" ] || { rm -f "$stale"; echo "  removed $(basename "$stale") — past the end of the deck"; }
+    done
+    rm -rf "$tmp"; trap - EXIT
+    echo "thumbs/ — $pages slides rasterised from Vitals-$f.pdf"
+  fi
 done
