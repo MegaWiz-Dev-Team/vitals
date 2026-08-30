@@ -946,6 +946,7 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
 .btn.end.armed{background:var(--alarm);border-color:var(--alarm);color:#fff}
 .btn.end.armed:hover{background:var(--alarm);color:#fff}
 .endnote{color:var(--ink-2);font-size:.76rem;line-height:1.35;font-style:normal}
+.endnote a{color:var(--act)}
 
 /* ── outcome ── */
 .result{grid-column:1/-1;display:none;background:var(--card);border:1px solid var(--line);
@@ -1683,13 +1684,21 @@ a.give:hover{filter:brightness(1.06)}
     <div class="sub" id="outnote"></div>
     <div class="leaf" id="leaf"></div>
     <div class="chainrow">
-      <button class="btn go" id="anchor">anchor this run on chain</button>
+      <button class="btn go" id="anchor" aria-describedby="anchornote">anchor this run on chain</button>
       <button class="btn" id="c4" disabled>claim Expert</button>
       <button class="btn" id="c3" disabled>claim Proficient</button>
       <button class="btn" id="c2" disabled>claim Competent</button>
       <button class="btn" id="c1" disabled>claim Advanced beginner</button>
       <button class="btn" id="copy">copy the tape</button>
     </div>
+    <!-- The one control on this page whose effect outlives the tab. The policy says it at length;
+         a player who never opens the policy still has to be told before pressing, so the fact goes
+         here in one line. Not a dialog: this is a game about deciding under time pressure, and a
+         modal in front of a button nobody is obliged to press would be theatre. Stated as fact —
+         what it writes, that it is public, that it cannot be undone — with the detail one tap away. -->
+    <em class="endnote" id="anchornote">Anchoring writes this run — your key, the case, the outcome,
+      the harm count and the scores — onto a public chain, permanently, and nobody can delete it
+      afterwards: <a href="/privacy#anchoring">what ends up there</a>.</em>
     <!-- The debrief reads top to bottom in the order a candidate needs it: what the run was
          worth and how far the next star is (#verdict, filled by the anchor), then the mark
          sheet worst-first, then the harm and the timeline, then the answer and where the case

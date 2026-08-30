@@ -817,3 +817,34 @@ fn the_review_form_does_not_promise_that_no_address_is_kept() {
         "review.html says something about data and gives the reader nowhere to check it"
     );
 }
+
+/// The one irreversible control on the bay carries the fact beside it, and the link lands.
+///
+/// Anchoring writes a permanent, public, undeletable record. The policy says so at length, which
+/// helps only a player who read the policy first — so the fact sits next to the button, tied to it
+/// by `aria-describedby` so a screen reader reads it as part of the control, and the fragment it
+/// points at has to exist in the page it points at.
+#[test]
+fn the_anchor_control_states_what_anchoring_does_and_the_link_resolves() {
+    let html = page();
+    let at = html.find("id=\"anchor\"").expect("index.html has no anchor button");
+    let open = html[..at].rfind('<').expect("no tag around the anchor button");
+    let close = at + html[at..].find('>').expect("unterminated anchor button tag");
+    let tag = &html[open..close];
+    assert!(
+        tag.contains("aria-describedby=\"anchornote\""),
+        "the anchor button is not tied to the line that says what anchoring costs: {tag}"
+    );
+    assert!(
+        html.contains("id=\"anchornote\""),
+        "index.html points at a note beside the anchor button that does not exist"
+    );
+    assert!(
+        html.contains("href=\"/privacy#anchoring\""),
+        "the note beside the anchor button does not reach the policy's anchoring section"
+    );
+    assert!(
+        static_page("privacy.html").contains("id=\"anchoring\""),
+        "the policy has no #anchoring for that link to land on"
+    );
+}
