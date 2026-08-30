@@ -777,3 +777,43 @@ fn the_thai_summary_uses_arabic_digits() {
         );
     }
 }
+
+// ── what a page promises about data ─────────────────────────────────────────
+//
+// Not style checks. Each pins a sentence a person reads before doing something they cannot take
+// back — signing a review with their name, or writing a run to a public chain — and each replaced
+// a claim the code did not honour.
+
+/// The review form never again promises that no address is kept.
+///
+/// It said “ไม่เก็บ IP ไม่ติดตามการใช้งาน” — we keep no IP, we do not track usage — and that was
+/// wrong three times over: `/api/review` is rate-limited per address (`meter.rs`, keyed
+/// `review:<ip>`), Cloud Run keeps its own request logs whatever this code does, and the page
+/// fetches its fonts from Google before a reviewer types a character. Two clinicians read that
+/// sentence and decided to sign their clinical opinion with their names. What replaced it is still
+/// reassuring, because the true part is the reassuring part — nothing is stored beside the answers
+/// — and it sends the reader to the policy for the rest.
+#[test]
+fn the_review_form_does_not_promise_that_no_address_is_kept() {
+    let html = review_page();
+    // Comments stripped first: the note in the file quotes the sentence it replaced, and a check
+    // that cannot tell the quotation from the claim would forbid recording why the claim went.
+    let mut visible = String::new();
+    let mut rest = html.as_str();
+    while let Some(a) = rest.find("<!--") {
+        visible.push_str(&rest[..a]);
+        rest = match rest[a..].find("-->") {
+            Some(b) => &rest[a + b + 3..],
+            None => "",
+        };
+    }
+    visible.push_str(rest);
+    assert!(
+        !visible.contains("ไม่เก็บ IP"),
+        "review.html claims again that it keeps no IP — `/api/review` is metered per address"
+    );
+    assert!(
+        visible.contains("href=\"/privacy\""),
+        "review.html says something about data and gives the reader nowhere to check it"
+    );
+}

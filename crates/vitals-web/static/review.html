@@ -178,9 +178,23 @@
         · จะกดตัวเลือกในข้อที่ตอบได้ก่อน แล้วอัดเสียงเฉพาะข้อที่อยากขยายความก็ได้</p>
     </div>
 
+    <!-- This block used to say “ไม่เก็บ IP ไม่ติดตามการใช้งาน”, and it was not true. `/api/review` is rate-limited
+         per address (`meter.rs`, keyed `review:<ip>`), the platform keeps its own request logs,
+         and this page fetches its fonts from Google before a reviewer types anything. The two
+         people this form was sent to read that sentence before deciding to sign their name to a
+         clinical opinion, so the correction says what actually happens rather than softening it.
+         What survives is still reassuring, because it is true: none of it is stored beside their
+         answers. Kept in step with §6 and §7 of /privacy — if those change, this changes. -->
     <div class="note" style="margin-top:14px">
-      <p class="sub"><strong>เก็บอะไรบ้าง:</strong> คำตอบ ตัวเลือกที่กด ชื่อและช่องทางติดต่อถ้ากรอก และเวลาที่ส่ง
-        · ไม่เก็บ IP ไม่ติดตามการใช้งาน · ใช้ภายในทีมเพื่อแก้ผลิตภัณฑ์เท่านั้น</p>
+      <p class="sub"><strong>เก็บอะไรบ้าง:</strong> คำตอบ ตัวเลือกที่กด กล่องข้อความท้ายฟอร์ม ชื่อและช่องทางติดต่อถ้ากรอก
+        รุ่นของระบบที่คุณตรวจ และเวลาที่เซิร์ฟเวอร์ได้รับ · ใช้ภายในทีมเพื่อแก้ผลิตภัณฑ์เท่านั้น ไม่เอาไปคิดคะแนนของใคร
+        · หน้านี้ไม่มีคุกกี้ติดตาม ไม่มี Google Analytics และร่างคำตอบอยู่ในเบราว์เซอร์ของคุณเองจนกว่าจะกดส่ง</p>
+      <p class="sub" style="margin-top:9px"><strong>เรื่อง IP ขอพูดตรง ๆ ครับ:</strong> ตอนกดส่ง เซิร์ฟเวอร์เอาหมายเลข IP
+        มาเป็นกุญแจนับว่าที่อยู่เดียวกันส่งมากี่ครั้ง ไว้กันคนยิงฟอร์มรัว ๆ อย่างเดียว — อยู่ในหน่วยความจำของโปรเซส
+        ไม่ได้เขียนลงฐานข้อมูล ไม่ได้เก็บคู่กับคำตอบของคุณ นับเฉพาะช่วง 24 ชั่วโมงล่าสุด และหายทั้งหมดเมื่อเซิร์ฟเวอร์รีสตาร์ต
+        · อีกสองอย่างที่ไม่ได้อยู่ในมือเรา คือ Google Cloud Run ที่เรารันอยู่เก็บ log ของตัวเองซึ่งมี IP ต้นทางติดไปด้วย
+        และหน้านี้โหลดฟอนต์จาก Google ทำให้ IP ของคุณไปถึง Google ตั้งแต่ก่อนพิมพ์ตัวแรก
+        · ที่ยืนยันได้คือคำตอบของคุณไม่ได้ถูกเก็บผูกกับ IP ของใคร · อ่านฉบับเต็มได้ที่ <a href="/privacy">นโยบายความเป็นส่วนตัว</a></p>
     </div>
 
     <button type="button" class="linky" id="alt" style="margin-top:16px">หรือคัดลอกคำตอบไปส่งเองทาง LINE</button>
