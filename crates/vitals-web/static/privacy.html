@@ -152,11 +152,26 @@ gone. With it goes your ability to prove an anchored run was yours. <strong>We c
 because we never had it.</strong> If you play on more than one machine, link the second device to
 the first from inside the app rather than starting again.</p>
 <h3>What is kept in your browser and never sent anywhere</h3>
-<p>Under keys beginning <code>vitals.</code>: your key, which account it belongs to, your chosen
-language, which episodes you have cleared or starred, your stars and tiers, which cards you have
-seen, and which teasers have played. Plus <code>vitals-analytics-consent</code> (§8) and
-<code>vitals-review-draft</code> (§7). All of it is local to that browser. Clearing site data
-removes all of it.</p>
+<p>Every one of them, by the name you would see if you opened your browser's storage yourself:</p>
+<ul>
+<li><code>vitals.key</code> — the private half of your keypair, and <code>vitals.account</code>,
+which account it belongs to</li>
+<li><code>vitals.lang</code> — the language you chose</li>
+<li><code>vitals.cleared</code>, <code>vitals.starred</code>, <code>vitals.stars</code> and
+<code>vitals.tiers</code> — which episodes you have finished, which you starred, and how
+well</li>
+<li><code>vitals.seen</code> and <code>vitals.teasers</code> — which cards and which teasers have
+already played, so they do not play at you twice</li>
+<li><code>vitals.sets</code> — not about you at all: the list of case sets this server sent us,
+kept so the shelf still draws itself when the network does not answer</li>
+<li><code>vitals-analytics-consent</code> (§8) and <code>vitals-review-draft</code> (§7)</li>
+</ul>
+<p>All of it is local to that browser. Clearing site data removes all of it.</p>
+<p class="note">That list is meant to be exhaustive, and it was one key short until we checked it
+against the code rather than against the last version of this paragraph. It is now checked by a
+test that reads the pages and fails if any of them keeps something this list does not name — but if
+you open your storage and find a <code>vitals.</code> key that is not above, the test has a hole in
+it and we want to hear about it.</p>
 </section>
 
 <!-- ── 3 ─────────────────────────────────────────────────────────────────── -->
@@ -364,10 +379,15 @@ so a control that could ever render something a learner typed cannot report it.<
 <p><strong>/review loads no analytics at all</strong>, and neither does this page or
 <a href="/terms">the terms page</a>.</p>
 <h3>Fonts</h3>
-<p>Every page here, this one included, loads its typefaces from
+<p>Most pages here, this one included, load their typefaces from
 <span class="mono">fonts.googleapis.com</span> and <span class="mono">fonts.gstatic.com</span>. That
 is a request from your browser to Google, it happens before any banner, and consent does not gate
 it. A content blocker stops it and every page still reads fine.</p>
+<p>Four do not, and they are worth naming because they are the ones that reach nothing at all: the
+three bedside device screens — <span class="mono">/device/monitor</span>,
+<span class="mono">/device/vent</span> and <span class="mono">/device/pump</span> — and the deck.
+Those set type in whatever the machine already has. The device screens also load no analytics, so a
+monitor left running on a second display makes no request to anyone but this server.</p>
 </section>
 
 <!-- ── 9 ─────────────────────────────────────────────────────────────────── -->

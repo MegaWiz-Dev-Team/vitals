@@ -848,3 +848,69 @@ fn the_anchor_control_states_what_anchoring_does_and_the_link_resolves() {
         "the policy has no #anchoring for that link to land on"
     );
 }
+
+// ── the privacy policy against the code it describes ────────────────────────
+//
+// The page opens by claiming every sentence on it was written by reading the code, and §2 gives
+// an enumerated list of what is kept in the visitor's browser. An enumerated list is a promise
+// that nothing else is there, and it went one key short — `vitals.sets` shipped and the paragraph
+// did not follow it. Nobody noticed because nothing was watching.
+
+/// Every `vitals.` key any served page reads or writes must be named in the policy.
+#[test]
+fn the_policy_names_every_key_the_pages_keep_in_a_browser() {
+    let policy = static_page("privacy.html");
+    let mut found: Vec<String> = Vec::new();
+    for name in ["index.html", "landing.html", "donate.html", "present.html", "review.html",
+                 "terms.html", "privacy.html"] {
+        let src = static_page(name);
+        // `localStorage.getItem('vitals.x')` and its set/remove siblings, quoted either way.
+        for (at, _) in src.match_indices("localStorage.") {
+            let rest = &src[at..];
+            let Some(open) = rest.find(['\'', '"']) else { continue };
+            let q = rest.as_bytes()[open] as char;
+            let Some(len) = rest[open + 1..].find(q) else { continue };
+            let key = &rest[open + 1..open + 1 + len];
+            if key.starts_with("vitals") && !found.iter().any(|k| k == key) {
+                found.push(key.to_string());
+            }
+        }
+    }
+    assert!(found.len() >= 10, "the scanner found almost nothing — it has stopped working: {found:?}");
+    for key in &found {
+        assert!(
+            policy.contains(key.as_str()),
+            "{key} is written to a visitor's browser and §2 of the policy does not name it"
+        );
+    }
+}
+
+/// And the other direction, for the two the policy names by their hyphenated spelling: a key the
+/// policy describes but no page uses is a policy describing a product that no longer exists.
+#[test]
+fn the_policy_names_no_key_the_pages_stopped_using() {
+    let mut all = String::new();
+    for name in ["index.html", "landing.html", "donate.html", "present.html", "review.html"] {
+        all.push_str(&static_page(name));
+    }
+    for key in ["vitals-analytics-consent", "vitals-review-draft"] {
+        assert!(all.contains(key), "the policy names {key} and no page uses it any more");
+    }
+}
+
+/// §11 used to say *every* page loads Google's fonts. The three bedside screens never did — they
+/// set type in what the machine has — and a policy that overstates what leaves the browser is
+/// still a policy that is wrong about what leaves the browser.
+#[test]
+fn the_device_screens_reach_nothing_but_this_server() {
+    for name in ["monitor.html", "vent.html", "pump.html"] {
+        let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/device").join(name);
+        let src = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
+        for host in ["fonts.googleapis.com", "fonts.gstatic.com", "googletagmanager.com"] {
+            assert!(
+                !src.contains(host),
+                "device/{name} now reaches {host}; §11 of the policy says it reaches nothing"
+            );
+        }
+    }
+}
