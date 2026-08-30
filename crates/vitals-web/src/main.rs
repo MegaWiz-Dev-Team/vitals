@@ -28,6 +28,20 @@ const LANDING: &str = include_str!("../static/landing.html");
 /// Where the money goes: the treasury address, a Solana Pay QR, and the explorer link to audit
 /// it. Baked into the binary like the landing — a donation page that can 404 is a donation lost.
 const DONATE: &str = include_str!("../static/donate.html");
+/// What this server does with what it collects, and the one action on it nobody can undo.
+///
+/// Baked in for the same reason [`DONATE`] is, and for one more: a privacy policy that 404s is
+/// worse than no privacy policy at all, because every place that links to it — an OAuth consent
+/// screen, a footer, a mail to a reviewer — keeps pointing at nothing. It is also the page an
+/// external party checks *first* and never comes back to, so the copy that must never go missing
+/// is this one.
+///
+/// Stamped with [`BUILD`] on the way out like [`REVIEW`] is: a policy is a claim about a
+/// particular build's behaviour, and a reader who cannot tell which build they are reading about
+/// cannot check it against the code.
+const PRIVACY: &str = include_str!("../static/privacy.html");
+/// The terms, stamped the same way and for the same reason.
+const TERMS: &str = include_str!("../static/terms.html");
 /// The reviewer's form, served by the same process that stores what it collects.
 ///
 /// Baked in for the same reason the landing is: the two people this page exists for are a
@@ -1850,13 +1864,13 @@ fn main() {
         let url = req.url().to_string();
         let path = url.split('?').next().unwrap_or("/").to_string();
 
-        // The apex answers with the landing and nothing else; anything deeper moves permanently
-        // to the game origin. 301 on purpose — the split is a recorded decision, not a phase —
-        // and the landing carries its own short cache life so a proxy caching the apex never
-        // holds anything of the game's.
+        // The apex answers with the front door — the landing, and the two documents about the
+        // company — and anything deeper moves permanently to the game origin. 301 on purpose:
+        // the split is a recorded decision, not a phase. Everything the apex serves carries its
+        // own short cache life so a proxy caching the apex never holds anything of the game's.
         if host_of(&req) == APEX {
             let resp = match apex_target(&url) {
-                None => html(LANDING).with_header(
+                None => html(&front_door(&path)).with_header(
                     Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=300"[..]).unwrap(),
                 ),
                 Some(to) => Response::from_string("")
@@ -2823,6 +2837,19 @@ fn main() {
                 meter.click(&store);
                 html(DONATE)
             }
+            // ── what we hold, and what nobody can take back ──────────────────────
+            //
+            // Served like the deck and the donate page: compiled in, ungated, no click counted.
+            // The visit is deliberately *not* metered — /donate counts its own views because a
+            // donation link's conversion is a number worth having, and counting who reads the
+            // privacy policy would be the one measurement this page has no business making.
+            //
+            // Both hosts answer them. `apex_target` keeps these two paths on the apex rather
+            // than redirecting to the game origin, because they are the company's documents and
+            // because the URL handed to an OAuth consent screen or a reviewer should resolve at
+            // the name it was written as, not one hop later.
+            (Method::Get, "/privacy") => html(&PRIVACY.replace(BUILD_STAMP, BUILD)),
+            (Method::Get, "/terms") => html(&TERMS.replace(BUILD_STAMP, BUILD)),
             // ── the form itself ─────────────────────────────────────────────────
             // One URL and nothing else. The two reviewers this is for are a final-year student
             // and a physician: a link that opens and works is the entire brief, and any step
@@ -3446,9 +3473,32 @@ fn host_of(req: &tiny_http::Request) -> String {
 /// What the apex does with a URL: `None` serves the landing, otherwise the permanent home of
 /// that path on the game origin — a deep link pasted against the apex still lands somewhere
 /// real, query string and all. Decided on the path alone so `/?utm_source=...` stays a landing.
+/// The page the apex serves for a path [`apex_target`] keeps: the landing, or one of the two
+/// documents about the company, stamped with the build they describe.
+///
+/// One function so the two hosts cannot drift: the game origin serves the same bytes from its own
+/// match arms, and a policy that differed between `vitals.academy/privacy` and
+/// `devnet.vitals.academy/privacy` would be two policies.
+fn front_door(path: &str) -> String {
+    match path {
+        "/privacy" => PRIVACY.replace(BUILD_STAMP, BUILD),
+        "/terms" => TERMS.replace(BUILD_STAMP, BUILD),
+        _ => LANDING.to_string(),
+    }
+}
+
 fn apex_target(url: &str) -> Option<String> {
     let path = url.split('?').next().unwrap_or("/");
-    (path != "/").then(|| format!("{GAME_ORIGIN}{url}"))
+    // The landing and the two documents about the company stay on the front door. Everything
+    // else moves to the game origin.
+    //
+    // A redirect would work for a reader and is wrong for the two callers that matter: Google's
+    // OAuth consent screen wants a privacy-policy URL it can fetch, and a link mailed to a
+    // reviewer or printed in a footer is quoted at the name it was written as. `vitals.academy/privacy`
+    // answering with the policy — rather than with a 301 to a host called `devnet` — is the
+    // difference between a URL that reads as the company's and one that reads as an artefact of
+    // our hosting.
+    (!matches!(path, "/" | "/privacy" | "/terms")).then(|| format!("{GAME_ORIGIN}{url}"))
 }
 
 /// Where to listen, with the platform's word winning over ours.
@@ -3722,8 +3772,9 @@ mod tests {
 
     // ── the apex ────────────────────────────────────────────────────────────
 
-    /// The front door serves the landing and moves everything else — path, query and all — to
-    /// the game origin. A deep link shared from the game must survive being pasted on the apex.
+    /// The front door serves the landing and the company's two documents, and moves everything
+    /// else — path, query and all — to the game origin. A deep link shared from the game must
+    /// survive being pasted on the apex.
     #[test]
     fn the_apex_keeps_the_landing_and_redirects_the_rest() {
         assert_eq!(apex_target("/"), None);
@@ -3733,6 +3784,24 @@ mod tests {
             apex_target("/api/chain?player=abc").as_deref(),
             Some("https://devnet.vitals.academy/api/chain?player=abc"),
         );
+    }
+
+    /// The privacy URL is quoted to an OAuth consent screen and printed in footers, so the apex
+    /// answers it rather than bouncing to a host called `devnet`. Both hosts serve the same
+    /// bytes: `front_door` is the one copy.
+    #[test]
+    fn the_apex_answers_the_policy_and_the_terms_itself() {
+        assert_eq!(apex_target("/privacy"), None, "the policy must not 301 off the apex");
+        assert_eq!(apex_target("/terms"), None, "the terms must not 301 off the apex");
+        assert!(front_door("/privacy").contains("Anchoring a run is permanent"));
+        assert!(front_door("/terms").contains("not a clinical qualification"));
+        assert_eq!(front_door("/"), LANDING, "the landing is still the landing");
+        // The stamp is replaced on the way out, or a reader cannot tell which build the page
+        // is describing — which is the only thing that makes it checkable against the code.
+        for p in ["/privacy", "/terms"] {
+            assert!(!front_door(p).contains(BUILD_STAMP), "{p} went out unstamped");
+            assert!(front_door(p).contains(BUILD), "{p} does not say which build it describes");
+        }
     }
 
     // ── where to listen ─────────────────────────────────────────────────────
@@ -3762,6 +3831,10 @@ mod tests {
         }
         for p in ["/", "/play", "/api/new", "/api/step", "/api/finish", "/api/kit", "/api/tape", "/api/chain",
                   "/api/meter", "/api/fuel", "/api/stars", "/api/lang", "/api/usage", "/donate",
+                  // The policy and the terms. A token on either would be a policy nobody can
+                  // read, which is the same as not having one — and Google's consent screen has
+                  // to be able to fetch the privacy URL without credentials.
+                  "/privacy", "/terms",
                   // The reviewer's form and the route it posts to. A student and a physician
                   // were handed one link; a token on either is a review that never arrives, and
                   // "tell us what is wrong" is not a thing anyone should need an account for.

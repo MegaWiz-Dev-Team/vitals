@@ -266,3 +266,86 @@ fn the_deck_does_not_depend_on_a_file_being_there() {
     // The test server runs with no repo around it beyond the binary itself.
     assert!(s.get("/slides").len() > 100_000);
 }
+
+// ── the policy and the terms ────────────────────────────────────────────────
+//
+// Both are `include_str!`'d beside the deck and the donate page, for a reason the deck already
+// established the hard way: a page that can go missing in a container goes missing on the day it
+// matters. For these two the day it matters is an OAuth consent screen fetching the privacy URL,
+// and a physician who has just been asked for her contact details wanting to know what happens to
+// them. A 404 at either is worse than a plain page.
+
+/// Both routes answer, unguarded, with the page that belongs at them.
+#[test]
+fn the_policy_and_the_terms_are_served() {
+    let s = Server::start();
+    let privacy = s.get("/privacy");
+    assert!(privacy.contains("<title>Privacy"), "no policy came back: {}", &privacy[..privacy.len().min(120)]);
+    let terms = s.get("/terms");
+    assert!(terms.contains("<title>Terms"), "no terms came back: {}", &terms[..terms.len().min(120)]);
+}
+
+/// The stamp is replaced on the way out, exactly as it is for the reviewer's form. A policy is a
+/// claim about one build's behaviour, and a reader who cannot tell which build cannot check it.
+#[test]
+fn the_policy_and_the_terms_say_which_build_they_describe() {
+    let s = Server::start();
+    for p in ["/privacy", "/terms"] {
+        let html = s.get(p);
+        assert!(!html.contains("__VITALS_BUILD__"), "{p} went out with the placeholder still in it");
+        assert!(html.contains("vitals 0."), "{p} does not name the build it describes");
+    }
+}
+
+/// The sentences these pages exist for. Each one is the load-bearing disclosure of its page: the
+/// irreversibility of an anchor, and what a score is not. A redesign that loses either has lost
+/// the reason the page was written, and it must fail here rather than in front of a reader.
+#[test]
+fn the_pages_still_say_the_thing_they_were_written_to_say() {
+    let s = Server::start();
+    let privacy = s.get("/privacy");
+    for must in [
+        "Anchoring a run is permanent",
+        "cannot delete it",
+        // The anonymity option covers credit, not storage — the one thing a reviewer could
+        // reasonably misread, and the reason a physician's contact details are on our disk.
+        "anonymise the record",
+        // What leaves the machine, named rather than implied.
+        "Vertex AI",
+    ] {
+        assert!(privacy.contains(must), "the policy stopped saying {must:?}");
+    }
+    let terms = s.get("/terms");
+    for must in [
+        "not a clinical qualification",
+        "nothing in it is advice",
+        "without warranty of any kind",
+        "AGPL",
+    ] {
+        assert!(terms.contains(must), "the terms stopped saying {must:?}");
+    }
+}
+
+/// Neither page runs any script at all. Every other page here loads GA4 behind a consent gate;
+/// the two that describe what we collect do not collect while they are being read. Checked as
+/// "no `<script>`" rather than "no tag id", because the policy *names* googletagmanager in the
+/// sentence explaining what the tag does — the substring is prose here, and the property worth
+/// pinning is that nothing on these pages executes.
+#[test]
+fn the_policy_and_the_terms_run_no_script() {
+    let s = Server::start();
+    for p in ["/privacy", "/terms"] {
+        let html = s.get(p);
+        assert!(!html.contains("<script"), "{p} runs a script");
+        assert!(!html.contains("gtag("), "{p} calls gtag");
+    }
+}
+
+/// Compiled in rather than read from disk, like the deck and the donate page. The test server
+/// runs with no repository around it beyond the binary itself.
+#[test]
+fn the_policy_does_not_depend_on_a_file_being_there() {
+    let s = Server::start();
+    assert!(s.get("/privacy").len() > 10_000);
+    assert!(s.get("/terms").len() > 5_000);
+}

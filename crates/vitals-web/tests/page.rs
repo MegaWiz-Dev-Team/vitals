@@ -732,3 +732,48 @@ fn every_ruling_offers_a_way_to_agree_with_what_we_already_do() {
         "these items give the reviewer no way to answer without writing prose: {optionless:?}"
     );
 }
+
+// ── the footers reach the policy ────────────────────────────────────────────
+//
+// A privacy policy nobody can find is the same defect as not having one. The two public pages a
+// stranger actually lands on are the landing and the donate page, and both carry a footer — so
+// the link lives there, and this is what stops a footer edit quietly dropping it.
+
+/// Both public pages link to both documents, by the path the server actually serves.
+#[test]
+fn the_landing_and_donate_footers_link_to_the_policy_and_the_terms() {
+    for name in ["landing.html", "donate.html"] {
+        let html = static_page(name);
+        for href in ["href=\"/privacy\"", "href=\"/terms\""] {
+            assert!(html.contains(href), "{name} does not link {href}");
+        }
+    }
+}
+
+/// And the two documents link back to each other and to the front door, so a reader who arrives
+/// at one is never stranded there.
+#[test]
+fn the_policy_and_the_terms_link_to_each_other() {
+    let privacy = static_page("privacy.html");
+    let terms = static_page("terms.html");
+    assert!(privacy.contains("href=\"/terms\""), "the policy does not reach the terms");
+    assert!(terms.contains("href=\"/privacy\""), "the terms do not reach the policy");
+    for (name, html) in [("privacy.html", &privacy), ("terms.html", &terms)] {
+        assert!(html.contains("href=\"/\""), "{name} has no way back to the front door");
+        assert!(html.contains("paripol@megawiz.co"), "{name} names no way to reach a person");
+    }
+}
+
+/// Thai text on this site uses Arabic digits, everywhere, including in a policy. The Thai
+/// summary on the privacy page is the only Thai outside the game and the review form, and a Thai
+/// numeral would be the one place it slipped in unnoticed.
+#[test]
+fn the_thai_summary_uses_arabic_digits() {
+    let html = static_page("privacy.html");
+    for (i, c) in html.chars().enumerate() {
+        assert!(
+            !('\u{0E50}'..='\u{0E59}').contains(&c),
+            "a Thai numeral {c:?} at char {i} in privacy.html",
+        );
+    }
+}

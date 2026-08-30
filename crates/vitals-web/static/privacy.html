@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy — Vitals</title>
+<meta name="description" content="What Vitals stores, what leaves the machine, and the one thing on this site that cannot be undone.">
+<!-- No analytics tag on this page or on /terms, deliberately. Every other page loads GA4 behind a
+     consent gate; a page whose subject is what we collect should not be collecting while you read
+     it. The fonts below are still Google's, and §8 says so rather than hiding it. -->
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{--ground:#F5F8F8;--surface:#fff;--surface-2:#EDF2F2;--ink:#0F1719;--ink-2:#48585C;--ink-3:#7E8F93;
+--rule:#D9E2E2;--rule-soft:#E8EEEE;--proven:#0B6E58;--proven-soft:#E2F0EB;--attested:#A24714}
+@media (prefers-color-scheme:dark){:root{--ground:#0B1113;--surface:#121B1D;--surface-2:#182325;--ink:#E9F0F0;
+--ink-2:#9CAEB1;--ink-3:#68797D;--rule:#223033;--rule-soft:#1A2528;--proven:#42D2A7;--proven-soft:#0F2A24;--attested:#E5924F}}
+*{box-sizing:border-box}body{margin:0;background:var(--ground);color:var(--ink);
+font-family:"IBM Plex Sans",Arial,sans-serif;line-height:1.65}
+h1,h2,h3{font-family:Archivo,Arial,sans-serif;margin:0;text-wrap:balance}
+a{color:var(--proven)}.mono{font-family:"IBM Plex Mono",monospace}
+.wrap{max-width:44rem;margin:0 auto;padding:0 clamp(1.1rem,4vw,2rem)}
+.rail{border-bottom:1px solid var(--rule-soft);padding:.8rem 0;display:flex;gap:1rem;align-items:baseline;
+font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.08em;color:var(--ink-3)}
+.rail b{color:var(--ink)}.rail a{margin-left:auto;text-decoration:none}
+.hero{padding:2.6rem 0 1.2rem}.hero h1{font-size:clamp(1.7rem,4.5vw,2.4rem)}
+.hero p{color:var(--ink-2);max-width:38em}
+.stamp{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.06em;color:var(--ink-3);
+margin:.9rem 0 0}
+section{margin:2.2rem 0 0}
+section>h2{font-size:1.18rem;margin:0 0 .5rem}
+h3{font-size:.98rem;margin:1.3rem 0 .35rem}
+p{margin:.7rem 0}
+.k{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;
+color:var(--proven);font-weight:600;display:block;margin:0 0 .35rem}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:12px;padding:1.2rem 1.3rem;margin:1rem 0}
+.note{background:var(--surface-2);border:1px dashed var(--rule);border-radius:10px;
+padding:.9rem 1.1rem;font-size:.9rem;color:var(--ink-2);margin:1rem 0}
+.warn{background:var(--surface);border:1px solid var(--attested);border-left:4px solid var(--attested);
+border-radius:10px;padding:1.1rem 1.2rem;margin:1rem 0}
+.warn h2{color:var(--attested)}
+ul{margin:.6rem 0;padding-left:1.25rem}li{margin:.3rem 0}
+ul.tight li{margin:.15rem 0}
+.two{display:grid;gap:1rem;grid-template-columns:1fr 1fr}
+@media(max-width:640px){.two{grid-template-columns:1fr}}
+.two .card{margin:0}
+code,.mono{font-size:.88em}
+code{background:var(--surface-2);border-radius:4px;padding:.05em .35em}
+.th{border-left:3px solid var(--rule);padding-left:1rem;margin:1.1rem 0 0;color:var(--ink-2);font-size:.95rem}
+.th h3{color:var(--ink)}
+table{border-collapse:collapse;width:100%;font-size:.88rem;margin:.8rem 0}
+th,td{text-align:left;vertical-align:top;padding:.45rem .6rem;border-bottom:1px solid var(--rule-soft)}
+th{color:var(--ink-3);font-weight:600;font-size:.75rem;letter-spacing:.06em;text-transform:uppercase}
+.scroll{overflow-x:auto}
+footer{border-top:1px solid var(--rule);margin-top:2.6rem;padding:1.2rem 0 2.5rem;font-size:.82rem;color:var(--ink-3)}
+footer a{margin-right:1rem}
+</style>
+</head>
+<body><div class="wrap">
+<div class="rail"><b>VITALS</b><span>privacy</span><a href="/">← back</a></div>
+
+<div class="hero">
+<h1>What this site knows about you.</h1>
+<p>Every sentence below was written by reading the code that does the thing it describes, not
+from a template. Where this page and the code disagree, one of them is a bug and we want to hear
+which. There is no sign-up here, no password, and no real patient — so most of what a privacy
+policy usually has to cover does not exist. What is left is unusual enough to be worth reading
+properly, and the first section is the one that cannot be undone.</p>
+<p class="stamp">Vitals · <span id="build">__VITALS_BUILD__</span> · operated by MegaWiz Co., Ltd., Bangkok · <a href="mailto:paripol@megawiz.co">paripol@megawiz.co</a></p>
+</div>
+
+<!-- ── 1 ─────────────────────────────────────────────────────────────────── -->
+<section class="warn">
+<span class="k" style="color:var(--attested)">Read this before you press it</span>
+<h2>Anchoring a run is permanent and public, and nobody can undo it — not you, not us.</h2>
+
+<p>One button on this site writes to a public blockchain: <strong>anchor this run on chain</strong>,
+at the end of a finished case. It is off by default, it is never automatic, and you can play every
+case here for the rest of your life without ever pressing it. Nothing else on this site puts
+anything on a chain.</p>
+
+<p>When you do press it, the record is copied to every machine that keeps that chain. <strong>We
+cannot delete it, edit it, hide it or correct it, and neither can you.</strong> There is no
+takedown, no support ticket and no key we hold that would help. If you anchor a run you later
+regret, the only thing anyone can do is anchor better runs beside it. The bad one stays.</p>
+
+<h3>What a stranger reading the chain can see, per anchored run</h3>
+<ul class="tight">
+<li>your <strong>player public key</strong> — the key your browser made (§2)</li>
+<li>the <strong>case</strong>, as a SHA-256 hash. The case files are public in our repository, so
+  anyone can hash them and match: in practice this names <em>which case you played</em></li>
+<li>the <strong>difficulty tier</strong> — student, intern or resident</li>
+<li>whether you declared it an <strong>exam or practice</strong>, decided before you played</li>
+<li>the <strong>outcome</strong>, including whether the patient <strong>died</strong> and which way</li>
+<li>the <strong>number of harm events</strong> the engine recorded against you</li>
+<li>the <strong>deterministic score</strong> and what it was out of</li>
+<li>the hash of your pre-run commitment and the <strong>slot it was made at</strong> — the proof
+  that you declared the attempt before you knew how it would go</li>
+<li>a hash of the <strong>rubric</strong> used to mark it, and a hash of the <strong>tape</strong></li>
+</ul>
+
+<p>If you then prove that run and claim a level, three more things exist on chain under your key,
+permanently: a <strong>claim record</strong> repeating the case, score, maximum, deterministic
+score, tier and exam flag for each proven attempt; a <strong>progress record</strong> holding your
+level, your distinct-case count, your attempt count and your XP; and a <strong>commitment
+account</strong> holding a count of <em>every attempt you have ever declared</em>. That count only
+ever goes up. Clearing a commitment does not reduce it. It is deliberate — it is what stops
+somebody committing five runs and anchoring only the good one — and it means the chain
+permanently knows how many times you started, whether or not you finished.</p>
+
+<h3>What a stranger reading the chain cannot see</h3>
+<ul class="tight">
+<li>your name, your email, your school or your face — we never ask for any of them</li>
+<li>the words you typed to the patient, and the words the patient said back. The tape is committed to as a
+  <em>hash</em>; the text itself is never published</li>
+<li>your IP address</li>
+<li>which real person the key belongs to</li>
+</ul>
+
+<p><strong>That last one is the whole risk, and it is yours to manage.</strong> The key is a
+pseudonym only for as long as you keep it one. The moment you tell anyone that key is yours — put
+it on a CV, hand it to a residency programme, post it — everything in the first list above is
+permanently and publicly attached to your name, including the runs where the patient died. That is
+exactly the feature: a record a stranger can check without trusting us. It is also exactly the
+cost. Decide which runs you want attached to you <em>before</em> you anchor them, because
+afterwards there is no mechanism.</p>
+
+<p class="note" style="margin-top:1.1rem"><strong>Which chain, honestly.</strong> This bay anchors
+to Solana <strong>devnet</strong> today — a public test network. Devnet carries no money, and its
+operators reset it from time to time; that is their decision, not ours, and it is not a deletion
+mechanism you should rely on for anything. Treat what you anchor as permanent, because the
+intention is to move to mainnet, where it plainly is. The page you anchor from prints which cluster
+it is writing to, live, so you never have to take this paragraph's word for it.</p>
+</section>
+
+<!-- ── 2 ─────────────────────────────────────────────────────────────────── -->
+<section>
+<span class="k">Identity</span>
+<h2>There are no accounts, no passwords, and no seed phrase.</h2>
+<p>Nothing here asks you to sign up. There is no email field, no password to reset and no profile.
+When your browser first needs an identity it generates an <strong>Ed25519 keypair</strong> with the
+browser's own WebCrypto and keeps the private half in that browser's <code>localStorage</code>. The
+private key never leaves your browser: the server prepares a transaction, your browser signs it,
+the server submits it. The server cannot produce that signature and holds no key of yours.</p>
+<p>You never see a seed phrase because you never need to fund anything. A <strong>relay key we
+own</strong> pays every transaction fee — it pays, and it never plays. That is why a nineteen-year-old
+can anchor a run without buying SOL or installing a wallet.</p>
+<p><strong>The consequence, stated plainly:</strong> clear your browser's site data and that key is
+gone. With it goes your ability to prove an anchored run was yours. <strong>We cannot recover it,
+because we never had it.</strong> If you play on more than one machine, link the second device to
+the first from inside the app rather than starting again.</p>
+<h3>What is kept in your browser and never sent anywhere</h3>
+<p>Under keys beginning <code>vitals.</code>: your key, which account it belongs to, your chosen
+language, which episodes you have cleared or starred, your stars and tiers, which cards you have
+seen, and which teasers have played. Plus <code>vitals-analytics-consent</code> (§8) and
+<code>vitals-review-draft</code> (§7). All of it is local to that browser. Clearing site data
+removes all of it.</p>
+</section>
+
+<!-- ── 3 ─────────────────────────────────────────────────────────────────── -->
+<section>
+<span class="k">Patients</span>
+<h2>There is no patient data here, because there are no patients.</h2>
+<p>Every patient in Vitals is synthetic — an authored case, not a record of a real person. There
+is no PHI in this system to protect, leak or lose. That is a design constraint rather than a claim
+about our security, and it is what makes the rest of this page short.</p>
+<p>It cuts the other way too, and §5 says so: because there is no real patient in the loop, the
+text you type is sent to a cloud model. Do not put anything about a real patient into it.</p>
+</section>
+
+<!-- ── 4 ─────────────────────────────────────────────────────────────────── -->
+<section>
+<span class="k">Runs</span>
+<h2>What a run stores on our server, and for how long.</h2>
+<p>Opening a case creates one record on our side, keyed by a random session id. It holds:</p>
+<div class="scroll"><table>
+<tr><th>Field</th><th>What it is</th></tr>
+<tr><td class="mono">ep</td><td>which case you are playing</td></tr>
+<tr><td class="mono">owner</td><td>your player public key, when your browser made one. A kiosk or a browser that cannot sign has none, and then the random session id is the only thing protecting the run</td></tr>
+<tr><td class="mono">sce_hash</td><td>the hash of the exact scenario file, so a rewritten case cannot silently resume your run under different rules</td></tr>
+<tr><td class="mono">tape</td><td>everything you did: every clock tick, every order <em>in the words you typed</em>, every question you asked, every dial you turned, every device you removed, every shock and its joules</td></tr>
+<tr><td class="mono">said</td><td>the conversation — your question and the patient's reply, kept so the patient remembers what they have already told you</td></tr>
+<tr><td class="mono">anchored</td><td>whether this run has been written to the chain</td></tr>
+<tr><td class="mono">commit</td><td>the commitment hash, the slot it landed at, and the nonce. The nonce stays here and never reaches the chain</td></tr>
+<tr><td class="mono">exam_mode</td><td>whether you declared this an exam before playing</td></tr>
+</table></div>
+<p>The patient's replies are stored but never hashed and never anchored — a model's words are not
+evidence of anything, so they are kept out of the proof path entirely. Your <em>questions</em> are
+on the tape, and the tape's hash is what an anchor commits to.</p>
+
+<h3>Retention, including the part that does not work yet</h3>
+<p>The code sweeps away runs that nobody has touched for <strong>24 hours</strong> — a closed tab is
+not a patient. Two limits on that, and we would rather write them down than let the number stand
+alone:</p>
+<ul>
+<li>The sweep runs <strong>once, when the server starts</strong>. It is not a background timer.</li>
+<li>The sweep only works when runs are kept as files on a disk. The public bay keeps them in
+  <strong>Google Firestore</strong>, where expiring by age needs a stored timestamp and a query that
+  are not written — so the sweep does nothing there and honestly reports zero.</li>
+</ul>
+<p><strong>So on the live site, a run you started is not deleted by age today.</strong> That is a
+gap, we know about it, and stating it is cheaper than implying a deletion that is not happening. If
+you want a run of yours deleted, mail us and it will be — this is on our server, and we can.</p>
+<p>Everything that is not a run is marked <strong>durable</strong> and is never expired by age, on
+purpose: the month's meter counts, the usage tally, reviewer submissions, and above all the
+<strong>leaf list</strong>. That last one is what every Merkle proof this server issues is rebuilt
+from — expire it and the anchors on chain survive, provably meaningless. Anything added later
+defaults to durable too, because an oversight that keeps data uses disk, and an oversight that
+deletes data destroys it.</p>
+</section>
+
+<!-- ── 5 ─────────────────────────────────────────────────────────────────── -->
+<section>
+<span class="k">The patient's voice</span>
+<h2>What you type to the patient leaves this machine.</h2>
+<p>When the patient speaks, a language model is speaking. We prefer to run that model on our own
+hardware — a local gateway, where nothing leaves the building — and the app uses it whenever it can
+reach it. <strong>The public bay has no GPU, so it uses a cloud model:</strong> Google Cloud's
+Vertex AI, <span class="mono">google/gemini-3.1-flash-lite</span> by default, inside the Google
+Cloud project this service runs in. The status line and the debrief name which model answered.</p>
+<p>This is a deliberate exception to our standing rule that inference stays local, recorded as such
+in the repository. It is defensible for one reason only: the patient is synthetic, so there is no
+patient data in what is sent.</p>
+<h3>Exactly what is sent, per question</h3>
+<ul class="tight">
+<li>the character brief, built from the public case file — who the patient is, what is true about
+  them, how they should sound, and how ill they are right now</li>
+<li>the <strong>last eight messages</strong> of your conversation with them — four exchanges,
+  not the whole run</li>
+<li><strong>the question you just typed</strong>, as typed</li>
+</ul>
+<p>Nothing else. Not your key, not your session id, not your name — there isn't one — and not your
+IP address, because the request is made by our server, not by your browser.</p>
+<p><strong>What you type is up to you, and that is the point of saying this.</strong> Do not type
+anything about a real patient, and do not type anything about yourself you would not send to
+Google. It goes to the model, it goes on the tape, and the tape's hash is what you would be
+anchoring.</p>
+<p>Nothing the model says is ever an input to a score. Same tape, same outcome, same marks, with no
+language model anywhere in the scoring path.</p>
+</section>
+
+<!-- ── 6 ─────────────────────────────────────────────────────────────────── -->
+<section>
+<span class="k">Rate limiting</span>
+<h2>What we keep of your network address.</h2>
+<p>The bay is free and the inference is paid for by donations, so one visitor must not be able to
+spend the month. Requests are counted per network address — the only thing a stranger cannot rotate
+for free.</p>
+<div class="card">
+<span class="k">What is retained, precisely</span>
+<p><strong>The address itself</strong>: the first entry in the <code>X-Forwarded-For</code> header,
+or the socket's IP when there is no such header. It is used as a key in a map held
+<strong>in the running process's memory</strong>, pointing at a list of request timestamps.</p>
+<p><strong>Where it is not:</strong> it is never written to our store, never to a disk, never to
+Firestore. Restart the server and every one of them is gone. The application writes no access log
+of its own and never logs a request.</p>
+<p><strong>How long:</strong> timestamps older than 24 hours are dropped whenever that address is
+seen again, and the whole map is pruned once it passes 4,096 addresses. So: 24 hours, in memory,
+with an entry for an address that never returns sitting idle until the next prune.</p>
+<p><strong>What is not kept beside it:</strong> no user agent, no cookie, no request path, no
+identifier, and no link between an address and a run, a key, a score or a review.</p>
+</div>
+<p>Three counters use it, and they are separate: opening runs, submitting reviews, and talking to
+the patient. Only the last one spends money, and only that one is also capped for the whole bay per
+month.</p>
+<p><strong>One thing that is not ours.</strong> This service runs on Google Cloud Run, and the
+platform keeps its own request logs, which include the source IP address, under Google Cloud's
+retention for that project. We do not read them for anything but debugging a fault, but they exist
+and we would rather name them than let "we do not log your IP" stand as the whole story.</p>
+</section>
+
+<!-- ── 7 ─────────────────────────────────────────────────────────────────── -->
+<section>
+<span class="k">The review form</span>
+<h2>/review is the one place on this site that asks for your name.</h2>
+<p>That page is sent by hand to a small number of reviewers — a final-year student and a practising
+physician — and is linked from nowhere. If you are reading this having filled it in, this section
+is the one that is about you.</p>
+<h3>What is stored, exactly</h3>
+<ul>
+<li>your <strong>role</strong>: student or physician</li>
+<li>your <strong>name</strong>, if you typed one. It is optional and an unsigned review is still
+  worth reading</li>
+<li>your <strong>contact</strong>, if you typed one — whatever you put in the box, as you wrote it</li>
+<li>the <strong>"do not name me" checkbox</strong>, as a flag</li>
+<li>every <strong>answer</strong>: the question exactly as it was shown to you, which option you
+  chose and the wording of that option, and whatever you wrote</li>
+<li>the <strong>free notes box</strong></li>
+<li>which <strong>build</strong> you were reviewing, and the <strong>second the server received
+  it</strong> by its own clock</li>
+</ul>
+
+<div class="warn">
+<h3 style="margin-top:0">What the "do not name me" checkbox does and does not do</h3>
+<p>It <strong>does</strong> tell us not to name you in the rubric files we publish. We write
+"reviewed by a practising physician" instead.</p>
+<p>It <strong>does not</strong> anonymise the record. If you typed a name and a contact, they are
+stored exactly as you typed them, in the same document as everything else, whether the box is
+ticked or not. It is a request about how we credit you — not a delete, and not a mask.</p>
+<p><strong>If you want us to hold nothing that identifies you, leave the name and contact boxes
+empty.</strong> The form works perfectly that way, and the answers are just as useful.</p>
+</div>
+
+<p>The form has no login and no caller identity of any kind — deliberately, because requiring an
+account to tell us what is wrong means the review never arrives. One honest consequence: two people
+who both leave the name blank and answer identically are stored as a single record, because nothing
+on that endpoint can tell them apart.</p>
+<p>Your draft is saved as you type under <code>vitals-review-draft</code> in your own browser, and
+it never leaves your device until you press send. A successful send clears it.</p>
+<p>What we do with a review: read it, and change the product. That is all. It is never an input to
+anybody's run, score, mark sheet or anchored record — the code that files a review touches no
+session, no tape and no tree, and an opinion about the product is data recorded beside a run and
+never inside one. Reviews are kept rather than expired, because they are documents we act on over
+months.</p>
+<p><strong>You can have yours deleted, or have your name taken out of it.</strong> Mail
+<a href="mailto:paripol@megawiz.co">paripol@megawiz.co</a> and it will be done. We can do this
+because a review lives on our server and not on a chain.</p>
+
+<div class="th">
+<h3>สรุปภาษาไทย — สำหรับผู้ที่กรอกแบบฟอร์ม /review</h3>
+<p>แบบฟอร์มนั้นเก็บ: บทบาท (นักศึกษาหรือแพทย์) คำตอบทุกข้อพร้อมคำถามที่แสดงและตัวเลือกที่กด
+กล่องข้อความท้ายฟอร์ม รุ่นของระบบที่ท่านตรวจ และเวลาที่เซิร์ฟเวอร์ได้รับ —
+รวมถึง<strong>ชื่อและช่องทางติดต่อ ถ้าท่านกรอก</strong> ทั้งสองช่องไม่บังคับ</p>
+<p>ช่อง “ไม่ประสงค์ให้ระบุชื่อ” หมายถึงเราจะไม่ใส่ชื่อท่านในไฟล์เกณฑ์ให้คะแนน
+โดยใช้คำว่า “ตรวจโดยแพทย์เวชปฏิบัติ” แทน <strong>แต่ไม่ได้ลบชื่อและช่องทางติดต่อออกจากข้อมูลที่เก็บไว้</strong>
+ถ้ากรอกไว้ ระบบยังเก็บตามที่พิมพ์ ถ้าไม่ต้องการให้เก็บสิ่งที่ระบุตัวตนได้เลย ให้เว้นทั้งสองช่องว่าง —
+ฟอร์มยังส่งได้ตามปกติและคำตอบมีค่าเท่าเดิม</p>
+<p>ร่างคำตอบถูกเก็บไว้ในเบราว์เซอร์ของท่านเองจนกว่าจะกดส่ง เราใช้คำตอบเพื่อแก้ผลิตภัณฑ์เท่านั้น
+ไม่นำไปคิดคะแนนของใคร · ตัวคำตอบไม่ถูกเผยแพร่ สิ่งเดียวที่อาจปรากฏต่อสาธารณะคือชื่อท่านในฐานะผู้ตรวจ
+ในไฟล์เกณฑ์ให้คะแนน และจะไม่ปรากฏถ้าท่านติ๊กช่องไม่ประสงค์ให้ระบุชื่อ ·
+ต้องการให้ลบข้อมูลของท่านหรือถอนชื่อออก
+ส่งอีเมลถึง <a href="mailto:paripol@megawiz.co">paripol@megawiz.co</a> แล้วเราจะดำเนินการให้ —
+ข้อมูลส่วนนี้อยู่บนเซิร์ฟเวอร์ของเรา จึงลบได้ ต่างจากสิ่งที่ถูกบันทึกลงบล็อกเชนในข้อ 1</p>
+</div>
+</section>
+
+<!-- ── 8 ─────────────────────────────────────────────────────────────────── -->
+<section>
+<span class="k">Analytics</span>
+<h2>Google Analytics, and what happens before you answer the banner.</h2>
+<p>The landing page, the donate page, the play page and the deck load Google Analytics 4
+(<span class="mono">G-LH5JSMQBSL</span>) — and only when the hostname ends in
+<span class="mono">vitals.academy</span>. On a local build, a preview URL or anything else, no tag
+is loaded at all.</p>
+<h3>Before you answer</h3>
+<p>The tag is loaded with Google's consent mode set to <strong>denied</strong> for both analytics
+and advertising storage. In that state it <strong>sets and reads no cookies</strong> and stores no
+identifier on your device — which is what the banner says. Here is the part a banner never says:
+the tag file is still fetched from <span class="mono">googletagmanager.com</span> and events are
+still sent to Google without storage, and any request to Google reveals your IP address and user
+agent to Google simply by being a request. "No cookies" is true. "Nothing is sent" would not be.</p>
+<h3>After you answer</h3>
+<p><strong>Accept</strong> grants analytics storage and GA behaves as ordinary GA — cookies, a
+client id, the usual. <strong>Decline</strong> leaves it denied. Either way the choice is remembered
+in your own browser under <code>vitals-analytics-consent</code>; clear site data and you will be
+asked again.</p>
+<h3>What an event contains</h3>
+<p>The name of the control you clicked and the path of the page. The control's name is deliberately
+<strong>never its visible text</strong> — the code reads <code>data-ga</code>, <code>id</code>,
+<code>aria-label</code>, <code>href</code> or the bare tag name, and never <code>textContent</code>,
+so a control that could ever render something a learner typed cannot report it.</p>
+<p><strong>/review loads no analytics at all</strong>, and neither does this page or
+<a href="/terms">the terms page</a>.</p>
+<h3>Fonts</h3>
+<p>Every page here, this one included, loads its typefaces from
+<span class="mono">fonts.googleapis.com</span> and <span class="mono">fonts.gstatic.com</span>. That
+is a request from your browser to Google, it happens before any banner, and consent does not gate
+it. A content blocker stops it and every page still reads fine.</p>
+</section>
+
+<!-- ── 9 ─────────────────────────────────────────────────────────────────── -->
+<section>
+<span class="k">The public counters</span>
+<h2>What we publish, and why nobody is identifiable in it.</h2>
+<p>Three endpoints are open to anyone: <a href="/api/usage">/api/usage</a>,
+<a href="/api/meter">/api/meter</a> and <a href="/api/fuel">/api/fuel</a>. Open them; the list below
+is everything in them.</p>
+<div class="two">
+<div class="card"><span class="k">/api/usage</span>
+<ul class="tight">
+<li>runs started, finished, survived, died</li>
+<li>runs started with no device key</li>
+<li>starts by case, finishes by outcome</li>
+<li>a 90-day table of starts and finishes per day</li>
+<li>distinct browsers seen this month, as a number</li>
+<li>runs anchored on chain</li>
+<li>seven sentences saying what those numbers cannot mean</li>
+</ul></div>
+<div class="card"><span class="k">/api/meter and /api/fuel</span>
+<ul class="tight">
+<li>the month, patient turns used, the ceiling, what is left</li>
+<li>clicks on the donation link</li>
+<li>the relay's balance and the treasury's SOL and USDC</li>
+<li>the fee arithmetic, so you can redo the division</li>
+<li>the anchored count and the tree id</li>
+</ul></div>
+</div>
+<p><strong>No individual is identifiable in any of it.</strong> There is no signup here, so there is
+nothing that is a person to count — every one of those numbers is runs or devices, and the endpoint
+says so in its own first field rather than leaving it to this page.</p>
+<p>The device count is the <em>size</em> of a set, and the set's contents are never served. Each
+entry is the first four bytes of <span class="mono">sha256(month ‖ your public key)</span> — 32
+bits, salted with the month. It cannot be reversed to a key, it de-duplicates one browser within a
+month and nothing more, and the same browser is a different fingerprint next month. Only the current
+month and the one before it are kept.</p>
+<p>One endpoint is not aggregate, and it is fair to name it: <span class="mono">/api/chain?player=</span>
+followed by a public key reports how many runs that key has <em>proven</em> on this server's current
+tree. It needs the key to answer, and it reads that number off the chain — where anyone holding the
+key could already read it.</p>
+</section>
+
+<!-- ── 10 ────────────────────────────────────────────────────────────────── -->
+<section>
+<span class="k">Who we are</span>
+<h2>Operator, and what to ask us for.</h2>
+<p>Vitals is built and operated by <strong>MegaWiz Co., Ltd.</strong>, Bangkok, Thailand — the
+company behind the Embla clinical-simulation engine. Contact:
+<a href="mailto:paripol@megawiz.co">paripol@megawiz.co</a>.</p>
+<p>Vitals runs in its own Google Cloud project, separate from Embla's, deliberately. Embla holds
+identified users who consented to Embla; a service sharing that project could read those documents
+whether or not it ever meant to, so the separation is the default rather than something permissions
+have to be talked into.</p>
+<div class="two">
+<div class="card"><span class="k">We can delete this</span>
+<ul class="tight">
+<li>a run of yours on our server, and its tape and conversation</li>
+<li>a review you sent, or your name inside one</li>
+<li>anything else we hold on our own storage</li>
+</ul>
+<p style="font-size:.88rem;color:var(--ink-2);margin-bottom:0">Mail us. There is no form and no
+account to log into, because there is no account.</p></div>
+<div class="card"><span class="k">Nobody can delete this</span>
+<ul class="tight">
+<li>anything you anchored on chain</li>
+<li>your commitment count</li>
+<li>a claim or progress record made under your key</li>
+</ul>
+<p style="font-size:.88rem;color:var(--ink-2);margin-bottom:0">Not us, not you, not a court order we
+could comply with. §1 says why, and it is the reason that section is first.</p></div>
+</div>
+<h3>What this page does not attempt</h3>
+<p><strong>No lawyer has read this.</strong> It is a description of what the software does, written
+by the people who wrote the software. It does not state your rights under Thailand's PDPA, the
+GDPR or any other statute, it does not name a governing law or a supervisory authority, and it is
+not a waiver of anything you are owed under them. Those are questions for a professional, and when
+one has answered them this page will say so and say who. Until then we would rather leave a gap
+that is visible than fill it with a clause we invented.</p>
+<p>This page is compiled into the server binary, so it can only change when a new build is
+deployed. The build it belongs to is stamped at the top.</p>
+</section>
+
+<footer>
+<a href="/">Home</a><a href="/terms">Terms of use</a><a href="/donate">Donate</a><a href="https://github.com/MegaWiz-Dev-Team/vitals">GitHub</a>
+<div style="margin-top:.8rem"><strong>Vitals</strong> · MegaWiz Co., Ltd., Bangkok · Open source under
+AGPL-3.0 + commercial licence · No learner is ever charged.</div>
+</footer>
+</div>
+</body>
+</html>
