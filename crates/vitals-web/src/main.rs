@@ -145,8 +145,11 @@ const STILLS: &[(&str, &[u8])] = &[
 /// portrait and never changes during a run. Two entries per episode — a 16:9 billboard crop and
 /// a 3:2 one for a narrow screen, which the page picks between with `<picture>` so a phone never
 /// downloads the wide one. Canon for these faces is locked in `docs/internal/SEASON_ARC.md`
-/// ("Canon ภาพตัวละคร"); EP1 keeps `stable.jpg`, which is a real frame of its own patient.
+/// ("Canon ภาพตัวละคร"); EP1's portrait is `stable.jpg`, a real frame of its own patient, and
+/// `ep1_ing_3x2` is that same frame cropped — not a second photograph of her, so the shelf and
+/// the landing carousel cannot end up disagreeing about what she looks like.
 const KEY_ART: &[(&str, &[u8])] = &[
+    ("ep1_ing_3x2", include_bytes!("../static/img/ep1_ing_3x2.jpg")),
     ("ep2_prasit", include_bytes!("../static/img/ep2_prasit.jpg")),
     ("ep2_prasit_3x2", include_bytes!("../static/img/ep2_prasit_3x2.jpg")),
     ("ep3_khaopun", include_bytes!("../static/img/ep3_khaopun.jpg")),
@@ -3979,6 +3982,59 @@ mod tests {
     /// has spoken to the server; the server needs the figure with no page in the room (the bell
     /// itself). So they stay two copies with one value, and this is what says so — the same
     /// arrangement, and the same reason, as `the_shelf_card_and_the_server_print_the_same_stem`.
+    /// The landing carousel is a third copy of the same clock, and the newest one.
+    ///
+    /// EP1's card was typed by hand when it was added, and "12 min" was right by luck rather than
+    /// by construction. The shelf inside the app has had this guard since it existed; the front
+    /// door is the page more people see, and it had none.
+    ///
+    /// It also counts: five cards and five dots, because a dot with no card behind it is a
+    /// destination the ring can never reach, and a card with no dot is one a keyboard cannot.
+    #[test]
+    fn the_landing_carousel_agrees_with_the_server_about_the_clock() {
+        let cards: Vec<&str> = LANDING.match_indices("<article class=\"cf-card\" data-ep=\"")
+            .map(|(at, pat)| {
+                let rest = &LANDING[at + pat.len()..];
+                &rest[..rest.find('"').expect("unterminated data-ep")]
+            })
+            .collect();
+        assert_eq!(
+            cards,
+            ["ep1", "ep2", "ep3", "ep4", "ep5"],
+            "season one is five numbered cases, in order, and the carousel is what says so"
+        );
+
+        // "EP1 &middot; Ing &middot; F 19 &middot; 12 min" — the last figure on the card's own line.
+        // Scoped to the card's own <article>: the hero above it prints "EP1 &middot; The Last Bite
+        // &middot; waiting", which comes first in the file and is not a duration at all.
+        for ep in &cards {
+            let card_at = LANDING
+                .find(&format!("<article class=\"cf-card\" data-ep=\"{ep}\""))
+                .unwrap_or_else(|| panic!("{ep} has no card"));
+            let card = &LANDING[card_at..];
+            let card = &card[..card.find("</article>").expect("unterminated card")];
+            let at = card
+                .find("cf-who\">")
+                .unwrap_or_else(|| panic!("{ep}'s card has no who line"));
+            let line = &card[at..at + card[at..].find("</p>").expect("unterminated card line")];
+            let mins = line
+                .rsplit("&middot; ")
+                .next()
+                .and_then(|tail| tail.trim().strip_suffix(" min"))
+                .and_then(|n| n.trim().parse::<u32>().ok())
+                .unwrap_or_else(|| panic!("{ep}'s card line does not end in a duration: {line}"));
+            let want = RUNTIME_MINUTES
+                .iter()
+                .find(|(id, _)| id == ep)
+                .unwrap_or_else(|| panic!("{ep} is on the landing and not in RUNTIME_MINUTES"))
+                .1;
+            assert_eq!(mins, want, "{ep}: the landing card and the bell disagree about the clock");
+        }
+
+        let dots = LANDING.matches("data-ga=\"landing_cases_dot_").count();
+        assert_eq!(dots, cards.len(), "the carousel has {} cards and {dots} dots", cards.len());
+    }
+
     #[test]
     fn the_shelf_card_and_the_server_agree_about_the_clock() {
         // The array itself, and not the rest of the file after it: `{id:'…'` occurs elsewhere,

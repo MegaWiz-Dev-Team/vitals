@@ -160,11 +160,14 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
 .mission strong{color:var(--ink)}
 
 /* --- case coverflow --------------------------------------------------------
-   Four cards on a ring, no library: the container carries the perspective and
+   Five cards on a ring, no library: the container carries the perspective and
    every card is placed by one transform that JS derives from its distance to
    the active card. The CSS only says what a card looks like and how long it
    takes to move; nothing here assumes an order, so the deck has no ends. */
-.cf{--cf-w:300px;--cf-h:272px;
+/* One number sets the card. The height used to be a second number beside it, and a card is
+   a 3:2 still over a fixed strip of type — so the height is that arithmetic, not a value that
+   has to be remembered when the width changes. 72px is the strip: title, then the mono line. */
+.cf{--cf-w:380px;--cf-h:calc(var(--cf-w) * 2 / 3 + 72px);
   position:relative;height:calc(var(--cf-h) + 3rem);margin:.4rem 0 1rem;
   perspective:1200px;overflow:hidden;touch-action:pan-y;
   user-select:none;-webkit-user-select:none;cursor:grab}
@@ -187,7 +190,7 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
   background:linear-gradient(to left,rgba(0,0,0,.9),rgba(0,0,0,0) 88%);
   transition:opacity .45s ease}
 .cf-card[data-side="r"] .cf-shade{background:linear-gradient(to right,rgba(0,0,0,.9),rgba(0,0,0,0) 88%)}
-/* The teaser is behind a click, never autoplay. Four cases at ~2.5 MB each is nine megabytes
+/* The teaser is behind a click, never autoplay. Five cases at ~2.5 MB each is twelve megabytes
    to a student on mobile data who has not asked for any of it — and the teasers carry music,
    which a browser refuses to autoplay anyway. The control only appears on the centred card,
    so it reads as "this one", and the file is not fetched until it is pressed. */
@@ -214,7 +217,7 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
   border:1px solid var(--ink-3);background:transparent}
 .cf-dots button[aria-current]::before{background:var(--proven);border-color:var(--proven)}
 .cf-btn:focus-visible,.cf-dots button:focus-visible{outline:2px solid var(--proven);outline-offset:2px}
-@media(max-width:640px){.cf{--cf-w:230px;--cf-h:216px}
+@media(max-width:640px){.cf{--cf-w:250px}
   .cf-meta{padding:.5rem .7rem}.cf-meta h3{font-size:.95rem}
   .cf-who{font-size:.62rem;letter-spacing:.04em}}
 @media (prefers-reduced-motion: reduce){.cf-card,.cf-shade{transition:none}
@@ -269,10 +272,19 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
 
   <section>
     <h2>Season one</h2>
-    <p class="lede">Four of the cases on the shelf today. Same engine, same clock &mdash; the patient
-    is what changes.</p>
+    <p class="lede">All five of season one, on the shelf today. Same engine, same clock &mdash; the
+    patient is what changes.</p>
     <div class="cf" id="cf" tabindex="0" role="group"
-      aria-label="Season one cases &mdash; carousel of four episodes; use the left and right arrow keys to move between them">
+      aria-label="Season one cases &mdash; carousel of five episodes; use the left and right arrow keys to move between them">
+      <article class="cf-card" data-ep="ep1" data-ga="landing_case_ep1">
+        <img src="img/ep1_ing_3x2.jpg" alt="Ing, 19, wheeled into the emergency department on a trolley by two nurses, staring at the ceiling." loading="lazy" decoding="async" draggable="false">
+        <div class="cf-meta">
+          <h3>The Last Bite</h3>
+          <p class="mono cf-who">EP1 &middot; Ing &middot; F 19 &middot; 12 min</p>
+        </div>
+        <button class="cf-play" type="button" data-ga="landing_teaser_ep1" aria-label="Play the teaser for this case">&#9654;</button>
+        <div class="cf-shade" aria-hidden="true"></div>
+      </article>
       <article class="cf-card" data-ep="ep2" data-ga="landing_case_ep2">
         <img src="img/ep2_prasit_3x2.jpg" alt="Prasit, 58, a hospital driver, on the trolley in the emergency department with crushing chest pain." loading="lazy" decoding="async" draggable="false">
         <div class="cf-meta">
@@ -313,10 +325,11 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
     <div class="cf-nav">
       <button class="cf-btn" id="cf-prev" type="button" data-ga="landing_cases_prev" aria-label="Previous case">&lsaquo;</button>
       <div class="cf-dots" id="cf-dots">
-        <button type="button" data-ga="landing_cases_dot_ep2" aria-label="Show case 1 of 4: Time Is Muscle"></button>
-        <button type="button" data-ga="landing_cases_dot_ep3" aria-label="Show case 2 of 4: Don't Make Him Cry"></button>
-        <button type="button" data-ga="landing_cases_dot_ep4" aria-label="Show case 3 of 4: The Masquerader"></button>
-        <button type="button" data-ga="landing_cases_dot_ep5" aria-label="Show case 4 of 4: The Night the Stars Fell"></button>
+        <button type="button" data-ga="landing_cases_dot_ep1" aria-label="Show case 1 of 5: The Last Bite"></button>
+        <button type="button" data-ga="landing_cases_dot_ep2" aria-label="Show case 2 of 5: Time Is Muscle"></button>
+        <button type="button" data-ga="landing_cases_dot_ep3" aria-label="Show case 3 of 5: Don't Make Him Cry"></button>
+        <button type="button" data-ga="landing_cases_dot_ep4" aria-label="Show case 4 of 5: The Masquerader"></button>
+        <button type="button" data-ga="landing_cases_dot_ep5" aria-label="Show case 5 of 5: The Night the Stars Fell"></button>
       </div>
       <button class="cf-btn" id="cf-next" type="button" data-ga="landing_cases_next" aria-label="Next case">&rsaquo;</button>
     </div>
@@ -451,8 +464,14 @@ footer .links{display:flex;flex-wrap:wrap;gap:1.2rem;margin-bottom:.9rem}
       dots=[].slice.call(document.querySelectorAll('#cf-dots button')),
       N=cards.length, cur=0, drag=null, moved=false;
 
+  function cardW(){
+    return parseFloat(getComputedStyle(box).getPropertyValue('--cf-w'))||300;
+  }
+
   function paint(){
-    var gap=window.innerWidth<=640?92:118;
+    /* Proportional to the card, not a remembered pixel count: the neighbours have to keep
+       showing the same sliver of themselves when the card gets wider. */
+    var gap=Math.round(cardW()*0.39);
     cards.forEach(function(c,i){
       var off=i-cur;
       if(off>N/2)off-=N; else if(off<-N/2)off+=N;
