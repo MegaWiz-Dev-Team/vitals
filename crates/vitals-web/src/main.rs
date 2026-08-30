@@ -185,8 +185,18 @@ struct Session {
     /// it is carried from commit to anchor and stamped into the record from here, never
     /// re-chosen after the outcome is known.
     exam_mode: bool,
-    /// The conversation, kept only so she remembers what she already told you. It is never
-    /// hashed, never anchored, and never leaves this process.
+    /// The conversation, kept only so she remembers what she already told you.
+    ///
+    /// Never hashed and never anchored, and that half is structural: the leaf commits to the
+    /// tape, the tape carries the question (`Step::Ask`) and never her reply, so a model's words
+    /// stay out of the proof path entirely.
+    ///
+    /// It does leave this process, twice — this comment used to say it never did, which stopped
+    /// being true the moment runs were written down. It is a field of [`Saved`], so every
+    /// `persist` puts it in the store, which is Firestore on Cloud Run and files elsewhere; and
+    /// the last eight messages of it are sent to the model as history on every `/api/say`, which
+    /// is the local gateway when it is reachable and Vertex AI when it is not (`patient.rs`).
+    /// The stored copy lives as long as the run does. /privacy §4 and §5 say the same to a player.
     said: Vec<(String, String)>,
     /// Last time this run was written to disk. Ticks arrive about once a second and are cheap to
     /// lose — the tape is the truth and a few seconds of it is a few seconds of sim — so they are
