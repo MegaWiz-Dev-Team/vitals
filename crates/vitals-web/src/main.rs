@@ -361,6 +361,35 @@ struct Tree {
 
 const TREE: &str = "tree";
 
+/// Take back a leaf *this* request pushed — and only while it is still the one on the end.
+///
+/// `/api/anchor` pushes the leaf, then hands the transaction to the browser to sign. Between
+/// that push and the unwind sits a human looking at a wallet prompt. This server handles
+/// requests one at a time, so another player's anchor is not racing that wait — it happens
+/// *inside* it, start to finish. A bare `pop()` at the end therefore does not necessarily
+/// remove the leaf it meant to:
+///
+/// ```text
+/// anchor(A)        push A      len 6, A at index 5
+/// anchor(B)        push B      len 7, B at index 6
+/// submit(B)   ok               B is on chain at index 6
+/// submit(A)   signature refused → pop() removes B
+/// ```
+///
+/// B is anchored and now missing from the list every proof is rebuilt from; A is in the list
+/// and anchored nowhere. Both records are wrong, and only one of them is recoverable.
+///
+/// So: unwind only when our own push is still the last one. If it is not, leave the leaf
+/// where it is. That keeps a leaf nobody claims — harmless, and a sweep can find it by asking
+/// the chain — rather than dropping one somebody proved.
+fn unwind_leaf(leaves: &mut Vec<[u8; 32]>, pushed_at: u64) -> bool {
+    if leaves.len() as u64 == pushed_at + 1 {
+        leaves.pop();
+        return true;
+    }
+    false
+}
+
 #[derive(Serialize)]
 struct View {
     scenario: String,
@@ -3108,7 +3137,11 @@ fn main() {
                     Err(e) => {
                         // Building it failed, so the leaf was never anchored. Take it back off the
                         // list or every later proof is built against a tree that does not exist.
-                        tree.lock().unwrap().leaves.pop();
+                        // Nothing else has run since the push a few lines up — this request has
+                        // not let go of the loop — so the guard always passes here. It goes
+                        // through `unwind_leaf` anyway, because the day someone moves this unwind
+                        // past a point where the browser answers is the day that stops being true.
+                        unwind_leaf(&mut tree.lock().unwrap().leaves, index);
                         json(serde_json::json!({ "error": e }))
                     }
                 }
@@ -3310,7 +3343,7 @@ fn main() {
                     Ok(tx) => tx,
                     Err(e) => {
                         if speculative {
-                            tree.lock().unwrap().leaves.pop();
+                            unwind_leaf(&mut tree.lock().unwrap().leaves, work.index);
                         }
                         let _ = req.respond(json(serde_json::json!({ "error": e })));
                         continue;
@@ -3404,8 +3437,10 @@ fn main() {
                     }
                     (Err(e), Some(_)) => json(serde_json::json!({ "granted": false, "message": e })),
                     (Err(e), None) => {
-                        // Nothing landed on chain, so the leaf is not in the tree.
-                        tree.lock().unwrap().leaves.pop();
+                        // Nothing landed on chain, so the leaf is not in the tree — ours, that
+                        // is. The player spent seconds at a wallet prompt before this request,
+                        // and another anchor can have been served whole inside that gap.
+                        unwind_leaf(&mut tree.lock().unwrap().leaves, work.index);
                         json(serde_json::json!({ "error": e }))
                     }
                 }
@@ -3669,6 +3704,50 @@ fn shock_order(act: &str) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── unwinding a leaf that was never anchored ────────────────────────────
+
+    fn leaf_n(n: u8) -> [u8; 32] {
+        let mut l = [0u8; 32];
+        l[0] = n;
+        l
+    }
+
+    #[test]
+    fn unwinding_takes_back_our_own_leaf() {
+        let mut leaves = vec![leaf_n(1), leaf_n(2), leaf_n(3)];
+        assert!(unwind_leaf(&mut leaves, 2));
+        assert_eq!(leaves, vec![leaf_n(1), leaf_n(2)]);
+    }
+
+    /// The one that matters. Two players anchor seconds apart; the first refuses the wallet
+    /// prompt after the second has already landed on chain. The unwind must not reach past its
+    /// own push — the leaf on the end is somebody's anchored run, and nothing puts it back.
+    #[test]
+    fn unwinding_never_takes_back_a_leaf_somebody_else_anchored() {
+        let ours = 1u64;
+        let mut leaves = vec![leaf_n(1), leaf_n(2)];
+        leaves.push(leaf_n(3)); // the other player's anchor, submitted and on chain
+        assert!(!unwind_leaf(&mut leaves, ours));
+        assert_eq!(leaves, vec![leaf_n(1), leaf_n(2), leaf_n(3)]);
+    }
+
+    /// Two failed unwinds in a row must not walk the list down. The second one has already lost
+    /// the end, so it does nothing — the guard is on our index, not on a "did I pop yet" flag.
+    #[test]
+    fn a_second_unwind_of_the_same_work_is_inert() {
+        let mut leaves = vec![leaf_n(1), leaf_n(2), leaf_n(3)];
+        assert!(unwind_leaf(&mut leaves, 2));
+        assert!(!unwind_leaf(&mut leaves, 2));
+        assert_eq!(leaves, vec![leaf_n(1), leaf_n(2)]);
+    }
+
+    #[test]
+    fn unwinding_an_empty_list_does_nothing() {
+        let mut leaves: Vec<[u8; 32]> = vec![];
+        assert!(!unwind_leaf(&mut leaves, 0));
+        assert!(leaves.is_empty());
+    }
 
     // ── things that arrive from the network ─────────────────────────────────
     //
