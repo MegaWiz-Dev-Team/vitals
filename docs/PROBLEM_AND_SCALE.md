@@ -20,27 +20,50 @@ WHO projects a shortfall of **11 million health workers by 2030** — revised *u
 million. Over half is concentrated in Northern and sub-Saharan Africa, and most of the rest in
 lower-middle-income countries. *(Health workers, not physicians. Never say "11 million doctors.")*
 
-**b) The distribution is roughly tenfold.**
+**b) The distribution is roughly fourfold, and every figure is a national count.**
 
-| | Physicians per 1,000 | One doctor per |
-|---|---|---|
-| Japan | 2.7 | ~370 people |
-| South Korea | 2.6 | ~385 |
-| High-income average | 2.63 | ~380 |
-| **World average** | 1.75 *(17.5 per 10,000, 2019)* | **~570** |
-| Low / lower-middle income | 0.91 | ~1,100 |
-| **Thailand** | 0.928 *(2020)* | **~1,080** |
-| **Indonesia** | 0.465 *(2019)* | **~2,150** |
+**Regrounded 2026-08-30.** This table used to print four figures under one *"WHO / World Bank,
+2019–20"* attribution, and three of them were not in it. Every row below is now a health ministry's
+own count of doctors **working in the health system** — not licence holders — over that country's
+own population base, for the same year.
+
+| | Physicians per 1,000 | One doctor per | The division, in full |
+|---|---|---|---|
+| Japan | 2.7 | **~370 people** | 334,864 ÷ 123,802,000 |
+| **Thailand** | 0.67 | **~1,487** | 43,714 ÷ 65,007,426 |
+| **Indonesia** | 0.61 | **~1,650** | 170,707 ÷ 281,603,799 |
+
+- **Japan** — MHLW, 令和6年医師・歯科医師・薬剤師統計: 医療施設従事 331,092 + 介護老人保健施設 3,337 +
+  介護医療院 435 = **334,864**. Denominator 総務省統計局 人口推計, 2024-10-01 = **123,802,000**.
+- **Thailand** — กระทรวงสาธารณสุข, กองยุทธศาสตร์และแผนงาน, *รายงานข้อมูลทรัพยากรสาธารณสุข 2567*,
+  Tables 11 & 21: **43,714** doctors, all sectors including private. Denominator MOPH mid-year 2024
+  = **65,007,426**. **MOPH publishes the ratio 1:1,487 itself — we quote it, we do not derive it.**
+- **Indonesia** — Kemenkes, *Profil Kesehatan Indonesia 2024*, Lampiran 11.a (from SISDMK): dokter
+  115,805 + dokter spesialis 54,902 = **170,707**, dentists excluded. Denominator BPS 2024 =
+  **281,603,799**.
+
+**There is no world-average row, and no WHO or World Bank aggregate rows.** No world registry of
+practising physicians exists; the *1.75 / 1:570* cell this table used to carry is in no source, and
+the South Korea, high-income and low/lower-middle-income rows beside it came from the same aggregate
+that has just been found not to support our country figures. Cells on one basis sitting among cells
+on another is the defect being removed, not a comparison. If an aggregate is genuinely wanted, quote
+WHO's, label it as WHO's, and keep it out of this table.
+
+**Thailand's denominator is registration-based** and excludes several million non-registered
+residents. The UN puts Thailand at 71.7 million against MOPH's 65.0 million; on a UN-comparable
+denominator Thailand is **1:1,639**, not 1:1,487. **The figure we print is the one that flatters
+Thailand.** Say so on the artefact, before a reader finds it.
 
 WHO's threshold for universal health coverage is **4.45 physicians, nurses and midwives per
 1,000** — raised from the 2006 figure of 2.3 because that older number assumed episodic maternal
 care rather than the full SDG service range.
 
-One comparison worth putting on a slide: **Indonesia's total physician density (46.5 per 100,000)
-is barely above the United States' *primary-care-only* density (41.4 per 100,000 — Basu et al.,
-2015 figure).** Name the mismatch out loud when saying it: one side is every physician, the other
-is primary care alone. Said that way it is a fair and startling comparison; said without the
-qualifier it is two different measures pretending to be one.
+~~One comparison worth putting on a slide: Indonesia's total physician density is barely above the
+United States' *primary-care-only* density (41.4 per 100,000 — Basu et al., 2015 figure).~~
+**Withdrawn 2026-08-30 with the regrounding above.** It rested on the retired 46.5 per 100,000;
+Kemenkes' own count puts Indonesia at **60.6 per 100,000**, which is about half again the US
+primary-care figure rather than level with it. The comparison was startling only at the old number,
+so it does not survive being corrected. Do not restate it with the new one.
 
 **c) About one in eleven medical students never finishes — and the top reason is fixable.**
 
@@ -157,7 +180,7 @@ cost is not the one claim — it is that nothing else on the slide survives the 
 
 ### And in lower-income settings the effect is likely larger, not smaller
 
-Diminishing returns cut in our favour. The marginal doctor in a country with one per 2,150 people
+Diminishing returns cut in our favour. The marginal doctor in a country with one per 1,650 people
 is doing work that in Japan is already being done by someone. Supporting evidence from a
 cross-sectional study of UN member countries: higher physician density was associated with an
 **adjusted rate ratio of 0.81 (95% CI 0.71–0.91) for infant mortality** — roughly a fifth fewer
@@ -193,8 +216,9 @@ by density        OECD averages 13–14 per 100,000; global is lower ≈ 500,000
 **Recommendation: drop the "1% = N doctors" framing entirely.** It is the only claim that needs
 this number, and the two stronger framings do not need it at all:
 
-- **the measured gap** — one doctor per 1,080 people in Thailand, one per 2,150 in Indonesia,
-  against 1:370 in Japan and 1:570 for the world (§1b). Counted, not converted. No denominator.
+- **the measured gap** — one doctor per 1,487 people in Thailand, one per 1,650 in Indonesia,
+  against 1:370 in Japan (§1b). Counted by each country's own ministry, not converted. No
+  denominator of ours anywhere in it.
 - **as a target** — 1% = cutting attrition by about a tenth (below). No denominator.
 
 Use the constructed range only if someone asks directly, and label it as ours.
@@ -207,17 +231,19 @@ every artefact that followed it in good faith has since been corrected: slide 04
 landing page, and `THEORY_OF_CHANGE.md` §6. **Do not restore it.** Lead with what was actually
 counted:
 
-> ## One doctor per **1,080** people in Thailand. One per **2,150** in Indonesia.
-> Japan is **1:370**. The world average is **1:570**.
+> ## One doctor per **1,487** people in Thailand. One per **1,650** in Indonesia.
+> Japan is **1:370**.
 
-Four figures, one source each (§1b, WHO / World Bank 2019–20), with no conversion step in between.
-Someone who doubts them opens the World Bank indicator and lands on the same four numbers.
+Three figures, one national source each (§1b), with no conversion step in between. Someone who
+doubts them opens the ministry that publishes them and lands on the same number — which is the
+whole reason for the 2026-08-30 regrounding: the previous four figures sent that reader to a World
+Bank indicator that disagreed with three of them.
 
 **Why this is worth more than the bigger number.** Our credibility with clinicians rests on being
 unusually careful about exactly this distinction — association versus effect, population quantity
 versus per-person quantity. It is the same discipline the scoring engine is selling. A reader who
 catches one overstated headline is entitled to discount everything behind it, including the parts
-that are precisely right, and they will. 1:2,150 is a smaller number than 1,400 and a far harder
+that are precisely right, and they will. 1:1,650 is a smaller number than 1,400 and a far harder
 one to argue with, and the second property is the one that closes.
 
 The 1,400 figure is not deleted and is not an embarrassment. It is a real finding from a real
@@ -330,7 +356,7 @@ is the identity restated, not an estimate layered on top of it.
 
 The three stacked findings — fewest doctors, highest attrition, lowest pass rates — describe the
 same countries. A product that charges goes where people can pay, which is where doctors are
-already plentiful and the marginal doctor stands in front of ~370 people rather than ~2,150.
+already plentiful and the marginal doctor stands in front of ~370 people rather than ~1,650.
 
 **A paid model would aim this at the places where it matters least.** That is the argument for
 donation funding, and it is a mission argument rather than an admission that we lack a revenue
@@ -344,6 +370,18 @@ model.
   United States, 2005–2015.* JAMA Intern Med, 2019 — <https://pubmed.ncbi.nlm.nih.gov/30776056/>
 - WHO, *Medical doctors (per 10,000 population)* — <https://www.who.int/data/gho/data/indicators/indicator-details/GHO/medical-doctors-(per-10-000-population)>
 - World Bank, *Physicians (per 1,000 people)*, SH.MED.PHYS.ZS — <https://data.worldbank.org/indicator/SH.MED.PHYS.ZS>
+  — **kept only as the record of what §1b used to cite.** It does not contain the country figures
+  this document previously attributed to it. Nothing may be sourced to it again without opening it.
+- **Japan** — MHLW, *令和6年（2024）医師・歯科医師・薬剤師統計の概況* —
+  <https://www.mhlw.go.jp/toukei/saikin/hw/ishi/24/dl/R06_kekka-1.pdf>. Population denominator:
+  総務省統計局, 人口推計 2024-10-01.
+- **Thailand** — กระทรวงสาธารณสุข, กองยุทธศาสตร์และแผนงาน, *รายงานข้อมูลทรัพยากรสาธารณสุข 2567* —
+  <https://spd.moph.go.th/wp-content/uploads/2025/07/Report-Health-Resource-2024.pdf> (Tables 11 & 21)
+- **Indonesia** — Kemenkes, *Profil Kesehatan Indonesia 2024*, Lampiran 11.a —
+  <https://kemkes.go.id/id/profil-kesehatan-indonesia-2024>. **Canonical URL, and it returns 403 to
+  automated fetches from here** (as does `repository.kemkes.go.id`); the PDF was read from a
+  government open-data mirror. Cite the canonical URL; check it by hand before it is quoted in a
+  document that leaves the building.
 - WHO, *Health workforce requirements for universal health coverage* (the 4.45 threshold) — <https://apps.who.int/iris/bitstream/handle/10665/250330/9789241511407-eng.pdf>
 - *Health system determinants of infant, child and maternal mortality: a cross-sectional study of
   UN member countries.* Globalization and Health — <https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3247841/>
