@@ -86,7 +86,7 @@ the argument, but a reader who greps this repository for them should meet this s
 
 | Layer | What it does | Built with | Status |
 |---|---|---|---|
-| **Attempt Anchor** | Commit–reveal per attempt: pre-commit before the encounter, then one leaf over `(player, sce_hash, run_hash, rubric_hash, outcome, harm, det and judged scores)`. The scenario and the rubric are pinned by hash; there is no `engine_ver` or `model_id` field, and the only version byte in the record is `vt02`, the encoding's own tag. Nothing personal onchain — hashes only. | `Commit` · `AnchorReplay` · `ProveAttempt`, over a fixed-depth incremental Merkle tree the program keeps itself | **shipped** |
+| **Attempt Anchor** | Commit–reveal per attempt: pre-commit before the encounter, then one leaf over `(player, sce_hash, run_hash, rubric_hash, outcome, harm, det and judged scores)`. The scenario and the rubric are pinned by hash; there is no `engine_ver` or `model_id` field, and the only version byte in the record is `vt02`, the encoding's own tag. The leaf's non-hash fields — outcome, harm, scores, tier, exam flag — are public; no name, email or institution ever is (see Boundaries). | `Commit` · `AnchorReplay` · `ProveAttempt`, over a fixed-depth incremental Merkle tree the program keeps itself | **shipped** |
 | **Progression** | XP, level and a Dreyfus stage per specialty — granted **permissionlessly**, because the program recomputes the predicate from anchored attempts instead of trusting a server, and rejects a claim its own arithmetic disagrees with. Badges are not among them: the `Progress` account holds a stage, a distinct-case count, an attempt count and XP, and nothing else. | `ClaimProgress`, written to a `Progress` PDA at `["prog", id, specialty]`. Not a token: nothing here is transferable, so there is nothing to sell | **shipped** |
 | *(off-chain)* **Verifier** | Re-runs the deterministic rubric over a revealed transcript and confirms it reproduces the anchored score. | `vitals-replay` (Rust), and the same arithmetic compiled to wasm on the verify page | **shipped** |
 | **Achievement badges** | A predicate over anchored attempts — `Sharp Historian`, `Red-flag Hawk` — that a front-end could read and a sponsor could put money behind. | no account holds one today; the nearest built thing is the star tally the server derives off-chain from proven attempts | designed, not built |
@@ -216,8 +216,20 @@ We already have it; the sprint is spent making the signal verifiable.
   system worthless, so we forgo the volume.
 - **No patient data, ever.** Virtual patients are synthetic (DDXPlus, CC-BY-4.0). No PHI
   exists in this system to leak.
-- **No student PII onchain.** Hashes and pubkeys only. Student performance data is personal
-  data under PDPA — it stays off-chain, under the student's control, revealed selectively.
+- **No identity onchain — but performance is onchain, in the clear.** This file used to claim
+  "hashes and pubkeys only", and the program does not deliver that. An anchored run publishes,
+  under the player's key and readable by anyone: the difficulty tier, the exam flag, the outcome
+  *including whether the patient died*, the harm count, and the deterministic and judged scores —
+  beside the hashes of the case, the scenario, the tape and the rubric. `ProvenAttempt` and
+  `Progress` then keep score, level, distinct-case count, attempt count and XP as account data,
+  and the commitment account keeps a count of every attempt ever declared, which only ever rises.
+  That is performance data, and performance data is personal data under PDPA — so the honest
+  framing is *published*, not *withheld*. What genuinely never reaches a chain is the identity
+  around it: no name, no email, no institution, no patient data, and no transcript — the tape is
+  committed to by hash and revealed selectively. A player key is a pseudonym that nothing here
+  binds to a person; it stops being one the moment its holder tells someone it is theirs, which is
+  the trade [the privacy policy](crates/vitals-web/static/privacy.html) puts in front of the
+  button.
 - **Inference stays local — with one recorded exception.** Clinical reasoning runs on the local
   Heimdall gateway, and the onchain layer never requires shipping clinical content to a cloud
   LLM. The public demo's synthetic-patient voice may fall back to a cloud model (see
