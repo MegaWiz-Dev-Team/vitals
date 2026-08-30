@@ -39,7 +39,8 @@ use solana_rpc_client::rpc_client::RpcClient;
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 use std::str::FromStr;
 use vitals_program::{
-    commitment_pda, ClaimAccount, Commitment, Progress, CLAIM_LEN, SEED_CLAIM, SEED_PROGRESS,
+    commitment_pda, tree_pda, ClaimAccount, Commitment, Progress, TreeAccount, CLAIM_LEN,
+    SEED_CLAIM, SEED_PROGRESS,
 };
 use vitals_progress::{adjudicate, summarize, Attempt, Difficulty, Dreyfus, Verdict};
 
@@ -144,6 +145,67 @@ fn resolve_tree(arg: Option<&String>, api: &str) -> (u64, TreeSource) {
         Some(n) => (n, TreeSource::Live),
         None => (TREE_ID_FALLBACK, TreeSource::Fallback),
     }
+}
+
+/// Does the server's leaf list still match the tree the program actually built?
+///
+/// It has to, exactly. `prepare_anchor` takes the index it sends in `ProveAttempt` from the length
+/// of the *server's* list, and the program checks the proof against a tree it appends to itself.
+/// One leaf on our list that the program never received makes every later index one too high, and
+/// the program refuses each of them — for players who had nothing to do with whatever caused it.
+///
+/// The two numbers are cheap and public: `next_index` from the tree account, and `anchored` from
+/// `/api/chain`. When they part, the tree cannot issue another proof until the lists are made to
+/// agree again, and that is worth saying out loud in a tool whose whole job is telling a stranger
+/// whether the records hold up.
+fn reconcile_tree(rpc: &RpcClient, program: &Pubkey, relay: &Pubkey, tree_id: u64, api: &str) {
+    let pda = tree_pda(program, relay, tree_id).0;
+    let Some(chain) = rpc
+        .get_account_data(&pda)
+        .ok()
+        .and_then(|d| TreeAccount::deserialize(&mut &d[..]).ok())
+    else {
+        println!("tree account: could not be read — reconciliation skipped");
+        return;
+    };
+    let Some(server) = live_leaf_count(api) else {
+        println!("leaves on chain: {} · the server's own count was unreachable", chain.next_index);
+        return;
+    };
+    if server == chain.next_index {
+        println!("leaves: {server} on chain and {server} on the server — the lists agree");
+    } else {
+        println!(
+            "leaves: {} on chain but {server} on the server.\n\
+             The lists have parted, so the index the server sends with the next proof will be\n\
+             wrong and the program will refuse it. Every anchor on this tree fails until they\n\
+             agree again — this is not a problem with any one player's record.",
+            chain.next_index
+        );
+    }
+}
+
+/// The server's own leaf count, beside the tree id this tool already reads from the same document.
+fn live_leaf_count(api: &str) -> Option<u64> {
+    let body: serde_json::Value = ureq::get(api)
+        .timeout(std::time::Duration::from_secs(10))
+        .call()
+        .ok()?
+        .into_json()
+        .ok()?;
+    body.get("anchored")?.as_u64()
+}
+
+/// The relay whose key the tree is seeded on. Published by the server beside the tree id, because
+/// a tree is scoped to the operator that funds it and there is no way to derive it from the id.
+fn live_relay(api: &str) -> Option<Pubkey> {
+    let body: serde_json::Value = ureq::get(api)
+        .timeout(std::time::Duration::from_secs(10))
+        .call()
+        .ok()?
+        .into_json()
+        .ok()?;
+    Pubkey::from_str(body.get("relay")?.as_str()?).ok()
 }
 
 fn claim_pda(program: &Pubkey, player: &Pubkey, tree_id: u64) -> Pubkey {
@@ -323,7 +385,13 @@ fn main() {
     };
 
     println!("verifying {id} · tree #{tree_id} · program {program} · {rpc_url}");
-    println!("tree id from: {}\n", source.as_str());
+    println!("tree id from: {}", source.as_str());
+    // Before any one player's record, the tree they all hang from.
+    match live_relay(&api) {
+        Some(relay) => reconcile_tree(&rpc, &program, &relay, tree_id, &api),
+        None => println!("tree: the operator key was unreachable — reconciliation skipped"),
+    }
+    println!();
 
     // started — the honesty counter the commit-reveal design exists to make undeniable.
     let (cpda, _) = commitment_pda(&program, &id.to_bytes());
