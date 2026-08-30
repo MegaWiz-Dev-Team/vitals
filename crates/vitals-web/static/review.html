@@ -178,13 +178,14 @@
         · จะกดตัวเลือกในข้อที่ตอบได้ก่อน แล้วอัดเสียงเฉพาะข้อที่อยากขยายความก็ได้</p>
     </div>
 
-    <!-- This block used to say “ไม่เก็บ IP ไม่ติดตามการใช้งาน”, and it was not true. `/api/review` is rate-limited
-         per address (`meter.rs`, keyed `review:<ip>`), the platform keeps its own request logs,
-         and this page fetches its fonts from Google before a reviewer types anything. The two
-         people this form was sent to read that sentence before deciding to sign their name to a
-         clinical opinion, so the correction says what actually happens rather than softening it.
-         What survives is still reassuring, because it is true: none of it is stored beside their
-         answers. Kept in step with §6 and §7 of /privacy — if those change, this changes. -->
+    <!-- Deliberate wording, checked against the code — not a draft to be tightened. These two
+         paragraphs restate /privacy §6 (Rate limiting — what we keep of your network address) and
+         §7 (The review form — what is stored) in this page's register; the code behind them is
+         `meter.rs` and the font link in the head. Kept in step with those two sections: if they
+         change, this changes. A reviewer reads this block before signing a clinical opinion with
+         their name, and a softer version of it has been wrong here before — so the guard is a
+         test, not this comment: `the_review_form_does_not_promise_that_no_address_is_kept` in
+         `crates/vitals-web/tests/page.rs` fails when the claim comes back as visible text. -->
     <div class="note" style="margin-top:14px">
       <p class="sub"><strong>เก็บอะไรบ้าง:</strong> คำตอบ ตัวเลือกที่กด กล่องข้อความท้ายฟอร์ม ชื่อและช่องทางติดต่อถ้ากรอก
         รุ่นของระบบที่คุณตรวจ และเวลาที่เซิร์ฟเวอร์ได้รับ · ใช้ภายในทีมเพื่อแก้ผลิตภัณฑ์เท่านั้น ไม่เอาไปคิดคะแนนของใคร
