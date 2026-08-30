@@ -420,3 +420,107 @@ fn a_machine_that_has_never_played_can_still_link_another() {
     assert_eq!(state["open"], true);
     assert_eq!(state["linked"], true, "the second machine still cannot play: {state}");
 }
+
+// ── the local leaf list against the program's own tree ──────────────────────
+//
+// `prepare_anchor` takes `index = leaves.len() - 1` from the *server's* list and sends that index
+// and a path built from that list in `ProveAttempt`. The program does not take our word for
+// either: it appends the leaf to a tree it maintains itself and checks
+// `root_from_proof(leaf, index, path) == tree.root`.
+//
+// So the two lists are not merely related, they must be identical, element for element. Anything
+// that puts a leaf on our list which the program never receives makes every later anchor send an
+// index one too high — and the program rejects it. Permanently, and for players who were never
+// anywhere near whatever caused it.
+
+/// Play EP1 and stop at the prepared anchor, holding it unsigned.
+fn play_to_anchor(s: &Server, p: &Player) -> serde_json::Value {
+    let who = p.pubkey();
+    let id = s.json(&format!("/api/new?ep=ep1&player={who}"))["id"].as_str().unwrap().to_string();
+    let c = s.signed(p, &format!("/api/commit?id={id}&player={who}&account={who}"));
+    assert_eq!(c["committed"], true, "commit failed: {c}");
+    for o in ["adrenaline im", "oxygen face mask 10 lpm", "lay her flat, legs up"] {
+        s.json(&format!("/api/step?id={id}&player={who}&do={}", enc(o)));
+    }
+    s.json(&format!("/api/step?id={id}&player={who}&tick=600"));
+    s.json(&format!("/api/step?id={id}&player={who}&do={}", enc("admit for observation")));
+    s.json(&format!("/api/step?id={id}&player={who}&tick=600"));
+    s.json(&format!("/api/anchor?id={id}&player={who}&account={who}"))
+}
+
+/// The cheap check that catches the whole class, and the one the anchor response already carries.
+///
+/// `index` is where *we* think the leaf went; `leaves` is the program's `next_index` read back
+/// after the transaction confirmed. On a healthy tree the leaf we just added is the last one, so
+/// `index + 1 == leaves`. When they part, our list has drifted from the program's and every
+/// subsequent proof on this tree fails — so this is worth asserting on every anchor, not once.
+#[test]
+#[ignore = "needs a validator and VITALS_PROGRAM_ID"]
+fn an_anchor_agrees_with_the_chain_about_where_its_leaf_landed() {
+    let s = Server::start().expect("VITALS_PROGRAM_ID");
+    let p = Player::new();
+    let anchored = s.win(&p, &p.pubkey(), None);
+
+    assert_eq!(anchored["proven"], true, "the proof did not land: {anchored}");
+    let index = anchored["index"].as_u64().expect("an anchored run reports its index");
+    let leaves = anchored["leaves"].as_u64().expect("and the chain's leaf count");
+    assert_eq!(
+        index + 1,
+        leaves,
+        "we put the leaf at {index} and the program's tree holds {leaves}: the two lists have \
+         parted, and every anchor after this one fails its proof"
+    );
+}
+
+/// A prepared anchor that is never submitted must not cost anybody else their proof.
+///
+/// The leaf goes on the local list at `/api/anchor` and reaches the program only at
+/// `/api/submit`. In between, the browser signs — in this product with a key in `localStorage`
+/// and no prompt to click, so the window is one round trip, not the wallet-confirmation pause a
+/// funded chain would have. Short is not zero, and this server handles requests one at a time:
+/// a second player's whole anchor fits inside it.
+///
+/// What that costs, measured rather than argued — see the run recorded in the commit that added
+/// this test: B anchors, and the program refuses the proof with *leaf is not in the tree at
+/// index 1*, because our list counted A's leaf and the program never saw it. B's run is anchored
+/// and unprovable, and re-anchoring it is refused as a duplicate. Then C, minutes later and in
+/// nobody's window, fails at index 2. The tree does not recover on its own.
+#[test]
+#[ignore = "needs a validator and VITALS_PROGRAM_ID"]
+fn an_abandoned_anchor_does_not_cost_the_next_player_their_proof() {
+    let s = Server::start().expect("VITALS_PROGRAM_ID");
+    let abandoning = Player::new();
+    let next = Player::new();
+
+    // Prepared and held. Never signed, never submitted, never on any chain.
+    let held = play_to_anchor(&s, &abandoning);
+    assert!(held["sign"].is_string(), "nothing was prepared to abandon: {held}");
+
+    // Somebody else finishes a run inside that window.
+    let anchored = s.win(&next, &next.pubkey(), Some("second run"));
+    assert_eq!(
+        anchored["proven"], true,
+        "a run that was anchored correctly cannot be proven because somebody else walked away \
+         from an anchor first: {anchored}"
+    );
+}
+
+/// And the player after that, who was in nobody's window at all.
+#[test]
+#[ignore = "needs a validator and VITALS_PROGRAM_ID"]
+fn an_abandoned_anchor_does_not_poison_the_tree_for_everyone_after() {
+    let s = Server::start().expect("VITALS_PROGRAM_ID");
+    let abandoning = Player::new();
+
+    let held = play_to_anchor(&s, &abandoning);
+    assert!(held["sign"].is_string(), "nothing was prepared to abandon: {held}");
+    let caught = Player::new();
+    let _ = s.win(&caught, &caught.pubkey(), Some("second run"));
+
+    let later = Player::new();
+    let anchored = s.win(&later, &later.pubkey(), Some("third run"));
+    assert_eq!(
+        anchored["proven"], true,
+        "a player who was never in anyone's window cannot prove a clean run: {anchored}"
+    );
+}
