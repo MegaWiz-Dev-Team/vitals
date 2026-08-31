@@ -167,7 +167,7 @@ numbers first, measured with the same method before and after — all twelve sta
 reachable order, one fresh run each, counting narrative beats in a sealed reply:
 
     before (2026-08-29)   P(no beat | harmful)   0.82    18/22
-                          P(no beat | harmless)  0.06    11/176     LR ≈ 14×
+                          P(no beat | harmless)  0.06    11/176     LR = 13.1
     after  (2026-08-31)   P(no beat | harmful)   0.00    0/22
                           P(no beat | harmless)  0.00    0/176      LR = 1
 
@@ -181,7 +181,8 @@ absence: the engine emits exactly the beats a case declares, and the authors had
 narrative lines for the right answers and none for the traps. In the files as shipped, 19 of 19
 harmful interventions carried no `beat` effect against 13 of 179 harmless ones. So ordering the
 trap returned a reply one line shorter than ordering anything else, at a likelihood ratio of
-roughly 14× — invisible on screen, readable in a network tab, real. The cause was case content,
+13.1 — quoted as roughly 14× when first disclosed; (18/22)/(11/176) is the arithmetic — invisible
+on screen, readable in a network tab, real. The cause was case content,
 not engine code, which is why it was disclosed and left open rather than patched in the engine:
 the two closures available at the time — editing anchored scenario files, or suppressing the
 `threshold:` beats that *are* the examination — both cost more than the leak.
@@ -193,7 +194,11 @@ the same observational register the harmless orders already used — the room no
 done, never a verdict. The right answer keeps its editorial tail; the trap reads as
 unremarkable procedure; the beat never announces the harm, because announcing it would recreate
 the leak this replaced. Every new line has a Thai row in the language layer, through the same
-table the existing 242 lines use; language never reaches the leaf.
+table as every line before it — 282 distinct case-scripted lines across the shelf today, 296
+table rows once the engine's own vocabulary is counted, and the number is derived rather than
+remembered: `every_scripted_beat_of_every_case_has_a_thai_line` in `crates/vitals-web/src/lang.rs`
+recounts the files on every `cargo test` and fails the build if any case gains a line the table
+lacks. Language never reaches the leaf.
 
 **What the re-issue did to hashes, and to nobody's proofs.** `sce_hash` is
 `sha256(<the whole scenario file>)` and the leaf commits to both the hash and the beats, so all
@@ -220,3 +225,22 @@ the correct dose holds 136; on `osce-a` IV-push adrenaline drops him to 76 systo
 those numbers, nothing timestamps them against a named order, nothing calls them harm. **Noticing
 that the patient got worse after what you did is the skill being examined**, and it is not going to
 be hidden. A monitor that stayed flat through a mistake would be the actual integrity failure.
+
+### 11a. The episodes carry the same authoring pattern, weakly — measured, disclosed, open
+
+The file-level half of §11's method, run over the five episodes on 2026-08-31 and independently
+re-counted from the files by the video team: harmful interventions with no `beat` effect —
+EP3 2/3, EP4 1/1, EP5 1/1, EP2 0 (its one trap is a conditional branch that already narrates).
+The harmless side is quiet too — EP2 4/9, EP3 3/5, EP4 3/8, EP5 3/6 — so the separation is far
+weaker than the 13.1 the stations carried, over a handful of traps, and it exists only on the
+exam path: an episode is sealed only when played as a declared exam, and in practice the harm
+line prints where it happens, verdict and all.
+
+It is still the same tell in the same place, and it closes the same way. EP2–EP5's current files
+are unanchored — every anchored episode run names an archived version — so their re-issue costs
+exactly what the stations' cost, at the next legitimate hash change. EP1 is the exception: its
+file is frozen against `conformance/ep1-vectors.json`, whose generator lives outside this
+repository, so it re-issues when the vectors regenerate or not at all — and its own numbers
+(2 of 2 harmful silent, 9 of 9 harmless silent) separate nothing anyway. `trap_silence.rs` pins
+the stations only, deliberately; widening it to `demo/scenarios/` is the acceptance test of the
+episode re-issue, and this row is where that work points until it lands.
