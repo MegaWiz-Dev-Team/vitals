@@ -303,6 +303,6 @@ fn a_run_that_ends_on_its_own_hashes_exactly_as_it_always_did() {
 }
 
 /// `osce-a`'s scenario hash — the case's identity on chain, and untouched by anything here.
-const SCE_HASH: &str = "4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d";
+const SCE_HASH: &str = "ac52be1cda7ea6199664b25759217dcb8a04a7ac65adaeaca572ccf202828798";
 /// The leaf of the scripted run above.
-const LEAF: &str = "f36f3be2a68b33545b971d707e64f2e3036fb5b6eb75a8930a26f45ef4413824";
+const LEAF: &str = "a9a0e0f4021dd2f22c2123effc21c2325ac107ab46ee827228b7b9a03f67dd6a";

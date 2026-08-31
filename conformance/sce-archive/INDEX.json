@@ -5,9 +5,19 @@
   "bytes": 6937
  },
  {
+  "sce_hash": "ac52be1cda7ea6199664b25759217dcb8a04a7ac65adaeaca572ccf202828798",
+  "path": "demo/stations/osce-a.sce.json",
+  "bytes": 7468
+ },
+ {
   "sce_hash": "109bee5badd6e52955e4c8312f29be10c305f32f2ba777a445eff149d2747ea3",
   "path": "demo/stations/osce-a2.sce.json",
   "bytes": 8575
+ },
+ {
+  "sce_hash": "d4e616827ba1d262821d94b15036bd59c3d4a35a00f716eb090cef1de74cf5d1",
+  "path": "demo/stations/osce-a2.sce.json",
+  "bytes": 9097
  },
  {
   "sce_hash": "b61fbebc65f71eaead162fd377183044b4acf62a1a6f5e3f39658c900ed723e8",
@@ -15,9 +25,19 @@
   "bytes": 6616
  },
  {
+  "sce_hash": "4d5c177971b36efe19b8e51d0c3bcc283e7b43da0fc9ac18c86d34481675271e",
+  "path": "demo/stations/osce-b.sce.json",
+  "bytes": 6856
+ },
+ {
   "sce_hash": "abce636f126ed9588d03c6d8ecc7306bd628a5802e06c0f1a18a4f3c60639f2a",
   "path": "demo/stations/osce-b2.sce.json",
   "bytes": 7524
+ },
+ {
+  "sce_hash": "627368e3beefd457f97597dbd81ad108b9864fb08f01f1baac32ca1671ff54d7",
+  "path": "demo/stations/osce-b2.sce.json",
+  "bytes": 7765
  },
  {
   "sce_hash": "87fbc1290cb48f8ec78bb0d6b6efc80677ae6f9b9b26628fce4fb1b9c1b7d662",
@@ -25,9 +45,19 @@
   "bytes": 8331
  },
  {
+  "sce_hash": "ee5cfc438a4c46c554d329824891383d046ebeb1320e58e4b33094ca53807b9b",
+  "path": "demo/stations/osce-b3.sce.json",
+  "bytes": 8507
+ },
+ {
   "sce_hash": "5c0e1270f68b9665be6ea7a90552129ee649712bfa77327c8fdb969adcaaceff",
   "path": "demo/stations/osce-c.sce.json",
   "bytes": 7920
+ },
+ {
+  "sce_hash": "7e4998729c67f71e7d48e238347e5dc1f30d231ef8cd85aa16e070616aa63f68",
+  "path": "demo/stations/osce-c.sce.json",
+  "bytes": 8175
  },
  {
   "sce_hash": "90e52ac0e31d7ce60965ef1a2ef60302a695bf6baf0d5fa0be3431b0053cb642",
@@ -35,9 +65,19 @@
   "bytes": 8163
  },
  {
+  "sce_hash": "8d59708b53440a9564f51c08380ed2ac84b291fd99659f49c0353d185ca33948",
+  "path": "demo/stations/osce-c2.sce.json",
+  "bytes": 8528
+ },
+ {
   "sce_hash": "ece6ed587279f3ae51dd6ccfbccb8ba0b47fb0ee8578e61eacd72e6702f122d7",
   "path": "demo/stations/osce-c3.sce.json",
   "bytes": 6822
+ },
+ {
+  "sce_hash": "661d058cf7788ebcac31ffc9d5ed9962b25ee73a482f57df4f2a754d182c66bf",
+  "path": "demo/stations/osce-c3.sce.json",
+  "bytes": 7081
  },
  {
   "sce_hash": "b9bfa9c57e40dcc5dfc342431b8ae9b7f2836649876f721d2d0f62fe70a577fb",
@@ -45,9 +85,19 @@
   "bytes": 9445
  },
  {
+  "sce_hash": "30a48cb233a2a0b8bf8e811c5d74db0f097b315f4abfb6f5b5ae8f6fd1addfb8",
+  "path": "demo/stations/osce-d.sce.json",
+  "bytes": 9611
+ },
+ {
   "sce_hash": "b9bc24963c3ed5bf344c51bb1749155a1df4f10b59d6209c27ccb902686a5e68",
   "path": "demo/stations/osce-d2.sce.json",
   "bytes": 7836
+ },
+ {
+  "sce_hash": "4706a5c57e2f559b520652cdc9c9cdb227241ad62d689e911a381b6774ed7a5d",
+  "path": "demo/stations/osce-d2.sce.json",
+  "bytes": 8082
  },
  {
   "sce_hash": "6f7e620fc6ea084c6bb30bd9eaabd0d6fac574bc15ac189620c3d5bc42f414cc",
@@ -55,9 +105,19 @@
   "bytes": 8041
  },
  {
+  "sce_hash": "11382d87ea21b9177787966f539c50d488c9e6544786442835d49fba466c9a7b",
+  "path": "demo/stations/osce-d3.sce.json",
+  "bytes": 8512
+ },
+ {
   "sce_hash": "145c0f6827c7f39ace39d8f5fd7bda33a92b996a7502367a81b03cd70a58e63d",
   "path": "demo/stations/osce-d4.sce.json",
   "bytes": 9336
+ },
+ {
+  "sce_hash": "c3111d6cc242dd41c54e9cbf0f23751f5eac65262d99cc1aff3524a4afff5c67",
+  "path": "demo/stations/osce-d4.sce.json",
+  "bytes": 9857
  },
  {
   "sce_hash": "36b6d1c22d41c681eb0edb565d58ff32e1f32b24d4d074ee7db2220d80b6be72",

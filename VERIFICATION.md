@@ -219,12 +219,15 @@ Real output:
   "sce_hash": "4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d",
   "path": "demo/stations/osce-a.sce.json",
 4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d  conformance/sce-archive/4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d.json
-4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d  demo/stations/osce-a.sce.json
+ac52be1cda7ea6199664b25759217dcb8a04a7ac65adaeaca572ccf202828798  demo/stations/osce-a.sce.json
 ```
 
-The hash of the bytes in your clone equals the hash written into the leaf on chain, and you did
-not have to trust a server to tell you so. This is a stronger check than the endpoint below, not
-a weaker one: the archive travels in a git history you can diff, and we cannot serve you a
+The archive copy hashes to exactly the value the leaf names, and you did not have to trust a
+server to tell you so. The file on the shelf prints a different digest, and that is the third
+line's point, not a discrepancy: the case has been re-issued since those runs were anchored, so
+the shelf holds a later version of the same case while the archive holds — for ever — the bytes
+the anchored runs were actually played against. This is a stronger check than the endpoint below,
+not a weaker one: the archive travels in a git history you can diff, and we cannot serve you a
 different copy of it than we serve anyone else.
 
 ### From the server — retired versions only

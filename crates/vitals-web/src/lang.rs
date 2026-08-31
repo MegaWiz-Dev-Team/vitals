@@ -1147,6 +1147,168 @@ const BEATS: &[Line] = &[
         tr: &[("th", "ส่งเข้าห้องผ่าตัดโดยยังไม่ได้ห้ามเลือด")],
     },
     Line { key: "threshold:others_waiting", tr: &[("th", "ยังมีคนอื่นรออยู่")] },
+
+    // ── the re-issue of the twelve stations: no order replies with nothing ───
+    //
+    // These are the beats the 2026-09 re-issue added so that a sealed reply is never one line
+    // shorter after a trap than after the oxygen (`docs/RISKS.md` §11; the authoring rule is in
+    // `conformance/README.md`). Traps read as the room noting what was done, quiet orders got
+    // the note they never had, and every trigger that records a harm narrates the patient the
+    // monitor is already showing. Shared wording is shared on purpose: one row serves every
+    // station that says the line.
+
+    Line {
+        key: "threshold:adrenaline through the cannula — the syringe empties in one push",
+        tr: &[("th", "adrenaline ดันเข้าทาง cannula — ยาหมดกระบอกในครั้งเดียว")],
+    },
+    Line {
+        key: "threshold:the discharge letter prints — the bay is turned over to the next name on the board",
+        tr: &[("th", "ใบสรุปกลับบ้านพิมพ์ออกมา — เตียงถูกจัดเตรียมให้ชื่อถัดไปบนกระดาน")],
+    },
+    Line {
+        key: "threshold:high-flow mask on, fifteen litres — the reservoir bag swells",
+        tr: &[("th", "ครอบ mask ออกซิเจน 15 ลิตร — ถุง reservoir พองขึ้น")],
+    },
+    Line {
+        key: "threshold:a litre of saline runs wide open — the line taped flat to the forearm",
+        tr: &[("th", "น้ำเกลือหนึ่งลิตรเปิดเต็มที่ — แปะเทปยึดสายแนบท่อนแขน")],
+    },
+    Line {
+        key: "threshold:flat on the trolley, legs up on a pillow",
+        tr: &[("th", "นอนราบบนเตียงเข็น ยกขาสูงพาดหมอน")],
+    },
+    Line {
+        key: "threshold:the voice is thinner than it was — the wheeze carries to the corridor",
+        tr: &[("th", "เสียงพูดแหบเบาลงกว่าเดิม — เสียงวี้ดดังไปถึงทางเดิน")],
+    },
+    Line {
+        key: "threshold:the wheals are paler over the forearms — the cuff reads lower again",
+        tr: &[("th", "ผื่นนูนที่แขนจางลง — แต่เครื่องวัดความดันอ่านค่าต่ำลงอีก")],
+    },
+    Line {
+        key: "threshold:oxygen looped on — the mask fogs and clears with each breath",
+        tr: &[("th", "คล้องสาย oxygen เรียบร้อย — หน้ากากเป็นฝ้าแล้วจางตามจังหวะหายใจ")],
+    },
+    Line {
+        key: "threshold:reassurance lands well — he reaches for his jacket",
+        tr: &[("th", "คำปลอบใจได้ผลดี — เขาเอื้อมหยิบแจ็กเก็ต")],
+    },
+    Line {
+        key: "threshold:he shifts against the trolley — the arm pain is back, heavier",
+        tr: &[("th", "เขาขยับตัวบนเตียงเข็น — อาการปวดแขนกลับมาหนักกว่าเดิม")],
+    },
+    Line {
+        key: "threshold:aspirin 300 mg chewed — washed down with a sip of water",
+        tr: &[("th", "aspirin 300 mg เคี้ยวแล้วกลืน — ตามด้วยน้ำหนึ่งอึก")],
+    },
+    Line {
+        key: "threshold:the lab answers the page — the on-call team starts moving",
+        tr: &[("th", "แล็บรับเรื่องแล้ว — ทีมเวรเริ่มเคลื่อนตัว")],
+    },
+    Line {
+        key: "threshold:the lytic is drawn up and runs — the pump counts it down beside the bed",
+        tr: &[("th", "ดูดยาละลายลิ่มเลือดขึ้นและเริ่มให้ — เครื่องปั๊มนับถอยหลังอยู่ข้างเตียง")],
+    },
+    Line {
+        key: "threshold:the syrup is measured — she takes the spoon without a fight",
+        tr: &[("th", "ตวงยาน้ำพร้อมป้อน — เธอยอมกลืนจากช้อนโดยไม่ขัดขืน")],
+    },
+    Line {
+        key: "threshold:the discharge note prints — she waves at the desk on the way out",
+        tr: &[("th", "ใบกลับบ้านพิมพ์ออกมา — เธอโบกมือให้เคาน์เตอร์ตอนออกไป")],
+    },
+    Line {
+        key: "threshold:torch and depressor — a look is taken at the back of the throat",
+        tr: &[("th", "ไฟฉายกับไม้กดลิ้น — ตรวจดูคอหอยด้านหลัง")],
+    },
+    Line {
+        key: "threshold:the tourniquet goes on — the back of each hand is searched in turn",
+        tr: &[("th", "รัดสายรัดแขน — ไล่หาเส้นบนหลังมือทีละข้าง")],
+    },
+    Line {
+        key: "threshold:the coughing spells run longer — she is quieter between them",
+        tr: &[("th", "ไอเป็นชุดยาวนานขึ้น — ช่วงว่างระหว่างชุดเธอเงียบลง")],
+    },
+    Line {
+        key: "threshold:oxygen titrated against the probe — up a litre, then hold",
+        tr: &[("th", "ปรับ oxygen ตามค่าที่ probe อ่านได้ — เพิ่มทีละลิตรแล้วคงไว้")],
+    },
+    Line {
+        key: "threshold:the sedative goes in — her shoulders drop against the pillows",
+        tr: &[("th", "ยากล่อมประสาทเข้าไปแล้ว — ไหล่ของเธอผ่อนลงแนบหมอน")],
+    },
+    Line {
+        key: "threshold:the discharge forms are signed — the inhaler goes back into her bag",
+        tr: &[("th", "เซ็นเอกสารกลับบ้านครบ — ยาพ่นถูกเก็บกลับเข้ากระเป๋าเธอ")],
+    },
+    Line {
+        key: "threshold:the wheeze is back at the top of each breath — she props herself forward",
+        tr: &[("th", "เสียงวี้ดกลับมาที่ปลายลมหายใจทุกครั้ง — เธอโน้มตัวยันไปข้างหน้า")],
+    },
+    Line {
+        key: "threshold:nasal prongs looped over her ears — two litres to start",
+        tr: &[("th", "คล้อง nasal cannula ที่หูทั้งสองข้าง — เริ่มที่ 2 ลิตร")],
+    },
+    Line {
+        key: "threshold:tablets dispensed, letter printed — a taxi is called from the desk",
+        tr: &[("th", "จ่ายยาเม็ดพร้อมใบสรุป — เคาน์เตอร์โทรเรียกแท็กซี่ให้")],
+    },
+    Line {
+        key: "threshold:another rigor runs through her — the blanket is pulled up to her chin",
+        tr: &[("th", "อาการหนาวสั่นไล่ผ่านตัวเธออีกครั้ง — ผ้าห่มถูกดึงขึ้นถึงคาง")],
+    },
+    Line {
+        key: "threshold:the hands are cooler to the touch — he answers a beat slower",
+        tr: &[("th", "มือเย็นลงเมื่อแตะ — เขาตอบช้าลงไปครึ่งจังหวะ")],
+    },
+    Line {
+        key: "threshold:the mask goes on — she holds it to her face herself",
+        tr: &[("th", "ครอบหน้ากากออกซิเจน — เธอยกมือประคองไว้เอง")],
+    },
+    Line {
+        key: "threshold:reassurance taken gratefully — she reaches for her coat",
+        tr: &[("th", "เธอรับคำปลอบใจด้วยความโล่งใจ — แล้วเอื้อมหยิบเสื้อคลุม")],
+    },
+    Line {
+        key: "threshold:adrenaline 0.5 mg im, outer thigh — drawn to the top line of the syringe",
+        tr: &[("th", "adrenaline 0.5 mg IM ที่ต้นขาด้านนอก — ดูดยาถึงขีดบนสุดของกระบอก")],
+    },
+    Line {
+        key: "threshold:the mask is held just off her face — blow-by, the way she will take it",
+        tr: &[("th", "ถือหน้ากากห่างจากใบหน้าเล็กน้อย — แบบ blow-by เท่าที่เธอยอมรับ")],
+    },
+    Line {
+        key: "threshold:the discharge letter prints — her father gathers her up, bag over one shoulder",
+        tr: &[("th", "ใบสรุปกลับบ้านพิมพ์ออกมา — พ่ออุ้มเธอขึ้น สะพายกระเป๋าไว้บนไหล่")],
+    },
+    Line {
+        key: "threshold:she pulls at the collar of her shirt — the stridor is louder between cries",
+        tr: &[("th", "เธอดึงคอเสื้อตัวเอง — เสียง stridor ดังขึ้นระหว่างเสียงร้อง")],
+    },
+    Line {
+        key: "threshold:meropenem hung and running — dosed to the kidneys, wide open",
+        tr: &[("th", "แขวนถุง meropenem เริ่มหยด — ปรับขนาดยาตามไต เปิดเต็มที่")],
+    },
+    Line {
+        key: "threshold:high-flow mask on — the reservoir fills between her breaths",
+        tr: &[("th", "ครอบ mask ออกซิเจนไหลแรง — ถุงพักพองขึ้นระหว่างจังหวะหายใจ")],
+    },
+    Line {
+        key: "threshold:the mottling creeps past the knees — the refill is slower again",
+        tr: &[("th", "ผิวลายจ้ำลามเลยหัวเข่า — capillary refill ช้าลงอีก")],
+    },
+    Line {
+        key: "threshold:another rigor, harder than the last — the sweat has soaked to the sheet",
+        tr: &[("th", "หนาวสั่นอีกระลอกแรงกว่าครั้งก่อน — เหงื่อชุ่มถึงผ้าปูเตียง")],
+    },
+    Line {
+        key: "threshold:warm hands, a bounding pulse — and the cuff reads lower again",
+        tr: &[("th", "มืออุ่น ชีพจรเต้นแรง — แต่เครื่องวัดความดันอ่านค่าต่ำลงอีก")],
+    },
+    Line {
+        key: "threshold:the catheter bag hangs near-empty — what little there is runs dark",
+        tr: &[("th", "ถุงปัสสาวะแขวนอยู่แทบว่าง — ที่มีอยู่น้อยนิดสีเข้ม")],
+    },
 ];
 
 /// The display line for one beat, or `None` to show the original.

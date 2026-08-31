@@ -62,18 +62,25 @@ struct Pin {
 }
 
 const PINNED: &[Pin] = &[
-    Pin { case: "demo/stations/osce-a.sce.json", rubric: "demo/rubrics/osce-a.json", outcome: "WinDischarge", score: "24/40", leaf: "312b3b4c82577d1341c2ccc46fac4e1cd171ef1f0fd634d4538c91871c0c76c3" },
-    Pin { case: "demo/stations/osce-a2.sce.json", rubric: "demo/rubrics/osce-a2.json", outcome: "WinDischarge", score: "23/40", leaf: "4516ad22cefeda89fecdb497fb6c510b9771246bd4c667ad7a0faf95e1c8bdf8" },
-    Pin { case: "demo/stations/osce-b.sce.json", rubric: "demo/rubrics/osce-b.json", outcome: "DeathArrest", score: "0/40", leaf: "abe44c768b5d2b07025fae3e278fa66845830c2ea7b35b62340d9f4c4bc9686d" },
-    Pin { case: "demo/stations/osce-b2.sce.json", rubric: "demo/rubrics/osce-b2.json", outcome: "-", score: "8/40", leaf: "50e67a1b1601d1e649c4d7f4511762f1da6de03691204bbd4a3d43f9cb8ca1a5" },
-    Pin { case: "demo/stations/osce-b3.sce.json", rubric: "demo/rubrics/osce-b3.json", outcome: "DeathArrest", score: "2/40", leaf: "ec214156a67899f33debf1fe4d8b7211660144aecedcd651fab34798b91f9fea" },
-    Pin { case: "demo/stations/osce-c.sce.json", rubric: "demo/rubrics/osce-c.json", outcome: "-", score: "16/40", leaf: "d3255a811799ce6f6063dac62b4f5878cb7b09e0f49922821163d33789e92ac0" },
-    Pin { case: "demo/stations/osce-c2.sce.json", rubric: "demo/rubrics/osce-c2.json", outcome: "DeathArrest", score: "8/40", leaf: "c74e032edc58b1869261ed4aee6e15b2a5441f913ad1a0c1a9bf4d75de6ba2e2" },
-    Pin { case: "demo/stations/osce-c3.sce.json", rubric: "demo/rubrics/osce-c3.json", outcome: "DeathArrest", score: "6/40", leaf: "61f5e4b1d1a0542cd5cc1f4ed2732413ebea295d3c2643d613b0a5e90f902f0d" },
-    Pin { case: "demo/stations/osce-d.sce.json", rubric: "demo/rubrics/osce-d.json", outcome: "DeathArrest", score: "2/40", leaf: "32cf55975c4c053469f7d13d2ab44b40c166a20dc1df8e31534411105796c780" },
-    Pin { case: "demo/stations/osce-d2.sce.json", rubric: "demo/rubrics/osce-d2.json", outcome: "DeathArrest", score: "8/40", leaf: "94df2fc1f10d7390928e021485ea459372e5ac604b168c7750862e61076ccdc0" },
-    Pin { case: "demo/stations/osce-d3.sce.json", rubric: "demo/rubrics/osce-d3.json", outcome: "DeathArrest", score: "10/40", leaf: "27aa65997a6d479a057dcb68b941a0523ca2ea5682618d867abe15379fa5f9f3" },
-    Pin { case: "demo/stations/osce-d4.sce.json", rubric: "demo/rubrics/osce-d4.json", outcome: "DeathArrest", score: "5/40", leaf: "a95f6ce76f4f33f296da1ea65f6c2779b6f8abd5afed4cd09bd5cdd87bdd7fe6" },
+    // ── the twelve stations, re-issued 2026-09: every silent order got its beat ─────────────
+    // Same tape, same outcome, same det score on every row — the marking never reads a beat —
+    // and every leaf moved, twice over: a leaf commits to `sce_hash`, which any edit rotates,
+    // and to the beats themselves, which this re-issue added to. The versions the pins below
+    // were recorded against are archived under `conformance/sce-archive/` and
+    // `crates/vitals-replay/tests/shock_tape.rs` still holds their leaves where they were,
+    // which is the check that matters for a run somebody has already anchored.
+    Pin { case: "demo/stations/osce-a.sce.json", rubric: "demo/rubrics/osce-a.json", outcome: "WinDischarge", score: "24/40", leaf: "70d50e25d5e737e15208145480d1ce274d4d9623e7ebd2537a98c92ba569cf8b" },
+    Pin { case: "demo/stations/osce-a2.sce.json", rubric: "demo/rubrics/osce-a2.json", outcome: "WinDischarge", score: "23/40", leaf: "1076b048bef20369cff4d5c2c5e36001534c2d781e33c3d521a6667e8f3d1c44" },
+    Pin { case: "demo/stations/osce-b.sce.json", rubric: "demo/rubrics/osce-b.json", outcome: "DeathArrest", score: "0/40", leaf: "1c823ea43de5869779d6a2f489e297da6551bea03731c483b41ee0097842763c" },
+    Pin { case: "demo/stations/osce-b2.sce.json", rubric: "demo/rubrics/osce-b2.json", outcome: "-", score: "8/40", leaf: "c9a49eb7bdd384c86d5d5f0d92ab1c5e234eb86a4b3c6ac4748a900c59f9bf78" },
+    Pin { case: "demo/stations/osce-b3.sce.json", rubric: "demo/rubrics/osce-b3.json", outcome: "DeathArrest", score: "2/40", leaf: "ccac120b006a9adec0d6863ec5a02c8b1998dbb7eb7d39c6162783342d688c79" },
+    Pin { case: "demo/stations/osce-c.sce.json", rubric: "demo/rubrics/osce-c.json", outcome: "-", score: "16/40", leaf: "998d264cfd1c666c51bb81a2052fa9ee642c2f6a4fc4660efa3bd2ae4439a3e5" },
+    Pin { case: "demo/stations/osce-c2.sce.json", rubric: "demo/rubrics/osce-c2.json", outcome: "DeathArrest", score: "8/40", leaf: "899f654b0a78455b93d08f9f51f1add220dfc29bb5eaed337fc254a8ea50bb4f" },
+    Pin { case: "demo/stations/osce-c3.sce.json", rubric: "demo/rubrics/osce-c3.json", outcome: "DeathArrest", score: "6/40", leaf: "5ccc2bd82618af448e25a2858313cf70ab857aab99d5bd3895cbe8262644156b" },
+    Pin { case: "demo/stations/osce-d.sce.json", rubric: "demo/rubrics/osce-d.json", outcome: "DeathArrest", score: "2/40", leaf: "f2ab026e1c66a4ac8463f6b25b12a38228d52fd6aa1697d1ea487633cd4f8ad4" },
+    Pin { case: "demo/stations/osce-d2.sce.json", rubric: "demo/rubrics/osce-d2.json", outcome: "DeathArrest", score: "8/40", leaf: "ac0bdff7fb18a24ac6e94b988b751fd6718694dcd54eca44aa78c77d1f4ef6c5" },
+    Pin { case: "demo/stations/osce-d3.sce.json", rubric: "demo/rubrics/osce-d3.json", outcome: "DeathArrest", score: "10/40", leaf: "821e797f8c8d1a2a4f543237e7f29dd158724b492b397d8dd39d0dbe24350493" },
+    Pin { case: "demo/stations/osce-d4.sce.json", rubric: "demo/rubrics/osce-d4.json", outcome: "DeathArrest", score: "5/40", leaf: "8ce2eae4837df72ea2043bb7b51de7220c06a15c0886b21c1e1d14159b74131d" },
     // ── re-issued 2026-08-29, when the defibrillator moved into the engine ──────────────────
     // The leaf moved and nothing about the *run* did: same tape, same beats, same harms, same
     // ending, same 10/40. A leaf commits to `sce_hash`, `ep2`'s file was re-issued, and that is

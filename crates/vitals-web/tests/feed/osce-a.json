@@ -81,6 +81,12 @@
    "title": "harm:iv push adrenaline — arrhythmia on a beating heart"
   },
   {
+   "kind": "beat",
+   "t": "0:15",
+   "text": "adrenaline through the cannula — the syringe empties in one push",
+   "title": "threshold:adrenaline through the cannula — the syringe empties in one push"
+  },
+  {
    "kind": "order",
    "t": "0:15",
    "text": "breath",
@@ -147,10 +153,22 @@
    "title": "harm:discharged during the observation window — biphasic reactions return to an empty bed"
   },
   {
+   "kind": "beat",
+   "t": "0:35",
+   "text": "the discharge letter prints — the bay is turned over to the next name on the board",
+   "title": "threshold:the discharge letter prints — the bay is turned over to the next name on the board"
+  },
+  {
    "kind": "harm",
    "t": "5:05",
    "text": "harm — adrenaline delayed — anaphylaxis is treated the moment it is named",
    "title": "harm:adrenaline delayed — anaphylaxis is treated the moment it is named"
+  },
+  {
+   "kind": "beat",
+   "t": "5:05",
+   "text": "the voice is thinner than it was — the wheeze carries to the corridor",
+   "title": "threshold:the voice is thinner than it was — the wheeze carries to the corridor"
   },
   {
    "kind": "end",

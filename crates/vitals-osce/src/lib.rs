@@ -817,6 +817,7 @@ mod tests {
             vec![
                 "threshold:the lab wants an ecg before it spins up".to_string(),
                 "harm:ecg delayed beyond ten minutes — the infarct ran unseen".to_string(),
+                "threshold:he shifts against the trolley — the arm pain is back, heavier".to_string(),
                 "status:Critical".to_string(),
                 "terminal:DeathArrest".to_string(),
             ],

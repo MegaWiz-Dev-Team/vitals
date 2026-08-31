@@ -433,34 +433,40 @@ fn competent_tape(ep: &str) -> Option<Vec<Step>> {
 ///
 /// The twelve scenario hashes are pinned first. They are the stations' identity on chain, and
 /// they are the one thing in this repository that a rubric edit must never be able to move.
+///
+/// Re-recorded at the 2026-09 re-issue of the twelve stations (`docs/RISKS.md` §11), which is a
+/// scenario edit and not a rubric edit: every hash rotated because the files changed, and every
+/// leaf with them, because a leaf commits to the hash and to the beats. The versions these pins
+/// replaced are archived under `conformance/sce-archive/`, where
+/// `vitals-replay/tests/shock_tape.rs` still holds their leaves in place.
 #[test]
 fn the_deduction_never_reaches_the_leaf() {
     // (station, its scenario hash, the leaf of its competent run)
     let pinned: [(&str, &str, &str); 12] = [
-        ("osce-a", "4ee5521614895b474296fdcdc4e355009d23e6a5fcbff5d1bfdd86765d1e993d",
-         "4b0c97beb3562a946ccc1e95ef7321591947b5b6fc4da3e03fd0e8099fc4e857"),
-        ("osce-a2", "109bee5badd6e52955e4c8312f29be10c305f32f2ba777a445eff149d2747ea3",
-         "ca880513d2dfece429e9c86a2abe1813cb18b42e4036690e8f19ce30be4921df"),
-        ("osce-b", "b61fbebc65f71eaead162fd377183044b4acf62a1a6f5e3f39658c900ed723e8",
-         "5eb71f71fbd7914b46f5d84c24668cdb4c25898db486a2d2227e42446f59c826"),
-        ("osce-b2", "abce636f126ed9588d03c6d8ecc7306bd628a5802e06c0f1a18a4f3c60639f2a",
-         "30e7208ffcaa043ecd442a3edc653e735f6c6cbb5e73aaea6a75ed44a81a252b"),
-        ("osce-b3", "87fbc1290cb48f8ec78bb0d6b6efc80677ae6f9b9b26628fce4fb1b9c1b7d662",
-         "a6f944cc5faa5ad2c93b428975052b8239d06569d7a3e61214c1ac0bbb9186db"),
-        ("osce-c", "5c0e1270f68b9665be6ea7a90552129ee649712bfa77327c8fdb969adcaaceff",
-         "6ac923b2eaa25ce304eb0c852dddf0b7cfd6c24841a1dc74817a1a52c70fe404"),
-        ("osce-c2", "90e52ac0e31d7ce60965ef1a2ef60302a695bf6baf0d5fa0be3431b0053cb642",
-         "0d8ad9b547152f07471d5de64fd74dba2851e29829cf6c0d1fea897a09ccfb9c"),
-        ("osce-c3", "ece6ed587279f3ae51dd6ccfbccb8ba0b47fb0ee8578e61eacd72e6702f122d7",
-         "a6a73975239e0f2cecffec56f43a71c0e7294566939067e6f316b5081efe3771"),
-        ("osce-d", "b9bfa9c57e40dcc5dfc342431b8ae9b7f2836649876f721d2d0f62fe70a577fb",
-         "a355361f03486b479d76ef9b45fe7cb4692fc06a9e9f1c9f826cd3bb5f5858d3"),
-        ("osce-d2", "b9bc24963c3ed5bf344c51bb1749155a1df4f10b59d6209c27ccb902686a5e68",
-         "5cb4a03ad646b72e3720f56f84c2843cce64bc0bf61d2d4105c406ea7dfaf9c1"),
-        ("osce-d3", "6f7e620fc6ea084c6bb30bd9eaabd0d6fac574bc15ac189620c3d5bc42f414cc",
-         "0ffc1c6617b2e68ece4b101b6ea5e6bb64f3187f83f9c28e2ccb86cce23ff741"),
-        ("osce-d4", "145c0f6827c7f39ace39d8f5fd7bda33a92b996a7502367a81b03cd70a58e63d",
-         "cb49f176dbf0a5a47cc4a00f177dcb565b807a8e44c7431a89e909f4e4fb4c5a"),
+        ("osce-a", "ac52be1cda7ea6199664b25759217dcb8a04a7ac65adaeaca572ccf202828798",
+         "7291d1df2817a3ac41161ab477f4013c447d6d3c6356ae5941c50345f4910704"),
+        ("osce-a2", "d4e616827ba1d262821d94b15036bd59c3d4a35a00f716eb090cef1de74cf5d1",
+         "f6ae1cbd2ba186a4dd2bf31400354a895f65bae5bd1526122dd11f01c4081bbd"),
+        ("osce-b", "4d5c177971b36efe19b8e51d0c3bcc283e7b43da0fc9ac18c86d34481675271e",
+         "3513ca053bdfdd3001531ba6a03d347fc76b54d129810e0f5d8fc1ec5e027100"),
+        ("osce-b2", "627368e3beefd457f97597dbd81ad108b9864fb08f01f1baac32ca1671ff54d7",
+         "c17c1c085a5172cd95e5e1063dafc7202e4cf76bf3476ff3ad43fc3d23f0c7cf"),
+        ("osce-b3", "ee5cfc438a4c46c554d329824891383d046ebeb1320e58e4b33094ca53807b9b",
+         "d4e8ed3d99b327f558e0ae8affc381b2405d2efc33b156da58f2fbd5539eb8be"),
+        ("osce-c", "7e4998729c67f71e7d48e238347e5dc1f30d231ef8cd85aa16e070616aa63f68",
+         "de5b3d0b550760a7f8d32fd047437561e9bd840ed70128ba7e990b68e4906347"),
+        ("osce-c2", "8d59708b53440a9564f51c08380ed2ac84b291fd99659f49c0353d185ca33948",
+         "c285b5bc49c73cb9ae0b40f441e0025ae83ad660bdc21905e9733cf8acaf9942"),
+        ("osce-c3", "661d058cf7788ebcac31ffc9d5ed9962b25ee73a482f57df4f2a754d182c66bf",
+         "46fc84d86d003a95fdf84881252e12b7212cefca8b4c2461aeeca2b6d1885948"),
+        ("osce-d", "30a48cb233a2a0b8bf8e811c5d74db0f097b315f4abfb6f5b5ae8f6fd1addfb8",
+         "3fe7dc080f9f749a9bf2d36863be7316e3a5ee4c04a5f831a86a9f89276aa2f5"),
+        ("osce-d2", "4706a5c57e2f559b520652cdc9c9cdb227241ad62d689e911a381b6774ed7a5d",
+         "7409fffa7025d3151cf53eade65fa87be123baf1ab92f2d5b7367174541ae159"),
+        ("osce-d3", "11382d87ea21b9177787966f539c50d488c9e6544786442835d49fba466c9a7b",
+         "ca18121148aa98cc323c21cbe85fd94348a3b0a763c4cbe18c68231e8b8a4c4f"),
+        ("osce-d4", "c3111d6cc242dd41c54e9cbf0f23751f5eac65262d99cc1aff3524a4afff5c67",
+         "0e17b5c21080371c297f0f8319a0682f46db25af01c86db3c702b96d5f1564f2"),
     ];
     for (ep, want_sce, want_leaf) in pinned {
         let sce = sce_json(ep);
@@ -488,3 +494,4 @@ fn the_deduction_never_reaches_the_leaf() {
 fn hex(b: &[u8; 32]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
+

@@ -87,6 +87,12 @@
    "title": "harm:half a milligram into a twenty-kilo child — an adult dose, two and a half times hers; the tachycardia that follows is yours"
   },
   {
+   "kind": "beat",
+   "t": "0:15",
+   "text": "adrenaline 0.5 mg im, outer thigh — drawn to the top line of the syringe",
+   "title": "threshold:adrenaline 0.5 mg im, outer thigh — drawn to the top line of the syringe"
+  },
+  {
    "kind": "order",
    "t": "0:15",
    "text": "adren",
@@ -145,6 +151,12 @@
    "t": "0:35",
    "text": "harm — iv push adrenaline — arrhythmia on a small beating heart",
    "title": "harm:iv push adrenaline — arrhythmia on a small beating heart"
+  },
+  {
+   "kind": "beat",
+   "t": "0:35",
+   "text": "adrenaline through the cannula — the syringe empties in one push",
+   "title": "threshold:adrenaline through the cannula — the syringe empties in one push"
   },
   {
    "kind": "end",

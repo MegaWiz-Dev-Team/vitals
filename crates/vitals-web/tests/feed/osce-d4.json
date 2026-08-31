@@ -77,6 +77,12 @@
    "title": "harm:the antibiotics flew before a single culture — the enemy will never be named"
   },
   {
+   "kind": "beat",
+   "t": "0:15",
+   "text": "meropenem hung and running — dosed to the kidneys, wide open",
+   "title": "threshold:meropenem hung and running — dosed to the kidneys, wide open"
+  },
+  {
    "kind": "order",
    "t": "0:15",
    "text": "perfusion",
@@ -129,6 +135,12 @@
    "t": "5:05",
    "text": "harm — half the resuscitation is speed — five minutes of shock on dry lines",
    "title": "harm:half the resuscitation is speed — five minutes of shock on dry lines"
+  },
+  {
+   "kind": "beat",
+   "t": "5:05",
+   "text": "the mottling creeps past the knees — the refill is slower again",
+   "title": "threshold:the mottling creeps past the knees — the refill is slower again"
   },
   {
    "kind": "beat",

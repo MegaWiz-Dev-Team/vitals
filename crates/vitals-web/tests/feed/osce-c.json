@@ -83,6 +83,12 @@
   {
    "kind": "beat",
    "t": "0:15",
+   "text": "torch and depressor — a look is taken at the back of the throat",
+   "title": "threshold:torch and depressor — a look is taken at the back of the throat"
+  },
+  {
+   "kind": "beat",
+   "t": "0:15",
    "text": "{s} is getting worse",
    "title": "status:Deteriorating"
   },
@@ -145,6 +151,12 @@
    "t": "0:35",
    "text": "harm — a needle hunt before the steroid — she fights, shrieking, and the stridor you did not have is here now",
    "title": "harm:a needle hunt before the steroid — she fights, shrieking, and the stridor you did not have is here now"
+  },
+  {
+   "kind": "beat",
+   "t": "0:35",
+   "text": "the tourniquet goes on — the back of each hand is searched in turn",
+   "title": "threshold:the tourniquet goes on — the back of each hand is searched in turn"
   },
   {
    "kind": "beat",
