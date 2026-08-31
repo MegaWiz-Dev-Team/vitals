@@ -160,56 +160,59 @@ Everything else is a consequence of that. If a feature cannot be introduced as a
 sentence, cut it from the pitch even if it is built.
 
 
-## 11. Silence in the reply still marks a harmful order — measured, disclosed, not closed yet
+## 11. Silence in the reply marked a harmful order — measured, disclosed, closed 2026-08-31
 
-The harm marker is sealed during a station. As of 2026-08-29 the chart carries no harm row, the
-encounter feed carries no harm line, and the result panel's list is empty until the bell — the
-two commits titled *"a sealed chart carries no harm row, not a redacted one"* and *"a sealed run
-says nothing about harm on screen either"*. A candidate is no longer told mid-station that an
-order was wrong.
+**Closed, by re-issuing all twelve stations so that no order ever replies with nothing.** The
+numbers first, measured with the same method before and after — all twelve stations, every
+reachable order, one fresh run each, counting narrative beats in a sealed reply:
 
-**What was not sealed is the absence.** Measured across all twelve stations, every reachable
-order, one fresh run each:
+    before (2026-08-29)   P(no beat | harmful)   0.82    18/22
+                          P(no beat | harmless)  0.06    11/176     LR ≈ 14×
+    after  (2026-08-31)   P(no beat | harmful)   0.00    0/22
+                          P(no beat | harmless)  0.00    0/176      LR = 1
 
-    P(no beat in the reply | the order was harmful)   0.82    18/22
-    P(no beat in the reply | the order was harmless)  0.06    11/176
+A silent reply no longer exists, on either side, so it can no longer carry information about
+anything. The likelihood ratio is 1 by construction rather than by luck: the event being
+conditioned on cannot occur.
 
-So the **number of narrative beats in the JSON reply** still separates a harmful order from a
-harmless one, at a likelihood ratio of roughly 14×. Order the trap and nothing comes back; order
-anything else and a `threshold:` line usually does.
+**What it was.** The harm marker itself was sealed in Week 1 — no harm row on the chart, no harm
+line in the feed, nothing in the result panel until the bell. What was not sealed was the
+absence: the engine emits exactly the beats a case declares, and the authors had written
+narrative lines for the right answers and none for the traps. In the files as shipped, 19 of 19
+harmful interventions carried no `beat` effect against 13 of 179 harmless ones. So ordering the
+trap returned a reply one line shorter than ordering anything else, at a likelihood ratio of
+roughly 14× — invisible on screen, readable in a network tab, real. The cause was case content,
+not engine code, which is why it was disclosed and left open rather than patched in the engine:
+the two closures available at the time — editing anchored scenario files, or suppressing the
+`threshold:` beats that *are* the examination — both cost more than the leak.
 
-**The cause is case content, not code.** An author writes the right answer a narrative line —
-*"adrenaline 0.5 mg im, outer thigh — no hesitation"* — and writes the trap beside it none, because
-the trap felt like it had nothing to say. In the files themselves, 19 of the 19 harmful
-interventions declared across the twelve stations carry no `beat` effect against 13 of 179
-harmless ones — a cleaner split than the runtime figures above, which are over reachable orders in
-a live run, where a handful of harms arrive from `triggers` instead and a handful of orders pick up
-a beat from a state change. No line of the engine treats a harmful order differently. The engine
-emits what the file told it to emit, and the file is quiet in exactly one place.
+**What closed it.** The twelve stations were re-issued under the retirement flow in
+`conformance/README.md`: every trap intervention, every quiet harmless order (the oxygen, the
+saline, the positioning), and every trigger that records a harm now carries a narrative beat, in
+the same observational register the harmless orders already used — the room noting what was
+done, never a verdict. The right answer keeps its editorial tail; the trap reads as
+unremarkable procedure; the beat never announces the harm, because announcing it would recreate
+the leak this replaced. Every new line has a Thai row in the language layer, through the same
+table the existing 242 lines use; language never reaches the leaf.
 
-**What it takes to exploit.** Open a network tab, count the beats in `/api/step`, and infer across
-runs — because 0.82 is not 1.0, one silent reply is evidence and not an answer. It is invisible on
-screen, it survives no single observation, and it costs a candidate the attention they were meant
-to be spending on the patient. It is strictly weaker than what it replaced, which was a visible
-certainty delivered unprompted. It is still real, and it is still a channel the exam did not
-intend to open.
+**What the re-issue did to hashes, and to nobody's proofs.** `sce_hash` is
+`sha256(<the whole scenario file>)` and the leaf commits to both the hash and the beats, so all
+twelve identities rotated — that is the designed cost of touching a case, and the supersede flow
+paid it: the outgoing version of every station was already archived under
+`conformance/sce-archive/` with its `INDEX.json` row, the incoming versions are archived beside
+them, and `crates/vitals-replay/tests/shock_tape.rs` holds the leaf of every archived version
+exactly where it was. The five attempts anchored on devnet against `osce-a` name the archived
+bytes and re-derive from them unchanged. A deployment pins an image, so the closed state reaches
+devnet with the next deploy, not before.
 
-**What it would cost to close today.** Two routes, both worse than the leak:
-
-- *Give the traps their missing beats.* That means editing the scenario files, and `sce_hash` is
-  `sha256(<the whole scenario file>)` — the case's identity on chain. Every proof already anchored
-  against those cases would name a file that no longer exists, including the run a judge is asked
-  to re-derive from the video. See `conformance/README.md`.
-- *Suppress `threshold:` beats in exam mode.* Those lines are the ECG read, the auscultation
-  finding, the afebrile child, the nurse asking how many milligrams. They are the examination.
-  Deleting them to hide a correlation would delete the thing being examined.
-
-**When it closes.** At authoring time, and it lands when a station is next retired and re-issued —
-which is when its hash legitimately changes anyway. The rule is written down where the next author
-will meet it (`conformance/README.md`, *Authoring rules that are not in the schema*): **every
-intervention gets a narrative beat, including the harmful ones**, and the re-issue checklist audits
-for it before a station goes back on the shelf. Nothing about this is waiting on a decision; it is
-waiting on the next hash change, deliberately.
+**What pins it shut.** `crates/vitals-replay/tests/trap_silence.rs`, run on every `cargo test`:
+it replays every order of every station in a fresh run and fails if any sealed reply is empty,
+and it walks every intervention's effect tree and every trigger off disk and fails on any silent
+path — so a week-9 author who writes a trap without a beat is stopped by the build, not by a
+reviewer's memory. The residual channel was measured too: reply *counts* still vary (18 of 22
+harmful replies carry 1 beat and 4 carry 2, against 171 and 5 of 176 harmless), but every
+2-beat reply is an order that changed the patient's status, and the status is printed on the
+screen beside it — the count now tracks what the candidate is already shown, and nothing else.
 
 **What is not a leak, and will not be treated as one.** A candidate can tell they did harm by
 watching the patient. On `osce-d3` the adult dose in a twenty-kilo child runs her to HR 171 where

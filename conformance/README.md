@@ -142,7 +142,12 @@ ones, silence is the answer key. Silence must never correlate with wrongness.
 That is measured, not theorised. Across the twelve stations shipped in August 2026 a reply with no
 new beat was roughly 14× more likely to follow a harmful order than a harmless one, entirely
 because the traps had been written without beats while the right answers had them —
-`docs/RISKS.md` §11 has the numbers and why the existing cases are not being edited to fix it.
+`docs/RISKS.md` §11 has the numbers, before and after. The twelve stations were re-issued in
+September 2026 under the retirement flow below, and since then no order in any station replies
+with nothing. The rule is pinned by `crates/vitals-replay/tests/trap_silence.rs`, which reads
+every station off disk: a station that declares an intervention with a silent effect path, or a
+trigger that records a harm and narrates nothing, fails the build — so it holds for week nine's
+author exactly as it held for week two's.
 
 Two things the rule does **not** ask for. The beat must not announce the harm: *"the tongue
 depressor goes in — she screams"* is what the `harm` field is for, and `harm` is withheld until the
