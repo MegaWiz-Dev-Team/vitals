@@ -17,6 +17,7 @@ pub mod lang;
 pub mod meter;
 pub mod news2;
 pub mod patient;
+pub mod payout;
 pub mod reading;
 pub mod review;
 pub mod store;

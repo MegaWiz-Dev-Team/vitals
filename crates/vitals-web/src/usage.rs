@@ -382,7 +382,13 @@ pub const LIMITS: [&str; 8] = [
 /// Only the day moves. The month still turns over in UTC, and deliberately: it keys the device
 /// fingerprints and, in `meter`, the monthly compute ceiling — moving when a spend budget resets
 /// is a different decision from moving when a chart's column starts.
-const BANGKOK_OFFSET_SECS: u64 = 7 * 60 * 60;
+pub(crate) const BANGKOK_OFFSET_SECS: u64 = 7 * 60 * 60;
+
+/// Today, where the learners are. One definition of "a day here", so a counter and a daily cap
+/// cannot roll over at different moments and disagree about which day it is.
+pub fn bangkok_day(epoch_secs: u64) -> String {
+    day_key(epoch_secs + BANGKOK_OFFSET_SECS)
+}
 
 /// A month-salted, truncated fingerprint. See the module note for why it is truncated.
 fn fingerprint(month: &str, pubkey: &str) -> String {
