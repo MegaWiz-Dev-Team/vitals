@@ -621,3 +621,78 @@ fn tree_doc_without_leaves(json: &str) -> String {
     tree["leaves"] = serde_json::json!([]);
     tree.to_string()
 }
+
+// ── the demonstration ───────────────────────────────────────────────────────
+
+/// Drop one leaf from a stored tree document, keeping the rest and the id.
+fn tree_doc_missing_one_leaf(json: &str) -> String {
+    let mut tree: serde_json::Value =
+        serde_json::from_str(json).expect("the stored tree is not JSON");
+    let leaves = tree["leaves"].as_array().expect("no leaves").clone();
+    assert!(leaves.len() >= 2, "need more than one leaf to lose one");
+    tree["leaves"] = serde_json::Value::Array(leaves[..leaves.len() - 1].to_vec());
+    tree.to_string()
+}
+
+/// What a stranger is being asked to believe, shown rather than asserted.
+///
+/// Run it with `scripts/demo-refusal.sh`. It anchors six real runs against a real program on a
+/// real validator, takes one leaf away from the server's own copy, and asks it to anchor a
+/// seventh. It refuses — not because anything is watching, but because it can no longer prove
+/// what it already anchored, and building further would abandon somebody's record.
+///
+/// That is the whole product in one screen. Everything else on this site is a system working;
+/// this is a system declining to, with nobody in the room.
+#[test]
+#[ignore = "needs a validator and VITALS_PROGRAM_ID"]
+fn demo_a_server_that_cannot_prove_what_it_anchored_refuses_to_anchor_more() {
+    let s = Server::start().expect("VITALS_PROGRAM_ID");
+    let line = "─".repeat(66);
+
+    // Sentinels, so the script can lift the transcript out of cargo's own chatter without
+    // guessing where it ends — a rule of dashes is not a landmark, there are several.
+    println!("\n@@DEMO-BEGIN@@");
+    println!("{line}\n  SIX RUNS, ANCHORED FOR REAL\n{line}");
+    for i in 1..=6 {
+        let p = Player::new();
+        let r = s.win(&p, &p.pubkey(), Some(&format!("run {i}")));
+        assert_eq!(r["proven"], true, "run {i} did not anchor: {r}");
+        println!("  run {i}  anchored at index {}  ·  proven", r["index"]);
+    }
+    let anchored = s.json("/api/chain")["anchored"].as_u64().unwrap_or(0);
+    println!("\n  leaves on chain   {anchored}\n  leaves here       {anchored}   the lists agree");
+
+    // Lose one, exactly as a rolled-back or half-restored store would.
+    println!("\n{line}\n  THE SERVER LOSES ONE LEAF\n{line}");
+    let state = s.stop();
+    let dir = state.join("tree");
+    let file = std::fs::read_dir(&dir)
+        .unwrap_or_else(|e| panic!("{}: {e}", dir.display()))
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .find(|p| p.extension().is_some_and(|x| x == "json"))
+        .expect("no stored tree");
+    let before = std::fs::read_to_string(&file).expect("read");
+    std::fs::write(&file, tree_doc_missing_one_leaf(&before)).expect("write");
+    println!("  one leaf removed from the server's own copy.");
+    println!("  the chain is untouched — it still holds all {anchored}.");
+
+    println!("\n{line}\n  IT IS ASKED TO ANCHOR A SEVENTH\n{line}");
+    let s = Server::start_on(state).expect("restart");
+    let next = Player::new();
+    let refused = s.win(&next, &next.pubkey(), Some("run 7"));
+
+    println!("  leaves on chain   {}", refused["leaves_on_chain"]);
+    println!("  leaves here       {}", refused["leaves_here"]);
+    println!("\n  {}", refused["error"].as_str().unwrap_or_default());
+    println!("\n  {}\n{line}", refused["why"].as_str().unwrap_or_default());
+    println!("@@DEMO-END@@");
+
+    assert_eq!(refused["leaves_on_chain"], anchored, "the chain's count is not reported");
+    assert_eq!(refused["leaves_here"], anchored - 1, "the server's own count is not reported");
+    assert!(
+        refused["error"].as_str().unwrap_or_default().contains("cannot prove"),
+        "it anchored anyway: {refused}"
+    );
+    assert!(refused["index"].is_null(), "a seventh leaf was built despite the refusal");
+}
