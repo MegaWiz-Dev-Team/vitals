@@ -2209,6 +2209,26 @@ fn main() {
                     continue;
                 }
                 let ep = param(&url, "ep").unwrap_or_else(|| "ep1".into());
+                // A case id this server does not have is refused here, before anything is
+                // created or counted.
+                //
+                // `scenario_path` answers an unknown id with EP1's file, so without this line
+                // `?ep=<anything>` opened a real, playable run of EP1 filed under whatever the
+                // caller typed. Two things went wrong at once: the shelf's numbers gained a case
+                // that does not exist, and `usage.by_case` — a durable map with no bound on its
+                // keys — took a key from the query string on a public endpoint that needs no
+                // account. `no-such-ep-at-all` is in the live tally today because somebody
+                // tried it.
+                //
+                // The hazard was already written down one match arm above the fallback, for
+                // station ids: "never the EP1 fallback, because playing EP1 under a station's
+                // name would anchor the wrong case." It is the same sentence for every other id.
+                if !every_case().contains(&ep.as_str()) {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "error": "no such case",
+                    }), 404));
+                    continue;
+                }
                 match new_session(&ep) {
                     Ok(mut s) => {
                         s.owner = param(&url, "player").and_then(|p| pubkey(&p)).map(|k| k.to_string());

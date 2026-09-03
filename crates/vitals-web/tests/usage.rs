@@ -27,7 +27,15 @@ impl Server {
     /// A server on a state directory of its own, unless one is handed in — restarting onto the
     /// same directory is how "the count survives a deploy" is tested.
     fn start_on(state: std::path::PathBuf) -> Server {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_vitals-web"))
+        Server::start_on_with(state, &[])
+    }
+
+    fn start_on_with(state: std::path::PathBuf, extra: &[(&str, &str)]) -> Server {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_vitals-web"));
+        for (k, v) in extra {
+            cmd.env(k, v);
+        }
+        let mut child = cmd
             .env("VITALS_WEB_BIND", "127.0.0.1:0")
             .env("VITALS_STATE_DIR", &state)
             .env_remove("VITALS_PROGRAM_ID")
@@ -50,6 +58,16 @@ impl Server {
 
     fn start() -> Server {
         Server::start_on(fresh_state("usage"))
+    }
+
+    /// A server whose per-address window is wide enough to open a dozen runs in a row.
+    ///
+    /// The window is six a minute, which is right for the bay and too small for a test that has
+    /// to try several ids. Raised through the same env var the deploy uses rather than by
+    /// sending a forged `X-Forwarded-For` per request — that would work today, and only because
+    /// the address is read from the first entry of a header the caller controls.
+    fn start_generous() -> Server {
+        Server::start_on_with(fresh_state("usage"), &[("VITALS_TURNS_PER_MIN", "600")])
     }
 
     fn json(&self, path: &str) -> serde_json::Value {
@@ -226,4 +244,51 @@ fn it_is_public_and_it_only_reads() {
         s.json("/api/usage");
     }
     assert_eq!(s.json("/api/usage")["runs"]["started"], before, "reading the counter moved it");
+}
+
+/// Enough percent-encoding to put a hostile case id in a query string.
+fn enc(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+/// A case id this server cannot play must not open a run, and must not name a bucket.
+///
+/// `scenario_path` answers an unknown id with EP1's file, so `?ep=<anything>` used to open a
+/// real playable run of EP1 filed under whatever the caller typed. `by_case` is durable and its
+/// keys came straight off the query string of a public endpoint that needs no account — so a
+/// stranger could name the shelf's own statistics, and grow the one document the day table and
+/// the device counts also live in. The live tally still carries `no-such-ep-at-all` from
+/// somebody trying it.
+#[test]
+fn a_case_this_server_cannot_play_is_refused_before_it_is_counted() {
+    let s = Server::start_generous();
+
+    for bogus in ["no-such-ep-at-all", "ep6", "ep1 ", "EP1", "../../etc/passwd", &"x".repeat(4000)] {
+        let r = s.json(&format!("/api/new?ep={}", enc(bogus)));
+        assert!(
+            r["id"].is_null(),
+            "{bogus:?} opened a run: {r}"
+        );
+        assert_eq!(r["error"], "no such case", "{bogus:?} was refused for the wrong reason: {r}");
+    }
+
+    let v = s.json("/api/usage");
+    assert_eq!(v["runs"]["started"], 0, "a refused case was counted as a run: {v}");
+    assert_eq!(
+        v["runs"]["by_case"].as_object().map(|o| o.len()),
+        Some(0),
+        "a refused case named a bucket: {}",
+        v["runs"]["by_case"]
+    );
+
+    // And the ids that are real still open.
+    for good in ["ep1", "ep2", "osce-a"] {
+        let r = s.json(&format!("/api/new?ep={good}"));
+        assert!(r["id"].is_string(), "{good} stopped opening: {r}");
+    }
 }

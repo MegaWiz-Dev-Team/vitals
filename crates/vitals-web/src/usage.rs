@@ -52,6 +52,18 @@ const MONTHS: usize = 2;
 /// the record growing without a bound.
 const MAX_DEVICES: usize = 20_000;
 
+/// How many distinct case names the tally will hold.
+///
+/// `by_case` is keyed by the id a caller asked to play, and the whole record is one document in
+/// the store — Firestore caps a document at 1 MiB, and every counter here shares that budget.
+/// `/api/new` now refuses an id it cannot play, so in normal operation this is at most the
+/// seventeen cases on the shelf and the ceiling is never approached. It is here because the
+/// route guard is one line in one handler and this map is durable: if a second caller ever
+/// reaches `started` with an unchecked id, the damage stops at a full map rather than at a
+/// document too large to save. A tally that quietly stops persisting takes the day table and
+/// the device counts down with it, because they live in the same document.
+const MAX_CASES: usize = 64;
+
 #[derive(Default, Serialize, Deserialize, Clone, Copy)]
 struct Day {
     started: u64,
@@ -97,7 +109,13 @@ impl Usage {
         let (day, month) = now();
         self.rec.since.get_or_insert_with(|| day.clone());
         self.rec.runs_started += 1;
-        *self.rec.by_case.entry(case.to_string()).or_default() += 1;
+        // Count a case already on the list, or add one while there is room. Never grow past
+        // the ceiling on a name nobody has counted before — see MAX_CASES.
+        if let Some(n) = self.rec.by_case.get_mut(case) {
+            *n += 1;
+        } else if self.rec.by_case.len() < MAX_CASES {
+            self.rec.by_case.insert(case.to_string(), 1);
+        }
         self.rec.days.entry(day).or_default().started += 1;
         match player {
             Some(k) => {
@@ -387,5 +405,26 @@ mod tests {
         assert_ne!(a, b, "the same browser is linkable across months");
         assert!(!a.contains("SOMEPLAYER"), "the key is stored in the clear");
         assert_eq!(a, fingerprint("2026-08", "SOMEPLAYERPUBKEY"), "the fingerprint is not stable");
+    }
+
+    /// The case map stops taking new names at its ceiling, and keeps counting the ones it has.
+    ///
+    /// `/api/new` refuses an id it cannot play, so nothing should ever reach this. That is the
+    /// reason it needs its own test rather than none: a bound that only a deleted route guard
+    /// would exercise is a bound nobody would notice had stopped working.
+    #[test]
+    fn the_case_map_stops_growing_and_does_not_stop_counting() {
+        let s = store("cases");
+        let mut u = Usage::open(&s);
+        for i in 0..MAX_CASES * 2 {
+            u.started(&format!("case-{i}"), None, &s);
+        }
+        assert_eq!(u.rec.by_case.len(), MAX_CASES, "the case map grew past its ceiling");
+        assert_eq!(u.rec.runs_started, (MAX_CASES * 2) as u64, "runs stopped being counted");
+
+        // A name already on the list keeps counting after the ceiling is reached.
+        let before = u.rec.by_case["case-0"];
+        u.started("case-0", None, &s);
+        assert_eq!(u.rec.by_case["case-0"], before + 1, "a known case stopped counting");
     }
 }
