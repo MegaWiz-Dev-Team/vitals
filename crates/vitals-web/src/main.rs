@@ -3000,6 +3000,16 @@ fn main() {
                 };
                 let paths = authors::archive_paths(&root.join(authors::INDEX_PATH))
                     .unwrap_or_default();
+                // Which shelf card each hash is, computed where both facts live rather than
+                // guessed from a path on the page. A hash the shelf has moved past maps to
+                // nothing, and says nothing.
+                let eps: std::collections::BTreeMap<String, String> = every_case()
+                    .into_iter()
+                    .filter_map(|id| {
+                        let json = std::fs::read_to_string(scenario_path(id)).ok()?;
+                        Some((hex(&sce_hash(&json)), id.to_string()))
+                    })
+                    .collect();
                 let tree_id = tree.lock().unwrap().tree_id;
                 // Absent chain is an empty count, not an error: the page still has something
                 // honest to show, and the field below says which it is.
@@ -3013,7 +3023,7 @@ fn main() {
                     "tree_id": tree_id,
                     "counted_from_chain": counted,
                     "attributed_cases": table.len(),
-                    "authors": authors::tally(&table, &paths, &proven),
+                    "authors": authors::tally(&table, &paths, &eps, &proven),
                 }))
             }
             (Method::Get, "/api/fuel") => {

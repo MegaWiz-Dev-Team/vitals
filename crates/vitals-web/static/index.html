@@ -349,6 +349,10 @@ addEventListener('click',function(e){
   font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:#0f2d3a;background:rgba(255,255,255,.86);
   padding:.15rem .5rem;border-radius:999px}
 .tile .body{padding:.85rem .9rem 1rem;display:flex;flex-direction:column;gap:.3rem;flex:1}
+/* Attribution. Quiet on purpose: a fact about the case, not a claim on the reader's
+   attention — and absent entirely when there is nothing to say. */
+.byline{display:block;font-size:.72rem;color:var(--ink-3);letter-spacing:.01em}
+.byline .mono{font-family:"IBM Plex Mono",ui-monospace,monospace;color:var(--ink-2)}
 .tile h3{font-family:Archivo,sans-serif;font-size:1.02rem;font-weight:700;margin:0;color:#12262c}
 .tile p{margin:0;font-size:.84rem;color:#5b6b70;flex:1}
 .tile .go{margin-top:.6rem;align-self:flex-start;border:0;border-radius:12px;padding:.5rem .9rem;
@@ -3719,6 +3723,11 @@ async function showDebrief(){
       `<div class="db-r"><span class="db-n">${s.status}</span>`
       +`<span class="db-w">${F(s.seconds)}</span></div>`).join('')+'</div>';
   }
+  /* Who wrote it, if anybody has published that they did. Last, because it is about
+     the case rather than about the run just played — and absent, not blank, when
+     there is no attribution to show. */
+  const by=authorLine((await ledger()).byEp.get($('#ep').value));
+  if(by)h+=`<div class="db-by">${by}</div>`;
   $('#db').innerHTML=h;
 }
 
@@ -4001,6 +4010,7 @@ async function renderSeason(){
   const before=JSON.stringify([STARS,SETSTARS]);
   const s=await fetchStars(); if(s!=null)STARS=s;
   let repaint = JSON.stringify([STARS,SETSTARS])!==before;
+  await ledger();
   if(!EXAM_EPS.length||!SETSRV){
     try{ const c=await (await fetch('/api/chain')).json();
       if(c.exam_eps&&c.exam_eps.length){ EXAM_EPS=c.exam_eps; repaint=true; }
@@ -4039,6 +4049,42 @@ const specShort=sp=>(sp||'').replace(/^eir-/,'').replace('gastroenterology','gas
    member with no band (an old cached set table, a member added without one) falls back to the
    widest label there is rather than to anything that names an organ. */
 const bandOf=m=>m.band||'medicine';
+/* ─── who wrote the case ─────────────────────────────────────────────────────
+   The author ledger, indexed by case hash and by shelf id. Fetched once, and
+   only ever read — the page shows attribution, it never asserts any.
+
+   **A case with no attribution renders nothing.** Not "author: —", not an empty
+   slot, not a dash. An absent line says "we have not published this yet"; a
+   placeholder says "this case has no author", and one of those is a claim we
+   have no business making about somebody's work.
+
+   The count is of *proven* replays and the word is on screen, because anchored
+   and proven are different numbers and the difference is the whole reason the
+   ledger can be checked at all. */
+let LEDGER=null;
+async function ledger(){
+  if(LEDGER)return LEDGER;
+  LEDGER={byHash:new Map(),byEp:new Map()};
+  try{
+    const r=await (await fetch('/api/authors')).json();
+    for(const a of (r.authors||[]))for(const c of (a.cases||[])){
+      const row={author:a.author,proven:c.proven_replays};
+      LEDGER.byHash.set(c.sce_hash,row);
+      if(c.ep)LEDGER.byEp.set(c.ep,row);
+    }
+  }catch(e){ /* no ledger is not an error, it is a page with nothing to add */ }
+  return LEDGER;
+}
+/* A key is a token you move, not text you read — the same eight characters the
+   rest of the page shows a key by. */
+const authorShort=k=>k.slice(0,8);
+function authorLine(row){
+  if(!row)return '';
+  const n=row.proven;
+  return `<span class="byline">author <span class="mono">${authorShort(row.author)}</span>`
+    +` · ${n} proven ${n===1?'replay':'replays'}</span>`;
+}
+
 function paintSeason(){
   const seasonIds=new Set(SEASON.map(x=>x.id));
   /* One shut door explains itself; every later one just wears the count — the same lock
@@ -4095,11 +4141,13 @@ function paintSeason(){
     }
     /* The exam door on an open episode is a replay for the record — XP and the anchored
        tape, never a key: doors are priced in station stars alone. */
+    /* Empty unless this case has a published author — see `ledger`. */
+    const by=LEDGER?authorLine(LEDGER.byEp.get(e.id)):'';
     const replay=!e.station&&EXAM_EPS.includes(e.id)
       ?`<span class="go exam" data-exam="${e.id}" data-ga="exam:${e.id}" title="an exam replay for XP and the record — doors open on station stars">↻ replay for the record</span>`:'';
     return `<button class="tile${e.station?' st':''}" data-ep="${e.id}" data-ga="tile:${e.id}">
       <div class="art">${art}<span class="no">${no}${star?' <span title="anchored on chain">★</span>':''}${done?' · watched':''}</span>${chip}${bar}</div>
-      <div class="body"><h3>${title}</h3>${chips}<p>${e.d}</p>
+      <div class="body"><h3>${title}</h3>${chips}<p>${e.d}</p>${by}
       <span class="go">${e.station?'★ sit the station — exam conditions':(done?'watch again':'enter the bay')}</span>${replay}</div></button>`;
   };
   /* A declared member whose files are still being fitted (Phase 5b) is a card, not an

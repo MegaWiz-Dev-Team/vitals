@@ -202,6 +202,11 @@ pub struct AuthoredCase {
     pub sce_hash: String,
     /// Where the case lives, from the archive index — so a reader can fetch and hash it.
     pub path: String,
+    /// Which shelf card this is, when it is one. The archive holds every version ever anchored,
+    /// so a hash may name a case the shelf has since moved past; that one has no episode and the
+    /// field is empty rather than guessed.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub ep: String,
     /// Proven replays of this case on this tree. See [`crate::authors`] on why not anchored.
     pub proven_replays: u64,
 }
@@ -227,6 +232,7 @@ pub struct AuthorLedger {
 pub fn tally(
     table: &[Attribution],
     paths: &std::collections::BTreeMap<String, String>,
+    eps: &std::collections::BTreeMap<String, String>,
     proven: &std::collections::BTreeMap<String, u64>,
 ) -> Vec<AuthorLedger> {
     let mut by_author: std::collections::BTreeMap<String, Vec<AuthoredCase>> = Default::default();
@@ -234,6 +240,7 @@ pub fn tally(
         by_author.entry(a.author.clone()).or_default().push(AuthoredCase {
             sce_hash: a.sce_hash.clone(),
             path: paths.get(&a.sce_hash).cloned().unwrap_or_default(),
+            ep: eps.get(&a.sce_hash).cloned().unwrap_or_default(),
             proven_replays: proven.get(&a.sce_hash).copied().unwrap_or(0),
         });
     }

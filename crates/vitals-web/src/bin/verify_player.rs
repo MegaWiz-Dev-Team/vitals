@@ -567,7 +567,7 @@ fn print_author_ledger(rpc: &RpcClient, program: &Pubkey, tree_id: u64, api: &st
             std::process::exit(EXIT_UNVERIFIED);
         }
     };
-    for entry in vitals_web::authors::tally(&table, &paths, &counts) {
+    for entry in vitals_web::authors::tally(&table, &paths, &Default::default(), &counts) {
         println!("{}  {} case(s) · {} proven replay(s)",
                  entry.author, entry.distinct_cases, entry.proven_replays);
         for c in &entry.cases {

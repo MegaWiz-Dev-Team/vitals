@@ -211,7 +211,7 @@ fn the_ledger_is_recomputable_from_the_attempts_it_came_from() {
     let raw = attempts(&[&a, &a, &a, &b, &c, &c]);
     let paths = BTreeMap::new();
 
-    let ledger = tally(&table, &paths, &per_case(&raw));
+    let ledger = tally(&table, &paths, &BTreeMap::new(), &per_case(&raw));
 
     // Recomputed the long way round: for each author, walk every attempt and count the ones
     // whose case that author is credited with.
@@ -248,7 +248,7 @@ fn the_ledger_is_recomputable_from_the_attempts_it_came_from() {
 fn an_unreplayed_case_stays_on_its_authors_ledger_at_zero() {
     let unplayed = "44".repeat(32);
     let alice = Keypair::new().pubkey().to_string();
-    let ledger = tally(&[attributed(&alice, &unplayed)], &BTreeMap::new(), &BTreeMap::new());
+    let ledger = tally(&[attributed(&alice, &unplayed)], &BTreeMap::new(), &BTreeMap::new(), &BTreeMap::new());
     assert_eq!(ledger.len(), 1, "the author disappeared with their unplayed case");
     assert_eq!(ledger[0].distinct_cases, 1);
     assert_eq!(ledger[0].proven_replays, 0);
@@ -262,9 +262,9 @@ fn the_ledger_is_ordered_and_not_merely_grouped() {
     let table = vec![attributed(&alice, &a), attributed(&alice, &b), attributed(&alice, &c)];
     let counts = per_case(&attempts(&[&b, &b, &b, &c, &c]));
 
-    let first = tally(&table, &BTreeMap::new(), &counts);
+    let first = tally(&table, &BTreeMap::new(), &BTreeMap::new(), &counts);
     let shuffled: Vec<_> = table.iter().rev().cloned().collect();
-    let second = tally(&shuffled, &BTreeMap::new(), &counts);
+    let second = tally(&shuffled, &BTreeMap::new(), &BTreeMap::new(), &counts);
     assert_eq!(first, second, "the ledger depends on the order the table happened to be in");
 
     let order: Vec<u64> = first[0].cases.iter().map(|c| c.proven_replays).collect();

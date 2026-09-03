@@ -3,9 +3,13 @@
 //! Attribution is a claim, and a claim nobody signed is a line of text. This turns the archive's
 //! case hashes into signed entries in `conformance/sce-archive/AUTHORS.json`.
 //!
+//! **Writing is opt-in.** Without `--write` this prints what it would sign and touches nothing:
+//! a tool that emits signed attestations should have to be told to write one.
+//!
 //! ```text
 //! VITALS_AUTHOR_KEY=~/keys/author.json cargo run --bin sign-attribution -- --all
-//! cargo run --bin sign-attribution -- --key ~/keys/author.json <sce_hash> [<sce_hash>...]
+//! VITALS_AUTHOR_KEY=~/keys/author.json cargo run --bin sign-attribution -- --all --write
+//! cargo run --bin sign-attribution -- --key ~/keys/author.json --write <sce_hash>...
 //! ```
 //!
 //! ## Where the key may live, and where it may not
@@ -19,9 +23,10 @@
 //! `tests/authors.rs` is the other half of that: it fails the build if anything shaped like a
 //! keypair is inside what git would carry.
 //!
-//! `--dry-run` exists because testing this tool once signed all thirty-eight cases with a
-//! throwaway key and wrote the result to the real `AUTHORS.json`. It was deleted, but a season's
-//! attribution should not be one careless invocation away from being wrong: try it dry first.
+//! The default is that way because testing this tool once signed all thirty-eight cases with a
+//! throwaway key and wrote the result straight to the real `AUTHORS.json`. It was deleted within
+//! the minute, and a season's attribution should not have been one careless invocation away from
+//! being wrong in the first place.
 
 use solana_sdk::signature::{read_keypair_file, Signer};
 use std::path::{Path, PathBuf};
@@ -35,8 +40,8 @@ sign-attribution — sign case hashes as their author
 
   --key <path>    the author's keypair. Or $VITALS_AUTHOR_KEY.
                   Never a path inside this repository.
+  --write         actually write. Without it nothing is written, only shown.
   --out <path>    where to write (default: conformance/sce-archive/AUTHORS.json)
-  --dry-run       print what would be written, write nothing
 ";
 
 fn main() {
@@ -102,9 +107,10 @@ fn main() {
     }
 
     let json = serde_json::to_string_pretty(&table).unwrap_or_else(|e| die(&e.to_string()));
-    if args.iter().any(|a| a == "--dry-run") {
+    if !args.iter().any(|a| a == "--write") {
         println!("{json}");
-        eprintln!("\n-- dry run, nothing written --");
+        eprintln!("\n-- nothing written. Add --write to sign {} case(s) as {author} into {} --",
+                  wanted.len(), out_path.display());
         return;
     }
     std::fs::write(&out_path, format!("{json}\n"))
