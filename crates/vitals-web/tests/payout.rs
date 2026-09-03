@@ -64,7 +64,7 @@ fn the_whole_rate_can_go_either_way_when_told_to() {
 
 #[test]
 fn a_memo_names_its_leaf_and_survives_the_round_trip() {
-    let m = payout::memo(LEAF);
+    let m = payout::memo(LEAF, 850_000, 150_000);
     assert!(m.starts_with(MEMO_PREFIX), "the version prefix is what makes this readable later");
     assert_eq!(payout::leaf_from_memo(&m).as_deref(), Some(LEAF));
 }
@@ -76,10 +76,10 @@ fn a_memo_names_its_leaf_and_survives_the_round_trip() {
 /// nothing on devnet — this is that live failure, kept.
 #[test]
 fn the_framing_a_real_rpc_adds_is_read_through() {
-    let framed = format!("[81] {}", payout::memo(LEAF));
+    let framed = format!("[81] {}", payout::memo(LEAF, 850_000, 150_000));
     assert_eq!(payout::leaf_from_memo(&framed).as_deref(), Some(LEAF));
     let other = "c".repeat(64);
-    let two = format!("[12] something else; [81] {}", payout::memo(&other));
+    let two = format!("[12] something else; [81] {}", payout::memo(&other, 1, 2));
     assert_eq!(payout::leaf_from_memo(&two).as_deref(), Some(other.as_str()));
 }
 
@@ -105,9 +105,9 @@ fn a_memo_that_is_not_ours_names_nothing() {
 fn the_paid_set_is_rebuilt_from_memos_and_ignores_everything_else() {
     let other = "a".repeat(64);
     let paid = payout::paid_from_memos(vec![
-        payout::memo(LEAF).as_str(),
+        payout::memo(LEAF, 850_000, 150_000).as_str(),
         "someone else's memo",
-        payout::memo(&other).as_str(),
+        payout::memo(&other, 1, 2).as_str(),
         "vitals.payout.v1 not-a-hash",
     ]);
     assert_eq!(paid.len(), 2);
@@ -155,7 +155,7 @@ fn a_case_nobody_has_claimed_is_not_paid_for() {
 #[test]
 fn a_leaf_the_chain_has_already_paid_is_never_paid_again() {
     let a = allow(&[AUTHOR]);
-    let paid = payout::paid_from_memos(vec![payout::memo(LEAF).as_str()]);
+    let paid = payout::paid_from_memos(vec![payout::memo(LEAF, 850_000, 150_000).as_str()]);
     match payout::decide(&ask(&a, &paid, Some(AUTHOR))) {
         Verdict::Skip(why) => assert!(why.contains("already paid"), "{why}"),
         v => panic!("a leaf was paid twice: {v:?}"),
@@ -215,6 +215,7 @@ fn the_cluster_guard_names_devnet() {
 #[test]
 #[ignore = "needs a local validator at VITALS_RPC"]
 fn a_cluster_that_is_not_devnet_is_refused() {
+    let _guard = ENV.lock().unwrap_or_else(|e| e.into_inner());
     let rpc = std::env::var("VITALS_RPC").unwrap_or_else(|_| "http://127.0.0.1:8899".into());
     // SAFETY: single-threaded test; the values are read back inside from_env immediately.
     unsafe {
@@ -238,6 +239,7 @@ fn a_cluster_that_is_not_devnet_is_refused() {
 /// Rate 0 needs no key, no cluster and no wallet, and must not even look for them.
 #[test]
 fn rate_zero_builds_no_payer_and_asks_for_nothing() {
+    let _guard = ENV.lock().unwrap_or_else(|e| e.into_inner());
     // SAFETY: single-threaded test.
     unsafe {
         std::env::set_var("VITALS_PAYOUT_LAMPORTS", "0");
@@ -251,6 +253,7 @@ fn rate_zero_builds_no_payer_and_asks_for_nothing() {
 /// A rate with no key is a configuration that asks to pay people and cannot. It stops the deploy.
 #[test]
 fn a_rate_without_a_key_refuses_to_start() {
+    let _guard = ENV.lock().unwrap_or_else(|e| e.into_inner());
     // SAFETY: single-threaded test.
     unsafe {
         std::env::set_var("VITALS_PAYOUT_LAMPORTS", "1000000");
@@ -283,7 +286,7 @@ fn a_payout_lands_on_devnet_and_is_never_made_twice() {
         .expect("devnet should be accepted")
         .expect("a rate was set, so there should be a payer");
 
-    let before = payer.paid_leaves().expect("read the paid set");
+    let before = payer.ledger().expect("read the paid set").paid;
     // A leaf of this run's own, so the test proves the refusal rather than tripping over the
     // last run's success. The first time this ran it paid LEAF for real, and the second time it
     // stopped on the chain's memo — which is the mechanism working, but not a test that can be
@@ -316,7 +319,7 @@ fn a_payout_lands_on_devnet_and_is_never_made_twice() {
 
     // Known immediately, because the payer remembers what it just did — the RPC's index lags,
     // and this is the window a naive implementation would pay twice in.
-    let straight_away = payer.paid_leaves().expect("re-read the paid set");
+    let straight_away = payer.ledger().expect("re-read the paid set").paid;
     assert!(straight_away.contains(&leaf), "the payer did not remember its own payment");
 
     // And on the chain, once the index catches up. Polled rather than asserted at once: how long
@@ -365,4 +368,155 @@ fn fresh_memos(payer: &vitals_web::payout::Payer) -> Vec<String> {
         .filter(|s| s["err"].is_null())
         .filter_map(|s| s["memo"].as_str().map(str::to_string))
         .collect()).unwrap_or_default()
+}
+
+// ── the memo nobody else may write ──────────────────────────────────────────
+
+/// A memo carries what each side was paid, so the day's spend is a sum from the chain.
+#[test]
+fn a_memo_says_what_each_side_received() {
+    let m = payout::memo(LEAF, 850_000, 150_000);
+    let rec = payout::parse_memo(&m).expect("our own memo should parse");
+    assert_eq!(rec.leaf, LEAF);
+    assert_eq!(rec.author_lamports, 850_000);
+    assert_eq!(rec.platform_lamports, 150_000);
+    // Through the transport's framing too, which is how it will actually be read.
+    let framed = format!("[97] {m}");
+    assert_eq!(payout::parse_memo(&framed).as_ref().map(|r| r.author_lamports), Some(850_000));
+}
+
+/// A memo from before the amounts existed still means the leaf was paid.
+///
+/// Forgetting that would pay it a second time, which is the one error that cannot be undone.
+#[test]
+fn a_memo_with_no_amounts_is_still_a_payment() {
+    let old = format!("vitals.payout.v1 {LEAF}");
+    let rec = payout::parse_memo(&old).expect("an older memo is still a record");
+    assert_eq!(rec.leaf, LEAF);
+    assert_eq!((rec.author_lamports, rec.platform_lamports), (0, 0));
+}
+
+/// **The poisoning attack, in the parser's own terms.**
+///
+/// Anyone can send a lamport to the payout wallet with a memo naming a leaf. `getSignaturesForAddress`
+/// lists it, because it lists everything that touches the address. If that counted, an author
+/// could be silenced for the price of a lamport and the daily cap filled for not much more — and
+/// the leaf is public on the explorer, so it needs nothing secret.
+///
+/// The parser cannot tell whose memo it is; only the fee payer can, and `Payer::ledger` checks
+/// that with `getTransaction`. This test pins the half that is testable without a cluster: the
+/// text of a hostile memo is indistinguishable from ours, which is *why* the check has to exist.
+#[test]
+fn a_hostile_memo_is_word_for_word_ours_which_is_why_the_fee_payer_decides() {
+    let hostile = payout::memo(LEAF, 999_999_999, 0);
+    assert!(
+        payout::parse_memo(&hostile).is_some(),
+        "if the text alone could be told apart, the fee-payer check would be optional. It cannot."
+    );
+    assert_eq!(payout::parse_memo(&hostile).unwrap().leaf, LEAF);
+}
+
+// ── configuration that refuses rather than defaults ─────────────────────────
+
+/// These tests set process-wide environment variables, and cargo runs tests in parallel — so one
+/// test's `VITALS_PLATFORM_BPS` lands in another's `from_env`. They take this in turn instead.
+/// (Found the way these things are: three of them failed together and none alone.)
+static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn from_env_with(vars: &[(&str, &str)]) -> Result<Option<vitals_web::payout::Payer>, String> {
+    let _guard = ENV.lock().unwrap_or_else(|e| e.into_inner());
+    // SAFETY: single-threaded test; every value is read back inside from_env immediately.
+    unsafe {
+        for (k, v) in vars {
+            std::env::set_var(k, v);
+        }
+    }
+    let got = vitals_web::payout::Payer::from_env("http://127.0.0.1:1");
+    unsafe {
+        for (k, _) in vars {
+            std::env::remove_var(k);
+        }
+    }
+    got
+}
+
+/// A mistyped cap that becomes the default is a spending limit nobody set.
+#[test]
+fn a_cap_that_is_not_a_number_stops_the_deploy() {
+    let got = from_env_with(&[
+        ("VITALS_PAYOUT_LAMPORTS", "1000000"),
+        ("VITALS_PAYOUT_KEY", "/nonexistent/key.json"),
+        ("VITALS_PAYOUT_DAILY_CAP_LAMPORTS", "0.1 SOL"),
+    ]);
+    match got {
+        Err(why) => assert!(why.contains("VITALS_PAYOUT_DAILY_CAP_LAMPORTS"), "{why}"),
+        Ok(_) => panic!("a typo became a default spending limit"),
+    }
+}
+
+#[test]
+fn a_platform_share_that_leaves_the_author_nothing_is_refused() {
+    for bad in ["10000", "20000"] {
+        let got = from_env_with(&[
+            ("VITALS_PAYOUT_LAMPORTS", "1000000"),
+            ("VITALS_PAYOUT_KEY", "/nonexistent/key.json"),
+            ("VITALS_PLATFORM_BPS", bad),
+        ]);
+        match got {
+            Err(why) => assert!(why.contains("leaves the author nothing"), "{bad}: {why}"),
+            Ok(_) => panic!("{bad} bps was accepted, which pays the author zero"),
+        }
+    }
+}
+
+#[test]
+fn a_platform_share_that_is_not_a_number_stops_the_deploy() {
+    let got = from_env_with(&[
+        ("VITALS_PAYOUT_LAMPORTS", "1000000"),
+        ("VITALS_PAYOUT_KEY", "/nonexistent/key.json"),
+        ("VITALS_PLATFORM_BPS", "fifteen percent"),
+    ]);
+    assert!(got.is_err(), "a typo became a default share");
+}
+
+/// **The poisoning attack, against a real cluster.**
+///
+/// A stranger has sent this wallet one lamport with a memo naming a leaf, in our own format. The
+/// signature listing shows it, because it shows everything that touches the address. It must not
+/// count: the fee payer is not this key.
+///
+/// `POISONED_LEAF` is the leaf that memo names.
+#[test]
+#[ignore = "needs a devnet payout key that has been sent a hostile memo"]
+fn a_memo_this_wallet_did_not_pay_for_is_not_a_payment() {
+    let _guard = ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let key = std::env::var("PAYOUT_KEY").expect("PAYOUT_KEY");
+    let poisoned = std::env::var("POISONED_LEAF").expect("POISONED_LEAF");
+    // SAFETY: single-threaded under ENV.
+    unsafe {
+        std::env::set_var("VITALS_PAYOUT_LAMPORTS", "1000000");
+        std::env::set_var("VITALS_PAYOUT_KEY", &key);
+    }
+    let payer = vitals_web::payout::Payer::from_env("https://api.devnet.solana.com")
+        .expect("devnet")
+        .expect("a payer");
+    let led = payer.ledger().expect("read the ledger");
+    unsafe {
+        std::env::remove_var("VITALS_PAYOUT_LAMPORTS");
+        std::env::remove_var("VITALS_PAYOUT_KEY");
+    }
+
+    assert!(
+        !led.paid.contains(&poisoned),
+        "a memo from somebody else counted as a payment — an author could be silenced for the \
+         price of one lamport"
+    );
+    // And the day's spend did not absorb the 999,999,999 lamports that memo claimed.
+    assert!(
+        led.spent_today < 999_999_999,
+        "a stranger's memo inflated today's spend to {}",
+        led.spent_today
+    );
+    println!("  ignored the hostile memo · paid {} leaves · spent today {}",
+             led.paid.len(), led.spent_today);
 }
