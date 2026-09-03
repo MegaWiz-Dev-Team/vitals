@@ -35,7 +35,7 @@ Hardening that is easy to miss: `permissions: contents: read` at the top, every 
 a **commit SHA** (a tag is a pointer somebody can move), concurrency cancellation, and the
 `unsafe_code` forbid in every crate that can carry it — enforced by the compiler, not promised.
 
-**The program keypair never enters CI.** `keys/vitals_program-keypair.json` *is* the program's
+**The program keypair never enters CI.** The program keypair *is* the program's
 identity on every cluster; CI deploys to a throwaway id for exactly this reason.
 
 ## CD — deliberate, gated, and half missing on purpose

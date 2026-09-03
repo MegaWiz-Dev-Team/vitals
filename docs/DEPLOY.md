@@ -88,11 +88,13 @@ sign-in is far more reliable, and a free Helius or QuickNode endpoint usually br
 
 ### The program keypair is the program id
 
-`keys/vitals_program-keypair.json` is not a build artifact. It *is* the address the program lives
+The program keypair is not a build artifact. It *is* the address the program lives
 at, and every anchored record points there. It used to sit in `target/`, which `cargo clean`
 deletes and git ignores — one careless clean and the id changes, stranding everything anchored
 under the old one. It now lives outside `target/`, is still ignored by git, and is backed up with
 the relay key.
+
+It lives **outside this repository** and its path is given in `VITALS_PROGRAM_KEY` — there is no default, because a key a script can find on its own is a key that ends up committed. `crates/vitals-web/tests/authors.rs` fails the build if anything shaped like a keypair appears in what git carries.
 
 ## Cloud Run
 

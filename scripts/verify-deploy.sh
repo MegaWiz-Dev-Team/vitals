@@ -14,11 +14,16 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-PROGRAM_ID="${VITALS_PROGRAM_ID:-$(solana address -k keys/vitals_program-keypair.json 2>/dev/null || true)}"
+# The id, or the key that is the id. No in-repo fallback: the keypair lives outside this
+# repository and its path is given.
+PROGRAM_ID="${VITALS_PROGRAM_ID:-}"
+if [ -z "$PROGRAM_ID" ] && [ -n "${VITALS_PROGRAM_KEY:-}" ]; then
+  PROGRAM_ID=$(solana address -k "$VITALS_PROGRAM_KEY" 2>/dev/null || true)
+fi
 URL="${VITALS_RPC:-http://127.0.0.1:8899}"
 SO="target/deploy/vitals_program.so"
 
-[ -n "$PROGRAM_ID" ] || { echo "set VITALS_PROGRAM_ID, or keep keys/vitals_program-keypair.json"; exit 1; }
+[ -n "$PROGRAM_ID" ] || { echo "set VITALS_PROGRAM_ID, or VITALS_PROGRAM_KEY pointing at the program keypair outside this repository"; exit 1; }
 [ -f "$SO" ] || { echo "no $SO — build it first: cd crates/vitals-program && cargo build-sbf --arch v3"; exit 1; }
 
 echo "── program  $PROGRAM_ID"

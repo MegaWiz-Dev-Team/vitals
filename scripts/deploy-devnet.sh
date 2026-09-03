@@ -26,11 +26,28 @@ UPGRADE_AUTHORITY="${UPGRADE_AUTHORITY:-}"
 
 RPC="${RPC:-https://api.$CLUSTER.solana.com}"
 KEY="${VITALS_KEYPAIR:-$HOME/.config/solana/id.json}"
-# The program keypair IS the program id. Kept outside target/ because `cargo clean` deletes that
-# directory, and losing this file changes the id — which strands every record ever anchored.
-PROGRAM_KEY="keys/vitals_program-keypair.json"
+# The program keypair IS the program id: losing this file changes the id, which strands every
+# record ever anchored. It lives outside this repository and its path is given, never defaulted —
+# a key a script can find on its own is a key that ends up committed. Same rule as
+# `sign-attribution`, and `tests/authors.rs` fails the build if one appears in what git carries.
+PROGRAM_KEY="${VITALS_PROGRAM_KEY:-}"
 
-[ -f "$PROGRAM_KEY" ] || { echo "no program keypair at $PROGRAM_KEY"; exit 1; }
+[ -n "$PROGRAM_KEY" ] || {
+  echo "set VITALS_PROGRAM_KEY to the program keypair's path." >&2
+  echo "  There is deliberately no default: the key belongs outside this repository." >&2
+  exit 1
+}
+[ -f "$PROGRAM_KEY" ] || { echo "no program keypair at $PROGRAM_KEY" >&2; exit 1; }
+# Refused inside the repo whatever it is called, and whichever end is inside — a path reached
+# through this directory is one `git add -A` from being published.
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+KEY_REAL="$(cd "$(dirname "$PROGRAM_KEY")" && pwd -P)/$(basename "$PROGRAM_KEY")"
+case "$KEY_REAL" in
+  "$REPO_ROOT"/*)
+    echo "$KEY_REAL is inside this repository." >&2
+    echo "  Keep the program keypair somewhere the repository cannot reach, and give that path." >&2
+    exit 1 ;;
+esac
 PROGRAM_ID=$(solana address -k "$PROGRAM_KEY")
 
 
