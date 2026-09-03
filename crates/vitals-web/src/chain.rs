@@ -23,9 +23,10 @@ use std::str::FromStr;
 use vitals_progress::merkle;
 use vitals_progress::record::AttemptRecord;
 use vitals_progress::{Difficulty, StarBars};
+use std::collections::BTreeMap;
 use vitals_program::{
     commitment_pda, Account, ClaimAccount, Commitment, Instruction, Progress, RecordWire,
-    TreeAccount, SEED_ACCOUNT, SEED_CLAIM, SEED_PROGRESS,
+    TreeAccount, CLAIM_LEN, SEED_ACCOUNT, SEED_CLAIM, SEED_PROGRESS,
 };
 
 pub const SPECIALTY: u8 = 1;
@@ -455,6 +456,47 @@ pub fn level_name(v: u8) -> &'static str {
     match v {
         0 => "Novice", 1 => "Advanced beginner", 2 => "Competent",
         3 => "Proficient", 4 => "Expert", _ => "?",
+    }
+}
+
+impl Chain {
+    /// How many **proven** attempts this tree holds, per case.
+    ///
+    /// Proven, not anchored, and the word is the whole design. `AnchorReplay` appends a leaf hash
+    /// to an incremental tree that keeps a root, a next index and a filled path — no case, no
+    /// per-leaf record, nothing attributable. `ProveAttempt` is what writes a `ProvenAttempt`
+    /// into a player's claim account, and only that carries the case. So a per-case count can
+    /// exist for proven attempts and cannot exist for anchored ones.
+    ///
+    /// Read the way `verify_player` reads it: every account the program owns, kept only when it
+    /// is a claim account whose PDA re-derives for *this* tree from the player it names. The
+    /// re-derivation is the filter — it is what separates this tree's buffers from every other
+    /// tree's, and what stops an account that merely looks the right size from being counted.
+    pub fn proven_by_case(&self, tree_id: u64) -> Result<BTreeMap<String, u64>, String> {
+        let accounts = self
+            .rpc
+            .get_program_accounts(&self.program_id)
+            .map_err(|e| format!("could not list the program's accounts: {e}"))?;
+
+        let mut per_case: BTreeMap<String, u64> = BTreeMap::new();
+        for (key, acct) in accounts {
+            if acct.data.len() != CLAIM_LEN {
+                continue;
+            }
+            let Ok(claim) =
+                <ClaimAccount as borsh::BorshDeserialize>::deserialize(&mut &acct.data[..])
+            else {
+                continue;
+            };
+            let player = Pubkey::new_from_array(claim.player);
+            if self.claim_pda(&player, tree_id) != key {
+                continue;
+            }
+            for attempt in &claim.attempts {
+                *per_case.entry(hex32(&attempt.case)).or_default() += 1;
+            }
+        }
+        Ok(per_case)
     }
 }
 

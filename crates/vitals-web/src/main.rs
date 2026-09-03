@@ -8,7 +8,7 @@
 //! and sessions in a map. The point is to make the automaton playable, not to ship a platform.
 
 mod chain;
-use vitals_web::{archive, fuel, lang, meter, news2, patient, reading, review, store, usage};
+use vitals_web::{archive, authors, fuel, lang, meter, news2, patient, reading, review, store, usage};
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -2979,6 +2979,43 @@ fn main() {
             // The numbers are joined here rather than in the page because three of the four
             // already have a single source in this process (the meter, the leaf list, the
             // relay's own key) and the fourth needs an RPC call the browser must not make.
+            // Who wrote the cases, and how many proven replays each one has.
+            //
+            // The ledger a payment would read, with no payment in it: no currency, no "earned",
+            // no rate. SYSTEM_DESIGN §7 says authors are paid per replay; this is the counting
+            // that has to be true and checkable before that sentence can mean anything, and
+            // TOKENOMICS.md keeps its "designed, not built" label untouched.
+            //
+            // Nothing here comes from /api/usage. Those are this server's own tallies of its own
+            // work, including runs by scripts that carry no device key; a replay of somebody's
+            // case means one that survived the Merkle check on chain, and nothing else.
+            (Method::Get, "/api/authors") => {
+                let root = scenario_root();
+                let table = match authors::load(&root.join(authors::AUTHORS_PATH)) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        let _ = req.respond(json(serde_json::json!({ "error": e })));
+                        continue;
+                    }
+                };
+                let paths = authors::archive_paths(&root.join(authors::INDEX_PATH))
+                    .unwrap_or_default();
+                let tree_id = tree.lock().unwrap().tree_id;
+                // Absent chain is an empty count, not an error: the page still has something
+                // honest to show, and the field below says which it is.
+                let (proven, counted) = match chain.as_ref().map(|c| c.proven_by_case(tree_id)) {
+                    Some(Ok(p)) => (p, true),
+                    _ => (Default::default(), false),
+                };
+                json(serde_json::json!({
+                    "counts": "proven replays — attempts that passed the Merkle check on chain. \
+                               Anchoring alone carries no case, so it cannot be counted per case.",
+                    "tree_id": tree_id,
+                    "counted_from_chain": counted,
+                    "attributed_cases": table.len(),
+                    "authors": authors::tally(&table, &paths, &proven),
+                }))
+            }
             (Method::Get, "/api/fuel") => {
                 let t = tree.lock().unwrap();
                 let mut v = fuel.view(chain.as_ref().map(|c| c.relay_pubkey()).as_deref());
@@ -4221,6 +4258,9 @@ mod tests {
         }
         for p in ["/", "/play", "/api/new", "/api/step", "/api/finish", "/api/kit", "/api/tape", "/api/chain",
                   "/api/meter", "/api/fuel", "/api/stars", "/api/lang", "/api/usage", "/donate",
+                  // Who wrote what, and how often it has been proven. A ledger nobody can read
+                  // is not one anybody can check, and checkable is the entire claim.
+                  "/api/authors",
                   // The policy and the terms. A token on either would be a policy nobody can
                   // read, which is the same as not having one — and Google's consent screen has
                   // to be able to fetch the privacy URL without credentials.

@@ -193,3 +193,79 @@ mod bs58 {
         })
     }
 }
+
+// ── the tally ───────────────────────────────────────────────────────────────
+
+/// One case on an author's ledger.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AuthoredCase {
+    pub sce_hash: String,
+    /// Where the case lives, from the archive index — so a reader can fetch and hash it.
+    pub path: String,
+    /// Proven replays of this case on this tree. See [`crate::authors`] on why not anchored.
+    pub proven_replays: u64,
+}
+
+/// What one author key has to its name.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AuthorLedger {
+    pub author: String,
+    pub distinct_cases: usize,
+    pub proven_replays: u64,
+    pub cases: Vec<AuthoredCase>,
+}
+
+/// Join the side table to the chain's per-case counts.
+///
+/// Pure on purpose: everything that could be wrong about the arithmetic is wrong here, where a
+/// test can hand it a known set and check the answer without a validator in the room. The chain
+/// reading lives in [`crate::chain`]; this only adds up.
+///
+/// A case with no proven replays still appears, at zero. Authorship is not a reward for
+/// popularity, and an author whose cases nobody has replayed yet has still written them — a
+/// ledger that hides them would be a leaderboard.
+pub fn tally(
+    table: &[Attribution],
+    paths: &std::collections::BTreeMap<String, String>,
+    proven: &std::collections::BTreeMap<String, u64>,
+) -> Vec<AuthorLedger> {
+    let mut by_author: std::collections::BTreeMap<String, Vec<AuthoredCase>> = Default::default();
+    for a in table {
+        by_author.entry(a.author.clone()).or_default().push(AuthoredCase {
+            sce_hash: a.sce_hash.clone(),
+            path: paths.get(&a.sce_hash).cloned().unwrap_or_default(),
+            proven_replays: proven.get(&a.sce_hash).copied().unwrap_or(0),
+        });
+    }
+    by_author
+        .into_iter()
+        .map(|(author, mut cases)| {
+            // Most-replayed first, then by hash, so the same inputs always print the same way —
+            // a tally somebody is going to diff against a re-derivation must not reorder itself.
+            cases.sort_by(|a, b| {
+                b.proven_replays.cmp(&a.proven_replays).then(a.sce_hash.cmp(&b.sce_hash))
+            });
+            AuthorLedger {
+                author,
+                distinct_cases: cases.len(),
+                proven_replays: cases.iter().map(|c| c.proven_replays).sum(),
+                cases,
+            }
+        })
+        .collect()
+}
+
+/// Every case in the archive index, by hash, with where it lives.
+pub fn archive_paths(
+    index: &std::path::Path,
+) -> Result<std::collections::BTreeMap<String, String>, String> {
+    #[derive(Deserialize)]
+    struct Entry {
+        sce_hash: String,
+        path: String,
+    }
+    let text = std::fs::read_to_string(index).map_err(|e| format!("{}: {e}", index.display()))?;
+    let entries: Vec<Entry> =
+        serde_json::from_str(&text).map_err(|e| format!("{}: {e}", index.display()))?;
+    Ok(entries.into_iter().map(|e| (e.sce_hash, e.path)).collect())
+}

@@ -169,3 +169,116 @@ fn no_signing_key_is_anywhere_git_would_carry_it() {
         found.join("\n  ")
     );
 }
+
+// ── the tally ───────────────────────────────────────────────────────────────
+
+use std::collections::BTreeMap;
+use vitals_web::authors::{tally, AuthorLedger};
+
+/// One proven attempt, as the chain holds it: a case, and nothing about who wrote it.
+fn attempts(cases: &[&str]) -> Vec<String> {
+    cases.iter().map(|c| c.to_string()).collect()
+}
+
+/// Count a set of attempts per case — the shape `Chain::proven_by_case` returns.
+fn per_case(attempts: &[String]) -> BTreeMap<String, u64> {
+    let mut m = BTreeMap::new();
+    for c in attempts {
+        *m.entry(c.clone()).or_insert(0u64) += 1;
+    }
+    m
+}
+
+/// **The re-derivation.** The ledger must be recomputable from the same attempts by other means.
+///
+/// `tally` groups by author and sums; this walks the raw attempt list per author and counts, with
+/// no grouping and no shared code. If the two ever disagree, the ledger is arithmetic nobody
+/// should trust — and a ledger nobody should trust is worse than no ledger, because it looks
+/// like one.
+#[test]
+fn the_ledger_is_recomputable_from_the_attempts_it_came_from() {
+    let (a, b) = ("11".repeat(32), "22".repeat(32));
+    let (c, unplayed) = ("33".repeat(32), "44".repeat(32));
+    let alice = Keypair::new().pubkey().to_string();
+    let bob = Keypair::new().pubkey().to_string();
+
+    let table = vec![
+        attributed(&alice, &a),
+        attributed(&alice, &b),
+        attributed(&alice, &unplayed),
+        attributed(&bob, &c),
+    ];
+    let raw = attempts(&[&a, &a, &a, &b, &c, &c]);
+    let paths = BTreeMap::new();
+
+    let ledger = tally(&table, &paths, &per_case(&raw));
+
+    // Recomputed the long way round: for each author, walk every attempt and count the ones
+    // whose case that author is credited with.
+    for entry in &ledger {
+        let mine: Vec<&String> = table
+            .iter()
+            .filter(|t| t.author == entry.author)
+            .map(|t| &t.sce_hash)
+            .collect();
+        let expected: u64 = raw.iter().filter(|c| mine.contains(c)).count() as u64;
+        assert_eq!(
+            entry.proven_replays, expected,
+            "{}'s total does not survive being counted the other way",
+            entry.author
+        );
+        assert_eq!(entry.distinct_cases, mine.len(), "{}'s case count is wrong", entry.author);
+        assert_eq!(
+            entry.cases.iter().map(|c| c.proven_replays).sum::<u64>(),
+            entry.proven_replays,
+            "{}'s per-case rows do not add up to their own total",
+            entry.author
+        );
+    }
+    // And the whole ledger accounts for every attempt, none twice.
+    assert_eq!(
+        ledger.iter().map(|e| e.proven_replays).sum::<u64>(),
+        raw.len() as u64,
+        "the ledger and the attempt list disagree about how many replays happened"
+    );
+}
+
+/// A case nobody has replayed is still a case somebody wrote.
+#[test]
+fn an_unreplayed_case_stays_on_its_authors_ledger_at_zero() {
+    let unplayed = "44".repeat(32);
+    let alice = Keypair::new().pubkey().to_string();
+    let ledger = tally(&[attributed(&alice, &unplayed)], &BTreeMap::new(), &BTreeMap::new());
+    assert_eq!(ledger.len(), 1, "the author disappeared with their unplayed case");
+    assert_eq!(ledger[0].distinct_cases, 1);
+    assert_eq!(ledger[0].proven_replays, 0);
+}
+
+/// The same inputs must print the same way, or a diff against a re-derivation is noise.
+#[test]
+fn the_ledger_is_ordered_and_not_merely_grouped() {
+    let (a, b, c) = ("11".repeat(32), "22".repeat(32), "33".repeat(32));
+    let alice = Keypair::new().pubkey().to_string();
+    let table = vec![attributed(&alice, &a), attributed(&alice, &b), attributed(&alice, &c)];
+    let counts = per_case(&attempts(&[&b, &b, &b, &c, &c]));
+
+    let first = tally(&table, &BTreeMap::new(), &counts);
+    let shuffled: Vec<_> = table.iter().rev().cloned().collect();
+    let second = tally(&shuffled, &BTreeMap::new(), &counts);
+    assert_eq!(first, second, "the ledger depends on the order the table happened to be in");
+
+    let order: Vec<u64> = first[0].cases.iter().map(|c| c.proven_replays).collect();
+    assert_eq!(order, vec![3, 2, 0], "cases are not ordered by how often they were replayed");
+}
+
+fn attributed(author: &str, sce_hash: &str) -> Attribution {
+    Attribution {
+        sce_hash: sce_hash.to_string(),
+        author: author.to_string(),
+        signature: String::new(),
+    }
+}
+
+/// Unused today and load-bearing tomorrow: silences nothing, proves the type is public.
+#[allow(dead_code)]
+fn _ledger_is_nameable(_: AuthorLedger) {}

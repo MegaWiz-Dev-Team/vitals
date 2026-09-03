@@ -18,6 +18,10 @@
 //!
 //! `tests/authors.rs` is the other half of that: it fails the build if anything shaped like a
 //! keypair is inside what git would carry.
+//!
+//! `--dry-run` exists because testing this tool once signed all thirty-eight cases with a
+//! throwaway key and wrote the result to the real `AUTHORS.json`. It was deleted, but a season's
+//! attribution should not be one careless invocation away from being wrong: try it dry first.
 
 use solana_sdk::signature::{read_keypair_file, Signer};
 use std::path::{Path, PathBuf};

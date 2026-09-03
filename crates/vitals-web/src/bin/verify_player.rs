@@ -76,6 +76,7 @@ verify_player — re-derive a player's level from devnet, keyless.
   verify_player                       discover the current tree and the players on it
   verify_player <PLAYER>              verify that player on the current tree
   verify_player <PLAYER> <TREE_ID>    verify that player on that tree
+  verify_player --authors             who wrote the cases, and how often each was proven
   verify_player --help
 
 The tree id is taken from the command line, then $VITALS_TREE_ID, then the live server at
@@ -338,6 +339,10 @@ fn main() {
         print!("{USAGE}");
         return;
     }
+    let authors_mode = args.iter().any(|a| a == "--authors");
+    // Flags are not player keys. `--authors` used to be parsed as one and rejected as bad base58,
+    // which is a confusing way to be told the flag works.
+    let args: Vec<String> = args.into_iter().filter(|a| !a.starts_with("--")).collect();
 
     let api = env_or("VITALS_CHAIN_API", CHAIN_API);
     let rpc_url = env_or("VITALS_RPC", RPC);
@@ -350,6 +355,14 @@ fn main() {
     };
     let (tree_id, source) = resolve_tree(args.get(1), &api);
     let rpc = RpcClient::new_with_commitment(rpc_url.clone(), CommitmentConfig::confirmed());
+
+    // The ledger is about cases, not about any one player, so it answers before the tool goes
+    // looking for whose record to check.
+    if authors_mode {
+        println!("tree id from: {}\n", source.as_str());
+        print_author_ledger(&rpc, &program, tree_id, &api);
+        return;
+    }
 
     // Whose run to check. Given, or discovered — never a name compiled in months ago that may
     // have no records on the tree that is live today.
@@ -504,4 +517,91 @@ fn main() {
 
 fn hex32(b: &[u8; 32]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+/// The author ledger, re-derived here rather than read from the server.
+///
+/// `/api/authors` computes the same thing, and that is the point of this existing: two paths to
+/// one number, one of them not ours to trust. A stranger runs this against the same tree and gets
+/// the same tally, or the ledger is only an assertion.
+///
+/// The attributions come from the repository, because that is where they are published and where
+/// their signatures can be checked. The counts come from the chain and from nowhere else.
+fn print_author_ledger(rpc: &RpcClient, program: &Pubkey, tree_id: u64, api: &str) {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let table = match vitals_web::authors::load(&root.join(vitals_web::authors::AUTHORS_PATH)) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(EXIT_UNVERIFIED);
+        }
+    };
+    let known = vitals_web::authors::archive_hashes(&root.join(vitals_web::authors::INDEX_PATH))
+        .unwrap_or_default();
+    let problems = vitals_web::authors::audit(&table, &known);
+    if !problems.is_empty() {
+        eprintln!("the attributions do not hold up:");
+        for p in &problems {
+            eprintln!("  {p}");
+        }
+        std::process::exit(EXIT_UNVERIFIED);
+    }
+
+    println!("author ledger · tree #{tree_id} · program {program}");
+    println!("counted from the chain: proven attempts, which are the ones that passed a Merkle");
+    println!("check. Anchoring alone carries no case and cannot be counted per case.\n");
+
+    if table.is_empty() {
+        println!("no attributions published yet — {} is absent or empty.",
+                 vitals_web::authors::AUTHORS_PATH);
+        println!("The format and its checks ship before any key exists to sign with.");
+        return;
+    }
+
+    let paths = vitals_web::authors::archive_paths(&root.join(vitals_web::authors::INDEX_PATH))
+        .unwrap_or_default();
+    let counts = match chain_counts(rpc, program, tree_id) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(EXIT_UNVERIFIED);
+        }
+    };
+    for entry in vitals_web::authors::tally(&table, &paths, &counts) {
+        println!("{}  {} case(s) · {} proven replay(s)",
+                 entry.author, entry.distinct_cases, entry.proven_replays);
+        for c in &entry.cases {
+            println!("    {:>4}  {}  {}", c.proven_replays, &c.sce_hash[..12], c.path);
+        }
+    }
+    println!("\nthe server serves the same tally at {}", api.replace("/api/chain", "/api/authors"));
+}
+
+/// Proven attempts per case, straight off the chain — the same filter `Chain::proven_by_case`
+/// applies, written out here so this tool depends on no server at all.
+fn chain_counts(
+    rpc: &RpcClient,
+    program: &Pubkey,
+    tree_id: u64,
+) -> Result<std::collections::BTreeMap<String, u64>, String> {
+    use vitals_program::CLAIM_LEN;
+    let accounts = rpc
+        .get_program_accounts(program)
+        .map_err(|e| format!("could not list the program's accounts: {e}"))?;
+    let mut per_case: std::collections::BTreeMap<String, u64> = Default::default();
+    for (key, acct) in accounts {
+        if acct.data.len() != CLAIM_LEN {
+            continue;
+        }
+        let Ok(claim) = ClaimAccount::deserialize(&mut &acct.data[..]) else { continue };
+        let player = Pubkey::new_from_array(claim.player);
+        if claim_pda(program, &player, tree_id) != key {
+            continue;
+        }
+        for a in &claim.attempts {
+            *per_case.entry(a.case.iter().map(|b| format!("{b:02x}")).collect::<String>())
+                .or_default() += 1;
+        }
+    }
+    Ok(per_case)
 }
