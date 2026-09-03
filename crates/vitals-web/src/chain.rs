@@ -265,6 +265,28 @@ impl Chain {
         self.prepare(device, ixs)
     }
 
+    /// How many leaves the *program* has accepted into this tree.
+    ///
+    /// `Ok(None)` is a tree that does not exist yet — nothing has ever been anchored to it, so
+    /// its length is zero. `Err` is "could not ask", which is a different answer entirely and
+    /// must never be rounded down to zero: [`crate::reconcile_leaves`] truncates on a short
+    /// chain, and truncating against an RPC timeout would delete every leaf this server has.
+    ///
+    /// [`Self::fetch`] cannot be used here because it collapses both into `None`.
+    pub fn tree_len(&self, tree_id: u64) -> Result<Option<u64>, String> {
+        let pda = self.tree_pda(tree_id);
+        let got = self
+            .rpc
+            .get_account_with_commitment(&pda, CommitmentConfig::confirmed())
+            .map_err(|e| format!("could not read the tree account: {e}"))?;
+        match got.value {
+            None => Ok(None),
+            Some(acct) => <TreeAccount as borsh::BorshDeserialize>::deserialize(&mut &acct.data[..])
+                .map(|t| Some(t.next_index))
+                .map_err(|e| format!("the tree account did not decode: {e}")),
+        }
+    }
+
     /// What the tree looks like now. Read after the transaction confirms.
     pub fn anchored(&self, id: &Pubkey, tree_id: u64, index: u64) -> Result<Anchored, String> {
         let tree: TreeAccount = self.fetch(&self.tree_pda(tree_id)).ok_or("tree missing")?;

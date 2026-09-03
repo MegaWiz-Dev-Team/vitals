@@ -65,7 +65,20 @@ fn pubkey_of(key: &std::path::Path) -> Option<String> {
 }
 
 impl Server {
+    /// Give up the process but keep the state directory, so a restart can read what it wrote.
+    fn stop(self) -> std::path::PathBuf {
+        let dir = self.state.clone();
+        let mut me = std::mem::ManuallyDrop::new(self);
+        let _ = me.child.kill();
+        let _ = me.child.wait();
+        dir
+    }
+
     fn start() -> Option<Server> {
+        Server::start_on(std::path::PathBuf::new())
+    }
+
+    fn start_on(reuse: std::path::PathBuf) -> Option<Server> {
         let program = std::env::var("VITALS_PROGRAM_ID").ok()?;
         // Unique per server, not per process: these tests are threads in one binary, so
         // process::id() is the same for all of them. They shared one state directory, and each
@@ -73,9 +86,15 @@ impl Server {
         // why the suite passed one at a time and failed together.
         static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let state = std::env::temp_dir()
-            .join(format!("vitals-chain-{}-{n}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&state);
+        let reusing = !reuse.as_os_str().is_empty();
+        let state = if reusing {
+            reuse
+        } else {
+            std::env::temp_dir().join(format!("vitals-chain-{}-{n}", std::process::id()))
+        };
+        if !reusing {
+            let _ = std::fs::remove_dir_all(&state);
+        }
         std::fs::create_dir_all(&state).ok()?;
 
         // Its own relay key, because the tree is scoped to whoever funds it. Sharing one key made
@@ -84,7 +103,13 @@ impl Server {
         // this reason — so they addressed the same tree and overwrote each other's leaves. Four
         // independent operators is what the suite is actually modelling, and independent
         // operators have their own keys.
+        // Reusing a directory means reusing its relay key. The tree document is filed under a
+        // hash of that key, so minting a fresh one on restart would quietly address a different
+        // tree and the restart would prove nothing.
         let key = state.join("relay.json");
+        if reusing && key.exists() {
+            return Server::spawn(state, key, program);
+        }
         let ok = Command::new("solana-keygen")
             .args(["new", "--no-bip39-passphrase", "-s", "--force", "-o"])
             .arg(&key)
@@ -102,10 +127,18 @@ impl Server {
             .stdout(Stdio::null()).stderr(Stdio::null())
             .status().ok()?.success();
         if !funded { return None; }
+        Server::spawn(state, key, program)
+    }
+
+    fn spawn(
+        state: std::path::PathBuf,
+        key: std::path::PathBuf,
+        program: String,
+    ) -> Option<Server> {
         let mut child = Command::new(env!("CARGO_BIN_EXE_vitals-web"))
             .env("VITALS_WEB_BIND", "127.0.0.1:0")
             .env("VITALS_STATE_DIR", &state)
-            .env("VITALS_PROGRAM_ID", program)
+            .env("VITALS_PROGRAM_ID", &program)
             .env("VITALS_KEYPAIR", &key)
             .env_remove("VITALS_TOKEN")
             .env_remove("HEIMDALL_API_KEY")
@@ -523,4 +556,68 @@ fn an_abandoned_anchor_does_not_poison_the_tree_for_everyone_after() {
         anchored["proven"], true,
         "a player who was never in anyone's window cannot prove a clean run: {anchored}"
     );
+}
+
+/// The other direction, and the one that must refuse.
+///
+/// `reconcile_leaves` sweeps a list that is *longer* than the chain, because those leaves are
+/// ghosts of anchors nobody submitted and no proof refers to them. A list that is *shorter* is
+/// the opposite: a leaf that IS anchored has gone missing from the list every proof is rebuilt
+/// from, somebody holds a proof of it, and appending would build a tree that abandons their
+/// record. There is no repair — the bytes are gone.
+///
+/// Simulated the only honest way: anchor for real, stop the server, take the leaf out of the
+/// stored tree, and bring it back up on the same directory. That is what losing one looks like.
+#[test]
+#[ignore = "needs a validator and VITALS_PROGRAM_ID"]
+fn a_server_that_lost_an_anchored_leaf_refuses_to_anchor_over_it() {
+    let s = Server::start().expect("VITALS_PROGRAM_ID");
+    let first = Player::new();
+    let anchored = s.win(&first, &first.pubkey(), None);
+    assert_eq!(anchored["proven"], true, "the setup run did not anchor: {anchored}");
+
+    // Take the leaf away, exactly as a lost or rolled-back store would.
+    let state = s.stop();
+    let dir = state.join("tree");
+    let file = std::fs::read_dir(&dir)
+        .unwrap_or_else(|e| panic!("{}: {e}", dir.display()))
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .find(|p| p.extension().is_some_and(|x| x == "json"))
+        .expect("no stored tree to damage");
+    let before = std::fs::read_to_string(&file).expect("read the tree");
+    std::fs::write(&file, tree_doc_without_leaves(&before)).expect("write the tree");
+
+    let s = Server::start_on(state).expect("restart");
+    let next = Player::new();
+    let refused = s.win(&next, &next.pubkey(), Some("second run"));
+
+    let err = refused["error"].as_str().unwrap_or_default();
+    assert!(
+        err.contains("cannot prove what it has already anchored"),
+        "a server missing an anchored leaf anchored anyway: {refused}"
+    );
+    assert_eq!(refused["leaves_on_chain"], 1, "it did not report the chain's length: {refused}");
+    assert_eq!(refused["leaves_here"], 0, "it did not report its own: {refused}");
+}
+
+/// Rewrite a stored tree document keeping its id and losing its leaves.
+///
+/// Two wrong guesses went before this one, and both are the reason it is written down. The first
+/// cut the `leaves` array out of the text — but a leaf is `[u8; 32]`, so it serialises as
+/// thirty-two numbers and the first `]` after `"leaves":[` closes the first *leaf*, not the list.
+/// That left invalid JSON, the server fell back to `Tree::default()`, and the test cheerfully
+/// anchored to a different tree while appearing to prove something. The second assumed the
+/// Firestore envelope: `Store::put` only wraps for Firestore, and the disk backend these tests
+/// use writes the value plain.
+fn tree_doc_without_leaves(json: &str) -> String {
+    let mut tree: serde_json::Value =
+        serde_json::from_str(json).expect("the stored tree is not JSON");
+    assert!(
+        tree["leaves"].as_array().is_some_and(|a| !a.is_empty()),
+        "there were no leaves to lose: {tree}"
+    );
+    assert!(tree["tree_id"].is_u64(), "the tree id would be lost with them: {tree}");
+    tree["leaves"] = serde_json::json!([]);
+    tree.to_string()
 }

@@ -369,6 +369,54 @@ struct Tree {
 
 const TREE: &str = "tree";
 
+/// What a reconciliation of the local leaf list against the chain's tree decided.
+#[derive(Debug, PartialEq, Eq)]
+enum Reconciled {
+    /// The lists agree, or agreed after dropping `dropped` leaves nobody could hold a proof for.
+    Ready { dropped: usize },
+    /// The chain holds leaves this server does not. Anchoring must not continue.
+    Short { local: usize, chain: u64 },
+}
+
+/// Make the local leaf list match the tree the program actually built, or refuse.
+///
+/// **The chain is the source of truth for the index. The local list is a cache that has to prove
+/// itself before every use.**
+///
+/// `prepare_anchor` takes the index it puts in `ProveAttempt` from the length of *this* list, and
+/// the program checks that proof against a tree it appends to itself. The two are not merely
+/// related — they must be identical, element for element, or every later proof is rejected. One
+/// anchor prepared and never submitted used to leave this list one longer for ever, and
+/// `tests/chain_flow.rs` measures the cost: the next player's run anchors and cannot be proven,
+/// and so does the player after that, who was in nobody's window.
+///
+/// The two directions are **not** symmetric, and treating them alike is the mistake this exists
+/// to prevent:
+///
+///   * **Longer than the chain** — the extra leaves are ghosts of anchors prepared and never
+///     landed. They are on no chain, so no proof anywhere refers to them and nobody holds
+///     anything a truncation would invalidate. Rubbish we generated ourselves: drop it and carry
+///     on, but say how much and why, because a silent truncation is somebody's next bug.
+///   * **Shorter than the chain** — a leaf that *is* anchored is missing from the list every
+///     proof is rebuilt from. Somebody holds a proof of it. Appending now would build a tree
+///     that abandons their record, so this refuses to anchor at all and says so loudly. It is
+///     not repairable here: the leaf's bytes are gone and only the run they came from could
+///     produce them again.
+///
+/// One direction is our own litter. The other is somebody else's evidence that we lost. They do
+/// not get the same treatment.
+fn reconcile_leaves(leaves: &mut Vec<[u8; 32]>, chain_len: u64) -> Reconciled {
+    let local = leaves.len();
+    match (local as u64).cmp(&chain_len) {
+        std::cmp::Ordering::Equal => Reconciled::Ready { dropped: 0 },
+        std::cmp::Ordering::Greater => {
+            leaves.truncate(chain_len as usize);
+            Reconciled::Ready { dropped: local - chain_len as usize }
+        }
+        std::cmp::Ordering::Less => Reconciled::Short { local, chain: chain_len },
+    }
+}
+
 /// Take back a leaf *this* request pushed — and only while it is still the one on the end.
 ///
 /// `/api/anchor` pushes the leaf, then hands the transaction to the browser to sign. Between
@@ -3192,8 +3240,52 @@ fn main() {
                     }
                 }
                 let mut t = tree.lock().unwrap();
-                t.leaves.push(rec.leaf());
                 let tree_id = t.tree_id;
+                // Ask the chain how long its tree is before trusting ours. `reconcile_leaves`
+                // says why the two answers may not differ, and why the two ways they can differ
+                // are not treated alike.
+                let chain_len = match c.tree_len(tree_id) {
+                    // No tree account yet is a real answer: nothing anchored, so zero.
+                    Ok(n) => n.unwrap_or(0),
+                    // "Could not ask" is not zero. Refusing costs one player one attempt;
+                    // reading it as zero would truncate every leaf this server holds.
+                    Err(e) => {
+                        drop(t);
+                        let _ = req.respond(json(serde_json::json!({
+                            "error": format!("cannot anchor without reading the tree first: {e}"),
+                        })));
+                        continue;
+                    }
+                };
+                match reconcile_leaves(&mut t.leaves, chain_len) {
+                    Reconciled::Ready { dropped } => {
+                        if dropped > 0 {
+                            // Out loud, with the arithmetic: a list that quietly changed length
+                            // is the beginning of the next investigation.
+                            eprintln!(
+                                "tree #{tree_id}: dropped {dropped} leaf/leaves prepared and \
+                                 never anchored — the local list was {} against {chain_len} on \
+                                 chain",
+                                chain_len as usize + dropped
+                            );
+                            let _ = store.put(TREE, &tree_key, &*t);
+                        }
+                    }
+                    Reconciled::Short { local, chain } => {
+                        drop(t);
+                        let _ = req.respond(json(serde_json::json!({
+                            "error": "this server cannot prove what it has already anchored, \
+                                      so it will not anchor more",
+                            "leaves_here": local,
+                            "leaves_on_chain": chain,
+                            "why": "a leaf that is on chain is missing from the list every \
+                                    proof is rebuilt from. Someone holds a proof of it, and \
+                                    anchoring now would build a tree that abandons it.",
+                        })));
+                        continue;
+                    }
+                }
+                t.leaves.push(rec.leaf());
                 let leaves = t.leaves.clone();
                 let index = leaves.len() as u64 - 1;
                 drop(t);
@@ -3830,6 +3922,52 @@ mod tests {
     //
     // Every one of these turns an attacker-controlled string into something the rest of the
     // server trusts — a public key, a signature, a query value. They had no tests at all.
+
+    // ── the local leaf list against the chain's tree ────────────────────────
+
+    /// Agreement is the ordinary case and must change nothing.
+    #[test]
+    fn lists_that_agree_are_left_alone() {
+        let mut leaves = vec![leaf_n(1), leaf_n(2), leaf_n(3)];
+        assert_eq!(reconcile_leaves(&mut leaves, 3), Reconciled::Ready { dropped: 0 });
+        assert_eq!(leaves.len(), 3);
+    }
+
+    /// Longer than the chain: our own litter, and safe to sweep.
+    ///
+    /// The extra leaves were prepared and never submitted, so they are on no chain and no proof
+    /// anywhere refers to them. Dropping them is what puts the index back in step.
+    #[test]
+    fn leaves_the_chain_never_saw_are_dropped() {
+        let mut leaves = vec![leaf_n(1), leaf_n(2), leaf_n(3), leaf_n(4)];
+        assert_eq!(reconcile_leaves(&mut leaves, 2), Reconciled::Ready { dropped: 2 });
+        assert_eq!(leaves, vec![leaf_n(1), leaf_n(2)], "it dropped from the wrong end");
+    }
+
+    /// Shorter than the chain: somebody else's evidence, and not ours to paper over.
+    ///
+    /// A missing leaf is one that IS anchored, that somebody holds a proof of, and that we
+    /// cannot regenerate. Anchoring past it would build a tree abandoning their record, so the
+    /// answer is to stop — and to leave the list exactly as it is, because a half-repair
+    /// destroys the evidence of what went wrong.
+    #[test]
+    fn a_list_shorter_than_the_chain_refuses_and_changes_nothing() {
+        let mut leaves = vec![leaf_n(1), leaf_n(2)];
+        assert_eq!(reconcile_leaves(&mut leaves, 5), Reconciled::Short { local: 2, chain: 5 });
+        assert_eq!(leaves, vec![leaf_n(1), leaf_n(2)], "it tried to repair itself");
+    }
+
+    /// A tree nothing has been anchored to is length zero, and a local list against it is still
+    /// only ghosts.
+    #[test]
+    fn a_tree_with_nothing_on_it_still_reconciles() {
+        let mut empty: Vec<[u8; 32]> = vec![];
+        assert_eq!(reconcile_leaves(&mut empty, 0), Reconciled::Ready { dropped: 0 });
+
+        let mut ghosts = vec![leaf_n(1), leaf_n(2)];
+        assert_eq!(reconcile_leaves(&mut ghosts, 0), Reconciled::Ready { dropped: 2 });
+        assert!(ghosts.is_empty());
+    }
 
     // ── who the rate-limit window belongs to ────────────────────────────────
 
