@@ -1420,7 +1420,11 @@ a.give:hover{filter:brightness(1.06)}
     <b>VITALS</b>
     <span class="lb-sub">the resus bay</span>
     <span class="sp"></span>
-    <span class="coin" id="coin" title="what a sponsor has funded for this bay">◎ <b id="coin-n">0</b></span>
+    <!-- Fed from `cleared()`, which is this browser's own localStorage. It used to wear the ◎
+         of the pill beside it and a title about sponsorship, so a count of the cases you had
+         finished read as an amount of money somebody had given — two wrong readings of one
+         number, standing next to the pill that really is about money. -->
+    <span class="coin" id="coin" title="cases you have finished on this device">✓ <b id="coin-n">0</b></span>
     <span class="coin hide" id="meterpill" title="the month's compute, paid for by donations">—</span>
     <a class="coin give hide" id="donate" href="/donate" target="_blank" rel="noopener"
        title="the bay is free — donations pay for its compute">♥ keep it running</a>

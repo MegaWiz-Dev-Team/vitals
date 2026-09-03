@@ -92,6 +92,14 @@ struct Rec {
     days: BTreeMap<String, Day>,
     /// `YYYY-MM` → the month's device fingerprints.
     devices: BTreeMap<String, BTreeSet<String>>,
+    /// The first day counted in Bangkok time.
+    ///
+    /// Set once, on the first write after the basis changed, and never afterwards. Days before
+    /// it were counted in UTC and were not converted — a run's hour was never stored, so
+    /// re-dating them would mean inventing the one thing this endpoint promises not to invent.
+    /// A record that has no day older than this has no seam, and then nothing is said about one.
+    #[serde(default)]
+    ict_since: Option<String>,
 }
 
 pub struct Usage {
@@ -106,7 +114,7 @@ impl Usage {
 
     /// A run was opened. `player` is the browser's public key when it has one.
     pub fn started(&mut self, case: &str, player: Option<&str>, store: &Store) {
-        let (day, month) = now();
+        let (day, month) = self.stamp();
         self.rec.since.get_or_insert_with(|| day.clone());
         self.rec.runs_started += 1;
         // Count a case already on the list, or add one while there is room. Never grow past
@@ -135,7 +143,7 @@ impl Usage {
 
     /// A run reached a terminal state. `outcome` is the case's own outcome id.
     pub fn finished(&mut self, outcome: &str, died: bool, store: &Store) {
-        let (day, _) = now();
+        let (day, _) = self.stamp();
         self.rec.since.get_or_insert_with(|| day.clone());
         self.rec.runs_finished += 1;
         *self.rec.by_outcome.entry(outcome.to_string()).or_default() += 1;
@@ -147,6 +155,13 @@ impl Usage {
         self.rec.days.entry(day).or_default().finished += 1;
         self.prune();
         self.persist(store);
+    }
+
+    /// Today and the month, noting the first day this record was written on Bangkok time.
+    fn stamp(&mut self) -> (String, String) {
+        let (day, month) = now();
+        self.rec.ict_since.get_or_insert_with(|| day.clone());
+        (day, month)
     }
 
     fn prune(&mut self) {
@@ -200,8 +215,30 @@ impl Usage {
                 "day": d, "started": v.started, "finished": v.finished,
             })).collect::<Vec<_>>(),
             "days_kept": DAYS,
-            "limits": LIMITS,
+            "limits": self.limits(),
         })
+    }
+
+    /// [`LIMITS`], plus the one that only applies to a record old enough to have a seam in it.
+    ///
+    /// The day basis moved from UTC to Bangkok time. Rows on either side of that are both real
+    /// and are not the same measurement, so a reader has to be able to say which is which by
+    /// looking — not by knowing when we deployed. That means naming the date.
+    fn limits(&self) -> Vec<String> {
+        let mut out: Vec<String> = LIMITS.iter().map(|s| s.to_string()).collect();
+        if let Some(from) = &self.rec.ict_since {
+            if self.rec.days.keys().any(|d| d < from) {
+                out.push(format!(
+                    "The day column changed basis. Rows dated before {from} were counted in \
+                     UTC, where a day turned over at 07:00 in Bangkok; rows dated {from} and \
+                     later are counted in Bangkok time, where a day turns over at midnight. \
+                     {from} itself holds a few hours of each. Nothing was re-dated: a run's \
+                     hour was never stored, so converting the older rows would mean guessing \
+                     at them."
+                ));
+            }
+        }
+        out
     }
 
     /// The startup line, next to the meter's.
@@ -234,6 +271,17 @@ pub const LIMITS: [&str; 7] = [
      system and must never be added to them.",
 ];
 
+/// Bangkok, because that is where the learners are.
+///
+/// A day here used to turn over at midnight UTC, which is 07:00 in Bangkok — so `today` was
+/// yesterday for the first seven hours of everyone's morning, and an evening's work was filed
+/// under the date it started, which is the one thing the arrangement got right by accident.
+///
+/// Only the day moves. The month still turns over in UTC, and deliberately: it keys the device
+/// fingerprints and, in `meter`, the monthly compute ceiling — moving when a spend budget resets
+/// is a different decision from moving when a chart's column starts.
+const BANGKOK_OFFSET_SECS: u64 = 7 * 60 * 60;
+
 /// A month-salted, truncated fingerprint. See the module note for why it is truncated.
 fn fingerprint(month: &str, pubkey: &str) -> String {
     let d = Sha256::digest(format!("{month}\u{0}{pubkey}").as_bytes());
@@ -246,7 +294,7 @@ fn now() -> (String, String) {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    (day_key(secs), crate::meter::month_key(secs))
+    (day_key(secs + BANGKOK_OFFSET_SECS), crate::meter::month_key(secs))
 }
 
 /// `YYYY-MM-DD` from a Unix timestamp — the same civil-from-days arithmetic `month_key` uses, so
@@ -344,6 +392,12 @@ mod tests {
         let v = u.view();
         let limits = v["limits"].as_array().expect("no limits shipped with the numbers");
         assert_eq!(limits.len(), LIMITS.len());
+        // A run of spaces means a line continuation lost its backslash and the sentence is
+        // being served with the source file's indentation inside it. Cheap to check, and it
+        // happened.
+        for l in limits.iter().filter_map(|l| l.as_str()) {
+            assert!(!l.contains("  "), "a limit carries the source indentation: {l:?}");
+        }
         let all = limits.iter().filter_map(|l| l.as_str()).collect::<Vec<_>>().join(" ");
         for must in ["no signup", "One machine used by many", "phone and a laptop", "anchored on chain"] {
             assert!(all.contains(must), "the limits stopped saying {must:?}");
@@ -405,6 +459,80 @@ mod tests {
         assert_ne!(a, b, "the same browser is linkable across months");
         assert!(!a.contains("SOMEPLAYER"), "the key is stored in the clear");
         assert_eq!(a, fingerprint("2026-08", "SOMEPLAYERPUBKEY"), "the fingerprint is not stable");
+    }
+
+    /// A day turns over at midnight in Bangkok, not at seven in the morning.
+    #[test]
+    fn the_day_column_is_bangkok_time() {
+        // Half past midnight in Bangkok, which is still the previous afternoon in UTC. This is
+        // the run that used to be filed under yesterday.
+        let late_evening = 1_788_456_600u64; // 2026-09-03 17:30 UTC · 2026-09-04 00:30 ICT
+        assert_eq!(day_key(late_evening), "2026-09-03", "the raw helper is still civil-from-UTC");
+        assert_eq!(
+            day_key(late_evening + BANGKOK_OFFSET_SECS),
+            "2026-09-04",
+            "a run at half past midnight is still filed under yesterday"
+        );
+
+        // And the seven hours that used to be the *previous* day all morning.
+        let morning = 1_788_404_400u64; // 2026-09-03 03:00 UTC · 2026-09-03 10:00 ICT
+        assert_eq!(day_key(morning), "2026-09-03");
+        assert_eq!(day_key(morning + BANGKOK_OFFSET_SECS), "2026-09-03", "mid-morning moved day");
+
+        assert_eq!(BANGKOK_OFFSET_SECS, 25_200);
+    }
+
+    /// A record with rows older than the change says which rows are which, and names the date.
+    #[test]
+    fn a_record_with_older_rows_says_where_the_basis_changed() {
+        let s = store("seam");
+        let mut u = Usage::open(&s);
+        u.started("ep1", None, &s);
+        let from = u.rec.ict_since.clone().expect("the first Bangkok day was not recorded");
+
+        // A row from before the change, as a restored record would carry.
+        u.rec.days.insert("2026-01-01".into(), Day { started: 3, finished: 1 });
+
+        let v = u.view();
+        let limits: Vec<&str> = v["limits"].as_array().unwrap().iter()
+            .filter_map(|l| l.as_str()).collect();
+        assert_eq!(limits.len(), LIMITS.len() + 1, "the seam went unmentioned");
+        let last = limits.last().copied().unwrap_or_default();
+        assert!(last.contains(&from), "the seam is described without naming the date: {last}");
+        assert!(last.contains("UTC") && last.contains("Bangkok"), "it does not say which is which: {last}");
+    }
+
+    /// A record with nothing older than the change has no seam, and must not invent one.
+    #[test]
+    fn a_fresh_record_claims_no_seam() {
+        let s = store("noseam");
+        let mut u = Usage::open(&s);
+        u.started("ep1", None, &s);
+        u.finished("win_discharge", false, &s);
+        let v = u.view();
+        assert_eq!(
+            v["limits"].as_array().map(|a| a.len()),
+            Some(LIMITS.len()),
+            "a record with no older rows described a changeover that never happened"
+        );
+    }
+
+    /// The first Bangkok day is written once and never moves under a later write.
+    #[test]
+    fn the_changeover_date_is_recorded_once() {
+        let s = store("once");
+        let mut u = Usage::open(&s);
+        u.started("ep1", None, &s);
+        let first = u.rec.ict_since.clone();
+        u.rec.ict_since = Some("2020-01-01".into());
+        u.started("ep2", None, &s);
+        u.finished("death_arrest", true, &s);
+        assert_eq!(
+            u.rec.ict_since.as_deref(),
+            Some("2020-01-01"),
+            "a later write moved the changeover date"
+        );
+        assert!(first.is_some());
     }
 
     /// The case map stops taking new names at its ceiling, and keeps counting the ones it has.

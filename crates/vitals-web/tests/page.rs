@@ -914,3 +914,31 @@ fn the_device_screens_reach_nothing_but_this_server() {
         }
     }
 }
+
+/// The lobby's cleared-cases pill must not describe itself as money.
+///
+/// It sits between the compute meter and the donation link, both of which really are about
+/// money, and it used to carry the ◎ they carry and a title reading "what a sponsor has funded
+/// for this bay" — while displaying `cleared().length`, the cases finished in this browser.
+/// A number is not made right by being correct if the label beside it is about something else.
+#[test]
+fn the_cleared_pill_says_what_it_counts() {
+    let html = page();
+    let at = html.find("id=\"coin\"").expect("the lobby lost its cleared-cases pill");
+    let open = html[..at].rfind('<').expect("no tag around the pill");
+    let close = at + html[at..].find('>').expect("unterminated pill tag");
+    let tag = &html[open..close];
+
+    assert!(!tag.contains("sponsor"), "the pill still calls itself sponsorship: {tag}");
+    assert!(!tag.contains('◎'), "the pill still wears the chain glyph: {tag}");
+    assert!(
+        tag.contains("title=\"cases you have finished on this device\""),
+        "the pill does not say what it counts: {tag}"
+    );
+
+    // And it is still fed by the thing the title now names.
+    assert!(
+        html.contains("$('#coin-n').textContent=cleared().length"),
+        "the pill stopped being fed from the cleared list, so its title is wrong again"
+    );
+}
