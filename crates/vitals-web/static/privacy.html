@@ -265,9 +265,15 @@ spend the month. Requests are counted per network address — the only thing a s
 for free.</p>
 <div class="card">
 <span class="k">What is retained, precisely</span>
-<p><strong>The address itself</strong>: the first entry in the <code>X-Forwarded-For</code> header,
-or the socket's IP when there is no such header. It is used as a key in a map held
-<strong>in the running process's memory</strong>, pointing at a list of request timestamps.</p>
+<p><strong>The address itself</strong>: the <em>last</em> entry in the
+<code>X-Forwarded-For</code> header, or the socket's IP when there is no such header. It is used
+as a key in a map held <strong>in the running process's memory</strong>, pointing at a list of
+request timestamps.</p>
+<p>This page used to say <em>first</em>, and so did the code. Everything before the last entry is
+text the caller wrote, so a visitor who wrote their own header got a fresh allowance on every
+request — which is a limit that only applies to people who were not avoiding it. Reading the last
+entry keeps the property the first one was chosen for: it is the address your network presents to
+us, the same for everyone in one building and different for two.</p>
 <p><strong>Where it is not:</strong> it is never written to our store, never to a disk, never to
 Firestore. Restart the server and every one of them is gone. The application writes no access log
 of its own and never logs a request.</p>

@@ -1548,19 +1548,62 @@ fn json_code(v: impl Serialize, code: u16) -> Response<std::io::Cursor<Vec<u8>>>
     json(v).with_status_code(code)
 }
 
+/// How far from the end of `X-Forwarded-For` the caller's address sits.
+///
+/// One means the last entry. Two means the entry before it, which is the shape an external
+/// load balancer produces: it appends the client and then its own forwarding rule.
+///
+/// Configurable because the answer is a property of the deployment and not of this code, and
+/// because getting it wrong in the safe direction is survivable — see [`client_addr`].
+fn client_ip_from_end() -> usize {
+    std::env::var("VITALS_CLIENT_IP_FROM_END")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|n| *n >= 1)
+        .unwrap_or(1)
+}
+
+/// The caller's address out of an `X-Forwarded-For` value, counted from the right.
+///
+/// Split out from [`client_addr`] so it can be tested against the header shapes that actually
+/// arrive, rather than only against the one we hope arrives.
+fn addr_from_xff(header: &str, from_end: usize) -> Option<String> {
+    let parts: Vec<&str> = header.split(',').map(str::trim).collect();
+    let at = parts.len().checked_sub(from_end)?;
+    parts.get(at).map(|s| s.to_string()).filter(|s| !s.is_empty())
+}
+
 /// Who is calling, as far as rate limiting is concerned.
 ///
-/// Behind Cloud Run the socket peer is the load balancer, and the visitor is the first entry of
-/// `X-Forwarded-For` — later entries are whatever proxies appended, and the *last* one is the
-/// only one Google vouches for, but for a politeness window the first is the honest choice: it
-/// is the same for one browser and different for two households. Player keys and session ids are
-/// deliberately not used here; a browser mints those for free.
+/// **Read from the right.** Everything to the left of what our own front end appended is text
+/// the caller wrote, and a caller who writes it gets a fresh window for every request.
+///
+/// This used to take the first entry, and the comment above it said why: the last is the only
+/// one Google vouches for, but the first "is the same for one browser and different for two
+/// households", which is what a politeness window wants. The reasoning was sound and the
+/// conclusion still wrong, for two reasons. The window is not only politeness — it stands in
+/// front of `/api/review`, which writes a durable document, and `/api/say`, which spends money.
+/// And the household property it was protecting survives the change: behind Cloud Run the entry
+/// Google appends *is* the household's public address, so everyone behind one NAT still shares
+/// a bucket and two households still get two.
+///
+/// Measured before the change, against this binary: forty requests to `/api/new`, each with a
+/// different invented address in the header, forty accepted — including in the
+/// `<invented>, <real>` shape a request through Cloud Run actually carries.
+///
+/// Google's own load-balancing documentation is explicit that the last entry is the trustworthy
+/// one and the first is spoofable. What it does not pin down is how many entries a *direct*
+/// Cloud Run service appends, which is why [`client_ip_from_end`] is a setting: at 1 this is
+/// the last entry, and if that turns out to be a Google front end rather than the visitor, the
+/// failure is that everyone shares one window — too strict, never bypassable. The unsafe
+/// direction is not reachable from here.
+///
+/// Player keys and session ids are deliberately still not used; a browser mints those for free.
 fn client_addr(req: &tiny_http::Request) -> String {
     req.headers()
         .iter()
         .find(|h| h.field.equiv("x-forwarded-for"))
-        .and_then(|h| h.value.as_str().split(',').next().map(|s| s.trim().to_string()))
-        .filter(|s| !s.is_empty())
+        .and_then(|h| addr_from_xff(h.value.as_str(), client_ip_from_end()))
         .unwrap_or_else(|| {
             req.remote_addr().map(|a| a.ip().to_string()).unwrap_or_else(|| "unknown".into())
         })
@@ -3776,6 +3819,88 @@ mod tests {
     //
     // Every one of these turns an attacker-controlled string into something the rest of the
     // server trusts — a public key, a signature, a query value. They had no tests at all.
+
+    // ── who the rate-limit window belongs to ────────────────────────────────
+
+    /// The shapes that actually arrive, and the one that used to walk straight through.
+    #[test]
+    fn the_caller_is_read_from_the_end_of_the_forwarded_header() {
+        // Cloud Run, honest client: one entry, and it is the visitor.
+        assert_eq!(addr_from_xff("203.0.113.7", 1).as_deref(), Some("203.0.113.7"));
+        // Cloud Run, client that wrote its own header. The invented value is on the left and
+        // must be ignored; this is the shape measured against the live binary.
+        assert_eq!(addr_from_xff("198.51.100.9, 203.0.113.7", 1).as_deref(), Some("203.0.113.7"));
+        // A caller who writes a whole convincing chain still cannot reach past the end.
+        assert_eq!(
+            addr_from_xff("1.1.1.1, 2.2.2.2, 3.3.3.3, 203.0.113.7", 1).as_deref(),
+            Some("203.0.113.7")
+        );
+        // Whitespace is the norm in this header, not an oddity.
+        assert_eq!(addr_from_xff("198.51.100.9,   203.0.113.7  ", 1).as_deref(), Some("203.0.113.7"));
+        // Behind an external load balancer: client, then the forwarding rule.
+        assert_eq!(addr_from_xff("203.0.113.7, 34.34.34.34", 2).as_deref(), Some("203.0.113.7"));
+    }
+
+    /// Nothing usable means nothing, so the caller falls back to the socket peer rather than to
+    /// a bucket every stranger shares by name.
+    #[test]
+    fn an_unusable_forwarded_header_yields_no_address_at_all() {
+        assert_eq!(addr_from_xff("", 1), None);
+        assert_eq!(addr_from_xff("   ", 1), None);
+        assert_eq!(addr_from_xff("203.0.113.7", 2), None, "asking past the front of the list");
+        assert_eq!(addr_from_xff("203.0.113.7, ", 1), None, "a trailing comma is not an address");
+    }
+
+    /// A window keyed on something the caller can change is not a window.
+    ///
+    /// Forty invented addresses used to buy forty windows. They now buy one, because the entry
+    /// this reads is the one the caller cannot write.
+    #[test]
+    fn invented_addresses_all_land_in_one_window() {
+        let seen: std::collections::HashSet<String> = (0..40)
+            .map(|i| addr_from_xff(&format!("198.51.100.{i}, 203.0.113.7"), 1).expect("an address"))
+            .collect();
+        assert_eq!(seen.len(), 1, "the caller still controls the key: {seen:?}");
+    }
+
+    /// What this fix does **not** close, written down so it is a known limit and not a surprise.
+    ///
+    /// Reading from the right only helps if something to the right of the caller's text is there
+    /// to read. If a request arrives carrying a lone invented address and the platform forwards
+    /// it untouched, the last entry *is* the invented one and the window is still the caller's
+    /// to choose. Against this binary, twenty such requests were accepted where the two-entry
+    /// shape was cut to six.
+    ///
+    /// Whether that request can exist is a fact about Cloud Run, not about this code: it turns
+    /// on whether a direct service appends what it observed to a client-supplied header.
+    /// Google's load-balancing documentation says the last entry is the one the infrastructure
+    /// vouches for, which is only meaningful if it appends — but that is a different product's
+    /// page, and it was not confirmed against a real Cloud Run request. Until it is, this is
+    /// the residual, and `VITALS_CLIENT_IP_FROM_END` is how it gets closed without a deploy of
+    /// new code if the answer turns out to be the unwelcome one.
+    #[test]
+    fn a_lone_invented_address_is_still_the_callers_to_choose() {
+        let seen: std::collections::HashSet<String> = (0..20)
+            .map(|i| addr_from_xff(&format!("198.51.100.{i}"), 1).expect("an address"))
+            .collect();
+        assert_eq!(
+            seen.len(),
+            20,
+            "if this ever fails, the platform question was settled and this test should say how"
+        );
+    }
+
+    /// The setting is a deployment fact, and a nonsense value must not disable the guard.
+    #[test]
+    fn the_position_setting_never_reads_past_the_end() {
+        for bad in ["0", "-1", "", "two", "99999999999999999999"] {
+            // SAFETY: single-threaded test, and the value is read back immediately.
+            unsafe { std::env::set_var("VITALS_CLIENT_IP_FROM_END", bad) };
+            assert!(client_ip_from_end() >= 1, "{bad:?} produced a position before the first entry");
+        }
+        unsafe { std::env::remove_var("VITALS_CLIENT_IP_FROM_END") };
+        assert_eq!(client_ip_from_end(), 1, "the default stopped being the last entry");
+    }
 
     #[test]
     fn a_pubkey_must_round_trip_exactly() {
