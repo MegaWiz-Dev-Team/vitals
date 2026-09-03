@@ -36,3 +36,7 @@ sha2 = "0.10"
 
 [lints]
 workspace = true
+
+[[bin]]
+name = "sign-attribution"
+path = "src/bin/sign_attribution.rs"
