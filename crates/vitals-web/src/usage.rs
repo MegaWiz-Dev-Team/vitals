@@ -195,11 +195,19 @@ impl Usage {
             "since": self.rec.since,
             "today": today,
             "runs": {
-                "started": self.rec.runs_started,
+                // An object, not a number, and that is the point. This used to be one figure
+                // with the automated traffic folded into it, and a figure like that is read by
+                // skimming — which is the failure this endpoint exists to avoid. A reader now
+                // has to say which number they mean before they can quote one.
+                "started": {
+                    "with_a_device_key": self.rec.runs_started
+                        .saturating_sub(self.rec.runs_without_a_key),
+                    "without_a_device_key": self.rec.runs_without_a_key,
+                    "total": self.rec.runs_started,
+                },
                 "finished": self.rec.runs_finished,
                 "survived": self.rec.survived,
                 "died": self.rec.died,
-                "started_without_a_device_key": self.rec.runs_without_a_key,
                 "by_case": self.rec.by_case,
                 "by_outcome": self.rec.by_outcome,
             },
@@ -256,7 +264,7 @@ impl Usage {
 /// a small number quoted without its limits is how "two anchored runs" becomes "two users" and
 /// then, in a room, "we have no traction". The honest framing of a small number is that it is
 /// small *and* that the instrument cannot see most of what happened.
-pub const LIMITS: [&str; 7] = [
+pub const LIMITS: [&str; 8] = [
     "There is no signup here, by design. Nothing on this endpoint is a count of people.",
     "One machine used by many is one device: a shared box in a faculty with fifty students \
      through it counts once. This undercounts hardest where the use matters most.",
@@ -264,7 +272,14 @@ pub const LIMITS: [&str; 7] = [
     "A device is a browser keypair. Clearing site data mints a new one; two profiles on one \
      machine are two.",
     "A run started without a player key is counted as a run and as no device — see \
-     runs.started_without_a_device_key.",
+     runs.started.without_a_device_key.",
+    "Runs started without a device key are not people and, measured rather than assumed, are \
+     not browsers either: on 2026-09-03 every one of them in the platform's request log was \
+     Python-urllib or curl, 56 of 56, with no browser of any kind among them — while every \
+     browser family that did arrive, iPhone Safari and LINE's in-app view included, made a key \
+     without trouble. Read runs.started.with_a_device_key as the one a person could be behind. \
+     The device counts below never included these runs, because a run with no key adds no \
+     fingerprint.",
     "Only runs anchored on chain can be checked by anyone but us; see /api/chain. Everything \
      else here is this server's own tally of its own work.",
     "These are this bay's numbers only. Figures from the production engine are a different \
@@ -360,7 +375,7 @@ mod tests {
         u.finished("death_arrest", true, &s);
 
         let v = u.view();
-        assert_eq!(v["runs"]["started"], 3);
+        assert_eq!(v["runs"]["started"]["total"], 3);
         assert_eq!(v["runs"]["finished"], 2);
         assert_eq!(v["runs"]["survived"], 1);
         assert_eq!(v["runs"]["died"], 1);
@@ -368,7 +383,7 @@ mod tests {
         assert_eq!(v["runs"]["by_outcome"]["death_arrest"], 1);
         // Two runs from one browser is one device, and the keyless run is neither.
         assert_eq!(v["devices"]["distinct_browsers_seen"], 1);
-        assert_eq!(v["runs"]["started_without_a_device_key"], 1);
+        assert_eq!(v["runs"]["started"]["without_a_device_key"], 1);
     }
 
     #[test]
@@ -391,7 +406,7 @@ mod tests {
         u.finished("win_discharge", false, &s);
         let again = Usage::open(&s);
         let v = again.view();
-        assert_eq!(v["runs"]["started"], 1);
+        assert_eq!(v["runs"]["started"]["total"], 1);
         assert_eq!(v["runs"]["finished"], 1);
         assert_eq!(v["devices"]["distinct_browsers_seen"], 1, "a restart re-counted a known browser");
     }
@@ -546,6 +561,36 @@ mod tests {
             "a later write moved the changeover date"
         );
         assert!(first.is_some());
+    }
+
+    /// The headline splits, and the three numbers agree with each other.
+    ///
+    /// It used to be one figure with automated traffic folded in — 174 on production, of which
+    /// 56 were Python-urllib and curl. A single number like that gets quoted by skimming, and
+    /// this endpoint exists precisely because a right number quoted as the wrong thing is the
+    /// failure mode. Now nobody can quote it without saying which one they mean.
+    #[test]
+    fn the_started_count_says_which_clients_it_is_counting() {
+        let s = store("split");
+        let mut u = Usage::open(&s);
+        u.started("ep1", Some("KEY1"), &s);
+        u.started("ep1", Some("KEY2"), &s);
+        u.started("ep1", None, &s);
+
+        let v = u.view();
+        let started = &v["runs"]["started"];
+        assert_eq!(started["with_a_device_key"], 2);
+        assert_eq!(started["without_a_device_key"], 1);
+        assert_eq!(started["total"], 3);
+        assert_eq!(
+            started["with_a_device_key"].as_u64().unwrap() + started["without_a_device_key"].as_u64().unwrap(),
+            started["total"].as_u64().unwrap(),
+            "the parts do not add up to the total"
+        );
+
+        // The keyless run left no fingerprint, which is why the device count was never affected
+        // by any of this — and why the figure already quoted to the judges did not move.
+        assert_eq!(v["devices"]["distinct_browsers_seen"], 2);
     }
 
     /// The case map stops taking new names at its ceiling, and keeps counting the ones it has.

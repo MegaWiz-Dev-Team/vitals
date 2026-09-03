@@ -406,8 +406,11 @@ is everything in them.</p>
 <div class="two">
 <div class="card"><span class="k">/api/usage</span>
 <ul class="tight">
-<li>runs started, finished, survived, died</li>
-<li>runs started with no device key</li>
+<li>runs started — split three ways: by a client that made a device key, by one that did
+not, and the total. Split because the second group turned out not to be browsers at all: on
+3 September every one of them in the platform's own request log was <code>curl</code> or a
+Python script, and a single combined figure invited quoting automated traffic as people</li>
+<li>runs finished, survived, died</li>
 <li>starts by case, finishes by outcome</li>
 <li>a 90-day table of starts and finishes per day</li>
 <li>distinct browsers seen this month, as a number</li>

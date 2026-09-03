@@ -114,7 +114,7 @@ const KEY_B: &str = "SysvarC1ock11111111111111111111111111111111";
 fn opening_a_run_counts_a_run_and_the_browser_that_opened_it() {
     let s = Server::start();
     let before = s.json("/api/usage");
-    assert_eq!(before["runs"]["started"], 0);
+    assert_eq!(before["runs"]["started"]["total"], 0);
     assert_eq!(before["devices"]["distinct_browsers_seen"], 0);
 
     s.open_run("ep1", KEY_A);
@@ -122,7 +122,7 @@ fn opening_a_run_counts_a_run_and_the_browser_that_opened_it() {
     s.open_run("ep1", KEY_B);
 
     let u = s.json("/api/usage");
-    assert_eq!(u["runs"]["started"], 3, "runs are not being counted");
+    assert_eq!(u["runs"]["started"]["total"], 3, "runs are not being counted");
     assert_eq!(u["runs"]["by_case"]["ep1"], 2);
     assert_eq!(u["runs"]["by_case"]["osce-a"], 1);
     // Three runs, two browsers. This is the whole reason the two are different fields.
@@ -134,8 +134,8 @@ fn a_run_opened_without_a_key_is_a_run_and_not_a_device() {
     let s = Server::start();
     s.open_run("ep1", "");
     let u = s.json("/api/usage");
-    assert_eq!(u["runs"]["started"], 1);
-    assert_eq!(u["runs"]["started_without_a_device_key"], 1);
+    assert_eq!(u["runs"]["started"]["total"], 1);
+    assert_eq!(u["runs"]["started"]["without_a_device_key"], 1);
     assert_eq!(u["devices"]["distinct_browsers_seen"], 0, "a keyless run invented a device");
 }
 
@@ -182,12 +182,12 @@ fn the_count_survives_a_restart() {
     let a = Server::start();
     a.open_run("ep1", KEY_A);
     a.open_run("ep1", KEY_A);
-    assert_eq!(a.json("/api/usage")["runs"]["started"], 2);
+    assert_eq!(a.json("/api/usage")["runs"]["started"]["total"], 2);
     let dir = a.stop();
 
     let b = Server::start_on(dir);
     let u = b.json("/api/usage");
-    assert_eq!(u["runs"]["started"], 2, "a deploy reset the count");
+    assert_eq!(u["runs"]["started"]["total"], 2, "a deploy reset the count");
     assert_eq!(u["devices"]["distinct_browsers_seen"], 1, "a restart re-counted a known browser");
 }
 
@@ -239,11 +239,11 @@ fn no_field_on_this_endpoint_can_be_read_as_a_headcount() {
 #[test]
 fn it_is_public_and_it_only_reads() {
     let s = Server::start();
-    let before = s.json("/api/usage")["runs"]["started"].clone();
+    let before = s.json("/api/usage")["runs"]["started"]["total"].clone();
     for _ in 0..3 {
         s.json("/api/usage");
     }
-    assert_eq!(s.json("/api/usage")["runs"]["started"], before, "reading the counter moved it");
+    assert_eq!(s.json("/api/usage")["runs"]["started"]["total"], before, "reading the counter moved it");
 }
 
 /// Enough percent-encoding to put a hostile case id in a query string.
@@ -278,7 +278,7 @@ fn a_case_this_server_cannot_play_is_refused_before_it_is_counted() {
     }
 
     let v = s.json("/api/usage");
-    assert_eq!(v["runs"]["started"], 0, "a refused case was counted as a run: {v}");
+    assert_eq!(v["runs"]["started"]["total"], 0, "a refused case was counted as a run: {v}");
     assert_eq!(
         v["runs"]["by_case"].as_object().map(|o| o.len()),
         Some(0),
