@@ -35,6 +35,31 @@
 //! de-duplicate within a month, not enough to be an identity, and salted by the month so the same
 //! browser is a different fingerprint in September. Collisions only ever lose a device, never
 //! invent one.
+//!
+//! ## Automated traffic, and the three rules that keep it out of the headline
+//!
+//! On 2026-09-03 the platform's own request log was split on whether `/api/new` carried
+//! `&player=`. The group without a device key held **38 `Python-urllib` and 18 `curl`, 56 of 56,
+//! and no browser of any kind** — while every browser family that arrived made a key without
+//! trouble, iPhone Safari and LINE's in-app view included. A single `started` figure was
+//! therefore quoting scripts and people as one number, on the endpoint this project points at to
+//! prove its own honesty.
+//!
+//! These are binding, and they live here rather than in a document because a rule kept beside
+//! the code it governs cannot drift away from it:
+//!
+//!   1. **Never split on the user agent**, however easy it looks. `/privacy` §6 tells every
+//!      reader we keep none, and that promise is worth more than a tidier counter.
+//!   2. **The device key is the divider.** It is a signal already in hand, it costs nothing, and
+//!      it happens to be the same line the accessibility question was asked along.
+//!   3. **The device counts never included keyless runs** — a run with no key adds no
+//!      fingerprint — so `distinct_browsers_seen` was never contaminated and its published
+//!      figures did not move when the split landed. Anything that changes *that* changes a
+//!      number already quoted outside this repository, and is not a refactor.
+//!
+//! `started` splits exactly, because `runs_without_a_key` has been counted since the field
+//! existed. `finished` cannot: its per-side counters are new, so the runs that ended before them
+//! are reported in a third bucket of their own rather than folded into either side.
 
 use crate::store::Store;
 use serde::{Deserialize, Serialize};
@@ -78,6 +103,17 @@ struct Rec {
     since: Option<String>,
     runs_started: u64,
     runs_finished: u64,
+    /// Finished, split the way `started` is — but these two are new, and `runs_finished` is
+    /// not. A run that finished before the split was counted in the total and attributed to
+    /// neither, so the two never simply subtract from it: what is left over is a third,
+    /// honestly-named bucket rather than a wrong answer folded into the first.
+    ///
+    /// `started` needs no such bucket. It has counted `runs_without_a_key` since it existed,
+    /// so its split is exact all the way back.
+    #[serde(default)]
+    runs_finished_with_a_key: u64,
+    #[serde(default)]
+    runs_finished_without_a_key: u64,
     /// Runs opened by a browser that minted no player key — a kiosk, or a browser that could
     /// not. They are runs and they are not devices, and the gap is published rather than implied.
     runs_without_a_key: u64,
@@ -142,8 +178,15 @@ impl Usage {
     }
 
     /// A run reached a terminal state. `outcome` is the case's own outcome id.
-    pub fn finished(&mut self, outcome: &str, died: bool, store: &Store) {
+    /// `keyed` is whether the run had an owner — the same signal `started` split on, read off
+    /// the session rather than off anything the caller sends at finish time.
+    pub fn finished(&mut self, outcome: &str, died: bool, keyed: bool, store: &Store) {
         let (day, _) = self.stamp();
+        if keyed {
+            self.rec.runs_finished_with_a_key += 1;
+        } else {
+            self.rec.runs_finished_without_a_key += 1;
+        }
         self.rec.since.get_or_insert_with(|| day.clone());
         self.rec.runs_finished += 1;
         *self.rec.by_outcome.entry(outcome.to_string()).or_default() += 1;
@@ -162,6 +205,18 @@ impl Usage {
         let (day, month) = now();
         self.rec.ict_since.get_or_insert_with(|| day.clone());
         (day, month)
+    }
+
+    /// Finishes counted before the split existed, and so belonging to neither side.
+    ///
+    /// Saturating rather than trusting the arithmetic: a restored record is data from disk, and
+    /// a counter that went backwards should show a zero here, not wrap to eighteen quintillion
+    /// on a public endpoint.
+    fn finished_unattributed(&self) -> u64 {
+        self.rec
+            .runs_finished
+            .saturating_sub(self.rec.runs_finished_with_a_key)
+            .saturating_sub(self.rec.runs_finished_without_a_key)
     }
 
     fn prune(&mut self) {
@@ -205,7 +260,14 @@ impl Usage {
                     "without_a_device_key": self.rec.runs_without_a_key,
                     "total": self.rec.runs_started,
                 },
-                "finished": self.rec.runs_finished,
+                // The same shape as `started` so the two can be read as a pair, plus the one
+                // bucket `started` does not need — see the field notes on Rec.
+                "finished": {
+                    "with_a_device_key": self.rec.runs_finished_with_a_key,
+                    "without_a_device_key": self.rec.runs_finished_without_a_key,
+                    "counted_before_this_split": self.finished_unattributed(),
+                    "total": self.rec.runs_finished,
+                },
                 "survived": self.rec.survived,
                 "died": self.rec.died,
                 "by_case": self.rec.by_case,
@@ -234,6 +296,18 @@ impl Usage {
     /// looking — not by knowing when we deployed. That means naming the date.
     fn limits(&self) -> Vec<String> {
         let mut out: Vec<String> = LIMITS.iter().map(|s| s.to_string()).collect();
+        let stale = self.finished_unattributed();
+        if stale > 0 {
+            out.push(format!(
+                "runs.finished.counted_before_this_split is {stale}: runs that ended before \
+                 the counters began recording which side they belonged to. They are in the \
+                 total and in neither half, on purpose — attributing them now would mean \
+                 guessing. Do not read finished.with_a_device_key against \
+                 started.with_a_device_key as a completion rate until this reaches zero; \
+                 finished.total against started.total is the pair that has always been \
+                 measured the same way."
+            ));
+        }
         if let Some(from) = &self.rec.ict_since {
             if self.rec.days.keys().any(|d| d < from) {
                 out.push(format!(
@@ -371,12 +445,12 @@ mod tests {
         u.started("osce-a", Some("KEY1"), &s);
         u.started("osce-a", Some("KEY1"), &s);
         u.started("ep1", None, &s);
-        u.finished("win_discharge", false, &s);
-        u.finished("death_arrest", true, &s);
+        u.finished("win_discharge", false, true, &s);
+        u.finished("death_arrest", true, false, &s);
 
         let v = u.view();
         assert_eq!(v["runs"]["started"]["total"], 3);
-        assert_eq!(v["runs"]["finished"], 2);
+        assert_eq!(v["runs"]["finished"]["total"], 2);
         assert_eq!(v["runs"]["survived"], 1);
         assert_eq!(v["runs"]["died"], 1);
         assert_eq!(v["runs"]["by_case"]["osce-a"], 2);
@@ -403,11 +477,11 @@ mod tests {
         let s = store("persist");
         let mut u = Usage::open(&s);
         u.started("ep1", Some("KEY1"), &s);
-        u.finished("win_discharge", false, &s);
+        u.finished("win_discharge", false, true, &s);
         let again = Usage::open(&s);
         let v = again.view();
         assert_eq!(v["runs"]["started"]["total"], 1);
-        assert_eq!(v["runs"]["finished"], 1);
+        assert_eq!(v["runs"]["finished"]["total"], 1);
         assert_eq!(v["devices"]["distinct_browsers_seen"], 1, "a restart re-counted a known browser");
     }
 
@@ -442,7 +516,7 @@ mod tests {
         let s = store("naming");
         let mut u = Usage::open(&s);
         u.started("ep1", Some("KEY1"), &s);
-        u.finished("win_discharge", false, &s);
+        u.finished("win_discharge", false, true, &s);
         let text = serde_json::to_string(&u.view()).unwrap();
         // Checked over the whole payload rather than over the keys, because a value is quoted
         // just as often as a key is.
@@ -536,7 +610,7 @@ mod tests {
         let s = store("noseam");
         let mut u = Usage::open(&s);
         u.started("ep1", None, &s);
-        u.finished("win_discharge", false, &s);
+        u.finished("win_discharge", false, false, &s);
         let v = u.view();
         assert_eq!(
             v["limits"].as_array().map(|a| a.len()),
@@ -554,7 +628,7 @@ mod tests {
         let first = u.rec.ict_since.clone();
         u.rec.ict_since = Some("2020-01-01".into());
         u.started("ep2", None, &s);
-        u.finished("death_arrest", true, &s);
+        u.finished("death_arrest", true, false, &s);
         assert_eq!(
             u.rec.ict_since.as_deref(),
             Some("2020-01-01"),
@@ -591,6 +665,66 @@ mod tests {
         // The keyless run left no fingerprint, which is why the device count was never affected
         // by any of this — and why the figure already quoted to the judges did not move.
         assert_eq!(v["devices"]["distinct_browsers_seen"], 2);
+    }
+
+    /// `finished` splits the way `started` does, and the parts never exceed their side.
+    ///
+    /// The invariant the director asked for as an assertion rather than a comment: a run cannot
+    /// finish on a side it did not start on, so neither half of `finished` may pass the same
+    /// half of `started`. It is the check that would catch the split being read off the wrong
+    /// thing — the caller's query string at finish time, say, instead of the session's owner.
+    #[test]
+    fn finished_splits_like_started_and_never_outruns_it() {
+        let s = store("finsplit");
+        let mut u = Usage::open(&s);
+        for _ in 0..3 {
+            u.started("ep1", Some("KEY1"), &s);
+        }
+        u.started("ep1", None, &s);
+        u.finished("win_discharge", false, true, &s);
+        u.finished("win_discharge", false, true, &s);
+        u.finished("death_arrest", true, false, &s);
+
+        let v = u.view();
+        let (st, fi) = (&v["runs"]["started"], &v["runs"]["finished"]);
+        assert_eq!(fi["with_a_device_key"], 2);
+        assert_eq!(fi["without_a_device_key"], 1);
+        assert_eq!(fi["counted_before_this_split"], 0, "a fresh record has nothing to carry");
+        assert_eq!(fi["total"], 3);
+
+        for side in ["with_a_device_key", "without_a_device_key"] {
+            assert!(
+                fi[side].as_u64().unwrap() <= st[side].as_u64().unwrap(),
+                "more runs finished {side} than ever started that way: {fi} vs {st}"
+            );
+        }
+        // And the shapes match, so the two can be read as a pair without translation.
+        for k in ["with_a_device_key", "without_a_device_key", "total"] {
+            assert!(st[k].is_u64() && fi[k].is_u64(), "{k} is not on both sides");
+        }
+    }
+
+    /// A record that finished runs before the split says so, instead of calling them all keyed.
+    #[test]
+    fn finishes_from_before_the_split_are_not_claimed_by_either_side() {
+        let s = store("stale");
+        let mut u = Usage::open(&s);
+        u.started("ep1", Some("KEY1"), &s);
+        // As a restored record carries it: a total with no attribution behind it.
+        u.rec.runs_finished = 83;
+
+        let v = u.view();
+        let fi = &v["runs"]["finished"];
+        assert_eq!(fi["total"], 83);
+        assert_eq!(fi["with_a_device_key"], 0, "history was folded into the keyed half");
+        assert_eq!(fi["counted_before_this_split"], 83);
+
+        let limits: Vec<&str> = v["limits"].as_array().unwrap().iter()
+            .filter_map(|l| l.as_str()).collect();
+        assert!(
+            limits.iter().any(|l| l.contains("counted_before_this_split is 83")),
+            "the unattributed finishes are not explained"
+        );
     }
 
     /// The case map stops taking new names at its ceiling, and keeps counting the ones it has.

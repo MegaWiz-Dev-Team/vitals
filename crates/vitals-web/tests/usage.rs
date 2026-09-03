@@ -159,7 +159,7 @@ fn a_finished_run_is_counted_once_and_by_its_own_outcome() {
     assert!(ended, "EP1 never reached a terminal state");
 
     let u = s.json("/api/usage");
-    assert_eq!(u["runs"]["finished"], 1, "the end of a run was not counted");
+    assert_eq!(u["runs"]["finished"]["total"], 1, "the end of a run was not counted");
     assert_eq!(u["runs"]["died"], 1, "an untreated anaphylaxis was recorded as a survival");
     assert_eq!(u["runs"]["survived"], 0);
     assert!(
@@ -172,7 +172,7 @@ fn a_finished_run_is_counted_once_and_by_its_own_outcome() {
         s.json(&format!("/api/step?id={id}&player={KEY_A}&tick=30"));
     }
     assert_eq!(
-        s.json("/api/usage")["runs"]["finished"], 1,
+        s.json("/api/usage")["runs"]["finished"]["total"], 1,
         "a finished run is counted again on every request that touches it"
     );
 }

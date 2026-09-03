@@ -319,11 +319,16 @@ fn count_finish(u: &mut usage::Usage, s: &Session, was_over: bool, store: &store
         return;
     }
     match s.state.outcome() {
-        Some(o) => u.finished(s.state.outcome_id().unwrap_or("unknown"), o.is_death(), store),
+        Some(o) => u.finished(
+            s.state.outcome_id().unwrap_or("unknown"),
+            o.is_death(),
+            s.owner.is_some(),
+            store,
+        ),
         // A run the clock ended. It has no outcome id to borrow, because the case never reached
         // one of its own endings — so it is counted under a name of its own rather than folded
         // into somebody else's ending or, as before this existed, not counted at all.
-        None => u.finished(TIME_CALLED, false, store),
+        None => u.finished(TIME_CALLED, false, s.owner.is_some(), store),
     }
 }
 
