@@ -369,6 +369,17 @@ struct Tree {
 
 const TREE: &str = "tree";
 
+/// How long `/api/authors` holds its chain read.
+///
+/// A bound on how often that endpoint can fan out `get_program_accounts`, not a freshness
+/// promise: at most one chain read a minute however hard the endpoint is asked for. The
+/// re-derivation path (`verify_player --authors`) is uncached, because reading the chain is the
+/// whole point of it.
+const AUTHOR_COUNT_TTL: Duration = Duration::from_secs(60);
+
+/// The held chain read: when it was taken, and the per-case counts it produced.
+type AuthorCounts = Arc<Mutex<Option<(Instant, std::collections::BTreeMap<String, u64>)>>>;
+
 /// What a reconciliation of the local leaf list against the chain's tree decided.
 #[derive(Debug, PartialEq, Eq)]
 enum Reconciled {
@@ -1982,6 +1993,8 @@ fn main() {
     // Signed halves waiting on the browser, keyed by player. Never persisted: a blockhash goes
     // stale in about a minute, so a pending transaction that outlives the process is worthless.
     let pendings: Arc<Mutex<HashMap<String, PendingWork>>> = Arc::new(Mutex::new(HashMap::new()));
+    // The author ledger's chain read, held for AUTHOR_COUNT_TTL. See /api/authors.
+    let author_counts: AuthorCounts = Arc::new(Mutex::new(None));
 
     match (&token, loopback) {
         (Some(_), _) => println!("auth       bearer token required on anchor · claim · say"),
@@ -2983,13 +2996,38 @@ fn main() {
             //
             // The ledger a payment would read, with no payment in it: no currency, no "earned",
             // no rate. SYSTEM_DESIGN §7 says authors are paid per replay; this is the counting
-            // that has to be true and checkable before that sentence can mean anything, and
+            // that has to be true and checkable before that sentence means anything, and
             // TOKENOMICS.md keeps its "designed, not built" label untouched.
             //
             // Nothing here comes from /api/usage. Those are this server's own tallies of its own
-            // work, including runs by scripts that carry no device key; a replay of somebody's
-            // case means one that survived the Merkle check on chain, and nothing else.
+            // work, and 56 of the 174 runs on them were curl and Python. A replay of somebody's
+            // case is one the chain accepted, and nothing else.
             (Method::Get, "/api/authors") => {
+                let tree_id = tree.lock().unwrap().tree_id;
+                // One heavy RPC (`get_program_accounts`) behind a public endpoint is a curl loop
+                // away from being our whole RPC budget, so the chain read is held for a minute.
+                //
+                // Sixty seconds is **a bound on RPC calls per minute, not a promise about
+                // freshness**: at most one fan-out per minute however hard this is asked for. A
+                // reader who needs the chain itself has `verify_player --authors`, which is
+                // uncached because hitting the chain is the entire point of it.
+                let proven = {
+                    let mut cached = author_counts.lock().unwrap();
+                    let fresh = cached.as_ref().is_some_and(|(at, _): &(Instant, _)| {
+                        at.elapsed() < AUTHOR_COUNT_TTL
+                    });
+                    if !fresh {
+                        if let Some(Ok(p)) = chain.as_ref().map(|c| c.proven_by_case(tree_id)) {
+                            *cached = Some((Instant::now(), p));
+                        }
+                    }
+                    cached.clone()
+                };
+                let (counts, counted, age) = match &proven {
+                    Some((at, p)) => (p.clone(), true, at.elapsed().as_secs()),
+                    None => (Default::default(), false, 0),
+                };
+
                 let root = scenario_root();
                 let table = match authors::load(&root.join(authors::AUTHORS_PATH)) {
                     Ok(t) => t,
@@ -2998,32 +3036,33 @@ fn main() {
                         continue;
                     }
                 };
-                let paths = authors::archive_paths(&root.join(authors::INDEX_PATH))
+                let index = authors::archive_entries(&root.join(authors::INDEX_PATH))
                     .unwrap_or_default();
-                // Which shelf card each hash is, computed where both facts live rather than
-                // guessed from a path on the page. A hash the shelf has moved past maps to
-                // nothing, and says nothing.
-                let eps: std::collections::BTreeMap<String, String> = every_case()
-                    .into_iter()
-                    .filter_map(|id| {
-                        let json = std::fs::read_to_string(scenario_path(id)).ok()?;
-                        Some((hex(&sce_hash(&json)), id.to_string()))
-                    })
-                    .collect();
-                let tree_id = tree.lock().unwrap().tree_id;
-                // Absent chain is an empty count, not an error: the page still has something
-                // honest to show, and the field below says which it is.
-                let (proven, counted) = match chain.as_ref().map(|c| c.proven_by_case(tree_id)) {
-                    Some(Ok(p)) => (p, true),
-                    _ => (Default::default(), false),
-                };
+                // Which hash is the file on the shelf right now, and which card it is. Computed
+                // where both facts live rather than guessed from a path on the page.
+                let mut live = std::collections::BTreeSet::new();
+                let mut eps = std::collections::BTreeMap::new();
+                for id in every_case() {
+                    if let Ok(json) = std::fs::read_to_string(scenario_path(id)) {
+                        let h = hex(&sce_hash(&json));
+                        eps.insert(h.clone(), id.to_string());
+                        live.insert(h);
+                    }
+                }
+
+                let led = authors::ledger(&table, &index, &eps, &live, &counts);
                 json(serde_json::json!({
                     "counts": "proven replays — attempts that passed the Merkle check on chain. \
                                Anchoring alone carries no case, so it cannot be counted per case.",
+                    "lineage": "a case is every archive entry sharing a path; a signature is over \
+                                one version's bytes. Replays never move between versions.",
                     "tree_id": tree_id,
                     "counted_from_chain": counted,
-                    "attributed_cases": table.len(),
-                    "authors": authors::tally(&table, &paths, &eps, &proven),
+                    "counts_age_secs": age,
+                    "counts_bound": "at most one chain read a minute, however often this is asked",
+                    "attributed_versions": table.len(),
+                    "cases": led.cases,
+                    "authors": led.authors,
                 }))
             }
             (Method::Get, "/api/fuel") => {

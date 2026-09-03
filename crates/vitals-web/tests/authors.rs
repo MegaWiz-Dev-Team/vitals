@@ -170,105 +170,13 @@ fn no_signing_key_is_anywhere_git_would_carry_it() {
     );
 }
 
-// ── the tally ───────────────────────────────────────────────────────────────
+// ── the ledger ──────────────────────────────────────────────────────────────
 
-use std::collections::BTreeMap;
-use vitals_web::authors::{tally, AuthorLedger};
+use std::collections::{BTreeMap, BTreeSet};
+use vitals_web::authors::{ledger, IndexEntry};
 
-/// One proven attempt, as the chain holds it: a case, and nothing about who wrote it.
-fn attempts(cases: &[&str]) -> Vec<String> {
-    cases.iter().map(|c| c.to_string()).collect()
-}
-
-/// Count a set of attempts per case — the shape `Chain::proven_by_case` returns.
-fn per_case(attempts: &[String]) -> BTreeMap<String, u64> {
-    let mut m = BTreeMap::new();
-    for c in attempts {
-        *m.entry(c.clone()).or_insert(0u64) += 1;
-    }
-    m
-}
-
-/// **The re-derivation.** The ledger must be recomputable from the same attempts by other means.
-///
-/// `tally` groups by author and sums; this walks the raw attempt list per author and counts, with
-/// no grouping and no shared code. If the two ever disagree, the ledger is arithmetic nobody
-/// should trust — and a ledger nobody should trust is worse than no ledger, because it looks
-/// like one.
-#[test]
-fn the_ledger_is_recomputable_from_the_attempts_it_came_from() {
-    let (a, b) = ("11".repeat(32), "22".repeat(32));
-    let (c, unplayed) = ("33".repeat(32), "44".repeat(32));
-    let alice = Keypair::new().pubkey().to_string();
-    let bob = Keypair::new().pubkey().to_string();
-
-    let table = vec![
-        attributed(&alice, &a),
-        attributed(&alice, &b),
-        attributed(&alice, &unplayed),
-        attributed(&bob, &c),
-    ];
-    let raw = attempts(&[&a, &a, &a, &b, &c, &c]);
-    let paths = BTreeMap::new();
-
-    let ledger = tally(&table, &paths, &BTreeMap::new(), &per_case(&raw));
-
-    // Recomputed the long way round: for each author, walk every attempt and count the ones
-    // whose case that author is credited with.
-    for entry in &ledger {
-        let mine: Vec<&String> = table
-            .iter()
-            .filter(|t| t.author == entry.author)
-            .map(|t| &t.sce_hash)
-            .collect();
-        let expected: u64 = raw.iter().filter(|c| mine.contains(c)).count() as u64;
-        assert_eq!(
-            entry.proven_replays, expected,
-            "{}'s total does not survive being counted the other way",
-            entry.author
-        );
-        assert_eq!(entry.distinct_cases, mine.len(), "{}'s case count is wrong", entry.author);
-        assert_eq!(
-            entry.cases.iter().map(|c| c.proven_replays).sum::<u64>(),
-            entry.proven_replays,
-            "{}'s per-case rows do not add up to their own total",
-            entry.author
-        );
-    }
-    // And the whole ledger accounts for every attempt, none twice.
-    assert_eq!(
-        ledger.iter().map(|e| e.proven_replays).sum::<u64>(),
-        raw.len() as u64,
-        "the ledger and the attempt list disagree about how many replays happened"
-    );
-}
-
-/// A case nobody has replayed is still a case somebody wrote.
-#[test]
-fn an_unreplayed_case_stays_on_its_authors_ledger_at_zero() {
-    let unplayed = "44".repeat(32);
-    let alice = Keypair::new().pubkey().to_string();
-    let ledger = tally(&[attributed(&alice, &unplayed)], &BTreeMap::new(), &BTreeMap::new(), &BTreeMap::new());
-    assert_eq!(ledger.len(), 1, "the author disappeared with their unplayed case");
-    assert_eq!(ledger[0].distinct_cases, 1);
-    assert_eq!(ledger[0].proven_replays, 0);
-}
-
-/// The same inputs must print the same way, or a diff against a re-derivation is noise.
-#[test]
-fn the_ledger_is_ordered_and_not_merely_grouped() {
-    let (a, b, c) = ("11".repeat(32), "22".repeat(32), "33".repeat(32));
-    let alice = Keypair::new().pubkey().to_string();
-    let table = vec![attributed(&alice, &a), attributed(&alice, &b), attributed(&alice, &c)];
-    let counts = per_case(&attempts(&[&b, &b, &b, &c, &c]));
-
-    let first = tally(&table, &BTreeMap::new(), &BTreeMap::new(), &counts);
-    let shuffled: Vec<_> = table.iter().rev().cloned().collect();
-    let second = tally(&shuffled, &BTreeMap::new(), &BTreeMap::new(), &counts);
-    assert_eq!(first, second, "the ledger depends on the order the table happened to be in");
-
-    let order: Vec<u64> = first[0].cases.iter().map(|c| c.proven_replays).collect();
-    assert_eq!(order, vec![3, 2, 0], "cases are not ordered by how often they were replayed");
+fn entry(sce_hash: &str, path: &str) -> IndexEntry {
+    IndexEntry { sce_hash: sce_hash.to_string(), path: path.to_string() }
 }
 
 fn attributed(author: &str, sce_hash: &str) -> Attribution {
@@ -279,6 +187,140 @@ fn attributed(author: &str, sce_hash: &str) -> Attribution {
     }
 }
 
-/// Unused today and load-bearing tomorrow: silences nothing, proves the type is public.
-#[allow(dead_code)]
-fn _ledger_is_nameable(_: AuthorLedger) {}
+fn per_case(attempts: &[&str]) -> BTreeMap<String, u64> {
+    let mut m = BTreeMap::new();
+    for c in attempts {
+        *m.entry(c.to_string()).or_insert(0u64) += 1;
+    }
+    m
+}
+
+/// The shape the ruling asks for: versions are signed, cases are lineages.
+///
+/// osce-a is the real example — five replays against a version that is no longer the file on the
+/// shelf. Grouped by hash the card would say nothing; grouped by lineage it says five.
+#[test]
+fn a_case_is_its_lineage_and_carries_every_versions_replays() {
+    let (old, live) = ("11".repeat(32), "22".repeat(32));
+    let alice = Keypair::new().pubkey().to_string();
+    let index = vec![entry(&old, "demo/stations/osce-a.sce.json"),
+                     entry(&live, "demo/stations/osce-a.sce.json")];
+    let table = vec![attributed(&alice, &old), attributed(&alice, &live)];
+
+    let led = ledger(
+        &table,
+        &index,
+        &BTreeMap::from([(live.clone(), "osce-a".to_string())]),
+        &BTreeSet::from([live.clone()]),
+        &per_case(&[&old, &old, &old, &old, &old]),
+    );
+
+    assert_eq!(led.cases.len(), 1, "two versions of one case became two cases");
+    let c = &led.cases[0];
+    assert_eq!(c.proven_replays, 5, "the lineage lost the replays of its older version");
+    assert_eq!(c.ep, "osce-a", "the card is taken from the live version");
+    assert_eq!(c.versions.len(), 2);
+    assert!(c.versions[0].live, "the live version is not listed first");
+    assert_eq!(c.versions[0].proven_replays, 0, "the live version has been played zero times");
+    assert_eq!(c.versions[1].proven_replays, 5, "the played version lost its count");
+}
+
+/// Rule 4: replays never move. A key's own total counts only what it signed.
+#[test]
+fn replays_stay_with_the_version_that_was_played() {
+    let (old, live) = ("11".repeat(32), "22".repeat(32));
+    let (alice, bob) = (Keypair::new().pubkey().to_string(), Keypair::new().pubkey().to_string());
+    let index = vec![entry(&old, "case.json"), entry(&live, "case.json")];
+    // Alice wrote the version people played; Bob revised it and nobody has played his yet.
+    let table = vec![attributed(&alice, &old), attributed(&bob, &live)];
+
+    let led = ledger(
+        &table,
+        &index,
+        &BTreeMap::new(),
+        &BTreeSet::from([live.clone()]),
+        &per_case(&[&old, &old, &old]),
+    );
+
+    let a = led.authors.iter().find(|a| a.author == alice).expect("alice");
+    let b = led.authors.iter().find(|a| a.author == bob).expect("bob");
+    assert_eq!(a.proven_replays, 3, "the replays moved off the version that was played");
+    assert_eq!(b.proven_replays, 0, "revising a case collected somebody else's replays");
+    // Both are authors of record for the one case, which is what the byline shows.
+    assert_eq!(led.cases[0].authors.len(), 2);
+    assert_eq!(led.cases[0].proven_replays, 3);
+    assert_eq!(a.distinct_cases, 1, "one lineage counted as more than one case");
+}
+
+/// **The re-derivation.** The ledger must be recomputable from the same attempts by other means.
+#[test]
+fn the_ledger_is_recomputable_from_the_attempts_it_came_from() {
+    let (a1, a2, b1, unplayed) =
+        ("11".repeat(32), "22".repeat(32), "33".repeat(32), "44".repeat(32));
+    let alice = Keypair::new().pubkey().to_string();
+    let bob = Keypair::new().pubkey().to_string();
+    let index = vec![entry(&a1, "a.json"), entry(&a2, "a.json"),
+                     entry(&b1, "b.json"), entry(&unplayed, "c.json")];
+    let table = vec![attributed(&alice, &a1), attributed(&alice, &a2),
+                     attributed(&bob, &b1), attributed(&alice, &unplayed)];
+    let raw = [&a1, &a1, &a1, &a2, &b1, &b1];
+
+    let led = ledger(&table, &index, &BTreeMap::new(), &BTreeSet::new(),
+                     &per_case(&raw.map(|s| s.as_str())));
+
+    // Counted the long way: walk the raw attempts per author, with no grouping.
+    for entry in &led.authors {
+        let signed: Vec<&String> =
+            table.iter().filter(|t| t.author == entry.author).map(|t| &t.sce_hash).collect();
+        let expected = raw.iter().filter(|c| signed.contains(c)).count() as u64;
+        assert_eq!(entry.proven_replays, expected,
+                   "{}'s total does not survive being counted the other way", entry.author);
+    }
+    // And per lineage, the same again.
+    for c in &led.cases {
+        let hashes: Vec<&String> =
+            index.iter().filter(|e| e.path == c.path).map(|e| &e.sce_hash).collect();
+        let expected = raw.iter().filter(|h| hashes.contains(h)).count() as u64;
+        assert_eq!(c.proven_replays, expected, "{} does not add up", c.path);
+    }
+    assert_eq!(led.cases.iter().map(|c| c.proven_replays).sum::<u64>(), raw.len() as u64,
+               "the ledger and the attempt list disagree about how many replays happened");
+}
+
+/// A case nobody has replayed is still a case somebody wrote.
+#[test]
+fn an_unreplayed_case_stays_on_the_ledger_at_zero() {
+    let h = "44".repeat(32);
+    let alice = Keypair::new().pubkey().to_string();
+    let led = ledger(&[attributed(&alice, &h)], &[entry(&h, "c.json")],
+                     &BTreeMap::new(), &BTreeSet::new(), &BTreeMap::new());
+    assert_eq!(led.cases.len(), 1, "the case disappeared for not being popular");
+    assert_eq!(led.authors[0].distinct_cases, 1);
+    assert_eq!(led.authors[0].proven_replays, 0);
+}
+
+/// A case nobody has signed is not on the ledger at all — the same rule the byline follows.
+#[test]
+fn an_unsigned_case_is_absent_rather_than_blank() {
+    let h = "55".repeat(32);
+    let led = ledger(&[], &[entry(&h, "c.json")], &BTreeMap::new(), &BTreeSet::new(),
+                     &per_case(&[&h]));
+    assert!(led.cases.is_empty(), "an unattributed case appeared with an empty author");
+    assert!(led.authors.is_empty());
+}
+
+/// The same inputs must produce the same ledger, or a diff against a re-derivation is noise.
+#[test]
+fn the_ledger_is_ordered_and_not_merely_grouped() {
+    let (a, b) = ("11".repeat(32), "22".repeat(32));
+    let alice = Keypair::new().pubkey().to_string();
+    let index = vec![entry(&a, "a.json"), entry(&b, "b.json")];
+    let table = vec![attributed(&alice, &a), attributed(&alice, &b)];
+    let counts = per_case(&[&b, &b]);
+
+    let first = ledger(&table, &index, &BTreeMap::new(), &BTreeSet::new(), &counts);
+    let flipped: Vec<_> = table.iter().rev().cloned().collect();
+    let second = ledger(&flipped, &index, &BTreeMap::new(), &BTreeSet::new(), &counts);
+    assert_eq!(first, second, "the ledger depends on the order the table happened to be in");
+    assert_eq!(first.cases[0].path, "b.json", "cases are not ordered by how often they were played");
+}

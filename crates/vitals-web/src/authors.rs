@@ -194,85 +194,168 @@ mod bs58 {
     }
 }
 
-// ── the tally ───────────────────────────────────────────────────────────────
+// ── the ledger ──────────────────────────────────────────────────────────────
+//
+// **An author signs bytes. A case is a lineage.** Those are different things and the ledger
+// keeps them apart on purpose.
+//
+// 1. A signature is over one `sce_hash`, exactly as it was built. You sign what you wrote, and a
+//    version nobody signed counts for nobody.
+// 2. A case is every archive entry sharing a `path` — 38 hashes over 17 paths today, sixteen of
+//    them with more than one version and the deepest with four. The index is the lineage: no new
+//    identifier was invented, because one more id for the same thing is one more thing that can
+//    disagree.
+// 3. What a reader sees on a card is the lineage: its total across every version, and the keys
+//    that signed any of them. That is why osce-a shows its five replays even though they were
+//    played against `4ee55216…` and the file on the shelf today is `ac52be1c…`.
+// 4. **Replays never move between versions.** Whoever signed the version that was played keeps
+//    those replays for good; whoever signs the live one collects from here. Whether a small edit
+//    ought to carry credit forward is **OPEN** — a policy question that waits for an author who
+//    is not us, and is deliberately not answered by a default in this code.
+// 5. Signatures are per version and the lineage is derived from a committed file that has its own
+//    verifier, so nothing published now has to be withdrawn when (4) is decided. That is the
+//    property that makes it safe to sign before the policy exists.
 
-/// One case on an author's ledger.
+use std::collections::{BTreeMap, BTreeSet};
+
+/// One archived version of a case.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct AuthoredCase {
+pub struct Version {
     pub sce_hash: String,
-    /// Where the case lives, from the archive index — so a reader can fetch and hash it.
-    pub path: String,
-    /// Which shelf card this is, when it is one. The archive holds every version ever anchored,
-    /// so a hash may name a case the shelf has since moved past; that one has no episode and the
-    /// field is empty rather than guessed.
+    /// The key that signed these bytes. Empty when nobody has.
     #[serde(skip_serializing_if = "String::is_empty")]
-    pub ep: String,
-    /// Proven replays of this case on this tree. See [`crate::authors`] on why not anchored.
+    pub author: String,
     pub proven_replays: u64,
+    /// Whether this is the version on the shelf right now.
+    pub live: bool,
 }
 
-/// What one author key has to its name.
+/// One case, across every version of it the archive holds.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct CaseLedger {
+    /// The lineage. `INDEX.json`'s path, which is what makes these versions one case.
+    pub path: String,
+    /// The shelf card, from whichever version is live.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub ep: String,
+    /// Every proven replay of every version.
+    pub proven_replays: u64,
+    /// Keys that signed any version of this case, in order.
+    pub authors: Vec<String>,
+    pub versions: Vec<Version>,
+}
+
+/// One key, and what it signed.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct AuthorLedger {
     pub author: String,
+    /// Lineages, not versions: signing three revisions of one case is one case.
     pub distinct_cases: usize,
+    /// Replays of the versions **this key signed** — see rule 4. Not the lineage total, which
+    /// may include versions somebody else wrote.
     pub proven_replays: u64,
-    pub cases: Vec<AuthoredCase>,
+    pub cases: Vec<String>,
 }
 
-/// Join the side table to the chain's per-case counts.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct Ledger {
+    pub cases: Vec<CaseLedger>,
+    pub authors: Vec<AuthorLedger>,
+}
+
+/// An archive entry: the two fields the lineage is built from.
+#[derive(Debug, Clone, Deserialize)]
+pub struct IndexEntry {
+    pub sce_hash: String,
+    pub path: String,
+}
+
+/// Build both views from the archive, the attributions, and the chain's per-case counts.
 ///
-/// Pure on purpose: everything that could be wrong about the arithmetic is wrong here, where a
-/// test can hand it a known set and check the answer without a validator in the room. The chain
-/// reading lives in [`crate::chain`]; this only adds up.
+/// Pure, so every way the arithmetic could be wrong is wrong here where a test can hand it a
+/// known set and check the answer with no validator in the room.
 ///
-/// A case with no proven replays still appears, at zero. Authorship is not a reward for
-/// popularity, and an author whose cases nobody has replayed yet has still written them — a
-/// ledger that hides them would be a leaderboard.
-pub fn tally(
+/// A case with no replays still appears, at zero, and so does an author whose cases nobody has
+/// played. Authorship is not a reward for popularity, and a ledger that hid unplayed cases would
+/// be a leaderboard.
+pub fn ledger(
     table: &[Attribution],
-    paths: &std::collections::BTreeMap<String, String>,
-    eps: &std::collections::BTreeMap<String, String>,
-    proven: &std::collections::BTreeMap<String, u64>,
-) -> Vec<AuthorLedger> {
-    let mut by_author: std::collections::BTreeMap<String, Vec<AuthoredCase>> = Default::default();
-    for a in table {
-        by_author.entry(a.author.clone()).or_default().push(AuthoredCase {
-            sce_hash: a.sce_hash.clone(),
-            path: paths.get(&a.sce_hash).cloned().unwrap_or_default(),
-            ep: eps.get(&a.sce_hash).cloned().unwrap_or_default(),
-            proven_replays: proven.get(&a.sce_hash).copied().unwrap_or(0),
+    index: &[IndexEntry],
+    eps: &BTreeMap<String, String>,
+    live: &BTreeSet<String>,
+    proven: &BTreeMap<String, u64>,
+) -> Ledger {
+    let signed: BTreeMap<&str, &str> =
+        table.iter().map(|a| (a.sce_hash.as_str(), a.author.as_str())).collect();
+
+    let mut by_path: BTreeMap<&str, Vec<Version>> = BTreeMap::new();
+    for e in index {
+        by_path.entry(&e.path).or_default().push(Version {
+            sce_hash: e.sce_hash.clone(),
+            author: signed.get(e.sce_hash.as_str()).map(|a| a.to_string()).unwrap_or_default(),
+            proven_replays: proven.get(&e.sce_hash).copied().unwrap_or(0),
+            live: live.contains(&e.sce_hash),
         });
     }
-    by_author
+
+    let mut cases: Vec<CaseLedger> = by_path
         .into_iter()
-        .map(|(author, mut cases)| {
-            // Most-replayed first, then by hash, so the same inputs always print the same way —
-            // a tally somebody is going to diff against a re-derivation must not reorder itself.
-            cases.sort_by(|a, b| {
-                b.proven_replays.cmp(&a.proven_replays).then(a.sce_hash.cmp(&b.sce_hash))
+        .filter(|(_, versions)| versions.iter().any(|v| !v.author.is_empty()))
+        .map(|(path, mut versions)| {
+            // Live first, then most-replayed: the version on the shelf is the one a reader is
+            // looking at, and after that the ones that were actually played.
+            versions.sort_by(|a, b| {
+                b.live.cmp(&a.live)
+                    .then(b.proven_replays.cmp(&a.proven_replays))
+                    .then(a.sce_hash.cmp(&b.sce_hash))
             });
-            AuthorLedger {
-                author,
-                distinct_cases: cases.len(),
-                proven_replays: cases.iter().map(|c| c.proven_replays).sum(),
-                cases,
+            let mut authors: Vec<String> =
+                versions.iter().filter(|v| !v.author.is_empty()).map(|v| v.author.clone()).collect();
+            authors.sort();
+            authors.dedup();
+            CaseLedger {
+                ep: versions
+                    .iter()
+                    .find(|v| v.live)
+                    .and_then(|v| eps.get(&v.sce_hash))
+                    .cloned()
+                    .unwrap_or_default(),
+                proven_replays: versions.iter().map(|v| v.proven_replays).sum(),
+                authors,
+                versions,
+                path: path.to_string(),
             }
         })
-        .collect()
+        .collect();
+    cases.sort_by(|a, b| b.proven_replays.cmp(&a.proven_replays).then(a.path.cmp(&b.path)));
+
+    // Per key: only the versions that key signed. Rule 4 — replays never move.
+    let mut by_author: BTreeMap<String, (u64, BTreeSet<String>)> = BTreeMap::new();
+    for c in &cases {
+        for v in &c.versions {
+            if v.author.is_empty() {
+                continue;
+            }
+            let e = by_author.entry(v.author.clone()).or_default();
+            e.0 += v.proven_replays;
+            e.1.insert(c.path.clone());
+        }
+    }
+    let authors = by_author
+        .into_iter()
+        .map(|(author, (proven_replays, paths))| AuthorLedger {
+            author,
+            distinct_cases: paths.len(),
+            proven_replays,
+            cases: paths.into_iter().collect(),
+        })
+        .collect();
+
+    Ledger { cases, authors }
 }
 
-/// Every case in the archive index, by hash, with where it lives.
-pub fn archive_paths(
-    index: &std::path::Path,
-) -> Result<std::collections::BTreeMap<String, String>, String> {
-    #[derive(Deserialize)]
-    struct Entry {
-        sce_hash: String,
-        path: String,
-    }
+/// Every archive entry, for the lineage.
+pub fn archive_entries(index: &std::path::Path) -> Result<Vec<IndexEntry>, String> {
     let text = std::fs::read_to_string(index).map_err(|e| format!("{}: {e}", index.display()))?;
-    let entries: Vec<Entry> =
-        serde_json::from_str(&text).map_err(|e| format!("{}: {e}", index.display()))?;
-    Ok(entries.into_iter().map(|e| (e.sce_hash, e.path)).collect())
+    serde_json::from_str(&text).map_err(|e| format!("{}: {e}", index.display()))
 }

@@ -558,7 +558,7 @@ fn print_author_ledger(rpc: &RpcClient, program: &Pubkey, tree_id: u64, api: &st
         return;
     }
 
-    let paths = vitals_web::authors::archive_paths(&root.join(vitals_web::authors::INDEX_PATH))
+    let index = vitals_web::authors::archive_entries(&root.join(vitals_web::authors::INDEX_PATH))
         .unwrap_or_default();
     let counts = match chain_counts(rpc, program, tree_id) {
         Ok(c) => c,
@@ -567,13 +567,29 @@ fn print_author_ledger(rpc: &RpcClient, program: &Pubkey, tree_id: u64, api: &st
             std::process::exit(EXIT_UNVERIFIED);
         }
     };
-    for entry in vitals_web::authors::tally(&table, &paths, &Default::default(), &counts) {
-        println!("{}  {} case(s) · {} proven replay(s)",
-                 entry.author, entry.distinct_cases, entry.proven_replays);
-        for c in &entry.cases {
-            println!("    {:>4}  {}  {}", c.proven_replays, &c.sce_hash[..12], c.path);
+    // No `live` and no episode ids here: this tool reads the archive and the chain, and neither
+    // of those knows which file is on somebody's shelf today. The lineage does not need it.
+    let led = vitals_web::authors::ledger(
+        &table,
+        &index,
+        &Default::default(),
+        &Default::default(),
+        &counts,
+    );
+
+    for c in &led.cases {
+        println!("{:>4}  {}", c.proven_replays, c.path);
+        for v in &c.versions {
+            let who = if v.author.is_empty() { "unsigned".to_string() } else { v.author.clone() };
+            println!("        {:>4}  {}  {}", v.proven_replays, &v.sce_hash[..12], who);
         }
     }
+    println!();
+    for a in &led.authors {
+        println!("{}  {} case(s) · {} proven replay(s) on versions it signed",
+                 a.author, a.distinct_cases, a.proven_replays);
+    }
+
     println!("\nthe server serves the same tally at {}", api.replace("/api/chain", "/api/authors"));
 }
 

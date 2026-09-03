@@ -4064,12 +4064,15 @@ const bandOf=m=>m.band||'medicine';
 let LEDGER=null;
 async function ledger(){
   if(LEDGER)return LEDGER;
-  LEDGER={byHash:new Map(),byEp:new Map()};
+  LEDGER={byPath:new Map(),byEp:new Map()};
   try{
     const r=await (await fetch('/api/authors')).json();
-    for(const a of (r.authors||[]))for(const c of (a.cases||[])){
-      const row={author:a.author,proven:c.proven_replays};
-      LEDGER.byHash.set(c.sce_hash,row);
+    /* By lineage, not by version. A case is every archive entry sharing a path, so osce-a
+       shows the replays of the version people actually played even though the file on the
+       shelf has been revised since. Versions are what get signed; cases are what get read. */
+    for(const c of (r.cases||[])){
+      const row={authors:c.authors||[],proven:c.proven_replays};
+      LEDGER.byPath.set(c.path,row);
       if(c.ep)LEDGER.byEp.set(c.ep,row);
     }
   }catch(e){ /* no ledger is not an error, it is a page with nothing to add */ }
@@ -4079,9 +4082,12 @@ async function ledger(){
    rest of the page shows a key by. */
 const authorShort=k=>k.slice(0,8);
 function authorLine(row){
-  if(!row)return '';
+  if(!row||!row.authors.length)return '';
   const n=row.proven;
-  return `<span class="byline">author <span class="mono">${authorShort(row.author)}</span>`
+  /* Every key that signed any version of this case — a revised case can have more than one
+     author of record, and naming only the latest would take the earlier one's credit. */
+  const who=row.authors.map(k=>`<span class="mono">${authorShort(k)}</span>`).join(', ');
+  return `<span class="byline">author ${who}`
     +` · ${n} proven ${n===1?'replay':'replays'}</span>`;
 }
 
@@ -4099,6 +4105,10 @@ function paintSeason(){
     const title=info?info.m.title:e.t, spec=info?bandOf(info.m):e.spec;
     const tierName=info?info.m.tier:e.tier;
     const pr=progOf(e);
+    /* Empty unless this case has a published author — see `ledger`. Computed here, above both
+       card templates: a locked case still has whoever wrote it, and a byline that appeared only
+       once a door opened would read as authorship being something the reader earns. */
+    const by=LEDGER?authorLine(LEDGER.byEp.get(e.id)):'';
     /* A station card is typographic and stays that way. Two of them wore an ECG crop for a
        while, and it was the wrong picture for the job twice over: a card has to say *who the
        patient is*, and a 12-lead says nothing about that — it is one investigation out of a
@@ -4136,13 +4146,11 @@ function paintSeason(){
       }
       return `<div class="tile lock${e.station?' st':''}" data-ep="${e.id}">
       <div class="art">${art}<span class="no">${no}</span>${chip}<span class="tease">${tease}</span></div>
-      <div class="body"><h3>${title}</h3>${chips}<p>${e.d}</p>
+      <div class="body"><h3>${title}</h3>${chips}<p>${e.d}</p>${by}
       ${go}${TRAILER[e.id]?`<button class="go trail" data-trailer="${e.id}" data-ga="trailer:${e.id}">▶ watch trailer</button>`:''}</div></div>`;
     }
     /* The exam door on an open episode is a replay for the record — XP and the anchored
        tape, never a key: doors are priced in station stars alone. */
-    /* Empty unless this case has a published author — see `ledger`. */
-    const by=LEDGER?authorLine(LEDGER.byEp.get(e.id)):'';
     const replay=!e.station&&EXAM_EPS.includes(e.id)
       ?`<span class="go exam" data-exam="${e.id}" data-ga="exam:${e.id}" title="an exam replay for XP and the record — doors open on station stars">↻ replay for the record</span>`:'';
     return `<button class="tile${e.station?' st':''}" data-ep="${e.id}" data-ga="tile:${e.id}">
