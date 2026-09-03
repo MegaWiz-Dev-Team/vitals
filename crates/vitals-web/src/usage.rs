@@ -57,6 +57,19 @@
 //!      figures did not move when the split landed. Anything that changes *that* changes a
 //!      number already quoted outside this repository, and is not a refactor.
 //!
+//! ## Runs of our own that are on the public record
+//!
+//! `anchored_on_chain` is not learner activity and must never be quoted as it. As of
+//! 2026-09-03 the devnet tree holds seven leaves and **every one of them is ours**: six from
+//! testing this system, and the seventh a perfect OSCE-A run played and anchored on camera for
+//! the week-two film, under player key
+//! `781FP3cPwXFG1B4VF9AjMphkEfbCPNDLRvjRphWCTjdx`.
+//!
+//! They are real runs — really played, really scored, really anchored — which is why they are
+//! not distinguishable from a learner's by anything on chain, and why the key is written down
+//! here instead. Anyone reaching for that number as evidence of use should subtract these first,
+//! or wait for a leaf that somebody else put there.
+//!
 //! `started` splits exactly, because `runs_without_a_key` has been counted since the field
 //! existed. `finished` cannot: its per-side counters are new, so the runs that ended before them
 //! are reported in a third bucket of their own rather than folded into either side.
