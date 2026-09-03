@@ -11,8 +11,12 @@
 //! denies a student a level they earned**, which is the worst failure this project has.
 //!
 //! `no_std` and allocation-free: it compiles unchanged into the Solana program (a native
-//! `solana-program` entrypoint — there is no Anchor in this workspace), the verifier, and the wasm
-//! on the public verify page.
+//! `solana-program` entrypoint — there is no Anchor in this workspace) and into `verify_player`,
+//! the tool a stranger builds from a clone to check a record without asking us anything.
+//!
+//! It used to say "and the wasm on the public verify page". There is no public verify page: no
+//! route serves one and no file exists for one. This crate does compile to wasm, which is what
+//! would make such a page possible, and that is a different sentence from having built it.
 
 // No unsafe, enforced rather than observed. Nothing in scoring and the Merkle tree needs it, and in a codebase whose
 // product is verifiability, "the compiler checked every memory access" should be a property a
