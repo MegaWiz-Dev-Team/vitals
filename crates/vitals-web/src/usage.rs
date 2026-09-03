@@ -294,6 +294,19 @@ fn now() -> (String, String) {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
+    // Two bases in one line, on purpose, and this is the closest the pair ever sit — so the
+    // note goes here rather than somewhere a reader would have to already suspect it.
+    //
+    // The day is Bangkok's and the month is UTC's, which means for seven hours around every
+    // month boundary a day belongs to a month that has not started yet by its own reckoning:
+    // 2026-10-01 in Bangkok is still 2026-09-30 in UTC until 07:00. Nothing joins the two —
+    // `days` is a table of its own and `devices`/`meter` key on the month alone — so the
+    // disagreement is not visible from outside and no number is wrong because of it.
+    //
+    // It is deliberate rather than unfinished. The month decides when the monthly compute
+    // ceiling resets, and moving a spend boundary is a different decision from moving where a
+    // chart's column starts. If the month ever does move, `meter::month_key` is the one to
+    // change and the ceiling's reset time moves with it.
     (day_key(secs + BANGKOK_OFFSET_SECS), crate::meter::month_key(secs))
 }
 

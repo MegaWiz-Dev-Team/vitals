@@ -1591,12 +1591,18 @@ fn addr_from_xff(header: &str, from_end: usize) -> Option<String> {
 /// different invented address in the header, forty accepted — including in the
 /// `<invented>, <real>` shape a request through Cloud Run actually carries.
 ///
-/// Google's own load-balancing documentation is explicit that the last entry is the trustworthy
-/// one and the first is spoofable. What it does not pin down is how many entries a *direct*
-/// Cloud Run service appends, which is why [`client_ip_from_end`] is a setting: at 1 this is
-/// the last entry, and if that turns out to be a Google front end rather than the visitor, the
-/// failure is that everyone shares one window — too strict, never bypassable. The unsafe
-/// direction is not reachable from here.
+/// Measured on production too, on 2026-09-03 against revision `vitals-00045-66d`: a request to
+/// `/api/fuel` carrying `X-Forwarded-For: 198.51.100.77` was logged by Cloud Run with the
+/// caller's real IPv6 address in `httpRequest.remoteIp`, not the invented one — the platform
+/// appends what it observed rather than forwarding what it was handed. Then, with the window
+/// already spent, five further requests each carrying a *different* invented value (including
+/// the two-entry shape, and one with no header at all as a control) were all refused. None of
+/// them bought a fresh allowance.
+///
+/// [`client_ip_from_end`] stays a setting because the number of trailing entries is a property
+/// of the deployment: 1 for a direct service, 2 behind an external load balancer, which appends
+/// the client and then its own forwarding rule. Getting it wrong fails safe — everyone shares
+/// one window, which is too strict and never bypassable.
 ///
 /// Player keys and session ids are deliberately still not used; a browser mints those for free.
 fn client_addr(req: &tiny_http::Request) -> String {
@@ -3871,13 +3877,17 @@ mod tests {
     /// to choose. Against this binary, twenty such requests were accepted where the two-entry
     /// shape was cut to six.
     ///
-    /// Whether that request can exist is a fact about Cloud Run, not about this code: it turns
-    /// on whether a direct service appends what it observed to a client-supplied header.
-    /// Google's load-balancing documentation says the last entry is the one the infrastructure
-    /// vouches for, which is only meaningful if it appends — but that is a different product's
-    /// page, and it was not confirmed against a real Cloud Run request. Until it is, this is
-    /// the residual, and `VITALS_CLIENT_IP_FROM_END` is how it gets closed without a deploy of
-    /// new code if the answer turns out to be the unwelcome one.
+    /// Whether that request can *arrive* is a fact about Cloud Run rather than about this
+    /// code, and it has since been settled: it cannot. Measured on 2026-09-03 against revision
+    /// `vitals-00045-66d` — Cloud Run appends what it observed, so a header the caller wrote is
+    /// never the last entry, and five requests carrying five different invented values were all
+    /// refused after the window was spent rather than each buying a fresh one.
+    ///
+    /// The assertion below is kept, and is about the parser rather than the platform: given
+    /// that shape it does hand back twenty different keys. It stands as the description of what
+    /// the guard rests on — if Cloud Run's behaviour ever changes, or this runs behind
+    /// something that forwards the header untouched, this is the sentence that says what breaks
+    /// and `VITALS_CLIENT_IP_FROM_END` is the lever.
     #[test]
     fn a_lone_invented_address_is_still_the_callers_to_choose() {
         let seen: std::collections::HashSet<String> = (0..20)
