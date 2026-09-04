@@ -147,7 +147,57 @@ assumption this product removes.
 | server | Cloud Run, one instance | Same place `embla-cloud` runs. Pinned to one instance because the anchoring tree lives in memory — two copies would each keep their own and overwrite the other's leaves. |
 | state | Firestore, in this product's own project | A Cloud Run container has no disk that survives a request. Setting `GOOGLE_CLOUD_PROJECT` is what selects this backend; without it the store writes files. The project is not shared with `embla-cloud` — see below. |
 | relay key | Secret Manager, mounted at `/relay/id.json` | Read as a file, not an environment variable. |
+| payout key | Secret Manager, mounted at `/payout/id.json` | Same, and only when a rate asks for it. Outside `/app` on purpose — see *Paying authors*. |
 | the model | wherever the GPU is | Heimdall cannot run on Cloud Run. Point `HEIMDALL_API_URL` at the machine that has one — and if that ever becomes a hosted model instead, the deck's claim that a *local* model plays the patient stops being true and has to change with it. |
+
+### Paying authors
+
+Payouts are off unless a rate says so, and a deploy that says nothing gets a bay where runs are
+proven and nobody is paid. That is a fine state to run in; what it must not be is an accident, so
+`deploy-cloudrun.sh` prints a `── payout` line on every deploy, on or off.
+
+The wallet is mounted the way the relay key is — a file from Secret Manager, never an environment
+variable. Creating it is a one-time step, and the file it reads has to be outside this repository:
+
+```
+gcloud secrets create vitals-payout-key --project vitals-academy \
+  --data-file ~/.vitals/keys/payout.json
+```
+
+The server refuses to start if `VITALS_PAYOUT_KEY` points anywhere inside the repository or
+inside `/app`, the tree it serves its own files from — a wallet in either is one `git add -A` or
+one `docker pull` from being published. `/payout/id.json`, where the deploy mounts it, is in
+neither.
+
+Then a payout deploy is the ordinary one with the rate and the allowlist named:
+
+```
+VITALS_GCP_PROJECT=vitals-academy \
+VITALS_PROGRAM_ID=<from deploy-devnet.sh> \
+VITALS_PAYOUT_LAMPORTS=5000000 \
+VITALS_PAYOUT_ALLOWLIST=<author pubkey>,<author pubkey> \
+VITALS_PLATFORM_ADDRESS=<platform pubkey> \
+  scripts/deploy-cloudrun.sh
+```
+
+`VITALS_PLATFORM_BPS` (default 1500) and `VITALS_PAYOUT_DAILY_CAP_LAMPORTS` (default 100,000,000)
+are passed through when exported and otherwise keep the server's defaults, so the split and the
+ceiling have one definition rather than two.
+
+Three things are refused rather than defaulted, all of them shapes that read as on and behave as
+off:
+
+- a rate that is not a whole number of lamports — the deploy refuses it, and so does the server;
+- a rate with an empty allowlist. A payment with nobody allowed to receive it is a
+  misconfiguration, not a mode: every finished run would reach the payment step and be turned
+  away at it. `VITALS_PAYOUT_LAMPORTS=0` is how to say off;
+- a cluster that is not devnet, checked by genesis hash at boot rather than inferred from the RPC
+  URL. Moving real money is a decision somebody makes on purpose.
+
+`verify-deploy.sh` reads the running service back and fails if the payout it reports is not the
+one this shell asked for, printing the rate and the wallet when they agree. Because
+`--set-env-vars` replaces the whole environment, the failure it exists to catch is a revision
+that came up with payouts off while the shell that deployed it had them on.
 
 ### Why a separate project
 
