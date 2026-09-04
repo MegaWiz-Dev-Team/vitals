@@ -481,14 +481,8 @@ impl Chain {
     /// is a claim account whose PDA re-derives for *this* tree from the player it names. The
     /// re-derivation is the filter — it is what separates this tree's buffers from every other
     /// tree's, and what stops an account that merely looks the right size from being counted.
-    pub fn proven_by_case(&self, tree_id: u64) -> Result<BTreeMap<String, u64>, String> {
-        Ok(self.proven(tree_id)?.per_case)
-    }
-
-    /// The same read, keeping which leaf belonged to which case.
-    ///
-    /// The payout memos name leaves; the ledger groups by case. This is the only place both
-    /// facts exist together, because only `ProvenAttempt` carries them together.
+    /// Also keeps which leaf belonged to which case: the payout memos name leaves and the
+    /// ledger groups by case, and only `ProvenAttempt` carries both together.
     pub fn proven(&self, tree_id: u64) -> Result<Proven, String> {
         let accounts = self
             .rpc

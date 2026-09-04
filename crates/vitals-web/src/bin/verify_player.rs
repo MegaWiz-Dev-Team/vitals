@@ -610,7 +610,7 @@ fn print_author_ledger(rpc: &RpcClient, program: &Pubkey, tree_id: u64, api: &st
     println!("\nthe server serves the same tally at {}", api.replace("/api/chain", "/api/authors"));
 }
 
-/// Proven attempts per case, straight off the chain — the same filter `Chain::proven_by_case`
+/// Proven attempts per case, straight off the chain — the same filter `Chain::proven`
 /// applies, written out here so this tool depends on no server at all.
 fn chain_counts(
     rpc: &RpcClient,

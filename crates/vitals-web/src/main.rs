@@ -379,8 +379,33 @@ const TREE: &str = "tree";
 /// whole point of it.
 const AUTHOR_COUNT_TTL: Duration = Duration::from_secs(60);
 
-/// The held chain read: when it was taken, and the per-case counts it produced.
-type AuthorCounts = Arc<Mutex<Option<(Instant, std::collections::BTreeMap<String, u64>)>>>;
+/// Everything `/api/authors` needs from the chain, taken in one pass and held for the TTL.
+///
+/// One struct rather than three caches, because the three answers have to be from the same
+/// moment: a paid count taken a minute after the proven count it is displayed beside would show
+/// a case paid more times than it was played.
+#[derive(Clone, Default)]
+struct ChainView {
+    /// Case hash → proven attempts.
+    per_case: std::collections::BTreeMap<String, u64>,
+    /// Case hash → what has been paid for it.
+    paid_by_case: std::collections::BTreeMap<String, authors::Paid>,
+    /// Leaf → (lamports, signature), so `/api/payout` can answer for a leaf this instance did
+    /// not pay itself — a restart, or another instance.
+    paid_leaves: std::collections::BTreeMap<String, (u64, String)>,
+}
+
+/// The held chain read: when it was taken, and everything it produced.
+type AuthorCounts = Arc<Mutex<Option<(Instant, ChainView)>>>;
+
+/// Payouts this process made, by leaf.
+///
+/// A record of our own transfers, not a second opinion about whether to pay — `settle` still
+/// decides from a fresh read of the chain every time. This exists so the display can answer
+/// without a round trip: `/api/payout` is polled a dozen times per finished run, and a class
+/// finishing together would otherwise be hundreds of chain fan-outs on the one thread this
+/// server has, competing with the anchoring those same learners are waiting on.
+type Settled = Arc<Mutex<HashMap<String, (u64, String)>>>;
 
 /// What a reconciliation of the local leaf list against the chain's tree decided.
 #[derive(Debug, PartialEq, Eq)]
@@ -1997,6 +2022,7 @@ fn main() {
     let pendings: Arc<Mutex<HashMap<String, PendingWork>>> = Arc::new(Mutex::new(HashMap::new()));
     // The author ledger's chain read, held for AUTHOR_COUNT_TTL. See /api/authors.
     let author_counts: AuthorCounts = Arc::new(Mutex::new(None));
+    let settled: Settled = Arc::new(Mutex::new(HashMap::new()));
     // Where AUTHORS.json and the archive index live, resolved once.
     let authors_root = scenario_root();
     // The author payout, or nothing at all. `from_env` refuses rather than degrades: a rate with
@@ -3028,28 +3054,33 @@ fn main() {
             // case is one the chain accepted, and nothing else.
             (Method::Get, "/api/authors") => {
                 let tree_id = tree.lock().unwrap().tree_id;
-                // One heavy RPC (`get_program_accounts`) behind a public endpoint is a curl loop
-                // away from being our whole RPC budget, so the chain read is held for a minute.
+                // **One chain fan-out a minute for this whole handler**, not per read.
                 //
-                // Sixty seconds is **a bound on RPC calls per minute, not a promise about
-                // freshness**: at most one fan-out per minute however hard this is asked for. A
-                // reader who needs the chain itself has `verify_player --authors`, which is
-                // uncached because hitting the chain is the entire point of it.
-                let proven = {
+                // Everything the chain can tell this endpoint is taken together and held: the
+                // proven counts, what has been paid, and which leaf each payment was for. Three
+                // separate caches would let a paid count be a minute newer than the proven count
+                // printed beside it, and show a case paid more often than it was played.
+                //
+                // The bound is the point. `get_program_accounts` and a signature scan behind an
+                // endpoint anyone can curl is the RPC budget that anchoring needs, spent by the
+                // page that only displays it — and on the one thread this server has, every
+                // round trip here stalls a learner mid-run. `settle` still reads fresh and
+                // uncached, because that one is the payment decision; this one is display.
+                let view = {
                     let mut cached = author_counts.lock().unwrap();
-                    let fresh = cached.as_ref().is_some_and(|(at, _): &(Instant, _)| {
+                    let fresh = cached.as_ref().is_some_and(|(at, _): &(Instant, ChainView)| {
                         at.elapsed() < AUTHOR_COUNT_TTL
                     });
                     if !fresh {
-                        if let Some(Ok(p)) = chain.as_ref().map(|c| c.proven_by_case(tree_id)) {
-                            *cached = Some((Instant::now(), p));
+                        if let Some(fresh_view) = chain_view(&chain, &payer, tree_id) {
+                            *cached = Some((Instant::now(), fresh_view));
                         }
                     }
                     cached.clone()
                 };
-                let (counts, counted, age) = match &proven {
-                    Some((at, p)) => (p.clone(), true, at.elapsed().as_secs()),
-                    None => (Default::default(), false, 0),
+                let (view, counted, age) = match &view {
+                    Some((at, v)) => (v.clone(), true, at.elapsed().as_secs()),
+                    None => (ChainView::default(), false, 0),
                 };
 
                 let root = scenario_root();
@@ -3074,34 +3105,13 @@ fn main() {
                     }
                 }
 
-                // What has actually been paid, joined here because only this has both halves:
-                // the memos name leaves, and only ProvenAttempt says which case a leaf belongs
-                // to. Never derived from the replay count — a proven replay and a paid one are
-                // different events with different ways of not happening.
-                let paid = payer
-                    .as_ref()
-                    .and_then(|p| p.ledger().ok().zip(chain.as_ref().and_then(|c| c.proven(tree_id).ok())))
-                    .map(|(led, proven)| {
-                        let mut per_case: std::collections::BTreeMap<String, authors::Paid> =
-                            Default::default();
-                        for (leaf, amount) in &led.paid_amounts {
-                            if let Some(case) = proven.case_of_leaf.get(leaf) {
-                                let e = per_case.entry(case.clone()).or_default();
-                                e.paid += 1;
-                                e.paid_lamports += amount;
-                            }
-                        }
-                        per_case
-                    })
-                    .unwrap_or_default();
-
                 let led = authors::ledger(&authors::Inputs {
                     table: &table,
                     index: &index,
                     eps: &eps,
                     live: &live,
-                    proven: &counts,
-                    paid: &paid,
+                    proven: &view.per_case,
+                    paid: &view.paid_by_case,
                     payable: payer.as_ref().map(|p| &p.allowlist),
                 });
                 json(serde_json::json!({
@@ -3112,7 +3122,10 @@ fn main() {
                     "tree_id": tree_id,
                     "counted_from_chain": counted,
                     "counts_age_secs": age,
-                    "counts_bound": "at most one chain read a minute, however often this is asked",
+                    "counts_bound": "one pass over the chain a minute at most, however often \
+                                     this is asked — an account sweep and a signature scan, \
+                                     taken together so the proven and paid figures are from the \
+                                     same moment",
                     "attributed_versions": table.len(),
                     "payouts": match payer.as_ref() {
                         Some(p) => serde_json::json!({
@@ -3134,18 +3147,38 @@ fn main() {
             // transaction landing a moment after the proof, and the honest answer in that gap is
             // that it has not happened yet.
             (Method::Get, "/api/payout") => {
+                // **No chain read on this path.** The page polls it a dozen times per finished
+                // run; a class finishing together would be hundreds of fan-outs in half a
+                // minute, on the one thread that is also anchoring their runs. So it answers
+                // from what this process already knows it did, and falls back to the snapshot
+                // the authors endpoint holds — never from a fresh scan.
                 let leaf = param(&url, "leaf").unwrap_or_default().to_lowercase();
-                match payer.as_ref().filter(|_| !leaf.is_empty()).map(|p| p.ledger()) {
-                    Some(Ok(led)) => json(serde_json::json!({
-                        "paid": led.paid.contains(&leaf),
-                        "lamports": led.paid_amounts.get(&leaf),
-                        "signature": led.paid_signatures.get(&leaf),
+                if payer.is_none() || leaf.is_empty() {
+                    let _ = req.respond(json(serde_json::json!({ "paid": false, "unknown": true })));
+                    continue;
+                }
+                // What this process paid, which is the ordinary case: the run just finished here.
+                let mine = settled.lock().unwrap().get(&leaf).cloned();
+                // Otherwise whatever the last chain read saw — a restart, or another instance.
+                // Up to a minute stale, and the debrief's silence already handles "not yet"
+                // honestly, so a leaf paid elsewhere reads as unpaid for at most that long.
+                let known = mine.or_else(|| {
+                    author_counts
+                        .lock()
+                        .unwrap()
+                        .as_ref()
+                        .and_then(|(_, v): &(Instant, ChainView)| v.paid_leaves.get(&leaf).cloned())
+                });
+                match known {
+                    Some((lamports, signature)) => json(serde_json::json!({
+                        "paid": true,
+                        "lamports": lamports,
+                        "signature": signature,
                         // Said on the same line as the number, everywhere the number goes.
                         "currency": "devnet SOL — illustrative, not money",
                     })),
-                    // No payer, no leaf, or a chain that would not answer. None of those is an
-                    // error a learner can do anything about, and none of them is "not paid".
-                    _ => json(serde_json::json!({ "paid": false, "unknown": true })),
+                    // Not "no": not yet, as far as anything here has been told.
+                    None => json(serde_json::json!({ "paid": false })),
                 }
             }
             (Method::Get, "/api/fuel") => {
@@ -3769,7 +3802,7 @@ fn main() {
                             // dozen lines before. The guarantee is the spawn and the ignored
                             // return, not the ordering, and a reader who moved code trusting the
                             // old wording would have been surprised.)
-                            settle(&payer, &authors_root, &work.case, &work.leaf);
+                            settle(&payer, &settled, &authors_root, &work.case, &work.leaf);
                         }
                         let mut map = sessions.lock().unwrap();
                         if let Some(s) = map.get_mut(&work.session) {
@@ -4062,6 +4095,38 @@ fn shock_order(act: &str) -> Option<f64> {
     named.then(|| joules_in(act).unwrap_or(DEFIB_JOULES))
 }
 
+/// Everything `/api/authors` reads from the chain, in one pass.
+///
+/// Two calls, both once: `Chain::proven` (one `get_program_accounts`) and `Payer::ledger` (one
+/// signature scan plus a lookup per memo not seen before). Called only when the cache is stale,
+/// so the endpoint costs at most this once a minute however hard it is asked for.
+///
+/// Returns `None` when there is no chain at all — an absent answer rather than an empty one, so
+/// the endpoint can say `counted_from_chain: false` instead of reporting zeroes as facts.
+fn chain_view(
+    chain: &Option<chain::Chain>,
+    payer: &Option<Arc<payout::Payer>>,
+    tree_id: u64,
+) -> Option<ChainView> {
+    let proven = chain.as_ref()?.proven(tree_id).ok()?;
+    let mut view = ChainView { per_case: proven.per_case, ..Default::default() };
+    // Payments are optional: payouts may be off, or the wallet unreadable. Neither makes the
+    // proven counts less true, so the view is returned either way.
+    if let Some(led) = payer.as_ref().and_then(|p| p.ledger().ok()) {
+        for (leaf, lamports) in &led.paid_amounts {
+            if let Some(case) = proven.case_of_leaf.get(leaf) {
+                let e = view.paid_by_case.entry(case.clone()).or_default();
+                e.paid += 1;
+                e.paid_lamports += lamports;
+            }
+            if let Some(sig) = led.paid_signatures.get(leaf) {
+                view.paid_leaves.insert(leaf.clone(), (*lamports, sig.clone()));
+            }
+        }
+    }
+    Some(view)
+}
+
 /// Pay a case's author for a proof that has just landed, on a thread of its own.
 ///
 /// **Nothing this does can change what the learner is told.** The proof is theirs the moment the
@@ -4074,11 +4139,13 @@ fn shock_order(act: &str) -> Option<f64> {
 /// consulted here would be a second opinion about money.
 fn settle(
     payer: &Option<Arc<payout::Payer>>,
+    settled: &Settled,
     root: &std::path::Path,
     case: &str,
     leaf: &str,
 ) {
     let Some(payer) = payer.clone() else { return };
+    let settled = settled.clone();
     if case.is_empty() || leaf.is_empty() {
         return;
     }
@@ -4132,10 +4199,18 @@ fn settle(
             payout::Verdict::Pay(split) => {
                 let Some(author) = author else { return };
                 match payer.pay(&leaf, &author, split) {
-                    Ok(paid) => eprintln!(
-                        "payout: {} lamports to {} for leaf {leaf} — {}",
-                        paid.author_lamports, paid.author, paid.signature
-                    ),
+                    Ok(paid) => {
+                        // Ours to report, because we just made it. Not a decision — `pay` has
+                        // already happened — only a record so the debrief does not have to ask
+                        // the chain what this process did a second ago.
+                        if let Ok(mut done) = settled.lock() {
+                            done.insert(leaf.clone(), (paid.author_lamports, paid.signature.clone()));
+                        }
+                        eprintln!(
+                            "payout: {} lamports to {} for leaf {leaf} — {}",
+                            paid.author_lamports, paid.author, paid.signature
+                        );
+                    }
                     Err(e) => eprintln!("payout: leaf {leaf} — {e}"),
                 }
             }
