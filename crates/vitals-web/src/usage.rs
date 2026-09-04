@@ -60,10 +60,13 @@
 //! ## Runs of our own that are on the public record
 //!
 //! `anchored_on_chain` is not learner activity and must never be quoted as it. As of
-//! 2026-09-03 the devnet tree holds seven leaves and **every one of them is ours**: six from
-//! testing this system, and the seventh a perfect OSCE-A run played and anchored on camera for
-//! the week-two film, under player key
-//! `781FP3cPwXFG1B4VF9AjMphkEfbCPNDLRvjRphWCTjdx`.
+//! 2026-09-04 the devnet tree holds eight leaves and **every one of them is ours**: six from
+//! testing this system, and two perfect OSCE-A runs played and anchored on camera for the
+//! week-two film —
+//!
+//!   * `781FP3cPwXFG1B4VF9AjMphkEfbCPNDLRvjRphWCTjdx` (index 6, 3 Sep)
+//!   * `9ADFvPRhgvqbeZ4hYaaT6eKNqyLHzMSm4suF3moKXsvM` (index 7, 3 Sep, the take that is in the
+//!     cut — the first was superseded)
 //!
 //! They are real runs — really played, really scored, really anchored — which is why they are
 //! not distinguishable from a learner's by anything on chain, and why the key is written down

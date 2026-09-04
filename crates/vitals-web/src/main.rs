@@ -8,7 +8,9 @@
 //! and sessions in a map. The point is to make the automaton playable, not to ship a platform.
 
 mod chain;
-use vitals_web::{archive, authors, fuel, lang, meter, news2, patient, reading, review, store, usage};
+use vitals_web::{
+    archive, authors, fuel, lang, meter, news2, patient, payout, reading, review, store, usage,
+};
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -1995,6 +1997,28 @@ fn main() {
     let pendings: Arc<Mutex<HashMap<String, PendingWork>>> = Arc::new(Mutex::new(HashMap::new()));
     // The author ledger's chain read, held for AUTHOR_COUNT_TTL. See /api/authors.
     let author_counts: AuthorCounts = Arc::new(Mutex::new(None));
+    // Where AUTHORS.json and the archive index live, resolved once.
+    let authors_root = scenario_root();
+    // The author payout, or nothing at all. `from_env` refuses rather than degrades: a rate with
+    // no wallet, a key inside the repository, a cluster that is not devnet, or a mistyped cap
+    // stops the server here instead of paying somebody by accident later.
+    // The same URL `chain` uses, read the same way, so the payout and the proof can never end up
+    // looking at different clusters.
+    let rpc_url = std::env::var("VITALS_RPC").unwrap_or_else(|_| "http://127.0.0.1:8899".into());
+    let payer: Option<Arc<payout::Payer>> = match payout::Payer::from_env(&rpc_url) {
+        Ok(p) => p.map(Arc::new),
+        Err(e) => {
+            eprintln!("payout    refusing to start: {e}");
+            std::process::exit(1);
+        }
+    };
+    match &payer {
+        Some(p) => println!(
+            "payout     {} lamports per proven replay · {} bps to the platform · wallet {} · {} authorised",
+            p.rate, p.platform_bps, p.address(), p.allowlist.len()
+        ),
+        None => println!("payout     off — VITALS_PAYOUT_LAMPORTS is 0 or unset"),
+    }
 
     match (&token, loopback) {
         (Some(_), _) => println!("auth       bearer token required on anchor · claim · say"),
@@ -3237,6 +3261,8 @@ fn main() {
                         pendings.lock().unwrap().insert(
                             who.to_string(),
                             PendingWork { pending: p, session: id.clone(), account: person,
+                                          // Not an anchor: no leaf of its own, and nothing to pay for.
+                                          leaf: String::new(), case: String::new(),
                                           prove: None, commit: Some((hash, nonce, mode)),
                                           index: 0, score: 0, det: None, level: None, link: false },
                         );
@@ -3383,7 +3409,9 @@ fn main() {
                             who.to_string(),
                             PendingWork { pending: anchor, prove: Some(prove),
                                           session: id.clone(), account: person, commit: None,
-                                          index, score: rec.score(),
+                                          index, leaf: hex(&rec.leaf()),
+                                          case: hex(&sce_hash(&s.sce_json)),
+                                          score: rec.score(),
                                           det: s.exam_mode.then_some((rec.det_score, rec.det_max)),
                                           level: None, link: false },
                         );
@@ -3419,6 +3447,8 @@ fn main() {
                         pendings.lock().unwrap().insert(
                             who.to_string(),
                             PendingWork { pending: p, session: String::new(), account: id, prove: None, commit: None,
+                                          // Not an anchor: no leaf of its own, and nothing to pay for.
+                                          leaf: String::new(), case: String::new(),
                                           index: 0, score: 0, det: None, level: Some(level), link: false },
                         );
                         json(serde_json::json!({ "sign": msg }))
@@ -3566,6 +3596,8 @@ fn main() {
                         pendings.lock().unwrap().insert(
                             dev.to_string(),
                             PendingWork { pending: p, session: String::new(), account: person, prove: None, commit: None,
+                                          // Not an anchor: no leaf of its own, and nothing to pay for.
+                                          leaf: String::new(), case: String::new(),
                                           index: 0, score: 0, det: None, level: None, link: true },
                         );
                         json(serde_json::json!({ "sign": msg }))
@@ -3668,6 +3700,14 @@ fn main() {
                                 })));
                                 continue;
                             }
+                            // The proof is on chain. Pay the author, off this thread.
+                            //
+                            // Nothing here may touch the reply: a learner's proof is theirs the
+                            // moment the chain took it, and whether our wallet is empty, capped
+                            // or misconfigured is our problem to have quietly. So the payout runs
+                            // after the response is built, on its own thread, and its only
+                            // outputs are a transaction and a log line.
+                            settle(&payer, &authors_root, &work.case, &work.leaf);
                         }
                         let mut map = sessions.lock().unwrap();
                         if let Some(s) = map.get_mut(&work.session) {
@@ -3723,6 +3763,10 @@ struct PendingWork {
     /// Whose record this lands on — not necessarily the key that signs it.
     account: solana_sdk::pubkey::Pubkey,
     index: u64,
+    /// The leaf and the case behind it, carried so the payout does not have to re-derive either
+    /// from a tree that has moved on by the time the proof confirms.
+    leaf: String,
+    case: String,
     score: u32,
     /// The deterministic exam mark stamped into the record at anchor time — carried here only
     /// so the submit reply can show it; `None` for practice runs and for non-anchor work.
@@ -3954,6 +3998,70 @@ fn shock_order(act: &str) -> Option<f64> {
     let named = names_a_shock(act)
         || lang::canonical_order(act).is_some_and(names_a_shock);
     named.then(|| joules_in(act).unwrap_or(DEFIB_JOULES))
+}
+
+/// Pay a case's author for a proof that has just landed, on a thread of its own.
+///
+/// **Nothing this does can change what the learner is told.** The proof is theirs the moment the
+/// chain accepted it; an empty wallet or a reached cap is ours to have quietly. So this is spawned
+/// rather than awaited, it returns nothing, and every outcome — paid, skipped, failed — is a log
+/// line and a transaction or neither.
+///
+/// The decision reads a fresh ledger from the chain every time rather than a cached one. The
+/// whole point of reading memos is that they are true across restarts and instances, and a cache
+/// consulted here would be a second opinion about money.
+fn settle(
+    payer: &Option<Arc<payout::Payer>>,
+    root: &std::path::Path,
+    case: &str,
+    leaf: &str,
+) {
+    let Some(payer) = payer.clone() else { return };
+    if case.is_empty() || leaf.is_empty() {
+        return;
+    }
+    let (case, leaf) = (case.to_string(), leaf.to_string());
+    let root = root.to_path_buf();
+    std::thread::spawn(move || {
+        // Who the side table says wrote it. No entry is not an error and never a guess.
+        let author = authors::load(&root.join(authors::AUTHORS_PATH))
+            .unwrap_or_default()
+            .into_iter()
+            .find(|a| a.sce_hash == case)
+            .map(|a| a.author);
+
+        let led = match payer.ledger() {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("payout: not paying for leaf {leaf} — {e}");
+                return;
+            }
+        };
+        let ask = payout::Ask {
+            rate: payer.rate,
+            platform_bps: payer.platform_bps,
+            allowlist: &payer.allowlist,
+            author: author.as_deref(),
+            leaf: &leaf,
+            paid: &led.paid,
+            spent_today: led.spent_today,
+            daily_cap: payer.daily_cap,
+            balance: payer.balance(),
+        };
+        match payout::decide(&ask) {
+            payout::Verdict::Skip(why) => eprintln!("payout: leaf {leaf} not paid — {why}"),
+            payout::Verdict::Pay(split) => {
+                let Some(author) = author else { return };
+                match payer.pay(&leaf, &author, split) {
+                    Ok(paid) => eprintln!(
+                        "payout: {} lamports to {} for leaf {leaf} — {}",
+                        paid.author_lamports, paid.author, paid.signature
+                    ),
+                    Err(e) => eprintln!("payout: leaf {leaf} — {e}"),
+                }
+            }
+        }
+    });
 }
 
 #[cfg(test)]
