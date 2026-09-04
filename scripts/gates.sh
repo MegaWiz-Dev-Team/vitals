@@ -39,7 +39,14 @@ fi
 
 if solana -u localhost cluster-version >/dev/null 2>&1; then
   if [ -n "${VITALS_PROGRAM_ID:-}" ]; then
-    gate "verify deployed bytecode" env VITALS_RPC=http://127.0.0.1:8899 scripts/verify-deploy.sh
+    # SKIP_PAYOUT_CHECK because gates run *before* a deploy, always. The payout check reads the
+    # running service and compares it against what this shell asked for, which is a question
+    # about a revision — and the only revision standing when gates run is the previous one,
+    # whose payout state says nothing about this build. It runs where it means something:
+    # `deploy-cloudrun.sh && verify-deploy.sh` in one shell. The program check above is a
+    # different thing and does belong here: it compares the local validator's bytes to this tree.
+    gate "verify deployed bytecode" env VITALS_RPC=http://127.0.0.1:8899 SKIP_PAYOUT_CHECK=1 \
+      scripts/verify-deploy.sh
     gate "chain tests (serial)" env VITALS_RPC=http://127.0.0.1:8899 \
       cargo test -p vitals-web --test chain_flow --offline -- --ignored --test-threads=1
     gate "cli season"           env VITALS_RPC=http://127.0.0.1:8899 \
