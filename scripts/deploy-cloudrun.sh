@@ -91,17 +91,43 @@ echo "── rpc       $RPC"
 # State goes to Firestore, not a disk: a Cloud Run container has none that survives a request.
 # Setting the project is what selects that backend — see store.rs.
 # The relay key is read as a file, not an env var, so it is mounted as one below.
-ENV="GOOGLE_CLOUD_PROJECT=$PROJECT,VITALS_RPC=$RPC,VITALS_PROGRAM_ID=$PROGRAM_ID,VITALS_SCENARIOS=/app,VITALS_KEYPAIR=/relay/id.json"
-[ -n "$HEIMDALL" ] && ENV="$ENV,HEIMDALL_API_URL=$HEIMDALL"
-[ -n "$VERTEX_URL" ] && ENV="$ENV,VITALS_VERTEX_URL=$VERTEX_URL"
-[ -n "$VERTEX_MODEL" ] && ENV="$ENV,VITALS_VERTEX_MODEL=$VERTEX_MODEL"
-[ -n "$MONTHLY" ] && ENV="$ENV,VITALS_MONTHLY_TURNS=$MONTHLY"
-[ -n "$DONATE" ] && ENV="$ENV,VITALS_DONATE_URL=$DONATE"
+#
+# Assembled through env_add rather than by hand, because one of the values below — the payout
+# allowlist — is itself a comma-separated list, and --set-env-vars splits on commas. A two-wallet
+# allowlist written plainly would reach gcloud as a second variable named after a wallet. The
+# escape is a custom delimiter: `^@^` in front of the whole value makes @ the separator instead,
+# which frees the comma and spends the @. Nothing here may then contain an @, so env_add checks
+# rather than trusting — a half-parsed environment is the quiet kind of failure, and this script
+# exists to stop the quiet kind.
+ENV=""
+env_add() {
+  case "$1" in
+    *@*)
+      echo "refusing to deploy: an environment value contains '@', which is the character" >&2
+      echo "  this deploy uses to separate variables:" >&2
+      echo "    $1" >&2
+      echo "  Change the delimiter here rather than shipping a half-parsed environment. @ was" >&2
+      echo "  chosen because the payout allowlist needs the comma." >&2
+      exit 1 ;;
+  esac
+  if [ -z "$ENV" ]; then ENV="$1"; else ENV="$ENV@$1"; fi
+}
+
+env_add "GOOGLE_CLOUD_PROJECT=$PROJECT"
+env_add "VITALS_RPC=$RPC"
+env_add "VITALS_PROGRAM_ID=$PROGRAM_ID"
+env_add "VITALS_SCENARIOS=/app"
+env_add "VITALS_KEYPAIR=/relay/id.json"
+[ -n "$HEIMDALL" ] && env_add "HEIMDALL_API_URL=$HEIMDALL"
+[ -n "$VERTEX_URL" ] && env_add "VITALS_VERTEX_URL=$VERTEX_URL"
+[ -n "$VERTEX_MODEL" ] && env_add "VITALS_VERTEX_MODEL=$VERTEX_MODEL"
+[ -n "$MONTHLY" ] && env_add "VITALS_MONTHLY_TURNS=$MONTHLY"
+[ -n "$DONATE" ] && env_add "VITALS_DONATE_URL=$DONATE"
 # Where the film lives inside the container — the GCS volume (vitals-academy-clips) is mounted
 # once on the service and survives deploys, but --set-env-vars replaces the whole env, so the
 # path has to ride along here or a redeploy silently mutes the film.
 CLIPS="${VITALS_CLIPS:-/clips/ep1}"
-ENV="$ENV,VITALS_CLIPS=$CLIPS"
+env_add "VITALS_CLIPS=$CLIPS"
 # A forgotten env var must not mute the product.
 #
 # `--set-env-vars` replaces the whole environment, so a deploy from a shell that happens not to
@@ -124,6 +150,58 @@ fi
 # heimdall-key secret at all, and requiring one would make the optional path mandatory.
 SECRETS="/relay/id.json=vitals-relay-key:latest,VITALS_TOKEN=vitals-token:latest"
 [ -n "$HEIMDALL" ] && SECRETS="$SECRETS,HEIMDALL_API_KEY=heimdall-key:latest"
+
+# The same rule as voice, applied to money. `--set-env-vars` replaces the whole environment, so a
+# deploy run from a shell with VITALS_PAYOUT_* exported would, until this block existed, ship a
+# server with payouts off and say nothing — the voice bug in a new coat. So the payout state is
+# printed on every deploy, on or off, and there is no path through here that prints neither.
+#
+# Off is the default and stays cheap to ask for. What is refused is the shape that reads as on
+# and behaves as off: a rate with nobody allowed to receive it. The server refuses that at boot
+# too, but a refusal here happens in the shell that set the variables, while the person who can
+# fix it is still looking at it, instead of in a revision's startup log.
+PAYOUT_RATE="${VITALS_PAYOUT_LAMPORTS:-}"
+case "$PAYOUT_RATE" in
+  ''|0)
+    echo "── payout    off — no VITALS_PAYOUT_LAMPORTS; runs are still proven, nobody is paid"
+    ;;
+  *[!0-9]*)
+    echo "refusing to deploy: VITALS_PAYOUT_LAMPORTS is \"$PAYOUT_RATE\", which is not a whole" >&2
+    echo "  number of lamports. Payer::from_env refuses this at boot; refusing it here costs a" >&2
+    echo "  second instead of a revision." >&2
+    exit 1
+    ;;
+  *)
+    ALLOW="${VITALS_PAYOUT_ALLOWLIST:-}"
+    # Counted the way the server counts it. A stray comma or a line of spaces makes an allowlist
+    # that looks populated to the eye and parses to nothing, and that is exactly the case this
+    # refusal is for — so count the entries that survive trimming, not the characters.
+    ALLOW_N="$(printf '%s' "$ALLOW" | tr ',' '\n' \
+      | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -c '.' || true)"
+    if [ "$ALLOW_N" -eq 0 ]; then
+      echo "refusing to deploy a payout with an empty VITALS_PAYOUT_ALLOWLIST." >&2
+      echo "  A rate of $PAYOUT_RATE lamports with nobody allowed to receive it is a" >&2
+      echo "  misconfiguration, not a mode: every finished run would reach the payment step and" >&2
+      echo "  be turned away at it. If payouts should be off, the rate is how to say so:" >&2
+      echo "    VITALS_PAYOUT_LAMPORTS=0" >&2
+      exit 1
+    fi
+    # A wallet that pays people is mounted the way the relay's is — as a file from Secret
+    # Manager, never as an env var. See docs/DEPLOY.md for creating it; the key itself lives
+    # outside the repository and always has.
+    SECRETS="$SECRETS,/payout/id.json=vitals-payout-key:latest"
+    env_add "VITALS_PAYOUT_KEY=/payout/id.json"
+    env_add "VITALS_PAYOUT_LAMPORTS=$PAYOUT_RATE"
+    env_add "VITALS_PAYOUT_ALLOWLIST=$ALLOW"
+    # Passed through only when set, so an unset one keeps the server's own default rather than
+    # this script inventing a second place where the split and the ceiling are decided.
+    [ -n "${VITALS_PLATFORM_BPS:-}" ] && env_add "VITALS_PLATFORM_BPS=$VITALS_PLATFORM_BPS"
+    [ -n "${VITALS_PLATFORM_ADDRESS:-}" ] && env_add "VITALS_PLATFORM_ADDRESS=$VITALS_PLATFORM_ADDRESS"
+    [ -n "${VITALS_PAYOUT_DAILY_CAP_LAMPORTS:-}" ] \
+      && env_add "VITALS_PAYOUT_DAILY_CAP_LAMPORTS=$VITALS_PAYOUT_DAILY_CAP_LAMPORTS"
+    echo "── payout    $PAYOUT_RATE lamports · $ALLOW_N allowed · wallet mounted at /payout/id.json"
+    ;;
+esac
 
 # Phases, so CI can put a scanner between the build and the deploy without duplicating any of
 # the flags below — a duplicated flag list is a second definition of the deployment, and second
@@ -210,7 +288,7 @@ REVISION="$(gcloud run deploy "$SERVICE" \
   --port 8474 \
   --min-instances 1 --max-instances 1 --concurrency 8 \
   --cpu 1 --memory 512Mi \
-  --set-env-vars "$ENV" \
+  --set-env-vars "^@^$ENV" \
   --set-secrets "$SECRETS" \
   --format='value(status.latestCreatedRevisionName)')"
 
