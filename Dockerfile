@@ -29,6 +29,12 @@ COPY demo/scenarios /app/demo/scenarios
 COPY demo/stations /app/demo/stations
 COPY demo/rubrics /app/demo/rubrics
 COPY demo/ep1-en.json /app/demo/ep1-en.json
+# The station personas. Missing from here since the stations got voices, which is why every OSCE
+# patient in production was mute whether or not a gateway was reachable: the server reads a
+# persona per case off the disk, and a case with no file plays silent rather than failing. The
+# boot line said "personas 1/17 voiced" the whole time. `tests/image.rs` now fails the build if a
+# path the server reads at runtime is not copied here.
+COPY demo/personas /app/demo/personas
 # The stations' patient stills. Read at request time rather than compiled in, because they are
 # shot per station and land after the wiring — a new frame is a file drop, not a rebuild. An
 # empty directory is a valid state of the world: every station falls back to its stem.

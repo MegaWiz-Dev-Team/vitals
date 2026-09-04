@@ -102,8 +102,22 @@ ENV="GOOGLE_CLOUD_PROJECT=$PROJECT,VITALS_RPC=$RPC,VITALS_PROGRAM_ID=$PROGRAM_ID
 # path has to ride along here or a redeploy silently mutes the film.
 CLIPS="${VITALS_CLIPS:-/clips/ep1}"
 ENV="$ENV,VITALS_CLIPS=$CLIPS"
+# A forgotten env var must not mute the product.
+#
+# `--set-env-vars` replaces the whole environment, so a deploy from a shell that happens not to
+# have VITALS_VERTEX_URL silently ships a bay whose patients cannot speak — which is what
+# happened on revision 43, and it printed this note and carried on. The same rule the monthly
+# ceiling already follows: a variable nobody set must mean the safe thing, and here the safe
+# thing is refusing rather than shipping a quieter product than the last one.
 if [ -z "$HEIMDALL" ] && [ -z "$VERTEX_URL" ]; then
-  echo "── voice     none — set VITALS_VERTEX_URL (cloud) or HEIMDALL_API_URL (local); orders still work"
+  if [ "${VITALS_NO_VOICE:-}" = "1" ]; then
+    echo "── voice     none — VITALS_NO_VOICE=1, deliberately mute; orders still work"
+  else
+    echo "refusing to deploy a bay whose patients cannot speak." >&2
+    echo "  Set VITALS_VERTEX_URL (cloud) or HEIMDALL_API_URL (local)." >&2
+    echo "  If a mute deploy is what you actually want, say so: VITALS_NO_VOICE=1" >&2
+    exit 1
+  fi
 fi
 
 # The Heimdall key is mounted only when there is a gateway to reach. A cloud-only deploy has no

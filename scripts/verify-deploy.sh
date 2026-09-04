@@ -61,3 +61,40 @@ print(f"             {n} bytes, plus {len(chain)-n} bytes of zero padding on cha
 PY
 
 echo "── the deployed program is this build"
+
+# ── the patients can speak ──────────────────────────────────────────────────
+#
+# The program being right says nothing about whether the bay it serves has a voice. Two things
+# have muted it before and neither raised an error: a deploy from a shell with no
+# VITALS_VERTEX_URL (revision 43), and personas that were never copied into the image at all —
+# every OSCE station's patient was silent from the day the stations got voices.
+#
+# So this asks the running service, and counts against the tree rather than a number typed here:
+# one persona file per voiced case, plus ep1, which reads its own scenario.
+VOICE_URL="${VITALS_VOICE_URL:-https://devnet.vitals.academy/api/chain}"
+if [ "${SKIP_VOICE_CHECK:-}" = "1" ]; then
+  echo "── voice     skipped (SKIP_VOICE_CHECK=1)"
+else
+  EXPECTED=$(( $(ls demo/personas/*.json 2>/dev/null | wc -l | tr -d ' ') + 1 ))
+  # The document goes in the environment, not down the pipe: a heredoc script and piped data
+  # both want stdin, and python reads whichever arrives — which meant it parsed the JSON as its
+  # own source and failed with a SyntaxError that looked nothing like a voice problem.
+  CHAIN_JSON="$(curl -fsS "$VOICE_URL")" || { echo "   UNREACHABLE  $VOICE_URL" >&2; exit 1; }
+  EXPECTED="$EXPECTED" CHAIN_JSON="$CHAIN_JSON" python3 <<'PY'
+import json, os, sys
+d = json.loads(os.environ["CHAIN_JSON"])
+want = int(os.environ["EXPECTED"])
+voiced = d.get("voiced") or []
+if not d.get("voice"):
+    print("   MUTE      the service reports no gateway at all — the patients cannot speak")
+    sys.exit(1)
+if len(voiced) != want:
+    print(f"   MISMATCH  {len(voiced)} case(s) can speak, expected {want}")
+    print(f"             voiced: {', '.join(voiced) or 'none'}")
+    print("             a persona in demo/personas that is not in the image is the usual cause —")
+    print("             check the Dockerfile copies it, and see tests/image.rs")
+    sys.exit(1)
+print(f"   voice     {len(voiced)} of {want} cases can speak")
+PY
+  echo "── the patients can speak"
+fi

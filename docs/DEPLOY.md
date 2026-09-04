@@ -28,7 +28,8 @@ port can make the relay sign.
 | `VITALS_KEYPAIR` | `~/.config/solana/id.json` | the **relay**. Pays fees, holds no player key |
 | `VITALS_TOKEN` | — | required to bind off loopback |
 | `VITALS_CLIPS` | Embla's `cutscenes/ep1` | absent just means no video |
-| `VITALS_VERTEX_URL` | — | the cloud voice (Vertex, OpenAI-compat base URL) — keyless on Cloud Run via the metadata server. The recorded exception to local-only inference: synthetic patient, no PHI. Off unless set |
+| `VITALS_VERTEX_URL` | — | the cloud voice (Vertex, OpenAI-compat base URL) — keyless on Cloud Run via the metadata server. The recorded exception to local-only inference: synthetic patient, no PHI. **A public deploy with neither this nor `HEIMDALL_API_URL` now refuses**: `--set-env-vars` replaces the whole environment, so a deploy from a shell that happens not to have it used to ship a mute bay and only print a note (revision 43 did). A forgotten variable must mean the safe thing, as it already does for the monthly ceiling |
+| `VITALS_NO_VOICE` | — | `1` to deploy a deliberately mute bay anyway. The only way past the refusal above, and it has to be typed |
 | `VITALS_VERTEX_MODEL` | `google/gemini-3.1-flash-lite` | |
 | `VITALS_TURNS_PER_MIN` | `6` | questions one address may ask the patient per minute |
 | `VITALS_TURNS_PER_DAY` | `200` | same, per day |
@@ -213,6 +214,13 @@ answering transactions.
 ```
 VITALS_PROGRAM_ID=<id> scripts/verify-deploy.sh
 ```
+It checks two things now: that the deployed program is this build, and that the bay it serves can
+speak — `/api/chain` must report `voice`, and as many `voiced` cases as there are files in
+`demo/personas/` plus ep1. The count comes from the tree rather than from a number typed here, so
+adding a persona moves it on its own. Twelve of those personas were missing from the image
+entirely until `tests/image.rs` existed; nothing failed, because a case with no persona plays mute
+by design. `SKIP_VOICE_CHECK=1` to run the program half alone.
+
 
 It runs automatically as part of `deploy-devnet.sh`. What it proves is exact: the bytecode on chain
 is byte-for-byte the artefact this machine builds, allowing for the zero padding the account keeps
