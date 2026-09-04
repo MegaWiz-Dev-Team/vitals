@@ -30,6 +30,15 @@ use vitals_program::{
 };
 
 pub const SPECIALTY: u8 = 1;
+/// Proven attempts on a tree, both ways round.
+#[derive(Debug, Clone, Default)]
+pub struct Proven {
+    /// How many proven attempts each case has.
+    pub per_case: BTreeMap<String, u64>,
+    /// Which case each proven leaf belongs to.
+    pub case_of_leaf: BTreeMap<String, String>,
+}
+
 
 pub struct Chain {
     rpc: RpcClient,
@@ -473,12 +482,21 @@ impl Chain {
     /// re-derivation is the filter — it is what separates this tree's buffers from every other
     /// tree's, and what stops an account that merely looks the right size from being counted.
     pub fn proven_by_case(&self, tree_id: u64) -> Result<BTreeMap<String, u64>, String> {
+        Ok(self.proven(tree_id)?.per_case)
+    }
+
+    /// The same read, keeping which leaf belonged to which case.
+    ///
+    /// The payout memos name leaves; the ledger groups by case. This is the only place both
+    /// facts exist together, because only `ProvenAttempt` carries them together.
+    pub fn proven(&self, tree_id: u64) -> Result<Proven, String> {
         let accounts = self
             .rpc
             .get_program_accounts(&self.program_id)
             .map_err(|e| format!("could not list the program's accounts: {e}"))?;
 
         let mut per_case: BTreeMap<String, u64> = BTreeMap::new();
+        let mut case_of_leaf: BTreeMap<String, String> = BTreeMap::new();
         for (key, acct) in accounts {
             if acct.data.len() != CLAIM_LEN {
                 continue;
@@ -493,10 +511,12 @@ impl Chain {
                 continue;
             }
             for attempt in &claim.attempts {
-                *per_case.entry(hex32(&attempt.case)).or_default() += 1;
+                let case = hex32(&attempt.case);
+                *per_case.entry(case.clone()).or_default() += 1;
+                case_of_leaf.insert(hex32(&attempt.leaf), case);
             }
         }
-        Ok(per_case)
+        Ok(Proven { per_case, case_of_leaf })
     }
 }
 

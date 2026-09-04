@@ -35,6 +35,20 @@
 //! invisible. **The day they differ, the ledger has not broken.** It is counting the replays
 //! anyone can check, which is the only kind this project has any business counting.
 
+//! ## Payout
+//!
+//! What the ledger counts, [`crate::payout`] pays: the author of a case is paid the moment a
+//! replay of it is proven. The two halves are kept apart on purpose and neither is derived from
+//! the other — `proven_replays` is what the chain accepted, `paid` is what actually left a
+//! wallet, and a replay can be one without the other. No token exists, no royalty is owed, and
+//! nothing here says "earn": an author is **paid per proven replay**, on devnet, in devnet SOL
+//! that every surface showing a number calls illustrative.
+//!
+//! Being named and being payable are also different. A signature proves the holder of a key
+//! consented to be named; `VITALS_PAYOUT_ALLOWLIST`, set by the operator and never in the
+//! repository, says who may receive money. See [`crate::payout`] for why that separation exists
+//! and what replaces it before mainnet.
+
 use serde::{Deserialize, Serialize};
 
 /// Signed over, so a signature here cannot be replayed as a signature for anything else.
@@ -230,6 +244,20 @@ pub struct Version {
     pub live: bool,
 }
 
+/// What a case's author has actually been paid, from the payout wallet's memos.
+///
+/// Separate from `proven_replays` on purpose, and never derived from it. A replay is proven when
+/// the chain accepted its proof; a payment happened when a transfer landed. They are different
+/// events with different failure modes — the cap, the allowlist, an unsigned attribution — and a
+/// ledger that computed one from the other would be reporting an intention as a fact.
+#[derive(Debug, Clone, Copy, Default, Serialize, PartialEq, Eq)]
+pub struct Paid {
+    /// Replays of this case that have been paid for.
+    pub paid: u64,
+    /// Lamports paid to the author for them.
+    pub paid_lamports: u64,
+}
+
 /// One case, across every version of it the archive holds.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct CaseLedger {
@@ -242,6 +270,8 @@ pub struct CaseLedger {
     pub proven_replays: u64,
     /// Keys that signed any version of this case, in order.
     pub authors: Vec<String>,
+    #[serde(flatten)]
+    pub paid: Paid,
     pub versions: Vec<Version>,
 }
 
@@ -254,6 +284,12 @@ pub struct AuthorLedger {
     /// Replays of the versions **this key signed** — see rule 4. Not the lineage total, which
     /// may include versions somebody else wrote.
     pub proven_replays: u64,
+    #[serde(flatten)]
+    pub paid: Paid,
+    /// Whether the operator has authorised this key to receive money. `None` when nothing was
+    /// asked — a tool run without the allowlist says nothing rather than guessing "no".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payable: Option<bool>,
     pub cases: Vec<String>,
 }
 
@@ -278,13 +314,26 @@ pub struct IndexEntry {
 /// A case with no replays still appears, at zero, and so does an author whose cases nobody has
 /// played. Authorship is not a reward for popularity, and a ledger that hid unplayed cases would
 /// be a leaderboard.
-pub fn ledger(
-    table: &[Attribution],
-    index: &[IndexEntry],
-    eps: &BTreeMap<String, String>,
-    live: &BTreeSet<String>,
-    proven: &BTreeMap<String, u64>,
-) -> Ledger {
+/// Everything `ledger` reads, named rather than positional — seven arguments in a row is how a
+/// caller swaps two maps of the same type and nothing complains.
+pub struct Inputs<'a> {
+    pub table: &'a [Attribution],
+    pub index: &'a [IndexEntry],
+    /// Case hash → the shelf card it is, for whichever version is live.
+    pub eps: &'a BTreeMap<String, String>,
+    /// Case hashes that are the file on the shelf right now.
+    pub live: &'a BTreeSet<String>,
+    /// Case hash → proven attempts.
+    pub proven: &'a BTreeMap<String, u64>,
+    /// Case hash → what has actually been paid for it. Never derived from `proven`.
+    pub paid: &'a BTreeMap<String, Paid>,
+    /// Keys the operator authorised to be paid. `None` means nobody asked, and the answer is
+    /// left out rather than guessed.
+    pub payable: Option<&'a BTreeSet<String>>,
+}
+
+pub fn ledger(inputs: &Inputs) -> Ledger {
+    let Inputs { table, index, eps, live, proven, paid, payable } = *inputs;
     let signed: BTreeMap<&str, &str> =
         table.iter().map(|a| (a.sce_hash.as_str(), a.author.as_str())).collect();
 
@@ -313,6 +362,12 @@ pub fn ledger(
                 versions.iter().filter(|v| !v.author.is_empty()).map(|v| v.author.clone()).collect();
             authors.sort();
             authors.dedup();
+            // Summed over the lineage's versions, the same way replays are — a payment belongs
+            // to the case it was made for, whichever revision was played.
+            let money = versions.iter().fold(Paid::default(), |acc, v| {
+                let p = paid.get(&v.sce_hash).copied().unwrap_or_default();
+                Paid { paid: acc.paid + p.paid, paid_lamports: acc.paid_lamports + p.paid_lamports }
+            });
             CaseLedger {
                 ep: versions
                     .iter()
@@ -322,6 +377,7 @@ pub fn ledger(
                     .unwrap_or_default(),
                 proven_replays: versions.iter().map(|v| v.proven_replays).sum(),
                 authors,
+                paid: money,
                 versions,
                 path: path.to_string(),
             }
@@ -330,23 +386,28 @@ pub fn ledger(
     cases.sort_by(|a, b| b.proven_replays.cmp(&a.proven_replays).then(a.path.cmp(&b.path)));
 
     // Per key: only the versions that key signed. Rule 4 — replays never move.
-    let mut by_author: BTreeMap<String, (u64, BTreeSet<String>)> = BTreeMap::new();
+    let mut by_author: BTreeMap<String, (u64, Paid, BTreeSet<String>)> = BTreeMap::new();
     for c in &cases {
         for v in &c.versions {
             if v.author.is_empty() {
                 continue;
             }
-            let e = by_author.entry(v.author.clone()).or_default();
+            let e = by_author.entry(v.author.clone()).or_insert((0, Paid::default(), BTreeSet::new()));
             e.0 += v.proven_replays;
-            e.1.insert(c.path.clone());
+            let p = paid.get(&v.sce_hash).copied().unwrap_or_default();
+            e.1.paid += p.paid;
+            e.1.paid_lamports += p.paid_lamports;
+            e.2.insert(c.path.clone());
         }
     }
     let authors = by_author
         .into_iter()
-        .map(|(author, (proven_replays, paths))| AuthorLedger {
+        .map(|(author, (proven_replays, money, paths))| AuthorLedger {
+            payable: payable.map(|a| a.contains(&author)),
             author,
             distinct_cases: paths.len(),
             proven_replays,
+            paid: money,
             cases: paths.into_iter().collect(),
         })
         .collect();

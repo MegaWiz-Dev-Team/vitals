@@ -3335,6 +3335,8 @@ function finish(v){
   $('#outcome').textContent=say('terminal:'+(v.outcome||'TimeCalled'));
   $('#outnote').textContent=(v.harm.length?'Harm on the record: '+v.harm.join(', '):'No harm recorded.')+'  ·  '+(v.outcome||'no terminal — time called');
   $('#leaf').textContent=v.leaf;
+  /* Kept for the debrief's payout line, which asks about this run's own leaf. */
+  window.LASTLEAF=v.leaf||'';
   $('#verdict').innerHTML=''; $('#anchor').textContent='anchor this run on chain'; $('#anchor').disabled=false;
   ['#c1','#c2','#c3','#c4'].forEach(s=>$(s).disabled=true);
   $('#cmd').disabled=true; $('#send').disabled=true; $('#pause').disabled=true; $('#endrun').disabled=true;
@@ -3728,6 +3730,11 @@ async function showDebrief(){
      there is no attribution to show. */
   const by=authorLine((await ledger()).byEp.get($('#ep').value));
   if(by)h+=`<div class="db-by">${by}</div>`;
+  /* The payout for *this* run, when there was one. Asked for after the debrief is drawn rather
+     than raced with it: the transfer is a second transaction that lands a moment after the
+     proof, and a line that said "not paid" because it asked too early would be worse than no
+     line. Absent when nothing was paid — see `authorLine` on why silence beats a zero. */
+  paidLine();
   $('#db').innerHTML=h;
 }
 
@@ -4071,7 +4078,7 @@ async function ledger(){
        shows the replays of the version people actually played even though the file on the
        shelf has been revised since. Versions are what get signed; cases are what get read. */
     for(const c of (r.cases||[])){
-      const row={authors:c.authors||[],proven:c.proven_replays};
+      const row={authors:c.authors||[],proven:c.proven_replays,paid:c.paid||0};
       LEDGER.byPath.set(c.path,row);
       if(c.ep)LEDGER.byEp.set(c.ep,row);
     }
@@ -4081,14 +4088,53 @@ async function ledger(){
 /* A key is a token you move, not text you read — the same eight characters the
    rest of the page shows a key by. */
 const authorShort=k=>k.slice(0,8);
+/* The payout for the run just finished, once the chain has it.
+
+   Polled rather than asked once: the transfer is a second transaction that lands a moment after
+   the proof, and a line that said nothing because it asked too early would be worse than no line.
+
+   **Silence when nothing was paid.** A run that earned the author nothing — no attribution, an
+   unlisted key, the day's cap reached — shows no line at all, not a zero. The absence is the
+   honest report; a zero reads like a failure that belongs to the learner, and it does not.
+
+   The amount says devnet SOL every time it appears. A number shaped like money, on the screen
+   where somebody has just been examined, is the last place to leave that ambiguous. */
+async function paidLine(){
+  const leaf = (window.LASTLEAF || '').trim();
+  if (!leaf) return;
+  for (let i = 0; i < 12; i++) {
+    await new Promise(r => setTimeout(r, 2500));
+    let r;
+    try { r = await (await fetch('/api/payout?leaf=' + encodeURIComponent(leaf))).json(); }
+    catch (e) { return; }          /* offline: say nothing rather than guess */
+    if (r.unknown) return;         /* payouts are off, or the chain would not answer */
+    if (!r.paid) continue;
+    const sol = (Number(r.lamports || 0) / 1e9).toFixed(5).replace(/0+$/, '').replace(/\.$/, '');
+    const sig = String(r.signature || '');
+    const el = $('#db');
+    if (!el) return;
+    const link = sig
+      ? ` · <a href="https://explorer.solana.com/tx/${sig}?cluster=devnet" target="_blank" rel="noopener">${sig.slice(0, 8)}</a>`
+      : '';
+    el.insertAdjacentHTML('beforeend',
+      `<div class="db-by"><span class="byline">author paid ${sol} devnet SOL${link}</span></div>`);
+    return;
+  }
+}
+
 function authorLine(row){
   if(!row||!row.authors.length)return '';
   const n=row.proven;
   /* Every key that signed any version of this case — a revised case can have more than one
      author of record, and naming only the latest would take the earlier one's credit. */
   const who=row.authors.map(k=>`<span class="mono">${authorShort(k)}</span>`).join(', ');
+  /* Paid is a separate count and is only ever shown when it differs from the replays: a case
+     where every proven replay was paid says nothing extra by repeating the same number, and one
+     where they differ is the only interesting case — a replay proven and not paid means the cap,
+     the allowlist, or no attribution, and hiding that would be the ledger flattering itself. */
+  const paid = row.paid !== n ? ` · ${row.paid} paid` : '';
   return `<span class="byline">author ${who}`
-    +` · ${n} proven ${n===1?'replay':'replays'}</span>`;
+    +` · ${n} proven ${n===1?'replay':'replays'}${paid}</span>`;
 }
 
 function paintSeason(){

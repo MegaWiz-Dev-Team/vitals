@@ -49,7 +49,7 @@
 //! the same rule `reconcile_leaves` follows about the leaf list.
 
 use serde::Serialize;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// What a payout memo starts with. The version is in it because the day this format changes,
 /// every payout ever made still has to be readable by whatever reads it next.
@@ -264,6 +264,12 @@ pub struct Payer {
 pub struct Ledger {
     /// Every leaf this wallet has paid for.
     pub paid: BTreeSet<String>,
+    /// Leaf → lamports the author received for it, so a display can add up what was paid without
+    /// re-reading the chain.
+    pub paid_amounts: BTreeMap<String, u64>,
+    /// Leaf → the transaction that paid it, so a learner can be shown the payment their own run
+    /// caused and follow it to an explorer rather than take our word for it.
+    pub paid_signatures: BTreeMap<String, String>,
     /// Lamports it has paid out today, Bangkok time — summed from the memos, so it is exact even
     /// if the rate changed during the day, and it needs nothing remembered between restarts.
     pub spent_today: u64,
@@ -392,6 +398,8 @@ impl Payer {
                 .unwrap_or(0),
         );
         let mut paid = BTreeSet::new();
+        let mut paid_amounts = BTreeMap::new();
+        let mut paid_signatures = BTreeMap::new();
         let mut spent_today = 0u64;
         for s in sigs.iter().filter(|s| s.err.is_none()) {
             let Some((rec, when)) = self.record_for(&s.signature, s.memo.as_deref(), s.block_time)?
@@ -399,6 +407,8 @@ impl Payer {
                 continue;
             };
             paid.insert(rec.leaf.clone());
+            paid_amounts.insert(rec.leaf.clone(), rec.author_lamports);
+            paid_signatures.insert(rec.leaf.clone(), s.signature.clone());
             if when > 0 && crate::usage::bangkok_day(when as u64) == today {
                 spent_today = spent_today
                     .saturating_add(rec.author_lamports)
@@ -409,7 +419,7 @@ impl Payer {
         if let Ok(recent) = self.just_paid.lock() {
             paid.extend(recent.iter().cloned());
         }
-        Ok(Ledger { paid, spent_today })
+        Ok(Ledger { paid, paid_amounts, paid_signatures, spent_today })
     }
 
     /// Is this signature one of our payouts, and when? Cached both ways.

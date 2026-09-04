@@ -3074,7 +3074,36 @@ fn main() {
                     }
                 }
 
-                let led = authors::ledger(&table, &index, &eps, &live, &counts);
+                // What has actually been paid, joined here because only this has both halves:
+                // the memos name leaves, and only ProvenAttempt says which case a leaf belongs
+                // to. Never derived from the replay count — a proven replay and a paid one are
+                // different events with different ways of not happening.
+                let paid = payer
+                    .as_ref()
+                    .and_then(|p| p.ledger().ok().zip(chain.as_ref().and_then(|c| c.proven(tree_id).ok())))
+                    .map(|(led, proven)| {
+                        let mut per_case: std::collections::BTreeMap<String, authors::Paid> =
+                            Default::default();
+                        for (leaf, amount) in &led.paid_amounts {
+                            if let Some(case) = proven.case_of_leaf.get(leaf) {
+                                let e = per_case.entry(case.clone()).or_default();
+                                e.paid += 1;
+                                e.paid_lamports += amount;
+                            }
+                        }
+                        per_case
+                    })
+                    .unwrap_or_default();
+
+                let led = authors::ledger(&authors::Inputs {
+                    table: &table,
+                    index: &index,
+                    eps: &eps,
+                    live: &live,
+                    proven: &counts,
+                    paid: &paid,
+                    payable: payer.as_ref().map(|p| &p.allowlist),
+                });
                 json(serde_json::json!({
                     "counts": "proven replays — attempts that passed the Merkle check on chain. \
                                Anchoring alone carries no case, so it cannot be counted per case.",
@@ -3085,9 +3114,39 @@ fn main() {
                     "counts_age_secs": age,
                     "counts_bound": "at most one chain read a minute, however often this is asked",
                     "attributed_versions": table.len(),
+                    "payouts": match payer.as_ref() {
+                        Some(p) => serde_json::json!({
+                            "on": true,
+                            "lamports_per_proven_replay": p.rate,
+                            "cluster": "devnet — illustrative devnet SOL, not money",
+                            "wallet": p.address(),
+                        }),
+                        None => serde_json::json!({ "on": false }),
+                    },
                     "cases": led.cases,
                     "authors": led.authors,
                 }))
+            }
+            // Was this run's leaf paid for, and with which transaction.
+            //
+            // Per leaf rather than per case, because a learner is being shown the payment *their
+            // own run* caused. It answers "not yet" rather than "no": the transfer is a second
+            // transaction landing a moment after the proof, and the honest answer in that gap is
+            // that it has not happened yet.
+            (Method::Get, "/api/payout") => {
+                let leaf = param(&url, "leaf").unwrap_or_default().to_lowercase();
+                match payer.as_ref().filter(|_| !leaf.is_empty()).map(|p| p.ledger()) {
+                    Some(Ok(led)) => json(serde_json::json!({
+                        "paid": led.paid.contains(&leaf),
+                        "lamports": led.paid_amounts.get(&leaf),
+                        "signature": led.paid_signatures.get(&leaf),
+                        // Said on the same line as the number, everywhere the number goes.
+                        "currency": "devnet SOL — illustrative, not money",
+                    })),
+                    // No payer, no leaf, or a chain that would not answer. None of those is an
+                    // error a learner can do anything about, and none of them is "not paid".
+                    _ => json(serde_json::json!({ "paid": false, "unknown": true })),
+                }
             }
             (Method::Get, "/api/fuel") => {
                 let t = tree.lock().unwrap();
@@ -3702,11 +3761,14 @@ fn main() {
                             }
                             // The proof is on chain. Pay the author, off this thread.
                             //
-                            // Nothing here may touch the reply: a learner's proof is theirs the
-                            // moment the chain took it, and whether our wallet is empty, capped
-                            // or misconfigured is our problem to have quietly. So the payout runs
-                            // after the response is built, on its own thread, and its only
-                            // outputs are a transaction and a log line.
+                            // Spawned here and returns nothing. The reply below is built from
+                            // `c.anchored` — from the chain — and not from anything this does,
+                            // which is what keeps a learner's proof theirs whatever happens to
+                            // our wallet. (An earlier version of this comment said the payout
+                            // ran *after* the response was built. It does not: it is started a
+                            // dozen lines before. The guarantee is the spawn and the ignored
+                            // return, not the ordering, and a reader who moved code trusting the
+                            // old wording would have been surprised.)
                             settle(&payer, &authors_root, &work.case, &work.leaf);
                         }
                         let mut map = sessions.lock().unwrap();
@@ -4003,9 +4065,9 @@ fn shock_order(act: &str) -> Option<f64> {
 /// Pay a case's author for a proof that has just landed, on a thread of its own.
 ///
 /// **Nothing this does can change what the learner is told.** The proof is theirs the moment the
-/// chain accepted it; an empty wallet or a reached cap is ours to have quietly. So this is spawned
-/// rather than awaited, it returns nothing, and every outcome — paid, skipped, failed — is a log
-/// line and a transaction or neither.
+/// chain accepted it; an empty wallet or a reached cap is ours to have quietly. This is spawned
+/// and its return is ignored, and the reply the caller gets is built from the chain rather than
+/// from anything here — that, not the order the two happen in, is the guarantee.
 ///
 /// The decision reads a fresh ledger from the chain every time rather than a cached one. The
 /// whole point of reading memos is that they are true across restarts and instances, and a cache
@@ -4024,11 +4086,28 @@ fn settle(
     let root = root.to_path_buf();
     std::thread::spawn(move || {
         // Who the side table says wrote it. No entry is not an error and never a guess.
-        let author = authors::load(&root.join(authors::AUTHORS_PATH))
+        // Who the side table says wrote it — **and whether that entry's signature holds**.
+        //
+        // `authors::load` parses; it does not verify. Verification runs in `audit`, which is the
+        // check over the shipped file, in a test. This is the one place lamports actually leave,
+        // so the signature is checked here too: the allowlist bounds who can be paid, and this
+        // bounds whether the entry naming them was really signed by them. It costs microseconds.
+        let entry = authors::load(&root.join(authors::AUTHORS_PATH))
             .unwrap_or_default()
             .into_iter()
-            .find(|a| a.sce_hash == case)
-            .map(|a| a.author);
+            .find(|a| a.sce_hash == case);
+        let author = match entry {
+            Some(a) => match a.verify() {
+                Ok(()) => Some(a.author),
+                Err(why) => {
+                    eprintln!(
+                        "payout: leaf {leaf} not paid — attribution signature does not verify: {why}"
+                    );
+                    return;
+                }
+            },
+            None => None,
+        };
 
         let led = match payer.ledger() {
             Ok(l) => l,
@@ -4417,7 +4496,7 @@ mod tests {
                   "/api/meter", "/api/fuel", "/api/stars", "/api/lang", "/api/usage", "/donate",
                   // Who wrote what, and how often it has been proven. A ledger nobody can read
                   // is not one anybody can check, and checkable is the entire claim.
-                  "/api/authors",
+                  "/api/authors", "/api/payout",
                   // The policy and the terms. A token on either would be a policy nobody can
                   // read, which is the same as not having one — and Google's consent screen has
                   // to be able to fetch the privacy URL without credentials.

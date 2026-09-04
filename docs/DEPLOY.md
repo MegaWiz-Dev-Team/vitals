@@ -30,6 +30,20 @@ port can make the relay sign.
 | `VITALS_CLIPS` | Embla's `cutscenes/ep1` | absent just means no video |
 | `VITALS_VERTEX_URL` | — | the cloud voice (Vertex, OpenAI-compat base URL) — keyless on Cloud Run via the metadata server. The recorded exception to local-only inference: synthetic patient, no PHI. **A public deploy with neither this nor `HEIMDALL_API_URL` now refuses**: `--set-env-vars` replaces the whole environment, so a deploy from a shell that happens not to have it used to ship a mute bay and only print a note (revision 43 did). A forgotten variable must mean the safe thing, as it already does for the monthly ceiling |
 | `VITALS_NO_VOICE` | — | `1` to deploy a deliberately mute bay anyway. The only way past the refusal above, and it has to be typed |
+| `VITALS_PAYOUT_LAMPORTS` | `0` | what a case's author is paid per **proven** replay. `0` is off, and off means the whole subsystem is inert — no key is read, no cluster is checked, nothing is scanned |
+| `VITALS_PAYOUT_KEY` | — | path to the payout wallet, outside the repository. No default, and a path inside the tree is refused at both ends. Not the relay: the relay pays fees and never plays, this pays authors and never signs attributions — a bug in one cannot spend the other's budget |
+| `VITALS_PAYOUT_ALLOWLIST` | *(empty)* | comma-separated keys authorised to receive money. **Empty pays nobody.** An attribution says who is *named*; this says who may be *paid*, and it is set here rather than in the repository so that a commit to `AUTHORS.json` is not a payment instruction |
+| `VITALS_PLATFORM_BPS` | `1500` | the platform's share, taken from the rate. `10000` or more is refused — it would pay the author nothing. A non-numeric value is refused too, rather than silently becoming the default |
+| `VITALS_PLATFORM_ADDRESS` | — | where that share goes. Unset means it simply stays in the payout wallet: no transfer, and nothing that looks like a payment nobody receives |
+| `VITALS_PAYOUT_DAILY_CAP_LAMPORTS` | `100000000` | 0.1 SOL a day, Bangkok time, summed from the chain's own memos. Over the cap a payout is skipped and logged, never queued |
+
+**A payout-enabled revision exits at boot if it cannot confirm the cluster is devnet.** The
+genesis hash is asked of the RPC, not inferred from the URL, and an unreachable RPC is not "not
+devnet" — it is "cannot tell", and the answer to that is to refuse. On Cloud Run that means the
+revision fails to become healthy and the previous one keeps serving traffic, which is the right
+failure. **It will look like a deploy that would not start, not like a payment problem**, so the
+deployer needs to know what they are looking at: check the revision's logs for
+`payout    refusing to start:` before looking anywhere else.
 | `VITALS_VERTEX_MODEL` | `google/gemini-3.1-flash-lite` | |
 | `VITALS_TURNS_PER_MIN` | `6` | questions one address may ask the patient per minute |
 | `VITALS_TURNS_PER_DAY` | `200` | same, per day |

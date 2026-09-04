@@ -173,7 +173,7 @@ fn no_signing_key_is_anywhere_git_would_carry_it() {
 // ── the ledger ──────────────────────────────────────────────────────────────
 
 use std::collections::{BTreeMap, BTreeSet};
-use vitals_web::authors::{ledger, IndexEntry};
+use vitals_web::authors::{ledger, IndexEntry, Inputs};
 
 fn entry(sce_hash: &str, path: &str) -> IndexEntry {
     IndexEntry { sce_hash: sce_hash.to_string(), path: path.to_string() }
@@ -207,13 +207,16 @@ fn a_case_is_its_lineage_and_carries_every_versions_replays() {
                      entry(&live, "demo/stations/osce-a.sce.json")];
     let table = vec![attributed(&alice, &old), attributed(&alice, &live)];
 
-    let led = ledger(
-        &table,
-        &index,
-        &BTreeMap::from([(live.clone(), "osce-a".to_string())]),
-        &BTreeSet::from([live.clone()]),
-        &per_case(&[&old, &old, &old, &old, &old]),
-    );
+    let counts = per_case(&[&old, &old, &old, &old, &old]);
+    let led = ledger(&Inputs {
+        table: &table,
+        index: &index,
+        eps: &BTreeMap::from([(live.clone(), "osce-a".to_string())]),
+        live: &BTreeSet::from([live.clone()]),
+        proven: &counts,
+        paid: &BTreeMap::new(),
+        payable: None,
+    });
 
     assert_eq!(led.cases.len(), 1, "two versions of one case became two cases");
     let c = &led.cases[0];
@@ -234,13 +237,16 @@ fn replays_stay_with_the_version_that_was_played() {
     // Alice wrote the version people played; Bob revised it and nobody has played his yet.
     let table = vec![attributed(&alice, &old), attributed(&bob, &live)];
 
-    let led = ledger(
-        &table,
-        &index,
-        &BTreeMap::new(),
-        &BTreeSet::from([live.clone()]),
-        &per_case(&[&old, &old, &old]),
-    );
+    let counts = per_case(&[&old, &old, &old]);
+    let led = ledger(&Inputs {
+        table: &table,
+        index: &index,
+        eps: &BTreeMap::new(),
+        live: &BTreeSet::from([live.clone()]),
+        proven: &counts,
+        paid: &BTreeMap::new(),
+        payable: None,
+    });
 
     let a = led.authors.iter().find(|a| a.author == alice).expect("alice");
     let b = led.authors.iter().find(|a| a.author == bob).expect("bob");
@@ -265,8 +271,16 @@ fn the_ledger_is_recomputable_from_the_attempts_it_came_from() {
                      attributed(&bob, &b1), attributed(&alice, &unplayed)];
     let raw = [&a1, &a1, &a1, &a2, &b1, &b1];
 
-    let led = ledger(&table, &index, &BTreeMap::new(), &BTreeSet::new(),
-                     &per_case(&raw.map(|s| s.as_str())));
+    let counts = per_case(&raw.map(|s| s.as_str()));
+    let led = ledger(&Inputs {
+        table: &table,
+        index: &index,
+        eps: &BTreeMap::new(),
+        live: &BTreeSet::new(),
+        proven: &counts,
+        paid: &BTreeMap::new(),
+        payable: None,
+    });
 
     // Counted the long way: walk the raw attempts per author, with no grouping.
     for entry in &led.authors {
@@ -292,8 +306,7 @@ fn the_ledger_is_recomputable_from_the_attempts_it_came_from() {
 fn an_unreplayed_case_stays_on_the_ledger_at_zero() {
     let h = "44".repeat(32);
     let alice = Keypair::new().pubkey().to_string();
-    let led = ledger(&[attributed(&alice, &h)], &[entry(&h, "c.json")],
-                     &BTreeMap::new(), &BTreeSet::new(), &BTreeMap::new());
+    let led = ledger(&Inputs { table: &[attributed(&alice, &h)], index: &[entry(&h, "c.json")], eps: &BTreeMap::new(), live: &BTreeSet::new(), proven: &BTreeMap::new(), paid: &BTreeMap::new(), payable: None });
     assert_eq!(led.cases.len(), 1, "the case disappeared for not being popular");
     assert_eq!(led.authors[0].distinct_cases, 1);
     assert_eq!(led.authors[0].proven_replays, 0);
@@ -303,8 +316,7 @@ fn an_unreplayed_case_stays_on_the_ledger_at_zero() {
 #[test]
 fn an_unsigned_case_is_absent_rather_than_blank() {
     let h = "55".repeat(32);
-    let led = ledger(&[], &[entry(&h, "c.json")], &BTreeMap::new(), &BTreeSet::new(),
-                     &per_case(&[&h]));
+    let led = ledger(&Inputs { table: &[], index: &[entry(&h, "c.json")], eps: &BTreeMap::new(), live: &BTreeSet::new(), proven: &per_case(&[&h]), paid: &BTreeMap::new(), payable: None });
     assert!(led.cases.is_empty(), "an unattributed case appeared with an empty author");
     assert!(led.authors.is_empty());
 }
@@ -318,9 +330,67 @@ fn the_ledger_is_ordered_and_not_merely_grouped() {
     let table = vec![attributed(&alice, &a), attributed(&alice, &b)];
     let counts = per_case(&[&b, &b]);
 
-    let first = ledger(&table, &index, &BTreeMap::new(), &BTreeSet::new(), &counts);
+    let first = ledger(&Inputs { table: &table, index: &index, eps: &BTreeMap::new(), live: &BTreeSet::new(), proven: &counts, paid: &BTreeMap::new(), payable: None });
     let flipped: Vec<_> = table.iter().rev().cloned().collect();
-    let second = ledger(&flipped, &index, &BTreeMap::new(), &BTreeSet::new(), &counts);
+    let second = ledger(&Inputs { table: &flipped, index: &index, eps: &BTreeMap::new(), live: &BTreeSet::new(), proven: &counts, paid: &BTreeMap::new(), payable: None });
     assert_eq!(first, second, "the ledger depends on the order the table happened to be in");
     assert_eq!(first.cases[0].path, "b.json", "cases are not ordered by how often they were played");
+}
+
+// ── what was paid, which is not what was proven ─────────────────────────────
+
+use vitals_web::authors::Paid;
+
+/// A payment is a different event from a proof, and the ledger must not compute one from the
+/// other. A replay can be proven and unpaid — no attribution, an unlisted key, the daily cap —
+/// and the ledger has to be able to say so.
+#[test]
+fn paid_is_reported_separately_from_proven_and_never_derived_from_it() {
+    let (old, live) = ("11".repeat(32), "22".repeat(32));
+    let alice = Keypair::new().pubkey().to_string();
+    let index = vec![entry(&old, "case.json"), entry(&live, "case.json")];
+    let table = vec![attributed(&alice, &old), attributed(&alice, &live)];
+    // Five proven on the old version; only two of them paid.
+    let counts = per_case(&[&old, &old, &old, &old, &old]);
+    let paid = BTreeMap::from([(old.clone(), Paid { paid: 2, paid_lamports: 1_700_000 })]);
+
+    let led = ledger(&Inputs {
+        table: &table,
+        index: &index,
+        eps: &BTreeMap::new(),
+        live: &BTreeSet::from([live.clone()]),
+        proven: &counts,
+        paid: &paid,
+        payable: None,
+    });
+
+    let c = &led.cases[0];
+    assert_eq!(c.proven_replays, 5, "the lineage's replays moved");
+    assert_eq!(c.paid.paid, 2, "the ledger invented payments to match the replays");
+    assert_eq!(c.paid.paid_lamports, 1_700_000);
+    let a = &led.authors[0];
+    assert_eq!((a.proven_replays, a.paid.paid), (5, 2), "an author's two numbers were conflated");
+}
+
+/// The allowlist answers "may be paid", and only when somebody asked.
+#[test]
+fn payable_is_absent_rather_than_guessed() {
+    let h = "33".repeat(32);
+    let alice = Keypair::new().pubkey().to_string();
+    let mk = |payable: Option<&BTreeSet<String>>| {
+        ledger(&Inputs {
+            table: &[attributed(&alice, &h)],
+            index: &[entry(&h, "c.json")],
+            eps: &BTreeMap::new(),
+            live: &BTreeSet::new(),
+            proven: &BTreeMap::new(),
+            paid: &BTreeMap::new(),
+            payable,
+        })
+    };
+    assert_eq!(mk(None).authors[0].payable, None, "an answer was invented with nothing to go on");
+    let empty = BTreeSet::new();
+    assert_eq!(mk(Some(&empty)).authors[0].payable, Some(false), "an empty list pays nobody");
+    let listed: BTreeSet<String> = [alice.clone()].into_iter().collect();
+    assert_eq!(mk(Some(&listed)).authors[0].payable, Some(true));
 }

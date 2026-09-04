@@ -569,13 +569,21 @@ fn print_author_ledger(rpc: &RpcClient, program: &Pubkey, tree_id: u64, api: &st
     };
     // No `live` and no episode ids here: this tool reads the archive and the chain, and neither
     // of those knows which file is on somebody's shelf today. The lineage does not need it.
-    let led = vitals_web::authors::ledger(
-        &table,
-        &index,
-        &Default::default(),
-        &Default::default(),
-        &counts,
-    );
+    // The allowlist, if the auditor was given one. Read from the same variable the server reads,
+    // so the tool and the server never disagree about who may be paid — and left out entirely
+    // when nobody supplied it, rather than reported as "nobody".
+    let allow: Option<std::collections::BTreeSet<String>> = std::env::var("VITALS_PAYOUT_ALLOWLIST")
+        .ok()
+        .map(|v| v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect());
+    let led = vitals_web::authors::ledger(&vitals_web::authors::Inputs {
+        table: &table,
+        index: &index,
+        eps: &Default::default(),
+        live: &Default::default(),
+        proven: &counts,
+        paid: &Default::default(),
+        payable: allow.as_ref(),
+    });
 
     for c in &led.cases {
         println!("{:>4}  {}", c.proven_replays, c.path);
@@ -586,8 +594,17 @@ fn print_author_ledger(rpc: &RpcClient, program: &Pubkey, tree_id: u64, api: &st
     }
     println!();
     for a in &led.authors {
-        println!("{}  {} case(s) · {} proven replay(s) on versions it signed",
-                 a.author, a.distinct_cases, a.proven_replays);
+        let payable = match a.payable {
+            Some(true) => " · payable",
+            Some(false) => " · NOT payable",
+            None => "",
+        };
+        println!("{}  {} case(s) · {} proven replay(s) on versions it signed{payable}",
+                 a.author, a.distinct_cases, a.proven_replays, );
+    }
+    if allow.is_none() {
+        println!("\nSet VITALS_PAYOUT_ALLOWLIST to the operator's list to see who may be paid.");
+        println!("An attribution says who is named; the allowlist says who may receive money.");
     }
 
     println!("\nthe server serves the same tally at {}", api.replace("/api/chain", "/api/authors"));
