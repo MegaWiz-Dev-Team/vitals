@@ -520,3 +520,106 @@ fn a_memo_this_wallet_did_not_pay_for_is_not_a_payment() {
     println!("  ignored the hostile memo · paid {} leaves · spent today {}",
              led.paid.len(), led.spent_today);
 }
+
+// ── where the wallet may live, in the container as well as the repository ───
+
+/// The refusal has to survive the trip into the image, and for a while it did not.
+///
+/// `refuse_inside_repo` measured "inside" against `CARGO_MANIFEST_DIR`, a path baked in at
+/// compile time. The Dockerfile builds under `WORKDIR /src`, so the compiled-in root is `/src`,
+/// and the runtime image — a fresh `debian:bookworm-slim` that only receives the binary and
+/// `/app` — has no `/src` at all. `canonicalize` failed, the function returned `Ok`, and a key
+/// under `/app` was accepted by the check whose whole job is to refuse exactly that.
+///
+/// So the tree the server reads its own files from is a root too. Here it is a real directory
+/// rather than `/app`, because `/app` does not exist on the machine running these tests — and a
+/// root that does not exist is skipped, which is the bug rather than the test for it.
+#[test]
+fn a_wallet_inside_the_servers_own_file_tree_is_refused() {
+    let tree = std::env::temp_dir().join(format!("vitals-image-root-{}", std::process::id()));
+    let elsewhere = std::env::temp_dir().join(format!("vitals-mount-{}", std::process::id()));
+    std::fs::create_dir_all(&tree).expect("a stand-in for /app");
+    std::fs::create_dir_all(&elsewhere).expect("a stand-in for /payout");
+
+    let inside = tree.join("id.json");
+    let got = from_env_with(&[
+        ("VITALS_PAYOUT_LAMPORTS", "1000000"),
+        ("VITALS_PAYOUT_KEY", inside.to_str().unwrap()),
+        ("VITALS_SCENARIOS", tree.to_str().unwrap()),
+    ]);
+    let Err(err) = got else { panic!("a key inside the image's own tree was accepted") };
+    assert!(
+        err.contains("image's own content"),
+        "refused, but for some other reason: {err}"
+    );
+
+    // And the mount point the deploy script uses is not caught by it. This is the half that
+    // matters at 3am: a check that refuses everything is as useless as one that refuses nothing,
+    // and it fails in a way that reads like a broken secret rather than a broken check.
+    let outside = elsewhere.join("id.json");
+    let got = from_env_with(&[
+        ("VITALS_PAYOUT_LAMPORTS", "1000000"),
+        ("VITALS_PAYOUT_KEY", outside.to_str().unwrap()),
+        ("VITALS_SCENARIOS", tree.to_str().unwrap()),
+    ]);
+    let Err(err) = got else { panic!("there is no keypair there, so it cannot succeed") };
+    assert!(
+        !err.contains("image's own content") && !err.contains("inside this repository"),
+        "a mounted secret outside the image's tree was refused for its location: {err}"
+    );
+
+    let _ = std::fs::remove_dir_all(&tree);
+    let _ = std::fs::remove_dir_all(&elsewhere);
+}
+
+/// The paths the test above stands in for, checked against the files that actually name them.
+///
+/// The test above proves the rule with directories it makes up, because the real ones only exist
+/// inside a container. This one proves the made-up directories are standing in for the right
+/// thing: that the deploy mounts the wallet outside the tree it points VITALS_SCENARIOS at, and
+/// that the Dockerfile's build root is not in the runtime image — which is *why* a second root
+/// had to exist. Both are read out of the files rather than written down here, so moving the
+/// mount into /app fails this instead of shipping.
+#[test]
+fn the_container_mounts_the_wallet_outside_the_tree_it_serves() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let deploy = std::fs::read_to_string(root.join("scripts/deploy-cloudrun.sh")).expect("deploy");
+    let dockerfile = std::fs::read_to_string(root.join("Dockerfile")).expect("Dockerfile");
+
+    let scenarios = deploy
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("env_add \"VITALS_SCENARIOS="))
+        .and_then(|v| v.strip_suffix('"'))
+        .expect("the deploy names the tree the server reads its own files from");
+    let mount = deploy
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("env_add \"VITALS_PAYOUT_KEY="))
+        .and_then(|v| v.strip_suffix('"'))
+        .expect("the deploy names where the wallet is mounted");
+
+    assert!(
+        !std::path::Path::new(mount).starts_with(scenarios),
+        "the deploy mounts the payout wallet at {mount}, inside {scenarios}, which the server \
+         refuses at boot — the deploy would come up dead rather than paying anyone"
+    );
+    assert!(
+        deploy.contains(&format!("{mount}=vitals-payout-key:latest")),
+        "the wallet is pointed at {mount} but nothing mounts a secret there"
+    );
+
+    // The compile-time root, and the reason it cannot be the only one.
+    let build_root = dockerfile
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("WORKDIR "))
+        .expect("the build stage has a WORKDIR");
+    let runtime = dockerfile
+        .split_once("FROM debian")
+        .expect("a runtime stage")
+        .1;
+    assert!(
+        !runtime.contains(&format!(" {build_root}")),
+        "the runtime image now contains {build_root}, the path CARGO_MANIFEST_DIR is relative \
+         to. That would make the repository root a live check in the container — good news, but \
+         it changes what these two roots mean, so read refuse_inside_repo before deleting this."
+    );
+}

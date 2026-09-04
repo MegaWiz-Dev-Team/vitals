@@ -567,10 +567,52 @@ fn bps_env(name: &str, default: u32) -> Result<u32, String> {
     Ok(v)
 }
 
-/// A wallet key inside the repository is refused, both ends, exactly as the author key is.
+/// A wallet key inside the deployment's own files is refused, both ends, exactly as the author
+/// key is.
+///
+/// Two roots, because the tree the key must stay out of has two different names depending on
+/// where the binary is running, and for a while only one of them was checked.
+///
+/// The first is the repository, which is the development answer: a key under it is one
+/// `git add -A` from being published. That root comes from `CARGO_MANIFEST_DIR`, which is a
+/// *compile-time* path — and in the container it is `/src/crates/vitals-web`, because the
+/// Dockerfile builds under `WORKDIR /src`. The runtime image has no `/src` at all, so
+/// `canonicalize` failed, the function returned `Ok`, and the whole refusal was inert in the one
+/// environment where a key is mounted by a deploy script. `/app/anything` was accepted.
+///
+/// So the second root is `VITALS_SCENARIOS`, which is where this process reads its own files
+/// from — `/app` in the image. That is the deployed artefact's tree: everything under it ships
+/// inside the image and travels wherever the image is pulled, which is the same exposure the
+/// repository has and wants the same answer. The mounted secret at `/payout/id.json` is under
+/// neither, which is the point of mounting it there.
+///
+/// Each root is skipped only if it does not exist, and independently — a missing `/src` no
+/// longer takes the `/app` check down with it.
 fn refuse_inside_repo(key: &std::path::Path) -> Result<(), String> {
-    let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let Ok(repo) = repo.canonicalize() else { return Ok(()) };
+    let mut roots = vec![(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."),
+        "inside this repository. A wallet that pays people is one `git add -A` from being \
+         published; keep it somewhere the repository cannot reach.",
+    )];
+    if let Ok(scenarios) = std::env::var("VITALS_SCENARIOS") {
+        if !scenarios.trim().is_empty() {
+            roots.push((
+                std::path::PathBuf::from(scenarios.trim()),
+                "inside the tree this server reads its own files from, which in a container is \
+                 the image's own content. A key there is baked into an artefact that gets \
+                 pulled; mount it somewhere else, the way the deploy script mounts \
+                 /payout/id.json.",
+            ));
+        }
+    }
+    refuse_inside(key, &roots)
+}
+
+/// The comparison itself, with the roots handed in so a test can name them.
+///
+/// Both ends: the path as canonicalized, and the path reached through a canonicalized parent —
+/// a symlink whose target is outside must not launder a name that is inside, and vice versa.
+fn refuse_inside(key: &std::path::Path, roots: &[(std::path::PathBuf, &str)]) -> Result<(), String> {
     let asked = key.canonicalize().unwrap_or_else(|_| key.to_path_buf());
     let through = key
         .parent()
@@ -578,13 +620,12 @@ fn refuse_inside_repo(key: &std::path::Path) -> Result<(), String> {
         .and_then(|p| p.canonicalize().ok())
         .map(|p| p.join(key.file_name().unwrap_or_default()))
         .unwrap_or_else(|| key.to_path_buf());
-    for c in [asked, through] {
-        if c.starts_with(&repo) {
-            return Err(format!(
-                "{} is inside this repository. A wallet that pays people is one `git add -A` \
-                 from being published; keep it somewhere the repository cannot reach.",
-                c.display()
-            ));
+    for (root, why) in roots {
+        let Ok(root) = root.canonicalize() else { continue };
+        for c in [&asked, &through] {
+            if c.starts_with(&root) {
+                return Err(format!("{} is {why}", c.display()));
+            }
         }
     }
     Ok(())
