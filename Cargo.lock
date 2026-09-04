@@ -7753,6 +7753,7 @@ dependencies = [
  "sha2 0.10.9",
  "solana-rpc-client",
  "solana-sdk",
+ "solana-transaction-status-client-types",
  "tiny_http",
  "ureq",
  "vitals-osce",
