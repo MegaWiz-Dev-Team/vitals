@@ -1,0 +1,35 @@
+# What `gcloud builds submit` uploads to the build bucket — not what the image contains.
+#
+# Without this file gcloud falls back to .gitignore *only if* there is no .gcloudignore and the
+# directory is a git repo, and the v0.9.3 deploy showed what that actually sent: 667 files and
+# 120.7 MiB, of which 333 files were a nested worktree under .claude/ and about 65 MB was
+# pitch/video/*.mp4. None of it reaches the image — the Dockerfile COPYs named paths — so it was
+# pure upload, on every deploy, of a checkout of this repository inside itself.
+#
+# The build needs exactly: Cargo.toml, Cargo.lock, crates/ (the static assets are compiled in
+# with include_bytes!), pitch/deck.html, and the runtime files under conformance/ and demo/.
+# Everything below is outside that set.
+
+# gcloud excludes .git/ implicitly only while no .gcloudignore exists. Writing one replaces that
+# default wholesale, so naming it here is not redundant — leaving it out put 3,722 files of git
+# history into the upload, which is the opposite of what this file is for.
+.git/
+
+#!include:.gitignore
+
+# A worktree of this repository, nested inside it. target/ is excluded by the include above,
+# which is the only reason this was 4.7 GB on disk and not in the upload.
+.claude/
+
+# Renders and cuts of the film. The film itself is served from a GCS volume mounted on the
+# service, never from the image.
+pitch/video/
+**/*.mp4
+
+# Prose. Nothing in the build reads it; docs/internal/ is excluded by the include above and must
+# stay excluded either way.
+docs/
+
+# Local ledgers from a test validator, if one was run in the tree.
+test-ledger/
+.test-ledger/
