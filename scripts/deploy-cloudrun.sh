@@ -144,6 +144,22 @@ if [ -z "$HEIMDALL" ] && [ -z "$VERTEX_URL" ]; then
     echo "  If a mute deploy is what you actually want, say so: VITALS_NO_VOICE=1" >&2
     exit 1
   fi
+else
+  # The positive line, for the same reason the negative one exists. A deploy that prints nothing
+  # about voice when voice is configured leaves the reader to infer it from silence, and silence
+  # is what shipped revision 43. The payout line above prints in both states; so does this.
+  #
+  # It says what is being shipped, not which gateway will speak. That choice is not made here:
+  # patient.rs reaches both at boot and takes whichever answers, preferring the local one — so a
+  # line claiming the winner would be a guess about a check that has not run yet.
+  if [ -n "$VERTEX_URL" ] && [ -n "$HEIMDALL" ]; then
+    echo "── voice     heimdall $HEIMDALL · vertex ${VERTEX_MODEL:-(the server default)}"
+    echo "             both configured — the server takes whichever answers at boot, local first"
+  elif [ -n "$VERTEX_URL" ]; then
+    echo "── voice     vertex ${VERTEX_MODEL:-(the server default)}"
+  else
+    echo "── voice     heimdall $HEIMDALL"
+  fi
 fi
 
 # The Heimdall key is mounted only when there is a gateway to reach. A cloud-only deploy has no
