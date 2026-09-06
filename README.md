@@ -94,9 +94,10 @@ the argument, but a reader who greps this repository for them should meet this s
 | **Competency Credential** | Clear N attempts above threshold → an accredited issuer attests "OSCE-Cardio-L2" to the student's wallet. Reusable across apps without exposing the underlying data. | [Solana Attestation Service](https://solana.com/news/solana-attestation-service) | designed, not built |
 
 Two primitives are named here that this repository deliberately does *not* use. Production-scale
-anchoring belongs on **Bubblegum**, but Bubblegum needs an indexer to read, and a demo that
-cannot be verified on a laptop with no network is not a demo of verifiability — so the tree is
-in the program, and a proof is checkable with nothing but hashes. Progression could have been a
+anchoring belongs on **`spl-account-compression`** — the concurrent-Merkle-tree program that
+**Bubblegum** builds cNFTs on top of — but reading a compressed tree back needs an indexer, and a
+demo that cannot be verified on a laptop with no network is not a demo of verifiability. So the
+tree is in the program, and a proof is checkable with nothing but hashes. Progression could have been a
 **Token-2022 non-transferable mint**; it is a PDA instead, because the useful property was never
 the token, it was that the chain recomputes the predicate and can refuse. Adding a mint would
 add a thing to look at, not a thing to check.
@@ -171,15 +172,54 @@ is the pre-encounter commitment, which works whether or not the candidate has re
 Not decoration — the numbers only close on this chain:
 
 - **Volume.** ~25k Thai medical students × ~200 cases = millions of attempt anchors per year,
-  and that is one country. Per-write cost has to be ~$0.0001 or the model is dead, and Solana
-  state compression writes ~1M compressed records for roughly **$110** — about that figure.
-  This demo does not reach it: it anchors through the program's own Merkle tree at 3 transactions
-  a run, **30,000 lamports** — which is $0.0001 only if SOL is worth about three dollars. That is
-  the gap the table above calls "production-scale anchoring belongs on Bubblegum", stated as a
-  number rather than as a preference.
-- **Micropayments.** Case authors earn ฿0.5–2 per attempt. Card rails eat that whole amount in
-  fees; Solana settles it with change left over. This is what makes an open case marketplace
-  possible at all.
+  and that is one country. Three costs, each labelled with how it is known:
+
+  | | per anchor | per million attempts | how we know |
+  |---|---|---|---|
+  | this demo, today | 30,000 lamports | **30 SOL** | measured on devnet |
+  | the floor, one signer | 5,000 lamports | **5 SOL** | at today's base fee of 5,000 lamports per signature |
+  | compressed, relay signs alone | 5,729 lamports | **5.73 SOL** | computed from constants measured on a local validator |
+  | compressed, learner co-signs as today | 10,729 lamports | **10.73 SOL** | the same, plus a second signature |
+
+  The demo anchors through the program's own Merkle tree at three transactions a run — commit,
+  anchor, prove — and every one of them costs 10,000 lamports, because each carries two
+  signatures at 5,000. That is the most expensive row, and it is the one that is actually
+  running.
+
+  The floor is why compression is the production design: at today's base fee nothing writes for
+  less than one signature. Compressed anchoring adds only 729 lamports to that —
+  `spl-account-compression` at depth 20, buffer 64, canopy 10, reached by a hand-rolled CPI,
+  its tree's rent-exemption amortised over 2²⁰ leaves.
+
+  **Which of the two compressed rows is the production design is not decided, and neither is
+  measured.** The cheaper one assumes the relay signs alone and the learner's attestation is
+  verified *inside* the transaction — an ed25519 precompile instruction, whose signatures are
+  instruction data rather than transaction signers, so they cost compute instead of a second
+  5,000-lamport fee. The demo today has two signers, which is the dearer row. Either way the
+  anchor lands between 2.8× and 5.2× under what is running now, and that is the part of the
+  claim that survives the decision.
+
+  Neither compressed row has landed on devnet. Both are arithmetic over constants taken from a
+  local validator, and these sentences get upgraded when there are signatures to point at, not
+  before.
+
+  These are lamports on purpose. The figure usually quoted for this — "$110 per million" — is a
+  2023 dollar conversion of roughly the same lamport cost; dollar figures move with the SOL price
+  and lamport figures do not.
+- **Micropayments.** Case authors are **paid per proven replay**. On devnet that is built and
+  running: the payment lands as a second transaction seconds after the proof, off the request
+  path, carrying a memo that names the leaf it pays for — so anyone can total what an author was
+  paid straight from the chain, without trusting us. The platform's share is taken at source
+  (15%), the recipient has to be on an allowlist the operator sets at deploy time, there is a
+  daily ceiling, and each memo is only counted if this wallet actually paid the fee for it —
+  otherwise a stranger could mint a payment record by sending us one lamport. Five such payments
+  have landed on devnet in our own testing — our payer to our own author key, at the illustrative
+  default of 0.001 SOL. Devnet SOL, illustrative, and off on the public bay unless a rate is set:
+  no money moves here.
+
+  The argument is not the size of the payment, it is that there is a size below which card rails
+  cannot settle at all — the fee is larger than the amount. That is what makes an open case
+  marketplace possible.
 - **Latency is UX.** The after-action report appears seconds after the encounter ends. The
   attestation has to land inside that window or the credential feels like paperwork instead of
   a result.
