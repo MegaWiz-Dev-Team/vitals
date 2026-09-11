@@ -305,3 +305,36 @@ buy, and no key held by a server.
 
 Anchored: a leaf hash, an outcome, a score. Never a name, never a transcript, never anything the
 patient said — that comes from a language model and is nowhere near the hash.
+
+## Domains
+
+Three names, one service, declared in `scripts/domains.sh` (re-runnable; it is also the audit):
+
+| name | what | how |
+|---|---|---|
+| `vitals.academy` | the front door — landing, `/privacy`, `/terms`, `/robots.txt`; everything else 301s to devnet | Cloud Run domain mapping + the A/AAAA set it handed out |
+| `devnet.vitals.academy` | the game, its APIs, its sessions | domain mapping + CNAME `ghs.googlehosted.com.` |
+| `www.vitals.academy` | a spelling of the apex; the server 301s it home, URL intact | domain mapping + CNAME `ghs.googlehosted.com.` |
+
+The zone is Cloud DNS (`vitals-academy`, DNSSEC on); the registration is Cloud Domains in the same
+project, auto-renewing, registrant `paripol@megawiz.co`.
+
+**When the name stops resolving and Cloud Run is green, look at the registrar first.** Cloud
+Domains suspends a registration whose contact email is never verified — 15 days after
+registration, and again after any contact change — and the registry then pulls the delegation:
+NXDOMAIN everywhere, while the service, the certificate and the zone all report healthy. That is
+what happened on 2026-09-08 (registered 2026-08-24, verification mail unanswered, `clientHold`
+at 17:10 UTC, noticed 2026-09-11).
+
+```
+gcloud domains registrations describe vitals.academy --project vitals-academy --format='value(state,issues)'
+```
+
+`SUSPENDED UNVERIFIED_EMAIL` means: resend the verification mail from the domain's page in the
+Cloud Domains console (re-submitting the identical contact set with
+`gcloud domains registrations configure contacts` also sends one), click the link, and the hold
+lifts within minutes. Resolvers then hold the negative answer for up to an hour (the `.academy`
+SOA minimum); `https://1.1.1.1/api/v1/purge?domain=vitals.academy&type=A` (POST) and
+`https://dns.google/cache` clear the two big public ones early. The managed certificate renews
+only while the name resolves, so a hold left standing past ~30 days before expiry takes the
+certificate with it.

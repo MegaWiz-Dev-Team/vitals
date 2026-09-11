@@ -69,6 +69,17 @@ impl Server {
         })
     }
 
+    /// The raw wire: the host-split checks need a Host header the client library will not let
+    /// a test forge, and the header check needs the headers `get` throws away.
+    fn raw(&self, host: &str, path: &str) -> String {
+        use std::io::{Read, Write};
+        let mut s = std::net::TcpStream::connect(("127.0.0.1", self.port)).expect("connect");
+        write!(s, "GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n").unwrap();
+        let mut out = Vec::new();
+        s.read_to_end(&mut out).unwrap_or(0);
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
     fn json(&self, path: &str) -> serde_json::Value {
         serde_json::from_str(&self.get(path)).unwrap_or(serde_json::Value::Null)
     }
@@ -348,4 +359,40 @@ fn the_policy_does_not_depend_on_a_file_being_there() {
     let s = Server::start();
     assert!(s.get("/privacy").len() > 10_000);
     assert!(s.get("/terms").len() > 5_000);
+}
+
+/// Every reply — a page, JSON, a 404 — carries the hardening headers, because the wrapper that
+/// adds them is the only way a reply leaves the server.
+#[test]
+fn every_reply_carries_the_hardening_headers() {
+    let s = Server::start();
+    for path in ["/", "/privacy", "/robots.txt", "/api/chain", "/no-such-path"] {
+        let raw = s.raw("localhost", path);
+        let head = raw.split("\r\n\r\n").next().unwrap_or("").to_ascii_lowercase();
+        for h in [
+            "strict-transport-security: max-age=31536000; includesubdomains",
+            "x-content-type-options: nosniff",
+            "x-frame-options: sameorigin",
+            "referrer-policy: strict-origin-when-cross-origin",
+        ] {
+            assert!(head.contains(h), "{path} lacks `{h}`:\n{head}");
+        }
+    }
+}
+
+/// The apex answers robots.txt and the icon path itself, www moves to the apex with the URL
+/// intact, and the game origin serves the same robots bytes from its own arm.
+#[test]
+fn the_apex_and_www_are_the_front_door() {
+    let s = Server::start();
+    let robots = s.raw("vitals.academy", "/robots.txt");
+    assert!(robots.starts_with("HTTP/1.1 200") && robots.contains("Disallow: /api/"), "{robots}");
+    let icon = s.raw("vitals.academy", "/favicon.ico");
+    assert!(icon.starts_with("HTTP/1.1 404"), "{icon}");
+    let play = s.raw("vitals.academy", "/play").to_ascii_lowercase();
+    assert!(play.starts_with("http/1.1 301") && play.contains("location: https://devnet.vitals.academy/play"), "{play}");
+    let www = s.raw("www.vitals.academy", "/play?ep=ep1").to_ascii_lowercase();
+    assert!(www.starts_with("http/1.1 301") && www.contains("location: https://vitals.academy/play?ep=ep1"), "{www}");
+    let devnet = s.raw("devnet.vitals.academy", "/robots.txt");
+    assert!(devnet.starts_with("HTTP/1.1 200") && devnet.contains("Disallow: /api/"), "{devnet}");
 }
