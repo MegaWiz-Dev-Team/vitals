@@ -206,8 +206,8 @@ twelve identities rotated — that is the designed cost of touching a case, and 
 paid it: the outgoing version of every station was already archived under
 `conformance/sce-archive/` with its `INDEX.json` row, the incoming versions are archived beside
 them, and `crates/vitals-replay/tests/shock_tape.rs` holds the leaf of every archived version
-exactly where it was. The five attempts anchored on devnet against `osce-a` name the archived
-bytes and re-derive from them unchanged. A deployment pins an image, so the closed state reaches
+exactly where it was. The five attempts anchored on devnet against `osce-a` (as of 31 Aug 2026) name the
+archived bytes and re-derive from them unchanged. A deployment pins an image, so the closed state reaches
 devnet with the next deploy, not before.
 
 **What pins it shut.** `crates/vitals-replay/tests/trap_silence.rs`, run on every `cargo test`:

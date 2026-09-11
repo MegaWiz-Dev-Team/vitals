@@ -2067,7 +2067,8 @@ fn main() {
 
     // `mut` for exactly one route: reading a request body needs the request mutably, and the
     // match below borrows it for the whole of its scrutinee. See `/api/review`.
-    for mut req in server.incoming_requests() {
+    for req in server.incoming_requests() {
+        let mut req = Hardened(req);
         let url = req.url().to_string();
         let path = url.split('?').next().unwrap_or("/").to_string();
 
@@ -2075,14 +2076,15 @@ fn main() {
         // company — and anything deeper moves permanently to the game origin. 301 on purpose:
         // the split is a recorded decision, not a phase. Everything the apex serves carries its
         // own short cache life so a proxy caching the apex never holds anything of the game's.
-        if host_of(&req) == APEX {
+        let host = host_of(&req);
+        if host == WWW {
+            let _ = req.respond(redirect(&www_target(&url)));
+            continue;
+        }
+        if host == APEX {
             let resp = match apex_target(&url) {
-                None => html(&front_door(&path)).with_header(
-                    Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=300"[..]).unwrap(),
-                ),
-                Some(to) => Response::from_string("")
-                    .with_status_code(301)
-                    .with_header(Header::from_bytes(&b"Location"[..], to.as_bytes()).unwrap()),
+                None => apex_page(&path),
+                Some(to) => redirect(&to),
             };
             let _ = req.respond(resp);
             continue;
@@ -3216,6 +3218,7 @@ fn main() {
             // the name it was written as, not one hop later.
             (Method::Get, "/privacy") => html(&PRIVACY.replace(BUILD_STAMP, BUILD)),
             (Method::Get, "/terms") => html(&TERMS.replace(BUILD_STAMP, BUILD)),
+            (Method::Get, "/robots.txt") => text(ROBOTS),
             // ── the form itself ─────────────────────────────────────────────────
             // One URL and nothing else. The two reviewers this is for are a final-year student
             // and a physician: a link that opens and works is the entire brief, and any step
@@ -3872,10 +3875,6 @@ struct PendingWork {
     link: bool,
 }
 
-/// The apex is the company's front door and nothing else (decided 2026-08-25): the game, its
-/// APIs and its session state live on the devnet host. One instance serves both names, so the
-/// split is the Host header — an allowlist of exactly one special name, with every other name
-/// (devnet, run.app, localhost) keeping the full app unchanged.
 /// What the ventilator pane says the peak-to-plateau gap means, held here rather than there.
 ///
 /// `static/device/vent.html` is served whole to anyone who asks for it, so every string in it is
@@ -3897,8 +3896,97 @@ const VENT_READ_WIDE: &str = "Ppeak high but <b>Pplat normal</b> → airway resi
 /// The other half of [`VENT_READ_WIDE`] — the same rule, the reassuring branch.
 const VENT_READ_NARROW: &str = "Ppeak and Pplat are close — airway resistance is not the problem";
 
+/// The apex is the company's front door and nothing else (decided 2026-08-25): the game, its
+/// APIs and its session state live on the devnet host. One instance serves every name, so the
+/// split is the Host header — an allowlist of two special names, the apex and its `www`
+/// spelling, with every other name (devnet, run.app, localhost) keeping the full app unchanged.
 const APEX: &str = "vitals.academy";
+const WWW: &str = "www.vitals.academy";
 const GAME_ORIGIN: &str = "https://devnet.vitals.academy";
+
+/// One robots file for both hosts. `/api/` is the one tree a crawler must stay out of:
+/// `/api/new` opens a session on every visit, and a crawler that walks it opens one per fetch.
+const ROBOTS: &str = "User-agent: *\nDisallow: /api/\n";
+
+/// `www` is a spelling of the apex, not a third host: everything on it moves permanently to the
+/// bare name, path and query intact, and the apex decides from there.
+fn www_target(url: &str) -> String {
+    format!("https://{APEX}{url}")
+}
+
+/// The reply for a path [`apex_target`] keeps on the apex. Everything the apex serves carries
+/// its own short cache life so a proxy caching the apex never holds anything of the game's.
+fn apex_page(path: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+    let resp = match path {
+        "/robots.txt" => text(ROBOTS),
+        // The landing's icon is a data: URI in its own <head>; a client that asks for the
+        // conventional file anyway gets a plain 404 here, not a 301 to a 404 on devnet.
+        "/favicon.ico" => Response::from_string("").with_status_code(404),
+        _ => html(&front_door(path)),
+    };
+    resp.with_header(
+        Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=300"[..]).unwrap(),
+    )
+}
+
+fn text(body: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+    Response::from_string(body).with_header(
+        Header::from_bytes(&b"Content-Type"[..], &b"text/plain; charset=utf-8"[..]).unwrap(),
+    )
+}
+
+/// 301 on purpose, everywhere a name moves: the split is a recorded decision, not a phase.
+fn redirect(to: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+    Response::from_string("")
+        .with_status_code(301)
+        .with_header(Header::from_bytes(&b"Location"[..], to.as_bytes()).unwrap())
+}
+
+/// The headers every reply carries. HSTS covers the subdomains too — the game origin and `www`
+/// both live under the apex — and stops at a year without `preload`, which is a commitment to a
+/// browser list rather than a header. `nosniff` because every static byte here is served with
+/// the type its table says; `SAMEORIGIN` rather than `DENY` because the bedside devices are
+/// iframes of the bay itself. No CSP yet: the pages carry inline script and style, and a policy
+/// that has to allow `unsafe-inline` for both is not yet a policy.
+const HARDENING: [(&str, &str); 4] = [
+    ("Strict-Transport-Security", "max-age=31536000; includeSubDomains"),
+    ("X-Content-Type-Options", "nosniff"),
+    ("X-Frame-Options", "SAMEORIGIN"),
+    ("Referrer-Policy", "strict-origin-when-cross-origin"),
+];
+
+fn harden<R: std::io::Read>(r: Response<R>) -> Response<R> {
+    HARDENING.iter().fold(r, |r, (k, v)| {
+        r.with_header(Header::from_bytes(k.as_bytes(), v.as_bytes()).unwrap())
+    })
+}
+
+/// A request whose every reply carries [`HARDENING`], whatever route built it.
+///
+/// tiny_http has no middleware: each of the two dozen `req.respond(...)` sites hands its own
+/// `Response` straight to the socket, and a header that has to be on all of them would be a
+/// header forgotten on one. So the request is wrapped, `respond` is the one method the wrapper
+/// defines, and everything else reaches the request underneath through `Deref`.
+struct Hardened(tiny_http::Request);
+
+impl Hardened {
+    fn respond<R: std::io::Read>(self, r: Response<R>) -> std::io::Result<()> {
+        self.0.respond(harden(r))
+    }
+}
+
+impl std::ops::Deref for Hardened {
+    type Target = tiny_http::Request;
+    fn deref(&self) -> &tiny_http::Request {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for Hardened {
+    fn deref_mut(&mut self) -> &mut tiny_http::Request {
+        &mut self.0
+    }
+}
 
 fn host_of(req: &tiny_http::Request) -> String {
     req.headers()
@@ -3937,7 +4025,8 @@ fn apex_target(url: &str) -> Option<String> {
     // answering with the policy — rather than with a 301 to a host called `devnet` — is the
     // difference between a URL that reads as the company's and one that reads as an artefact of
     // our hosting.
-    (!matches!(path, "/" | "/privacy" | "/terms")).then(|| format!("{GAME_ORIGIN}{url}"))
+    (!matches!(path, "/" | "/privacy" | "/terms" | "/robots.txt" | "/favicon.ico"))
+        .then(|| format!("{GAME_ORIGIN}{url}"))
 }
 
 /// Where to listen, with the platform's word winning over ours.
@@ -4539,6 +4628,33 @@ mod tests {
         for p in ["/privacy", "/terms"] {
             assert!(!front_door(p).contains(BUILD_STAMP), "{p} went out unstamped");
             assert!(front_door(p).contains(BUILD), "{p} does not say which build it describes");
+        }
+    }
+
+    /// The crawler file and the conventional icon path are the apex's own to answer: a 301 to
+    /// the game origin for `robots.txt` would hand a crawler the game's rules for the landing.
+    #[test]
+    fn the_apex_answers_robots_and_favicon_itself() {
+        assert_eq!(apex_target("/robots.txt"), None);
+        assert_eq!(apex_target("/favicon.ico"), None);
+        assert_eq!(apex_target("/robots.txt?x=1"), None, "decided on the path alone");
+        assert!(ROBOTS.contains("Disallow: /api/"));
+    }
+
+    /// `www` is a spelling, not a host: it moves to the bare name with the URL intact.
+    #[test]
+    fn www_moves_to_the_apex_with_the_url_intact() {
+        assert_eq!(www_target("/"), "https://vitals.academy/");
+        assert_eq!(www_target("/play?ep=ep1"), "https://vitals.academy/play?ep=ep1");
+    }
+
+    /// Every reply carries the four hardening headers, whichever route built it.
+    #[test]
+    fn every_reply_is_hardened() {
+        let r = harden(html("x"));
+        for (k, v) in HARDENING {
+            let got = r.headers().iter().find(|h| h.field.equiv(k)).map(|h| h.value.as_str().to_string());
+            assert_eq!(got.as_deref(), Some(v), "{k}");
         }
     }
 
