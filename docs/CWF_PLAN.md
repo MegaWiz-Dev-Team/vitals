@@ -81,7 +81,7 @@ we authored a new disease course this month.
    ward where nothing happens unless somebody is looking is a save file, not a ward. So the gap
    between two anchored shifts is read off the chain **in slots**, turned into simulated time and
    ticked through the engine before the next stranger's first action — `idle_seconds()` in
-   `vitals-replay`: **one simulated minute per ten real ones, capped at two simulated minutes**
+   `vitals-replay`: **one simulated minute per sixty real ones, capped at two simulated minutes**
    however long the gap was. Slots are the clock precisely because wall time is not checkable:
    state stays a pure function of (tapes, slot numbers) and every browser re-derives the same
    patient. The gap is ticked at the scenario's own grain, never in one jump — the engine takes one
@@ -98,11 +98,12 @@ we authored a new disease course this month.
    > `osce-c2` 720 · `osce-c3` 840. Only `osce-b2` (pericarditis) and `osce-c` (croup) are still
    > alive at four simulated hours. At the first cap of one simulated hour that made an unattended
    > night a death in almost every bed, three queued patients burnt by morning with nobody having
-   > played them, and a board a judge opens that is mostly a list of the dead.
+   > played them, and a board a judge opens that is mostly a list of the dead. 1:60 and the cap
+   > together make the same night a drift of two simulated minutes.
    >
-   > **Decided 16 ก.ย. (producer, on the founder's standing go, and his to move): the ratio stays
-   > at 1:10 and the cap drops to two simulated minutes** — below `ep5`'s 186 s, the quickest
-   > arrest in the catalogue. A gap can then only ever deteriorate her, and **death happens only
+   > **Decided 16 ก.ย. — the founder's own number: 1:60**, an hour away costs her a simulated
+   > minute, *"ผมอยากได้ 1:60"*. The cap is two simulated minutes, set by the producer below
+   > `ep5`'s 186 s, the quickest arrest in the catalogue, and reached after two real hours. A gap can then only ever deteriorate her, and **death happens only
    > inside a shift**. That is the part worth saying out loud: every death on this ward is
    > something a key did or failed to do while holding her, which is what *"the log says who and
    > when"* has to mean. A patient who died of a gap nobody chose would carry harm on nobody's
@@ -132,6 +133,13 @@ we authored a new disease course this month.
    converted — each stay a mechanical chain of existing cases, as ruled above. **A longer queue is
    more existing cases, never new clinical writing.** The point of automatic release is that the
    ward keeps running while we are asleep, and after 12 Oct.
+
+   **A stay is three cases** (producer, 16 ก.ย., under the founder's go). A patient's chain is
+   three existing cases joined mechanically — acute, observation, ward-to-home — drawn by the same
+   no-repeat rule, so one patient spans at least three shifts. That is what makes the ward turn
+   over slowly: a stranger arriving at noon meets a patient other strangers have already treated
+   rather than a fresh admission nobody has touched, and three beds do not eat the catalogue in an
+   afternoon. `STAY_CASES` in `vitals-web`, published in `/api/ward`'s `policy`.
 
    **The rate is published, not promised.** A bed frees on discharge or death and on nothing else,
    so admissions per day is *as many as leave* — a consequence of how the ward is played rather
@@ -285,9 +293,8 @@ released automatically when the first leaves, and **world.vitals.academy answers
       does not lose it, census still read off the chain.
 - [ ] **The board is live** (ruling 12): SSE — beds, queue depth, on-shift-since, the world clock
       and the census, all moving without a reload.
-- [ ] **The idle ratio and cap confirmed by the founder** before patient one is public — 1:10 and
-      two simulated minutes are in force and tested; this item is his chance to move them, and
-      leaving them is a decision too.
+- [x] **The idle ratio decided by the founder, 16 ก.ย.: 1:60**, cap two simulated minutes. In
+      force and tested (`an_hour_away_costs_her_a_minute`).
 - [ ] Eternal filed before this week starts — otherwise this week is that instead.
 - [ ] Video 2 (27 Sep).
 
