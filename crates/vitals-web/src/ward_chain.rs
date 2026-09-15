@@ -319,3 +319,56 @@ fn cluster_of(url: &str) -> &'static str {
 fn why(e: RpcError) -> String {
     e.to_string()
 }
+
+/// Where each patient's read-so-far lives in the store.
+///
+/// Durable by [`crate::store::class_of`]'s default, and that is right: losing it costs a full
+/// walk of every patient's history rather than a learner's run, and a cache that the sweep can
+/// delete at three in the morning is a cache that makes the census slow at three in the morning.
+pub const SHIFT_CACHE: &str = "ward_shifts";
+
+/// A week, in slots. `604800 / 0.4`.
+///
+/// The window the endpoint calls *this week*. In slots rather than in hours because every other
+/// figure on the endpoint is in slots, and a week measured two ways is a week that can disagree
+/// with itself.
+pub const WEEK_SLOTS: u64 = 1_512_000;
+
+/// One pass over the whole ward: the patients, whatever is new in their histories, and the
+/// payload built from both.
+///
+/// **A partial read is not published.** If any patient's history cannot be read, this answers
+/// [`crate::ward::ward_unavailable`] with the reason rather than a census missing her shifts. The
+/// failure this refuses is the quiet one: a number that is merely too small looks exactly like a
+/// ward nobody came to, and it would be photographed onto the weekly card and read out loud.
+///
+/// Whatever *was* read still lands in the store, so the next pass does not re-walk it.
+pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::Value {
+    let as_of = match chain.slot() {
+        Ok(s) => s,
+        Err(e) => return crate::ward::ward_unavailable(chain.source(), &e),
+    };
+    let patients = match chain.patients() {
+        Ok(p) => p,
+        Err(e) => return crate::ward::ward_unavailable(chain.source(), &e),
+    };
+
+    let mut shifts = Vec::new();
+    for p in &patients {
+        let key = format!("p{}", p.patient_id);
+        let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
+        let added = chain.refresh(p.patient_id, &mut seen);
+        if matches!(added, Ok(n) if n > 0) {
+            let _ = store.put(SHIFT_CACHE, &key, &seen);
+        }
+        if let Err(e) = added {
+            return crate::ward::ward_unavailable(
+                chain.source(),
+                &format!("patient {}'s history could not be read: {e}", p.patient_id),
+            );
+        }
+        shifts.extend(seen.shifts());
+    }
+
+    crate::ward::ward_payload(&patients, &shifts, Some(as_of.saturating_sub(WEEK_SLOTS)), as_of, chain.source())
+}

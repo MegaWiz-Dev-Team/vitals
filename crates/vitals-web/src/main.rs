@@ -10,6 +10,7 @@
 mod chain;
 use vitals_web::{
     archive, authors, fuel, lang, meter, news2, patient, payout, reading, review, store, usage,
+    ward, ward_chain,
 };
 
 use serde::Serialize;
@@ -408,6 +409,17 @@ struct ChainView {
 
 /// The held chain read: when it was taken, and everything it produced.
 type AuthorCounts = Arc<Mutex<Option<(Instant, ChainView)>>>;
+
+/// How long `/api/ward` holds its read of the ward.
+///
+/// A bound on the fan-out, not a freshness promise — and it does not need to be one, because the
+/// payload carries `as_of_slot`: a reader can see exactly how old the numbers are rather than
+/// having to trust that they are new. Thirty seconds, because the board is meant to feel live and
+/// a full pass costs one `get_program_accounts` plus one signature page per patient.
+const WARD_TTL: Duration = Duration::from_secs(30);
+
+/// The held ward census.
+type WardView = Arc<Mutex<Option<(Instant, serde_json::Value)>>>;
 
 /// Payouts this process made, by leaf.
 ///
@@ -2033,6 +2045,7 @@ fn main() {
     let pendings: Arc<Mutex<HashMap<String, PendingWork>>> = Arc::new(Mutex::new(HashMap::new()));
     // The author ledger's chain read, held for AUTHOR_COUNT_TTL. See /api/authors.
     let author_counts: AuthorCounts = Arc::new(Mutex::new(None));
+    let ward_view: WardView = Arc::new(Mutex::new(None));
     let settled: Settled = Arc::new(Mutex::new(HashMap::new()));
     // Where AUTHORS.json and the archive index live, resolved once.
     let authors_root = scenario_root();
@@ -3035,7 +3048,7 @@ fn main() {
                 // that has not opened — a number that is true elsewhere is still a wrong answer
                 // here. Say so, and point at where the real one lives.
                 if ward_mode() {
-                    let _ = req.respond(json(&serde_json::json!({
+                    let _ = req.respond(json(serde_json::json!({
                         "ward": "not open yet",
                         "opens": "week 2 of Crypto World's Fair, 21-27 Sep 2026",
                         "usage_for_the_eternal_entry": "https://vitals.academy/api/usage"
@@ -3253,12 +3266,45 @@ fn main() {
             // is a question we are asking — and would stop the page opening for the two people
             // it was written for. `guarding_covers_everything_that_spends_or_signs` holds it.
             (Method::Get, "/review") => html(&REVIEW.replace(BUILD_STAMP, BUILD)),
+            // The ward's census. Public, and every figure on it carries where it came from —
+            // `vitals_web::ward` builds the payload, `ward_chain` does the reading, and neither
+            // of them can report a number this server kept for itself.
+            (Method::Get, "/api/ward") => {
+                if !ward_mode() {
+                    // vitals.academy is the Eternal entry and is never redeployed for the sprint
+                    // (CWF_PLAN.md ruling 8). Answering here with an empty ward would be a
+                    // number about a thing this host does not run.
+                    let _ = req.respond(json(serde_json::json!({
+                        "ward": "not on this host",
+                        "the_ward_is": "https://world.vitals.academy/api/ward",
+                        "why": "the ward is its own host and its own service, so this entry is \
+                                never redeployed for it"
+                    })));
+                    continue;
+                }
+                let payload = {
+                    let mut held = ward_view.lock().unwrap();
+                    match held.as_ref().filter(|(at, _)| at.elapsed() < WARD_TTL) {
+                        Some((_, v)) => v.clone(),
+                        None => {
+                            let v = match ward_chain::WardChain::connect() {
+                                Ok(c) => ward_chain::read_ward(&c, &store),
+                                Err(e) => ward::ward_unavailable("unconfigured", &e),
+                            };
+                            *held = Some((Instant::now(), v.clone()));
+                            v
+                        }
+                    }
+                };
+                let _ = req.respond(json(&payload));
+                continue;
+            }
             (Method::Get, "/api/chain") => {
                 // On the ward host these would answer for vitals.academy's play, not for a ward
                 // that has not opened — a number that is true elsewhere is still a wrong answer
                 // here. Say so, and point at where the real one lives.
                 if ward_mode() {
-                    let _ = req.respond(json(&serde_json::json!({
+                    let _ = req.respond(json(serde_json::json!({
                         "ward": "not open yet",
                         "opens": "week 2 of Crypto World's Fair, 21-27 Sep 2026",
                         "chain_for_the_eternal_entry": "https://vitals.academy/api/chain"
@@ -4602,6 +4648,10 @@ mod tests {
         }
         for p in ["/", "/play", "/api/new", "/api/step", "/api/finish", "/api/kit", "/api/tape", "/api/chain",
                   "/api/meter", "/api/fuel", "/api/stars", "/api/lang", "/api/usage", "/donate",
+                  // The ward's census. The endpoint is the source the weekly card photographs
+                  // and the thing a judge is invited to re-derive; a token on it would mean
+                  // "checkable by anyone we gave a token to", which is not the claim.
+                  "/api/ward",
                   // Who wrote what, and how often it has been proven. A ledger nobody can read
                   // is not one anybody can check, and checkable is the entire claim.
                   "/api/authors", "/api/payout",
