@@ -140,3 +140,55 @@ fn the_payload_of_an_empty_ward_is_zeroes_and_still_carries_its_derivations() {
     assert_eq!(v["week"]["since_slot"], serde_json::Value::Null, "no window asked for, none claimed");
     assert!(v["derivations"]["keys"].is_string(), "an empty ward still says how it would have counted");
 }
+
+// ── the queue, and admission that needs nobody ──────────────────────────────
+
+use vitals_web::ward::{Queue, Stay};
+
+/// A stay is a chain of cases we already have. The joins are mechanical — state handed from one
+/// case to the next — and nothing here writes medicine.
+#[test]
+fn a_stay_walks_its_chain_and_then_it_is_done() {
+    let mut s = Stay::new(7, vec!["anaphylaxis".into(), "observation".into()]);
+    assert_eq!(s.patient_id, 7);
+    assert_eq!(s.current(), Some("anaphylaxis"));
+    assert!(!s.finished(), "a stay on its first case is not finished");
+    assert_eq!(s.advance(), Some("observation"), "the bridge to the next case is mechanical");
+    assert_eq!(s.current(), Some("observation"));
+    assert_eq!(s.advance(), None, "and the chain runs out");
+    assert!(s.finished());
+}
+
+#[test]
+fn admission_needs_nobody_and_fills_only_free_beds() {
+    let catalogue = vec![
+        vec!["a".to_string(), "b".to_string()],
+        vec!["c".to_string()],
+        vec!["d".to_string()],
+        vec!["e".to_string()],
+    ];
+    let mut q = Queue::from_catalogue(catalogue.clone(), 100);
+    assert_eq!(q.waiting(), 4);
+
+    let first = q.admit(0, BEDS);
+    assert_eq!(first.len(), 3, "an empty ward opens all three beds with no human in the loop");
+    assert_eq!(q.waiting(), 1);
+    assert_eq!(first[0].cases, catalogue[0], "and the stay is the chain the catalogue gave it");
+
+    let ids: Vec<u64> = first.iter().map(|s| s.patient_id).collect();
+    assert_eq!(ids, vec![100, 101, 102], "ids start where they were told to and never repeat");
+
+    assert_eq!(q.admit(3, BEDS).len(), 0, "a full ward admits nobody");
+    let last = q.admit(2, BEDS);
+    assert_eq!(last.len(), 1, "one bed frees, one patient is released, automatically");
+    assert_eq!(last[0].patient_id, 103);
+    assert_eq!(q.admit(0, BEDS).len(), 0, "an empty queue is a quiet night, not an error");
+}
+
+#[test]
+fn the_queue_never_invents_a_case() {
+    let mut q = Queue::from_catalogue(vec![], 1);
+    assert_eq!(q.waiting(), 0);
+    assert_eq!(q.admit(0, BEDS).len(), 0,
+               "no catalogue, no patients — a longer queue is more existing cases, never new writing");
+}
