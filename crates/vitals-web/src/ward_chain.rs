@@ -646,3 +646,92 @@ pub fn packs(store: &crate::store::Store) -> std::collections::BTreeMap<u64, cra
         .filter_map(|(k, v)| k.trim_start_matches('p').parse::<u64>().ok().map(|id| (id, v)))
         .collect()
 }
+
+// ── the factory's door ──────────────────────────────────────────────────────
+
+/// The oldest and youngest a patient may be.
+///
+/// Not a clinical range — a sanity range. A pack built from a case whose band the factory read
+/// wrongly arrives here as an age no person has, and this is where that is cheap to catch.
+pub const AGE_RANGE: std::ops::RangeInclusive<u16> = 1..=120;
+
+/// Is this pack a patient the ward can actually serve?
+///
+/// Every rejection below is something that becomes invisible one step later. The factory runs
+/// unattended on another machine and pushes here; after this door the pack is a patient on a
+/// board, in front of strangers, with her name on her.
+///
+/// What is **not** checked, and should be said plainly: that her name suits her country, that her
+/// age suits her case's band, and that her sex matches the one the case names. The ward cannot
+/// check any of those — the band and the sex live inside the case's own text — so they are the
+/// factory's responsibility, and the pool the factory draws from is shaped to make them easy to
+/// get right.
+pub fn validate_pack(p: &crate::ward::Pack) -> Result<(), String> {
+    use crate::ward::CATALOGUE;
+    if !CATALOGUE.contains(&p.case.as_str()) {
+        return Err(format!(
+            "{} is not a case this ward serves — queueing her would put a patient on the board \
+             that no shift can open",
+            p.case
+        ));
+    }
+    if !p.persona.country_is_alpha3() {
+        return Err(format!(
+            "{} is not an ISO 3166-1 alpha-3 country code, and the globe matches on alpha-3",
+            p.persona.country
+        ));
+    }
+    if p.persona.name.trim().is_empty() {
+        return Err("a patient with no name is a patient nobody can talk about".into());
+    }
+    if !AGE_RANGE.contains(&p.persona.age) {
+        return Err(format!("nobody is {}", p.persona.age));
+    }
+    if let Some(src) = &p.portrait {
+        // The board renders this as an image src. Anything that is not plainly a fetchable image
+        // location is refused here rather than by a browser that may or may not refuse it.
+        let ok = src.starts_with("https://") || src.starts_with("/img/");
+        if !ok {
+            return Err(format!(
+                "a portrait must be an https url or a path this server serves, not {src}"
+            ));
+        }
+    }
+    if p.endemic {
+        let has = crate::ward::endemic()
+            .get(&p.persona.country)
+            .is_some_and(|cases| cases.iter().any(|c| c == &p.case));
+        if !has {
+            return Err(format!(
+                "this pack calls itself endemic, but the endemic list does not pair {} with {} — \
+                 an endemic tag nothing backs is the claim the rule exists to prevent",
+                p.persona.country, p.case
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// A pack's address: sha256 over its own fields, in a fixed order.
+///
+/// Content-addressed so the factory can push the same page of packs twice — a retry, a restart, an
+/// overlapping window — and queue each patient once. Hashed field by field rather than over
+/// serialised JSON, because a serialiser that reorders keys or changes its spacing would rename
+/// every patient in the queue without changing one of them.
+pub fn pack_id(p: &crate::ward::Pack) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(b"vitals.ward.pack.v1\n");
+    for field in [
+        p.case.as_str(),
+        p.persona.name.as_str(),
+        p.persona.country.as_str(),
+        &p.persona.age.to_string(),
+        p.portrait.as_deref().unwrap_or(""),
+        if p.endemic { "endemic" } else { "drawn" },
+    ] {
+        h.update(field.as_bytes());
+        h.update(b"\n");
+    }
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
