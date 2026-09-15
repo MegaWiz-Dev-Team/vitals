@@ -427,7 +427,7 @@ fn the_next_patient_is_the_one_the_ward_is_missing() {
 
     // Every band once: the one band with nobody in it wins.
     let one_each = vec!["osce-a".to_string(), "ep2-stemi".to_string()];
-    let pick = choose_next(&vec![intern.clone(), resident.clone()], &one_each)
+    let pick = choose_next(&[intern.clone(), resident.clone()], &one_each)
         .expect("a bed to fill");
     assert_eq!(pick, resident.0, "student and intern are held; resident is the empty band");
 
@@ -453,5 +453,5 @@ fn a_patient_id_is_never_reused() {
     // Ids are seeded into the patient's address, so reusing one would not collide loudly: it
     // would open the account that already exists and quietly write a second patient's admission
     // over the first one's chart.
-    assert!(!vec![now, now + 1].contains(&next_patient_id(now, &[now, now + 1])));
+    assert!(![now, now + 1].contains(&next_patient_id(now, &[now, now + 1])));
 }

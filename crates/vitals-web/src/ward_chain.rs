@@ -398,7 +398,7 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
         shifts.extend(seen.shifts());
     }
 
-    crate::ward::ward_payload(&crate::ward::WardRead {
+    let mut v = crate::ward::ward_payload(&crate::ward::WardRead {
         patients: &patients,
         shifts: &shifts,
         packs: &packs(store),
@@ -409,7 +409,16 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
             .map(|d| d.as_secs())
             .unwrap_or(0),
         source: chain.source(),
-    })
+    });
+    // How many patients are waiting, which is the number the factory tops up against and the one
+    // a reader of the board uses to tell "nobody is playing" from "nobody is left to play".
+    v["queue"] = serde_json::json!({
+        "waiting": queue_depth(store),
+        "beds": crate::ward::BEDS,
+        "filled_by": "a ticker on the ward host, every minute: a bed frees on discharge or death \
+                      and the next queued patient takes it. Nobody on the team touches anything",
+    });
+    v
 }
 
 // ── the shift flow ──────────────────────────────────────────────────────────
@@ -801,6 +810,168 @@ pub fn enqueue(store: &crate::store::Store, packs: Vec<crate::ward::Pack>) -> Qu
             Err(e) => out.rejected.push(format!("could not queue {id}: {e}")),
         }
     }
+    out.depth = queue_depth(store);
+    out
+}
+
+/// Which queued pack an empty bed should get.
+///
+/// The two rules here are the two `/api/ward` publishes, so the board and the behaviour cannot
+/// drift apart. **No two beds hold the same case at once**, which is why a queue full of cases
+/// already on the ward admits nobody — an empty bed is better than a rule broken quietly. And
+/// **every difficulty band is represented when beds allow**: the band with fewest patients on the
+/// ward wins, which is what stops three intern cases from being the only thing a student can find
+/// at four in the morning.
+///
+/// Deterministic from the ward's own state, ties broken by the pack's own address. A ward that
+/// admitted a different patient on each tick from the same state would be one nobody could
+/// reproduce — and reproducing it is how a stranger checks us.
+pub fn choose_next(queue: &[(String, crate::ward::Pack)], on_ward_cases: &[String]) -> Option<String> {
+    use crate::ward::difficulty_of;
+    let band_load = |band: &str| {
+        on_ward_cases.iter().filter(|c| difficulty_of(c) == Some(band)).count()
+    };
+    queue
+        .iter()
+        .filter(|(_, p)| !on_ward_cases.iter().any(|c| c == &p.case))
+        .min_by_key(|(id, p)| {
+            (difficulty_of(&p.case).map(band_load).unwrap_or(usize::MAX), id.clone())
+        })
+        .map(|(id, _)| id.clone())
+}
+
+/// A patient id nobody has used: the clock, or the next free second after it.
+///
+/// The id is seeded into her account's address, so a reused one does not collide loudly — it finds
+/// the account that already exists and writes a second admission over the first one's chart. Three
+/// beds filling in the same second is the ordinary case on a ward that has just opened, which is
+/// exactly when this matters.
+pub fn next_patient_id(now_unix: u64, taken: &[u64]) -> u64 {
+    let mut id = now_unix;
+    while taken.contains(&id) {
+        id += 1;
+    }
+    id
+}
+
+/// Where a catalogue case's scenario file lives under the scenario root.
+///
+/// The two shapes the repository and the image both use: stations are `demo/stations/<id>.sce.json`
+/// and episodes are `demo/scenarios/<id>.json`. Hard-coded rather than searched, because a search
+/// that found the wrong file would admit a patient whose chart is a different disease.
+pub fn case_path(root: &std::path::Path, case: &str) -> std::path::PathBuf {
+    if case.starts_with("osce-") {
+        root.join("demo/stations").join(format!("{case}.sce.json"))
+    } else {
+        root.join("demo/scenarios").join(format!("{case}.json"))
+    }
+}
+
+/// The hash a patient is admitted with: her scenario, exactly as it is on disk.
+///
+/// This is the one thing on chain that says what her stay began as. It is the scenario's own bytes
+/// so that anyone with the file can recompute it, and so that a scenario edited after her
+/// admission stops matching — which is the point, not a bug.
+pub fn scenario_hash(root: &std::path::Path, case: &str) -> Result<[u8; 32], String> {
+    let p = case_path(root, case);
+    let text = std::fs::read_to_string(&p).map_err(|e| format!("{}: {e}", p.display()))?;
+    Ok(vitals_replay::sce_hash(&text))
+}
+
+/// What one minute of the ward doing its own work came to.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct Ticked {
+    /// The patients released this tick.
+    pub admitted: Vec<u64>,
+    /// Anything a person would want to know: a refusal, a failed admission, a chain that could
+    /// not be read. Never swallowed — a ward that stops admitting in silence looks exactly like a
+    /// ward nobody is playing.
+    pub notes: Vec<String>,
+    pub open: usize,
+    pub depth: usize,
+}
+
+/// One tick: free beds, and fill them from the queue.
+///
+/// This is ruling 11 — the refill is an event, not a person noticing. It reads the chain for who
+/// is still open, works out how many beds are free, and admits that many from the queue. Nothing
+/// here decides anything the endpoint does not publish: the bed count, the no-repeat rule and the
+/// band balance are the same ones a stranger reads in `policy`.
+///
+/// **The order of the three writes is deliberate.** A pack leaves the queue first, is written
+/// under the patient id second, and is admitted on chain last. Any crash then costs at most one
+/// queued patient, which is invisible and which the factory tops back up. The order that would
+/// have been kinder to the queue — admit first — costs the other thing instead: the same woman
+/// admitted twice, in two beds, under one name, on a board a judge is looking at.
+pub fn tick(
+    chain: &WardChain,
+    store: &crate::store::Store,
+    root: &std::path::Path,
+    now_unix: u64,
+) -> Ticked {
+    use crate::ward::{to_admit, BEDS, OPEN};
+    let mut out = Ticked::default();
+
+    let patients = match chain.patients() {
+        Ok(p) => p,
+        Err(e) => {
+            out.notes.push(format!("the chain could not be read, so nobody was admitted: {e}"));
+            return out;
+        }
+    };
+    let mut taken: Vec<u64> = patients.iter().map(|p| p.patient_id).collect();
+    let packs = packs(store);
+    let mut on_ward_cases: Vec<String> = patients
+        .iter()
+        .filter(|p| p.state == OPEN)
+        .filter_map(|p| packs.get(&p.patient_id).map(|k| k.case.clone()))
+        .collect();
+
+    out.open = patients.iter().filter(|p| p.state == OPEN).count();
+    out.depth = queue_depth(store);
+
+    for _ in 0..to_admit(out.open, BEDS, out.depth) {
+        let queue = store.list::<crate::ward::Pack>(QUEUE_STORE);
+        let Some(id) = choose_next(&queue, &on_ward_cases) else {
+            out.notes.push(
+                "a bed is free and every queued patient has a case already on the ward — no two \
+                 beds hold the same case at once, so the bed waits for the factory"
+                    .into(),
+            );
+            break;
+        };
+        let Some((_, pack)) = queue.iter().find(|(k, _)| k == &id) else { break };
+        let hash = match scenario_hash(root, &pack.case) {
+            Ok(h) => h,
+            Err(e) => {
+                out.notes.push(format!("{} has no scenario here, so she was dropped: {e}", pack.case));
+                store.del(QUEUE_STORE, &id);
+                continue;
+            }
+        };
+
+        let patient_id = next_patient_id(now_unix, &taken);
+        store.del(QUEUE_STORE, &id);
+        if let Err(e) = store.put(PERSONA_STORE, &format!("p{patient_id}"), pack) {
+            out.notes.push(format!("patient {patient_id}'s pack could not be stored: {e}"));
+        }
+        match chain.admit(patient_id, hash) {
+            Ok(sig) => {
+                out.admitted.push(patient_id);
+                out.notes.push(format!("admitted {patient_id} with {} — {sig}", pack.case));
+                taken.push(patient_id);
+                on_ward_cases.push(pack.case.clone());
+                out.open += 1;
+            }
+            Err(e) => {
+                out.notes.push(format!(
+                    "admitting {patient_id} failed, and her pack is spent: {e}"
+                ));
+                break;
+            }
+        }
+    }
+
     out.depth = queue_depth(store);
     out
 }

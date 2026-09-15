@@ -425,6 +425,13 @@ const WARD_TTL: Duration = Duration::from_secs(30);
 /// The held ward census.
 type WardView = Arc<Mutex<Option<(Instant, serde_json::Value)>>>;
 
+/// How often the ward looks at itself: a bed that freed, a queue that has somebody in it.
+///
+/// A minute, because that is the resolution a watcher of the board would notice and because the
+/// work is one `get_program_accounts` — at this rate the ward's own upkeep is 1440 chain reads a
+/// day, which is nothing, and the alternative is a person noticing.
+const WARD_TICK: Duration = Duration::from_secs(60);
+
 /// The most one push from the factory may carry.
 ///
 /// A pack is a few hundred bytes, so this is room for a hundred or so patients at once — well past
@@ -2144,6 +2151,47 @@ fn main() {
     // The author ledger's chain read, held for AUTHOR_COUNT_TTL. See /api/authors.
     let author_counts: AuthorCounts = Arc::new(Mutex::new(None));
     let ward_view: WardView = Arc::new(Mutex::new(None));
+
+    // The refill, on its own thread (CWF_PLAN.md ruling 11). The ward keeps running while we are
+    // asleep and after 12 Oct, which is the whole point of admitting from a queue rather than by
+    // hand — and nothing it decides is a decision this endpoint does not publish.
+    //
+    // Its own `Store` handle rather than a shared one: the backend is stateless (a directory, or
+    // Firestore over REST), so a second handle costs nothing and saves putting the request loop's
+    // store behind an Arc for one reader.
+    if ward_mode() {
+        let state = state_dir.clone();
+        let root = scenario_root();
+        std::thread::spawn(move || {
+            let store = match store::Store::open(std::path::PathBuf::from(&state)) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("ward       no store, so no refill: {e}");
+                    return;
+                }
+            };
+            // The same complaint every minute is noise; a complaint that changed is news.
+            let mut last_trouble = String::new();
+            loop {
+                std::thread::sleep(WARD_TICK);
+                match ward_chain::WardChain::connect() {
+                    Ok(chain) => {
+                        let t = ward_chain::tick(&chain, &store, &root, now_secs());
+                        for note in &t.notes {
+                            println!("ward       {note}");
+                        }
+                        last_trouble.clear();
+                    }
+                    Err(e) => {
+                        if e != last_trouble {
+                            eprintln!("ward       no chain, so no refill: {e}");
+                            last_trouble = e;
+                        }
+                    }
+                }
+            }
+        });
+    }
     let settled: Settled = Arc::new(Mutex::new(HashMap::new()));
     // Where AUTHORS.json and the archive index live, resolved once.
     let authors_root = scenario_root();
