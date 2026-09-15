@@ -631,3 +631,47 @@ fn a_patient_page_is_addressed_by_one_whole_number() {
     assert_eq!(patient_id_in_path("/ward/18446744073709551615"), Some(u64::MAX));
     assert_eq!(patient_id_in_path("/ward/18446744073709551616"), None, "and one past it is not");
 }
+
+/// The persona pool the factory draws people from — twenty countries, three people each.
+///
+/// Every rule here exists because breaking it produces a patient who is wrong in a way nobody
+/// would notice until a clinician did. A case names its patient's sex (`Chest pain — M 25`), so a
+/// country whose people are all one sex cannot serve half the catalogue — and a pack that
+/// contradicted its own case would put a woman's name on a man's presentation. A country the globe
+/// cannot place is a patient who lands in the Unknown tray for ever. A repeated name across the
+/// pool is two patients a reader cannot tell apart on a board.
+///
+/// Ages are deliberately **not** here. A case carries its own band, and the factory picks inside
+/// it; an age in the pool would be an age that contradicts the case it is paired with.
+#[test]
+fn the_persona_pool_can_actually_fill_the_catalogue() {
+    use std::collections::HashSet;
+    use vitals_web::ward::persona_pool;
+
+    let pool = persona_pool();
+    assert_eq!(pool.len(), 20, "twenty countries, so the globe has something to light up");
+
+    let globe = include_str!("../static/world/index.html");
+    let mut seen_names: HashSet<String> = HashSet::new();
+
+    for country in &pool {
+        assert_eq!(country.country.len(), 3, "{} is not alpha-3", country.country);
+        assert!(globe.contains(&format!("\"{}\":", country.country)),
+                "the globe's own table cannot place {} — a patient from there would sit in the \
+                 Unknown tray for ever", country.country);
+        assert_eq!(country.personas.len(), 3, "{} must carry three people", country.country);
+
+        let sexes: HashSet<&str> = country.personas.iter().map(|p| p.sex.as_str()).collect();
+        assert!(sexes.contains("f") && sexes.contains("m"),
+                "{} carries only {:?} — a case names its patient's sex, so a country of one sex \
+                 can only fill half the catalogue", country.country, sexes);
+
+        for p in &country.personas {
+            assert!(!p.name.trim().is_empty(), "{} has an unnamed person", country.country);
+            assert!(p.name.contains(' '), "{} is one word — a chart carries a full name", p.name);
+            assert!(seen_names.insert(p.name.clone()),
+                    "{} appears twice in the pool, and two patients a reader cannot tell apart on \
+                     a board is worse than one country fewer", p.name);
+        }
+    }
+}
