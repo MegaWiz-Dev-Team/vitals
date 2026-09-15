@@ -109,15 +109,20 @@ pub fn resume(sce_json: &str, tape: &[Step]) -> Result<(SceState, Replay), Strin
 /// so the ward's idle time is measured in them rather than in wall time nobody can check.
 pub const SLOT_SECONDS: f64 = 0.4;
 
-/// Simulated seconds per real second while nobody is on shift: one simulated minute per ten real
-/// ones. Slow on purpose — a patient left alone overnight should be worse, not finished.
+/// Simulated seconds per real second while nobody is on shift: **one simulated minute per sixty
+/// real ones**, set by the founder on 16 ก.ย. ("ผมอยากได้ 1:60").
 ///
-/// With [`IDLE_CAP_SIM_SECONDS`] at two minutes, this ratio is what governs the first twenty real
-/// minutes of a gap; past that the cap has taken over and every longer gap looks the same.
+/// Slow on purpose, and slower than the 1:10 it replaces for a reason about the ward rather than
+/// about physiology: a patient who drifts slowly is one several strangers can still meet, and beds
+/// turn over slowly enough that the queue is not eaten by time simply passing. An hour away costs
+/// her a simulated minute.
+///
+/// With [`IDLE_CAP_SIM_SECONDS`] at two simulated minutes, this ratio governs the first two real
+/// hours of a gap; past that the cap has taken over and every longer gap looks the same.
 ///
 /// **A design choice, not a physical constant.** The founder can move it; the number is here, in
 /// one place, so moving it is one edit and every browser still derives the same patient.
-pub const IDLE_SIM_PER_REAL: f64 = 0.1;
+pub const IDLE_SIM_PER_REAL: f64 = 1.0 / 60.0;
 
 /// The most simulated time one gap may add: **two simulated minutes**, however long the real gap.
 ///

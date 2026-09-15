@@ -138,21 +138,21 @@ fn a_gap_between_shifts_changes_her_and_a_short_one_does_not() {
 fn the_idle_clock_is_slow_bounded_and_derivable() {
     assert_eq!(idle_seconds(0), 0.0, "a handover with no gap adds nothing");
 
-    // ten real minutes of slots → one simulated minute
-    let ten_minutes = (600.0 / SLOT_SECONDS) as u64;
-    assert!((idle_seconds(ten_minutes) - 60.0).abs() < 1.0,
-            "the stated ratio is one simulated minute per ten real ones");
-    assert!((IDLE_SIM_PER_REAL - 0.1).abs() < 1e-9);
+    // sixty real minutes of slots → one simulated minute
+    let sixty_minutes = (3600.0 / SLOT_SECONDS) as u64;
+    assert!((idle_seconds(sixty_minutes) - 60.0).abs() < 1.0,
+            "the stated ratio is one simulated minute per sixty real ones");
+    assert!((IDLE_SIM_PER_REAL - 1.0 / 60.0).abs() < 1e-9);
 
-    // a weekend alone is the same two minutes twenty real minutes buys
+    // a weekend alone is the same two minutes two real hours buys
     let three_days = (3.0 * 24.0 * 3600.0 / SLOT_SECONDS) as u64;
-    let twenty_minutes = (1200.0 / SLOT_SECONDS) as u64;
+    let two_hours = (7200.0 / SLOT_SECONDS) as u64;
     assert_eq!(idle_seconds(three_days), IDLE_CAP_SIM_SECONDS,
-               "a long weekend alone must leave her where twenty real minutes leaves her — nothing \
+               "a long weekend alone must leave her where two real hours leaves her — nothing \
                 about an abandoned patient may depend on how long we were away");
-    assert_eq!(idle_seconds(twenty_minutes), IDLE_CAP_SIM_SECONDS,
-               "at this ratio the cap is reached after twenty real minutes, and every longer gap \
-                is that same gap");
+    assert_eq!(idle_seconds(two_hours), IDLE_CAP_SIM_SECONDS,
+               "at this ratio the cap is reached after two real hours, and every longer gap is \
+                that same gap");
     assert_eq!(IDLE_CAP_SIM_SECONDS, 120.0,
                "two simulated minutes, set below the fastest untreated arrest in the catalogue \
                 (ep5 at 186 s) so a gap can only ever deteriorate her — vitals-web's \
