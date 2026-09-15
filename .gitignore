@@ -44,3 +44,17 @@ pitch/*backup*.html
 # figures the README has since corrected. They stay on disk and out of the tracked surface —
 # see the note in pitch/build-pdf.sh.
 pitch/*.py
+
+# Rendered video and its raw voice. Two reasons, both hard: every cut carries real people's faces
+# (WEEKLY_VIDEO_SYSTEM "Assets" — a public AGPL repo is no place for photographs of a team), and
+# the files are 5–25 MB each and regenerable from docs/internal/week*/ with one command. The
+# submitted links live in docs/internal/SUBMISSION_URLS.md; the .srt caption files stay visible
+# because they are small, reviewable text and they are what a viewer with CC on actually reads.
+pitch/video/*.mp4
+pitch/video/*.mov
+pitch/video/*.m4a
+pitch/video/*.wav
+
+# Logo explorations. Drafts of a mark that has not been chosen; the brand lives in pitch/logo/
+# itself once there is one.
+pitch/logo/candidates/
