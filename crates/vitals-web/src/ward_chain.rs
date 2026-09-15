@@ -1013,3 +1013,70 @@ pub fn tick(
     out.depth = queue_depth(store);
     out
 }
+
+/// What one portrait push did.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct Filled {
+    pub added: usize,
+    /// States she already had. Not an error: the factory retrying is the ordinary case.
+    pub kept: usize,
+    pub rejected: Vec<String>,
+    /// Every state she has a picture for after this push.
+    pub states: Vec<String>,
+}
+
+/// Add pictures to a patient the ward has already admitted.
+///
+/// **Add only.** A portrait already on a patient is one the board may have shown, and a factory
+/// that could replace it could change the face of a patient strangers have been treating. A state
+/// she already has is `kept`, which is not an error — the factory retrying is the ordinary case.
+///
+/// Refusals are per entry and nothing half-written lands: a bad key or a bad url takes only itself
+/// with it, and the patient's record is written once at the end or not at all.
+pub fn fill_portraits(
+    store: &crate::store::Store,
+    patient_id: u64,
+    add: std::collections::BTreeMap<String, String>,
+) -> Filled {
+    let mut out = Filled::default();
+    let key = format!("p{patient_id}");
+    let Some(mut pack) = store.get::<crate::ward::Pack>(PERSONA_STORE, &key) else {
+        out.rejected.push(format!(
+            "no patient {patient_id} has been admitted here, so there is nobody to put a face on"
+        ));
+        return out;
+    };
+
+    for (state, src) in add {
+        if pack.portrait.contains_key(&state) {
+            out.kept += 1;
+            continue;
+        }
+        if state == "dead" {
+            out.rejected.push(
+                "no picture of a dead patient is made — the board shows her last living state"
+                    .into(),
+            );
+            continue;
+        }
+        if !crate::ward::PORTRAIT_LADDER.contains(&state.as_str()) {
+            out.rejected.push(format!("{state} is not a state the engine reports"));
+            continue;
+        }
+        if !is_portrait_url(&src) {
+            out.rejected.push(format!("{state}: a portrait must be {PORTRAITS}/<sha256>.webp"));
+            continue;
+        }
+        pack.portrait.insert(state, src);
+        out.added += 1;
+    }
+
+    if out.added > 0 {
+        if let Err(e) = store.put(PERSONA_STORE, &key, &pack) {
+            out.rejected.push(format!("patient {patient_id} could not be written: {e}"));
+            out.added = 0;
+        }
+    }
+    out.states = pack.portrait.keys().cloned().collect();
+    out
+}

@@ -1916,10 +1916,12 @@ fn percent_decode(s: &str) -> String {
 /// Playing is open because a kiosk should just work. Signing a transaction on request is not,
 /// and "whoever can reach the port" is not an authorisation model.
 fn guarded(path: &str) -> bool {
-    // `/api/ward/queue` is the factory's door. It writes to the ward — the patients strangers will
-    // be handed — from a job on another machine, so it is guarded for the same reason the signing
-    // routes are: without a token, anybody could fill the beds with patients of their own.
+    // The factory's two doors write to the ward — the patients strangers will be handed, and the
+    // faces on them — from a job on another machine. Guarded for the same reason the signing
+    // routes are: without a token, anybody could fill the beds with patients of their own, or put
+    // a picture of their choosing on somebody else's patient.
     matches!(path, "/api/anchor" | "/api/claim" | "/api/commit" | "/api/say" | "/api/ward/queue")
+        || path.starts_with("/api/ward/pack/")
 }
 
 fn bearer_ok(req: &tiny_http::Request, token: &Option<String>) -> bool {
@@ -3619,6 +3621,69 @@ fn main() {
                 }
                 continue;
             }
+            // The factory again, after admission: the rest of her portraits (ruling 10, and the
+            // producer's 16 ก.ย. state-keyed set). Same token, same door switch, same validation —
+            // and add-only, so a face the board has shown cannot be changed underneath it.
+            (Method::Post, p) if p.starts_with("/api/ward/pack/") => {
+                if !ward_mode() {
+                    let _ = req.respond(json(serde_json::json!({
+                        "ward": "not on this host",
+                        "the_ward_is": "https://world.vitals.academy/api/ward/pack/<patient_id>"
+                    })));
+                    continue;
+                }
+                if !ward_chain::door_open_here() {
+                    let _ = req.respond(
+                        json(serde_json::json!({
+                            "door": "closed",
+                            "why": "the ward is not open yet, so the factory has nothing to do \
+                                    here either"
+                        }))
+                        .with_status_code(503),
+                    );
+                    continue;
+                }
+                let Some(patient_id) = p
+                    .strip_prefix("/api/ward/pack/")
+                    .filter(|r| !r.is_empty() && r.bytes().all(|b| b.is_ascii_digit()))
+                    .and_then(|r| r.parse::<u64>().ok())
+                else {
+                    let _ = req.respond(
+                        json(serde_json::json!({ "error": "that is not a patient id" }))
+                            .with_status_code(404),
+                    );
+                    continue;
+                };
+                let body = match read_body(&mut req, QUEUE_MAX) {
+                    Ok(b) => b,
+                    Err(_) => {
+                        let _ = req.respond(json(serde_json::json!({
+                            "error": "that body is not UTF-8 text, or is past the limit"
+                        })));
+                        continue;
+                    }
+                };
+                #[derive(serde::Deserialize)]
+                struct Fill {
+                    portrait: std::collections::BTreeMap<String, String>,
+                }
+                match serde_json::from_str::<Fill>(&body) {
+                    Ok(fill) => {
+                        let r = ward_chain::fill_portraits(&store, patient_id, fill.portrait);
+                        let _ = req.respond(json(r));
+                    }
+                    Err(e) => {
+                        let _ = req.respond(json(serde_json::json!({
+                            "error": format!("that is not a set of portraits: {e}"),
+                            "shape": {"portrait": {
+                                "<one of stable improving deteriorating critical arrest recovered>":
+                                    format!("{}/<sha256>.webp", ward_chain::PORTRAITS)
+                            }}
+                        })));
+                    }
+                }
+                continue;
+            }
             // The ward's census. Public, and every figure on it carries where it came from —
             // `vitals_web::ward` builds the payload, `ward_chain` does the reading, and neither
             // of them can report a number this server kept for itself.
@@ -4988,6 +5053,9 @@ mod tests {
         assert!(guarded("/api/ward/queue"),
                 "the factory's door writes the patients strangers are handed — ungated, anyone \
                  could fill the ward with their own");
+        assert!(guarded("/api/ward/pack/42"),
+                "and the other door puts faces on them — ungated, anyone could put a picture of \
+                 their choosing on a patient strangers are treating");
         for p in ["/", "/play", "/api/new", "/api/step", "/api/finish", "/api/kit", "/api/tape", "/api/chain",
                   "/api/meter", "/api/fuel", "/api/stars", "/api/lang", "/api/usage", "/donate",
                   // The ward's census. The endpoint is the source the weekly card photographs
