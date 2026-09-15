@@ -170,6 +170,15 @@ released automatically when the first leaves, and **world.vitals.academy answers
 - [ ] Patient one released to the world. No signup, no wallet, relay pays.
 - [ ] The ward board: who is on the ward, how long each has been there, who is on shift — and the
       moment an empty bed fills itself, which is the thing to watch.
+- [ ] **`/api/ward` — the census, public and recomputable.** Cumulative and this-week, in this
+      order: **admitted** (released) · **on the ward now** · **went home** (discharged) · **died** ·
+      **shifts taken** · **distinct keys** that took a shift. Every number carries its as-of and the
+      thing it was derived from, and nothing on it is hand-counted:
+      admitted / discharged / died come from the patient chain opening and closing **on chain**;
+      shifts from **anchored leaves**; *on the ward now* is `admitted − discharged − died`, never a
+      separate tally; distinct keys from the **leaf signers**. If the endpoint and the chain ever
+      disagree, the weekly video says they disagree — it does not pick one and it does not wait for
+      the next deploy to mention it.
 - [ ] Shift receipt at a QR: the browser re-derives that shift from the tape and the chain, shows
       the deterministic 40 and the judged 60 as two numbers, and offers **download every tape of
       this patient** so a stranger can mirror her and check us without asking.
