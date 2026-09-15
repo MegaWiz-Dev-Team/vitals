@@ -357,3 +357,43 @@ fn a_stay_is_three_cases_and_the_policy_publishes_it() {
                "the rule is true whether or not the chain can be read — an unreadable chain takes \
                 the numbers with it, never the policy");
 }
+
+/// The globe reads this: one entry per patient, and where she is from.
+///
+/// developer-4d's front page is a globe you spin to find patients (founder, 15 ก.ย. 23:15), so the
+/// census alone is not enough — the board needs the patients themselves. Two of the fields on each
+/// entry do not come from the chain at all: her name and her country are in the pack the factory
+/// queued, and the chain holds neither. That is exactly why they carry their own derivation and
+/// why they are **null rather than absent** before a pack exists: a globe that hides patients
+/// without a country would hide every patient on a dev deploy, and look like an empty world.
+///
+/// `country` is ISO 3166-1 alpha-3 — THA, IDN, NGA — because the globe matches on it and a free
+/// text country is a country nobody can match.
+#[test]
+fn the_board_lists_the_patients_and_where_they_are_from() {
+    use std::collections::BTreeMap;
+    use vitals_web::ward::Persona;
+
+    let patients = vec![patient(7, OPEN, 2, 10, 0), patient(8, DIED, 1, 20, 90)];
+    let mut personas = BTreeMap::new();
+    personas.insert(7u64, Persona { name: "Ploy".into(), country: "THA".into() });
+
+    let v = ward_payload(&patients, &[], &personas, None, 1234, "devnet:ABC");
+    let list = v["patients"].as_array().expect("the board needs the patients themselves");
+    assert_eq!(list.len(), 2, "every patient the ward ever admitted, closed ones included");
+
+    assert_eq!(list[0]["patient_id"], 7);
+    assert_eq!(list[0]["state"], "open", "a word, not a byte — the board renders this");
+    assert_eq!(list[0]["shifts"], 2);
+    assert_eq!(list[0]["country"], "THA");
+    assert_eq!(list[0]["name"], "Ploy");
+
+    assert_eq!(list[1]["state"], "died");
+    assert!(list[1]["country"].is_null(),
+            "a patient with no pack yet is listed with a null country, never dropped — a globe \
+             that hides her shows an emptier ward than the one that exists");
+    assert!(list[1]["name"].is_null());
+
+    let d = v["derivations"]["patients"].as_str().expect("the list says where it came from");
+    assert!(d.contains("pack"), "and says the persona is not on chain: {d}");
+}
