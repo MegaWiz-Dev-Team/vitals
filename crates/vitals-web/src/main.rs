@@ -27,6 +27,17 @@ const PAGE: &str = include_str!("../static/index.html");
 /// because the first visitor a public URL meets is as likely to be a reviewer deciding what this
 /// company is as a learner deciding whether to press play — and the bay answers only the second.
 const LANDING: &str = include_str!("../static/landing.html");
+/// The ward's holding page. `vitals-world` is a second Cloud Run service on world.vitals.academy
+/// (CWF_PLAN.md); until the ward itself exists, its root serves this so the link in the hackathon
+/// form is never dead. The same binary, one env var: the Eternal entry at vitals.academy is not
+/// built differently and is not touched.
+const WORLD: &str = include_str!("../static/world.html");
+
+/// Is this process the ward host rather than the Eternal entry? Set by the deploy script when
+/// SERVICE=vitals-world; absent everywhere else, so vitals.academy is unchanged by this code.
+fn ward_mode() -> bool {
+    std::env::var("VITALS_WORLD").map(|v| v == "1").unwrap_or(false)
+}
 /// Where the money goes: the treasury address, a Solana Pay QR, and the explorer link to audit
 /// it. Baked into the binary like the landing — a donation page that can 404 is a donation lost.
 const DONATE: &str = include_str!("../static/donate.html");
@@ -2186,7 +2197,7 @@ fn main() {
 
         let resp = match (req.method(), path.as_str()) {
             (Method::Get, "/") => {
-                let _ = req.respond(html(LANDING));
+                let _ = req.respond(html(if ward_mode() { WORLD } else { LANDING }));
                 continue;
             }
             (Method::Get, "/play") => {
@@ -3020,6 +3031,17 @@ fn main() {
             // no user-agent, no identifier that follows a reader anywhere. That is what makes it
             // a better instrument than the analytics tag, which loses everyone who declines.
             (Method::Get, "/api/usage") => {
+                // On the ward host these would answer for vitals.academy's play, not for a ward
+                // that has not opened — a number that is true elsewhere is still a wrong answer
+                // here. Say so, and point at where the real one lives.
+                if ward_mode() {
+                    let _ = req.respond(json(&serde_json::json!({
+                        "ward": "not open yet",
+                        "opens": "week 2 of Crypto World's Fair, 21-27 Sep 2026",
+                        "usage_for_the_eternal_entry": "https://vitals.academy/api/usage"
+                    })));
+                    continue;
+                }
                 let t = tree.lock().unwrap();
                 let mut v = usage.view();
                 // The one figure on this page an outsider can verify without trusting us: the
@@ -3232,6 +3254,17 @@ fn main() {
             // it was written for. `guarding_covers_everything_that_spends_or_signs` holds it.
             (Method::Get, "/review") => html(&REVIEW.replace(BUILD_STAMP, BUILD)),
             (Method::Get, "/api/chain") => {
+                // On the ward host these would answer for vitals.academy's play, not for a ward
+                // that has not opened — a number that is true elsewhere is still a wrong answer
+                // here. Say so, and point at where the real one lives.
+                if ward_mode() {
+                    let _ = req.respond(json(&serde_json::json!({
+                        "ward": "not open yet",
+                        "opens": "week 2 of Crypto World's Fair, 21-27 Sep 2026",
+                        "chain_for_the_eternal_entry": "https://vitals.academy/api/chain"
+                    })));
+                    continue;
+                }
                 let t = tree.lock().unwrap();
                 let who = param(&url, "player").and_then(|p| pubkey(&p));
                 json(serde_json::json!({

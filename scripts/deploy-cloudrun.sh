@@ -133,6 +133,9 @@ env_add "VITALS_PROGRAM_ID=$PROGRAM_ID"
 env_add "VITALS_SCENARIOS=/app"
 env_add "VITALS_KEYPAIR=/relay/id.json"
 [ -n "$HEIMDALL" ] && env_add "HEIMDALL_API_URL=$HEIMDALL"
+# The ward host serves its own root and refuses to answer for vitals.academy's numbers. One
+# variable, set from the service name rather than from a shell the deployer has to remember.
+[ "$SERVICE" = "vitals-world" ] && env_add "VITALS_WORLD=1"
 [ -n "$VERTEX_URL" ] && env_add "VITALS_VERTEX_URL=$VERTEX_URL"
 [ -n "$VERTEX_MODEL" ] && env_add "VITALS_VERTEX_MODEL=$VERTEX_MODEL"
 [ -n "$MONTHLY" ] && env_add "VITALS_MONTHLY_TURNS=$MONTHLY"

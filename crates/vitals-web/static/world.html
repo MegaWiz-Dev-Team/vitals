@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vitals World — one patient, many strangers</title>
+<meta name="description" content="A public ward. Anyone in the world takes a shift. The chart is the chain.">
+<meta property="og:title" content="Vitals World">
+<meta property="og:description" content="One patient, many strangers, and the chart is the chain. And the ward never runs out of them.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#F5F8F8; --surface:#FFFFFF; --surface-2:#EDF2F2;
+  --ink:#0F1719; --ink-2:#48585C; --ink-3:#7E8F93;
+  --rule:#D9E2E2; --rule-soft:#E8EEEE;
+  --proven:#0B6E58; --proven-soft:#E2F0EB;
+}
+@media (prefers-color-scheme:dark){:root{
+  --ground:#0B1113; --surface:#121B1D; --surface-2:#182325;
+  --ink:#E9F0F0; --ink-2:#9CAEB1; --ink-3:#68797D;
+  --rule:#223033; --rule-soft:#1A2528;
+  --proven:#42D2A7; --proven-soft:#0F2A24;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;font-size:16px;line-height:1.65;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:46rem;margin:0 auto;padding:0 1.25rem 4rem}
+.rail{border-bottom:1px solid var(--rule-soft);padding:.8rem 0;display:flex;gap:1rem;align-items:baseline;
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.7rem;letter-spacing:.08em;color:var(--ink-3)}
+.rail b{color:var(--ink);letter-spacing:.14em}
+h1{font-family:Archivo,Arial,sans-serif;font-weight:800;font-size:clamp(1.55rem,4.4vw,2.5rem);
+  line-height:1.18;letter-spacing:-.015em;margin:2.6rem 0 0;text-wrap:balance}
+h1 .second{display:block;color:var(--proven)}
+.sub{color:var(--ink-2);max-width:34em;margin:1.15rem 0 0}
+.when{margin:2.2rem 0 0;padding:.95rem 1.1rem;background:var(--surface);border:1px solid var(--rule);
+  border-radius:.6rem;font-family:"IBM Plex Mono",monospace;font-size:.86rem;color:var(--ink-2)}
+.when b{color:var(--ink);font-weight:600}
+.links{margin:2.2rem 0 0;display:flex;flex-direction:column;gap:.75rem}
+a{color:var(--proven);text-decoration-thickness:1px;text-underline-offset:.18em}
+a:focus-visible{outline:2px solid var(--proven);outline-offset:3px;border-radius:2px}
+.links .l{color:var(--ink-2);font-size:.95rem}
+.links .l b{color:var(--ink);font-weight:500}
+footer{margin-top:3.2rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
+  font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-3)}
+</style>
+<body>
+<div class="wrap">
+  <div class="rail"><b>VITALS WORLD</b><span>a public ward, opening</span></div>
+
+  <h1>One patient, many strangers, and the chart is the chain.
+      <span class="second">And the ward never runs out of them.</span></h1>
+
+  <p class="sub">A patient is released into a public ward. Anyone in the world takes a shift on her,
+  treats her for a few minutes, and hands over. The next person opens her where the last one
+  stopped — because the chart is rebuilt from the chain in your own browser, not handed to you by
+  us. Mistakes carry forward. The record says who, and nobody can rewrite it.</p>
+
+  <div class="when">The ward opens in <b>week 2 of Crypto World&rsquo;s Fair</b> &mdash; 21&ndash;27
+  September 2026. This page is here so the link works before it does.</div>
+
+  <div class="links">
+    <div class="l"><a href="https://vitals.academy">vitals.academy</a> &mdash; <b>the single-player
+      Vitals</b>, our Colosseum Eternal entry. Free, no signup, playable now.</div>
+    <div class="l"><a href="https://github.com/MegaWiz-Dev-Team/vitals">github.com/MegaWiz-Dev-Team/vitals</a>
+      &mdash; the source, the tests, and the verifier that re-runs a record without trusting us.</div>
+  </div>
+
+  <footer>Built by MegaWiz Co., Ltd., Bangkok. Devnet. Nothing on this page is a clinical claim.</footer>
+</div>
