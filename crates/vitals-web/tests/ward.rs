@@ -131,6 +131,18 @@ fn every_number_travels_with_where_it_came_from() {
             "on_ward must publish its own subtraction, so nobody re-counts it another way");
     assert!(!d.contains("people") && !d.contains("doctor"),
             "keys are keys: there is no signup, so nothing here knows how many humans");
+
+    // `keys` is the one figure that does not come off an account, and it says so in its own
+    // sentence. Folding it into the shifts wording would tell a reader they can check it the way
+    // they check the other five, and they cannot: it is read from transaction history and cached.
+    let keys = v["derivations"]["keys"].as_str().expect("keys says where it came from");
+    assert!(keys.contains("getSignaturesForAddress"),
+            "it must name the call that repeats it, not just claim the chain: {keys}");
+    assert!(keys.contains("cache") || keys.contains("cached"),
+            "and say that it is cached, because a cache is a thing that can be stale: {keys}");
+    assert_ne!(v["derivations"]["keys"], v["derivations"]["shifts"],
+               "different derivation, different sentence — the five that come off accounts and the \
+                one that comes off history are not checked the same way");
 }
 
 #[test]
