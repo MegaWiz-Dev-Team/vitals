@@ -493,3 +493,63 @@ fn the_door_is_shut_unless_somebody_opened_it() {
                  the failure that matters is a ward that opened by accident");
     }
 }
+
+/// The factory fills in her other states after she is admitted, and cannot overwrite one.
+///
+/// Packs arrive with `stable` filled; the rest are made at admission, when a bed has actually
+/// opened for her, so a patient who never gets worse never costs a picture of her getting worse.
+/// They arrive through the same door, keyed by patient, and the rule is **add only**: a portrait
+/// already on a patient is one the board may have shown, and a factory that could replace it could
+/// change the face of a patient strangers have been treating.
+#[test]
+fn portraits_are_added_to_a_patient_and_never_replaced() {
+    use vitals_web::store::Store;
+    use vitals_web::ward_chain::{fill_portraits, PERSONA_STORE};
+
+    let root = std::env::temp_dir().join(format!("vitals-fill-{}-{:?}", std::process::id(),
+                                                 std::thread::current().id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let store = Store::open(root.clone()).expect("a store");
+
+    let mut pack = a_pack();
+    pack.portrait.insert("stable".into(), portrait_url(1));
+    store.put(PERSONA_STORE, "p42", &pack).expect("a patient with a base picture");
+
+    let add = |pairs: Vec<(&str, String)>| -> std::collections::BTreeMap<String, String> {
+        pairs.into_iter().map(|(k, v)| (k.to_string(), v)).collect()
+    };
+
+    let r = fill_portraits(&store, 42, add(vec![("critical", portrait_url(2)),
+                                                ("arrest", portrait_url(3))]));
+    assert_eq!(r.added, 2);
+    assert_eq!(r.kept, 0);
+    assert!(r.rejected.is_empty());
+
+    // The same push again, plus an attempt on a state she already has.
+    let r = fill_portraits(&store, 42, add(vec![("critical", portrait_url(9)),
+                                                ("stable", portrait_url(9))]));
+    assert_eq!(r.added, 0);
+    assert_eq!(r.kept, 2, "both were already there, and both stayed as they were");
+
+    let back: Pack = store.get(PERSONA_STORE, "p42").expect("still a patient");
+    assert_eq!(back.portrait.get("stable"), Some(&portrait_url(1)),
+               "her base picture is the one she was admitted with, not the one pushed later");
+    assert_eq!(back.portrait.get("critical"), Some(&portrait_url(2)));
+    assert_eq!(back.portrait.len(), 3);
+
+    // A bad key or a bad url takes nothing with it.
+    let r = fill_portraits(&store, 42, add(vec![("worse", portrait_url(4)),
+                                                ("improving", "https://example.invalid/x.jpg".into())]));
+    assert_eq!(r.added, 0);
+    assert_eq!(r.rejected.len(), 2, "both named, so an unattended factory can fix them");
+    let back: Pack = store.get(PERSONA_STORE, "p42").expect("still a patient");
+    assert_eq!(back.portrait.len(), 3, "and nothing was written");
+
+    let r = fill_portraits(&store, 77, add(vec![("stable", portrait_url(1))]));
+    assert_eq!(r.added, 0);
+    assert!(r.rejected[0].contains("77"),
+            "a patient nobody admitted is named in the refusal rather than silently created — a \
+             pack with no patient would sit in the store for ever and show nowhere");
+
+    let _ = std::fs::remove_dir_all(&root);
+}
