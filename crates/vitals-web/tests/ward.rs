@@ -675,3 +675,51 @@ fn the_persona_pool_can_actually_fill_the_catalogue() {
         }
     }
 }
+
+/// A portrait is a set, and it never shows her worse than she is.
+///
+/// The founder wants her picture to change with her state and stay the same person. The keys are
+/// **the engine's own seven status words and no others**, because a key the engine cannot report
+/// is a picture claiming a state the chain does not — and the bay already renders those seven.
+///
+/// The fallback is the bay's, for the bay's reason: the nearest *milder* state that exists, never
+/// a worse one. Hanging an arrest over a patient who is talking to you is the frame telling a lie
+/// the mark sheet then marks. It runs the other way too — a patient who went home does not borrow
+/// the picture of herself ill in a bed, she simply has no picture until the one of her leaving is
+/// made.
+#[test]
+fn a_portrait_is_a_set_and_never_shows_her_worse_than_she_is() {
+    use std::collections::BTreeMap;
+    use vitals_web::ward::{portrait_for, PORTRAIT_LADDER};
+
+    assert_eq!(PORTRAIT_LADDER,
+               ["recovered", "improving", "stable", "deteriorating", "critical", "arrest", "dead"],
+               "mildest first, and every word one the engine itself reports");
+
+    let url = |n: u8| format!("https://storage.googleapis.com/vitals-world-portraits/{}.webp",
+                              format!("{n:02x}").repeat(32));
+    let mut set = BTreeMap::new();
+    set.insert("stable".to_string(), url(1));
+    set.insert("deteriorating".to_string(), url(2));
+
+    assert_eq!(portrait_for(&set, "stable"), Some(url(1)).as_deref());
+    assert_eq!(portrait_for(&set, "critical"), Some(url(2)).as_deref(),
+               "no critical picture, so the nearest milder one — she is at least this ill");
+    assert_eq!(portrait_for(&set, "arrest"), Some(url(2)).as_deref());
+    assert_eq!(portrait_for(&set, "improving"), None,
+               "there is no picture of her better than she was, and inventing one from a worse \
+                state would show a patient sicker than she is");
+    assert_eq!(portrait_for(&set, "recovered"), None,
+               "a patient who went home does not borrow the picture of herself ill in bed");
+
+    // Death is never generated (producer, 16 ก.ย.), so it resolves to her last living state — the
+    // ladder gives that for free, and the board's own word still says died.
+    let mut with_arrest = set.clone();
+    with_arrest.insert("arrest".to_string(), url(3));
+    assert_eq!(portrait_for(&with_arrest, "dead"), Some(url(3)).as_deref(),
+               "the last living state we have a picture of");
+
+    assert_eq!(portrait_for(&BTreeMap::new(), "stable"), None, "no set, no picture");
+    assert_eq!(portrait_for(&set, "on_ward"), None,
+               "a word the engine does not report resolves to nothing rather than to a guess");
+}
