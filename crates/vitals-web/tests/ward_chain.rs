@@ -250,3 +250,78 @@ fn a_prepared_shift_is_paid_for_here_and_finished_in_the_browser() {
     assert_eq!(signed.message.account_keys[0], relay.pubkey(),
                "the fee payer is the relay: a stranger never buys SOL to be treated by strangers");
 }
+
+// ── the factory's door ──────────────────────────────────────────────────────
+
+use vitals_web::ward::{Pack, Persona};
+use vitals_web::ward_chain::{pack_id, validate_pack};
+
+fn a_pack() -> Pack {
+    Pack {
+        case: "ep2-stemi".into(),
+        persona: Persona { name: "Ploy Siriwattana".into(), country: "THA".into(), age: 54 },
+        portrait: None,
+        endemic: false,
+    }
+}
+
+/// The door the factory pushes patients through, and everything it refuses.
+///
+/// The factory runs unattended on another machine, so this is the last place a wrong patient can
+/// be stopped. After it, she is on a board in front of strangers with her name on her.
+#[test]
+fn the_queue_takes_only_patients_the_ward_can_actually_serve() {
+    assert!(validate_pack(&a_pack()).is_ok());
+
+    let mut p = a_pack();
+    p.case = "ddx-dengue-fever-1".into();
+    assert!(validate_pack(&p).is_err(),
+            "a case the ward has not converted is a bed nobody can open — and the factory would \
+             never hear about it");
+
+    let mut p = a_pack();
+    p.persona.country = "Thailand".into();
+    assert!(validate_pack(&p).is_err(), "the globe matches on alpha-3, not on a country's name");
+
+    let mut p = a_pack();
+    p.persona.name = "   ".into();
+    assert!(validate_pack(&p).is_err(), "a patient with no name is a patient nobody can talk about");
+
+    let mut p = a_pack();
+    p.persona.age = 0;
+    assert!(validate_pack(&p).is_err(), "nobody is nought");
+    p.persona.age = 130;
+    assert!(validate_pack(&p).is_err(), "and nobody is a hundred and thirty");
+
+    // The one claim the ward can check for itself, so it does: today no country has an endemic
+    // list, so every pack claiming an endemic draw is claiming something no list supports.
+    let mut p = a_pack();
+    p.endemic = true;
+    assert!(validate_pack(&p).is_err(),
+            "a pack may not label itself endemic for a country and case the endemic list does not \
+             pair — an endemic tag nothing backs is the stereotype the rule exists to prevent");
+
+    let mut p = a_pack();
+    p.portrait = Some("javascript:alert(1)".into());
+    assert!(validate_pack(&p).is_err(), "a portrait is an image, and the board renders it as one");
+    p.portrait = Some("https://example.invalid/a.jpg".into());
+    assert!(validate_pack(&p).is_ok());
+}
+
+/// Content-addressed, so the same patient is never queued twice.
+#[test]
+fn a_pack_is_named_by_what_is_in_it() {
+    let one = pack_id(&a_pack());
+    assert_eq!(one, pack_id(&a_pack()), "the same pack is the same id, on any machine");
+    assert_eq!(one.len(), 64, "a sha256, in hex");
+
+    let mut other = a_pack();
+    other.persona.age = 55;
+    assert_ne!(one, pack_id(&other), "a different patient is a different pack");
+
+    let mut same_person_other_case = a_pack();
+    same_person_other_case.case = "osce-a".into();
+    assert_ne!(one, pack_id(&same_person_other_case),
+               "the same person with a different disease is a different patient, and both may be \
+                queued — the factory is what decides, not the address");
+}
