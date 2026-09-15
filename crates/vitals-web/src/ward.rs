@@ -148,3 +148,74 @@ pub fn ward_payload(
         },
     })
 }
+
+use std::collections::VecDeque;
+
+/// One patient's stay: the chain of cases she will be taken through.
+///
+/// A stay is made of cases that already exist, and the joins between them are mechanical — the
+/// state one case ends in is the state the next begins from (`vitals_replay::shift`). Nothing here
+/// writes medicine, and a longer queue is more of the cases we have rather than new ones.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Stay {
+    pub patient_id: u64,
+    pub cases: Vec<String>,
+    at: usize,
+}
+
+impl Stay {
+    pub fn new(patient_id: u64, cases: Vec<String>) -> Stay {
+        Stay { patient_id, cases, at: 0 }
+    }
+
+    /// The case being played now, or `None` once the chain has run out.
+    pub fn current(&self) -> Option<&str> {
+        self.cases.get(self.at).map(String::as_str)
+    }
+
+    /// Move to the next case in the chain and return it.
+    pub fn advance(&mut self) -> Option<&str> {
+        self.at += 1;
+        self.current()
+    }
+
+    /// Nothing left to hand over. The stay ends here whatever the ward does next — a terminal
+    /// outcome closes a patient earlier, and that is the program's decision, not this one's.
+    pub fn finished(&self) -> bool {
+        self.at >= self.cases.len()
+    }
+}
+
+/// Patients waiting for a bed.
+///
+/// `admit` is the whole automatic-release rule: it needs no argument but the state of the ward, so
+/// the server can call it on a timer and nobody has to be awake for a bed to refill.
+#[derive(Debug, Clone, Default)]
+pub struct Queue {
+    waiting: VecDeque<Vec<String>>,
+    next_id: u64,
+}
+
+impl Queue {
+    /// Build the queue from chains of existing case ids. `first_id` is where patient ids start:
+    /// the program seeds a patient PDA on it, so it must never repeat for one operator.
+    pub fn from_catalogue(catalogue: Vec<Vec<String>>, first_id: u64) -> Queue {
+        Queue { waiting: catalogue.into_iter().collect(), next_id: first_id }
+    }
+
+    pub fn waiting(&self) -> usize {
+        self.waiting.len()
+    }
+
+    /// Release as many patients as there are free beds and patients to fill them.
+    pub fn admit(&mut self, open: usize, beds: usize) -> Vec<Stay> {
+        (0..to_admit(open, beds, self.waiting.len()))
+            .filter_map(|_| {
+                let cases = self.waiting.pop_front()?;
+                let id = self.next_id;
+                self.next_id += 1;
+                Some(Stay::new(id, cases))
+            })
+            .collect()
+    }
+}
