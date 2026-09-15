@@ -53,7 +53,7 @@ fn two_shifts_leave_her_exactly_where_one_tape_of_both_would() {
 
     let (one_go, _) = resume(&sce, &whole).expect("one tape");
     let (mut handed_over, _) = resume(&sce, &first()).expect("shift one");
-    shift(&mut handed_over, &second());
+    shift(&mut handed_over, &second(), 0);
 
     assert_eq!(seen(&handed_over), seen(&one_go),
                "the patient the second stranger left is not the patient one tape would have left");
@@ -68,7 +68,7 @@ fn a_shift_is_scored_on_what_it_did_not_on_what_it_walked_into() {
     let (mut st, r1) = resume(&sce, &harmful).expect("shift one");
     let inherited = st.harm_events.len();
 
-    let r2 = shift(&mut st, &second());
+    let r2 = shift(&mut st, &second(), 0);
 
     assert!(inherited > 0,
             "this test is worthless unless shift one actually harmed her — it did not, so the \
@@ -90,8 +90,8 @@ fn a_chain_of_three_still_equals_the_whole() {
 
     let (one_go, _) = resume(&sce, &whole).expect("one tape");
     let (mut chained, _) = resume(&sce, &a).expect("shift a");
-    shift(&mut chained, &b);
-    shift(&mut chained, &c);
+    shift(&mut chained, &b, 0);
+    shift(&mut chained, &c, 0);
 
     assert_eq!(seen(&chained), seen(&one_go), "three shifts must equal one tape of all three");
 }

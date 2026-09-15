@@ -105,18 +105,59 @@ pub fn resume(sce_json: &str, tape: &[Step]) -> Result<(SceState, Replay), Strin
     Ok((st, r))
 }
 
+/// Solana's target slot time. Slots are the only clock both the chain and every browser agree on,
+/// so the ward's idle time is measured in them rather than in wall time nobody can check.
+pub const SLOT_SECONDS: f64 = 0.4;
+
+/// Simulated seconds per real second while nobody is on shift: one simulated minute per ten real
+/// ones. Slow on purpose — a patient left alone overnight should be worse, not finished.
+///
+/// **A design choice, not a physical constant.** The founder can move it; the number is here, in
+/// one place, so moving it is one edit and every browser still derives the same patient.
+pub const IDLE_SIM_PER_REAL: f64 = 0.1;
+
+/// The most simulated time one gap may add: one simulated hour, however long the real gap was.
+///
+/// Without a cap, a patient nobody visited over a weekend would arrive at her next shift already
+/// dead of arithmetic rather than of her disease, and the next stranger would open a chart with
+/// nothing in it to treat. The cap is what keeps an abandoned patient a patient.
+pub const IDLE_CAP_SIM_SECONDS: f64 = 3600.0;
+
+/// Simulated seconds to advance for a gap of `slots` between two shifts.
+///
+/// Pure, and derived from a number the chain records — so a stranger who reads the two shift slots
+/// off the chain computes the same idle time we did, which is the whole reason the gap is measured
+/// in slots.
+pub fn idle_seconds(slots: u64) -> f64 {
+    ((slots as f64) * SLOT_SECONDS * IDLE_SIM_PER_REAL).min(IDLE_CAP_SIM_SECONDS)
+}
+
 /// Continue a stay: one shift's tape, run on the machine the last shift left behind.
 ///
 /// This is how the ward hands a patient from one stranger to the next (CWF_PLAN.md). The state
 /// comes from [`resume`] over everything anchored so far, and this runs the new shift on top of
 /// it, so shift N+1 starts where shift N stopped rather than where the scenario starts.
 ///
+/// `idle_slots` is the gap since the last anchored shift. Nobody was watching her during it, but
+/// her body was still hers: [`idle_seconds`] turns the gap into simulated time and the machine
+/// ticks through it before the shift's first step. A patient nobody visits can deteriorate, and
+/// with a long enough gap she can die — that is a ward, and it stays verifiable because the gap is
+/// on chain and the ratio is a constant in this file.
+///
 /// **The [`Replay`] returned is the shift's own, not the stay's.** Its beats, its seconds, and —
 /// the one that needs saying — its harm: the machine accumulates `harm_events` across the whole
 /// stay, so this reports only the ones this tape added. A stranger is scored on what they did, not
 /// on what they walked into. `outcome` is the stay's, because an outcome is a fact about the
 /// patient and the shift that reaches it is the shift that reached it.
-pub fn shift(st: &mut SceState, tape: &[Step]) -> Replay {
+pub fn shift(st: &mut SceState, tape: &[Step], idle_slots: u64) -> Replay {
+    // Her body first, then the shift. The idle time is the gap the chain records between the last
+    // anchored shift and this one, so it is not ours to choose at play time — and it is applied
+    // here, as the first thing, because a stranger's first action must land on the patient they
+    // are actually looking at.
+    let idle = idle_seconds(idle_slots);
+    if idle > 0.0 {
+        st.tick(idle);
+    }
     step_through(st, tape)
 }
 
