@@ -175,6 +175,16 @@ Exit: a stranger's shift changes what the next stranger finds, the program refus
 not extend the head, a second key cannot take the head while the lease stands, a second patient is
 released automatically when the first leaves, and **world.vitals.academy answers**.
 
+> **Done on devnet, 16 ก.ย. 2026 00:05.** Program `4YpyZ2oM8jtxM9GwC61kUsnhMFvWkYatrWVZpiafqypz`,
+> deployed from this branch and verified byte for byte against the build (`scripts/verify-deploy.sh`
+> inside the deploy). `cargo run -p vitals-cli --bin ward_proof` against
+> `https://api.devnet.solana.com`, patient `8yia7iDXpcj9UHHgHB3V5aPRLqW6MpuTe6Cu2pb59Q1C`: three
+> keys opened accounts, the operator admitted a patient whose chart started empty, A took the head
+> and anchored the first shift, B anchored against the head the patient had moved past and was
+> refused with **StaleHead (16)**, C tried to take a head B was holding and was refused with
+> **LeaseHeld (17)**, and B then anchored on A's head — two strangers, one chart, two shifts. Every
+> refusal checked by its error code, not by "the transaction failed".
+
 ## Week 2 — patient one is public (to 27 Sep)
 
 - [ ] Patient one released to the world. No signup, no wallet, relay pays.
