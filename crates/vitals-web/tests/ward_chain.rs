@@ -301,11 +301,29 @@ fn the_queue_takes_only_patients_the_ward_can_actually_serve() {
             "a pack may not label itself endemic for a country and case the endemic list does not \
              pair — an endemic tag nothing backs is the stereotype the rule exists to prevent");
 
+    // The portrait is one shape and no other. The board renders it as an image src on a page
+    // strangers open, so "any https url" would let a pack point the ward's own page at whatever
+    // the factory — or anything that reached the factory — decided to name.
+    let bucket = "https://storage.googleapis.com/vitals-world-portraits";
+    let sha = "a".repeat(64);
     let mut p = a_pack();
-    p.portrait = Some("javascript:alert(1)".into());
-    assert!(validate_pack(&p).is_err(), "a portrait is an image, and the board renders it as one");
-    p.portrait = Some("https://example.invalid/a.jpg".into());
-    assert!(validate_pack(&p).is_ok());
+    p.portrait = Some(format!("{bucket}/{sha}.webp"));
+    assert!(validate_pack(&p).is_ok(), "the one shape the portraits are published in");
+
+    for wrong in [
+        "javascript:alert(1)".to_string(),
+        "https://example.invalid/a.jpg".to_string(),
+        format!("http://storage.googleapis.com/vitals-world-portraits/{sha}.webp"),
+        format!("https://storage.googleapis.com/some-other-bucket/{sha}.webp"),
+        format!("https://storage.googleapis.com/vitals-world-portraits/{sha}.png"),
+        format!("https://storage.googleapis.com/vitals-world-portraits/../{sha}.webp"),
+        format!("https://storage.googleapis.com/vitals-world-portraits/{}.webp", "z".repeat(64)),
+        format!("https://storage.googleapis.com/vitals-world-portraits/{}.webp", "a".repeat(63)),
+    ] {
+        let mut p = a_pack();
+        p.portrait = Some(wrong.clone());
+        assert!(validate_pack(&p).is_err(), "{wrong} is not a portrait this ward publishes");
+    }
 }
 
 /// Content-addressed, so the same patient is never queued twice.
