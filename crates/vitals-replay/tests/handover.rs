@@ -162,3 +162,30 @@ fn the_same_gap_always_gives_the_same_patient() {
     };
     assert_eq!(run(), run(), "two browsers, one gap, one patient — or none of this is verifiable");
 }
+
+/// Idle time must pass the way time on shift passes.
+///
+/// The engine is a tick machine: one state edge per tick, triggers evaluated once per tick. Hand
+/// it a whole hour as a single tick and it sails straight past the arrest it should have run into
+/// — ep1 at a one-hour gap comes back with a systolic of 0, a saturation of 0 and **no outcome at
+/// all**, a corpse the chart still calls alive, while the same hour ticked at the scenario's own
+/// grain arrests her at 518 seconds. Five of the sixteen catalogue cases behave the same way.
+///
+/// That would make the ward's clock a different machine from the player's, and the chain rests on
+/// there being only one machine. So the gap is ticked in the scenario's grain, and this is the
+/// test that says so.
+#[test]
+fn idle_time_passes_the_way_time_on_shift_passes() {
+    let sce = ep1();
+    let an_hour_on_shift: Vec<Step> = (0..3600).map(|_| Step::Tick(1.0)).collect();
+    let (played, _) = resume(&sce, &an_hour_on_shift).expect("an hour, played");
+
+    let (mut idled, _) = resume(&sce, &[]).expect("fresh");
+    let an_hour_of_slots = (IDLE_CAP_SIM_SECONDS / IDLE_SIM_PER_REAL / SLOT_SECONDS) as u64;
+    shift(&mut idled, &[], an_hour_of_slots);
+
+    assert_eq!(seen(&idled), seen(&played),
+               "an hour alone must leave exactly the patient an hour on shift leaves — if the idle \
+                clock runs the engine coarsely it is a second physiology, and the chart a stranger \
+                re-derives is not the patient in the bed");
+}
