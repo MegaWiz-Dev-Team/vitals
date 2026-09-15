@@ -211,3 +211,42 @@ fn anchoring_a_shift_is_paid_by_the_relay_and_played_by_the_player() {
     assert_eq!(seen.signer, player.to_bytes());
     assert_eq!(seen.patient_id, 42);
 }
+
+// ── who signs what ──────────────────────────────────────────────────────────
+
+use solana_sdk::{hash::Hash, signature::{Keypair, Signer}};
+use vitals_web::ward_chain::prepare_for;
+
+/// The relay pays and the player plays, and neither can do the other's half.
+///
+/// This is what "no signup, no wallet" costs us in care: the server builds the transaction and
+/// signs it as fee payer, then hands the bytes to a browser that holds the only key that can
+/// finish it. A stranger's key must not complete somebody else's shift, and the server must not
+/// be able to complete it at all — if it could, every shift on the ward would be a shift we could
+/// have written ourselves, and the record would prove nothing about anyone.
+#[test]
+fn a_prepared_shift_is_paid_for_here_and_finished_in_the_browser() {
+    let relay = Keypair::new();
+    let player = Keypair::new();
+    let program = Pubkey::new_unique();
+    let ix = || take_shift_ix(&program, &relay.pubkey(), &player.pubkey(), 42);
+
+    let pending = prepare_for(&relay, ix(), &player.pubkey(), Hash::default())
+        .expect("the relay can always prepare");
+    let to_sign = pending.message();
+    assert!(!to_sign.is_empty(), "there are bytes for the browser to sign");
+
+    // Somebody else's signature over the same bytes is not this player's shift.
+    let stranger = Keypair::new().sign_message(&to_sign);
+    assert!(pending.signed(&stranger.into()).is_err(),
+            "a signature from another key must not complete a shift — the key on the record is \
+             the whole claim");
+
+    let signed = prepare_for(&relay, ix(), &player.pubkey(), Hash::default())
+        .expect("prepare again")
+        .signed(&player.sign_message(&to_sign).into())
+        .expect("the player's own signature completes it");
+    assert!(signed.verify().is_ok(), "and what comes out is a transaction the cluster will take");
+    assert_eq!(signed.message.account_keys[0], relay.pubkey(),
+               "the fee payer is the relay: a stranger never buys SOL to be treated by strangers");
+}
