@@ -192,3 +192,30 @@ fn the_queue_never_invents_a_case() {
     assert_eq!(q.admit(0, BEDS).len(), 0,
                "no catalogue, no patients — a longer queue is more existing cases, never new writing");
 }
+
+// ── the release policy, published rather than promised ──────────────────────
+
+/// "How many patients a day?" has one honest answer: as many as leave. A bed frees on discharge or
+/// death and on nothing else, so the rate is a consequence of how the ward is played, not a number
+/// we can pick. The endpoint publishes the rule so a stranger can derive the rate themselves
+/// instead of taking a promise from us.
+#[test]
+fn the_release_policy_is_published_and_promises_no_rate() {
+    let v = ward_payload(&[], &[], None, 1, "devnet:ABC");
+    let p = &v["policy"];
+
+    assert_eq!(p["beds"], 3);
+    assert_eq!(p["a_bed_frees_on"], serde_json::json!(["discharge", "death"]),
+               "nothing else frees a bed — not time, not us");
+    assert!(p["admissions_per_day"].as_str().unwrap().contains("as many as leave"),
+            "the rate is derived from the ward, never promised by us");
+    assert!(p["draw"].as_str().unwrap().contains("uniformly"));
+    assert!(p["draw"].as_str().unwrap().contains("already on the ward"),
+            "a case is not drawn while another copy of it is in a bed");
+
+    let cases = p["catalogue"].as_array().expect("the catalogue is a list a stranger can count");
+    assert_eq!(cases.len(), 16, "four episodes and twelve stations, as they exist today");
+    let joined = cases.iter().map(|c| c.as_str().unwrap()).collect::<Vec<_>>().join(" ");
+    assert!(joined.contains("osce-a") && joined.contains("ep2"), "named, not summarised");
+    assert!(!joined.contains("ep1"), "ep1 is the practice case and is not on the ward");
+}
