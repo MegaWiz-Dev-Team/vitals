@@ -19,6 +19,17 @@ pub const BEDS: usize = 3;
 
 /// The patient states the program writes. Mirrors `vitals_program::PATIENT_*`, kept as plain
 /// numbers because this module reads chain bytes and does no Solana work of its own.
+/// The cases a stay may be drawn from, as they exist today: the four story episodes and the twelve
+/// OSCE stations. `ep1` is deliberately absent — it is the practice case, the one a newcomer plays
+/// to learn the room, and a practice case does not belong to a real patient.
+///
+/// A longer queue is more of these, never new clinical writing (CWF_PLAN.md's beds ruling).
+pub const CATALOGUE: [&str; 16] = [
+    "ep2-stemi", "ep3-epiglottitis", "ep4-pulmonary-embolism", "ep5-the-night-the-stars-fell",
+    "osce-a", "osce-a2", "osce-b", "osce-b2", "osce-b3", "osce-c",
+    "osce-c2", "osce-c3", "osce-d", "osce-d2", "osce-d3", "osce-d4",
+];
+
 pub const OPEN: u8 = 0;
 pub const DISCHARGED: u8 = 1;
 pub const DIED: u8 = 2;
@@ -137,6 +148,16 @@ pub fn ward_payload(
         "source": source,
         "cumulative": six(&all),
         "week": w,
+        "policy": {
+            "beds": BEDS,
+            "a_bed_frees_on": ["discharge", "death"],
+            "admissions_per_day": "as many as leave — a bed frees on discharge or death and on \
+                                   nothing else, so the rate is a consequence of how the ward is \
+                                   played rather than a number we choose. Read it off the census.",
+            "draw": "uniformly from the catalogue, skipping any case already on the ward, so no \
+                     two beds hold the same case at once",
+            "catalogue": CATALOGUE,
+        },
         "derivations": {
             "admitted": "patient accounts on chain, counted by admitted_slot",
             "on_ward": "admitted - went_home - died, floored at zero — never a separate tally",
