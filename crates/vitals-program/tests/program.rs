@@ -1278,3 +1278,217 @@ async fn an_exam_run_persists_its_det_score_and_earns_a_star() {
         "only the cleared exam case is a star — not the sub-bar exam, not the practice run"
     );
 }
+
+// ── the ward ────────────────────────────────────────────────────────────────
+
+fn patient_key(pid: &Pubkey, operator: &Pubkey, patient_id: u64) -> Pubkey {
+    vitals_program::patient_pda(pid, operator, patient_id).0
+}
+
+/// Admission is the operator alone: they sign and they pay the rent.
+fn admit_ix(pid: Pubkey, operator: Pubkey, patient_id: u64, scenario_hash: [u8; 32]) -> SolIx {
+    SolIx {
+        program_id: pid,
+        accounts: vec![
+            AccountMeta::new(operator, true),
+            AccountMeta::new(patient_key(&pid, &operator, patient_id), false),
+            AccountMeta::new_readonly(system_program::id(), false),
+        ],
+        data: borsh::to_vec(&Instruction::AdmitPatient { patient_id, scenario_hash }).unwrap(),
+    }
+}
+
+/// Taking and releasing a shift move no lamports, so there is no funder here — only the device
+/// that signs for the person.
+fn shift_ix(pid: Pubkey, device: Pubkey, operator: Pubkey, patient_id: u64, data: Instruction) -> SolIx {
+    SolIx {
+        program_id: pid,
+        accounts: vec![
+            AccountMeta::new_readonly(device, true),
+            AccountMeta::new_readonly(acct(&pid, &device), false),
+            AccountMeta::new(patient_key(&pid, &operator, patient_id), false),
+        ],
+        data: borsh::to_vec(&data).unwrap(),
+    }
+}
+
+async fn patient_of(banks: &mut solana_program_test::BanksClient, key: Pubkey) -> PatientAccount {
+    let data = banks.get_account(key).await.unwrap().expect("patient account").data;
+    borsh::from_slice(&data).expect("patient layout")
+}
+
+/// One patient, three strangers, and every way the ward says no.
+///
+/// The mechanic is that a shift extends the head the previous shift left, and that two people who
+/// worked from the same state cannot both land. Every refusal below is a thing a real ward has to
+/// do: somebody arrives late, somebody is already in the room, somebody comes to a patient who
+/// went home yesterday.
+#[tokio::test]
+async fn a_patient_is_a_chain_of_shifts_and_the_ward_refuses_the_rest() {
+    let pid = Pubkey::new_unique();
+    let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
+    let mut ctx = pt.start_with_context().await;
+    let operator = Keypair::from_bytes(&ctx.payer.to_bytes()).unwrap();
+    let op = operator.pubkey();
+    let (a, b, c) = (Keypair::new(), Keypair::new(), Keypair::new());
+    let pid_patient = 42u64;
+    let pkey = patient_key(&pid, &op, pid_patient);
+    let bh = ctx.last_blockhash;
+
+    // three people, three accounts
+    for who in [&a, &b, &c] {
+        ctx.banks_client
+            .process_transaction(Transaction::new_signed_with_payer(
+                &[ix(pid, op, who.pubkey(), &[acct(&pid, &who.pubkey())], Instruction::OpenAccount)],
+                Some(&op), &[&operator, who], bh,
+            ))
+            .await
+            .expect("opening an account");
+    }
+
+    // ── admission ─────────────────────────────────────────────────────────
+    ctx.banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[admit_ix(pid, op, pid_patient, [5; 32])],
+            Some(&op), &[&operator], bh,
+        ))
+        .await
+        .expect("admitting a patient");
+    let p = patient_of(&mut ctx.banks_client, pkey).await;
+    assert_eq!(p.head, [0; 32], "a new patient's chart starts empty");
+    assert_eq!(p.state, PATIENT_OPEN);
+    assert_eq!(p.shifts, 0);
+
+    // ── A takes the head and anchors the first shift ──────────────────────
+    let bh = ctx.banks_client.get_new_latest_blockhash(&bh).await.unwrap();
+    ctx.banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[shift_ix(pid, a.pubkey(), op, pid_patient, Instruction::TakeShift { patient_id: pid_patient })],
+            Some(&op), &[&operator, &a], bh,
+        ))
+        .await
+        .expect("A takes a shift");
+
+    let (ca, sa) = committed(&mut ctx.banks_client, pid, &operator, &a, bh).await;
+    let mut ra = rec(&a.pubkey(), 1, Outcome::NoTerminal, 0, Difficulty::Student);
+    ra.commitment = ca;
+    ra.committed_slot = sa;
+    let (tree, _, _) = pdas(&pid, &op, &a.pubkey());
+    ctx.banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[ix(pid, op, a.pubkey(), &[acct(&pid, &a.pubkey()), tree, cpda(&pid, &a.pubkey()), pkey],
+                 Instruction::AnchorShift { tree_id: TREE, patient_id: pid_patient, record: wire(&ra), prev_head: [0; 32] })],
+            Some(&op), &[&operator, &a], bh,
+        ))
+        .await
+        .expect("A anchors the first shift");
+    let p = patient_of(&mut ctx.banks_client, pkey).await;
+    let head_after_a = p.head;
+    assert_eq!(p.shifts, 1);
+    assert_ne!(head_after_a, [0; 32], "the head moved to A's leaf");
+    assert_eq!(p.lease_holder, [0; 32], "anchoring gives the head back");
+
+    // ── B anchors against the head that no longer exists ──────────────────
+    let bh = ctx.banks_client.get_new_latest_blockhash(&bh).await.unwrap();
+    ctx.banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[shift_ix(pid, b.pubkey(), op, pid_patient, Instruction::TakeShift { patient_id: pid_patient })],
+            Some(&op), &[&operator, &b], bh,
+        ))
+        .await
+        .expect("B takes a shift");
+    let (cb, sb) = committed(&mut ctx.banks_client, pid, &operator, &b, bh).await;
+    let mut rb = rec(&b.pubkey(), 2, Outcome::NoTerminal, 0, Difficulty::Student);
+    rb.commitment = cb;
+    rb.committed_slot = sb;
+    let e = ctx.banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[ix(pid, op, b.pubkey(), &[acct(&pid, &b.pubkey()), tree, cpda(&pid, &b.pubkey()), pkey],
+                 Instruction::AnchorShift { tree_id: TREE, patient_id: pid_patient, record: wire(&rb), prev_head: [0; 32] })],
+            Some(&op), &[&operator, &b], bh,
+        ))
+        .await
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(custom(&e), Some(VitalsError::StaleHead as u32),
+               "a shift that extends a head the patient moved past must be refused");
+
+    // ── C cannot take the head while B's lease is live ────────────────────
+    let e = ctx.banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[shift_ix(pid, c.pubkey(), op, pid_patient, Instruction::TakeShift { patient_id: pid_patient })],
+            Some(&op), &[&operator, &c], bh,
+        ))
+        .await
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(custom(&e), Some(VitalsError::LeaseHeld as u32),
+               "two people on the same patient at once is the thing the lease exists to stop");
+
+    // ── B anchors properly, on the head that is actually there ────────────
+    let bh = ctx.banks_client.get_new_latest_blockhash(&bh).await.unwrap();
+    let (cb, sb) = committed(&mut ctx.banks_client, pid, &operator, &b, bh).await;
+    let mut rb = rec(&b.pubkey(), 2, Outcome::NoTerminal, 0, Difficulty::Student);
+    rb.commitment = cb;
+    rb.committed_slot = sb;
+    ctx.banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[ix(pid, op, b.pubkey(), &[acct(&pid, &b.pubkey()), tree, cpda(&pid, &b.pubkey()), pkey],
+                 Instruction::AnchorShift { tree_id: TREE, patient_id: pid_patient, record: wire(&rb), prev_head: head_after_a })],
+            Some(&op), &[&operator, &b], bh,
+        ))
+        .await
+        .expect("B anchors on A's head");
+    let p = patient_of(&mut ctx.banks_client, pkey).await;
+    assert_eq!(p.shifts, 2, "the chain is two shifts long");
+    assert_ne!(p.head, head_after_a, "and the head moved again");
+    let head_after_b = p.head;
+
+    // ── the lease expires, and C walks in ─────────────────────────────────
+    ctx.banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[shift_ix(pid, c.pubkey(), op, pid_patient, Instruction::TakeShift { patient_id: pid_patient })],
+            Some(&op), &[&operator, &c], bh,
+        ))
+        .await
+        .expect("C takes the free head");
+    let taken_at = patient_of(&mut ctx.banks_client, pkey).await.lease_until_slot;
+    ctx.warp_to_slot(taken_at + 1).expect("warp past the lease");
+    let bh = ctx.banks_client.get_new_latest_blockhash(&bh).await.unwrap();
+    ctx.banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[shift_ix(pid, a.pubkey(), op, pid_patient, Instruction::TakeShift { patient_id: pid_patient })],
+            Some(&op), &[&operator, &a], bh,
+        ))
+        .await
+        .expect("an expired lease is free for anyone");
+
+    // ── a death closes the chart, and the ward says so afterwards ─────────
+    let (ca, sa) = committed(&mut ctx.banks_client, pid, &operator, &a, bh).await;
+    let mut ra = rec(&a.pubkey(), 3, Outcome::DeathArrest, 1, Difficulty::Student);
+    ra.commitment = ca;
+    ra.committed_slot = sa;
+    ctx.banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[ix(pid, op, a.pubkey(), &[acct(&pid, &a.pubkey()), tree, cpda(&pid, &a.pubkey()), pkey],
+                 Instruction::AnchorShift { tree_id: TREE, patient_id: pid_patient, record: wire(&ra), prev_head: head_after_b })],
+            Some(&op), &[&operator, &a], bh,
+        ))
+        .await
+        .expect("the shift she died on is still a shift, and it is still anchored");
+    let p = patient_of(&mut ctx.banks_client, pkey).await;
+    assert_eq!(p.state, PATIENT_DIED, "the engine's outcome closes the chart");
+    assert_eq!(p.shifts, 3);
+    assert_ne!(p.closed_slot, 0, "and the chart says when");
+
+    let e = ctx.banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[shift_ix(pid, b.pubkey(), op, pid_patient, Instruction::TakeShift { patient_id: pid_patient })],
+            Some(&op), &[&operator, &b], bh,
+        ))
+        .await
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(custom(&e), Some(VitalsError::PatientClosed as u32),
+               "nobody takes a shift on a patient who has died");
+}
