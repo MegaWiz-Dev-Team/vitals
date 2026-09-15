@@ -385,3 +385,73 @@ fn the_queue_keeps_each_patient_once_and_says_what_it_refused() {
 
     let _ = std::fs::remove_dir_all(&root);
 }
+
+// ── the refill ──────────────────────────────────────────────────────────────
+
+use vitals_web::ward_chain::{choose_next, next_patient_id};
+
+fn queued(case: &str, name: &str) -> (String, Pack) {
+    let p = Pack {
+        case: case.into(),
+        persona: Persona { name: name.into(), country: "THA".into(), age: 40 },
+        portrait: None,
+        endemic: false,
+    };
+    (pack_id(&p), p)
+}
+
+/// Which patient the empty bed gets, decided the way the published policy says.
+///
+/// Two rules, and both are visible on `/api/ward`: no two beds hold the same case at once, and
+/// every difficulty band is represented when beds allow. The second is what stops a ward of three
+/// intern cases from being the only thing a student can find at four in the morning.
+#[test]
+fn the_next_patient_is_the_one_the_ward_is_missing() {
+    let student = queued("osce-a", "A Student Case");     // student
+    let intern = queued("ep2-stemi", "An Intern Case");   // intern
+    let resident = queued("osce-d4", "A Resident Case");  // resident
+    let queue = vec![student.clone(), intern.clone(), resident.clone()];
+
+    // An empty ward: nothing is under-represented, so the choice is the same every time rather
+    // than arbitrary. A ward that admitted a different patient on each tick would be a ward whose
+    // behaviour nobody could reproduce from the same state.
+    let empty: Vec<String> = vec![];
+    let first = choose_next(&queue, &empty).expect("an empty ward admits somebody");
+    assert_eq!(first, choose_next(&queue, &empty).unwrap(), "the same state, the same patient");
+
+    // Two interns already in beds: the student and the resident are what the ward is missing.
+    let interns = vec!["ep2-stemi".to_string(), "osce-b".to_string()];
+    let pick = choose_next(&queue, &interns).expect("a bed to fill");
+    assert!(pick == student.0 || pick == resident.0,
+            "with two interns on the ward, a third would leave a student with nothing to open");
+
+    // Every band once: the one band with nobody in it wins.
+    let one_each = vec!["osce-a".to_string(), "ep2-stemi".to_string()];
+    let pick = choose_next(&vec![intern.clone(), resident.clone()], &one_each)
+        .expect("a bed to fill");
+    assert_eq!(pick, resident.0, "student and intern are held; resident is the empty band");
+
+    // A case already in a bed is not admitted again, whatever else it would balance.
+    let on_ward: Vec<String> = vec!["osce-a".into(), "ep2-stemi".into(), "osce-d4".into()];
+    assert!(choose_next(&queue, &on_ward).is_none(),
+            "no two beds hold the same case at once — the published rule, and an empty bed is \
+             better than breaking it");
+
+    assert!(choose_next(&[], &empty).is_none(), "an empty queue admits nobody");
+}
+
+/// A patient id has to be one nobody has used, because it is her address.
+#[test]
+fn a_patient_id_is_never_reused() {
+    let now = 1_760_000_000u64;
+    assert_eq!(next_patient_id(now, &[]), now, "the clock, when the clock is free");
+
+    // Three admitted in the same second — the ordinary case when a ward opens with empty beds.
+    assert_eq!(next_patient_id(now, &[now]), now + 1);
+    assert_eq!(next_patient_id(now, &[now, now + 1]), now + 2);
+
+    // Ids are seeded into the patient's address, so reusing one would not collide loudly: it
+    // would open the account that already exists and quietly write a second patient's admission
+    // over the first one's chart.
+    assert!(!vec![now, now + 1].contains(&next_patient_id(now, &[now, now + 1])));
+}
