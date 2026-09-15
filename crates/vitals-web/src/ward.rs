@@ -98,3 +98,53 @@ pub fn census(patients: &[PatientOnChain], shifts: &[ShiftOnChain], since: Optio
 pub fn to_admit(open: usize, beds: usize, queue: usize) -> usize {
     beds.saturating_sub(open).min(queue)
 }
+
+/// The `/api/ward` payload: the six numbers, twice, each beside where it came from.
+///
+/// The endpoint is the source and the weekly card is a photograph of it (WEEKLY_VIDEO_SYSTEM §9b),
+/// so the discipline lives here rather than in whoever builds the card. `as_of_slot` is the slot
+/// the chain was read at — a number without its read time is not evidence — and `source` names
+/// the cluster and program it was read from, because "the chain says" means nothing until you know
+/// which chain.
+///
+/// `on_ward` publishes its own subtraction. A reader who wants to check it does not have to guess
+/// whether we counted open patients separately, and a reader who re-counts them another way and
+/// gets a different answer knows immediately that one of the two is wrong.
+pub fn ward_payload(
+    patients: &[PatientOnChain],
+    shifts: &[ShiftOnChain],
+    since: Option<u64>,
+    as_of_slot: u64,
+    source: &str,
+) -> serde_json::Value {
+    let all = census(patients, shifts, None);
+    let week = census(patients, shifts, since);
+    let six = |c: &Census| serde_json::json!({
+        "admitted": c.admitted,
+        "on_ward": c.on_ward,
+        "went_home": c.went_home,
+        "died": c.died,
+        "shifts": c.shifts,
+        "keys": c.keys,
+    });
+    let mut w = six(&week);
+    w["since_slot"] = match since {
+        Some(s) => serde_json::json!(s),
+        None => serde_json::Value::Null,
+    };
+    serde_json::json!({
+        "as_of_slot": as_of_slot,
+        "source": source,
+        "cumulative": six(&all),
+        "week": w,
+        "derivations": {
+            "admitted": "patient accounts on chain, counted by admitted_slot",
+            "on_ward": "admitted - went_home - died, floored at zero — never a separate tally",
+            "went_home": "patient accounts whose state is discharged, counted by closed_slot",
+            "died": "patient accounts whose state is died, counted by closed_slot",
+            "shifts": "anchored leaves, one per shift",
+            "keys": "distinct signers of those leaves — keys, not humans: there is no signup, so \
+                     one holder may have several and a shared machine may be many behind one",
+        },
+    })
+}
