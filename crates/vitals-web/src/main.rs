@@ -32,7 +32,11 @@ const LANDING: &str = include_str!("../static/landing.html");
 /// (CWF_PLAN.md); until the ward itself exists, its root serves this so the link in the hackathon
 /// form is never dead. The same binary, one env var: the Eternal entry at vitals.academy is not
 /// built differently and is not touched.
-const WORLD: &str = include_str!("../static/world.html");
+/// The ward host's front page: the globe. Self-contained on purpose — d3-geo, topojson-client
+/// and the 110m atlas are inlined, so a judge on a bad connection gets the whole thing in one
+/// response and no CDN sits between them and the page. `static/world.html` was the holding page
+/// that preceded it; the globe carries the same two lines beneath it until the ward has patients.
+const WORLD: &str = include_str!("../static/world/index.html");
 
 /// Is this process the ward host rather than the Eternal entry? Set by the deploy script when
 /// SERVICE=vitals-world; absent everywhere else, so vitals.academy is unchanged by this code.
