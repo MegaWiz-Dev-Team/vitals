@@ -754,3 +754,53 @@ pub fn pack_id(p: &crate::ward::Pack) -> String {
     }
     h.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
+
+/// Where packs wait for a bed.
+pub const QUEUE_STORE: &str = "ward_queue";
+
+/// What one push from the factory did.
+///
+/// Four numbers rather than an "ok", because the factory is a job on another machine with nobody
+/// watching it: it tops the queue up against `depth`, it learns from `rejected` that it is
+/// building patients this ward will not take, and `duplicates` tells it its window overlaps
+/// without telling it anything is wrong.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct Queued {
+    pub queued: usize,
+    pub duplicates: usize,
+    pub rejected: Vec<String>,
+    pub depth: usize,
+}
+
+/// How many packs are waiting for a bed.
+pub fn queue_depth(store: &crate::store::Store) -> usize {
+    store.keys(QUEUE_STORE).len()
+}
+
+/// Take a page of packs from the factory, keep the ones this ward can serve, and say what happened.
+///
+/// Each pack is stored under its own content address, so pushing the same page twice queues each
+/// patient once — the property the factory's retries depend on and the one that would otherwise
+/// put one woman in two beds.
+pub fn enqueue(store: &crate::store::Store, packs: Vec<crate::ward::Pack>) -> Queued {
+    let mut out = Queued::default();
+    for pack in packs {
+        if let Err(why) = validate_pack(&pack) {
+            out.rejected.push(why);
+            continue;
+        }
+        let id = pack_id(&pack);
+        if store.get::<crate::ward::Pack>(QUEUE_STORE, &id).is_some() {
+            out.duplicates += 1;
+            continue;
+        }
+        match store.put(QUEUE_STORE, &id, &pack) {
+            Ok(()) => out.queued += 1,
+            // A write that failed is not a queued patient, and saying so is the difference between
+            // a factory that tops the queue up and one that believes it already did.
+            Err(e) => out.rejected.push(format!("could not queue {id}: {e}")),
+        }
+    }
+    out.depth = queue_depth(store);
+    out
+}

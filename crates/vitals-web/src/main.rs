@@ -425,6 +425,13 @@ const WARD_TTL: Duration = Duration::from_secs(30);
 /// The held ward census.
 type WardView = Arc<Mutex<Option<(Instant, serde_json::Value)>>>;
 
+/// The most one push from the factory may carry.
+///
+/// A pack is a few hundred bytes, so this is room for a hundred or so patients at once — well past
+/// the twenty the queue is kept at, and small enough that a body arriving from a job nobody is
+/// watching cannot become this server's memory problem.
+const QUEUE_MAX: usize = 64 * 1024;
+
 /// Payouts this process made, by leaf.
 ///
 /// A record of our own transfers, not a second opinion about whether to pay — `settle` still
@@ -1876,7 +1883,10 @@ fn percent_decode(s: &str) -> String {
 /// Playing is open because a kiosk should just work. Signing a transaction on request is not,
 /// and "whoever can reach the port" is not an authorisation model.
 fn guarded(path: &str) -> bool {
-    matches!(path, "/api/anchor" | "/api/claim" | "/api/commit" | "/api/say")
+    // `/api/ward/queue` is the factory's door. It writes to the ward — the patients strangers will
+    // be handed — from a job on another machine, so it is guarded for the same reason the signing
+    // routes are: without a token, anybody could fill the beds with patients of their own.
+    matches!(path, "/api/anchor" | "/api/claim" | "/api/commit" | "/api/say" | "/api/ward/queue")
 }
 
 fn bearer_ok(req: &tiny_http::Request, token: &Option<String>) -> bool {
@@ -3376,6 +3386,63 @@ fn main() {
             // is a question we are asking — and would stop the page opening for the two people
             // it was written for. `guarding_covers_everything_that_spends_or_signs` holds it.
             (Method::Get, "/review") => html(&REVIEW.replace(BUILD_STAMP, BUILD)),
+            // The factory's door (CWF_PLAN.md ruling 10). Packs only — an existing case, a
+            // person, a portrait — and never a key. Guarded by the same token the signing routes
+            // use, because what arrives here becomes the patients strangers are handed.
+            (Method::Post, "/api/ward/queue") => {
+                if !ward_mode() {
+                    let _ = req.respond(json(serde_json::json!({
+                        "ward": "not on this host",
+                        "the_ward_is": "https://world.vitals.academy/api/ward/queue"
+                    })));
+                    continue;
+                }
+                let body = match read_body(&mut req, QUEUE_MAX) {
+                    Ok(b) => b,
+                    Err(BadBody::TooLong) => {
+                        let _ = req.respond(json(serde_json::json!({
+                            "error": format!("a page of packs is at most {QUEUE_MAX} bytes — send \
+                                              fewer per push, the queue keeps what it is given")
+                        })));
+                        continue;
+                    }
+                    Err(BadBody::NotText) => {
+                        let _ = req.respond(json(serde_json::json!({
+                            "error": "that body is not UTF-8 text"
+                        })));
+                        continue;
+                    }
+                };
+                #[derive(serde::Deserialize)]
+                struct Push {
+                    packs: Vec<ward::Pack>,
+                }
+                match serde_json::from_str::<Push>(&body) {
+                    // Every count and every refusal goes back in words: the factory is a job
+                    // nobody watches, and a door that answered "ok" while dropping half of what it
+                    // was sent would look exactly like a factory that was working.
+                    Ok(push) => {
+                        let report = ward_chain::enqueue(&store, push.packs);
+                        let _ = req.respond(json(report));
+                    }
+                    Err(e) => {
+                        let _ = req.respond(json(serde_json::json!({
+                            "error": format!("that is not a page of packs: {e}"),
+                            "shape": {"packs": [{
+                                "case": "one of the ids in /api/ward's policy.catalogue",
+                                "persona": {"name": "as the ward renders it",
+                                            "country": "ISO 3166-1 alpha-3",
+                                            "age": "inside the case's own band"},
+                                "portrait": format!("{}/<sha256>.webp, or null",
+                                                    ward_chain::PORTRAITS),
+                                "endemic": "true only when the endemic list pairs that country \
+                                            with that case"
+                            }]}
+                        })));
+                    }
+                }
+                continue;
+            }
             // The ward's census. Public, and every figure on it carries where it came from —
             // `vitals_web::ward` builds the payload, `ward_chain` does the reading, and neither
             // of them can report a number this server kept for itself.
@@ -4742,6 +4809,9 @@ mod tests {
         for p in ["/api/anchor", "/api/claim", "/api/commit", "/api/say"] {
             assert!(guarded(p), "{p} makes the server sign or spend");
         }
+        assert!(guarded("/api/ward/queue"),
+                "the factory's door writes the patients strangers are handed — ungated, anyone \
+                 could fill the ward with their own");
         for p in ["/", "/play", "/api/new", "/api/step", "/api/finish", "/api/kit", "/api/tape", "/api/chain",
                   "/api/meter", "/api/fuel", "/api/stars", "/api/lang", "/api/usage", "/donate",
                   // The ward's census. The endpoint is the source the weekly card photographs
