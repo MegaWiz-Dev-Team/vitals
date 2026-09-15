@@ -415,6 +415,9 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
     v["queue"] = serde_json::json!({
         "waiting": queue_depth(store),
         "beds": crate::ward::BEDS,
+        // Published, because "the queue is empty" and "the door is shut" look identical from
+        // outside and mean opposite things about whether anybody should be doing anything.
+        "door": if door_open_here() { "open" } else { "closed" },
         "filled_by": "a ticker on the ward host, every minute: a bed frees on discharge or death \
                       and the next queued patient takes it. Nobody on the team touches anything",
     });
@@ -762,6 +765,27 @@ pub fn pack_id(p: &crate::ward::Pack) -> String {
         h.update(b"\n");
     }
     h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The word that opens the ward, and the variable that carries it.
+pub const DOOR_ENV: &str = "VITALS_WARD_DOOR";
+
+/// Is the factory's door open?
+///
+/// **Default closed, and every ambiguity resolves closed.** Production carries this code before
+/// the ward is meant to be open, and the factory is an unattended job that pushes the moment it
+/// has packs — so the thing that opens a public ward has to be somebody deciding, never a deploy
+/// landing or a job waking up.
+///
+/// The asymmetry is the whole argument: a ward that stays shut an hour too long costs an hour, and
+/// a ward that opens by accident is strangers treating patients nobody chose to release.
+pub fn door_is_open(setting: Option<&str>) -> bool {
+    setting.is_some_and(|v| v.trim().eq_ignore_ascii_case("open"))
+}
+
+/// The door, as this process is configured.
+pub fn door_open_here() -> bool {
+    door_is_open(std::env::var(DOOR_ENV).ok().as_deref())
 }
 
 /// Where packs wait for a bed.

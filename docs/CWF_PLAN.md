@@ -317,6 +317,15 @@ released automatically when the first leaves, and **world.vitals.academy answers
 
 ## Week 2 — patient one is public (to 27 Sep)
 
+**The opening rule.** *The ward opens the moment the first pack reaches production's door — and
+that is the founder's decision, not a deploy.* Production carries the ward's code with
+`VITALS_WARD_DOOR` shut: the factory's door answers every push with "not open yet" until a deploy
+sets it to `open`. The factory is an unattended job on another machine that will push the moment it
+has packs, and one mistaken push must not be what releases patients to the public. `/api/ward`
+publishes the door's state beside the queue depth, because "the queue is empty" and "the door is
+shut" look identical from outside and mean opposite things about whether anybody should be doing
+anything.
+
 - [ ] Patient one released to the world. No signup, no wallet, relay pays.
 - [ ] The ward board: who is on the ward, how long each has been there, who is on shift — and the
       moment an empty bed fills itself, which is the thing to watch.

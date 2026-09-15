@@ -152,6 +152,19 @@ env_add "VITALS_KEYPAIR=/relay/id.json"
 # The ward host serves its own root and refuses to answer for vitals.academy's numbers. One
 # variable, set from the service name rather than from a shell the deployer has to remember.
 [ "$SERVICE" = "vitals-world" ] && env_add "VITALS_WORLD=1"
+# The ward's door. Shut unless this deploy is the one that opens it, because the factory is an
+# unattended job on another machine and one mistaken push must not be what opens a public ward.
+# `--set-env-vars` replaces the whole environment, so an unset variable means shut on every deploy
+# — which is the safe direction, and the reason this is spelled out rather than defaulted in the
+# binary alone.
+WARD_DOOR="${VITALS_WARD_DOOR:-closed}"
+if [ "$SERVICE" = "vitals-world" ]; then
+  env_add "VITALS_WARD_DOOR=$WARD_DOOR"
+  case "$WARD_DOOR" in
+    open) echo "── door      OPEN — this deploy accepts packs and the ward can admit patients" ;;
+    *)    echo "── door      closed — packs are refused until a deploy sets VITALS_WARD_DOOR=open" ;;
+  esac
+fi
 [ -n "$VERTEX_URL" ] && env_add "VITALS_VERTEX_URL=$VERTEX_URL"
 [ -n "$VERTEX_MODEL" ] && env_add "VITALS_VERTEX_MODEL=$VERTEX_MODEL"
 [ -n "$MONTHLY" ] && env_add "VITALS_MONTHLY_TURNS=$MONTHLY"

@@ -2160,6 +2160,12 @@ fn main() {
     // Firestore over REST), so a second handle costs nothing and saves putting the request loop's
     // store behind an Arc for one reader.
     if ward_mode() {
+        println!(
+            "ward       beds {} · door {} · refill every {}s",
+            ward::BEDS,
+            if ward_chain::door_open_here() { "open" } else { "closed — packs are refused" },
+            WARD_TICK.as_secs(),
+        );
         let state = state_dir.clone();
         let root = scenario_root();
         std::thread::spawn(move || {
@@ -3443,6 +3449,25 @@ fn main() {
                         "ward": "not on this host",
                         "the_ward_is": "https://world.vitals.academy/api/ward/queue"
                     })));
+                    continue;
+                }
+                if !ward_chain::door_open_here() {
+                    // Answered as "come back later" rather than as a refusal of the caller: the
+                    // factory is right to be pushing, the ward is simply not open yet, and a 4xx
+                    // would read in its log as a pack it should stop building.
+                    let _ = req.respond(
+                        json(serde_json::json!({
+                            "door": "closed",
+                            "why": "the ward is not open yet. It opens when the founder says so, \
+                                    not when a deploy lands — this build carries the code with \
+                                    the door shut on purpose",
+                            "queued": 0,
+                            "duplicates": 0,
+                            "rejected": [],
+                            "depth": 0
+                        }))
+                        .with_status_code(503),
+                    );
                     continue;
                 }
                 let body = match read_body(&mut req, QUEUE_MAX) {
