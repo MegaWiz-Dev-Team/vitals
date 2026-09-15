@@ -54,12 +54,24 @@ esac
 # day a judge opens it. A sprint branch deploying the default service is how that gets overwritten by
 # a hand that meant no harm — one forgotten `SERVICE=` in a shell. The branch decides.
 BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+# Both directions, because both are one forgotten word away and neither announces itself. `builds
+# submit` uploads the working directory, not a commit: deploying the ward from a checkout that is
+# not on the sprint branch would put the Eternal entry's own landing page on world.vitals.academy —
+# live, wrong, and looking fine.
 case "$BRANCH:$SERVICE" in
   cwf/*:vitals)
     echo "refusing: you are on $BRANCH and SERVICE is 'vitals' — that is the Eternal entry at" >&2
     echo "vitals.academy, and sprint work does not go there. Deploy the ward with:" >&2
     echo "    SERVICE=vitals-world $0" >&2
     echo "If you really mean to ship sprint code as the Eternal entry, do it from main." >&2
+    exit 1 ;;
+  cwf/*:*) ;;
+  *:vitals-world)
+    echo "refusing: SERVICE is 'vitals-world' but you are on '${BRANCH:-a detached HEAD}', not a" >&2
+    echo "cwf/* branch. The ward's holding page, its root switch and this guard live on the sprint" >&2
+    echo "branch, and a build ships the working directory rather than a commit — from here you" >&2
+    echo "would put the Eternal entry's landing page on world.vitals.academy and it would look" >&2
+    echo "fine. Deploy the ward from a cwf/* checkout." >&2
     exit 1 ;;
 esac
 
