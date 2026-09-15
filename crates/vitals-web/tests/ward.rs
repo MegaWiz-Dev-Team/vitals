@@ -608,3 +608,26 @@ fn the_globe_reads_every_field_it_renders() {
         .find(|p| p["patient_id"] == 7).cloned().unwrap();
     assert_eq!(ploy["state"], "on_ward", "an expired lease is a free room, and the board says so");
 }
+
+/// The globe's "take a shift" link points at `/ward/<patient_id>`, so that path has to be read.
+///
+/// Read strictly, because the id goes into a PDA derivation and then into a page: anything that is
+/// not exactly one whole number is not a patient, and guessing at `/ward/42/../43` or `/ward/42?x`
+/// would open a different bed than the one somebody clicked.
+#[test]
+fn a_patient_page_is_addressed_by_one_whole_number() {
+    use vitals_web::ward::patient_id_in_path;
+
+    assert_eq!(patient_id_in_path("/ward/42"), Some(42));
+    assert_eq!(patient_id_in_path("/ward/1789488342"), Some(1_789_488_342));
+
+    for bad in ["/ward/", "/ward", "/ward/42/43", "/ward/42x", "/ward/-1", "/ward/ 42",
+                "/ward/42/../43", "/wardrobe/42", "/ward/0x2a", "/api/ward"] {
+        assert_eq!(patient_id_in_path(bad), None, "{bad} is not a patient");
+    }
+
+    // u64::MAX is a legal id — patient ids are unix seconds today, but the program takes a u64 and
+    // a page that refused the top of the range would refuse a patient the chain accepts.
+    assert_eq!(patient_id_in_path("/ward/18446744073709551615"), Some(u64::MAX));
+    assert_eq!(patient_id_in_path("/ward/18446744073709551616"), None, "and one past it is not");
+}
