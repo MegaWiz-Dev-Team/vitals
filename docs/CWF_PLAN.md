@@ -13,102 +13,205 @@ in the form on day one, worded in `pitch/CRYPTO_WORLDS_FAIR_PAST_WORK.md` (MyHer
 Rule for the whole sprint, unchanged from [SPRINT_PLAN.md](SPRINT_PLAN.md): **anything not demoable
 on the last day does not get built.**
 
-The one sentence this sprint exists to make true: **the door is opened by the chain, not by the
-client.** Today the episode gate runs client-side ([UNLOCK.md](UNLOCK.md): `required_badge` is
-designed, not built); the Case Registry is unbuilt because "who pays" was unanswered; and 60 of 100
-rubric points are an LLM's word ([RISKS.md](RISKS.md) §3). Those three gaps are what a judge will
-press on, and every one of them is reachable from what already runs: twelve OSCE stations, the
-program on devnet, the replay verifier.
+> **Ruling, 15 Sep 2026 ~16:00 — the founder replaced deliverables A/B/C with a single centre.**
+> His words: *"เอาอันนี้ เราจะให้คนทั่วโลกมาช่วยกันรักษา โดยเราจะปล่อยคนไข้ออกมาเรื่อยๆ หายแล้วกลับบ้านได้"* —
+> we let the whole world treat patients together, we keep releasing patients, and the ones who
+> recover go home. The old A (star gate on chain) survives inside it as the shift gate; the old B
+> (verify page) survives as the shift receipt; the old C (mainnet + multisig) is week-4 slack only.
+> This document was rewritten around that ruling on 15 Sep; the plan it replaces is in git history
+> at `cwf-start`.
 
-## Before the clock (11 – 14 Sep)
+The one sentence this sprint exists to make true: **the chart is the chain.** A patient's whole
+history is a chain of anchored shifts that any stranger's browser can re-derive for itself, so no
+operator — us included — can quietly change what happened to her. The three gaps a judge will press
+on are unchanged and all three are now answered by the ward: the episode gate still runs client-side
+([UNLOCK.md](UNLOCK.md): `required_badge` is designed, not built) — the shift gate moves it on chain;
+the Case Registry is unbuilt because "who pays" was unanswered — the ward answers "who plays" first
+and honestly defers the rest; and 60 of 100 rubric points are an LLM's word ([RISKS.md](RISKS.md) §3)
+— the shift receipt shows the deterministic 40 and the judged 60 as two numbers, never one.
+
+## The ward
+
+**One patient, many strangers, and the chart is the chain.**
+
+A patient is released into a public ward. Anyone in the world takes a shift on her — no signup, no
+wallet, the relay pays — treats her for a few minutes, and hands over. The next stranger, any time
+later, opens her: the client replays every previous shift's tape through the deterministic engine
+and arrives at exactly the state the last person left her in. Mistakes carry forward. The log says
+who and when, and nobody can rewrite it. When the engine reaches a discharge state she goes home; if
+she dies the record stands and the next patient is released. Patients keep being released through
+the sprint.
+
+What a judge sees in ninety seconds *(the target for the week-4 cut, not a measurement)*: a patient
+who has been alive for six days, treated by eleven strangers in four countries, her chart re-derived
+in the browser from eleven anchored tapes, with one shift on it where somebody made her worse and
+the name of the key that did it still attached.
+
+## What is already built, and what is actually new
+
+Being exact about this is the difference between a four-week plan and a wish.
+
+| The mechanic needs | State on 15 Sep |
+|---|---|
+| Replay a tape and arrive at a live machine state | **exists** — `vitals-replay::resume(sce_json, tape) -> (SceState, Replay)`, one step loop shared by resume and verify |
+| A bounded attempt with a tape, scored deterministically + judged | exists — the encounter engine and `vitals-osce` |
+| Commit–reveal per attempt, anchored as a leaf | exists — `(player, sce_hash, run_hash, rubric_hash, outcome, harm, det and judged scores)` |
+| Browser re-derivation of a score | exists — the same rubric arithmetic compiled to wasm (Verifier row, README) |
+| A patient that is a **hash-linked chain** of shifts, with a head | **new** — program work |
+| "Your shift must extend the current head" | **new** — program work |
+| Starting an attempt **from** a resumed state rather than from the scenario's start | **new** — engine work, small, on top of `resume` |
+| A ward board and a shift receipt page | **new** — web work |
+
+New medicine: none. A stay is a chain of cases we already have (anaphylaxis → observation →
+discharge; STEMI → CCU → ward → home), and the bridges between them are **mechanical state
+handoff, not new clinical writing**. Say so on the page; a clinician reading it should never think
+we authored a new disease course this month.
+
+## The rulings this plan is built on (15 Sep)
+
+1. **Content is what we have.** No new physiology, no new clinical writing. A stay chains existing
+   cases; the joins are mechanical.
+2. **Between shifts the patient is frozen.** Simulated time advances only while somebody is on
+   shift. Honest, simple, and "frozen for three days" is visible on the chart — which is a feature,
+   not an apology.
+3. **A patient is a chain, the program holds the head.** A `Patient` account with a head; a shift
+   commits against the current head (commit–reveal as today); the reveal appends and moves the head;
+   discharge or death closes it. The client verifies the whole chain before letting anyone take a
+   shift. The old deliverable A survives as the gate: *you may take a shift on a sicker patient only
+   if the program's star count says so.*
+4. **Griefing is allowed and named.** Harming her is a scored shift with the harm on the record and
+   the player's key on it. Limits: one shift per key per patient per day, plus a cooldown. Death is
+   permanent for that patient.
+5. **Public worldwide from day one of the mechanic.** Any invitation to Embla's students is the
+   founder's to make, and no institution name appears anywhere in the product or the video.
+6. **Everything else stands.** Devnet (mainnet + multisig only if week 4 has slack), no token, no
+   money, the relay never signs as author, the payout allowlist stays empty, lamports are never
+   called dollars, the review store is untouched, no physician claim anywhere, every figure carries
+   its as-of.
+
+## Three rulings that shape the build (producer, 15 Sep)
+
+**The sentence.** *No server can change her past without every browser noticing.* That is the claim,
+in the plan, in the product and in every video. The chain holds the leaf and the leaf holds
+`run_hash`, not the tape; the tape bytes are served off-chain, so the stronger-sounding "no server
+holds patient state" is false and is not to be written or spoken anywhere. What makes the real
+sentence true for a stranger who trusts nobody: the shift receipt carries **download every tape of
+this patient** — content-addressed, each hash on chain — so anyone can mirror her and check us. A
+neutral mirror of our own is listed under *if there is slack*, never promised.
+
+**The lease.** A shift takes the head for a bounded time, on chain, in week 1. One instruction; an
+expired lease is free for anyone to take; the ward board shows *on shift since*. The number comes
+from the engine rather than from taste: the longest authored working window is **18 minutes**
+(EP5's `runtime_min`; the others are 12, 12, 14, 12), so a lease is **that shift's own
+`runtime_min` plus 5 minutes** for the reveal to land and for clock skew — a ceiling of 23 minutes
+as the content stands today. The reject-on-stale-head path stays underneath as the safety net, and
+the week-4 cut shows that refusal once, because the refusal is the honest part.
+
+**The first shift is not gated.** Nobody has stars on the morning the ward opens, so a gate on a new
+patient's first shift is a ward that never starts. The star gate belongs to the second track —
+sicker patients — when that exists. **If patient one dies at 11:00 on release morning, her chart is
+the demo.**
+
+## Before the clock — state as of 15 Sep 16:30, all of it late
 
 - [ ] Eternal form: the eight corrections applied (numbers that match `/api/usage`, the truncated
-      fields, the revenue answer aligned with DECISIONS.md #1); Pimnipa's profile complete
-- [ ] **File Eternal on 15–16 Sep**, not 22–23: review is first-come-first-served, and the team is
-      needed here from the 14th
-- [ ] 14 Sep: register the project on the hackathon form with the prior-work disclosure; open the
-      `cwf/` branch that day so the history shows where the sprint's work begins
-- [ ] Find the signing physician for deliverable B (a date to close the 17-case audit, and agreement
-      to sign the judged-60 attestation with a key of their own), or drop the attestation from B
+      fields, the revenue answer aligned with DECISIONS.md #1); the student reviewer's profile complete
+- [ ] **File Eternal — planned 15–16 Sep, not yet filed.** Review is first-come-first-served and the
+      team is needed here. Hard gate: **it must be filed before week 2 starts.**
+- [ ] Register the project on the hackathon form with the prior-work disclosure — **was due 14 Sep**.
+      `pitch/CRYPTO_WORLDS_FAIR_PAST_WORK.md` referenced above **has not been written**; not
+      disclosing prior work is disqualification, so this is the single most expensive open item.
+- [x] `cwf-start` tag exists; **`cwf/ward` opened from main 15 Sep** for the mechanic spike.
+- [ ] ~~Find the signing physician for deliverable B~~ — **dropped with B.** The judged 60 carries no
+      signature this sprint and the pages say so in words.
 
 Exit: Eternal is out of our hands, the hackathon project exists with the disclosure on it, and the
-first commit on the sprint branch is dated 14 Sep or later.
+sprint's work sits on `cwf/ward` with dates inside the window.
 
-## Deliverable A — the star gate on chain (weeks 1–2, 14 – 27 Sep)
+## Week 1 — the mechanic exists (to 20 Sep)
 
-- [ ] Program: a station attempt anchors as a leaf; stars are recomputed by the program from proven
-      leaves; the scenario registry carries the prerequisite (`required_stars` / badge predicate)
-- [ ] Client: the episode gate reads on-chain state and nothing else — the client-side gate is
-      deleted, not bypassed
-- [ ] The refusal is the demo: claim stars you did not earn → REJECTED; earn them at a station → the
-      next episode opens because the chain says so
-- [ ] Tag `v0.10.0`; `check.sh demo`-style two-run byte identity on the replay path still holds
-- [ ] osce-a.json carries a stale reviewer attribution in its status string; pinned by 7 leaves;
-      changes with the next rubric version through the archive path, not before
+- [ ] Engine: an attempt can start from a state produced by `resume`, not only from the scenario's
+      start. One tape, one machine, no second code path.
+- [ ] Program on devnet: `Patient` account with a head; commit binds to the head; reveal must extend
+      it or is rejected.
+- [ ] **The head lease**: one instruction takes the head for `runtime_min + 5` minutes (23 max as
+      the content stands); an expired lease is free for anyone; the ward board shows *on shift
+      since*. The stale-head rejection stays as the net underneath it.
+- [ ] One patient chained from two existing cases, played end to end **by two different keys**, the
+      second starting where the first stopped.
+- [ ] Video 1 (20 Sep) — the handover, nothing else.
 
-Exit: no code path outside the program can open an episode, and the refusal and the unlock are both
-recorded on screen from the deployed build.
+Exit: a stranger's shift changes what the next stranger finds, the program refuses a shift that does
+not extend the head, and a second key cannot take the head while the lease stands.
 
-## Deliverable B — the two other roles get a surface (weeks 2–3, 21 Sep – 4 Oct)
+## Week 2 — patient one is public (to 27 Sep)
 
-The three inward roles are the learner, the relying party and the author. The learner has the bay;
-the other two have nothing to look at. Both pages read the chain and `/api/usage` only — no login, no
-database, no number that cannot be recomputed by a stranger.
+- [ ] Patient one released to the world. No signup, no wallet, relay pays.
+- [ ] The ward board: who is on the ward, how long each has been there, who is on shift.
+- [ ] Shift receipt at a QR: the browser re-derives that shift from the tape and the chain, shows
+      the deterministic 40 and the judged 60 as two numbers, and offers **download every tape of
+      this patient** so a stranger can mirror her and check us without asking.
+- [ ] Eternal filed before this week starts — otherwise this week is that instead.
+- [ ] Video 2 (27 Sep).
 
-- [ ] **Relying-party page**: paste a record or a pubkey → the wasm verifier re-derives the level in
-      the browser; the 40 deterministic points and the 60 attested points are shown as two numbers,
-      never one
-- [ ] **Named-clinician attestation**: the judged 60 carries a signing physician's signature (signer
-      not yet identified — founder's decision) at a stated rubric version, replacing the anonymous
-      model's word — RISKS §3 closed the honest way, by naming who vouches
-- [ ] A "request verification" action with a price on it; no payment rail yet, the surface is the
-      deliverable (this is the answer to "how do you make money", on screen)
-- [ ] **Author ledger** `/authors/<wallet>`: per case — plays, proven replays (counted from anchored
-      leaves), accrued at the configured rate, paid with transaction links, platform share by bps.
-      Labelled devnet SOL until mainnet; if `VITALS_PAYOUT_LAMPORTS` is unset the page says "rate not
-      set", it never invents one
+Exit: somebody we have never met has taken a shift, and a second stranger can check what they did
+without asking us anything.
 
-Exit: a stranger with no account can verify a learner and can read what an author earned, and both
-pages agree with the chain to the leaf.
+## Week 3 — it keeps running (to 4 Oct)
 
-## Deliverable C — mainnet-beta, authority in a multisig (week 4, go/no-go 5 Oct)
+- [ ] Patients released continuously; at least one discharge and, if it happens, one death, both
+      with the chart intact.
+- [ ] **Scope freeze** at the end of this week.
+- [ ] Evidence closed: psychometrics on Embla's 671 scored runs published (SEM, and the
+      `investigation_choice` r = 0.150 finding stated as a finding); the funnel on `/api/usage` kept
+      public.
+- [ ] Video 3 (4 Oct).
 
-- [ ] Go only if A is stable on devnet by 4 Oct; otherwise the multisig lands on devnet and mainnet
-      moves to the next sprint
-- [ ] Program deployed to mainnet-beta; upgrade authority transferred to a Squads multisig
-- [ ] Relay funded for the sprint's anchors only; anchoring stays opt-in; devnet kept as the sandbox
-- [ ] Author payouts are **not** switched on for real money — Thai withholding and SEC digital-asset
-      rules are unresolved; the chain is the ledger, the rail can be baht (see DECISIONS.md, UNLOCK.md)
+Exit: the ward has run for a week without us touching it, and the numbers about it are public.
 
-Exit: "devnet by choice" becomes "mainnet, and no single key can upgrade it" — or the plan says
-plainly that it did not, and why.
+## Week 4 — the cut, and the submission (to 12 Oct)
+
+- [ ] Demo: one real patient's life on the ward — the refusal and the handover **before** the happy
+      path.
+- [ ] If there is slack: mainnet + multisig, and a neutral mirror of the tapes. Neither is promised;
+      without them the plan says plainly that devnet was the choice and why.
+- [ ] **Submit 9–10 Oct**, not the 12th.
+- [ ] Video 4 (11 Oct).
+
+Exit: a judge can watch a stranger's mistake survive in a patient's chart, and re-derive it
+themselves from the chain.
 
 ## Evidence, in parallel (not code, still scored)
 
-- [ ] The 17-case clinical audit closed with the reviewer named (or "reviewed by a practising
-      physician" if they decline the name)
-- [ ] Psychometrics on Embla's 671 scored runs published: SEM, and the `investigation_choice`
-      r = 0.150 finding stated as a finding, not hidden
-- [ ] Funnel on `/api/usage` (arrival → play → finish) — already public, keep it so
+- [ ] The 17-case clinical audit — **reviewer not identified since 14 Sep**; publish it as "reviewed
+      by a practising physician" only if one has actually read it, otherwise publish it as our own
+      work and say so. Week 2's video says "under physician review" burned into the picture; that
+      was true when it was burned and it is not repeated anywhere new.
+- [ ] Psychometrics on Embla's 671 scored runs (as of 25 Aug 2026): SEM, and the
+      `investigation_choice` r = 0.150 finding stated as a finding, not hidden.
+- [ ] Funnel on `/api/usage` (arrival → play → finish) — already public, keep it so.
 - [ ] One-minute video each week: 20 Sep · 27 Sep · 4 Oct · 11 Oct, through the existing
-      `docs/internal/video` system
+      `docs/internal/video` system.
 
 ## Calendar
 
 | Week | Dates | Ships |
 |---|---|---|
-| 1 | 14 – 20 Sep | A: program + client reads the gate from chain · video 1 |
-| 2 | 21 – 27 Sep | A done, refusal/unlock on screen · B begun (verify page, clinician signing) · Eternal window closes 26 Sep, already filed · video 2 |
-| 3 | 28 Sep – 4 Oct | B done incl. author ledger · audit + psychometrics closed · **scope freeze** · video 3 |
-| 4 | 5 – 12 Oct | C if go · new technical demo (this sprint's work, refusal before happy path) · pitch reused or re-cut · **submit 9–10 Oct** |
+| 1 | 14 – 20 Sep | resume-from-state · patient head on devnet · two keys, one patient · video 1 |
+| 2 | 21 – 27 Sep | patient one public · ward board · shift receipt (40/60 apart) · Eternal filed before this week · video 2 |
+| 3 | 28 Sep – 4 Oct | continuous releases · a discharge · **scope freeze** · psychometrics + funnel · video 3 |
+| 4 | 5 – 12 Oct | demo cut of a patient's life · mainnet only if slack · **submit 9–10 Oct** · video 4 |
 
 ## Not this sprint
 
-New story episodes, patients in Japanese/Korean/Chinese, any token, compressed anchoring, Bahasa
-localisation. None fits four weeks and none shows on a screen.
+New story episodes, new clinical content of any kind, patients in Japanese/Korean/Chinese, any
+token, compressed anchoring, Bahasa localisation, the Case Registry, author payouts in real money,
+the named-clinician attestation. None fits four weeks and none shows on a screen.
 
 ## The four questions to rehearse
 
-Same four as [COLOSSEUM_FIT.md](COLOSSEUM_FIT.md), plus the two this sprint invites: *"what is new
-since Eternal?"* (A, B, C — and the git history that starts on 14 Sep) and *"why should anyone pay
-for a hash?"* (the relying-party page, with the price on it).
+Same four as [COLOSSEUM_FIT.md](COLOSSEUM_FIT.md), plus the three this sprint invites: *"what is new
+since Eternal?"* (the ward, and the git history that starts at `cwf-start`), *"why does this need a
+chain?"* (because the next stranger must be able to disbelieve us and still arrive at the same
+patient), and *"what stops someone ruining her?"* (nothing — and the record says who did it, which
+is the answer a hospital would recognise).
