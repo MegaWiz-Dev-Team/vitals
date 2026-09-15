@@ -450,3 +450,38 @@ fn every_case_the_ward_can_admit_has_a_difficulty_and_the_board_publishes_it() {
     let d = v["derivations"]["patients"].as_str().expect("derivation");
     assert!(d.contains("difficulty"), "the list says where the level came from: {d}");
 }
+
+/// **Endemic disease is epidemiology, not stereotype**, and the file that says so is checked.
+///
+/// The founder, 15 ก.ย. 23:25: *"ต้องมีโรคหายากประจำประเทศนั้นๆ"* — there must be the diseases that
+/// belong to each country. The pairing rule is unchanged for the common draw: where a patient is
+/// from never selects her disease. What a country may carry is an `endemic` list, and one draw in
+/// five for a patient from that country comes from it. A Thai patient is no more likely to have
+/// chest pain than anyone else; she is more likely than a Norwegian to have dengue, and that is a
+/// fact about mosquitoes.
+///
+/// The list is data, so the test is about the data: it may only name cases the ward can actually
+/// serve. A file naming a case we never converted would put a patient on the board that no shift
+/// could open, and the failure would arrive as a blank screen at a bed.
+#[test]
+fn the_endemic_list_may_only_name_cases_the_ward_can_serve() {
+    use vitals_web::ward::{endemic, CATALOGUE, ENDEMIC_IN};
+
+    assert_eq!(ENDEMIC_IN, 5, "one draw in five, for a country that has a list");
+
+    for (country, cases) in endemic() {
+        assert_eq!(country.len(), 3,
+                   "{country} is not ISO 3166-1 alpha-3, and the globe matches on alpha-3");
+        assert!(country.bytes().all(|b| b.is_ascii_uppercase()), "{country} must be upper case");
+        assert!(!cases.is_empty(),
+                "{country} carries an empty endemic list, which is a country that looks described \
+                 and is not — leave it out instead");
+        for case in cases {
+            assert!(CATALOGUE.contains(&case.as_str()),
+                    "{country} names {case}, which is not in the catalogue — a patient the board \
+                     can show and no shift can open is a blank screen at a bed");
+            assert!(vitals_web::ward::difficulty_of(&case).is_some(),
+                    "{case} has no difficulty, so a player could not choose her by level");
+        }
+    }
+}
