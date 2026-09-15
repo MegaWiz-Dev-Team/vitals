@@ -188,7 +188,20 @@ we authored a new disease course this month.
     ward never runs out). A job on the mini, where Embla, the name lists and the image pipeline
     already live, builds **patient packs** — `{ case (existing, converted, advisor-cleared),
     persona { name from that country's own name list, age inside the case's band, country },
-    portrait (generated, one style) }` — and keeps the ward's queue **at least 20 deep**. Ruling 1
+    portraits keyed by state }` — and keeps the ward's queue **at least 20 deep**.
+
+    **Her picture changes with her state and stays the same person** (founder, 15 ก.ย.). The keys
+    are the engine's own status words and no others — `stable` · `improving` · `deteriorating` ·
+    `critical` · `arrest` · `recovered` — because a key the engine cannot report is a picture
+    claiming a state the chain does not. The board draws the nearest picture **no worse** than the
+    state she is in, which is the bay's own rule for its station stills and is right in both
+    directions: no arrest hung over a patient who is talking to you, and no picture of herself ill
+    in a bed borrowed for a patient who went home. **No picture of a dead patient is ever made**;
+    she is drawn in her last living state and the word beside her says died. Packs arrive with
+    `stable` filled and the rest are made at admission, when a bed has actually opened for her — so
+    a patient who never gets worse never costs a picture of her getting worse — and they come
+    through a second door, `POST /api/ward/pack/<patient_id>`, which **adds keys and never replaces
+    one**: a face the board has shown must not change underneath the strangers treating her. Ruling 1
     is not loosened by this: the factory recombines cases we already have, and what it actually
     manufactures is the person, never the medicine. Transport: an authenticated `POST
     /api/ward/queue` with `VITALS_TOKEN`, **packs only, never keys**, each pack content-addressed
