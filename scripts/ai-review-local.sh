@@ -63,8 +63,11 @@ DIFF:
 
 proj, loc = os.environ["REVIEW_PROJECT"], os.environ["REVIEW_LOCATION"]
 host = "aiplatform.googleapis.com" if loc == "global" else f"{loc}-aiplatform.googleapis.com"
+# gemini-3.1-flash-lite: the same model the product's voice runs on (every revision since 39).
+# Gemini 2.5 Flash leaves public availability on 20 Oct 2026 (Google's retirement notice, Sep 2026);
+# the CI review uses run-gemini-cli and chooses its own model, so this script was the only 2.5.
 url = (f"https://{host}/v1/projects/{proj}/locations/{loc}"
-       f"/publishers/google/models/gemini-2.5-flash:generateContent")
+       f"/publishers/google/models/gemini-3.1-flash-lite:generateContent")
 req = urllib.request.Request(
     url,
     data=json.dumps({"contents": [{"role": "user", "parts": [{"text": prompt}]}]}).encode(),
