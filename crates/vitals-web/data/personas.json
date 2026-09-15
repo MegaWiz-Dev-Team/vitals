@@ -1,0 +1,93 @@
+{
+  "_note": "The people the ward's patients are, by country. Read by vitals-web::ward::persona_pool and by the patient factory on the mini, which pairs one of these with an existing case and picks an age inside that case's own band.",
+  "_rules": [
+    "Invented people. No name here is taken from anyone real, and none is a public figure's.",
+    "Each country carries both sexes, because a case names its patient's sex and a pack must never contradict its own case.",
+    "No ages. The case carries the band; the factory picks inside it.",
+    "Alpha-3 codes only, and only codes the globe's own table can place.",
+    "`local` is the name as it is written at home, where this file is confident of the script. It is what a name looks like to the person who has it; the romanised `name` is what the ward renders.",
+    "Twenty countries is a starting spread, not a claim about where medicine happens. Adding a country is adding three people here."
+  ],
+  "countries": [
+    { "country": "THA", "place": "Thailand", "personas": [
+      { "name": "Ploy Siriwattana", "local": "พลอย ศิริวัฒนา", "sex": "f" },
+      { "name": "Anan Thepwong", "local": "อนันต์ เทพวงศ์", "sex": "m" },
+      { "name": "Kanya Phonsri", "local": "กัญญา ผลศรี", "sex": "f" } ] },
+    { "country": "IDN", "place": "Indonesia", "personas": [
+      { "name": "Siti Rahmawati", "sex": "f" },
+      { "name": "Budi Santoso", "sex": "m" },
+      { "name": "Agus Pratama", "sex": "m" } ] },
+    { "country": "PHL", "place": "Philippines", "personas": [
+      { "name": "Maria Bautista", "sex": "f" },
+      { "name": "Jomar Dela Cruz", "sex": "m" },
+      { "name": "Angeline Reyes", "sex": "f" } ] },
+    { "country": "VNM", "place": "Viet Nam", "personas": [
+      { "name": "Nguyen Thi Lan", "local": "Nguyễn Thị Lan", "sex": "f" },
+      { "name": "Tran Van Minh", "local": "Trần Văn Minh", "sex": "m" },
+      { "name": "Pham Thu Ha", "local": "Phạm Thu Hà", "sex": "f" } ] },
+    { "country": "MYS", "place": "Malaysia", "personas": [
+      { "name": "Nurul Aisyah Rahman", "sex": "f" },
+      { "name": "Tan Wei Ming", "sex": "m" },
+      { "name": "Kavitha Subramaniam", "sex": "f" } ] },
+    { "country": "MMR", "place": "Myanmar", "personas": [
+      { "name": "Aye Aye Myint", "sex": "f" },
+      { "name": "Kyaw Zin Htet", "sex": "m" },
+      { "name": "Thidar Win", "sex": "f" } ] },
+    { "country": "IND", "place": "India", "personas": [
+      { "name": "Priya Nair", "sex": "f" },
+      { "name": "Rahul Deshmukh", "sex": "m" },
+      { "name": "Vikram Sethi", "sex": "m" } ] },
+    { "country": "BGD", "place": "Bangladesh", "personas": [
+      { "name": "Rahima Begum", "sex": "f" },
+      { "name": "Shahidul Islam", "sex": "m" },
+      { "name": "Nusrat Jahan", "sex": "f" } ] },
+    { "country": "NPL", "place": "Nepal", "personas": [
+      { "name": "Sita Gurung", "sex": "f" },
+      { "name": "Bikash Thapa", "sex": "m" },
+      { "name": "Anita Shrestha", "sex": "f" } ] },
+    { "country": "PAK", "place": "Pakistan", "personas": [
+      { "name": "Ayesha Malik", "sex": "f" },
+      { "name": "Imran Qureshi", "sex": "m" },
+      { "name": "Bilal Shah", "sex": "m" } ] },
+    { "country": "JPN", "place": "Japan", "personas": [
+      { "name": "Yuki Tanaka", "local": "田中 由紀", "sex": "f" },
+      { "name": "Haruto Sasaki", "local": "佐々木 陽翔", "sex": "m" },
+      { "name": "Aoi Nakamura", "local": "中村 葵", "sex": "f" } ] },
+    { "country": "KOR", "place": "Korea", "personas": [
+      { "name": "Park Ji-woo", "local": "박지우", "sex": "f" },
+      { "name": "Kim Min-jun", "local": "김민준", "sex": "m" },
+      { "name": "Lee Seo-yeon", "local": "이서연", "sex": "f" } ] },
+    { "country": "CHN", "place": "China", "personas": [
+      { "name": "Li Wen", "local": "李雯", "sex": "f" },
+      { "name": "Zhang Hao", "local": "张浩", "sex": "m" },
+      { "name": "Chen Yue", "local": "陈玥", "sex": "f" } ] },
+    { "country": "NGA", "place": "Nigeria", "personas": [
+      { "name": "Chiamaka Okafor", "sex": "f" },
+      { "name": "Emeka Obi", "sex": "m" },
+      { "name": "Fatima Bello", "sex": "f" } ] },
+    { "country": "KEN", "place": "Kenya", "personas": [
+      { "name": "Wanjiru Kamau", "sex": "f" },
+      { "name": "Otieno Odhiambo", "sex": "m" },
+      { "name": "Amina Hassan", "sex": "f" } ] },
+    { "country": "ETH", "place": "Ethiopia", "personas": [
+      { "name": "Tigist Alemu", "sex": "f" },
+      { "name": "Dawit Bekele", "sex": "m" },
+      { "name": "Hanan Mohammed", "sex": "f" } ] },
+    { "country": "EGY", "place": "Egypt", "personas": [
+      { "name": "Mona Abdelrahman", "local": "منى عبد الرحمن", "sex": "f" },
+      { "name": "Youssef Farouk", "local": "يوسف فاروق", "sex": "m" },
+      { "name": "Salma Gaber", "local": "سلمى جابر", "sex": "f" } ] },
+    { "country": "BRA", "place": "Brazil", "personas": [
+      { "name": "Ana Beatriz Oliveira", "sex": "f" },
+      { "name": "Lucas Ferreira", "sex": "m" },
+      { "name": "Rafael Moreira", "sex": "m" } ] },
+    { "country": "MEX", "place": "Mexico", "personas": [
+      { "name": "Lucia Hernandez", "local": "Lucía Hernández", "sex": "f" },
+      { "name": "Miguel Ramirez", "local": "Miguel Ramírez", "sex": "m" },
+      { "name": "Valeria Ortiz", "sex": "f" } ] },
+    { "country": "USA", "place": "United States", "personas": [
+      { "name": "Danielle Carter", "sex": "f" },
+      { "name": "Marcus Reed", "sex": "m" },
+      { "name": "Emily Novak", "sex": "f" } ] }
+  ]
+}

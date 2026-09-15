@@ -151,6 +151,53 @@ pub fn difficulty_of(case: &str) -> Option<&'static str> {
     })
 }
 
+/// One person the factory can make a patient of.
+///
+/// No age: the case carries the band and the factory picks inside it, so an age here would be one
+/// that contradicts the case it is paired with. `sex` is not decoration either — a case names its
+/// patient's sex, and a pack that disagreed with its own case would put a woman's name on a man's
+/// presentation.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PoolPerson {
+    /// Romanised, and what the ward renders.
+    pub name: String,
+    /// The name as it is written at home, where the file is confident of the script.
+    #[serde(default)]
+    pub local: Option<String>,
+    /// `f` or `m`.
+    pub sex: String,
+}
+
+/// One country's three people.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PoolCountry {
+    /// ISO 3166-1 alpha-3, and only a code the globe can place.
+    pub country: String,
+    /// What the place is called, for a reader of the file rather than for the product.
+    #[serde(default)]
+    pub place: String,
+    pub personas: Vec<PoolPerson>,
+}
+
+/// The people the factory draws from: twenty countries, three each, all invented.
+///
+/// Shipped in the binary so the ward can check a pack against it, and read from the repository by
+/// the factory on the mini, which pairs a person with an existing case and an age from that case's
+/// band. `the_persona_pool_can_actually_fill_the_catalogue` holds the rules that make the pool
+/// usable: both sexes in every country, no repeated names, and no country the globe cannot place.
+///
+/// Twenty is a starting spread and not a claim about where medicine happens. Adding a country is
+/// adding three people to `data/personas.json`.
+pub fn persona_pool() -> Vec<PoolCountry> {
+    #[derive(serde::Deserialize)]
+    struct File {
+        countries: Vec<PoolCountry>,
+    }
+    serde_json::from_str::<File>(include_str!("../data/personas.json"))
+        .map(|f| f.countries)
+        .unwrap_or_default()
+}
+
 /// One draw in five, for a patient from a country that has an endemic list.
 ///
 /// Not a knob: the number says how strongly place shows in the ward without place ever *deciding*
