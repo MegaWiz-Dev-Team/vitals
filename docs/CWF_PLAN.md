@@ -123,8 +123,17 @@ we authored a new disease course this month.
    an ending — she is still on the ward and the next shift continues her, so no video and no page
    ever says "ICU" as a closing.
 4. **Griefing is allowed and named.** Harming her is a scored shift with the harm on the record and
-   the player's key on it. Limits: one shift per key per patient per day, plus a cooldown. Death is
-   permanent for that patient.
+   the player's key on it. Death is permanent for that patient.
+
+   **The per-key limit is withdrawn** (founder, 15 ก.ย. 23:05: *"ไม่จำเป็นต้อง 3 คน ถ้ามีไม่ครบ หมอคนเดิม
+   ก็มารักษาได้ เพราะเรา 1:60"* — it need not be three people; if there are not enough, the same
+   doctor can treat her again, because the clock is slow). No one-shift-per-key-per-day and no
+   cooldown: the same person may take her next shift the moment the last one is anchored. A ward
+   that refused the only stranger who came back would stall with a patient nobody is allowed to
+   finish. What remains is **the lease** — one holder at a time, and the head is given back by
+   anchoring or releasing before anyone, the holder included, takes it again — and **the key named
+   on every shift**. Pinned by `one_person_may_carry_her_all_the_way_home`, which passed the first
+   time it ran: the limit was always plan text and never program code.
 5. **Beds, and the queue behind them** (founder, 15 Sep ~18:20: *"เราจะเติมคนไข้มาเรื่อยๆเลยนะ"* — we
    keep adding patients). The ward has a fixed number of open beds — **three** to start — and a
    release is **automatic**: the moment a patient leaves, by discharge or by death, the next one is
@@ -134,8 +143,9 @@ we authored a new disease course this month.
    more existing cases, never new clinical writing.** The point of automatic release is that the
    ward keeps running while we are asleep, and after 12 Oct.
 
-   **A stay is three cases** (producer, 16 ก.ย., under the founder's go). A patient's chain is
-   three existing cases joined mechanically — acute, observation, ward-to-home — drawn by the same
+   **A stay is three cases** (producer, 16 ก.ย., under the founder's go) — **three cases, not
+   three people: one person may carry her all the way home** (ruling 4). A patient's chain is three
+   existing cases joined mechanically — acute, observation, ward-to-home — drawn by the same
    no-repeat rule, so one patient spans at least three shifts. That is what makes the ward turn
    over slowly: a stranger arriving at noon meets a patient other strangers have already treated
    rather than a fresh admission nobody has touched, and three beds do not eat the catalogue in an

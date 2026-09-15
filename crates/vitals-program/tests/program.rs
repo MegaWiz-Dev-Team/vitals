@@ -1492,3 +1492,81 @@ async fn a_patient_is_a_chain_of_shifts_and_the_ward_refuses_the_rest() {
     assert_eq!(custom(&e), Some(VitalsError::PatientClosed as u32),
                "nobody takes a shift on a patient who has died");
 }
+
+/// **One person may carry her all the way home.**
+///
+/// The founder withdrew the per-key limit on 15 Sep: *"ไม่จำเป็นต้อง 3 คน ถ้ามีไม่ครบ หมอคนเดิมก็มา
+/// รักษาได้ เพราะเรา 1:60"* — it does not have to be three people; if there are not enough, the same
+/// doctor can treat her again, because the clock is slow. A stay is three *cases*, not three
+/// people, and a ward that refused the only stranger who came back would stall with a patient
+/// nobody is allowed to finish.
+///
+/// So the same key takes her twice in a row, with nothing between the two shifts but the anchor
+/// that ended the first. What still holds is the lease — one holder at a time, and the head has to
+/// be given back before anyone, including the holder, takes it again — and the record naming the
+/// key on every shift.
+///
+/// It passed the first time it was run, because the limit was written in the plan and never in the
+/// program. That is worth a test all the same: the rule is now pinned where re-introducing it
+/// breaks a build rather than quietly stalling a ward.
+#[tokio::test]
+async fn one_person_may_carry_her_all_the_way_home() {
+    let pid = Pubkey::new_unique();
+    let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
+    let mut ctx = pt.start_with_context().await;
+    let operator = Keypair::from_bytes(&ctx.payer.to_bytes()).unwrap();
+    let op = operator.pubkey();
+    let a = Keypair::new();
+    let patient_id = 77u64;
+    let pkey = patient_key(&pid, &op, patient_id);
+    let bh = ctx.last_blockhash;
+
+    ctx.banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[ix(pid, op, a.pubkey(), &[acct(&pid, &a.pubkey())], Instruction::OpenAccount)],
+            Some(&op), &[&operator, &a], bh,
+        ))
+        .await
+        .expect("A opens an account");
+    ctx.banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[admit_ix(pid, op, patient_id, [5; 32])],
+            Some(&op), &[&operator], bh,
+        ))
+        .await
+        .expect("admitting a patient");
+
+    let (tree, _, _) = pdas(&pid, &op, &a.pubkey());
+    let mut head = [0u8; 32];
+
+    for scene in 1..=2u8 {
+        let bh = ctx.banks_client.get_new_latest_blockhash(&ctx.last_blockhash).await.unwrap();
+        ctx.banks_client
+            .process_transaction(Transaction::new_signed_with_payer(
+                &[shift_ix(pid, a.pubkey(), op, patient_id, Instruction::TakeShift { patient_id })],
+                Some(&op), &[&operator, &a], bh,
+            ))
+            .await
+            .unwrap_or_else(|e| panic!("A must be able to take shift {scene}: {e:?}"));
+
+        let (c, s) = committed(&mut ctx.banks_client, pid, &operator, &a, bh).await;
+        let mut r = rec(&a.pubkey(), scene, Outcome::NoTerminal, 0, Difficulty::Student);
+        r.commitment = c;
+        r.committed_slot = s;
+        ctx.banks_client
+            .process_transaction(Transaction::new_signed_with_payer(
+                &[ix(pid, op, a.pubkey(), &[acct(&pid, &a.pubkey()), tree, cpda(&pid, &a.pubkey()), pkey],
+                     Instruction::AnchorShift { tree_id: TREE, patient_id, record: wire(&r), prev_head: head })],
+                Some(&op), &[&operator, &a], bh,
+            ))
+            .await
+            .unwrap_or_else(|e| panic!("A must be able to anchor shift {scene}: {e:?}"));
+
+        let p = patient_of(&mut ctx.banks_client, pkey).await;
+        assert_eq!(p.shifts, scene as u32, "shift {scene} must be on her chart");
+        assert_ne!(p.head, head, "and the head must have moved to this shift's leaf");
+        assert_eq!(p.lease_holder, [0; 32],
+                   "anchoring gives the head back — including to the person about to take it again");
+        head = p.head;
+    }
+}
