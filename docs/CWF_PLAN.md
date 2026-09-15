@@ -43,10 +43,11 @@ who and when, and nobody can rewrite it. When the engine reaches a discharge sta
 she dies the record stands and the next patient is released. Patients keep being released through
 the sprint.
 
-What a judge sees in ninety seconds *(the target for the week-4 cut, not a measurement)*: a patient
-who has been alive for six days, treated by eleven strangers in four countries, her chart re-derived
-in the browser from eleven anchored tapes, with one shift on it where somebody made her worse and
-the name of the key that did it still attached.
+What a judge sees in ninety seconds *(the target for the week-4 cut, not a measurement)*: bed after
+bed, not one showcase patient — a woman who has been alive for six days and been treated by eleven
+strangers in four countries, her chart re-derived in the browser from eleven anchored tapes with one
+shift on it where somebody made her worse and the key that did it still attached; and behind her the
+bed that emptied yesterday, already filled.
 
 ## What is already built, and what is actually new
 
@@ -83,9 +84,17 @@ we authored a new disease course this month.
 4. **Griefing is allowed and named.** Harming her is a scored shift with the harm on the record and
    the player's key on it. Limits: one shift per key per patient per day, plus a cooldown. Death is
    permanent for that patient.
-5. **Public worldwide from day one of the mechanic.** Any invitation to Embla's students is the
+5. **Beds, and the queue behind them** (founder, 15 Sep ~18:20: *"เราจะเติมคนไข้มาเรื่อยๆเลยนะ"* — we
+   keep adding patients). The ward has a fixed number of open beds — **three** to start — and a
+   release is **automatic**: the moment a patient leaves, by discharge or by death, the next one is
+   released from the queue with nobody on the team touching anything. The queue is built from the
+   content we already have — the five episodes, the twelve stations, and Embla's catalogue as it is
+   converted — each stay a mechanical chain of existing cases, as ruled above. **A longer queue is
+   more existing cases, never new clinical writing.** The point of automatic release is that the
+   ward keeps running while we are asleep, and after 12 Oct.
+6. **Public worldwide from day one of the mechanic.** Any invitation to Embla's students is the
    founder's to make, and no institution name appears anywhere in the product or the video.
-6. **Everything else stands.** Devnet (mainnet + multisig only if week 4 has slack), no token, no
+7. **Everything else stands.** Devnet (mainnet + multisig only if week 4 has slack), no token, no
    money, the relay never signs as author, the payout allowlist stays empty, lamports are never
    called dollars, the review store is untouched, no physician claim anywhere, every figure carries
    its as-of.
@@ -147,12 +156,14 @@ sprint's work sits on `cwf/ward` with dates inside the window.
 - [ ] Video 1 (20 Sep) — the handover, nothing else.
 
 Exit: a stranger's shift changes what the next stranger finds, the program refuses a shift that does
-not extend the head, and a second key cannot take the head while the lease stands.
+not extend the head, a second key cannot take the head while the lease stands, and a second patient
+is released automatically when the first leaves.
 
 ## Week 2 — patient one is public (to 27 Sep)
 
 - [ ] Patient one released to the world. No signup, no wallet, relay pays.
-- [ ] The ward board: who is on the ward, how long each has been there, who is on shift.
+- [ ] The ward board: who is on the ward, how long each has been there, who is on shift — and the
+      moment an empty bed fills itself, which is the thing to watch.
 - [ ] Shift receipt at a QR: the browser re-derives that shift from the tape and the chain, shows
       the deterministic 40 and the judged 60 as two numbers, and offers **download every tape of
       this patient** so a stranger can mirror her and check us without asking.
@@ -164,8 +175,9 @@ without asking us anything.
 
 ## Week 3 — it keeps running (to 4 Oct)
 
-- [ ] Patients released continuously; at least one discharge and, if it happens, one death, both
-      with the chart intact.
+- [ ] **The automatic release has run unattended for a week** — beds emptied and refilled with
+      nobody on the team touching them — and at least one discharge, and one death if it happens,
+      both with the chart intact.
 - [ ] **Scope freeze** at the end of this week.
 - [ ] Evidence closed: psychometrics on Embla's 671 scored runs published (SEM, and the
       `investigation_choice` r = 0.150 finding stated as a finding); the funnel on `/api/usage` kept
@@ -176,8 +188,8 @@ Exit: the ward has run for a week without us touching it, and the numbers about 
 
 ## Week 4 — the cut, and the submission (to 12 Oct)
 
-- [ ] Demo: one real patient's life on the ward — the refusal and the handover **before** the happy
-      path.
+- [ ] Demo: bed after bed — a real patient's life on the ward and the bed behind her refilling, with
+      the refusal and the handover **before** the happy path.
 - [ ] If there is slack: mainnet + multisig, and a neutral mirror of the tapes. Neither is promised;
       without them the plan says plainly that devnet was the choice and why.
 - [ ] **Submit 9–10 Oct**, not the 12th.
@@ -204,7 +216,7 @@ themselves from the chain.
 |---|---|---|
 | 1 | 14 – 20 Sep | resume-from-state · patient head on devnet · two keys, one patient · video 1 |
 | 2 | 21 – 27 Sep | patient one public · ward board · shift receipt (40/60 apart) · Eternal filed before this week · video 2 |
-| 3 | 28 Sep – 4 Oct | continuous releases · a discharge · **scope freeze** · psychometrics + funnel · video 3 |
+| 3 | 28 Sep – 4 Oct | a week of unattended automatic release · a discharge · **scope freeze** · psychometrics + funnel · video 3 |
 | 4 | 5 – 12 Oct | demo cut of a patient's life · mainnet only if slack · **submit 9–10 Oct** · video 4 |
 
 ## Not this sprint
