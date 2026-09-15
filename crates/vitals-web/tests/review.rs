@@ -250,8 +250,8 @@ fn thai_arrives_as_the_characters_that_were_typed() {
     let s = Server::start();
     let body = serde_json::json!({
         "role": "physician",
-        "name": "นพ.ศิรวิทย์ ตันศิริ",
-        "contact": "sirawit@example.ac.th",
+        "name": "นพ.ตัวอย่าง ทดสอบ",
+        "contact": "physician@example.ac.th",
         "answers": [
             { "id": "p-ecg-stemi", "asked": "ECG ของ STEMI เฉียบพลัน", "said": SAID_ECG },
             { "id": "p2", "asked": "เด็กหญิง 6 ขวบ 20 กก.", "said": SAID_ADRENALINE },
@@ -269,7 +269,7 @@ fn thai_arrives_as_the_characters_that_were_typed() {
     assert_eq!(filed.len(), 1, "one submission, one record");
     let rec = &filed[0].1;
     assert_eq!(rec["role"], "physician");
-    assert_eq!(rec["name"], "นพ.ศิรวิทย์ ตันศิริ");
+    assert_eq!(rec["name"], "นพ.ตัวอย่าง ทดสอบ");
     assert_eq!(rec["answers"][0]["said"], SAID_ECG);
     assert_eq!(rec["answers"][0]["asked"], "ECG ของ STEMI เฉียบพลัน");
     assert_eq!(rec["answers"][1]["said"], SAID_ADRENALINE);
@@ -287,7 +287,7 @@ fn thai_arrives_as_the_characters_that_were_typed() {
     let raw = s.only_record_bytes();
     let text = String::from_utf8(raw).expect("the record on disk is not UTF-8");
     assert!(text.contains(SAID_ECG), "the file does not contain the sentence that was typed");
-    assert!(text.contains("นพ.ศิรวิทย์ ตันศิริ"));
+    assert!(text.contains("นพ.ตัวอย่าง ทดสอบ"));
 
     // The server stamps the time, not the client. Nothing in the body above said when this was.
     assert!(rec["at"].as_u64().unwrap_or(0) > 1_700_000_000, "no server-side timestamp");
@@ -319,7 +319,7 @@ fn the_largest_review_the_form_can_produce_is_taken_whole() {
         })
         .collect();
     let body = serde_json::json!({
-        "role": "physician", "name": "นพ.ศิรวิทย์ ตันศิริ",
+        "role": "physician", "name": "นพ.ตัวอย่าง ทดสอบ",
         "answers": answers, "notes": "ข".repeat(8000),
     })
     .to_string();
@@ -436,7 +436,7 @@ fn agreement_arrives_and_is_not_mistaken_for_silence() {
     let s = Server::start();
     let body = serde_json::json!({
         "role": "physician",
-        "name": "นพ.ศิรวิทย์ ตันศิริ",
+        "name": "นพ.ตัวอย่าง ทดสอบ",
         "answers": [
             // Three confirmed with nothing typed, one confirmed with a note, one left alone.
             { "id": "r-ep2", "asked": "1.1 · ep2 — STEMI, จุดจบที่หัวใจหยุดเต้น",
@@ -576,7 +576,7 @@ fn a_review_never_reaches_the_leaf_or_the_mark_sheet() {
     // A review that is *about this very case*, naming it, filed while the run sits finished.
     let body = serde_json::json!({
         "role": "physician",
-        "name": "นพ.ศิรวิทย์ ตันศิริ",
+        "name": "นพ.ตัวอย่าง ทดสอบ",
         "answers": [{
             "id": "p1", "asked": "เกณฑ์เวลา adrenaline",
             "said": "osce-a ควรเป็น 5 นาทีครับ ส่วน ep1 ที่ 60 วินาทีเข้มไป",
@@ -657,8 +657,8 @@ fn the_hand_filing_script_derives_the_same_key_as_the_server() {
     for role in ["physician", "student"] {
         let body = serde_json::json!({
             "role": role,
-            "name": "นพ.ศิรวิทย์ ตันศิริ",
-            "contact": "LINE: sirawit.t",
+            "name": "นพ.ตัวอย่าง ทดสอบ",
+            "contact": "LINE: example",
             "answers": [{
                 "id": "r-ep2", "asked": "1.1 · ep2 — STEMI, จุดจบที่หัวใจหยุดเต้น",
                 "chose": "asys", "chose_label": "ยืนยัน — asystole", "said": "ตกลงตามนี้ครับ"

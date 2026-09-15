@@ -440,8 +440,8 @@ mod tests {
     fn full() -> serde_json::Value {
         serde_json::json!({
             "role": "physician",
-            "name": "นพ.ศิรวิทย์ ตันศิริ",
-            "contact": "LINE: sirawit.t",
+            "name": "นพ.ตัวอย่าง ทดสอบ",
+            "contact": "LINE: example",
             "anonymous": false,
             "answers": [{
                 "id": "r-ep2", "asked": "1.1 · ep2 — STEMI, จุดจบที่หัวใจหยุดเต้น",
