@@ -239,3 +239,74 @@ fn a_chain_that_cannot_be_read_says_so_and_never_reports_zero() {
     let ok = ward_payload(&[], &[], None, 1, "devnet:ABC");
     assert_eq!(ok["readable"], true, "and a readable chain says that too, so the card can tell them apart");
 }
+
+// ── the idle clock, against the catalogue it will actually run on ──────────
+
+use std::path::PathBuf;
+use vitals_replay::{resume, shift, Step};
+use vitals_web::ward::CATALOGUE;
+
+fn sce_path(id: &str) -> PathBuf {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    if id.starts_with("osce-") {
+        root.join("demo/stations").join(format!("{id}.sce.json"))
+    } else {
+        root.join("demo/scenarios").join(format!("{id}.json"))
+    }
+}
+
+/// Untreated from the start, at the scenario's own grain: when does she arrest?
+fn arrests_at(sce: &str) -> Option<u32> {
+    let (mut st, _) = resume(sce, &[]).expect("scenario loads");
+    let grain = st.tick_seconds();
+    for i in 1..=(4 * 3600) {
+        st.tick(grain);
+        if st.outcome().is_some() {
+            return Some((i as f64 * grain) as u32);
+        }
+    }
+    None
+}
+
+/// **The ward does not kill patients nobody visited.**
+///
+/// The idle clock is what makes an unwatched bed a ward rather than a save file, and the cap is
+/// what keeps it a ward rather than a mortuary: it is set below the fastest untreated arrest in
+/// the catalogue, so a gap — however long — can only ever deteriorate her. Death then happens
+/// only inside a shift, which is what "the record says who did it" has to mean. A key's actions
+/// or inaction during their own shift is the whole claim; a patient dying of a gap nobody chose
+/// would have the harm on nobody's record at all.
+///
+/// This walks every case the ward can admit, because the guarantee is about the catalogue and not
+/// about one case. A new case that arrests faster than the cap fails here, which is the point:
+/// the constant then has to be revisited rather than quietly becoming false.
+#[test]
+fn no_case_in_the_catalogue_dies_of_the_idle_clock_alone() {
+    let mut killed = Vec::new();
+    let mut fastest: Option<(String, u32)> = None;
+
+    for id in CATALOGUE {
+        let p = sce_path(id);
+        let sce = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
+
+        if let Some(t) = arrests_at(&sce) {
+            if fastest.as_ref().is_none_or(|(_, best)| t < *best) {
+                fastest = Some((id.to_string(), t));
+            }
+        }
+
+        // The longest gap the chain can express. The cap is the only thing between it and her.
+        let (mut st, _) = resume(&sce, &[]).expect("scenario loads");
+        shift(&mut st, &[], u64::MAX);
+        if let Some(o) = st.outcome() {
+            killed.push(format!("{id}: {o:?} at {:.0} s", st.t_sec()));
+        }
+    }
+
+    assert!(killed.is_empty(),
+            "the idle clock killed {} of {} catalogue patients with nobody in the room — the cap \
+             has to sit below the fastest untreated arrest ({}), and these died: {}",
+            killed.len(), CATALOGUE.len(),
+            fastest.map(|(id, t)| format!("{id} at {t} s")).unwrap_or_else(|| "none".into()),
+            killed.join(" · "));
+}
