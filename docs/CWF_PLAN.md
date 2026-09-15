@@ -67,6 +67,8 @@ Being exact about this is the difference between a four-week plan and a wish.
 | Time passing while nobody is on shift | **built 16 ก.ย.** — `idle_seconds()` + `pass_idle()` + `shift(.., idle_slots)` in `vitals-replay`, ticked at the scenario's grain and capped below the catalogue's fastest arrest; 8 handover tests and a catalogue walk |
 | A queue of patients that refills itself from outside the ward | **new** — a launchd job on the mini + `POST /api/ward/queue` + Firestore (rulings 10–11) |
 | A board that changes while you are looking at it | **new** — SSE on the ward host (ruling 12) |
+| A front page you spin to find a patient | **built 16 ก.ย.** — the globe, `cwf/globe` merged: reads `/api/ward` every 30 s, links to `/ward/<id>` |
+| The census, public and recomputable | **built 16 ก.ย.** — `/api/ward` off the chain, proven on staging against a devnet patient with two shifts from two keys |
 
 New medicine: none. A stay is a chain of cases we already have (anaphylaxis → observation →
 discharge; STEMI → CCU → ward → home), and the bridges between them are **mechanical state
@@ -208,6 +210,41 @@ we authored a new disease course this month.
     board is live because the ward is, and the patient's body between shifts is what makes that
     more than an animation.
 
+13. **The front page is a globe** (founder, 15 ก.ย. 23:15). You spin it, you find a patient by
+    country, you click her. developer-4d built it on `cwf/globe` and it is merged into `cwf/ward`:
+    a self-contained page — d3-geo, topojson and the 110m atlas inlined, so a judge on a bad
+    connection gets the whole thing in one response and no CDN sits between them and it. It reads
+    `/api/ward` every 30 seconds and links each patient to `/ward/<patient_id>`, which the server
+    answers with what the chain says about her until the bay that plays her exists.
+
+14. **A player chooses how hard a patient is** (founder, 15 ก.ย. 23:25: *"อยากให้มีระดับความยาก
+    เลือกได้"*). Every case carries `student`, `intern` or `resident` — **the same level the bay
+    already publishes for it**, from one table, because a case that was intern in the bay and
+    resident on the ward is two products disagreeing about one patient in front of one learner. The
+    catalogue as it stands is two student, eight intern, six resident, counted off the catalogue in
+    `/api/ward`'s policy rather than written down. Levels one and two are open to anyone; `resident`
+    is the level the star gate **may** fence in week 3, as an option and not a promise. The queue's
+    no-repeat draw is per band, so every band is represented on the ward when beds allow.
+
+15. **Endemic disease, and the line it does not cross** (founder, same exchange: *"ต้องมีโรคหายาก
+    ประจำประเทศนั้นๆ"*). Where a patient is from **never** selects her disease for the common draw.
+    What a country may carry is an `endemic` list, and **one draw in five** for a patient from that
+    country comes from it. Dengue is about mosquitoes, thalassemia about carrier frequency,
+    altitude sickness about altitude — epidemiology, never a claim about people, and that sentence
+    is why this is reviewed data rather than a rule somebody wrote into a draw function.
+
+    The list is `crates/vitals-web/data/endemic.json`, ISO 3166-1 alpha-3 to case ids, **reviewed
+    by the clinical advisor before it ships**, and held by a test to naming only cases the ward can
+    actually serve — a case nobody converted would put a patient on the board that no shift can
+    open. It is **empty today and says so in its own words**: none of the converted sixteen belongs
+    to a place. What Embla already has and this repo has not converted is dengue
+    (`ddx-dengue-fever-1`, `embla-dengue-fever-with-warning-signs-intern`), severe leptospirosis,
+    thalassemia, G6PD acute haemolysis and `ddx-tuberculosis`; malaria exists only as a
+    differential. **Converting those is week-2 work after the factory**, and until one lands the
+    file stays empty rather than pairing a country with a disease it does not have. New endemic
+    cases for countries we lack are Embla authoring plus advisor review — a content track, not this
+    sprint's code.
+
 ## Three rulings that shape the build (producer, 15 Sep)
 
 **The sentence.** *No server can change her past without every browser noticing.* That is the claim,
@@ -305,6 +342,11 @@ released automatically when the first leaves, and **world.vitals.academy answers
       and the census, all moving without a reload.
 - [x] **The idle ratio decided by the founder, 16 ก.ย.: 1:60**, cap two simulated minutes. In
       force and tested (`an_hour_away_costs_her_a_minute`).
+- [ ] **The endemic cases converted** (ruling 15), after the factory: dengue first, then
+      leptospirosis, thalassemia, G6PD and tuberculosis. Until one lands, `endemic.json` stays
+      empty and every draw is uniform.
+- [ ] **The bay at `/ward/<patient_id>`**: today it shows what the chain says about her and says
+      the shift opens this week. Taking the head, playing and anchoring is this week's work.
 - [ ] Eternal filed before this week starts — otherwise this week is that instead.
 - [ ] Video 2 (27 Sep).
 
