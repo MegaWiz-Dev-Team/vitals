@@ -298,6 +298,14 @@ impl SceState {
     pub fn outcome_id(&self) -> Option<&str> { self.outcome_id.as_deref() }
     /// Seconds on the sim clock since the encounter started (was `PhysioState::t_sec`).
     pub fn t_sec(&self) -> f64 { self.t_elapsed }
+    /// The scenario's own clock granularity, in sim-seconds.
+    ///
+    /// [`SceState::tick`] takes whatever `dt` it is handed, and the size of that `dt` changes the
+    /// answer: one state edge is taken per tick and each trigger is evaluated once per tick, so an
+    /// hour delivered as a single tick walks past edges an hour of one-second ticks would have
+    /// taken. Anything advancing the clock on its own — the ward's idle clock between shifts is
+    /// the one that exists — has to step at this size or it is running a second physiology.
+    pub fn tick_seconds(&self) -> f64 { self.sce.tick_seconds }
     /// Read any live variable by name — a vital, a custom hidden axis
     /// (e.g. `"airway_patency"`), or a pseudo-clock. For the HUD/stats.
     pub fn var(&self, name: &str) -> f64 { self.get_var(name) }

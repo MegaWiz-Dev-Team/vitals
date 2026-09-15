@@ -147,7 +147,10 @@ fn the_idle_clock_is_slow_bounded_and_derivable() {
     // a weekend alone is still one hour of simulated time
     let three_days = (3.0 * 24.0 * 3600.0 / SLOT_SECONDS) as u64;
     assert_eq!(idle_seconds(three_days), IDLE_CAP_SIM_SECONDS,
-               "the cap is what stops an unvisited patient dying of arithmetic rather than disease");
+               "a long weekend alone must leave her where one unattended night leaves her — the cap \
+                bounds the gap, so nothing about an abandoned patient depends on how long we were \
+                away past the first ten hours. It does not bound her mortality: at an hour of \
+                untreated time, fourteen of the sixteen catalogue cases are dead");
     assert_eq!(IDLE_CAP_SIM_SECONDS, 3600.0);
 }
 

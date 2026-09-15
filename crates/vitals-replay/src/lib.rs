@@ -118,9 +118,17 @@ pub const IDLE_SIM_PER_REAL: f64 = 0.1;
 
 /// The most simulated time one gap may add: one simulated hour, however long the real gap was.
 ///
-/// Without a cap, a patient nobody visited over a weekend would arrive at her next shift already
-/// dead of arithmetic rather than of her disease, and the next stranger would open a chart with
-/// nothing in it to treat. The cap is what keeps an abandoned patient a patient.
+/// The cap bounds the arithmetic, not the mortality, and the difference is worth being exact
+/// about because it is the founder's decision to make. Measured on the catalogue as it stands on
+/// 16 ก.ย., untreated from t=0 and ticked at the scenario's own grain: fourteen of the sixteen
+/// cases arrest between minute 3 and minute 14, and only `osce-b2` (pericarditis) and `osce-c`
+/// (croup) are still alive at four simulated hours. So a gap that reaches this cap is a death for
+/// almost every patient on the ward, and at the ratio above a gap reaches the cap after ten real
+/// hours — one unattended night.
+///
+/// What the cap does buy is that the gap never grows without limit: a patient abandoned over a
+/// long weekend is in the same state as one abandoned overnight, so nothing about her depends on
+/// how long we were away beyond the first ten hours.
 pub const IDLE_CAP_SIM_SECONDS: f64 = 3600.0;
 
 /// Simulated seconds to advance for a gap of `slots` between two shifts.
@@ -154,9 +162,19 @@ pub fn shift(st: &mut SceState, tape: &[Step], idle_slots: u64) -> Replay {
     // anchored shift and this one, so it is not ours to choose at play time — and it is applied
     // here, as the first thing, because a stranger's first action must land on the patient they
     // are actually looking at.
-    let idle = idle_seconds(idle_slots);
-    if idle > 0.0 {
-        st.tick(idle);
+    //
+    // At the scenario's own grain, never in one jump. The engine takes one state edge per tick and
+    // evaluates each trigger once per tick, so an hour handed over as a single `tick(3600.0)`
+    // walks straight past the arrest an hour of one-second ticks runs into: ep1 comes out of the
+    // coarse version with a systolic of 0, a saturation of 0 and no outcome at all. That would be
+    // a second physiology, one for time somebody watched and one for time nobody did, and the
+    // whole chart rests on there being only one.
+    let grain = st.tick_seconds().max(f64::MIN_POSITIVE);
+    let mut left = idle_seconds(idle_slots);
+    while left > 0.0 {
+        let dt = grain.min(left);
+        st.tick(dt);
+        left -= dt;
     }
     step_through(st, tape)
 }
