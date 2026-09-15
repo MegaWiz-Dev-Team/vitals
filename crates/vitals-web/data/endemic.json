@@ -1,0 +1,7 @@
+{
+  "_note": "Diseases that belong to a place, by ISO 3166-1 alpha-3. Read by vitals-web::ward::endemic and held to the catalogue by a test: a case named here must be one the ward can serve.",
+  "_rule": "Where a patient is from never selects her disease for the common draw. A country with a list here contributes one draw in five for patients from it. That is epidemiology — mosquitoes, altitude, water, carrier frequency — and never a claim about people.",
+  "_review": "Clinical advisor reviews this file before it ships. No new clinical writing happens here: a case has to exist in the converted catalogue before its id can appear.",
+  "_today": "Empty, and honestly so. The converted sixteen are anaphylaxis, cardiac, airway, respiratory, GI bleed, PE and septic shock — none of them belongs to a place. The endemic cases Embla already has and this repo has not converted are dengue (ddx-dengue-fever-1, embla-dengue-fever-with-warning-signs-intern), severe leptospirosis, thalassemia, G6PD acute haemolysis and ddx-tuberculosis; malaria exists only as a differential. Converting those is week-2 work after the factory, and until one lands this file stays empty rather than pairing a country with a disease it does not have.",
+  "endemic": {}
+}

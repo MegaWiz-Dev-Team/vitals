@@ -134,6 +134,38 @@ pub fn difficulty_of(case: &str) -> Option<&'static str> {
     })
 }
 
+/// One draw in five, for a patient from a country that has an endemic list.
+///
+/// Not a knob: the number says how strongly place shows in the ward without place ever *deciding*
+/// what somebody has. Four draws in five are the ordinary uniform draw, in which origin plays no
+/// part at all.
+pub const ENDEMIC_IN: u32 = 5;
+
+/// The endemic lists, by ISO 3166-1 alpha-3.
+///
+/// **What this is, and what it is not.** Where a patient is from never selects her disease for the
+/// common draw. A country with a list here contributes one draw in [`ENDEMIC_IN`] for patients
+/// from it — because dengue is about mosquitoes, thalassemia about carrier frequency and altitude
+/// sickness about altitude. None of that is a claim about people, and the difference is why this
+/// is reviewed data rather than a rule somebody wrote into a draw function.
+///
+/// Held to the catalogue by `the_endemic_list_may_only_name_cases_the_ward_can_serve`: a case
+/// named here that the ward cannot serve would be a patient the board shows and no shift can open.
+///
+/// Empty today, and the file says why in its own words.
+pub fn endemic() -> std::collections::BTreeMap<String, Vec<String>> {
+    #[derive(serde::Deserialize)]
+    struct File {
+        endemic: std::collections::BTreeMap<String, Vec<String>>,
+    }
+    serde_json::from_str::<File>(include_str!("../data/endemic.json"))
+        .map(|f| f.endemic)
+        // Baked into the binary by `include_str!`, so a parse failure is a build somebody shipped
+        // broken rather than a file that went missing at runtime — and an empty map is the safe
+        // shape: the ward draws uniformly, which is what it does for every country without a list.
+        .unwrap_or_default()
+}
+
 /// The six numbers, in the order the card shows them.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Census {
@@ -374,6 +406,20 @@ fn policy() -> serde_json::Value {
                          ends in is the state the next begins from — so one patient spans at \
                          least {STAY_CASES} shifts and no case is authored for the ward"),
         "catalogue": CATALOGUE,
+        // Counted off the catalogue rather than written down, so a case added without a level
+        // cannot quietly shrink a band the panel is still offering.
+        "difficulty": serde_json::json!({
+            "student": CATALOGUE.iter().filter(|c| difficulty_of(c) == Some("student")).count(),
+            "intern": CATALOGUE.iter().filter(|c| difficulty_of(c) == Some("intern")).count(),
+            "resident": CATALOGUE.iter().filter(|c| difficulty_of(c) == Some("resident")).count(),
+        }),
+        "endemic": format!(
+            "where a patient is from never selects her disease. A country with an endemic list \
+             contributes one draw in {ENDEMIC_IN} for patients from it — dengue is about \
+             mosquitoes and thalassemia about carrier frequency, which is epidemiology and not a \
+             claim about people. The list is reviewed data and may only name cases the ward can \
+             serve"),
+        "countries_with_an_endemic_list": endemic().len(),
     })
 }
 
