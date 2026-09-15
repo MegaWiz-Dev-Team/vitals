@@ -403,3 +403,46 @@ fn the_board_lists_the_patients_and_where_they_are_from() {
     let d = v["derivations"]["patients"].as_str().expect("the list says where it came from");
     assert!(d.contains("pack"), "and says the persona is not on chain: {d}");
 }
+
+/// **A player chooses a patient by how hard she is**, so the ward has to know.
+///
+/// The founder, 15 ก.ย. 23:25: *"อยากให้มีระดับความยาก เลือกได้"* — there should be a difficulty, and
+/// you can choose. Embla's catalogue carries one on every case; this ward's sixteen carry theirs in
+/// `difficulty_of`, taken from the tiers the station sets and the episode list already use, so the
+/// ward and the bay cannot disagree about how hard a case is.
+///
+/// Levels one and two are open to anyone. `resident` is the level the star gate may fence later
+/// (week 3, an option and not a promise), and nothing here gates anything today.
+#[test]
+fn every_case_the_ward_can_admit_has_a_difficulty_and_the_board_publishes_it() {
+    use std::collections::BTreeMap;
+    use vitals_web::ward::{difficulty_of, Pack, Persona, CATALOGUE};
+
+    for case in CATALOGUE {
+        let d = difficulty_of(case)
+            .unwrap_or_else(|| panic!("{case} is in the catalogue with no difficulty — a patient \
+                                       nobody can choose by level is a patient the panel cannot \
+                                       show, and the gap is silent"));
+        assert!(matches!(d, "student" | "intern" | "resident"),
+                "{case} carries {d}, which is not one of Embla's three levels");
+    }
+
+    let patients = vec![patient(7, OPEN, 2, 10, 0), patient(8, OPEN, 0, 20, 0)];
+    let mut packs = BTreeMap::new();
+    packs.insert(7u64, Pack {
+        case: "ep2-stemi".into(),
+        persona: Persona { name: "Ploy".into(), country: "THA".into() },
+        portrait: None,
+    });
+
+    let v = ward_payload(&patients, &[], &packs, None, 1234, "devnet:ABC");
+    let list = v["patients"].as_array().expect("patients");
+    assert_eq!(list[0]["case"], "ep2-stemi", "the board says which case she is");
+    assert_eq!(list[0]["difficulty"], "intern", "at the level the bay already gives that case");
+    assert!(list[1]["difficulty"].is_null(),
+            "and a patient no pack describes yet has no case, so she has no level either — \
+             guessing one would put her in a band a player chose against");
+
+    let d = v["derivations"]["patients"].as_str().expect("derivation");
+    assert!(d.contains("difficulty"), "the list says where the level came from: {d}");
+}
