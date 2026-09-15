@@ -96,6 +96,18 @@ we authored a new disease course this month.
    converted — each stay a mechanical chain of existing cases, as ruled above. **A longer queue is
    more existing cases, never new clinical writing.** The point of automatic release is that the
    ward keeps running while we are asleep, and after 12 Oct.
+
+   **The rate is published, not promised.** A bed frees on discharge or death and on nothing else,
+   so admissions per day is *as many as leave* — a consequence of how the ward is played rather
+   than a number we choose, and readable off the census by anyone. Cases are drawn uniformly from
+   the catalogue, skipping any case already in a bed, so no two beds hold the same disease at once.
+   The catalogue today is **sixteen**: `ep2-stemi` · `ep3-epiglottitis` · `ep4-pulmonary-embolism`
+   · `ep5-the-night-the-stars-fell` · the twelve stations `osce-a` (anaphylaxis), `osce-a2`
+   (anaphylaxis), `osce-b` (NSTEMI/STEMI), `osce-b2` (pericarditis), `osce-b3` (croup), `osce-c`
+   (croup), `osce-c2` (asthma), `osce-c3` (pneumonia), `osce-d` (upper GI bleed), `osce-d2`
+   (pulmonary embolism), `osce-d3` (paediatric anaphylaxis), `osce-d4` (septic shock). `ep1` is the
+   practice case and never becomes a patient. `/api/ward` carries all of this in a `policy` field,
+   so a stranger reads the rule rather than taking our word for the rate.
 6. **Public worldwide from day one of the mechanic.** Any invitation to Embla's students is the
    founder's to make, and no institution name appears anywhere in the product or the video.
 7. **The ward is its own program, and Eternal's is never upgraded.** The ward runs on its own
