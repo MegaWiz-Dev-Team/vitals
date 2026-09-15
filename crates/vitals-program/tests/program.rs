@@ -1538,9 +1538,16 @@ async fn one_person_may_carry_her_all_the_way_home() {
 
     let (tree, _, _) = pdas(&pid, &op, &a.pubkey());
     let mut head = [0u8; 32];
+    // Carried across the loop, not re-derived from `ctx.last_blockhash` each time. Both shifts
+    // commit the same hash from the same key, so with the same blockhash the second commitment
+    // transaction is byte-identical to the first — the bank sees a signature it has already
+    // processed, does nothing, and the commitment account still holds the spent one. The test then
+    // fails at "the chain recorded a different commitment", which reads like a program bug and is
+    // a test that asked the same question twice.
+    let mut bh = bh;
 
     for scene in 1..=2u8 {
-        let bh = ctx.banks_client.get_new_latest_blockhash(&ctx.last_blockhash).await.unwrap();
+        bh = ctx.banks_client.get_new_latest_blockhash(&bh).await.unwrap();
         ctx.banks_client
             .process_transaction(Transaction::new_signed_with_payer(
                 &[shift_ix(pid, a.pubkey(), op, patient_id, Instruction::TakeShift { patient_id })],
