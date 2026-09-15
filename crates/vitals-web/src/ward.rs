@@ -30,6 +30,15 @@ pub const CATALOGUE: [&str; 16] = [
     "osce-c2", "osce-c3", "osce-d", "osce-d2", "osce-d3", "osce-d4",
 ];
 
+/// How many cases one patient's stay is made of.
+///
+/// A stay is a chain of cases that already exist, joined mechanically: an acute presentation, then
+/// observation, then the ward and home (CWF_PLAN.md ruling 1 — the joins are state handoff, never
+/// new clinical writing). Three is the founder's turnover rather than a clinical claim: it means
+/// one patient spans at least three shifts, so a stranger arriving at noon meets a patient other
+/// strangers have already treated, and three beds do not eat the catalogue in an afternoon.
+pub const STAY_CASES: usize = 3;
+
 pub const OPEN: u8 = 0;
 pub const DISCHARGED: u8 = 1;
 pub const DIED: u8 = 2;
@@ -248,6 +257,9 @@ fn policy() -> serde_json::Value {
                                played rather than a number we choose. Read it off the census.",
         "draw": "uniformly from the catalogue, skipping any case already on the ward, so no \
                  two beds hold the same case at once",
+        "stay": format!("a stay is {STAY_CASES} cases, joined mechanically — the state one case \
+                         ends in is the state the next begins from — so one patient spans at \
+                         least {STAY_CASES} shifts and no case is authored for the ward"),
         "catalogue": CATALOGUE,
     })
 }
