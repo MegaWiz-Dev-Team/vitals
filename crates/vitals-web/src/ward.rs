@@ -169,8 +169,10 @@ pub fn ward_payload(
             "went_home": "patient accounts whose state is discharged, counted by closed_slot",
             "died": "patient accounts whose state is died, counted by closed_slot",
             "shifts": "anchored leaves, one per shift",
-            "keys": "distinct signers of those leaves — keys, not humans: there is no signup, so \
-                     one holder may have several and a shared machine may be many behind one",
+            "keys": "distinct signers of AnchorShift transactions on the ward's patient accounts, \
+                     read from transaction history and cached; repeatable with \
+                     getSignaturesForAddress. Keys, not humans: there is no signup, so one holder \
+                     may have several and a shared machine may be many behind one",
         },
     })
 }
