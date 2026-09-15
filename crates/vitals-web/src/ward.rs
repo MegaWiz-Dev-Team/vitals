@@ -67,6 +67,32 @@ pub struct ShiftOnChain {
     pub slot: u64,
 }
 
+/// Who the patient is, as opposed to what is wrong with her.
+///
+/// The chain holds her chart and never her name: a patient account carries the scenario she was
+/// admitted with, her head, her shifts and her state, and nothing a person is called. The persona
+/// comes from the pack the factory queued (CWF_PLAN.md ruling 10) and is joined to the chain by
+/// patient id at read time — which is why every entry that uses it says so, and why a patient the
+/// factory has not described yet is published with a null name rather than an invented one.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Persona {
+    pub name: String,
+    /// ISO 3166-1 alpha-3 — `THA`, `IDN`, `NGA`. The globe matches on this, and a country written
+    /// freely is a country nobody can match: "Thailand", "ไทย" and "TH" are three countries to a
+    /// renderer and one to a reader.
+    pub country: String,
+}
+
+impl Persona {
+    /// Is the country a shape the globe can match? Three letters, upper case, and nothing else.
+    ///
+    /// Checked where a pack arrives rather than where it is displayed: a bad country that reaches
+    /// the board is a patient nobody can find on a globe, and by then nothing says why.
+    pub fn country_is_alpha3(&self) -> bool {
+        self.country.len() == 3 && self.country.bytes().all(|b| b.is_ascii_uppercase())
+    }
+}
+
 /// The six numbers, in the order the card shows them.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Census {
@@ -137,6 +163,7 @@ pub fn to_admit(open: usize, beds: usize, queue: usize) -> usize {
 pub fn ward_payload(
     patients: &[PatientOnChain],
     shifts: &[ShiftOnChain],
+    personas: &std::collections::BTreeMap<u64, Persona>,
     since: Option<u64>,
     as_of_slot: u64,
     source: &str,
@@ -156,11 +183,30 @@ pub fn ward_payload(
         Some(s) => serde_json::json!(s),
         None => serde_json::Value::Null,
     };
+    let board: Vec<serde_json::Value> = patients
+        .iter()
+        .map(|p| {
+            let who = personas.get(&p.patient_id);
+            serde_json::json!({
+                "patient_id": p.patient_id,
+                // A word, because the board is what reads this. A renderer switching on 0, 1 and 2
+                // would have to know the program's byte layout to draw a ward.
+                "state": state_word(p.state),
+                "shifts": p.shifts,
+                "admitted_slot": p.admitted_slot,
+                "closed_slot": (p.closed_slot > 0).then_some(p.closed_slot),
+                "name": who.map(|w| w.name.clone()),
+                "country": who.map(|w| w.country.clone()),
+            })
+        })
+        .collect();
+
     serde_json::json!({
         "as_of_slot": as_of_slot,
         "source": source,
         "cumulative": six(&all),
         "week": w,
+        "patients": board,
         "readable": true,
         "policy": policy(),
         "derivations": {
@@ -169,6 +215,10 @@ pub fn ward_payload(
             "went_home": "patient accounts whose state is discharged, counted by closed_slot",
             "died": "patient accounts whose state is died, counted by closed_slot",
             "shifts": "anchored leaves, one per shift",
+            "patients": "one entry per patient account on chain — id, state, shifts and slots \
+                         read from the account. Her name and her country are not on chain at \
+                         all: they come from the pack that was queued for her, joined by patient \
+                         id, and are null for a patient no pack describes yet",
             "keys": "distinct signers of AnchorShift transactions on the ward's patient accounts, \
                      read from transaction history and cached; repeatable with \
                      getSignaturesForAddress. Keys, not humans: there is no signup, so one holder \
@@ -248,6 +298,20 @@ impl Queue {
     }
 }
 
+
+/// The program's state byte as the word the board renders.
+///
+/// `unknown` rather than a panic or a guess: a byte this build does not know means the program
+/// moved ahead of the server, and the honest answer to a reader is that we do not know what she
+/// is, not a state we picked.
+fn state_word(state: u8) -> &'static str {
+    match state {
+        OPEN => "open",
+        DISCHARGED => "went_home",
+        DIED => "died",
+        _ => "unknown",
+    }
+}
 
 /// The policy, on its own — true whether or not the chain can be reached.
 fn policy() -> serde_json::Value {

@@ -396,7 +396,14 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
         shifts.extend(seen.shifts());
     }
 
-    crate::ward::ward_payload(&patients, &shifts, Some(as_of.saturating_sub(WEEK_SLOTS)), as_of, chain.source())
+    crate::ward::ward_payload(
+        &patients,
+        &shifts,
+        &personas(store),
+        Some(as_of.saturating_sub(WEEK_SLOTS)),
+        as_of,
+        chain.source(),
+    )
 }
 
 // ── the shift flow ──────────────────────────────────────────────────────────
@@ -616,4 +623,20 @@ impl WardChain {
         let tx = Transaction::new_signed_with_payer(&[ix], Some(&relay.pubkey()), &[relay], blockhash);
         self.submit(&tx)
     }
+}
+
+/// Where a patient's pack lives once the factory has queued her.
+pub const PERSONA_STORE: &str = "ward_persona";
+
+/// The personas the ward knows about, by patient id.
+///
+/// Empty until the factory has run, and empty is a working ward: every entry on the board is
+/// published with a null name and a null country rather than withheld, because a patient whose
+/// pack has not arrived is still a patient somebody can treat.
+pub fn personas(store: &crate::store::Store) -> std::collections::BTreeMap<u64, crate::ward::Persona> {
+    store
+        .list::<crate::ward::Persona>(PERSONA_STORE)
+        .into_iter()
+        .filter_map(|(k, v)| k.trim_start_matches('p').parse::<u64>().ok().map(|id| (id, v)))
+        .collect()
 }

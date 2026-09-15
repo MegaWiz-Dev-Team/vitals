@@ -17,6 +17,12 @@ fn patient(id: u64, state: u8, shifts: u32, admitted: u64, closed: u64) -> Patie
     PatientOnChain { patient_id: id, state, shifts, admitted_slot: admitted, closed_slot: closed }
 }
 
+/// No pack has been queued for anyone — the state every test but one is written against, and the
+/// state a dev deploy is in before the factory runs.
+fn nobody() -> std::collections::BTreeMap<u64, vitals_web::ward::Persona> {
+    std::collections::BTreeMap::new()
+}
+
 fn shift_by(patient_id: u64, signer: u8, slot: u64) -> ShiftOnChain {
     ShiftOnChain { patient_id, signer: [signer; 32], slot }
 }
@@ -109,7 +115,7 @@ fn every_number_travels_with_where_it_came_from() {
     ];
     let shifts = vec![shift_by(1, 0xA1, 11), shift_by(1, 0xB2, 80), shift_by(2, 0xA1, 35)];
 
-    let v = ward_payload(&patients, &shifts, Some(20), 1234, "devnet:ABC");
+    let v = ward_payload(&patients, &shifts, &nobody(), Some(20), 1234, "devnet:ABC");
 
     // the six, cumulative and for the window, under names a stranger can read
     for k in ["admitted", "on_ward", "went_home", "died", "shifts", "keys"] {
@@ -147,7 +153,7 @@ fn every_number_travels_with_where_it_came_from() {
 
 #[test]
 fn the_payload_of_an_empty_ward_is_zeroes_and_still_carries_its_derivations() {
-    let v = ward_payload(&[], &[], None, 7, "devnet:ABC");
+    let v = ward_payload(&[], &[], &nobody(), None, 7, "devnet:ABC");
     assert_eq!(v["cumulative"]["shifts"], 0);
     assert_eq!(v["week"]["since_slot"], serde_json::Value::Null, "no window asked for, none claimed");
     assert!(v["derivations"]["keys"].is_string(), "an empty ward still says how it would have counted");
@@ -213,7 +219,7 @@ fn the_queue_never_invents_a_case() {
 /// instead of taking a promise from us.
 #[test]
 fn the_release_policy_is_published_and_promises_no_rate() {
-    let v = ward_payload(&[], &[], None, 1, "devnet:ABC");
+    let v = ward_payload(&[], &[], &nobody(), None, 1, "devnet:ABC");
     let p = &v["policy"];
 
     assert_eq!(p["beds"], 3);
@@ -248,7 +254,7 @@ fn a_chain_that_cannot_be_read_says_so_and_never_reports_zero() {
             "no numbers at all — a zero here would be read out as 'nobody came'");
     assert!(v["policy"].is_object(), "the rule is still true when the chain is unreachable");
 
-    let ok = ward_payload(&[], &[], None, 1, "devnet:ABC");
+    let ok = ward_payload(&[], &[], &nobody(), None, 1, "devnet:ABC");
     assert_eq!(ok["readable"], true, "and a readable chain says that too, so the card can tell them apart");
 }
 
@@ -348,7 +354,7 @@ fn a_stay_is_three_cases_and_the_policy_publishes_it() {
     assert_eq!(shifts, STAY_CASES,
                "three cases is three handovers' worth of patient, which is the point of the rule");
 
-    let live = ward_payload(&[], &[], None, 1, "devnet:ABC");
+    let live = ward_payload(&[], &[], &nobody(), None, 1, "devnet:ABC");
     let stay_rule = live["policy"]["stay"].as_str().expect("the policy must publish the stay length");
     assert!(stay_rule.contains('3'), "it says three, in digits a reader can check: {stay_rule}");
 
