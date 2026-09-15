@@ -432,6 +432,20 @@ impl Queue {
 }
 
 
+/// The patient id in `/ward/<id>`, or `None` if that is not what this path is.
+///
+/// Strict on purpose. The id is derived into a patient account and then rendered into a page, so
+/// the only thing accepted is exactly one segment of decimal digits that fits a `u64`: no trailing
+/// segment, no query, no sign, no hex, no space. Every rejected shape above is a path that would
+/// otherwise open a different bed than the one somebody clicked on.
+pub fn patient_id_in_path(path: &str) -> Option<u64> {
+    let rest = path.strip_prefix("/ward/")?;
+    if rest.is_empty() || !rest.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    rest.parse().ok()
+}
+
 /// The program's state byte as the word the board renders.
 ///
 /// `unknown` rather than a panic or a guess: a byte this build does not know means the program
