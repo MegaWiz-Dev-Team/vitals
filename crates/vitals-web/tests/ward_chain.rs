@@ -13,7 +13,7 @@
 //! The RPC calls themselves are proven on devnet by `ward_proof`. These are the parts that must
 //! hold before the wire is ever touched.
 
-use borsh::BorshSerialize;
+use borsh::{BorshDeserialize, BorshSerialize};
 use solana_sdk::pubkey::Pubkey;
 use vitals_program::{Instruction, PatientAccount, RecordWire, PATIENT_DIED, PATIENT_OPEN};
 use vitals_web::ward::{ShiftOnChain, DIED, OPEN};
@@ -142,4 +142,72 @@ fn the_cache_reads_only_what_is_new_and_counts_no_shift_twice() {
     let back: Seen = serde_json::from_str(&json).expect("and comes back");
     assert_eq!(back.shifts().len(), 5);
     assert_eq!(back.until().as_deref(), Some("sig5"));
+}
+
+// ── the shift flow, as two instructions ────────────────────────────────────
+
+use vitals_web::ward_chain::{anchor_shift_ix, take_shift_ix};
+
+/// Taking the head is a lease, and it is the player's own hand that takes it.
+///
+/// The relay pays for the transaction — that is what makes the ward need no wallet — but it must
+/// not be able to take a shift on somebody's behalf, or "the record says who" is a record of who
+/// we said. So the player signs, and the relay's key appears nowhere in this instruction.
+#[test]
+fn taking_the_head_is_signed_by_the_player_and_names_only_what_it_touches() {
+    let program = Pubkey::new_unique();
+    let player = Pubkey::new_unique();
+    let operator = Pubkey::new_unique();
+
+    let ix = take_shift_ix(&program, &operator, &player, 42);
+
+    assert_eq!(ix.program_id, program);
+    match Instruction::deserialize(&mut &ix.data[..]).expect("decodes") {
+        Instruction::TakeShift { patient_id } => assert_eq!(patient_id, 42),
+        other => panic!("taking the head must be TakeShift, not {other:?}"),
+    }
+
+    assert_eq!(ix.accounts.len(), 3, "player, their account, the patient — and nothing else");
+    assert_eq!(ix.accounts[0].pubkey, player);
+    assert!(ix.accounts[0].is_signer, "the lease is taken by the hand that will do the work");
+    assert!(!ix.accounts[1].is_writable, "reading who they are must not be able to change it");
+    assert!(ix.accounts[2].is_writable, "the patient is what the lease is written on");
+    assert!(!ix.accounts.iter().any(|a| a.pubkey == operator),
+            "the relay pays for this transaction and takes no part in it — a relay that could \
+             take a shift could take one in somebody's name");
+}
+
+/// Anchoring is the one place both keys appear, and each has exactly one job.
+#[test]
+fn anchoring_a_shift_is_paid_by_the_relay_and_played_by_the_player() {
+    let program = Pubkey::new_unique();
+    let operator = Pubkey::new_unique();
+    let player = Pubkey::new_unique();
+    let head = [7u8; 32];
+
+    let ix = anchor_shift_ix(&program, &operator, &player, 42, 1, a_record(), head);
+
+    match Instruction::deserialize(&mut &ix.data[..]).expect("decodes") {
+        Instruction::AnchorShift { tree_id, patient_id, prev_head, .. } => {
+            assert_eq!((tree_id, patient_id), (1, 42));
+            assert_eq!(prev_head, head,
+                       "the shift names the head it believes it is extending — that claim is what \
+                        the program refuses when it is wrong");
+        }
+        other => panic!("anchoring must be AnchorShift, not {other:?}"),
+    }
+
+    assert_eq!(ix.accounts.len(), 7, "the program's own seven, in its own order");
+    assert_eq!(ix.accounts[0].pubkey, operator, "the relay pays, and rent comes out of it");
+    assert!(ix.accounts[0].is_signer);
+    assert_eq!(ix.accounts[1].pubkey, player, "and the player signs for the work");
+    assert!(ix.accounts[1].is_signer);
+    assert!(!ix.accounts[1].is_writable, "signing is not spending: nothing debits the player");
+
+    // The same reading `shift_in` does, on the instruction we just built. If these two ever
+    // disagree the census credits the wrong key, and nothing anywhere would say so.
+    let keys: Vec<Pubkey> = ix.accounts.iter().map(|a| a.pubkey).collect();
+    let seen = shift_in(&program, &program, &ix.data, &keys, 99).expect("a shift, read back");
+    assert_eq!(seen.signer, player.to_bytes());
+    assert_eq!(seen.patient_id, 42);
 }
