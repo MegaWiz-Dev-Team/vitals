@@ -208,3 +208,28 @@ fn idle_time_passes_the_way_time_on_shift_passes() {
                 — it no longer does, so the engine changed and the test must be rewritten, not \
                 deleted");
 }
+
+/// The ratio, as the founder set it: **one simulated minute per sixty real ones** (16 ก.ย.).
+///
+/// Slower than the first setting by six times, and the reason is the ward rather than the
+/// physiology: a patient who drifts slowly is a patient several strangers can still meet, and the
+/// ward turns its beds over slowly enough that the queue is not eaten by time passing. The cap is
+/// unchanged, so it is now reached after **two real hours** rather than twenty real minutes.
+///
+/// Pinned as two numbers a stranger can check with a calculator, because this is the constant most
+/// likely to be moved again and the plan quotes these exact figures.
+#[test]
+fn an_hour_away_costs_her_a_minute() {
+    let one_real_hour = (3600.0 / SLOT_SECONDS) as u64;
+    assert!((idle_seconds(one_real_hour) - 60.0).abs() < 1e-6,
+            "sixty real minutes must advance her exactly sixty simulated seconds, and this is \
+             1:60 written where a reader can divide it themselves");
+
+    let ten_real_hours = (10.0 * 3600.0 / SLOT_SECONDS) as u64;
+    assert_eq!(idle_seconds(ten_real_hours), IDLE_CAP_SIM_SECONDS,
+               "and ten hours away is the cap, which is two simulated minutes");
+
+    let two_real_hours = (2.0 * 3600.0 / SLOT_SECONDS) as u64;
+    assert_eq!(idle_seconds(two_real_hours), IDLE_CAP_SIM_SECONDS,
+               "the cap is reached at two real hours: 120 simulated seconds at one per sixty");
+}
