@@ -26,6 +26,10 @@ cd "$(dirname "$0")/.."
 PROJECT="${VITALS_GCP_PROJECT:-}"
 REGION="${REGION:-asia-southeast1}"
 SERVICE="${SERVICE:-vitals}"
+# Staging keeps no warm instance: vitals-academy-dev is for the devnet proof and for load, its data
+# is deletable, and a cold start there costs a few seconds of somebody's patience rather than a
+# clinician's. Production is unchanged by this variable's default.
+MIN_INSTANCES="${MIN_INSTANCES:-1}"
 PROGRAM_ID="${VITALS_PROGRAM_ID:-}"
 RPC="${VITALS_RPC:-https://api.devnet.solana.com}"
 # Heimdall needs a GPU and cannot run here. Reach the machine that has one — when there is one.
@@ -331,7 +335,7 @@ REVISION="$(gcloud run deploy "$SERVICE" \
   --image "$IMAGE" \
   --allow-unauthenticated \
   --port 8474 \
-  --min-instances 1 --max-instances 1 --concurrency 8 \
+  --min-instances "$MIN_INSTANCES" --max-instances 1 --concurrency 8 \
   --cpu 1 --memory 512Mi \
   --set-env-vars "^@^$ENV" \
   --set-secrets "$SECRETS" \
