@@ -34,6 +34,7 @@ and honestly defers the rest; and 60 of 100 rubric points are an LLM's word ([RI
 ## The ward
 
 **One patient, many strangers, and the chart is the chain.**
+**And the ward never runs out of them.**
 
 A patient is released into a public ward. Anyone in the world takes a shift on her — no signup, no
 wallet, the relay pays — treats her for a few minutes, and hands over. The next stranger, any time
@@ -203,7 +204,11 @@ themselves from the chain.
 - [ ] The 17-case clinical audit — **reviewer not identified since 14 Sep**; publish it as "reviewed
       by a practising physician" only if one has actually read it, otherwise publish it as our own
       work and say so. Week 2's video says "under physician review" burned into the picture; that
-      was true when it was burned and it is not repeated anywhere new.
+      was true when it was burned and it is not repeated anywhere new. **A candidate for the
+      signing-physician seat was named by the founder on 15 Sep; role and consent pending** — so
+      nothing changes on any public surface and "signer not yet identified" stays until the producer
+      says otherwise. If the seat is confirmed the judged-60 attestation can come back as a week-3
+      **option**, never a promise.
 - [ ] Psychometrics on Embla's 671 scored runs (as of 25 Aug 2026): SEM, and the
       `investigation_choice` r = 0.150 finding stated as a finding, not hidden.
 - [ ] Funnel on `/api/usage` (arrival → play → finish) — already public, keep it so.
