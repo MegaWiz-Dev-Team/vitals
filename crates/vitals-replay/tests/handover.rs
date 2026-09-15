@@ -17,7 +17,9 @@ fn ep1() -> String {
 /// What a stranger opening her would see: where she is, what is on her, and what she has been
 /// through. Compared rather than the whole state, because these are the things the next shift acts
 /// on and the things the leaf commits to.
-fn seen(st: &vitals_sce::runtime::SceState) -> (Option<String>, String, usize, Vec<(String, Option<f64>)>) {
+type Chart = (Option<String>, String, usize, Vec<(String, Option<f64>)>);
+
+fn seen(st: &vitals_sce::runtime::SceState) -> Chart {
     (
         st.outcome().map(|o| format!("{o:?}")),
         format!("{:.3}", st.t_sec()),

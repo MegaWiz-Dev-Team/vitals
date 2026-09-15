@@ -26,6 +26,16 @@ echo "── gates ──"
 gate "clippy -D warnings"  cargo clippy --workspace --all-targets --offline -- -D warnings
 gate "workspace tests"     cargo test --workspace --offline
 
+# The globe's own arithmetic — country lookup, the per-country counts, the difficulty filter —
+# runs in node against the page it is extracted from, so a change to the page that breaks the
+# ward's front door fails here rather than in front of a judge. Skipped with a line, never
+# silently, on a machine without node.
+if command -v node >/dev/null 2>&1; then
+  gate "globe logic" node crates/vitals-web/tests/world/globe_logic.mjs crates/vitals-web/static/world/index.html
+else
+  printf '  \033[33mskip\033[0m  globe logic — node not installed (CI still runs it)\n'
+fi
+
 if command -v gitleaks >/dev/null 2>&1; then
   gate "gitleaks (history)" gitleaks git --no-banner .
 else

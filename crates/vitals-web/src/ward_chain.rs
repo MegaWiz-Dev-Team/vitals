@@ -68,6 +68,8 @@ pub fn decode_patient(data: &[u8]) -> Option<PatientOnChain> {
         shifts: p.shifts,
         admitted_slot: p.admitted_slot,
         closed_slot: p.closed_slot,
+        lease_holder: p.lease_holder,
+        lease_until_slot: p.lease_until_slot,
     })
 }
 
@@ -396,14 +398,18 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
         shifts.extend(seen.shifts());
     }
 
-    crate::ward::ward_payload(
-        &patients,
-        &shifts,
-        &packs(store),
-        Some(as_of.saturating_sub(WEEK_SLOTS)),
-        as_of,
-        chain.source(),
-    )
+    crate::ward::ward_payload(&crate::ward::WardRead {
+        patients: &patients,
+        shifts: &shifts,
+        packs: &packs(store),
+        since: Some(as_of.saturating_sub(WEEK_SLOTS)),
+        as_of_slot: as_of,
+        now_unix: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0),
+        source: chain.source(),
+    })
 }
 
 // ── the shift flow ──────────────────────────────────────────────────────────

@@ -55,6 +55,10 @@ fn wire(r: &AttemptRecord) -> RecordWire {
 
 /// Send one instruction and say whether it did what was expected. `want` is `Ok(())` for an
 /// expected success or `Err(code)` for the refusal that must happen and no other.
+// Eight arguments, and each one is a different thing the cluster needs: who pays, who plays, which
+// program, which instruction, which accounts, what to print and what must happen. Bundling them
+// would hide the one that matters at each call — the expectation — behind a struct literal.
+#[allow(clippy::too_many_arguments)]
 fn expect(
     rpc: &RpcClient, funder: &Keypair, player: &Keypair, pid: &Pubkey,
     ix: Instruction, metas: Vec<AccountMeta>, what: &str, want: Result<(), u32>,

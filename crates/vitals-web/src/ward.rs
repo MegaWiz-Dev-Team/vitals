@@ -12,6 +12,8 @@
 //! trusted without a third.
 
 use std::collections::HashSet;
+use vitals_program::LEASE_SLOTS;
+use vitals_replay::SLOT_SECONDS;
 
 /// Beds on the ward. Three to start (CWF_PLAN.md's beds ruling); a release is automatic, so this
 /// is the only thing standing between the queue and the world.
@@ -51,6 +53,11 @@ pub struct PatientOnChain {
     pub shifts: u32,
     pub admitted_slot: u64,
     pub closed_slot: u64,
+    /// Who is in the room with her, zero when nobody is. An **account id**, not a device key.
+    pub lease_holder: [u8; 32],
+    /// When their time runs out. With `LEASE_SLOTS` it also gives when they started, which is the
+    /// only way the board can say *on shift since* without a server keeping its own note.
+    pub lease_until_slot: u64,
 }
 
 /// One anchored shift, as read from the chain.
@@ -77,6 +84,9 @@ pub struct ShiftOnChain {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Persona {
     pub name: String,
+    /// Inside the band her case is written for. The factory picks it; the case decides the band,
+    /// so a twelve-year-old never arrives with a disease authored for a woman of seventy.
+    pub age: u16,
     /// ISO 3166-1 alpha-3 — `THA`, `IDN`, `NGA`. The globe matches on this, and a country written
     /// freely is a country nobody can match: "Thailand", "ไทย" and "TH" are three countries to a
     /// renderer and one to a reader.
@@ -109,6 +119,13 @@ pub struct Pack {
     /// Where her portrait lives, when one has been made.
     #[serde(default)]
     pub portrait: Option<String>,
+    /// True when this case came from her country's endemic list rather than the common draw.
+    ///
+    /// Recorded by whoever drew her, never inferred later: a case can be endemic somewhere and
+    /// ordinary here, so working it out from the country afterwards would relabel patients who
+    /// were drawn uniformly — which is the claim the endemic rule is careful not to make.
+    #[serde(default)]
+    pub endemic: bool,
 }
 
 /// How hard a case is: `student`, `intern` or `resident`.
@@ -233,14 +250,25 @@ pub fn to_admit(open: usize, beds: usize, queue: usize) -> usize {
 /// `on_ward` publishes its own subtraction. A reader who wants to check it does not have to guess
 /// whether we counted open patients separately, and a reader who re-counts them another way and
 /// gets a different answer knows immediately that one of the two is wrong.
-pub fn ward_payload(
-    patients: &[PatientOnChain],
-    shifts: &[ShiftOnChain],
-    packs: &std::collections::BTreeMap<u64, Pack>,
-    since: Option<u64>,
-    as_of_slot: u64,
-    source: &str,
-) -> serde_json::Value {
+pub struct WardRead<'a> {
+    pub patients: &'a [PatientOnChain],
+    pub shifts: &'a [ShiftOnChain],
+    /// What the factory queued, by patient id. Empty is a working ward.
+    pub packs: &'a std::collections::BTreeMap<u64, Pack>,
+    /// The start of *this week*, as a slot. `None` asks for the ward's whole life.
+    pub since: Option<u64>,
+    /// The slot the chain was read at. A number without its read time is not evidence.
+    pub as_of_slot: u64,
+    /// This server's wall clock, for the one field that needs one: *on shift since*, which a
+    /// browser renders as a time of day. Everything else on the payload comes off the chain.
+    pub now_unix: u64,
+    /// Which cluster and which program. "The chain says" means nothing until you know which.
+    pub source: &'a str,
+}
+
+pub fn ward_payload(r: &WardRead) -> serde_json::Value {
+    let (patients, shifts, packs, since, as_of_slot, source) =
+        (r.patients, r.shifts, r.packs, r.since, r.as_of_slot, r.source);
     let all = census(patients, shifts, None);
     let week = census(patients, shifts, since);
     let six = |c: &Census| serde_json::json!({
@@ -256,24 +284,47 @@ pub fn ward_payload(
         Some(s) => serde_json::json!(s),
         None => serde_json::Value::Null,
     };
+    // Which bed each open patient is in. Not on chain — the program knows patients, not furniture
+    // — so it is derived the one way that is stable between two reads: open patients in the order
+    // they were admitted. A patient who leaves frees her number for the next admission, which is
+    // what a bed is.
+    let mut open: Vec<&PatientOnChain> = patients.iter().filter(|p| p.state == OPEN).collect();
+    open.sort_by_key(|p| (p.admitted_slot, p.patient_id));
+    let bed_of = |id: u64| open.iter().position(|p| p.patient_id == id).map(|i| i + 1);
+
     let board: Vec<serde_json::Value> = patients
         .iter()
         .map(|p| {
             let pack = packs.get(&p.patient_id);
+            let on_shift = p.state == OPEN
+                && p.lease_holder != [0; 32]
+                && as_of_slot < p.lease_until_slot;
             serde_json::json!({
                 "patient_id": p.patient_id,
-                // A word, because the board is what reads this. A renderer switching on 0, 1 and 2
+                // Words, because the board is what reads this. A renderer switching on 0, 1 and 2
                 // would have to know the program's byte layout to draw a ward.
-                "state": state_word(p.state),
+                "state": if on_shift { "on_shift" } else { state_word(p.state) },
+                // When the person in the room with her started, as a time a browser can render.
+                // Derived: the lease ends a known number of slots after it is taken, so the start
+                // is the end minus that, carried back to wall time through this read's own slot.
+                "on_shift_since": on_shift.then(|| {
+                    let took = p.lease_until_slot.saturating_sub(LEASE_SLOTS);
+                    let ago = as_of_slot.saturating_sub(took) as f64 * SLOT_SECONDS;
+                    r.now_unix.saturating_sub(ago as u64)
+                }),
+                "bed": bed_of(p.patient_id),
                 "shifts": p.shifts,
                 "admitted_slot": p.admitted_slot,
                 "closed_slot": (p.closed_slot > 0).then_some(p.closed_slot),
                 "name": pack.map(|k| k.persona.name.clone()),
+                "age": pack.map(|k| k.persona.age),
                 "country": pack.map(|k| k.persona.country.clone()),
                 "case": pack.map(|k| k.case.clone()),
                 // Null rather than a default: a patient filed under a level somebody chose against
                 // is worse than a patient with no level yet.
                 "difficulty": pack.and_then(|k| difficulty_of(&k.case)),
+                "endemic": pack.map(|k| k.endemic).unwrap_or(false),
+                "portrait": pack.and_then(|k| k.portrait.clone()),
             })
         })
         .collect();
@@ -281,7 +332,7 @@ pub fn ward_payload(
     serde_json::json!({
         "as_of_slot": as_of_slot,
         "source": source,
-        "cumulative": six(&all),
+        "census": six(&all),
         "week": w,
         "patients": board,
         "readable": true,
@@ -297,7 +348,10 @@ pub fn ward_payload(
                          chain at all: they come from the pack that was queued for her, joined by \
                          patient id, and are null for a patient no pack describes yet. The \
                          difficulty is that case's own level in the catalogue, the same one the \
-                         bay publishes, never a second opinion",
+                         bay publishes, never a second opinion. `on_shift` is the patient's lease \
+                         standing at this read's slot, and `on_shift_since` is that lease's start \
+                         carried to wall time; `bed` is her place among the open patients in \
+                         admission order, because the program knows patients and not furniture",
             "keys": "distinct signers of AnchorShift transactions on the ward's patient accounts, \
                      read from transaction history and cached; repeatable with \
                      getSignaturesForAddress. Keys, not humans: there is no signup, so one holder \
@@ -385,7 +439,10 @@ impl Queue {
 /// is, not a state we picked.
 fn state_word(state: u8) -> &'static str {
     match state {
-        OPEN => "open",
+        // The board's word, not the program's. `on_ward` rather than `open` because a reader of
+        // this endpoint is looking at a ward, and because the page that renders it says on the
+        // ward, on shift, went home, died — four states a person recognises.
+        OPEN => "on_ward",
         DISCHARGED => "went_home",
         DIED => "died",
         _ => "unknown",
@@ -435,7 +492,7 @@ pub fn ward_unavailable(source: &str, why: &str) -> serde_json::Value {
         "readable": false,
         "source": source,
         "why": why,
-        "cumulative": serde_json::Value::Null,
+        "census": serde_json::Value::Null,
         "week": serde_json::Value::Null,
         "policy": policy(),
     })

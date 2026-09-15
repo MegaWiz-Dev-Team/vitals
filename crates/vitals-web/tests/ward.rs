@@ -14,7 +14,30 @@
 use vitals_web::ward::{census, to_admit, PatientOnChain, ShiftOnChain, BEDS};
 
 fn patient(id: u64, state: u8, shifts: u32, admitted: u64, closed: u64) -> PatientOnChain {
-    PatientOnChain { patient_id: id, state, shifts, admitted_slot: admitted, closed_slot: closed }
+    PatientOnChain {
+        patient_id: id, state, shifts, admitted_slot: admitted, closed_slot: closed,
+        lease_holder: [0; 32], lease_until_slot: 0,
+    }
+}
+
+/// Somebody is in the room with her, and their lease runs to `until`.
+fn leased(mut p: PatientOnChain, holder: u8, until: u64) -> PatientOnChain {
+    p.lease_holder = [holder; 32];
+    p.lease_until_slot = until;
+    p
+}
+
+/// One read of the ward, with the fields a test does not care about filled in.
+fn read<'a>(
+    patients: &'a [PatientOnChain],
+    shifts: &'a [ShiftOnChain],
+    packs: &'a std::collections::BTreeMap<u64, vitals_web::ward::Pack>,
+    since: Option<u64>,
+    as_of_slot: u64,
+) -> vitals_web::ward::WardRead<'a> {
+    vitals_web::ward::WardRead {
+        patients, shifts, packs, since, as_of_slot, now_unix: 1_760_000_000, source: "devnet:ABC",
+    }
 }
 
 /// No pack has been queued for anyone — the state every test but one is written against, and the
@@ -115,16 +138,16 @@ fn every_number_travels_with_where_it_came_from() {
     ];
     let shifts = vec![shift_by(1, 0xA1, 11), shift_by(1, 0xB2, 80), shift_by(2, 0xA1, 35)];
 
-    let v = ward_payload(&patients, &shifts, &nobody(), Some(20), 1234, "devnet:ABC");
+    let v = ward_payload(&read(&patients, &shifts, &nobody(), Some(20), 1234));
 
     // the six, cumulative and for the window, under names a stranger can read
     for k in ["admitted", "on_ward", "went_home", "died", "shifts", "keys"] {
-        assert!(v["cumulative"][k].is_u64(), "cumulative.{k} must be a number");
+        assert!(v["census"][k].is_u64(), "census.{k} must be a number");
         assert!(v["week"][k].is_u64(), "week.{k} must be a number");
         assert!(v["derivations"][k].is_string(), "{k} must say where it came from");
     }
-    assert_eq!(v["cumulative"]["admitted"], 2);
-    assert_eq!(v["cumulative"]["on_ward"], 1);
+    assert_eq!(v["census"]["admitted"], 2);
+    assert_eq!(v["census"]["on_ward"], 1);
     assert_eq!(v["week"]["admitted"], 1, "only the patient released at or after slot 20");
     assert_eq!(v["week"]["shifts"], 2);
 
@@ -153,8 +176,8 @@ fn every_number_travels_with_where_it_came_from() {
 
 #[test]
 fn the_payload_of_an_empty_ward_is_zeroes_and_still_carries_its_derivations() {
-    let v = ward_payload(&[], &[], &nobody(), None, 7, "devnet:ABC");
-    assert_eq!(v["cumulative"]["shifts"], 0);
+    let v = ward_payload(&read(&[], &[], &nobody(), None, 7));
+    assert_eq!(v["census"]["shifts"], 0);
     assert_eq!(v["week"]["since_slot"], serde_json::Value::Null, "no window asked for, none claimed");
     assert!(v["derivations"]["keys"].is_string(), "an empty ward still says how it would have counted");
 }
@@ -219,7 +242,7 @@ fn the_queue_never_invents_a_case() {
 /// instead of taking a promise from us.
 #[test]
 fn the_release_policy_is_published_and_promises_no_rate() {
-    let v = ward_payload(&[], &[], &nobody(), None, 1, "devnet:ABC");
+    let v = ward_payload(&read(&[], &[], &nobody(), None, 1));
     let p = &v["policy"];
 
     assert_eq!(p["beds"], 3);
@@ -250,11 +273,11 @@ fn a_chain_that_cannot_be_read_says_so_and_never_reports_zero() {
     assert_eq!(v["readable"], false);
     assert_eq!(v["source"], "devnet:ABC");
     assert!(v["why"].as_str().unwrap().contains("rpc timed out"), "say what went wrong, not 'error'");
-    assert!(v["cumulative"].is_null() && v["week"].is_null(),
+    assert!(v["census"].is_null() && v["week"].is_null(),
             "no numbers at all — a zero here would be read out as 'nobody came'");
     assert!(v["policy"].is_object(), "the rule is still true when the chain is unreachable");
 
-    let ok = ward_payload(&[], &[], &nobody(), None, 1, "devnet:ABC");
+    let ok = ward_payload(&read(&[], &[], &nobody(), None, 1));
     assert_eq!(ok["readable"], true, "and a readable chain says that too, so the card can tell them apart");
 }
 
@@ -354,7 +377,7 @@ fn a_stay_is_three_cases_and_the_policy_publishes_it() {
     assert_eq!(shifts, STAY_CASES,
                "three cases is three handovers' worth of patient, which is the point of the rule");
 
-    let live = ward_payload(&[], &[], &nobody(), None, 1, "devnet:ABC");
+    let live = ward_payload(&read(&[], &[], &nobody(), None, 1));
     let stay_rule = live["policy"]["stay"].as_str().expect("the policy must publish the stay length");
     assert!(stay_rule.contains('3'), "it says three, in digits a reader can check: {stay_rule}");
 
@@ -384,16 +407,17 @@ fn the_board_lists_the_patients_and_where_they_are_from() {
     let mut packs = BTreeMap::new();
     packs.insert(7u64, Pack {
         case: "ep2-stemi".into(),
-        persona: Persona { name: "Ploy".into(), country: "THA".into() },
+        persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 34 },
         portrait: None,
+        endemic: false,
     });
 
-    let v = ward_payload(&patients, &[], &packs, None, 1234, "devnet:ABC");
+    let v = ward_payload(&read(&patients, &[], &packs, None, 1234));
     let list = v["patients"].as_array().expect("the board needs the patients themselves");
     assert_eq!(list.len(), 2, "every patient the ward ever admitted, closed ones included");
 
     assert_eq!(list[0]["patient_id"], 7);
-    assert_eq!(list[0]["state"], "open", "a word, not a byte — the board renders this");
+    assert_eq!(list[0]["state"], "on_ward", "a word a person recognises, not the program's byte");
     assert_eq!(list[0]["shifts"], 2);
     assert_eq!(list[0]["country"], "THA");
     assert_eq!(list[0]["name"], "Ploy");
@@ -435,11 +459,12 @@ fn every_case_the_ward_can_admit_has_a_difficulty_and_the_board_publishes_it() {
     let mut packs = BTreeMap::new();
     packs.insert(7u64, Pack {
         case: "ep2-stemi".into(),
-        persona: Persona { name: "Ploy".into(), country: "THA".into() },
+        persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 34 },
         portrait: None,
+        endemic: false,
     });
 
-    let v = ward_payload(&patients, &[], &packs, None, 1234, "devnet:ABC");
+    let v = ward_payload(&read(&patients, &[], &packs, None, 1234));
     let list = v["patients"].as_array().expect("patients");
     assert_eq!(list[0]["case"], "ep2-stemi", "the board says which case she is");
     assert_eq!(list[0]["difficulty"], "intern", "at the level the bay already gives that case");
@@ -491,7 +516,7 @@ fn the_endemic_list_may_only_name_cases_the_ward_can_serve() {
 fn the_policy_publishes_the_levels_and_the_endemic_rule() {
     use vitals_web::ward::{difficulty_of, CATALOGUE};
 
-    let v = ward_payload(&[], &[], &nobody(), None, 1, "devnet:ABC");
+    let v = ward_payload(&read(&[], &[], &nobody(), None, 1));
     let levels = &v["policy"]["difficulty"];
     for level in ["student", "intern", "resident"] {
         let want = CATALOGUE.iter().filter(|c| difficulty_of(c) == Some(level)).count();
@@ -511,4 +536,75 @@ fn the_policy_publishes_the_levels_and_the_endemic_rule() {
                "and today the honest count is zero — none of the converted sixteen belongs to a \
                 place, and pairing one with a country anyway is the thing this rule exists to \
                 stop");
+}
+
+/// The globe renders these fields, so the endpoint answers in the globe's own words.
+///
+/// developer-4d's page is the consumer, and the two places it touches a patient — `row()` and
+/// `stateOf()` — read exactly this. An endpoint that answers `open` where the page says `on_ward`
+/// works only because the page forgives it; a field it does not forgive, like `bed` or
+/// `on_shift_since`, simply disappears from the ward with nothing to say it is missing.
+#[test]
+fn the_globe_reads_every_field_it_renders() {
+    use std::collections::BTreeMap;
+    use vitals_web::ward::{Pack, Persona};
+
+    let lease_ends = 5_000u64;
+    let patients = vec![
+        leased(patient(7, OPEN, 2, 10, 0), 0xA1, lease_ends),
+        patient(8, OPEN, 0, 20, 0),
+        patient(9, DISCHARGED, 3, 5, 900),
+    ];
+    let mut packs = BTreeMap::new();
+    packs.insert(7u64, Pack {
+        case: "ep2-stemi".into(),
+        persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 34 },
+        portrait: Some("https://example.invalid/p7.jpg".into()),
+        endemic: true,
+    });
+
+    let now = 1_760_000_000u64;
+    let v = ward_payload(&vitals_web::ward::WardRead {
+        patients: &patients, shifts: &[], packs: &packs,
+        since: None, as_of_slot: 4_000, now_unix: now, source: "devnet:ABC",
+    });
+
+    assert!(v["census"]["on_ward"].is_u64(),
+            "the page reads census.on_ward or the same keys at the top level, and finds neither \
+             under a name of our own");
+
+    let by_id = |id: u64| v["patients"].as_array().unwrap().iter()
+        .find(|p| p["patient_id"] == id).cloned().expect("patient listed");
+
+    let ploy = by_id(7);
+    assert_eq!(ploy["state"], "on_shift", "somebody is in the room with her and the lease stands");
+    let since = ploy["on_shift_since"].as_u64().expect("on shift since, in unix seconds");
+    assert!(since < now && now - since < 2 * 60 * 60,
+            "her shift started a plausible time ago, derived from the lease rather than from a \
+             note this server kept: {since} against {now}");
+    assert_eq!(ploy["bed"], 1, "first of the open patients by admission");
+    assert_eq!(ploy["age"], 34);
+    assert_eq!(ploy["endemic"], true, "drawn from her country's list, and the pack says so");
+    assert_eq!(ploy["portrait"], "https://example.invalid/p7.jpg");
+
+    let waiting = by_id(8);
+    assert_eq!(waiting["state"], "on_ward", "nobody is with her");
+    assert_eq!(waiting["bed"], 2);
+    assert!(waiting["on_shift_since"].is_null());
+    assert_eq!(waiting["endemic"], false, "no pack is not a claim about where she is from");
+
+    let home = by_id(9);
+    assert_eq!(home["state"], "went_home");
+    assert!(home["bed"].is_null(), "a patient who went home is in nobody's bed");
+
+    // The lease has run out but nobody has anchored: she is on the ward, not on shift. This is the
+    // state an abandoned shift leaves behind, and showing it as "on shift" would tell a stranger
+    // the room is taken when it is free for them to walk into.
+    let expired = ward_payload(&vitals_web::ward::WardRead {
+        patients: &patients, shifts: &[], packs: &packs,
+        since: None, as_of_slot: lease_ends + 1, now_unix: now, source: "devnet:ABC",
+    });
+    let ploy = expired["patients"].as_array().unwrap().iter()
+        .find(|p| p["patient_id"] == 7).cloned().unwrap();
+    assert_eq!(ploy["state"], "on_ward", "an expired lease is a free room, and the board says so");
 }
