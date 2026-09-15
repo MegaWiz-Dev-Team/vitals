@@ -98,12 +98,19 @@ we authored a new disease course this month.
    ward keeps running while we are asleep, and after 12 Oct.
 6. **Public worldwide from day one of the mechanic.** Any invitation to Embla's students is the
    founder's to make, and no institution name appears anywhere in the product or the video.
-7. **The ward is its own host and its own service** (founder, 15 Sep ~19:00: *"web ผมจะใช้
+7. **The ward is its own program, and Eternal's is never upgraded.** The ward runs on its own
+   devnet program id — **`4YpyZ2oM8jtxM9GwC61kUsnhMFvWkYatrWVZpiafqypz`**, keypair generated 15 ก.ย.
+   2026 and kept outside this repository. Eternal's `535FMHHZ4rp5hNmvSmdNFoaatLX82cCXHfRg3hpyBTSG`
+   is never upgraded by this sprint and its anchored leaves are never migrated: the entry a judge
+   opens must answer on the program it was filed with. Staging is **`vitals-academy-dev`** (project
+   367117259093, deletable data) — every ward build goes there first and the devnet proof runs
+   against it; only a build that passed there is deployed to production.
+8. **The ward is its own host and its own service** (founder, 15 Sep ~19:00: *"web ผมจะใช้
    https://world.vitals.academy นะ แยกออกมาให้ชัด"*). The ward is **world.vitals.academy** on Cloud
    Run service **`vitals-world`**. Vitals stays at **vitals.academy** on service **`vitals`**, and
    **no sprint deploy touches it** — the Eternal entry must still be there, unchanged, on the day a
    judge opens it. The deploy script refuses `SERVICE=vitals` from a `cwf/*` branch for that reason.
-8. **Everything else stands.** Devnet (mainnet + multisig only if week 4 has slack), no token, no
+9. **Everything else stands.** Devnet (mainnet + multisig only if week 4 has slack), no token, no
    money, the relay never signs as author, the payout allowlist stays empty, lamports are never
    called dollars, the review store is untouched, no physician claim anywhere, every figure carries
    its as-of.
