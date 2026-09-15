@@ -26,10 +26,19 @@ use solana_rpc_client_api::{
     config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
     filter::RpcFilterType,
 };
-use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Signature};
+use solana_sdk::{
+    commitment_config::CommitmentConfig,
+    instruction::{AccountMeta, Instruction as SolInstruction},
+    pubkey::Pubkey,
+    signature::Signature,
+    system_program,
+};
 use solana_transaction_status_client_types::UiTransactionEncoding;
 use std::str::FromStr;
-use vitals_program::{patient_pda, Instruction, PatientAccount, PATIENT_LEN};
+use vitals_program::{
+    commitment_pda, patient_pda, tree_pda, Instruction, PatientAccount, RecordWire, PATIENT_LEN,
+    SEED_ACCOUNT,
+};
 
 use crate::ward::{PatientOnChain, ShiftOnChain};
 
@@ -371,4 +380,68 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
     }
 
     crate::ward::ward_payload(&patients, &shifts, Some(as_of.saturating_sub(WEEK_SLOTS)), as_of, chain.source())
+}
+
+// ── the shift flow ──────────────────────────────────────────────────────────
+
+/// The player's account PDA — who they are, seeded on the key in their browser.
+pub fn account_pda(program_id: &Pubkey, player: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(&[SEED_ACCOUNT, &player.to_bytes()], program_id).0
+}
+
+/// Take the head of a patient's chain for the length of a shift.
+///
+/// Three accounts and no more: the player, who they are, and the patient the lease is written on.
+/// **The relay is not among them.** It pays for the transaction — that is what lets a stranger
+/// play without ever buying SOL — and it takes no part in the instruction, because a relay that
+/// could take a shift could take one in somebody else's name, and the ward's whole claim is that
+/// the record says which key did what. The operator is an argument all the same, because the
+/// patient's address is seeded on it — the ward can only reach its own patients.
+pub fn take_shift_ix(
+    program_id: &Pubkey,
+    operator: &Pubkey,
+    player: &Pubkey,
+    patient_id: u64,
+) -> SolInstruction {
+    SolInstruction::new_with_borsh(
+        *program_id,
+        &Instruction::TakeShift { patient_id },
+        vec![
+            AccountMeta::new_readonly(*player, true),
+            AccountMeta::new_readonly(account_pda(program_id, player), false),
+            AccountMeta::new(patient_pda(program_id, operator, patient_id).0, false),
+        ],
+    )
+}
+
+/// Anchor the shift that was just played onto the head it extends.
+///
+/// The one instruction both keys appear in, and each has exactly one job. The relay signs at
+/// index 0 because rent for the leaf comes out of it; the player signs at index 1 and is not
+/// writable, because signing is not spending and nothing here debits a stranger. `prev_head` is
+/// the claim the program checks: name a head the patient has moved past and the transaction is
+/// refused with `StaleHead` rather than quietly overwriting somebody's work.
+#[allow(clippy::too_many_arguments)]
+pub fn anchor_shift_ix(
+    program_id: &Pubkey,
+    operator: &Pubkey,
+    player: &Pubkey,
+    patient_id: u64,
+    tree_id: u64,
+    record: RecordWire,
+    prev_head: [u8; 32],
+) -> SolInstruction {
+    SolInstruction::new_with_borsh(
+        *program_id,
+        &Instruction::AnchorShift { tree_id, patient_id, record, prev_head },
+        vec![
+            AccountMeta::new(*operator, true),
+            AccountMeta::new_readonly(*player, true),
+            AccountMeta::new(account_pda(program_id, player), false),
+            AccountMeta::new(tree_pda(program_id, operator, tree_id).0, false),
+            AccountMeta::new(commitment_pda(program_id, &player.to_bytes()).0, false),
+            AccountMeta::new(patient_pda(program_id, operator, patient_id).0, false),
+            AccountMeta::new_readonly(system_program::id(), false),
+        ],
+    )
 }
