@@ -64,7 +64,7 @@ Being exact about this is the difference between a four-week plan and a wish.
 | "Your shift must extend the current head" | **new** — program work |
 | Starting an attempt **from** a resumed state rather than from the scenario's start | **new** — engine work, small, on top of `resume` |
 | A ward board and a shift receipt page | **new** — web work |
-| Time passing while nobody is on shift | **built 16 ก.ย.** — `idle_seconds()` + `shift(.., idle_slots)` in `vitals-replay`, ticked at the scenario's grain, 8 handover tests |
+| Time passing while nobody is on shift | **built 16 ก.ย.** — `idle_seconds()` + `pass_idle()` + `shift(.., idle_slots)` in `vitals-replay`, ticked at the scenario's grain and capped below the catalogue's fastest arrest; 8 handover tests and a catalogue walk |
 | A queue of patients that refills itself from outside the ward | **new** — a launchd job on the mini + `POST /api/ward/queue` + Firestore (rulings 10–11) |
 | A board that changes while you are looking at it | **new** — SSE on the ward host (ruling 12) |
 
@@ -81,7 +81,7 @@ we authored a new disease course this month.
    ward where nothing happens unless somebody is looking is a save file, not a ward. So the gap
    between two anchored shifts is read off the chain **in slots**, turned into simulated time and
    ticked through the engine before the next stranger's first action — `idle_seconds()` in
-   `vitals-replay`: **one simulated minute per ten real ones, capped at one simulated hour**
+   `vitals-replay`: **one simulated minute per ten real ones, capped at two simulated minutes**
    however long the gap was. Slots are the clock precisely because wall time is not checkable:
    state stays a pure function of (tapes, slot numbers) and every browser re-derives the same
    patient. The gap is ticked at the scenario's own grain, never in one jump — the engine takes one
@@ -92,16 +92,27 @@ we authored a new disease course this month.
    ward's death rate:
 
    > **What the ratio costs — measured 16 ก.ย., not estimated.** Untreated from the start, at each
-   > scenario's own grain, **fourteen of the sixteen catalogue cases arrest between minute 3 and
-   > minute 14**: `ep5` at 3 · `ep2`, `osce-a2`, `osce-d3` at 5 · `osce-a`, `osce-d` at 6 · `ep3`,
-   > `ep4`, `osce-d2` at 8 · `osce-b`, `osce-b3`, `osce-d4` at 11 · `osce-c2` at 12 · `osce-c3` at
-   > 14. Only `osce-b2` (pericarditis) and `osce-c` (croup) are still alive at four simulated
-   > hours. At 1:10 a gap reaches the one-hour cap after **ten real hours** — one unattended night
-   > — so a night nobody plays is a death in almost every bed, three beds burn three queued
-   > patients by morning, and the board a judge opens is mostly a list of the dead. That is a ward
-   > and it is honest; it is also a choice. **1:100** would make the same night a deterioration
-   > instead of a funeral, and a **cap below the fastest killer** would make it a deterioration by
-   > construction. The founder picks; this plan does not pick it quietly on his behalf.
+   > scenario's own grain, **fourteen of the sixteen catalogue cases arrest between 186 s and 840 s**
+   > — `ep5` at 186 · `osce-a2` 300 · `osce-d3` 321 · `ep2` 331 · `osce-d` 401 · `osce-a` 406 ·
+   > `osce-d2` 480 · `ep4` 487 · `ep3` 517 · `osce-b3` 660 · `osce-d4` 661 · `osce-b` 696 ·
+   > `osce-c2` 720 · `osce-c3` 840. Only `osce-b2` (pericarditis) and `osce-c` (croup) are still
+   > alive at four simulated hours. At the first cap of one simulated hour that made an unattended
+   > night a death in almost every bed, three queued patients burnt by morning with nobody having
+   > played them, and a board a judge opens that is mostly a list of the dead.
+   >
+   > **Decided 16 ก.ย. (producer, on the founder's standing go, and his to move): the ratio stays
+   > at 1:10 and the cap drops to two simulated minutes** — below `ep5`'s 186 s, the quickest
+   > arrest in the catalogue. A gap can then only ever deteriorate her, and **death happens only
+   > inside a shift**. That is the part worth saying out loud: every death on this ward is
+   > something a key did or failed to do while holding her, which is what *"the log says who and
+   > when"* has to mean. A patient who died of a gap nobody chose would carry harm on nobody's
+   > record at all.
+   >
+   > The cap is a promise about the catalogue, so a test holds it against the catalogue:
+   > `no_case_in_the_catalogue_dies_of_the_idle_clock_alone` walks all sixteen and prints the
+   > fastest arrest, so a case authored to arrest sooner than the cap fails a test rather than
+   > quietly making the promise false.
+
 3. **A patient is a chain, the program holds the head.** A `Patient` account with a head; a shift
    commits against the current head (commit–reveal as today); the reveal appends and moves the head;
    discharge or death closes it. The client verifies the whole chain before letting anyone take a
@@ -274,9 +285,9 @@ released automatically when the first leaves, and **world.vitals.academy answers
       does not lose it, census still read off the chain.
 - [ ] **The board is live** (ruling 12): SSE — beds, queue depth, on-shift-since, the world clock
       and the census, all moving without a reload.
-- [ ] **The idle ratio decided by the founder**, on the measurement under ruling 2, before patient
-      one is public. Keeping 1:10 is a decision too; it is the number that says whether an
-      unattended night is a deterioration or a funeral.
+- [ ] **The idle ratio and cap confirmed by the founder** before patient one is public — 1:10 and
+      two simulated minutes are in force and tested; this item is his chance to move them, and
+      leaving them is a decision too.
 - [ ] Eternal filed before this week starts — otherwise this week is that instead.
 - [ ] Video 2 (27 Sep).
 
