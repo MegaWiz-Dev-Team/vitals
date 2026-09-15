@@ -410,7 +410,7 @@ fn queued(case: &str, name: &str) -> (String, Pack) {
     let p = Pack {
         case: case.into(),
         persona: Persona { name: name.into(), country: "THA".into(), age: 40 },
-        portrait: None,
+        portrait: Default::default(),
         endemic: false,
     };
     (pack_id(&p), p)

@@ -408,7 +408,7 @@ fn the_board_lists_the_patients_and_where_they_are_from() {
     packs.insert(7u64, Pack {
         case: "ep2-stemi".into(),
         persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 34 },
-        portrait: None,
+        portrait: Default::default(),
         endemic: false,
     });
 
@@ -460,7 +460,7 @@ fn every_case_the_ward_can_admit_has_a_difficulty_and_the_board_publishes_it() {
     packs.insert(7u64, Pack {
         case: "ep2-stemi".into(),
         persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 34 },
-        portrait: None,
+        portrait: Default::default(),
         endemic: false,
     });
 
@@ -559,7 +559,10 @@ fn the_globe_reads_every_field_it_renders() {
     packs.insert(7u64, Pack {
         case: "ep2-stemi".into(),
         persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 34 },
-        portrait: Some("https://example.invalid/p7.jpg".into()),
+        portrait: [("stable".to_string(),
+                    "https://storage.googleapis.com/vitals-world-portraits/\
+                     aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.webp"
+                        .to_string())].into_iter().collect(),
         endemic: true,
     });
 
@@ -585,7 +588,12 @@ fn the_globe_reads_every_field_it_renders() {
     assert_eq!(ploy["bed"], 1, "first of the open patients by admission");
     assert_eq!(ploy["age"], 34);
     assert_eq!(ploy["endemic"], true, "drawn from her country's list, and the pack says so");
-    assert_eq!(ploy["portrait"], "https://example.invalid/p7.jpg");
+    let base = "https://storage.googleapis.com/vitals-world-portraits/\
+                aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.webp";
+    assert_eq!(ploy["portrait"], base, "she is on the ward, so her base picture is what is drawn");
+    assert_eq!(ploy["portraits"]["stable"], base,
+               "and the board is handed the whole set, so it can change her picture the moment it \
+                learns her status without asking again");
 
     let waiting = by_id(8);
     assert_eq!(waiting["state"], "on_ward", "nobody is with her");
@@ -595,6 +603,9 @@ fn the_globe_reads_every_field_it_renders() {
 
     let home = by_id(9);
     assert_eq!(home["state"], "went_home");
+    assert!(home["portrait"].is_null(),
+            "she went home and there is no picture of her leaving yet — she does not borrow the \
+             one of herself ill in a bed");
     assert!(home["bed"].is_null(), "a patient who went home is in nobody's bed");
 
     // The lease has run out but nobody has anchored: she is on the ward, not on shift. This is the

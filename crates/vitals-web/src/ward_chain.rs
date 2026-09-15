@@ -699,7 +699,19 @@ pub fn validate_pack(p: &crate::ward::Pack) -> Result<(), String> {
     if !AGE_RANGE.contains(&p.persona.age) {
         return Err(format!("nobody is {}", p.persona.age));
     }
-    if let Some(src) = &p.portrait {
+    for (state, src) in &p.portrait {
+        if state == "dead" {
+            return Err("no picture of a dead patient is made — the board shows her last living \
+                        state and says died in words"
+                .into());
+        }
+        if !crate::ward::PORTRAIT_LADDER.contains(&state.as_str()) {
+            return Err(format!(
+                "{state} is not a state the engine reports, so nothing would ever draw it. The \
+                 keys are {:?}",
+                crate::ward::PORTRAIT_LADDER
+            ));
+        }
         if !is_portrait_url(src) {
             return Err(format!(
                 "a portrait must be {PORTRAITS}/<sha256>.webp, not {src} — the board renders this \
@@ -758,12 +770,14 @@ pub fn pack_id(p: &crate::ward::Pack) -> String {
         p.persona.name.as_str(),
         p.persona.country.as_str(),
         &p.persona.age.to_string(),
-        p.portrait.as_deref().unwrap_or(""),
         if p.endemic { "endemic" } else { "drawn" },
     ] {
         h.update(field.as_bytes());
         h.update(b"\n");
     }
+    // The portraits are **not** hashed. She is the same patient whether or not the picture of her
+    // getting worse has been made yet, and the factory adds those to a pack it has already queued
+    // — hashing them would make every addition a different woman and queue her twice.
     h.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
 

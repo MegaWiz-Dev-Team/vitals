@@ -116,9 +116,14 @@ pub struct Pack {
     /// serve, which is why the door that accepts packs checks it.
     pub case: String,
     pub persona: Persona,
-    /// Where her portrait lives, when one has been made.
+    /// Her pictures, keyed on the state she is in — see [`PORTRAIT_LADDER`] and [`portrait_for`].
+    ///
+    /// A set rather than one image because the founder wants her picture to change with her state
+    /// and stay the same person. Packs arrive with `stable` filled and the rest empty; the factory
+    /// makes the others at admission, when it knows a bed actually opened for her, so a patient
+    /// who never gets worse never costs a picture of her getting worse.
     #[serde(default)]
-    pub portrait: Option<String>,
+    pub portrait: std::collections::BTreeMap<String, String>,
     /// True when this case came from her country's endemic list rather than the common draw.
     ///
     /// Recorded by whoever drew her, never inferred later: a case can be endemic somewhere and
@@ -403,7 +408,12 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                 // is worse than a patient with no level yet.
                 "difficulty": pack.and_then(|k| difficulty_of(&k.case)),
                 "endemic": pack.map(|k| k.endemic).unwrap_or(false),
-                "portrait": pack.and_then(|k| k.portrait.clone()),
+                // What to draw now, and everything there is to draw. The board gets both so it
+                // can change her picture the moment it learns her status without asking again —
+                // and so a reader can see that the set is a set.
+                "portrait": pack.and_then(|k| portrait_for(&k.portrait, portrait_state(p.state))
+                                                  .map(str::to_string)),
+                "portraits": pack.map(|k| k.portrait.clone()).unwrap_or_default(),
             })
         })
         .collect();
@@ -430,7 +440,11 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                          bay publishes, never a second opinion. `on_shift` is the patient's lease \
                          standing at this read's slot, and `on_shift_since` is that lease's start \
                          carried to wall time; `bed` is her place among the open patients in \
-                         admission order, because the program knows patients and not furniture",
+                         admission order, because the program knows patients and not furniture. \
+                         `portraits` is her whole set and `portrait` is the one to draw now — the \
+                         nearest picture no worse than the state she is in. Her physiological \
+                         status is not derived here yet, so a patient on the ward is drawn with \
+                         her base picture and only the endings are exact",
             "keys": "distinct signers of AnchorShift transactions on the ward's patient accounts, \
                      read from transaction history and cached; repeatable with \
                      getSignaturesForAddress. Keys, not humans: there is no signup, so one holder \
@@ -523,6 +537,24 @@ pub fn patient_id_in_path(path: &str) -> Option<u64> {
         return None;
     }
     rest.parse().ok()
+}
+
+/// Which portrait a patient in this chain state should be drawn with, today.
+///
+/// **This is the honest half of a thing that is not finished.** Her physiological status —
+/// stable, deteriorating, critical — comes from replaying her tapes, which the ward host does not
+/// do yet; until it does, a patient who is still on the ward is drawn with her base picture and a
+/// patient who went home is drawn with the picture of her leaving. A dead patient resolves to her
+/// last living state through the ladder, and the board's own word says died.
+///
+/// When the replay lands, this is the one place that changes: the board is already given the whole
+/// set, so it will not need asking twice.
+fn portrait_state(state: u8) -> &'static str {
+    match state {
+        DISCHARGED => "recovered",
+        DIED => "dead",
+        _ => "stable",
+    }
 }
 
 /// The program's state byte as the word the board renders.
