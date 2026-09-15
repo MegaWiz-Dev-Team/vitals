@@ -28,8 +28,8 @@ program on devnet, the replay verifier.
       needed here from the 14th
 - [ ] 14 Sep: register the project on the hackathon form with the prior-work disclosure; open the
       `cwf/` branch that day so the history shows where the sprint's work begins
-- [ ] Dr. Sirawit: a date to close the 17-case audit, and agreement to sign the judged-60 attestation
-      with a key of his own (deliverable B needs both)
+- [ ] Find the signing physician for deliverable B (a date to close the 17-case audit, and agreement
+      to sign the judged-60 attestation with a key of their own), or drop the attestation from B
 
 Exit: Eternal is out of our hands, the hackathon project exists with the disclosure on it, and the
 first commit on the sprint branch is dated 14 Sep or later.
@@ -56,9 +56,9 @@ database, no number that cannot be recomputed by a stranger.
 - [ ] **Relying-party page**: paste a record or a pubkey → the wasm verifier re-derives the level in
       the browser; the 40 deterministic points and the 60 attested points are shown as two numbers,
       never one
-- [ ] **Named-clinician attestation**: the judged 60 carries a physician's signature (Dr. Sirawit's
-      key) at a stated rubric version, replacing the anonymous model's word — RISKS §3 closed the
-      honest way, by naming who vouches
+- [ ] **Named-clinician attestation**: the judged 60 carries a signing physician's signature (signer
+      not yet identified — founder's decision) at a stated rubric version, replacing the anonymous
+      model's word — RISKS §3 closed the honest way, by naming who vouches
 - [ ] A "request verification" action with a price on it; no payment rail yet, the surface is the
       deliverable (this is the answer to "how do you make money", on screen)
 - [ ] **Author ledger** `/authors/<wallet>`: per case — plays, proven replays (counted from anchored
