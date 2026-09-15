@@ -343,3 +343,45 @@ fn a_pack_is_named_by_what_is_in_it() {
                "the same person with a different disease is a different patient, and both may be \
                 queued — the factory is what decides, not the address");
 }
+
+/// The queue keeps each patient once, and says what it would not take.
+///
+/// The factory pushes pages of packs from another machine on a timer, so overlap is the normal
+/// case and not an error: a retry, a restart, a window that covers what the last one covered. What
+/// must never happen is the same patient queued twice — she would be admitted twice, to two beds,
+/// with one name.
+///
+/// And a refusal has to come back in words. The factory is unattended; a door that silently
+/// dropped a third of what it was sent would look exactly like a factory that was running.
+#[test]
+fn the_queue_keeps_each_patient_once_and_says_what_it_refused() {
+    use vitals_web::store::Store;
+    use vitals_web::ward_chain::{enqueue, queue_depth};
+
+    let root = std::env::temp_dir().join(format!("vitals-queue-{}-{:?}", std::process::id(),
+                                                 std::thread::current().id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let store = Store::open(root.clone()).expect("a store to queue into");
+
+    let mut other = a_pack();
+    other.persona.name = "Anan Thepwong".into();
+    let mut wrong = a_pack();
+    wrong.case = "ddx-dengue-fever-1".into();
+
+    let first = enqueue(&store, vec![a_pack(), a_pack(), other.clone(), wrong]);
+    assert_eq!(first.queued, 2, "two patients, and the repeat of the first is not a third");
+    assert_eq!(first.duplicates, 1);
+    assert_eq!(first.rejected.len(), 1, "and the one it would not take");
+    assert!(first.rejected[0].contains("dengue"), "named, so the factory can fix it: {:?}",
+            first.rejected);
+    assert_eq!(first.depth, 2, "the depth is what the factory tops up against");
+
+    // The same page again, in full. Nothing is added and nothing is lost.
+    let again = enqueue(&store, vec![a_pack(), other]);
+    assert_eq!(again.queued, 0);
+    assert_eq!(again.duplicates, 2);
+    assert_eq!(again.depth, 2);
+    assert_eq!(queue_depth(&store), 2);
+
+    let _ = std::fs::remove_dir_all(&root);
+}
