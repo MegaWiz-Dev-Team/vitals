@@ -455,3 +455,25 @@ fn a_patient_id_is_never_reused() {
     // over the first one's chart.
     assert!(![now, now + 1].contains(&next_patient_id(now, &[now, now + 1])));
 }
+
+/// **The ward opens when the founder says so, not when a deploy lands.**
+///
+/// Production can carry this code for days before the ward is meant to be open, and the factory is
+/// a job on another machine that will push the moment it has packs. One mistaken push must not be
+/// what opens a public ward — so the door is shut unless something says otherwise, and the way it
+/// fails is closed.
+#[test]
+fn the_door_is_shut_unless_somebody_opened_it() {
+    use vitals_web::ward_chain::door_is_open;
+
+    assert!(!door_is_open(None), "a deploy that says nothing has a closed door");
+    assert!(door_is_open(Some("open")), "and one word opens it");
+    assert!(door_is_open(Some("OPEN")), "however it is typed");
+    assert!(door_is_open(Some(" open ")), "and with whatever whitespace a shell adds");
+
+    for shut in ["", "closed", "false", "0", "no", "opened", "open the ward", "1", "true"] {
+        assert!(!door_is_open(Some(shut)),
+                "{shut:?} is not the word — anything that is not 'open' leaves it shut, because \
+                 the failure that matters is a ward that opened by accident");
+    }
+}
