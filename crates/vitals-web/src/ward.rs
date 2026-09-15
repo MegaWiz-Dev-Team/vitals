@@ -148,16 +148,8 @@ pub fn ward_payload(
         "source": source,
         "cumulative": six(&all),
         "week": w,
-        "policy": {
-            "beds": BEDS,
-            "a_bed_frees_on": ["discharge", "death"],
-            "admissions_per_day": "as many as leave — a bed frees on discharge or death and on \
-                                   nothing else, so the rate is a consequence of how the ward is \
-                                   played rather than a number we choose. Read it off the census.",
-            "draw": "uniformly from the catalogue, skipping any case already on the ward, so no \
-                     two beds hold the same case at once",
-            "catalogue": CATALOGUE,
-        },
+        "readable": true,
+        "policy": policy(),
         "derivations": {
             "admitted": "patient accounts on chain, counted by admitted_slot",
             "on_ward": "admitted - went_home - died, floored at zero — never a separate tally",
@@ -239,4 +231,37 @@ impl Queue {
             })
             .collect()
     }
+}
+
+
+/// The policy, on its own — true whether or not the chain can be reached.
+fn policy() -> serde_json::Value {
+    serde_json::json!({
+        "beds": BEDS,
+        "a_bed_frees_on": ["discharge", "death"],
+        "admissions_per_day": "as many as leave — a bed frees on discharge or death and on \
+                               nothing else, so the rate is a consequence of how the ward is \
+                               played rather than a number we choose. Read it off the census.",
+        "draw": "uniformly from the catalogue, skipping any case already on the ward, so no \
+                 two beds hold the same case at once",
+        "catalogue": CATALOGUE,
+    })
+}
+
+/// What `/api/ward` answers when the chain could not be read.
+///
+/// The dangerous failure here is not a wrong number, it is a zero: an endpoint that answers `0`
+/// because an RPC timed out looks exactly like a ward nobody came to, and that zero would be
+/// photographed onto the weekly card and read out loud. So this carries no numbers at all, says
+/// what actually went wrong rather than "error", and keeps the policy — the rule is still true
+/// when the chain is unreachable.
+pub fn ward_unavailable(source: &str, why: &str) -> serde_json::Value {
+    serde_json::json!({
+        "readable": false,
+        "source": source,
+        "why": why,
+        "cumulative": serde_json::Value::Null,
+        "week": serde_json::Value::Null,
+        "policy": policy(),
+    })
 }
