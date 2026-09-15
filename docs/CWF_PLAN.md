@@ -95,7 +95,12 @@ we authored a new disease course this month.
    ward keeps running while we are asleep, and after 12 Oct.
 6. **Public worldwide from day one of the mechanic.** Any invitation to Embla's students is the
    founder's to make, and no institution name appears anywhere in the product or the video.
-7. **Everything else stands.** Devnet (mainnet + multisig only if week 4 has slack), no token, no
+7. **The ward is its own host and its own service** (founder, 15 Sep ~19:00: *"web ผมจะใช้
+   https://world.vitals.academy นะ แยกออกมาให้ชัด"*). The ward is **world.vitals.academy** on Cloud
+   Run service **`vitals-world`**. Vitals stays at **vitals.academy** on service **`vitals`**, and
+   **no sprint deploy touches it** — the Eternal entry must still be there, unchanged, on the day a
+   judge opens it. The deploy script refuses `SERVICE=vitals` from a `cwf/*` branch for that reason.
+8. **Everything else stands.** Devnet (mainnet + multisig only if week 4 has slack), no token, no
    money, the relay never signs as author, the payout allowlist stays empty, lamports are never
    called dollars, the review store is untouched, no physician claim anywhere, every figure carries
    its as-of.
@@ -157,8 +162,8 @@ sprint's work sits on `cwf/ward` with dates inside the window.
 - [ ] Video 1 (20 Sep) — the handover, nothing else.
 
 Exit: a stranger's shift changes what the next stranger finds, the program refuses a shift that does
-not extend the head, a second key cannot take the head while the lease stands, and a second patient
-is released automatically when the first leaves.
+not extend the head, a second key cannot take the head while the lease stands, a second patient is
+released automatically when the first leaves, and **world.vitals.academy answers**.
 
 ## Week 2 — patient one is public (to 27 Sep)
 
