@@ -28,10 +28,13 @@ use solana_rpc_client_api::{
 };
 use solana_sdk::{
     commitment_config::CommitmentConfig,
+    hash::Hash,
     instruction::{AccountMeta, Instruction as SolInstruction},
+    message::Message,
     pubkey::Pubkey,
-    signature::Signature,
+    signature::{read_keypair_file, Keypair, Signature, Signer},
     system_program,
+    transaction::Transaction,
 };
 use solana_transaction_status_client_types::UiTransactionEncoding;
 use std::str::FromStr;
@@ -171,6 +174,9 @@ pub struct WardChain {
     program_id: Pubkey,
     /// Patient PDAs are seeded on the operator, so the ward can only find its own patients.
     operator: Pubkey,
+    /// Pays. Never plays. `None` on a read-only deployment, where the census still answers and
+    /// nothing can be signed — which is a perfectly good ward host to put in front of a judge.
+    relay: Option<Keypair>,
     source: String,
 }
 
@@ -189,16 +195,27 @@ impl WardChain {
                         upgrades Eternal (CWF_PLAN.md ruling 7)".into());
         }
         let program_id = Pubkey::from_str(&id).map_err(|_| format!("VITALS_PROGRAM_ID is not a pubkey: {id}"))?;
-        let operator = std::env::var("VITALS_OPERATOR")
-            .map_err(|_| "VITALS_OPERATOR is not set: patient accounts are seeded on the operator, \
-                          so without it the ward cannot address its own patients".to_string())?;
-        let operator = Pubkey::from_str(&operator)
-            .map_err(|_| format!("VITALS_OPERATOR is not a pubkey: {operator}"))?;
+        // The relay is also the operator: it admits the patients, so their addresses are seeded
+        // on its key. `VITALS_OPERATOR` overrides that for a read-only host — one that publishes
+        // somebody else's ward without holding a key at all — and is otherwise never needed.
+        let relay = std::env::var("VITALS_KEYPAIR")
+            .ok()
+            .and_then(|p| read_keypair_file(p).ok());
+        let operator = match std::env::var("VITALS_OPERATOR") {
+            Ok(o) => Pubkey::from_str(&o).map_err(|_| format!("VITALS_OPERATOR is not a pubkey: {o}"))?,
+            Err(_) => relay
+                .as_ref()
+                .map(|k| k.pubkey())
+                .ok_or("no relay keypair and no VITALS_OPERATOR: patient accounts are seeded on \
+                        the operator, so without one of the two the ward cannot address its own \
+                        patients")?,
+        };
         let cluster = cluster_of(&url);
         Ok(WardChain {
             rpc: RpcClient::new_with_commitment(url, CommitmentConfig::confirmed()),
             program_id,
             operator,
+            relay,
             source: format!("{cluster}:{program_id}"),
         })
     }
@@ -444,4 +461,159 @@ pub fn anchor_shift_ix(
             AccountMeta::new_readonly(system_program::id(), false),
         ],
     )
+}
+
+/// A transaction the relay has signed and the player has not.
+///
+/// The bytes in [`Pending::message`] are exactly what the player's key must sign — the same bytes
+/// the relay signed. The server cannot produce that signature, and that is the entire point: a
+/// ward whose operator could complete a shift would have a record of what its operator asserted,
+/// not of what strangers did.
+///
+/// (`chain.rs` holds the same shape for the Eternal flow. It lives inside the binary and speaks to
+/// a different program with a different instruction set; this one is in the library because the
+/// ward's wiring is tested from outside, and the two are kept apart deliberately — merging them
+/// would put Eternal's anchoring one refactor away from a sprint change, which ruling 7 forbids.)
+pub struct Pending {
+    tx: Transaction,
+    slot: usize,
+}
+
+impl Pending {
+    /// The bytes the player's key must sign.
+    pub fn message(&self) -> Vec<u8> {
+        self.tx.message_data()
+    }
+
+    /// Drop the player's signature into its slot and hand back a transaction that will verify.
+    ///
+    /// The verification is not a formality: it is what turns "somebody sent us 64 bytes" into "the
+    /// key that plays this shift signed for it", and a signature from any other key is refused
+    /// here rather than by the cluster a second later.
+    pub fn signed(self, sig: &[u8; 64]) -> Result<Transaction, String> {
+        let mut tx = self.tx;
+        tx.signatures[self.slot] = Signature::from(*sig);
+        tx.verify()
+            .map_err(|_| "that signature does not match this transaction".to_string())?;
+        Ok(tx)
+    }
+}
+
+/// Build the half-signed transaction: relay as fee payer, one empty slot for the player.
+///
+/// A free function taking the blockhash rather than a method reaching for one, so the part that
+/// decides who signs what can be tested without a cluster. [`WardChain::prepare`] is the same
+/// thing with a fresh blockhash from the RPC.
+pub fn prepare_for(
+    relay: &Keypair,
+    ix: SolInstruction,
+    player: &Pubkey,
+    blockhash: Hash,
+) -> Result<Pending, String> {
+    let msg = Message::new(&[ix], Some(&relay.pubkey()));
+    let mut tx = Transaction::new_unsigned(msg);
+    let slot = tx
+        .message
+        .account_keys
+        .iter()
+        .position(|k| k == player)
+        .ok_or("this instruction does not name the player, so there is nothing for them to sign")?;
+    tx.try_partial_sign(&[relay], blockhash)
+        .map_err(|e| format!("the relay could not sign: {e}"))?;
+    Ok(Pending { tx, slot })
+}
+
+impl WardChain {
+    /// The key that pays, if this host holds one. The ward board shows it so a stranger can check
+    /// the balance that is funding their shift rather than take our word that one exists.
+    pub fn relay_pubkey(&self) -> Option<String> {
+        self.relay.as_ref().map(|k| k.pubkey().to_string())
+    }
+
+    /// The operator these patients are seeded on.
+    pub fn operator(&self) -> Pubkey {
+        self.operator
+    }
+
+    /// One patient's account as it stands: her head, her lease, whether she is still open.
+    ///
+    /// `Ok(None)` is a patient who was never admitted, which is a different thing from a chain
+    /// that could not be read — and the two must not collapse into one answer, because the first
+    /// is a bad patient id and the second is an outage.
+    pub fn patient(&self, patient_id: u64) -> Result<Option<PatientAccount>, String> {
+        match self.rpc.get_account_data(&self.patient_pda(patient_id)) {
+            Ok(data) => PatientAccount::deserialize(&mut &data[..])
+                .map(Some)
+                .map_err(|e| format!("patient {patient_id} does not decode: {e}")),
+            // Not found is the ordinary answer for a patient who does not exist yet, and the RPC
+            // reports it as an error like any other. Everything else is an outage.
+            Err(e) if e.to_string().contains("AccountNotFound") => Ok(None),
+            Err(e) => Err(why(e)),
+        }
+    }
+
+    /// Half-sign an instruction for a player to finish in their browser.
+    pub fn prepare(&self, ix: SolInstruction, player: &Pubkey) -> Result<Pending, String> {
+        let relay = self
+            .relay
+            .as_ref()
+            .ok_or("this host holds no relay key, so it can read the ward but not pay for a shift")?;
+        let blockhash = self.rpc.get_latest_blockhash().map_err(why)?;
+        prepare_for(relay, ix, player, blockhash)
+    }
+
+    /// Take the head of a patient's chain — prepared here, signed in the browser.
+    pub fn take_shift(&self, player: &Pubkey, patient_id: u64) -> Result<Pending, String> {
+        self.prepare(take_shift_ix(&self.program_id, &self.operator, player, patient_id), player)
+    }
+
+    /// Anchor the shift that was played, onto the head it claims to extend.
+    pub fn anchor_shift(
+        &self,
+        player: &Pubkey,
+        patient_id: u64,
+        tree_id: u64,
+        record: RecordWire,
+        prev_head: [u8; 32],
+    ) -> Result<Pending, String> {
+        self.prepare(
+            anchor_shift_ix(&self.program_id, &self.operator, player, patient_id, tree_id, record, prev_head),
+            player,
+        )
+    }
+
+    /// Send a transaction the player has finished signing, and wait for it to land.
+    ///
+    /// Confirmed rather than fire-and-forget, because the next thing that happens is a browser
+    /// re-deriving her chart from the chain: telling a stranger their shift landed and then
+    /// showing them a chart without it is worse than telling them it failed.
+    pub fn submit(&self, tx: &Transaction) -> Result<String, String> {
+        self.rpc
+            .send_and_confirm_transaction(tx)
+            .map(|s| s.to_string())
+            .map_err(why)
+    }
+
+    /// Release a patient onto the ward. The operator's own instruction: no player, no lease.
+    ///
+    /// The whole signature is ours, so this is the one place the ward acts rather than pays — and
+    /// it is deliberately the only one. Admitting is a thing an operator does; treating is not.
+    pub fn admit(&self, patient_id: u64, scenario_hash: [u8; 32]) -> Result<String, String> {
+        let relay = self
+            .relay
+            .as_ref()
+            .ok_or("this host holds no relay key, so it cannot admit a patient")?;
+        let ix = SolInstruction::new_with_borsh(
+            self.program_id,
+            &Instruction::AdmitPatient { patient_id, scenario_hash },
+            vec![
+                AccountMeta::new(self.operator, true),
+                AccountMeta::new(self.patient_pda(patient_id), false),
+                AccountMeta::new_readonly(system_program::id(), false),
+            ],
+        );
+        let blockhash = self.rpc.get_latest_blockhash().map_err(why)?;
+        let tx = Transaction::new_signed_with_payer(&[ix], Some(&relay.pubkey()), &[relay], blockhash);
+        self.submit(&tx)
+    }
 }
