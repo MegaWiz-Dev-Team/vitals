@@ -93,3 +93,50 @@ fn the_ward_fills_its_beds_and_never_more() {
     assert_eq!(to_admit(0, BEDS, 0), 0, "an empty queue is not an error, it is a quiet night");
     assert_eq!(to_admit(5, BEDS, 5), 0, "more patients than beds — from a bed count that shrank — admits nobody");
 }
+
+// ── /api/ward · the payload the weekly card is photographed from ────────────
+
+use vitals_web::ward::ward_payload;
+
+/// The endpoint is the source and the card is a photograph of it, so the payload has to carry the
+/// same discipline the card does: every number beside the thing it was derived from, the read time
+/// on it, and the word "keys" — never "people", never "doctors".
+#[test]
+fn every_number_travels_with_where_it_came_from() {
+    let patients = vec![
+        patient(1, DISCHARGED, 2, 10, 90),
+        patient(2, OPEN, 1, 30, 0),
+    ];
+    let shifts = vec![shift_by(1, 0xA1, 11), shift_by(1, 0xB2, 80), shift_by(2, 0xA1, 35)];
+
+    let v = ward_payload(&patients, &shifts, Some(20), 1234, "devnet:ABC");
+
+    // the six, cumulative and for the window, under names a stranger can read
+    for k in ["admitted", "on_ward", "went_home", "died", "shifts", "keys"] {
+        assert!(v["cumulative"][k].is_u64(), "cumulative.{k} must be a number");
+        assert!(v["week"][k].is_u64(), "week.{k} must be a number");
+        assert!(v["derivations"][k].is_string(), "{k} must say where it came from");
+    }
+    assert_eq!(v["cumulative"]["admitted"], 2);
+    assert_eq!(v["cumulative"]["on_ward"], 1);
+    assert_eq!(v["week"]["admitted"], 1, "only the patient released at or after slot 20");
+    assert_eq!(v["week"]["shifts"], 2);
+
+    assert_eq!(v["as_of_slot"], 1234, "a number without its read time is not evidence");
+    assert_eq!(v["source"], "devnet:ABC", "and it says which chain and which program");
+    assert_eq!(v["week"]["since_slot"], 20);
+
+    let d = v["derivations"].to_string();
+    assert!(d.contains("admitted - went_home - died"),
+            "on_ward must publish its own subtraction, so nobody re-counts it another way");
+    assert!(!d.contains("people") && !d.contains("doctor"),
+            "keys are keys: there is no signup, so nothing here knows how many humans");
+}
+
+#[test]
+fn the_payload_of_an_empty_ward_is_zeroes_and_still_carries_its_derivations() {
+    let v = ward_payload(&[], &[], None, 7, "devnet:ABC");
+    assert_eq!(v["cumulative"]["shifts"], 0);
+    assert_eq!(v["week"]["since_slot"], serde_json::Value::Null, "no window asked for, none claimed");
+    assert!(v["derivations"]["keys"].is_string(), "an empty ward still says how it would have counted");
+}
