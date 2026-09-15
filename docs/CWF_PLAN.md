@@ -43,6 +43,8 @@ first commit on the sprint branch is dated 14 Sep or later.
 - [ ] The refusal is the demo: claim stars you did not earn → REJECTED; earn them at a station → the
       next episode opens because the chain says so
 - [ ] Tag `v0.10.0`; `check.sh demo`-style two-run byte identity on the replay path still holds
+- [ ] osce-a.json carries a stale reviewer attribution in its status string; pinned by 7 leaves;
+      changes with the next rubric version through the archive path, not before
 
 Exit: no code path outside the program can open an episode, and the refusal and the unlock are both
 recorded on screen from the deployed build.

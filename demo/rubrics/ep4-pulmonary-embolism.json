@@ -1,7 +1,7 @@
 {
   "case": "ep4-pulmonary-embolism",
   "pass_bps": 7000,
-  "status": "provisional — needles derived from the ep4-pulmonary-embolism automaton (intervention ids, harm names, outcome ids); point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "status": "provisional — needles derived from the ep4-pulmonary-embolism automaton (intervention ids, harm names, outcome ids); point weights pending clinical review (signer not yet identified). Not a validated OSCE mark sheet.",
   "items": [
     { "label": "Anticoagulated",                                "type": "action",  "needle": "anticoagulate",                 "points": 10 },
     { "label": "Confirmed the diagnosis (CTPA)",                "type": "action",  "needle": "ctpa",                          "points": 7 },

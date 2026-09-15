@@ -1,7 +1,7 @@
 {
   "case": "osce-d4",
   "pass_bps": 7000,
-  "status": "provisional — converted from embla-cases embla-septic-shock-with-multi-organ-failure-resident v1.0.0 (sha256:68f009e58029a6fc): hidden.expected_workup→action (cultures, urinalysis, lactate), hidden.red_flags→no_harm (dry lines, the closed golden hour, antibiotics before cultures, volume-refractory shock unanswered, the unsourced kidney), hidden.management_plan→sepsis six + noradrenaline + urological source control + ICU; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "status": "provisional — converted from embla-cases embla-septic-shock-with-multi-organ-failure-resident v1.0.0 (sha256:68f009e58029a6fc): hidden.expected_workup→action (cultures, urinalysis, lactate), hidden.red_flags→no_harm (dry lines, the closed golden hour, antibiotics before cultures, volume-refractory shock unanswered, the unsourced kidney), hidden.management_plan→sepsis six + noradrenaline + urological source control + ICU; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (signer not yet identified). Not a validated OSCE mark sheet.",
   "items": [
     { "label": "Read the shock off her skin",                      "type": "action",    "needle": "exam_perfusion", "points": 1 },
     { "label": "Pressed the right loin — the source's address",    "type": "action",    "needle": "exam_flank",     "points": 2 },

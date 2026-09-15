@@ -1,7 +1,7 @@
 {
   "case": "osce-d3",
   "pass_bps": 7000,
-  "status": "provisional — converted from embla-cases ddx-p-anaphylaxis-1 v1.0.0 (sha256:dae926c523d9caa9), re-aged paediatric per the set design (see the scenario _note): hidden.management_plan→weight-based adrenaline (the adult half-milligram is a scored harm even though she survives it), hidden.red_flags→no_harm (delay, IV push, the observation window), hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "status": "provisional — converted from embla-cases ddx-p-anaphylaxis-1 v1.0.0 (sha256:dae926c523d9caa9), re-aged paediatric per the set design (see the scenario _note): hidden.management_plan→weight-based adrenaline (the adult half-milligram is a scored harm even though she survives it), hidden.red_flags→no_harm (delay, IV push, the observation window), hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (signer not yet identified). Not a validated OSCE mark sheet.",
   "items": [
     { "label": "Asked her weight before any dose",                 "type": "action",    "needle": "ask_weight",       "points": 3 },
     { "label": "Asked the known allergy",                          "type": "action",    "needle": "ask_allergy",      "points": 2 },

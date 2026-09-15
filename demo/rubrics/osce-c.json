@@ -1,7 +1,7 @@
 {
   "case": "osce-c",
   "pass_bps": 7000,
-  "status": "provisional — converted from embla-cases ddx-croup-2 v1.0.0 (sha256:00e1b0511b1359e0): hidden.expected_workup→action, hidden.red_flags→no_harm (the epiglottitis-scare exam, the needle hunt, the steroid delay), hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "status": "provisional — converted from embla-cases ddx-croup-2 v1.0.0 (sha256:00e1b0511b1359e0): hidden.expected_workup→action, hidden.red_flags→no_harm (the epiglottitis-scare exam, the needle hunt, the steroid delay), hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (signer not yet identified). Not a validated OSCE mark sheet.",
   "items": [
     { "label": "Asked about fever — the first door away from epiglottitis", "type": "action",  "needle": "ask_fever",        "points": 2 },
     { "label": "Asked if it has happened before — the family knows croup",  "type": "action",  "needle": "ask_history",      "points": 1 },

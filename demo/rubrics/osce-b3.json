@@ -1,7 +1,7 @@
 {
   "case": "osce-b3",
   "pass_bps": 7000,
-  "status": "provisional — converted from embla-cases ddx-croup-1 v1.0.0 (sha256:77feb6529b4ab715): hidden.expected_workup→action (sats, neck film, doorway grading), hidden.red_flags→no_harm (antibiotics for a virus; the worsening a late steroid invites), hidden.management_plan→dexamethasone + observation + safety-netting, hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "status": "provisional — converted from embla-cases ddx-croup-1 v1.0.0 (sha256:77feb6529b4ab715): hidden.expected_workup→action (sats, neck film, doorway grading), hidden.red_flags→no_harm (antibiotics for a virus; the worsening a late steroid invites), hidden.management_plan→dexamethasone + observation + safety-netting, hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (signer not yet identified). Not a validated OSCE mark sheet.",
   "items": [
     { "label": "Asked how it started — the cold, then the second-night bark", "type": "action",    "needle": "ask_onset",      "points": 2 },
     { "label": "Asked about fever — cool, unlike the mimic",                  "type": "action",    "needle": "ask_fever",      "points": 3 },

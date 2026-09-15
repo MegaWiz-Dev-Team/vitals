@@ -1,7 +1,7 @@
 {
   "case": "osce-d",
   "pass_bps": 7000,
-  "status": "provisional — converted from embla-cases embla-upper-gastrointestinal-bleeding-intern v1.0.0 (sha256:26ee2d8fd7027261): hidden.expected_workup→action (type&screen, PPI, urgent EGD), hidden.red_flags→no_harm (haemodynamic instability answered late, the aspirin reflex), hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "status": "provisional — converted from embla-cases embla-upper-gastrointestinal-bleeding-intern v1.0.0 (sha256:26ee2d8fd7027261): hidden.expected_workup→action (type&screen, PPI, urgent EGD), hidden.red_flags→no_harm (haemodynamic instability answered late, the aspirin reflex), hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (signer not yet identified). Not a validated OSCE mark sheet.",
   "items": [
     { "label": "Asked the medications — found the two antiplatelets",  "type": "action",    "needle": "ask_meds",         "points": 2 },
     { "label": "Asked what came up, and what came out",                "type": "action",    "needle": "ask_blood",        "points": 1 },

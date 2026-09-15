@@ -1,7 +1,7 @@
 {
   "case": "osce-d2",
   "pass_bps": 7000,
-  "status": "provisional — converted from embla-cases ddx-pulmonary-embolism-2 v1.0.0 (sha256:b397a41f3ffa93fe): hidden.expected_workup→action (CTPA the decider; ECG/CXR supportive), hidden.red_flags→no_harm (needless lytics on a held pressure; the anxiety reassurance at 88%), hidden.management_plan→anticoagulation once confirmed + oxygen, hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "status": "provisional — converted from embla-cases ddx-pulmonary-embolism-2 v1.0.0 (sha256:b397a41f3ffa93fe): hidden.expected_workup→action (CTPA the decider; ECG/CXR supportive), hidden.red_flags→no_harm (needless lytics on a held pressure; the anxiety reassurance at 88%), hidden.management_plan→anticoagulation once confirmed + oxygen, hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (signer not yet identified). Not a validated OSCE mark sheet.",
   "items": [
     { "label": "Asked the illnesses — cancer, on hormones",         "type": "action",  "needle": "ask_history",  "points": 2 },
     { "label": "Asked about her legs",                              "type": "action",  "needle": "ask_legs",     "points": 2 },

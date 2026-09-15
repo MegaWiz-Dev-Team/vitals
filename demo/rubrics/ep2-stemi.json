@@ -1,7 +1,7 @@
 {
   "case": "ep2-stemi",
   "pass_bps": 7000,
-  "status": "provisional — needles derived from the ep2-stemi automaton (intervention ids, harm names, outcome ids); point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "status": "provisional — needles derived from the ep2-stemi automaton (intervention ids, harm names, outcome ids); point weights pending clinical review (signer not yet identified). Not a validated OSCE mark sheet.",
   "items": [
     { "label": "12-lead ECG obtained",              "type": "action",     "needle": "ecg",                       "points": 6 },
     { "label": "Aspirin given",                      "type": "action",     "needle": "aspirin",                   "points": 6 },

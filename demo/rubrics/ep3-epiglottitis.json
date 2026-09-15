@@ -1,7 +1,7 @@
 {
   "case": "ep3-epiglottitis",
   "pass_bps": 7000,
-  "status": "provisional — needles derived from the ep3-epiglottitis automaton (intervention ids, harm names, outcome ids); point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "status": "provisional — needles derived from the ep3-epiglottitis automaton (intervention ids, harm names, outcome ids); point weights pending clinical review (signer not yet identified). Not a validated OSCE mark sheet.",
   "items": [
     { "label": "Called the airway team (ENT / anaesthesia) early", "type": "action",  "needle": "call_airway_team",     "points": 8 },
     { "label": "Kept the child in a position of comfort",          "type": "action",  "needle": "position_of_comfort",  "points": 6 },

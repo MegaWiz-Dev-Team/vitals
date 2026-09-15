@@ -1,7 +1,7 @@
 {
   "case": "osce-c3",
   "pass_bps": 7000,
-  "status": "provisional — converted from embla-cases ddx-pneumonia-2 v1.0.0 (sha256:14fdb9aecdc39ece): hidden.expected_workup→action (CXR, CBC, cultures), hidden.red_flags→no_harm (hypoxia sent home on a reassuring score; the first dose sliding past the hour), hidden.management_plan→antibiotics + oxygen + monitored disposition, hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "status": "provisional — converted from embla-cases ddx-pneumonia-2 v1.0.0 (sha256:14fdb9aecdc39ece): hidden.expected_workup→action (CXR, CBC, cultures), hidden.red_flags→no_harm (hypoxia sent home on a reassuring score; the first dose sliding past the hour), hidden.management_plan→antibiotics + oxygen + monitored disposition, hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (signer not yet identified). Not a validated OSCE mark sheet.",
   "items": [
     { "label": "Asked the cough — rusty sputum, a pleuritic stab",   "type": "action",    "needle": "ask_cough",    "points": 2 },
     { "label": "Asked her background",                               "type": "action",    "needle": "ask_baseline", "points": 1 },

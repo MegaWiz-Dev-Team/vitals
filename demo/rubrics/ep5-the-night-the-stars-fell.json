@@ -1,7 +1,7 @@
 {
   "case": "ep5-the-night-the-stars-fell",
   "pass_bps": 7000,
-  "status": "provisional — needles derived from the ep5 automaton (intervention ids, harm names, outcome ids); point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "status": "provisional — needles derived from the ep5 automaton (intervention ids, harm names, outcome ids); point weights pending clinical review (signer not yet identified). Not a validated OSCE mark sheet.",
   "items": [
     { "label": "Haemorrhage control first (tourniquet / pressure)", "type": "action",  "needle": "tourniquet",                        "points": 10 },
     { "label": "Transfused blood (not crystalloid)",               "type": "action",  "needle": "transfuse",                         "points": 7 },

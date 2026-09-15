@@ -1,7 +1,7 @@
 {
   "case": "osce-b",
   "pass_bps": 7000,
-  "status": "provisional — converted from embla-cases ddx-possible-nstemi-stemi-2 v1.0.0 (sha256:a06bc90eb52b39fd): hidden.expected_workup→action/action_by, hidden.red_flags→no_harm, hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "status": "provisional — converted from embla-cases ddx-possible-nstemi-stemi-2 v1.0.0 (sha256:a06bc90eb52b39fd): hidden.expected_workup→action/action_by, hidden.red_flags→no_harm, hidden.correct_diagnosis→action+outcome; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (signer not yet identified). Not a validated OSCE mark sheet.",
   "items": [
     { "label": "Asked about the pain — character and radiation", "type": "action",     "needle": "ask_pain",         "points": 2 },
     { "label": "Asked the risk factors",                         "type": "action",     "needle": "ask_risk",         "points": 2 },

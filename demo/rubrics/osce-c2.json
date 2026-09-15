@@ -1,7 +1,7 @@
 {
   "case": "osce-c2",
   "pass_bps": 7000,
-  "status": "provisional — converted from embla-cases ddx-bronchospasm-acute-asthma-exacerbation-2 v1.0.0 (sha256:0824a0babe759093): hidden.expected_workup→action (PEFR, oximetry, CXR), hidden.red_flags→no_harm (sedation on a tiring asthmatic; a neb left unbacked by steroid), hidden.management_plan→SABA ladder + early systemic steroid + ICS controller and action plan; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (Dr. Sirawit Tansiri). Not a validated OSCE mark sheet.",
+  "status": "provisional — converted from embla-cases ddx-bronchospasm-acute-asthma-exacerbation-2 v1.0.0 (sha256:0824a0babe759093): hidden.expected_workup→action (PEFR, oximetry, CXR), hidden.red_flags→no_harm (sedation on a tiring asthmatic; a neb left unbacked by steroid), hidden.management_plan→SABA ladder + early systemic steroid + ICS controller and action plan; llm_judge dimensions dropped (not deterministic — feedback only, never points). Point weights pending clinical review (signer not yet identified). Not a validated OSCE mark sheet.",
   "items": [
     { "label": "Asked the pattern — three attacks, no controller",     "type": "action",    "needle": "ask_attacks",   "points": 3 },
     { "label": "Graded her breath by her sentences",                   "type": "action",    "needle": "ask_speech",    "points": 1 },
