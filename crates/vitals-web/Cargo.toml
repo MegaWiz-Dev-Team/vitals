@@ -20,6 +20,8 @@ vitals-program = { path = "../vitals-program" }
 solana-rpc-client = "2"
 solana-sdk = "2"
 solana-transaction-status-client-types = "2"
+solana-rpc-client-api = "2"
+solana-account-decoder-client-types = "2"
 borsh = { version = "1", features = ["derive"] }
 
 [lib]

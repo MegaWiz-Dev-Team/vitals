@@ -45,7 +45,11 @@ pub struct PatientOnChain {
 }
 
 /// One anchored shift, as read from the chain.
-#[derive(Debug, Clone, Copy, PartialEq)]
+///
+/// Serialisable because the signers are read from transaction history and cached — see
+/// [`crate::ward_chain::Seen`]. Nothing here is a number the server keeps; the cache holds what
+/// the chain said, keyed on the signature it said it in.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ShiftOnChain {
     pub patient_id: u64,
     /// The key that signed the leaf. A key, not a person: there is no signup here, so one human
