@@ -81,7 +81,10 @@ we authored a new disease course this month.
    commits against the current head (commit–reveal as today); the reveal appends and moves the head;
    discharge or death closes it. The client verifies the whole chain before letting anyone take a
    shift. The old deliverable A survives as the gate: *you may take a shift on a sicker patient only
-   if the program's star count says so.*
+   if the program's star count says so.* **A stay ends where the engine says it ends: death and
+   discharge close the chart; `WinIcu` does not.** Survival into intensive care is a transfer, not
+   an ending — she is still on the ward and the next shift continues her, so no video and no page
+   ever says "ICU" as a closing.
 4. **Griefing is allowed and named.** Harming her is a scored shift with the harm on the record and
    the player's key on it. Limits: one shift per key per patient per day, plus a cooldown. Death is
    permanent for that patient.
