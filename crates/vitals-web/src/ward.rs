@@ -151,6 +151,38 @@ pub fn difficulty_of(case: &str) -> Option<&'static str> {
     })
 }
 
+/// The engine's own status words, mildest first.
+///
+/// Not a vocabulary of ours: these are `vitals_sce::PatientStatus`, the words the scenarios carry
+/// and the bay already renders. A portrait keyed on anything else would be a picture claiming a
+/// state the chain cannot report, and two vocabularies for one thing is how that happens.
+///
+/// `dead` sits at the worst end although no picture is ever made for it (producer, 16 ก.ย.), which
+/// is what makes [`portrait_for`] resolve a dead patient to her last living state without a rule
+/// of its own.
+pub const PORTRAIT_LADDER: [&str; 7] = [
+    "recovered", "improving", "stable", "deteriorating", "critical", "arrest", "dead",
+];
+
+/// Her picture for the state she is in — or the nearest **milder** one that exists.
+///
+/// Never a worse one, which is the bay's rule and the bay's reason: hanging an arrest over a
+/// patient who is talking to you is the frame telling a lie the mark sheet then marks. The rule
+/// runs both ways, and the other way is the one worth saying out loud — a patient who went home
+/// does not borrow the picture of herself ill in a bed. She has no picture until the one of her
+/// leaving is made, and no picture is the honest state.
+pub fn portrait_for<'a>(
+    set: &'a std::collections::BTreeMap<String, String>,
+    state: &str,
+) -> Option<&'a str> {
+    let at = PORTRAIT_LADDER.iter().position(|s| *s == state)?;
+    PORTRAIT_LADDER[..=at]
+        .iter()
+        .rev()
+        .find_map(|s| set.get(*s))
+        .map(String::as_str)
+}
+
 /// One person the factory can make a patient of.
 ///
 /// No age: the case carries the band and the factory picks inside it, so an age here would be one

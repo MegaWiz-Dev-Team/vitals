@@ -260,9 +260,14 @@ fn a_pack() -> Pack {
     Pack {
         case: "ep2-stemi".into(),
         persona: Persona { name: "Ploy Siriwattana".into(), country: "THA".into(), age: 54 },
-        portrait: None,
+        portrait: std::collections::BTreeMap::new(),
         endemic: false,
     }
+}
+
+fn portrait_url(n: u8) -> String {
+    format!("https://storage.googleapis.com/vitals-world-portraits/{}.webp",
+            format!("{n:02x}").repeat(32))
 }
 
 /// The door the factory pushes patients through, and everything it refuses.
@@ -301,27 +306,38 @@ fn the_queue_takes_only_patients_the_ward_can_actually_serve() {
             "a pack may not label itself endemic for a country and case the endemic list does not \
              pair — an endemic tag nothing backs is the stereotype the rule exists to prevent");
 
-    // The portrait is one shape and no other. The board renders it as an image src on a page
-    // strangers open, so "any https url" would let a pack point the ward's own page at whatever
-    // the factory — or anything that reached the factory — decided to name.
-    let bucket = "https://storage.googleapis.com/vitals-world-portraits";
-    let sha = "a".repeat(64);
+    // The portrait is a set now, keyed on the engine's own status words. Each value is the one
+    // published shape and no other: the board puts these strings in image sources on a page
+    // strangers open, and the factory that supplies them runs unattended on another machine.
     let mut p = a_pack();
-    p.portrait = Some(format!("{bucket}/{sha}.webp"));
-    assert!(validate_pack(&p).is_ok(), "the one shape the portraits are published in");
+    p.portrait.insert("stable".into(), portrait_url(1));
+    p.portrait.insert("critical".into(), portrait_url(2));
+    assert!(validate_pack(&p).is_ok(), "two of the seven states, both properly published");
+
+    let mut p = a_pack();
+    p.portrait.insert("worse".into(), portrait_url(1));
+    assert!(validate_pack(&p).is_err(),
+            "\"worse\" is not a state the engine reports — a key nothing can produce is a picture \
+             that would never be shown, and a typo that is silently never shown is worse");
+
+    let mut p = a_pack();
+    p.portrait.insert("dead".into(), portrait_url(1));
+    assert!(validate_pack(&p).is_err(),
+            "no picture of a dead patient is made (producer, 16 ก.ย.) — the board shows her last \
+             living state and says died in words");
 
     for wrong in [
         "javascript:alert(1)".to_string(),
         "https://example.invalid/a.jpg".to_string(),
-        format!("http://storage.googleapis.com/vitals-world-portraits/{sha}.webp"),
-        format!("https://storage.googleapis.com/some-other-bucket/{sha}.webp"),
-        format!("https://storage.googleapis.com/vitals-world-portraits/{sha}.png"),
-        format!("https://storage.googleapis.com/vitals-world-portraits/../{sha}.webp"),
+        format!("http://storage.googleapis.com/vitals-world-portraits/{}.webp", "a".repeat(64)),
+        format!("https://storage.googleapis.com/some-other-bucket/{}.webp", "a".repeat(64)),
+        format!("https://storage.googleapis.com/vitals-world-portraits/{}.png", "a".repeat(64)),
+        format!("https://storage.googleapis.com/vitals-world-portraits/../{}.webp", "a".repeat(64)),
         format!("https://storage.googleapis.com/vitals-world-portraits/{}.webp", "z".repeat(64)),
         format!("https://storage.googleapis.com/vitals-world-portraits/{}.webp", "a".repeat(63)),
     ] {
         let mut p = a_pack();
-        p.portrait = Some(wrong.clone());
+        p.portrait.insert("stable".into(), wrong.clone());
         assert!(validate_pack(&p).is_err(), "{wrong} is not a portrait this ward publishes");
     }
 }
