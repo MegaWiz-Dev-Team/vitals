@@ -49,6 +49,20 @@ case "$PROJECT" in
     exit 1 ;;
 esac
 
+# The hackathon ward is a second service on its own host (world.vitals.academy, SERVICE=vitals-world);
+# vitals.academy runs the Eternal entry on SERVICE=vitals and must still be there, unchanged, on the
+# day a judge opens it. A sprint branch deploying the default service is how that gets overwritten by
+# a hand that meant no harm — one forgotten `SERVICE=` in a shell. The branch decides.
+BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+case "$BRANCH:$SERVICE" in
+  cwf/*:vitals)
+    echo "refusing: you are on $BRANCH and SERVICE is 'vitals' — that is the Eternal entry at" >&2
+    echo "vitals.academy, and sprint work does not go there. Deploy the ward with:" >&2
+    echo "    SERVICE=vitals-world $0" >&2
+    echo "If you really mean to ship sprint code as the Eternal entry, do it from main." >&2
+    exit 1 ;;
+esac
+
 # Deploying as whoever gcloud happens to be is how a service ends up running with a backup
 # uploader's permissions, or failing halfway with a half-created service to clean up.
 WHO="$(gcloud config get-value account 2>/dev/null)"
