@@ -688,12 +688,11 @@ pub fn validate_pack(p: &crate::ward::Pack) -> Result<(), String> {
         return Err(format!("nobody is {}", p.persona.age));
     }
     if let Some(src) = &p.portrait {
-        // The board renders this as an image src. Anything that is not plainly a fetchable image
-        // location is refused here rather than by a browser that may or may not refuse it.
-        let ok = src.starts_with("https://") || src.starts_with("/img/");
-        if !ok {
+        if !is_portrait_url(src) {
             return Err(format!(
-                "a portrait must be an https url or a path this server serves, not {src}"
+                "a portrait must be {PORTRAITS}/<sha256>.webp, not {src} — the board renders this \
+                 as an image on a page strangers open, so the ward publishes one shape and \
+                 refuses every other"
             ));
         }
     }
@@ -710,6 +709,26 @@ pub fn validate_pack(p: &crate::ward::Pack) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Where the ward's portraits are published: one bucket, public read, content-addressed objects.
+///
+/// Production's bucket even for dev packs, because a portrait carries no data about anybody and
+/// one set of sixty faces is enough for both.
+pub const PORTRAITS: &str = "https://storage.googleapis.com/vitals-world-portraits";
+
+/// Is this exactly a portrait this ward publishes?
+///
+/// Not "does it look like a url". The board puts this string in an `img src` on a page strangers
+/// open, so the check is equality with one shape: the bucket, a 64-character lower-case hex name,
+/// and `.webp`. Everything a near miss could smuggle — another host, another bucket, `http`, a
+/// traversal segment, a different extension — fails by not being that.
+pub fn is_portrait_url(src: &str) -> bool {
+    let Some(name) = src.strip_prefix(PORTRAITS).and_then(|r| r.strip_prefix('/')) else {
+        return false;
+    };
+    let Some(sha) = name.strip_suffix(".webp") else { return false };
+    sha.len() == 64 && sha.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 /// A pack's address: sha256 over its own fields, in a fixed order.
