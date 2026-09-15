@@ -110,7 +110,7 @@ fn the_verifier_still_sees_one_tape() {
 
 // ── the idle clock ──────────────────────────────────────────────────────────
 
-use vitals_replay::{idle_seconds, IDLE_CAP_SIM_SECONDS, IDLE_SIM_PER_REAL, SLOT_SECONDS};
+use vitals_replay::{idle_seconds, pass_idle, IDLE_CAP_SIM_SECONDS, IDLE_SIM_PER_REAL, SLOT_SECONDS};
 
 /// A patient nobody visits is not the patient you left.
 ///
@@ -144,14 +144,20 @@ fn the_idle_clock_is_slow_bounded_and_derivable() {
             "the stated ratio is one simulated minute per ten real ones");
     assert!((IDLE_SIM_PER_REAL - 0.1).abs() < 1e-9);
 
-    // a weekend alone is still one hour of simulated time
+    // a weekend alone is the same two minutes twenty real minutes buys
     let three_days = (3.0 * 24.0 * 3600.0 / SLOT_SECONDS) as u64;
+    let twenty_minutes = (1200.0 / SLOT_SECONDS) as u64;
     assert_eq!(idle_seconds(three_days), IDLE_CAP_SIM_SECONDS,
-               "a long weekend alone must leave her where one unattended night leaves her — the cap \
-                bounds the gap, so nothing about an abandoned patient depends on how long we were \
-                away past the first ten hours. It does not bound her mortality: at an hour of \
-                untreated time, fourteen of the sixteen catalogue cases are dead");
-    assert_eq!(IDLE_CAP_SIM_SECONDS, 3600.0);
+               "a long weekend alone must leave her where twenty real minutes leaves her — nothing \
+                about an abandoned patient may depend on how long we were away");
+    assert_eq!(idle_seconds(twenty_minutes), IDLE_CAP_SIM_SECONDS,
+               "at this ratio the cap is reached after twenty real minutes, and every longer gap \
+                is that same gap");
+    assert_eq!(IDLE_CAP_SIM_SECONDS, 120.0,
+               "two simulated minutes, set below the fastest untreated arrest in the catalogue \
+                (ep5 at 186 s) so a gap can only ever deteriorate her — vitals-web's \
+                no_case_in_the_catalogue_dies_of_the_idle_clock_alone is what holds that against \
+                all sixteen cases");
 }
 
 #[test]
@@ -184,11 +190,21 @@ fn idle_time_passes_the_way_time_on_shift_passes() {
     let (played, _) = resume(&sce, &an_hour_on_shift).expect("an hour, played");
 
     let (mut idled, _) = resume(&sce, &[]).expect("fresh");
-    let an_hour_of_slots = (IDLE_CAP_SIM_SECONDS / IDLE_SIM_PER_REAL / SLOT_SECONDS) as u64;
-    shift(&mut idled, &[], an_hour_of_slots);
+    pass_idle(&mut idled, 3600.0);
 
     assert_eq!(seen(&idled), seen(&played),
-               "an hour alone must leave exactly the patient an hour on shift leaves — if the idle \
-                clock runs the engine coarsely it is a second physiology, and the chart a stranger \
+               "an hour alone must leave exactly the patient an hour on shift leaves — if idle time \
+                runs the engine coarsely it is a second physiology, and the chart a stranger \
                 re-derives is not the patient in the bed");
+
+    // Tested on the mechanism rather than through `shift`, deliberately. The cap is two simulated
+    // minutes and no catalogue case tells a single tick of that from two minutes of ticks, so the
+    // same assertion written through `shift` would pass with the bug back in and guard nothing.
+    // Raise the cap past ep5's 186 s and it would start guarding again; the grain rule holds at
+    // every cap, so it is pinned where it does not depend on one.
+    let (coarse, _) = resume(&sce, &[Step::Tick(3600.0)]).expect("one jump");
+    assert_ne!(seen(&coarse), seen(&played),
+               "this test is worthless unless one big tick actually differs from an hour of ticks \
+                — it no longer does, so the engine changed and the test must be rewritten, not \
+                deleted");
 }

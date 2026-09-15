@@ -243,7 +243,7 @@ fn a_chain_that_cannot_be_read_says_so_and_never_reports_zero() {
 // ── the idle clock, against the catalogue it will actually run on ──────────
 
 use std::path::PathBuf;
-use vitals_replay::{resume, shift, Step};
+use vitals_replay::{resume, shift};
 use vitals_web::ward::CATALOGUE;
 
 fn sce_path(id: &str) -> PathBuf {
