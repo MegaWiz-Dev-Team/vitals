@@ -485,3 +485,30 @@ fn the_endemic_list_may_only_name_cases_the_ward_can_serve() {
         }
     }
 }
+
+/// The panel offers levels, so the policy has to say what is actually on the shelf.
+#[test]
+fn the_policy_publishes_the_levels_and_the_endemic_rule() {
+    use vitals_web::ward::{difficulty_of, CATALOGUE};
+
+    let v = ward_payload(&[], &[], &nobody(), None, 1, "devnet:ABC");
+    let levels = &v["policy"]["difficulty"];
+    for level in ["student", "intern", "resident"] {
+        let want = CATALOGUE.iter().filter(|c| difficulty_of(c) == Some(level)).count();
+        assert_eq!(levels[level], want,
+                   "the policy must count {level} the way the catalogue does, or a player picks a \
+                    level the ward cannot fill");
+    }
+    assert_eq!(levels["student"].as_u64().unwrap()
+                   + levels["intern"].as_u64().unwrap()
+                   + levels["resident"].as_u64().unwrap(),
+               CATALOGUE.len() as u64,
+               "every case has a level and no case has two");
+
+    let rule = v["policy"]["endemic"].as_str().expect("the endemic rule is published");
+    assert!(rule.contains("never"), "it has to say what origin does not do: {rule}");
+    assert_eq!(v["policy"]["countries_with_an_endemic_list"], 0,
+               "and today the honest count is zero — none of the converted sixteen belongs to a \
+                place, and pairing one with a country anyway is the thing this rule exists to \
+                stop");
+}
