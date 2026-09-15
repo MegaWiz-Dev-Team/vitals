@@ -36,6 +36,19 @@ pub const SEED_TREE: &[u8] = b"tree";
 pub const SEED_COMMIT: &[u8] = b"commit";
 pub const SEED_CLAIM: &[u8] = b"claim";
 pub const SEED_PROGRESS: &[u8] = b"prog";
+/// The ward (CWF_PLAN.md). A patient is a hash-linked chain of shifts and this is its head.
+pub const SEED_PATIENT: &[u8] = b"patient";
+
+/// How long one shift holds the head, in slots.
+///
+/// Two strangers can start on the same patient at the same moment; without a lease one of them
+/// spends five real minutes caring for her and is then refused for not extending the head. The
+/// number is the ward's shift ceiling — 23 minutes: the longest authored working window is 18
+/// (EP5's `runtime_min`) plus 5 for the reveal to land and for clock skew — over Solana's ~400 ms
+/// target slot: 23 x 60 / 0.4 = 3,450. Slots are not seconds and a congested cluster runs slower
+/// than target, which errs toward a longer lease; an expired lease is free for anyone to take, so
+/// erring long costs a wait rather than a lost shift.
+pub const LEASE_SLOTS: u64 = 3_450;
 
 /// How many proven attempts one claim can carry. Bounded so the account is fixed-size and the
 /// recomputation cost is bounded; a player with more history claims in batches.
@@ -153,6 +166,21 @@ pub enum Instruction {
     /// is noise next to the per-player rent already paid), and closing only frees the open slot
     /// so a new commitment can be made cleanly.
     CloseCommitment,
+
+    // ── the ward ────────────────────────────────────────────────────────────
+    /// Release a patient onto the ward. The operator signs; the head starts at zero.
+    AdmitPatient { patient_id: u64, scenario_hash: [u8; 32] },
+    /// Take the head for a shift. Refused while somebody else's lease is live.
+    TakeShift { patient_id: u64 },
+    /// Give the head back — the holder, or anyone once the lease has expired.
+    ReleaseShift { patient_id: u64 },
+    /// Anchor a shift and move the patient's head to it.
+    ///
+    /// `prev_head` is what the shift believes it extended. It is checked against the account
+    /// rather than trusted, which is the whole point: a tape replayed from a stale state produces
+    /// a stale `prev_head`, and the patient the next stranger opens is the one that actually
+    /// happened.
+    AnchorShift { tree_id: u64, patient_id: u64, record: RecordWire, prev_head: [u8; 32] },
 }
 
 /// Trees are addressed by id rather than being one global tree.
@@ -297,6 +325,55 @@ pub struct Progress {
 
 pub const PROGRESS_LEN: usize = 32 + 1 + 1 + 4 + 4 + 8;
 
+// ── the ward ────────────────────────────────────────────────────────────────
+
+/// A patient on the public ward: a chain of shifts, and the head of that chain.
+///
+/// `head` is the last anchored shift's leaf, zero at admission. A shift must name the head it
+/// believes it is extending, so two people who worked from the same state cannot both land — the
+/// second is refused rather than silently overwriting the first. That refusal is the mechanic.
+///
+/// `lease_holder` is an **account id**, not a device pubkey. This program's identity is the person
+/// (`Account::id`) and a person may hold several devices; a lease on the device would let the same
+/// stranger take two shifts from a laptop and a phone at once, which is the thing the lease exists
+/// to stop.
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Copy)]
+pub struct PatientAccount {
+    pub operator: [u8; 32],
+    pub patient_id: u64,
+    /// The scenario she was admitted with. Not in the producer's field list; kept because without
+    /// it the chain cannot say what the stay began as, and a chart whose first line is missing is
+    /// not a chart. Costs 32 bytes of rent, once, paid by the operator.
+    pub scenario_hash: [u8; 32],
+    pub head: [u8; 32],
+    pub shifts: u32,
+    /// [`PATIENT_OPEN`] · [`PATIENT_DISCHARGED`] · [`PATIENT_DIED`].
+    pub state: u8,
+    pub lease_holder: [u8; 32],
+    pub lease_until_slot: u64,
+    pub admitted_slot: u64,
+    pub closed_slot: u64,
+}
+
+pub const PATIENT_OPEN: u8 = 0;
+pub const PATIENT_DISCHARGED: u8 = 1;
+pub const PATIENT_DIED: u8 = 2;
+pub const PATIENT_LEN: usize = 32 + 8 + 32 + 32 + 4 + 1 + 32 + 8 + 8 + 8;
+
+impl PatientAccount {
+    /// Is the lease free at this slot? Free means nobody holds it, or the holder's time is up.
+    pub fn lease_free(&self, slot: u64) -> bool {
+        self.lease_holder == [0; 32] || slot >= self.lease_until_slot
+    }
+}
+
+pub fn patient_pda(program_id: &Pubkey, operator: &Pubkey, patient_id: u64) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[SEED_PATIENT, operator.as_ref(), &patient_id.to_le_bytes()],
+        program_id,
+    )
+}
+
 // ── errors ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy)]
@@ -325,6 +402,14 @@ pub enum VitalsError {
     NoAccount = 14,
     /// Anchoring without having declared the attempt first.
     NoCommitment = 15,
+    /// The shift extended a head the patient has moved past. Somebody else landed first.
+    StaleHead = 16,
+    /// Another person is on shift and their lease has not expired.
+    LeaseHeld = 17,
+    /// She has gone home or she has died. Either way the chart is closed.
+    PatientClosed = 18,
+    /// Anchoring or releasing a shift that is not yours to anchor or release.
+    NotLeaseHolder = 19,
 }
 
 impl From<VitalsError> for ProgramError {
@@ -350,6 +435,14 @@ pub fn process_instruction(program_id: &Pubkey, accounts: &[AccountInfo], data: 
         Instruction::CloseCommitment => close_commitment(program_id, accounts),
         Instruction::ClaimProgress { tree_id, specialty, claimed } => {
             claim_progress(program_id, accounts, tree_id, specialty, claimed)
+        }
+        Instruction::AdmitPatient { patient_id, scenario_hash } => {
+            admit_patient(program_id, accounts, patient_id, scenario_hash)
+        }
+        Instruction::TakeShift { patient_id } => take_shift(program_id, accounts, patient_id),
+        Instruction::ReleaseShift { patient_id } => release_shift(program_id, accounts, patient_id),
+        Instruction::AnchorShift { tree_id, patient_id, record, prev_head } => {
+            anchor_shift(program_id, accounts, tree_id, patient_id, record, prev_head)
         }
     }
 }
@@ -778,6 +871,237 @@ fn claim_progress(
             })
         }
     }
+}
+
+// ── 5. the ward ─────────────────────────────────────────────────────────────
+
+/// Read a patient account and check it is ours, at the address its own contents imply.
+///
+/// The operator is not a signer on a shift, so it is read from the account and the PDA is
+/// re-derived from it. That looks circular and is not: only [`admit_patient`] can create an
+/// account at this address, and it requires the operator's signature to do so. An account that
+/// exists here, owned by this program, whose stored operator derives back to its own key, is one
+/// that an operator admitted. Finding some other operator key that derives to the same address is
+/// a preimage search on a hash.
+fn patient_here(
+    program_id: &Pubkey,
+    patient_id: u64,
+    ai: &AccountInfo,
+) -> Result<PatientAccount, ProgramError> {
+    if ai.data_is_empty() {
+        return Err(VitalsError::NoAccount.into());
+    }
+    owned_by(ai, program_id)?;
+    let patient = read::<PatientAccount>(ai)?;
+    if patient.patient_id != patient_id {
+        return Err(VitalsError::WrongPda.into());
+    }
+    let (pda, _) = patient_pda(program_id, &Pubkey::new_from_array(patient.operator), patient_id);
+    if pda != *ai.key {
+        return Err(VitalsError::WrongPda.into());
+    }
+    Ok(patient)
+}
+
+/// Release a patient onto the ward.
+///
+/// The operator signs and pays. Admission is not a player action: a bed frees, the server admits
+/// the next case from the queue, and no stranger can conjure a patient to farm shifts on.
+fn admit_patient(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    patient_id: u64,
+    scenario_hash: [u8; 32],
+) -> ProgramResult {
+    let it = &mut accounts.iter();
+    let operator = next_account_info(it)?;
+    let patient_ai = next_account_info(it)?;
+    let system = next_account_info(it)?;
+    if !operator.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let (pda, bump) = patient_pda(program_id, operator.key, patient_id);
+    if pda != *patient_ai.key {
+        return Err(VitalsError::WrongPda.into());
+    }
+    if !patient_ai.data_is_empty() {
+        // Re-admitting an id would rewrite a chart that strangers have already written in.
+        return Err(VitalsError::DuplicateAttempt.into());
+    }
+    create_pda(operator, patient_ai, system, program_id, PATIENT_LEN,
+               &[SEED_PATIENT, operator.key.as_ref(), &patient_id.to_le_bytes(), &[bump]])?;
+    let slot = Clock::get()?.slot;
+    write(patient_ai, &PatientAccount {
+        operator: operator.key.to_bytes(),
+        patient_id,
+        scenario_hash,
+        head: [0; 32],
+        shifts: 0,
+        state: PATIENT_OPEN,
+        lease_holder: [0; 32],
+        lease_until_slot: 0,
+        admitted_slot: slot,
+        closed_slot: 0,
+    })?;
+    msg!("admitted patient {} at slot {}", patient_id, slot);
+    Ok(())
+}
+
+/// Take the head for a shift.
+///
+/// The player's device signs and `authorised` resolves it to the person, so the lease is held by
+/// the person rather than by the machine in front of them.
+fn take_shift(program_id: &Pubkey, accounts: &[AccountInfo], patient_id: u64) -> ProgramResult {
+    let it = &mut accounts.iter();
+    let device = next_account_info(it)?;
+    let account_ai = next_account_info(it)?;
+    let patient_ai = next_account_info(it)?;
+    if !device.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let account = authorised(program_id, account_ai, device)?;
+    let mut patient = patient_here(program_id, patient_id, patient_ai)?;
+    if patient.state != PATIENT_OPEN {
+        return Err(VitalsError::PatientClosed.into());
+    }
+    let slot = Clock::get()?.slot;
+    if !patient.lease_free(slot) && patient.lease_holder != account.id {
+        return Err(VitalsError::LeaseHeld.into());
+    }
+    patient.lease_holder = account.id;
+    patient.lease_until_slot = slot + LEASE_SLOTS;
+    write(patient_ai, &patient)?;
+    msg!("shift taken on patient {} until slot {}", patient_id, patient.lease_until_slot);
+    Ok(())
+}
+
+/// Give the head back before the lease runs out — or take a dead lease off a patient nobody is on.
+fn release_shift(program_id: &Pubkey, accounts: &[AccountInfo], patient_id: u64) -> ProgramResult {
+    let it = &mut accounts.iter();
+    let device = next_account_info(it)?;
+    let account_ai = next_account_info(it)?;
+    let patient_ai = next_account_info(it)?;
+    if !device.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let account = authorised(program_id, account_ai, device)?;
+    let mut patient = patient_here(program_id, patient_id, patient_ai)?;
+    let slot = Clock::get()?.slot;
+    // Anyone may clear an expired lease — otherwise a stranger who closed their laptop mid-shift
+    // holds the bed until someone with the right key comes back, which is nobody.
+    if !patient.lease_free(slot) && patient.lease_holder != account.id {
+        return Err(VitalsError::NotLeaseHolder.into());
+    }
+    patient.lease_holder = [0; 32];
+    patient.lease_until_slot = 0;
+    write(patient_ai, &patient)?;
+    Ok(())
+}
+
+/// Anchor a shift and move the patient's head to it.
+///
+/// This is `anchor_replay` plus the ward's three questions — is she open, is this your shift, and
+/// is the head you extended still the head. `anchor_replay` itself is left exactly as it is: it is
+/// the Eternal entry's path, it is live, and a shared helper would have put this sprint's code
+/// inside it. The duplication is deliberate and it is the cheaper risk.
+fn anchor_shift(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    tree_id: u64,
+    patient_id: u64,
+    wire: RecordWire,
+    prev_head: [u8; 32],
+) -> ProgramResult {
+    let it = &mut accounts.iter();
+    let funder = next_account_info(it)?;
+    let device = next_account_info(it)?;
+    let account_ai = next_account_info(it)?;
+    let tree_ai = next_account_info(it)?;
+    let commit_ai = next_account_info(it)?;
+    let patient_ai = next_account_info(it)?;
+    let system = next_account_info(it)?;
+
+    if !funder.is_signer || !device.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let account = authorised(program_id, account_ai, device)?;
+
+    // The relay funds and the player's device signs — the model this program already runs on. The
+    // lease is therefore checked against the player, not against the funder: the relay pays for
+    // everyone and holding it to a lease would mean one shift on the whole ward at a time.
+    let mut patient = patient_here(program_id, patient_id, patient_ai)?;
+    if patient.state != PATIENT_OPEN {
+        return Err(VitalsError::PatientClosed.into());
+    }
+    if patient.head != prev_head {
+        return Err(VitalsError::StaleHead.into());
+    }
+    let slot = Clock::get()?.slot;
+    if patient.lease_holder != account.id || slot >= patient.lease_until_slot {
+        return Err(VitalsError::NotLeaseHolder.into());
+    }
+
+    let id = tree_seeds(tree_id);
+    let (pda, bump) = tree_pda(program_id, funder.key, tree_id);
+    if pda != *tree_ai.key {
+        return Err(VitalsError::WrongPda.into());
+    }
+    if tree_ai.data_is_empty() {
+        create_pda(funder, tree_ai, system, program_id, TREE_LEN,
+                   &[SEED_TREE, funder.key.as_ref(), &id, &[bump]])?;
+        write(tree_ai, &TreeAccount::empty())?;
+    }
+
+    let (cpda, _) = commitment_pda(program_id, &account.id);
+    if cpda != *commit_ai.key {
+        return Err(VitalsError::WrongPda.into());
+    }
+    if commit_ai.data_is_empty() {
+        return Err(VitalsError::NoCommitment.into());
+    }
+    owned_by(commit_ai, program_id)?;
+    let mut c = read::<Commitment>(commit_ai)?;
+    if !c.open {
+        return Err(VitalsError::NoCommitment.into());
+    }
+    let (commitment, committed_slot) = (c.hash, c.slot);
+    c.open = false;
+    c.hash = [0; 32];
+    write(commit_ai, &c)?;
+
+    let record = wire.decode(commitment, committed_slot)?;
+    if record.player != account.id {
+        return Err(VitalsError::NotYourRun.into());
+    }
+    let leaf = record.leaf();
+
+    owned_by(tree_ai, program_id)?;
+    let mut tree = read::<TreeAccount>(tree_ai)?.to_tree();
+    let index = tree.append(leaf).ok_or(VitalsError::TreeFull)?;
+    write(tree_ai, &TreeAccount::from_tree(tree))?;
+
+    patient.head = leaf;
+    patient.shifts += 1;
+    patient.lease_holder = [0; 32];
+    patient.lease_until_slot = 0;
+    // A stay ends where the engine says it ends. `WinIcu` is survival into intensive care, which
+    // is a transfer and not an ending — she is still on the ward and the next shift continues her.
+    match record.outcome {
+        Outcome::DeathArrest | Outcome::DeathBiphasic => {
+            patient.state = PATIENT_DIED;
+            patient.closed_slot = slot;
+        }
+        Outcome::WinDischarge => {
+            patient.state = PATIENT_DISCHARGED;
+            patient.closed_slot = slot;
+        }
+        Outcome::WinIcu | Outcome::NoTerminal => {}
+    }
+    write(patient_ai, &patient)?;
+
+    msg!("shift {} on patient {} anchored at leaf {} — state {}",
+         patient.shifts, patient_id, index, patient.state);
+    Ok(())
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
