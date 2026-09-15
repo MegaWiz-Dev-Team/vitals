@@ -219,3 +219,23 @@ fn the_release_policy_is_published_and_promises_no_rate() {
     assert!(joined.contains("osce-a") && joined.contains("ep2"), "named, not summarised");
     assert!(!joined.contains("ep1"), "ep1 is the practice case and is not on the ward");
 }
+
+/// The failure that would do the most damage is not a wrong number — it is a zero.
+///
+/// If the chain cannot be read, an endpoint that answers `0` is indistinguishable from a ward
+/// nobody came to, and that zero would be photographed onto a card and read out in a video. So an
+/// unreadable chain says so, in the same shape, and carries no numbers at all.
+#[test]
+fn a_chain_that_cannot_be_read_says_so_and_never_reports_zero() {
+    let v = vitals_web::ward::ward_unavailable("devnet:ABC", "rpc timed out after 8s");
+
+    assert_eq!(v["readable"], false);
+    assert_eq!(v["source"], "devnet:ABC");
+    assert!(v["why"].as_str().unwrap().contains("rpc timed out"), "say what went wrong, not 'error'");
+    assert!(v["cumulative"].is_null() && v["week"].is_null(),
+            "no numbers at all — a zero here would be read out as 'nobody came'");
+    assert!(v["policy"].is_object(), "the rule is still true when the chain is unreachable");
+
+    let ok = ward_payload(&[], &[], None, 1, "devnet:ABC");
+    assert_eq!(ok["readable"], true, "and a readable chain says that too, so the card can tell them apart");
+}
