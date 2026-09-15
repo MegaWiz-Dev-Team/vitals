@@ -124,6 +124,7 @@
     <span class="eyebrow">Vitals · ใบตรวจ</span>
     <h1 id="title">ตรวจ Vitals</h1>
     <p class="sub" id="lede">เลือกก่อนว่าคุณตรวจในบทบาทไหน — คำถามจะเปลี่ยนตามบทบาท</p>
+    <p class="sub" id="addressed" hidden></p>
   </header>
 
   <section id="pick">
@@ -528,6 +529,21 @@
   var $ = function(id){ return document.getElementById(id); };
   var role = null, KEY = "vitals-review-draft";
 
+  // An addressed instance of the same form. `/review` on its own is the link the first two
+  // reviewers already hold and stays exactly as it was; `/review?for=<id>` is a fresh copy handed
+  // to one named reviewer: the role is fixed, the greeting names them, the draft lives under its
+  // own key so it cannot collide with a draft of the bare form on the same browser, and the
+  // submission carries the id so the founder can tell which link an answer came through.
+  // Nothing is pre-filled — name, contact and the anonymous toggle are theirs.
+  var FORMS = {
+    "py-fa87c29f3afb": { role: "physician", to: "นพ.ปรีชายุทธ โยคะนิตย์" }
+  };
+  var FORM_ID = (function(){
+    try { return new URLSearchParams(location.search).get("for") || ""; } catch(e){ return ""; }
+  })();
+  var FORM = FORMS[FORM_ID] || null;
+  if (FORM) KEY = KEY + ":" + FORM_ID;
+
   // This page is also handed out as a standalone copy — mailed, or published where a reviewer
   // can reach it without the server. Off our own host there is nothing to post to, so the send
   // button hands the answers back instead of failing first and explaining afterwards.
@@ -770,6 +786,13 @@
 
   $("r-student").addEventListener("click", function(){ build("student"); });
   $("r-physician").addEventListener("click", function(){ build("physician"); });
+  if (FORM){
+    $("pick").hidden = true;
+    $("lede").hidden = true;
+    $("addressed").textContent = "เรียน " + FORM.to + " — ใบตรวจฉบับนี้เตรียมไว้สำหรับอาจารย์โดยเฉพาะ ตอบได้เท่าที่มีเวลา หยุดแล้วกลับมาทำต่อได้ (ร่างเก็บไว้ในเครื่องนี้) เราจะยังไม่อ่านอะไรจนกว่าอาจารย์จะกดส่ง";
+    $("addressed").hidden = false;
+    build(FORM.role);
+  }
   ["name","contact"].forEach(function(id){ $(id).addEventListener("input", keep); });
   $("anonymous").addEventListener("change", keep);
   $("notecard").appendChild(gauge($("notes"), NOTES_MAX));
@@ -793,7 +816,8 @@
     return {
       role: role, name: $("name").value.trim(), contact: $("contact").value.trim(),
       anonymous: $("anonymous").checked, answers: answers, notes: $("notes").value.trim(),
-      revision: CANPOST ? BUILD : ""
+      revision: CANPOST ? BUILD : "",
+      form: FORM ? FORM_ID : ""
     };
   }
   function empty(p){ return !p.answers.length && !p.notes; }
