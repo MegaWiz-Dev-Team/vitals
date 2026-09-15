@@ -19,7 +19,7 @@ fn patient(id: u64, state: u8, shifts: u32, admitted: u64, closed: u64) -> Patie
 
 /// No pack has been queued for anyone — the state every test but one is written against, and the
 /// state a dev deploy is in before the factory runs.
-fn nobody() -> std::collections::BTreeMap<u64, vitals_web::ward::Persona> {
+fn nobody() -> std::collections::BTreeMap<u64, vitals_web::ward::Pack> {
     std::collections::BTreeMap::new()
 }
 
@@ -378,13 +378,17 @@ fn a_stay_is_three_cases_and_the_policy_publishes_it() {
 #[test]
 fn the_board_lists_the_patients_and_where_they_are_from() {
     use std::collections::BTreeMap;
-    use vitals_web::ward::Persona;
+    use vitals_web::ward::{Pack, Persona};
 
     let patients = vec![patient(7, OPEN, 2, 10, 0), patient(8, DIED, 1, 20, 90)];
-    let mut personas = BTreeMap::new();
-    personas.insert(7u64, Persona { name: "Ploy".into(), country: "THA".into() });
+    let mut packs = BTreeMap::new();
+    packs.insert(7u64, Pack {
+        case: "ep2-stemi".into(),
+        persona: Persona { name: "Ploy".into(), country: "THA".into() },
+        portrait: None,
+    });
 
-    let v = ward_payload(&patients, &[], &personas, None, 1234, "devnet:ABC");
+    let v = ward_payload(&patients, &[], &packs, None, 1234, "devnet:ABC");
     let list = v["patients"].as_array().expect("the board needs the patients themselves");
     assert_eq!(list.len(), 2, "every patient the ward ever admitted, closed ones included");
 

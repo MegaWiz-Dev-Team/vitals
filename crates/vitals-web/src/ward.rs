@@ -93,6 +93,47 @@ impl Persona {
     }
 }
 
+/// What the factory queues for one bed: an existing case, the person it is happening to, and her
+/// picture.
+///
+/// The three parts are separate on purpose. The **case** is content we already have and did not
+/// write for the ward (ruling 1); the **persona** is manufactured, and is the only manufactured
+/// thing here; the **portrait** is an image, absent until one has been made, and a missing picture
+/// is never a reason to withhold a patient.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Pack {
+    /// A case id from [`CATALOGUE`]. A pack naming anything else is a patient the ward cannot
+    /// serve, which is why the door that accepts packs checks it.
+    pub case: String,
+    pub persona: Persona,
+    /// Where her portrait lives, when one has been made.
+    #[serde(default)]
+    pub portrait: Option<String>,
+}
+
+/// How hard a case is: `student`, `intern` or `resident`.
+///
+/// `None` for a case this ward does not serve, which is the honest answer and also what
+/// `every_case_the_ward_can_admit_has_a_difficulty_and_the_board_publishes_it` uses to refuse a
+/// catalogue entry nobody gave a level.
+///
+/// **One table, not a second opinion.** Every level below is the tier the bay already publishes
+/// for that case — the station sets in `main.rs` for the twelve stations, the episode list in
+/// `vitals-cli` for the four episodes. A case that was intern in the bay and resident on the ward
+/// would be two products disagreeing about the same patient in front of the same learner.
+pub fn difficulty_of(case: &str) -> Option<&'static str> {
+    Some(match case {
+        // the episodes, from vitals-cli's own list
+        "ep2-stemi" => "intern",
+        "ep3-epiglottitis" | "ep4-pulmonary-embolism" | "ep5-the-night-the-stars-fell" => "resident",
+        // the stations, from SETS in main.rs
+        "osce-a" | "osce-a2" => "student",
+        "osce-b" | "osce-b2" | "osce-b3" | "osce-c2" | "osce-c3" | "osce-d" | "osce-d3" => "intern",
+        "osce-c" | "osce-d2" | "osce-d4" => "resident",
+        _ => return None,
+    })
+}
+
 /// The six numbers, in the order the card shows them.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Census {
@@ -163,7 +204,7 @@ pub fn to_admit(open: usize, beds: usize, queue: usize) -> usize {
 pub fn ward_payload(
     patients: &[PatientOnChain],
     shifts: &[ShiftOnChain],
-    personas: &std::collections::BTreeMap<u64, Persona>,
+    packs: &std::collections::BTreeMap<u64, Pack>,
     since: Option<u64>,
     as_of_slot: u64,
     source: &str,
@@ -186,7 +227,7 @@ pub fn ward_payload(
     let board: Vec<serde_json::Value> = patients
         .iter()
         .map(|p| {
-            let who = personas.get(&p.patient_id);
+            let pack = packs.get(&p.patient_id);
             serde_json::json!({
                 "patient_id": p.patient_id,
                 // A word, because the board is what reads this. A renderer switching on 0, 1 and 2
@@ -195,8 +236,12 @@ pub fn ward_payload(
                 "shifts": p.shifts,
                 "admitted_slot": p.admitted_slot,
                 "closed_slot": (p.closed_slot > 0).then_some(p.closed_slot),
-                "name": who.map(|w| w.name.clone()),
-                "country": who.map(|w| w.country.clone()),
+                "name": pack.map(|k| k.persona.name.clone()),
+                "country": pack.map(|k| k.persona.country.clone()),
+                "case": pack.map(|k| k.case.clone()),
+                // Null rather than a default: a patient filed under a level somebody chose against
+                // is worse than a patient with no level yet.
+                "difficulty": pack.and_then(|k| difficulty_of(&k.case)),
             })
         })
         .collect();
@@ -216,9 +261,11 @@ pub fn ward_payload(
             "died": "patient accounts whose state is died, counted by closed_slot",
             "shifts": "anchored leaves, one per shift",
             "patients": "one entry per patient account on chain — id, state, shifts and slots \
-                         read from the account. Her name and her country are not on chain at \
-                         all: they come from the pack that was queued for her, joined by patient \
-                         id, and are null for a patient no pack describes yet",
+                         read from the account. Her case, her name and her country are not on \
+                         chain at all: they come from the pack that was queued for her, joined by \
+                         patient id, and are null for a patient no pack describes yet. The \
+                         difficulty is that case's own level in the catalogue, the same one the \
+                         bay publishes, never a second opinion",
             "keys": "distinct signers of AnchorShift transactions on the ward's patient accounts, \
                      read from transaction history and cached; repeatable with \
                      getSignaturesForAddress. Keys, not humans: there is no signup, so one holder \

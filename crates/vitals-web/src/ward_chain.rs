@@ -399,7 +399,7 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
     crate::ward::ward_payload(
         &patients,
         &shifts,
-        &personas(store),
+        &packs(store),
         Some(as_of.saturating_sub(WEEK_SLOTS)),
         as_of,
         chain.source(),
@@ -626,16 +626,16 @@ impl WardChain {
 }
 
 /// Where a patient's pack lives once the factory has queued her.
-pub const PERSONA_STORE: &str = "ward_persona";
+pub const PERSONA_STORE: &str = "ward_pack";
 
-/// The personas the ward knows about, by patient id.
+/// The packs the ward knows about, by patient id.
 ///
 /// Empty until the factory has run, and empty is a working ward: every entry on the board is
 /// published with a null name and a null country rather than withheld, because a patient whose
 /// pack has not arrived is still a patient somebody can treat.
-pub fn personas(store: &crate::store::Store) -> std::collections::BTreeMap<u64, crate::ward::Persona> {
+pub fn packs(store: &crate::store::Store) -> std::collections::BTreeMap<u64, crate::ward::Pack> {
     store
-        .list::<crate::ward::Persona>(PERSONA_STORE)
+        .list::<crate::ward::Pack>(PERSONA_STORE)
         .into_iter()
         .filter_map(|(k, v)| k.trim_start_matches('p').parse::<u64>().ok().map(|id| (id, v)))
         .collect()
