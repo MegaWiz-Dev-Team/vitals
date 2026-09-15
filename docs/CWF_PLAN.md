@@ -64,19 +64,44 @@ Being exact about this is the difference between a four-week plan and a wish.
 | "Your shift must extend the current head" | **new** — program work |
 | Starting an attempt **from** a resumed state rather than from the scenario's start | **new** — engine work, small, on top of `resume` |
 | A ward board and a shift receipt page | **new** — web work |
+| Time passing while nobody is on shift | **built 16 ก.ย.** — `idle_seconds()` + `shift(.., idle_slots)` in `vitals-replay`, ticked at the scenario's grain, 8 handover tests |
+| A queue of patients that refills itself from outside the ward | **new** — a launchd job on the mini + `POST /api/ward/queue` + Firestore (rulings 10–11) |
+| A board that changes while you are looking at it | **new** — SSE on the ward host (ruling 12) |
 
 New medicine: none. A stay is a chain of cases we already have (anaphylaxis → observation →
 discharge; STEMI → CCU → ward → home), and the bridges between them are **mechanical state
 handoff, not new clinical writing**. Say so on the page; a clinician reading it should never think
 we authored a new disease course this month.
 
-## The rulings this plan is built on (15 Sep)
+## The rulings this plan is built on (15 – 16 Sep)
 
 1. **Content is what we have.** No new physiology, no new clinical writing. A stay chains existing
    cases; the joins are mechanical.
-2. **Between shifts the patient is frozen.** Simulated time advances only while somebody is on
-   shift. Honest, simple, and "frozen for three days" is visible on the chart — which is a feature,
-   not an apology.
+2. **Between shifts her clock runs, slowly** (founder, 16 ก.ย. ~00:05, replacing *"frozen"*). A
+   ward where nothing happens unless somebody is looking is a save file, not a ward. So the gap
+   between two anchored shifts is read off the chain **in slots**, turned into simulated time and
+   ticked through the engine before the next stranger's first action — `idle_seconds()` in
+   `vitals-replay`: **one simulated minute per ten real ones, capped at one simulated hour**
+   however long the gap was. Slots are the clock precisely because wall time is not checkable:
+   state stays a pure function of (tapes, slot numbers) and every browser re-derives the same
+   patient. The gap is ticked at the scenario's own grain, never in one jump — the engine takes one
+   state edge per tick, and an hour handed over as a single tick walks straight past the arrest an
+   hour of one-second ticks runs into (ep1: no outcome, systolic 0, saturation 0 — a corpse the
+   chart calls alive). **The ratio and the cap are design choices, not physics.** Two named
+   constants in one file; the founder moves them with one edit. What they mostly choose is the
+   ward's death rate:
+
+   > **What the ratio costs — measured 16 ก.ย., not estimated.** Untreated from the start, at each
+   > scenario's own grain, **fourteen of the sixteen catalogue cases arrest between minute 3 and
+   > minute 14**: `ep5` at 3 · `ep2`, `osce-a2`, `osce-d3` at 5 · `osce-a`, `osce-d` at 6 · `ep3`,
+   > `ep4`, `osce-d2` at 8 · `osce-b`, `osce-b3`, `osce-d4` at 11 · `osce-c2` at 12 · `osce-c3` at
+   > 14. Only `osce-b2` (pericarditis) and `osce-c` (croup) are still alive at four simulated
+   > hours. At 1:10 a gap reaches the one-hour cap after **ten real hours** — one unattended night
+   > — so a night nobody plays is a death in almost every bed, three beds burn three queued
+   > patients by morning, and the board a judge opens is mostly a list of the dead. That is a ward
+   > and it is honest; it is also a choice. **1:100** would make the same night a deterioration
+   > instead of a funeral, and a **cap below the fastest killer** would make it a deterioration by
+   > construction. The founder picks; this plan does not pick it quietly on his behalf.
 3. **A patient is a chain, the program holds the head.** A `Patient` account with a head; a shift
    commits against the current head (commit–reveal as today); the reveal appends and moves the head;
    discharge or death closes it. The client verifies the whole chain before letting anyone take a
@@ -126,6 +151,33 @@ we authored a new disease course this month.
    money, the relay never signs as author, the payout allowlist stays empty, lamports are never
    called dollars, the review store is untouched, no physician claim anywhere, every figure carries
    its as-of.
+
+10. **The patients come from the Mac mini** (founder, 16 ก.ย. ~00:05: *"ต้องมี engine ในการสร้าง
+    คนไข้จาก Mac mini ขึ้น world.vitals.academy เพื่อให้คนไข้ไม่ขาด"* — an engine that makes patients, so the
+    ward never runs out). A job on the mini, where Embla, the name lists and the image pipeline
+    already live, builds **patient packs** — `{ case (existing, converted, advisor-cleared),
+    persona { name from that country's own name list, age inside the case's band, country },
+    portrait (generated, one style) }` — and keeps the ward's queue **at least 20 deep**. Ruling 1
+    is not loosened by this: the factory recombines cases we already have, and what it actually
+    manufactures is the person, never the medicine. Transport: an authenticated `POST
+    /api/ward/queue` with `VITALS_TOKEN`, **packs only, never keys**, each pack content-addressed
+    so the same one is never queued twice. The ward keeps the queue in **Firestore**
+    (asia-southeast1, already in the project) so it survives a restart, and the in-memory queue
+    becomes the cache in front of it. The dev factory points at the dev service. **launchd on the
+    mini**, the same pattern as the other `com.asgard.*` jobs — not k3s.
+
+11. **Refill is an event, not a person noticing.** The ward's own ticker runs every minute, reads
+    the chain for patients closed since its last look, frees the bed and admits the next pack. This
+    is ruling 5's automatic release made durable rather than a new rule: the queue's state lives in
+    Firestore, the tick is **idempotent** (running it twice admits once), and **the census is still
+    derived from the chain, never from Firestore** — Firestore holds what is waiting, the chain
+    holds what happened.
+
+12. **The world is live.** Beds, queue depth, who is on shift and since when, a world clock and the
+    census are pushed to the board in real time — **SSE is enough**, so no polling loop in the page
+    and no socket to keep alive. Ruling 2's idle clock is the other half of the same sentence: the
+    board is live because the ward is, and the patient's body between shifts is what makes that
+    more than an animation.
 
 ## Three rulings that shape the build (producer, 15 Sep)
 
@@ -214,11 +266,23 @@ released automatically when the first leaves, and **world.vitals.academy answers
 - [ ] Shift receipt at a QR: the browser re-derives that shift from the tape and the chain, shows
       the deterministic 40 and the judged 60 as two numbers, and offers **download every tape of
       this patient** so a stranger can mirror her and check us without asking.
+- [ ] **The patient factory on the mini** (ruling 10): packs — case + persona + portrait — pushed
+      to `POST /api/ward/queue` behind `VITALS_TOKEN`, content-addressed so a pack is never queued
+      twice, queue kept at least 20 deep, launchd like the other `com.asgard.*` jobs. The dev
+      factory points at the dev service. **No key ever leaves the mini**, in either direction.
+- [ ] **The refill ticker** (ruling 11): one minute, idempotent, queue in Firestore so a restart
+      does not lose it, census still read off the chain.
+- [ ] **The board is live** (ruling 12): SSE — beds, queue depth, on-shift-since, the world clock
+      and the census, all moving without a reload.
+- [ ] **The idle ratio decided by the founder**, on the measurement under ruling 2, before patient
+      one is public. Keeping 1:10 is a decision too; it is the number that says whether an
+      unattended night is a deterioration or a funeral.
 - [ ] Eternal filed before this week starts — otherwise this week is that instead.
 - [ ] Video 2 (27 Sep).
 
-Exit: somebody we have never met has taken a shift, and a second stranger can check what they did
-without asking us anything.
+Exit: somebody we have never met has taken a shift, a second stranger can check what they did
+without asking us anything, and an empty bed fills itself from a queue nobody on the team topped up
+by hand.
 
 ## Week 3 — it keeps running (to 4 Oct)
 
@@ -266,7 +330,7 @@ themselves from the chain.
 | Week | Dates | Ships |
 |---|---|---|
 | 1 | 14 – 20 Sep | resume-from-state · patient head on devnet · two keys, one patient · video 1 |
-| 2 | 21 – 27 Sep | patient one public · ward board · shift receipt (40/60 apart) · Eternal filed before this week · video 2 |
+| 2 | 21 – 27 Sep | patient one public · live ward board (SSE) · shift receipt (40/60 apart) · patient factory + refill ticker · Eternal filed before this week · video 2 |
 | 3 | 28 Sep – 4 Oct | a week of unattended automatic release · a discharge · **scope freeze** · psychometrics + funnel · video 3 |
 | 4 | 5 – 12 Oct | demo cut of a patient's life · mainnet only if slack · **submit 9–10 Oct** · video 4 |
 
