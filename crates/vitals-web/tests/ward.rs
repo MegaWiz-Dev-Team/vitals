@@ -310,3 +310,38 @@ fn no_case_in_the_catalogue_dies_of_the_idle_clock_alone() {
             fastest.map(|(id, t)| format!("{id} at {t} s")).unwrap_or_else(|| "none".into()),
             killed.join(" · "));
 }
+
+/// **A stay is three cases**, and the endpoint says so rather than leaving it to be inferred.
+///
+/// Producer's ruling of 16 ก.ย. under the founder's go: a patient's chain is three existing cases
+/// joined mechanically — acute, then observation, then ward-to-home — drawn by the same no-repeat
+/// rule as the beds. What it buys is that one patient spans at least three shifts, so the ward
+/// turns over slowly and a stranger arriving at noon meets somebody another stranger already
+/// treated rather than a fresh admission nobody has touched.
+///
+/// It belongs in `policy` beside the beds because both answer the same question a reader has —
+/// *how fast does this thing consume patients?* — and an unreadable chain must not take the answer
+/// with it.
+#[test]
+fn a_stay_is_three_cases_and_the_policy_publishes_it() {
+    use vitals_web::ward::{ward_unavailable, Stay, STAY_CASES};
+
+    assert_eq!(STAY_CASES, 3);
+
+    let mut stay = Stay::new(1, vec!["osce-a".into(), "osce-c".into(), "ep2-stemi".into()]);
+    let mut shifts = 1;
+    while stay.advance().is_some() {
+        shifts += 1;
+    }
+    assert_eq!(shifts, STAY_CASES,
+               "three cases is three handovers' worth of patient, which is the point of the rule");
+
+    let live = ward_payload(&[], &[], None, 1, "devnet:ABC");
+    let stay_rule = live["policy"]["stay"].as_str().expect("the policy must publish the stay length");
+    assert!(stay_rule.contains('3'), "it says three, in digits a reader can check: {stay_rule}");
+
+    let dark = ward_unavailable("devnet:ABC", "rpc timed out");
+    assert_eq!(dark["policy"]["stay"], live["policy"]["stay"],
+               "the rule is true whether or not the chain can be read — an unreadable chain takes \
+                the numbers with it, never the policy");
+}
