@@ -432,6 +432,19 @@ type WardView = Arc<Mutex<Option<(Instant, serde_json::Value)>>>;
 /// day, which is nothing, and the alternative is a person noticing.
 const WARD_TICK: Duration = Duration::from_secs(60);
 
+/// How many boards may be watching at once.
+///
+/// Each stream is a thread that lives as long as the connection, so this is the ceiling on threads
+/// a stranger can ask this server for. Cloud Run's own concurrency limit is lower than this in
+/// production; the number exists for every other way the server can be run.
+const WARD_STREAMS: usize = 64;
+
+/// How often a stream looks for something new to say.
+///
+/// Cheap: the payload is the held read, so this costs a lock and a string compare, and a chain
+/// read happens at [`WARD_TTL`] whatever the streams do.
+const WARD_STREAM_POLL: Duration = Duration::from_secs(3);
+
 /// The most one push from the factory may carry.
 ///
 /// A pack is a few hundred bytes, so this is room for a hundred or so patients at once — well past
@@ -1660,6 +1673,19 @@ fn new_session(ep: &str) -> Result<Session, String> {
         commit: None,
         exam_mode: false,
         })
+}
+
+/// How many boards are watching right now.
+static WARD_WATCHERS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Decrements the watcher count however the stream thread ends — a closed tab, a write error, a
+/// panic. A counter that only went up would refuse the sixty-fifth watcher for ever.
+struct WatcherLeaves;
+
+impl Drop for WatcherLeaves {
+    fn drop(&mut self) {
+        WARD_WATCHERS.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 /// The ward as it stands, from the held read — one source for the endpoint and the patient page,
@@ -3440,6 +3466,83 @@ fn main() {
             // is a question we are asking — and would stop the page opening for the two people
             // it was written for. `guarding_covers_everything_that_spends_or_signs` holds it.
             (Method::Get, "/review") => html(&REVIEW.replace(BUILD_STAMP, BUILD)),
+            // The board, pushed (CWF_PLAN.md ruling 12). SSE rather than a socket: the page only
+            // ever listens, and a browser reconnects an EventSource by itself — which matters
+            // here because Cloud Run ends a request at its timeout however healthy it is.
+            //
+            // This is the one route that leaves the request loop. Everything else this server does
+            // answers and returns; a stream that stayed on the loop would hold the only thread for
+            // as long as somebody kept a tab open, and the ward would serve nobody else.
+            (Method::Get, "/api/ward/stream") if ward_mode() => {
+                if WARD_WATCHERS.load(std::sync::atomic::Ordering::Relaxed) >= WARD_STREAMS {
+                    let _ = req.respond(
+                        json(serde_json::json!({
+                            "error": format!("{WARD_STREAMS} boards are already watching"),
+                            "poll_instead": "/api/ward"
+                        }))
+                        .with_status_code(503),
+                    );
+                    continue;
+                }
+                WARD_WATCHERS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let view = Arc::clone(&ward_view);
+                let state = state_dir.clone();
+                std::thread::spawn(move || {
+                    let _leave = WatcherLeaves;
+                    let store = match store::Store::open(std::path::PathBuf::from(&state)) {
+                        Ok(s) => s,
+                        Err(_) => return,
+                    };
+                    let mut w = req.into_writer();
+                    // Written by hand because the body has no end: tiny_http's Response wants a
+                    // length or a reader, and what this needs is a socket it can keep talking on.
+                    // `Connection: close` is what makes a bodiless-length response legal, and
+                    // `X-Accel-Buffering` asks proxies not to hold the events until they have a
+                    // pageful — which is the difference between a live board and a stuttering one.
+                    let head = "HTTP/1.1 200 OK\r\n\
+                                Content-Type: text/event-stream\r\n\
+                                Cache-Control: no-cache\r\n\
+                                X-Accel-Buffering: no\r\n\
+                                Connection: close\r\n\r\n\
+                                retry: 5000\n\n";
+                    if w.write_all(head.as_bytes()).is_err() {
+                        return;
+                    }
+                    let mut last = String::new();
+                    let mut quiet = Duration::ZERO;
+                    loop {
+                        let v = ward_now(&view, &store);
+                        // Compared without `as_of_slot`, so a re-read that found nothing new is
+                        // not an event. A board that flashed every thirty seconds because the
+                        // clock moved would teach its watcher to stop looking.
+                        let now = format!(
+                            "{}|{}|{}",
+                            v["census"], v["patients"], v["queue"]
+                        );
+                        let send = if now != last {
+                            last = now;
+                            quiet = Duration::ZERO;
+                            serde_json::to_string(&v)
+                                .map(|body| format!("event: ward\ndata: {body}\n\n"))
+                                .unwrap_or_default()
+                        } else if quiet >= Duration::from_secs(15) {
+                            quiet = Duration::ZERO;
+                            // A comment. It keeps the connection and the proxies awake and says
+                            // nothing, which is exactly what has happened.
+                            ": still here\n\n".to_string()
+                        } else {
+                            String::new()
+                        };
+                        if !send.is_empty() && (w.write_all(send.as_bytes()).is_err() || w.flush().is_err()) {
+                            // The reader closed their tab. Not an error, and not worth a log line.
+                            return;
+                        }
+                        std::thread::sleep(WARD_STREAM_POLL);
+                        quiet += WARD_STREAM_POLL;
+                    }
+                });
+                continue;
+            }
             // The factory's door (CWF_PLAN.md ruling 10). Packs only — an existing case, a
             // person, a portrait — and never a key. Guarded by the same token the signing routes
             // use, because what arrives here becomes the patients strangers are handed.
@@ -4890,7 +4993,7 @@ mod tests {
                   // The ward's census. The endpoint is the source the weekly card photographs
                   // and the thing a judge is invited to re-derive; a token on it would mean
                   // "checkable by anyone we gave a token to", which is not the claim.
-                  "/api/ward",
+                  "/api/ward", "/api/ward/stream",
                   // Who wrote what, and how often it has been proven. A ledger nobody can read
                   // is not one anybody can check, and checkable is the entire claim.
                   "/api/authors", "/api/payout",
