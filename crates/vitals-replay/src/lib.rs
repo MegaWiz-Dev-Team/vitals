@@ -101,6 +101,32 @@ pub struct Replay {
 pub fn resume(sce_json: &str, tape: &[Step]) -> Result<(SceState, Replay), String> {
     let sce = Sce::from_json(sce_json).map_err(|e| format!("bad SCE: {e}"))?;
     let mut st = SceState::new(sce);
+    let r = step_through(&mut st, tape);
+    Ok((st, r))
+}
+
+/// Continue a stay: one shift's tape, run on the machine the last shift left behind.
+///
+/// This is how the ward hands a patient from one stranger to the next (CWF_PLAN.md). The state
+/// comes from [`resume`] over everything anchored so far, and this runs the new shift on top of
+/// it, so shift N+1 starts where shift N stopped rather than where the scenario starts.
+///
+/// **The [`Replay`] returned is the shift's own, not the stay's.** Its beats, its seconds, and —
+/// the one that needs saying — its harm: the machine accumulates `harm_events` across the whole
+/// stay, so this reports only the ones this tape added. A stranger is scored on what they did, not
+/// on what they walked into. `outcome` is the stay's, because an outcome is a fact about the
+/// patient and the shift that reaches it is the shift that reached it.
+pub fn shift(st: &mut SceState, tape: &[Step]) -> Replay {
+    step_through(st, tape)
+}
+
+/// The one step loop.
+///
+/// Resuming a saved run, verifying a finished one and continuing a stay are the same operation and
+/// they must stay the same operation: the tape drifted from the run once already because device
+/// handling existed in two places. Everything above calls this and nothing reimplements it.
+fn step_through(st: &mut SceState, tape: &[Step]) -> Replay {
+    let harm_before = st.harm_events.len();
     let mut beats = Vec::new();
     let mut sim_seconds = 0.0;
 
@@ -133,15 +159,14 @@ pub fn resume(sce_json: &str, tape: &[Step]) -> Result<(SceState, Replay), Strin
         }
     }
 
-    let r = Replay {
+    Replay {
         beats,
-        harm_events: st.harm_events.clone(),
+        harm_events: st.harm_events[harm_before..].to_vec(),
         outcome: st.outcome().map(|o| format!("{o:?}")),
         steps: tape.len(),
         sim_seconds,
         equipment: st.equipment().iter().map(|e| (e.id.clone(), e.setting)).collect(),
-    };
-    Ok((st, r))
+    }
 }
 
 /// Run a tape and reduce it. The verifier's view: the machine is scaffolding, the reduction is
