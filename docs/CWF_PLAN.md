@@ -8,7 +8,8 @@ nowhere else.
 Two rules from the organisers shape everything below. **Judged only on work committed between 14 Sep
 and 12 Oct** — so the branch opens on the 14th and nothing before it counts. **Disclose all prior
 work** or be disqualified — Embla, the repo from 22 Aug, and the Eternal sprint (29 Aug – 26 Sep) go
-in the form on day one, worded in `pitch/CRYPTO_WORLDS_FAIR_PAST_WORK.md` (MyHero).
+in the form on day one, worded in `docs/internal/CWF_PAST_WORK_DISCLOSURE.md` (written 15 Sep;
+gitignored, because the wording is ours before it is the form's).
 
 Rule for the whole sprint, unchanged from [SPRINT_PLAN.md](SPRINT_PLAN.md): **anything not demoable
 on the last day does not get built.**
@@ -118,9 +119,13 @@ the demo.**
       fields, the revenue answer aligned with DECISIONS.md #1); the student reviewer's profile complete
 - [ ] **File Eternal — planned 15–16 Sep, not yet filed.** Review is first-come-first-served and the
       team is needed here. Hard gate: **it must be filed before week 2 starts.**
-- [ ] Register the project on the hackathon form with the prior-work disclosure — **was due 14 Sep**.
-      `pitch/CRYPTO_WORLDS_FAIR_PAST_WORK.md` referenced above **has not been written**; not
-      disclosing prior work is disqualification, so this is the single most expensive open item.
+- [x] The prior-work disclosure is **written** — `docs/internal/CWF_PAST_WORK_DISCLOSURE.md`,
+      15 Sep: every figure with its as-of, and it names the `cwf-start` tag and commit `05a0ad7`
+      as where the sprint's history begins.
+- [ ] **Paste it into the hackathon form — was due 14 Sep, still open.** Not disclosing prior work
+      is disqualification, so this stays the most expensive open item until it is in the form. One
+      thing has to happen first: **`cwf-start` is not on any remote branch**, so a judge following
+      the tag today finds nothing. Push before the disclosure points at it.
 - [x] `cwf-start` tag exists; **`cwf/ward` opened from main 15 Sep** for the mechanic spike.
 - [ ] ~~Find the signing physician for deliverable B~~ — **dropped with B.** The judged 60 carries no
       signature this sprint and the pages say so in words.
