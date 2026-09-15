@@ -107,3 +107,58 @@ fn the_verifier_still_sees_one_tape() {
     let (st, _) = resume(&sce, &whole).expect("resume");
     assert_eq!(r.outcome, st.outcome().map(|o| format!("{o:?}")));
 }
+
+// ── the idle clock ──────────────────────────────────────────────────────────
+
+use vitals_replay::{idle_seconds, IDLE_CAP_SIM_SECONDS, IDLE_SIM_PER_REAL, SLOT_SECONDS};
+
+/// A patient nobody visits is not the patient you left.
+///
+/// Between shifts her body does not stop; it advances slowly, deterministically, from the gap the
+/// chain itself records — so the ward is a ward, and every browser still re-derives the same
+/// patient because the gap is on chain and the ratio is a constant.
+#[test]
+fn a_gap_between_shifts_changes_her_and_a_short_one_does_not() {
+    let sce = ep1();
+
+    let (mut back_to_back, _) = resume(&sce, &first()).expect("shift one");
+    shift(&mut back_to_back, &second(), 0);
+
+    let (mut after_a_night, _) = resume(&sce, &first()).expect("shift one");
+    let eight_hours_of_slots = (8.0 * 3600.0 / SLOT_SECONDS) as u64;
+    shift(&mut after_a_night, &second(), eight_hours_of_slots);
+
+    assert_ne!(seen(&back_to_back), seen(&after_a_night),
+               "eight hours alone must leave a different patient than a straight handover");
+    assert!(after_a_night.t_sec() > back_to_back.t_sec(),
+            "and the difference is time she spent untreated");
+}
+
+#[test]
+fn the_idle_clock_is_slow_bounded_and_derivable() {
+    assert_eq!(idle_seconds(0), 0.0, "a handover with no gap adds nothing");
+
+    // ten real minutes of slots → one simulated minute
+    let ten_minutes = (600.0 / SLOT_SECONDS) as u64;
+    assert!((idle_seconds(ten_minutes) - 60.0).abs() < 1.0,
+            "the stated ratio is one simulated minute per ten real ones");
+    assert!((IDLE_SIM_PER_REAL - 0.1).abs() < 1e-9);
+
+    // a weekend alone is still one hour of simulated time
+    let three_days = (3.0 * 24.0 * 3600.0 / SLOT_SECONDS) as u64;
+    assert_eq!(idle_seconds(three_days), IDLE_CAP_SIM_SECONDS,
+               "the cap is what stops an unvisited patient dying of arithmetic rather than disease");
+    assert_eq!(IDLE_CAP_SIM_SECONDS, 3600.0);
+}
+
+#[test]
+fn the_same_gap_always_gives_the_same_patient() {
+    let sce = ep1();
+    let gap = 9_000u64;
+    let run = || {
+        let (mut st, _) = resume(&sce, &first()).expect("shift one");
+        shift(&mut st, &second(), gap);
+        seen(&st)
+    };
+    assert_eq!(run(), run(), "two browsers, one gap, one patient — or none of this is verifiable");
+}
