@@ -324,3 +324,71 @@ fn a_pack_the_ward_cannot_play_is_refused_with_the_reason() {
     assert_eq!(s.get("/api/ward/cases").1["cases"].as_array().map(Vec::len), Some(0),
                "and nothing was stored");
 }
+
+// ── which case a patient runs ───────────────────────────────────────────────
+
+/// **The scenario comes from the pack the factory sent, never from `demo/**`.**
+///
+/// The ward's cases are compiled from embla-cases and arrive through the door; the season's
+/// sixteen live on disk and belong to vitals.academy. A ward session reads its scenario out of the
+/// case store, so what a stranger plays is what the compiler put on the record — the same bytes
+/// the admission committed to on chain.
+#[test]
+fn a_wards_scenario_is_the_one_that_came_through_the_door() {
+    use vitals_web::store::Store;
+    use vitals_web::ward_case::{sce_of, CASE_STORE};
+
+    let dir = std::env::temp_dir().join(format!("vitals-sce-of-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store = Store::open(dir.clone()).expect("a store");
+    store.put(CASE_STORE, "auth-demo-1", &a_pack()).expect("stored");
+
+    let sce = sce_of(&store, "auth-demo-1").expect("the case the door accepted");
+    let engine = vitals_sce::Sce::from_json(&sce).expect("and it is what the engine runs");
+    assert!(engine.interventions.iter().any(|i| i.id == "tx_fluids"));
+
+    assert!(sce_of(&store, "osce-a2").is_none(),
+            "a season id names nothing in the ward's own catalogue");
+    assert!(sce_of(&store, "auth-demo-2").is_none(), "nor does a case nobody has sent");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// **Which case the next patient gets.**
+///
+/// Her own pack names one when the patient factory knows which it wants. Until it does, the ward
+/// picks from what it holds: a case for her country if there is one — a Nepali woman on a Nepali
+/// case is the whole point of the endemic work — and otherwise any case at her level, newest
+/// first so a recompile is what the next patient plays.
+#[test]
+fn a_patient_is_given_a_case_from_the_wards_own_catalogue() {
+    use vitals_web::ward_case::{choose_case, CaseSummary};
+
+    let held = |id: &str, country: Option<&str>, level: &str, version: &str| CaseSummary {
+        case_id: id.into(),
+        country: country.map(str::to_string),
+        difficulty: level.into(),
+        endemic: country.is_some(),
+        provisional: true,
+        version: version.into(),
+        title: id.into(),
+    };
+    let cases = vec![
+        held("dengue-npl-1", Some("NPL"), "intern", "0.1.0"),
+        held("ugib-1", None, "resident", "0.1.0"),
+        held("ugib-2", None, "resident", "0.2.0"),
+    ];
+
+    assert_eq!(choose_case(&cases, Some("dengue-npl-1"), "NPL", "intern").map(|c| c.case_id.clone()),
+               Some("dengue-npl-1".into()), "the pack's own choice is honoured first");
+    assert_eq!(choose_case(&cases, Some("not-here"), "NPL", "intern").map(|c| c.case_id.clone()),
+               Some("dengue-npl-1".into()),
+               "a case the ward does not hold is not a reason to admit nobody");
+    assert_eq!(choose_case(&cases, None, "NPL", "intern").map(|c| c.case_id.clone()),
+               Some("dengue-npl-1".into()), "her country's case, when there is one");
+    assert_eq!(choose_case(&cases, None, "THA", "resident").map(|c| c.case_id.clone()),
+               Some("ugib-2".into()), "otherwise her level, newest version first");
+    assert!(choose_case(&cases, None, "THA", "student").is_none(),
+            "and nothing at her level means nobody is admitted, rather than somebody admitted \
+             onto a case written for a different learner");
+    assert!(choose_case(&[], None, "THA", "resident").is_none(), "an empty catalogue admits nobody");
+}
