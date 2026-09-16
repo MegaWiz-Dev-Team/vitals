@@ -1098,16 +1098,31 @@ function renderChips(){
   /* The label goes with the press for everything except the ask row, whose label is a
      translation — the chart and its echo are English by design (docs/internal/LANGUAGE_LAYER.md),
      and a Thai sentence in the order column would be this file quietly deciding otherwise. */
-  $('#chips').querySelectorAll('button').forEach(b=>b.onclick=()=>
-    fire(b.dataset.x, m==='ask'?null:chipLabel(b.dataset.x), m==='dx'));
-  $('#cmd').placeholder = mode==='ask'
+  const no=takeFirst(WARD, id);
+  $('#chips').querySelectorAll('button').forEach(b=>{
+    b.onclick=()=>fire(b.dataset.x, m==='ask'?null:chipLabel(b.dataset.x), m==='dx');
+    /* Greyed and titled rather than missing: a stranger who can see what they will be able to do
+       knows they are one press away from doing it. */
+    b.disabled=!!no; if(no)b.title=no;
+  });
+  /* The one line a stranger reads when they try to type. `no` wins: an ask bar that says "ask her
+     anything…" and refuses to be typed in is the bug the founder found, dressed as an invitation. */
+  $('#cmd').placeholder = no ? no : (mode==='ask'
     ? (PACK.ui.ask_placeholder || `ask ${pro().o} anything…`)
-    : (PACK.ui.order_placeholder || 'or type the order yourself…');
+    : (PACK.ui.order_placeholder || 'or type the order yourself…'));
 }
 /* At a station every chip is an order — the asks included. Step::Ask never reaches the tape
    (vitals-replay treats it as inert), so an ask routed through /api/say would leave the
    history-taking marks unearnable. The scenario answers with scripted patient words instead. */
-function fire(text,shown,named){ (mode==='ask' && !ep().station) ? askHer(text) : doOrder(text,shown,named); }
+function fire(text,shown,named){
+  /* Before the head is taken there is no run: `step` returns at its first line, but `doOrder` has
+     already written the order into the transcript — a line at 0:00 that nobody answered, on a page
+     whose whole promise is that the transcript is what happened. So the refusal belongs here,
+     where every press arrives, and it is said out loud rather than swallowed. */
+  const no=takeFirst(WARD, id);
+  if(no){ if(typeof wardSay==='function')wardSay('<b>'+no+'</b> — nothing you do is on her chart until the head is yours'); return; }
+  (mode==='ask' && !ep().station) ? askHer(text) : doOrder(text,shown,named);
+}
 /* Is this order the candidate naming a diagnosis? The station's own differential is the list,
    and a typed answer counts — "epiglottitis" in the order box is the same answer as the chip.
    Used for one thing only: whether the case's reply to it is teaching, and therefore whether it
@@ -1353,7 +1368,10 @@ function stemHtml(e){
      names the stem, the band and the tier, and the SEASON entry is the copy that paints
      before it arrives. A station whose table entry has not landed still gets a full sheet. */
   const info=memberOf(e.id);
-  const title=info?info.m.title:e.t;
+  /* A station's title is the manifest's and carries the case's own age — "…worse at night — F 6"
+     over the ward's eight-year-old. Retold here rather than written back into the manifest: the
+     manifest is the authored case and stays what its author wrote. */
+  const title=wardAged(info?info.m.title:e.t, WARD&&WARDSHIFT?WARDSHIFT.age:null);
   const band=(info?bandOf(info.m):e.spec)||'';
   const tier=(info?info.m.tier:e.tier)||'';
   /* The place is written for the film's corner tag, where "OSCE station · Nurse Mali
@@ -3644,6 +3662,42 @@ bootLang();
    taken the shift yet — and it needs no second flag to enforce. */
 let WARDSHIFT=null, WARDPENDING=null;
 
+/* What a stranger may not do yet, said in the words the page will show them.
+   `null` on the Eternal entry, always: there is no head to take there, and a gate that reached
+   it would be this file quietly turning a single-player bay into a ward. Tested in
+   tests/shift_logic.mjs. */
+function takeFirst(ward, runId){ return ward && !runId ? 'take the shift to treat her' : null; }
+
+/* An authored line, retold with the age of the person actually in the bed.
+   The case says "F 6" because somebody wrote a six-year-old; the ward admitted an eight-year-old
+   onto it, and the door has already refused any pack whose sex or band contradicts the case — so
+   only the number can differ, and when it does, hers is the true one. Without an age nothing is
+   rewritten: a ward that does not know is not a ward that may invent. */
+function wardAged(text, age){
+  if(!age)return text;
+  return String(text).replace(/\b([MF])\s*\d{1,3}\b/g, (m,sex)=>sex+' '+age);
+}
+
+/* Who is in the bed: the ward's name, the case's sex, the ward's age. */
+function wardWho(caseWho, name, age){
+  const rest=String(caseWho||'').split('·').slice(1).join('·').trim();
+  if(!name)return wardAged(caseWho||'', age);
+  return name+(rest?' · '+wardAged(rest, age):'');
+}
+
+/* Every control that treats her, opened or closed in one place.
+   Called when the page opens her and again when the head is taken, so there is one answer to
+   "may I do this yet" and one sentence saying why not. */
+function wardGate(){
+  const no=takeFirst(WARD, id);
+  document.documentElement.classList.toggle('untaken', !!no);
+  const cmd=$('#cmd'), send=$('#send'), mic=$('#mic');
+  if(cmd)cmd.disabled=!!no;   // the placeholder is renderChips's, and it runs below
+  if(send)send.disabled=!!no;
+  if(mic)mic.disabled=!!no;
+  if($('#chips'))renderChips();
+}
+
 /* prepare on the server → sign here → submit to the ward's own program. The Eternal
    bay's chainDo is the same shape against a different program, and they stay apart
    on purpose: one refactor between them is one refactor away from Eternal's anchors. */
@@ -3715,20 +3769,24 @@ async function openShift(){
   }
   $('#ep').value=r.ward.case;
   /* The station card names the case's own patient — "Pranom · F 72" — and on the ward the person
-     in that bed is somebody else. Only the name changes: her sex and age are the case's, because
-     the door refuses a pack that disagrees with them. Written into the season entry rather than
-     special-cased in the card, so every place the page reads "who" says the same person; the
-     shelf that entry also feeds is not reachable on the ward host, where the front page is the
-     globe. */
+     in that bed is somebody else. Her name and her age are the ward's; her sex is the case's,
+     because the door refuses a pack that disagrees with it. Written into the season entry rather
+     than special-cased in the card, so every place the page reads "who" says the same person —
+     including `ageOf`, which parses this string and is what tells NEWS2 she is a child. The shelf
+     that entry also feeds is not reachable on the ward host, where the front page is the globe. */
   const card=SEASON.find(x=>x.id===r.ward.case);
-  if(card&&r.ward.name){
-    const rest=String(card.who||'').split('·').slice(1).join('·').trim();
-    card.who=r.ward.name+(rest?' · '+rest:'');
+  if(card){
+    card.who=wardWho(card.who, r.ward.name, r.ward.age);
+    /* The title is authored and carries her age too — "Barking cough and drooling, worse at night
+       — F 6" over an eight-year-old, which the board and the rail both contradicted on screen. */
+    if(card.t)card.t=wardAged(card.t, r.ward.age);
   }
   SHOWN=[]; STAGE=openStage(r.ward.case); stageKey='';
   renderModes(); renderChips();
   paint(r.view);
   bootMonitor();
+  /* Read, not treat. Every control that would touch her says which of the two this is. */
+  wardGate();
   /* Two controls that mean something in the bay and nothing here: "restart" would quietly open a
      practice run of her case and lose the shift, and "← episodes" is a shelf this patient is not
      on. The strip's own link is where a stranger goes back to. */
@@ -3751,6 +3809,10 @@ async function takeShift(){
   /* Now the bay is live: every control in the page guards on `id`. */
   id=WARDPENDING; over=false; $('#endrun').disabled=false; $('#endrun').textContent='hand over';
   b.style.display='none'; $('#wardback-shift').style.display='';
+  /* Everything the bay's `start` does at the bottom, which a shift on the ward needs just as
+     much: the controls open, and the clock runs. Without the clock a shift sits at 0:00 for ever
+     and the idle span is the only time she has — the founder watched exactly that. */
+  wardGate(); $('#cmd').focus(); run();
   wardSay('the head is yours until you hand over. Her chart is the chain — what you do here is '+
           'on it, under your key.');
   armTheExit();
@@ -3766,7 +3828,10 @@ async function handBack(){
   const r=await wardDo('/api/ward/release?id='+id);
   if(r.refused){ $('#wardback-shift').disabled=false; return wardSay('<b>refused.</b> '+esc(r.refused)); }
   if(r.error){ $('#wardback-shift').disabled=false; return wardSay(esc(r.error)); }
-  EXITSIG=null; id='';
+  EXITSIG=null; id=''; stop();
+  /* She is somebody else's patient from this second, so the controls close the way they were
+     closed before the head was taken — and say the same thing about why. */
+  wardGate();
   wardSay('<b>handed back.</b> nothing you did was recorded; the next person gets her as you '+
           'found her. <a href="/">back to the ward</a>');
 }

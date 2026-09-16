@@ -110,10 +110,18 @@ fn taking_the_shift_starts_the_clock_and_opens_the_ask_bar() {
     assert!(take.contains("run()"),
             "nothing in takeShift starts the clock, so a shift on the ward runs at 0:00 for ever: \
              {take}");
-    assert!(take.contains("#cmd") && take.contains("#send"),
-            "the ask bar and the send button are disabled in the markup and the bay enables them \
-             when a run starts. A ward shift that never enables them is a patient you may not \
-             speak to: {take}");
+    assert!(take.contains("wardGate()"),
+            "the ask bar, the send button and the chips are shut before the head is taken, and \
+             `wardGate` is the one place that opens them. A ward shift that never calls it is a \
+             patient you may not speak to: {take}");
+
+    // And the gate has to be a gate: one answer, from `takeFirst`, applied to every control that
+    // would touch her. A gate that only greys the chips leaves the input a stranger types into.
+    let gate = body_of(&js, "wardGate");
+    assert!(gate.contains("takeFirst"), "the gate has to ask the same question everything else does: {gate}");
+    for control in ["#cmd", "#send", "#mic", "#chips"] {
+        assert!(gate.contains(control), "{control} is a way to treat her and the gate does not reach it: {gate}");
+    }
 }
 
 /// **A press that cannot do anything must not be written down.**
