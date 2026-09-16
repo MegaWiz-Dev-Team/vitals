@@ -1925,6 +1925,117 @@ fn compose(page: &str) -> String {
     page.replace("<!--BAY-->", SURFACE).replace(BUILD_STAMP, BUILD)
 }
 
+/// One shift's receipt, or the reason there is none.
+fn ward_receipt(store: &store::Store, run_hash: &str) -> serde_json::Value {
+    let bad = |why: &str| serde_json::json!({ "error": why });
+    if run_hash.len() != 64 || !run_hash.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+        return bad("that is not a run hash");
+    }
+    let chain = match ward_chain::WardChain::connect() {
+        Ok(c) => c,
+        Err(e) => return bad(&e),
+    };
+    let found = match ward_chain::find_shift(&chain, store, run_hash) {
+        Ok(Some(f)) => f,
+        Ok(None) => {
+            return bad(
+                "no shift on this ward has that hash. It may never have been anchored, or it may \
+                 belong to another ward — this one does not guess between them",
+            )
+        }
+        Err(e) => return bad(&e),
+    };
+    let (patient_id, shifts, this) = found;
+    let Some(pack) = ward_chain::packs(store).remove(&patient_id) else {
+        return bad("the ward has no pack for that patient, so it cannot say which case this shift was");
+    };
+    let root = scenario_root();
+    let Ok(sce_json) = std::fs::read_to_string(scenario_path(&pack.case)) else {
+        return bad("this server does not hold that case");
+    };
+    let admitted = chain.patient(patient_id).ok().flatten().map(|p| p.admitted_slot).unwrap_or(0);
+    match ward_chain::receipt(
+        &sce_json,
+        ward_chain::rubric_of(&root, &pack.case).as_deref(),
+        &shifts,
+        &this,
+        &|h| ward_chain::tape_by_hash(store, h),
+        &pack,
+        admitted,
+    ) {
+        Ok(v) => v,
+        Err(e) => bad(&e),
+    }
+}
+
+/// The receipt as a page. Plain on purpose: it is a record, and a record that needs decoration to
+/// be believed is not one.
+fn receipt_page(r: &serde_json::Value) -> String {
+    let esc = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+    if let Some(why) = r["error"].as_str() {
+        return format!(
+            "<!doctype html><meta charset=utf-8><title>No such shift — Vitals World</title>\
+             <meta name=viewport content='width=device-width,initial-scale=1'>\
+             <style>body{{font:16px/1.6 ui-sans-serif,system-ui,sans-serif;max-width:34rem;\
+             margin:4rem auto;padding:0 1.2rem;color:#16302b;background:#fbfaf7}}a{{color:#0f6e5c}}\
+             </style><h1>No such shift</h1><p>{}</p><p><a href=/>← the ward</a></p>",
+            esc(why)
+        );
+    }
+    let row = |k: &str, v: String| format!("<tr><th>{k}</th><td>{v}</td></tr>");
+    let did = &r["did"];
+    let harm = did["harm"].as_array().map(|h| h.len()).unwrap_or(0);
+    let det = match (&r["det"]["earned"], &r["det"]["max"]) {
+        (serde_json::Value::Number(e), serde_json::Value::Number(m)) => format!("{e} of {m}"),
+        _ => "not scored — this case has no rubric".to_string(),
+    };
+    format!(
+        "<!doctype html><meta charset=utf-8><title>One shift — Vitals World</title>\
+         <meta name=viewport content='width=device-width,initial-scale=1'>\
+         <style>body{{font:16px/1.6 ui-sans-serif,system-ui,sans-serif;max-width:40rem;\
+         margin:3rem auto;padding:0 1.2rem;color:#16302b;background:#fbfaf7}}\
+         h1{{font-size:1.4rem;margin:0 0 .2rem}}a{{color:#0f6e5c}}\
+         .k{{color:#5d6f6d;font:600 .78rem/1.6 ui-monospace,monospace;letter-spacing:.08em;\
+         text-transform:uppercase}}table{{border-collapse:collapse;margin:1.2rem 0;width:100%}}\
+         th{{text-align:left;font-weight:600;color:#5d6f6d;padding:.3rem 1rem .3rem 0;\
+         white-space:nowrap;vertical-align:top;width:11rem}}td{{padding:.3rem 0}}\
+         code{{font-size:.85rem;word-break:break-all}}p.note{{color:#5d6f6d}}</style>\
+         <p class=k>shift {shift} · patient {pid}</p>\
+         <h1>{name} · {case}</h1>\
+         <p class=note>Everything below is on the chain or recomputed from the tape in front of \
+         you. Nothing here is this server's word for it.</p>\
+         <table>{rows}</table>\
+         <p class=note>{omitted}</p>\
+         <p><a href=\"{tape}\">download this shift's tape</a> — replay it against the case with \
+         vitals-replay and the leaf must come out as the hash above.</p>\
+         <p><a href=/ward/{pid}>← her bed</a> · <a href=/>the ward</a></p>",
+        shift = r["shift"],
+        pid = r["patient_id"],
+        name = esc(r["name"].as_str().unwrap_or("a patient")),
+        case = esc(r["case"].as_str().unwrap_or("")),
+        omitted = esc(r["judged_omitted"].as_str().unwrap_or("")),
+        tape = esc(r["tape"].as_str().unwrap_or("#")),
+        rows = [
+            row("played by", format!("<code>{}</code>", esc(r["player"].as_str().unwrap_or("")))),
+            row("anchored at slot", r["slot"].to_string()),
+            row("run hash", format!("<code>{}</code>", esc(r["run_hash"].as_str().unwrap_or("")))),
+            row("what she did", format!("{} orders · {} beats", did["steps"], did["beats"])),
+            row("harm this shift added", if harm == 0 {
+                "none".to_string()
+            } else {
+                did["harm"].as_array().unwrap().iter()
+                    .map(|h| esc(h.as_str().unwrap_or("")))
+                    .collect::<Vec<_>>().join("<br>")
+            }),
+            row("deterministic score", esc(&det)),
+            row("outcome", match r["did"]["outcome"].as_str() {
+                Some(o) => esc(o),
+                None => "she was handed on, still on the ward".to_string(),
+            }),
+        ].concat(),
+    )
+}
+
 /// The ward as it stands, from the held read — one source for the endpoint and the patient page,
 /// so a judge who opens both in one minute cannot be shown two different wards.
 fn ward_now(held: &WardView, store: &store::Store) -> serde_json::Value {
@@ -4291,6 +4402,40 @@ fn main() {
                 );
                 continue;
             }
+            // One shift, for somebody who never played it. Public and unguarded: a receipt only
+            // the people we hand a token to can read is not a receipt, it is a claim.
+            (Method::Get, p) if ward_mode() && p.starts_with("/api/shift/") => {
+                let hash = p.trim_start_matches("/api/shift/");
+                let _ = req.respond(json(ward_receipt(&store, hash)));
+                continue;
+            }
+            // The tape itself, by the hash its leaf commits to. This is what makes the rest
+            // checkable rather than merely readable: a stranger replays these bytes against the
+            // pinned engine and arrives at the same numbers, or we are wrong.
+            (Method::Get, p) if ward_mode() && p.starts_with("/api/tape/") => {
+                let hash = p.trim_start_matches("/api/tape/");
+                match ward_chain::tape_by_hash(&store, hash) {
+                    Some(steps) => {
+                        let _ = req.respond(json(serde_json::json!({
+                            "run_hash": hash,
+                            "steps": steps,
+                            "how_to_check": "replay these steps against the case's scenario with \
+                                             vitals-replay and the leaf must come out as this hash",
+                        })));
+                    }
+                    None => {
+                        let _ = req.respond(json_code(serde_json::json!({
+                            "error": "this ward does not hold that tape"
+                        }), 404));
+                    }
+                }
+                continue;
+            }
+            (Method::Get, p) if ward_mode() && p.starts_with("/shift/") => {
+                let hash = p.trim_start_matches("/shift/").to_string();
+                let _ = req.respond(html(&receipt_page(&ward_receipt(&store, &hash))));
+                continue;
+            }
             // The ward's census. Public, and every figure on it carries where it came from —
             // `vitals_web::ward` builds the payload, `ward_chain` does the reading, and neither
             // of them can report a number this server kept for itself.
@@ -5691,6 +5836,10 @@ mod tests {
                   // and the thing a judge is invited to re-derive; a token on it would mean
                   // "checkable by anyone we gave a token to", which is not the claim.
                   "/api/ward", "/api/ward/stream",
+                  // One shift, and the tape it is checked against. A receipt only the people we
+                  // hand a token to can read is not a receipt, it is a claim.
+                  "/api/shift/0000000000000000000000000000000000000000000000000000000000000000",
+                  "/api/tape/0000000000000000000000000000000000000000000000000000000000000000",
                   // Who wrote what, and how often it has been proven. A ledger nobody can read
                   // is not one anybody can check, and checkable is the entire claim.
                   "/api/authors", "/api/payout",

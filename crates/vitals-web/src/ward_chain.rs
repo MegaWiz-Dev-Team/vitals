@@ -1509,3 +1509,111 @@ pub fn refusal(err: &str) -> Option<&'static str> {
         _ => return None,
     })
 }
+
+/// What one shift was, for somebody who never played it.
+///
+/// Everything here is either on the chain or recomputed in front of the reader from bytes the
+/// chain committed to. `rubric` is the case's mark sheet when it has one; without it the
+/// deterministic score is absent rather than zero, because zero is a claim and absence is a fact.
+///
+/// **No judged score.** The judged sixty belongs to a finished case; a shift is a few minutes in
+/// the middle of a stay, and a number that cannot mean what a reader assumes is worse than no
+/// number. The receipt says that in words rather than leaving a hole.
+///
+/// **The harm is this shift's own.** `vitals_replay::shift` reports only what this tape added, so
+/// a stranger who walked into a patient somebody else hurt is answerable for what they did and
+/// nothing else.
+pub fn receipt(
+    sce_json: &str,
+    rubric_json: Option<&str>,
+    shifts: &[crate::ward::ShiftOnChain],
+    this: &crate::ward::ShiftOnChain,
+    tape_of: &dyn Fn(&str) -> Option<Vec<vitals_replay::Step>>,
+    pack: &crate::ward::Pack,
+    admitted_slot: u64,
+) -> Result<serde_json::Value, String> {
+    let hash = hex32(&this.run_hash);
+    let tape = tape_of(&hash).ok_or_else(|| {
+        format!("the tape for {hash} is not here, so this shift cannot be shown at all — a receipt \
+                 nobody can check is not a receipt")
+    })?;
+
+    // The patient as she was when this stranger arrived: every shift the chain anchored before
+    // this one, and the idle time between them.
+    let before: Vec<crate::ward::ShiftOnChain> =
+        shifts.iter().filter(|s| s.slot < this.slot).copied().collect();
+    let (mut st, played) = resumed(sce_json, &before, tape_of, admitted_slot, this.slot)?;
+    let r = vitals_replay::shift(&mut st, &tape, 0);
+
+    let det = rubric_json.and_then(|rj| vitals_osce::det_for_run(sce_json, &tape, rj).ok());
+
+    Ok(serde_json::json!({
+        "patient_id": this.patient_id,
+        "name": pack.persona.name,
+        "case": pack.case,
+        "shift": played + 1,
+        "run_hash": hash,
+        "slot": this.slot,
+        "player": bs58(&this.signer),
+        "did": {
+            "beats": r.beats.len(),
+            "steps": r.steps,
+            "sim_seconds": r.sim_seconds,
+            "harm": r.harm_events,
+            "outcome": r.outcome,
+        },
+        "det": det.map(|(earned, max, _)| serde_json::json!({ "earned": earned, "max": max })),
+        "judged": serde_json::Value::Null,
+        "judged_omitted": "a judged score belongs to a finished case. This is one shift in the \
+                           middle of her stay, and a number that cannot mean what a reader assumes \
+                           is worse than no number",
+        "tape": format!("/api/tape/{hash}"),
+        "derivations": {
+            "player": "the key that signed this shift's AnchorShift transaction",
+            "did": "this tape replayed on the patient the chain says she was — the beats and the \
+                    harm are this shift's own, never what it walked into",
+            "det": "the case's rubric, recomputed from the tape by the same code the anchor used. \
+                    Absent when the case has no rubric — absent rather than zero, because zero is \
+                    a claim",
+            "run_hash": "the hash this shift's leaf commits to on chain; the tape below hashes to it",
+        },
+    }))
+}
+
+/// A public key as base58, for a receipt a person reads.
+fn bs58(bytes: &[u8; 32]) -> String {
+    Pubkey::new_from_array(*bytes).to_string()
+}
+
+/// Find the shift a run hash names: which patient, and where in her chain.
+///
+/// Reads the caches first and refreshes only if the hash is not in them, so the ordinary case —
+/// somebody opening a receipt for a shift the board has already seen — costs no chain read at all.
+/// A hash that is nowhere is reported as such: it may never have anchored, or it may belong to
+/// another ward, and this one does not guess between them.
+pub fn find_shift(
+    chain: &WardChain,
+    store: &crate::store::Store,
+    run_hash: &str,
+) -> Result<Option<(u64, Vec<crate::ward::ShiftOnChain>, crate::ward::ShiftOnChain)>, String> {
+    let patients = chain.patients()?;
+    for refreshing in [false, true] {
+        for p in &patients {
+            let key = format!("p{}", p.patient_id);
+            let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
+            if refreshing && chain.refresh(p.patient_id, &mut seen).is_ok() {
+                let _ = store.put(SHIFT_CACHE, &key, &seen);
+            }
+            let all = seen.shifts();
+            if let Some(this) = all.iter().find(|s| hex32(&s.run_hash) == run_hash) {
+                return Ok(Some((p.patient_id, all.clone(), *this)));
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// The rubric a case is marked against, when it has one.
+pub fn rubric_of(root: &std::path::Path, case: &str) -> Option<String> {
+    std::fs::read_to_string(root.join("demo/rubrics").join(format!("{case}.json"))).ok()
+}

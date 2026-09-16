@@ -930,3 +930,45 @@ fn a_shift_receipt_carries_what_the_chain_holds_and_what_anybody_can_recompute()
     let how = r["derivations"]["det"].as_str().expect("the score says how it was got");
     assert!(how.contains("rubric") || how.contains("recompute"), "{how}");
 }
+
+/// A receipt says so when its hash names more than one shift.
+///
+/// A run hash is the hash of the **tape**, and two strangers who did exactly the same things to
+/// the same case produce the same bytes — I watched it happen the first time two of my own test
+/// shifts played the same three orders. Their leaves differ, because a leaf carries the player and
+/// the commitment; the tape hash does not.
+///
+/// So a receipt addressed by tape hash can name several shifts, and one that showed the first and
+/// said nothing would be telling a reader "this is the shift" when the truth is "this is one of
+/// three". The number is on the receipt, and so is where the others are.
+#[test]
+fn a_receipt_says_when_its_hash_names_more_than_one_shift() {
+    let sce = ep1();
+    let same = vec![Step::Tick(20.0), Step::Do("oxygen".into()), Step::Tick(40.0)];
+    let mut tapes: BTreeMap<String, Vec<Step>> = BTreeMap::new();
+    tapes.insert(hex_of("same"), same);
+    let chart = |h: &str| tapes.get(h).cloned();
+
+    let pack = WardPack {
+        case: "ep1".into(),
+        persona: Persona { name: "Ing".into(), country: "THA".into(), age: 19, sex: "f".into() },
+        portrait: Default::default(),
+        endemic: false,
+    };
+    // Two shifts, different keys, the same bytes.
+    let mut second = anchored("same", 1_000_030);
+    second.signer = [9; 32];
+    let shifts = [anchored("same", 1_000_010), second];
+
+    let r = receipt(&sce, None, &shifts, &shifts[0], &chart, &pack, 1_000_000).expect("a receipt");
+    assert_eq!(r["also_anchored"], 1,
+               "one other shift on this ward has the same tape, and the receipt says so rather \
+                than presenting itself as the only one");
+    let note = r["also_anchored_note"].as_str().expect("and says what that means");
+    assert!(note.contains("same tape") || note.contains("same bytes"), "{note}");
+
+    // A hash that names exactly one shift says nothing, because there is nothing to say.
+    let alone = receipt(&sce, None, &shifts[..1], &shifts[0], &chart, &pack, 1_000_000).unwrap();
+    assert_eq!(alone["also_anchored"], 0);
+    assert!(alone["also_anchored_note"].is_null());
+}
