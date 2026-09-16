@@ -1,0 +1,75 @@
+{
+  "meta": {
+    "id": "synthetic-cholera-adult-test",
+    "title": "Synthetic test case: rice-water stools since dawn, now cannot stand, pulse thready",
+    "specialty": "eir-infectious",
+    "difficulty": "intern",
+    "clinical_tier": 5,
+    "care_setting": "ER",
+    "language": "en",
+    "source": "authored",
+    "version": "0.0.1",
+    "country": "ZZZ",
+    "search_tags": ["synthetic", "cholera", "hypovolaemic shock", "test"]
+  },
+  "patient": {
+    "name": "Delta Testperson",
+    "age": 38,
+    "sex": "M",
+    "persona": { "affect": "exhausted", "personality": "cooperative", "health_literacy": "low", "verbosity": "terse", "hidden_agenda": "none", "evasiveness": "none" }
+  },
+  "presentation": {
+    "chief_complaint": "Watery stools twenty times since dawn, vomiting, now too weak to stand.",
+    "hpi": "Synthetic history for a test. Nothing here is a real person.",
+    "pmh": [], "medications": [], "allergies": [], "social": "none", "family": "none"
+  },
+  "symptom_script": [
+    { "finding": { "display": "Profuse painless watery stools" }, "present": true, "reveal": "volunteered", "patient_words": "Like rice water, no pain, twenty times since dawn." },
+    { "finding": { "display": "Others in the household with the same illness" }, "present": true, "reveal": "on_ask", "patient_words": "My brother started yesterday. We drink from the same well." },
+    { "finding": { "display": "Blood in the stool" }, "present": false, "reveal": "on_ask", "patient_words": "No blood, just water." }
+  ],
+  "exam_findings": [
+    { "system": "vitals", "finding": { "display": "Blood pressure" }, "value": "78/50 mmHg" },
+    { "system": "vitals", "finding": { "display": "Heart rate" }, "value": "128/min, thready" },
+    { "system": "vitals", "finding": { "display": "Respiratory rate" }, "value": "28/min, deep" },
+    { "system": "vitals", "finding": { "display": "Oxygen saturation (SpO2)" }, "value": "96% on room air" },
+    { "system": "vitals", "finding": { "display": "Temperature" }, "value": "36.2 °C" },
+    { "system": "general", "finding": { "display": "General appearance" }, "value": "Sunken eyes, skin pinch goes back very slowly, cold hands, capillary refill 4 seconds, drowsy but rousable (GCS 14)" },
+    { "system": "abdomen", "finding": { "display": "Abdominal examination" }, "value": "Soft, scaphoid, hyperactive bowel sounds" }
+  ],
+  "investigations": [
+    { "order": { "display": "Stool rapid test for Vibrio cholerae" }, "result": { "value": "Positive", "flag": "critical" } },
+    { "order": { "display": "Electrolytes and blood gas" }, "result": { "value": "K 2.6, HCO3 9, pH 7.18, creatinine 180", "flag": "critical" } },
+    { "order": { "display": "Blood glucose" }, "result": { "value": "3.6 mmol/L", "flag": "abnormal" } }
+  ],
+  "hidden": {
+    "correct_diagnosis": { "display": "Cholera with severe dehydration and hypovolaemic shock", "aliases": ["cholera", "severe dehydration with shock", "hypovolaemic shock"] },
+    "differential": [ { "dx": { "display": "Other secretory diarrhoea" }, "probability": 0.2 } ],
+    "expected_workup": [ { "display": "Stool rapid test for Vibrio cholerae" }, { "display": "Electrolytes and blood gas" }, { "display": "Blood glucose" } ],
+    "red_flags": [
+      "Cannot drink, skin pinch very slow, pulse thready, pressure 78 = severe dehydration with shock — intravenous rehydration must start within minutes",
+      "Do not give antimotility drugs (loperamide) in cholera"
+    ],
+    "management_plan": [
+      "Rapid intravenous rehydration with Ringer's lactate: 30 mL/kg as fast as possible (within 30 minutes), reassess the pulse and the skin pinch",
+      "Then the second phase: 70 mL/kg over the next 2.5 hours, and replace ongoing stool losses volume for volume",
+      "Correct the potassium: add potassium chloride to the fluid once urine is passed; check electrolytes and glucose",
+      "Oral rehydration solution as soon as the patient can drink, alongside the drip",
+      "Single-dose doxycycline 300 mg once vomiting settles, to shorten the diarrhoea and shedding",
+      "No antimotility drugs; no antiemetic beyond what stops the ORS being vomited",
+      "Notify the case; chlorinate the household's water; treat household contacts who are ill",
+      "Explain that the drip replaces what the stools take out and that the drinking must continue at home"
+    ],
+    "rubric": {
+      "pass_mark": 60,
+      "dimensions": [
+        { "key": "history_completeness", "label": "History", "weight": 15, "scoring": "checklist", "criteria": ["stool character", "household contacts"] },
+        { "key": "examination", "label": "Examination", "weight": 10, "scoring": "checklist", "criteria": ["skin pinch", "perfusion"] },
+        { "key": "investigation_choice", "label": "Investigations", "weight": 15, "scoring": "checklist", "criteria": ["electrolytes"] },
+        { "key": "diagnostic_accuracy", "label": "Diagnosis", "weight": 25, "scoring": "snomed_graded" },
+        { "key": "management_safety", "label": "Management", "weight": 25, "scoring": "llm_judge" },
+        { "key": "red_flag_recognition", "label": "Red flags", "weight": 10, "scoring": "llm_judge" }
+      ]
+    }
+  }
+}
