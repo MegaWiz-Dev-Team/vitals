@@ -747,6 +747,80 @@ impl WardChain {
             .map_err(why)
     }
 
+    /// Close a patient the ward finished while nobody was in the room.
+    ///
+    /// **The ticker does this, never a stranger** (founder, 16 ก.ย.). The alternative was to let
+    /// the next person who opens her page discover the death and anchor it, and that is exactly
+    /// what must not happen: the board would go on offering a corpse, and the record would put her
+    /// death under the key of somebody who arrived after it.
+    ///
+    /// So the ward takes her head itself and anchors a shift with an **empty tape** and the idle
+    /// span. Everything about that record says what happened — the operator's key signed it, no
+    /// steps were played, and the outcome is the one the engine reached on its own. A reader who
+    /// replays it gets the same death from the same nothing.
+    ///
+    /// Four instructions, the same four a stranger signs, because the program has one way in and a
+    /// shortcut for the operator would be a second door into her chart. The host's own key is both
+    /// funder and device here, which is the one thing that differs and the reason this is the only
+    /// place it happens.
+    pub fn close_unattended(
+        &self,
+        patient_id: u64,
+        sce_json: &str,
+        difficulty: vitals_progress::Difficulty,
+        replay: &vitals_replay::Replay,
+        prev_head: [u8; 32],
+    ) -> Result<String, String> {
+        use solana_sdk::signature::Signer;
+        let relay = self
+            .relay
+            .as_ref()
+            .ok_or("this host holds no relay key, so it cannot close a patient")?;
+        let me = relay.pubkey();
+
+        // A key that has closed a patient here before already has an account; the program says so
+        // rather than making a second one, and "already" is not a failure.
+        if !self.has_account(&me) {
+            if let Err(e) = self.now(open_account_ix(&self.program_id, &self.operator, &me)) {
+                if !e.to_lowercase().contains("already") {
+                    return Err(format!("the ward has no account of its own to close her with: {e}"));
+                }
+            }
+        }
+        self.now(take_shift_ix(&self.program_id, &self.operator, &me, patient_id))
+            .map_err(|e| format!("the ward could not take her head to close her: {e}"))?;
+
+        // Declared before it is anchored, like every other shift. There is nothing to hide in a
+        // shift nobody played, and the point is that the program's one path is the path.
+        let nonce = solana_sdk::signature::Keypair::new().pubkey().to_bytes();
+        let sce = vitals_replay::sce_hash(sce_json);
+        let hash = vitals_progress::record::commitment_hash(&sce, &me.to_bytes(), &nonce, 0);
+        self.now(commit_ix(&self.program_id, &self.operator, &me, hash))
+            .map_err(|e| format!("the ward could not declare her closing shift: {e}"))?;
+        let slot = self
+            .commitment(&me)
+            .map(|c| c.slot)
+            .ok_or("the declaration did not land, so there is nothing to anchor against")?;
+
+        let rec = vitals_replay::record_for(
+            me.to_bytes(), sce, sce, difficulty, false, &[], replay, hash, slot,
+        )?;
+        self.now(anchor_shift_ix(
+            &self.program_id, &self.operator, &me, patient_id, WARD_TREE, wire(&rec), prev_head,
+        ))
+        .map_err(|e| format!("her closing shift would not anchor: {e}"))
+    }
+
+    /// One instruction, signed here and sent now. The host's key is funder and device both, which
+    /// is true of nothing else on this ward.
+    fn now(&self, ix: SolInstruction) -> Result<String, String> {
+        use solana_sdk::signature::Signer;
+        let relay = self.relay.as_ref().ok_or("this host holds no relay key")?;
+        let blockhash = self.rpc.get_latest_blockhash().map_err(why)?;
+        let tx = Transaction::new_signed_with_payer(&[ix], Some(&relay.pubkey()), &[relay], blockhash);
+        self.submit(&tx)
+    }
+
     /// Release a patient onto the ward. The operator's own instruction: no player, no lease.
     ///
     /// The whole signature is ours, so this is the one place the ward acts rather than pays — and
@@ -1114,6 +1188,101 @@ pub fn scenario_hash(root: &std::path::Path, case: &str) -> Result<[u8; 32], Str
     Ok(vitals_replay::sce_hash(&text))
 }
 
+/// Close every open patient the engine has already finished.
+///
+/// Read, decide, write — and every step says why it stopped when it stops. A patient the ward
+/// cannot rebuild is left alone and named in the notes rather than closed on a chart nobody can
+/// check: an unreadable chart is a reason to say so, never a reason to end a stay.
+fn reap(
+    chain: &WardChain,
+    store: &crate::store::Store,
+    root: &std::path::Path,
+    patients: &[crate::ward::PatientOnChain],
+    packs_now: &std::collections::BTreeMap<u64, crate::ward::Pack>,
+    out: &mut Ticked,
+) {
+    use crate::ward::OPEN;
+    let now_slot = match chain.slot() {
+        Ok(s) => s,
+        Err(e) => {
+            out.notes.push(format!("the slot could not be read, so nobody was closed: {e}"));
+            return;
+        }
+    };
+
+    for p in patients.iter().filter(|p| p.state == OPEN) {
+        // Somebody is in the room with her. Whatever the engine has reached, it is theirs to find
+        // and theirs to anchor — the ward does not close a patient out from under a shift.
+        if p.lease_holder != [0; 32] && now_slot < p.lease_until_slot {
+            continue;
+        }
+        let Some(pack) = packs_now.get(&p.patient_id) else { continue };
+        let path = case_path(root, &pack.case);
+        let Ok(sce) = std::fs::read_to_string(&path) else {
+            out.notes.push(format!(
+                "patient {} plays {}, which is not on this host, so her chart cannot be read",
+                p.patient_id, pack.case
+            ));
+            continue;
+        };
+
+        let key = format!("p{}", p.patient_id);
+        let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
+        if let Err(e) = chain.refresh(p.patient_id, &mut seen) {
+            out.notes.push(format!("patient {}'s history could not be read: {e}", p.patient_id));
+            continue;
+        }
+        let _ = store.put(SHIFT_CACHE, &key, &seen);
+
+        let found = died_unattended(
+            &sce,
+            &seen.shifts(),
+            &|h| tape_by_hash(store, h),
+            p.admitted_slot,
+            now_slot,
+        );
+        let her = match found {
+            Ok(Some(u)) => u,
+            Ok(None) => continue,
+            Err(e) => {
+                out.notes.push(format!("patient {} could not be rebuilt, so she was left as she is: {e}", p.patient_id));
+                continue;
+            }
+        };
+
+        // The head she died on, read now rather than remembered: the program refuses an anchor
+        // that does not extend the head it was told, and that refusal is the mechanic.
+        let head = match chain.patient(p.patient_id) {
+            Ok(Some(a)) => a.head,
+            Ok(None) => continue,
+            Err(e) => {
+                out.notes.push(format!("patient {}'s account could not be read: {e}", p.patient_id));
+                continue;
+            }
+        };
+        let difficulty = match crate::ward::difficulty_of(&pack.case) {
+            Some("resident") => vitals_progress::Difficulty::Resident,
+            Some("intern") => vitals_progress::Difficulty::Intern,
+            _ => vitals_progress::Difficulty::Student,
+        };
+        match chain.close_unattended(p.patient_id, &sce, difficulty, &her.replay, head) {
+            Ok(sig) => {
+                out.closed.push(p.patient_id);
+                out.notes.push(format!(
+                    "patient {} died with nobody on shift — {} after {} slots alone, closed by the \
+                     ward — {sig}",
+                    p.patient_id, her.outcome, her.idle_slots
+                ));
+            }
+            Err(e) => out.notes.push(format!(
+                "patient {} is finished and would not close: {e}. She stays on the board until the \
+                 next tick, which is the honest state — the chain has not been told yet",
+                p.patient_id
+            )),
+        }
+    }
+}
+
 /// What one minute of the ward doing its own work came to.
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct Ticked {
@@ -1126,6 +1295,8 @@ pub struct Ticked {
     pub open: usize,
     /// How many are waiting, or null when the store could not be listed.
     pub depth: Option<usize>,
+    /// The patients the ward closed this tick because time alone had finished them.
+    pub closed: Vec<u64>,
 }
 
 /// One tick: free beds, and fill them from the queue.
@@ -1163,6 +1334,18 @@ pub fn tick(
         .filter(|p| p.state == OPEN)
         .filter_map(|p| packs_now.get(&p.patient_id).map(|k| k.case.clone()))
         .collect();
+
+    // ── the patients nobody came back to ────────────────────────────────────────────────────
+    //
+    // The idle cap went on 16 ก.ย., so time alone can end a stay, and the founder's ruling is that
+    // the ward writes that down rather than the next stranger: she is closed here, with an empty
+    // tape and the idle span, and the chain then reads *died, nobody on shift*.
+    //
+    // Her bed is **not** refilled this tick. `out.open` below is counted from the patients read at
+    // the top of this function, where she is still open — so the board carries her last state and
+    // the sentence for one minute before the queue takes the bed. That minute is the only time
+    // anybody sees that somebody died there, and it is the ward the founder chose.
+    reap(chain, store, root, &patients, &packs_now, &mut out);
 
     // Beds, not chain rows: a patient the ward cannot describe holds none (`beds_taken`), so she
     // blocks no admission. Three test patients that reached the chain outside the queue wedged
@@ -1404,6 +1587,62 @@ pub fn resumed(
     // What has happened to her since the last anchor: nothing anybody did, and time.
     vitals_replay::pass_idle(&mut st, vitals_replay::idle_seconds(now_slot.saturating_sub(since)));
     Ok((st, ordered.len()))
+}
+
+/// A death the ward has to write down, and the span it happened in.
+///
+/// `outcome` is the engine's own word, carried rather than restated. `idle_slots` and `since_slot`
+/// are the chain's arithmetic — the last anchor (or her admission) and the gap since — so the
+/// record a stranger recomputes is the record we anchored.
+pub struct Unattended {
+    pub outcome: String,
+    pub since_slot: u64,
+    pub idle_slots: u64,
+    pub replay: vitals_replay::Replay,
+    /// Her machine at the moment it stopped — the anchor is built from this, never from a second
+    /// replay that might not agree with the first.
+    pub state: vitals_sce::runtime::SceState,
+}
+
+/// Has the ward finished her while nobody was in the room?
+///
+/// The founder removed the idle cap on 16 ก.ย., so time alone can now end a stay — and a death
+/// nobody records is worse than no death at all: the board would keep offering her, and the next
+/// stranger would open a corpse the page still called alive. So the ticker asks this of every open
+/// bed, every minute, and closes the ones the engine has already finished.
+///
+/// Pure and chain-derived: her scenario, her anchored shifts, the tapes those shifts name, the
+/// slot she was admitted at and the slot now. `Err` when a tape the chain names cannot be found —
+/// her chart cannot be rebuilt, and closing her on a chart nobody can check is the one thing the
+/// ward may not do.
+pub fn died_unattended(
+    sce_json: &str,
+    shifts: &[crate::ward::ShiftOnChain],
+    tape_of: &dyn Fn(&str) -> Option<Vec<vitals_replay::Step>>,
+    admitted_slot: u64,
+    now_slot: u64,
+) -> Result<Option<Unattended>, String> {
+    // Where her chart stops: the last shift anybody anchored, or her admission if nobody has.
+    let since = shifts.iter().map(|s| s.slot).max().unwrap_or(admitted_slot).max(admitted_slot);
+    let (mut st, _) = resumed(sce_json, shifts, tape_of, admitted_slot, since)?;
+    let idle_slots = now_slot.saturating_sub(since);
+
+    // The span itself, as a shift with no steps in it — which is what happened.
+    let replay = vitals_replay::shift(&mut st, &[], idle_slots);
+    let Some(outcome) = replay.outcome.clone() else { return Ok(None) };
+    let finished = vitals_progress::record::Outcome::parse(&outcome).is_some_and(|o| {
+        matches!(
+            o,
+            vitals_progress::record::Outcome::DeathArrest
+                | vitals_progress::record::Outcome::DeathBiphasic
+        )
+    });
+    if !finished {
+        // She reached an ending the ward does not close on its own. A discharge nobody was there
+        // to give is not a discharge, and ICU is a transfer: the next stranger continues her.
+        return Ok(None);
+    }
+    Ok(Some(Unattended { outcome, since_slot: since, idle_slots, replay, state: st }))
 }
 
 /// A run hash as the tapes are keyed by it.

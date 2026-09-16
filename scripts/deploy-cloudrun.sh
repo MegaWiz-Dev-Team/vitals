@@ -211,6 +211,11 @@ fi
 # The Heimdall key is mounted only when there is a gateway to reach. A cloud-only deploy has no
 # heimdall-key secret at all, and requiring one would make the optional path mandatory.
 SECRETS="/relay/id.json=vitals-relay-key:latest,VITALS_TOKEN=vitals-token:latest"
+# The factory's own key, on the ward host only. A second secret rather than a second use of the
+# first: VITALS_TOKEN is printed into bay.js for every visitor, so it cannot also be the key that
+# lets somebody queue patients or put faces on them. The server refuses to open those doors at all
+# without this, which is deliberate — a fallback to the page's token is the bug it replaces.
+[ "$SERVICE" = "vitals-world" ] && SECRETS="$SECRETS,VITALS_DOOR_TOKEN=vitals-door-token:latest"
 [ -n "$HEIMDALL" ] && SECRETS="$SECRETS,HEIMDALL_API_KEY=heimdall-key:latest"
 
 # The same rule as voice, applied to money. `--set-env-vars` replaces the whole environment, so a
