@@ -15,7 +15,7 @@ use vitals_factory::door::{Door, FillReply, Filled, Pushed, Queued, Token, WardV
 use vitals_factory::ledger::Ledger;
 use vitals_factory::manifest::{batch_age, Manifest};
 use vitals_factory::pool::{read_pool, Person};
-use vitals_factory::tick::{backfill_variants, remake_face, tick, Config, FACE_ATTEMPTS, VARIANT_PX, VARIANT_QUALITY};
+use vitals_factory::tick::{backfill_variants, estimate_usd, remake_face, tick, Config, EDIT_USD, FACE_ATTEMPTS, JUDGE_USD, VARIANT_PX, VARIANT_QUALITY};
 use vitals_factory::tools::Tools;
 use vitals_web::ward::Pack;
 use vitals_web::ward_chain::{pack_id, validate_pack, PORTRAITS};
@@ -71,6 +71,7 @@ fn config(dir: &Path, depth: usize, bases: usize) -> Config {
         bucket: "vitals-world-portraits".into(),
         model: "gemini-2.5-flash-image".into(),
         judge_model: "gemini-2.5-flash".into(),
+        edits_per_day: 40,
         dry_run: false,
         seed: 11,
         now: 1_789_500_000,
@@ -1045,13 +1046,13 @@ fn stable_is_made_from_the_base_and_the_base_is_never_sent() {
     }
     // The stable edit is the founder's sentence; recovered keeps the smile.
     let edits = tools.edits.borrow();
-    let stable_prompts: Vec<&String> = edits.iter().filter(|e| e.contains("holding") || e.contains("no smile")).collect();
+    let stable_prompts: Vec<&String> = edits.iter().filter(|e| e.contains("not smiling")).collect();
     assert!(!stable_prompts.is_empty(), "stable was made by an edit: {edits:?}");
     for e in &stable_prompts {
         assert!(e.starts_with("Edit this photo, keeping exactly the same person"), "{e}");
-        assert!(e.contains("unwell") && e.contains("no smile") && e.contains("eyes open"), "{e}");
+        assert!(e.contains("unwell") && e.contains("not smiling") && e.contains("eyes open"), "{e}");
     }
-    assert!(edits.iter().all(|e| !e.contains("smile") || e.contains("no smile") || e.contains("recovered")), "the smile belongs to recovered: {edits:?}");
+    assert!(edits.iter().all(|e| !e.contains("smil") || e.contains("not smiling") || e.contains("looking well")), "the smile belongs to recovered: {edits:?}");
     // Every stable was judged twice: the same person as the base, and looking the state.
     assert!(tools.paired.borrow().iter().all(|j| j.contains("same person as the reference picture")), "{:?}", tools.paired.borrow());
     assert!(tools.judged.borrow().iter().any(|j| j.contains("Does this picture show a patient who is")), "{:?}", tools.judged.borrow());
@@ -1162,4 +1163,99 @@ fn every_made_state_is_judged_twice_and_a_refusal_costs_one_re_edit_then_the_sta
     let man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
     assert!(!man2.entries["PAK-1"].portrait.contains_key("critical"), "a refused state is not on file");
     assert_eq!(man2.entries["PAK-1"].portrait.len(), 5, "base, recovered, improving, deteriorating, arrest — stable stays the base for an admitted patient");
+}
+
+// ── one feature per state, read by the editor and the judge alike ────────────
+// The judge reads a sentence literally and the editor renders what it is told, so both read one
+// text: prompts::feature(state) is the one observable thing the state shows, the edit prompt is
+// KEEP + "She is now <feature>." and the judge's second question carries the same words. No
+// interpretive words — "critically ill", "struggling" — anywhere in them. Identity may differ in
+// skin colour and tone, which is where arrest changes the face most.
+#[test]
+fn the_editor_and_the_judge_read_one_feature_per_state() {
+    use vitals_factory::catalogue::Sex;
+    use vitals_factory::prompts::{feature, sentence, shows, state_for, KEEP, SAME_PERSON, STATES};
+    for st in STATES.iter().chain(["stable"].iter()) {
+        let f = feature(st).unwrap_or_else(|| panic!("{st} has a feature"));
+        assert_eq!(sentence(st), Some(f), "{st}: the judge's sentence is the feature");
+        assert!(shows(st).unwrap().contains(f), "{st}: the second question carries the feature verbatim");
+        for (sex, child) in [(Sex::F, false), (Sex::M, false), (Sex::F, true)] {
+            let p = state_for(st, sex, child).unwrap();
+            assert!(p.starts_with(KEEP), "{st}: identity first");
+            assert!(p.ends_with(&format!("is now {f}.")), "{st}: the editor renders the feature in the same words: {p}");
+        }
+        for word in ["critically ill", "struggling", "ashen", "dusky", "grey", "sweaty"] {
+            assert!(!f.contains(word), "{st}: no interpretive or colour words: {f}");
+        }
+    }
+    assert!(feature("improving").unwrap().contains("eyes open"), "{}", feature("improving").unwrap());
+    assert!(feature("recovered").unwrap().contains("sitting up") && feature("recovered").unwrap().contains("no oxygen mask"));
+    assert!(feature("deteriorating").unwrap().contains("oxygen mask"));
+    assert!(feature("arrest").unwrap().contains("no mask") && feature("arrest").unwrap().contains("still"));
+    assert!(feature("stable").unwrap().contains("not smiling"), "stable's stays as it is");
+    assert!(SAME_PERSON.contains("skin colour and tone"), "identity may differ in skin colour and tone: {SAME_PERSON}");
+    assert_eq!(feature("dead"), None);
+}
+
+// ── the daily edit budget ────────────────────────────────────────────────────
+// A patient costs about a stable, five states and their re-edits — 7–10 edits — and the project's
+// alert is 50 USD a month with Cloud Run inside it. EDITS_PER_DAY (default 40) is counted from the
+// ledger across ticks by UTC day; when it is spent the tick still paints and gates bases (Flex is
+// local) and defers states to the next tick with a "deferred: budget" line. The tick line and the
+// ledger carry the cost, estimated from list price and labelled so.
+#[test]
+fn the_edit_budget_is_counted_across_ticks_and_states_wait_when_it_is_spent() {
+    let dir = world("budget");
+    let pool = read_pool(POOL).unwrap();
+    let man = seed_manifest(&dir, &pool);
+    let pak1 = pool.iter().find(|p| p.key == "PAK-1").unwrap();
+    let base = man.entries["PAK-1"].portrait["stable"].clone();
+    let mut ward = WardView::parse(STAGING).unwrap();
+    let p = &mut ward.patients[0];
+    p.name = Some(pak1.name.clone()); p.country = Some("PAK".into()); p.case = Some("osce-d".into()); p.age = Some(62);
+    p.portrait = Some(base.clone()); p.portraits = BTreeMap::from([("stable".to_string(), base.clone())]);
+    let door = FakeDoor::new(ward);
+    let tools = FakeTools::default();
+    let mut cfg = config(&dir, 0, 0);
+    cfg.edits_per_day = 3;
+
+    // Thirty-eight edits already spent today, by earlier ticks.
+    let today = vitals_factory::ledger::utc_day(cfg.now);
+    let mut ledger = Ledger::default();
+    ledger.spend.entry(today.clone()).or_default().edits = 1;
+    ledger.save(&dir.join("factory-ledger.json")).unwrap();
+
+    let r = tick(&cfg, &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert_eq!(tools.edits.borrow().len(), 2, "one already spent, three allowed: two edits, then the budget");
+    assert_eq!(r.edits, 2);
+    assert!(r.judge_calls >= 4, "each edit judged twice: {}", r.judge_calls);
+    let fills = door.fills.borrow();
+    assert_eq!(fills.len(), 1);
+    assert_eq!(fills[0].1.keys().filter(|k| !k.ends_with("_256")).count(), 2, "the two states made were pushed");
+    let text = r.lines.join("\n");
+    assert!(text.contains("deferred: budget"), "{text}");
+    assert!(text.contains("estimated from list price"), "{text}");
+    assert!(!text.contains("measured"), "{text}");
+    let l2 = Ledger::load(&dir.join("factory-ledger.json")).unwrap();
+    assert_eq!(l2.spend[&today].edits, 3, "the ledger counts across ticks");
+    assert!(l2.spend[&today].judge_calls >= 4);
+    assert!(l2.spend[&today].deferred >= 3, "the states left for tomorrow are counted: {}", l2.spend[&today].deferred);
+    assert!((l2.spend[&today].usd - estimate_usd(3, l2.spend[&today].judge_calls)).abs() < 1e-9);
+    assert!((estimate_usd(10, 20) - (10.0 * EDIT_USD + 20.0 * JUDGE_USD)).abs() < 1e-9);
+    assert_eq!((EDIT_USD, JUDGE_USD), (0.039, 0.0005));
+
+    // The next tick, same day: nothing left, every state deferred, no edit made — but a base is
+    // still painted and gated, because Flex is local.
+    let r = tick(&Config { queue_depth: 1, bases_per_tick: 1, ..cfg.clone() }, &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert_eq!(tools.edits.borrow().len(), 2, "no edit on a spent budget");
+    assert!(!tools.paints.borrow().is_empty(), "bases are still painted");
+    assert!(r.lines.iter().any(|l| l.contains("deferred: budget")), "{:?}", r.lines);
+    assert!(r.lines.iter().any(|l| l.contains("goes out without a picture")), "a new pack whose stable waits for budget goes out without one: {:?}", r.lines);
+
+    // Tomorrow the budget is new.
+    let r = tick(&Config { now: cfg.now + 86_400, ..cfg.clone() }, &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert!(tools.edits.borrow().len() > 2, "a new day, new edits");
 }
