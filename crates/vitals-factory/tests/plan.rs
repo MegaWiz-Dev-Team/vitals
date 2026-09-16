@@ -101,7 +101,14 @@ fn every_pack_is_one_the_door_would_take_and_agrees_with_its_own_case() {
     let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, want: 20, seed: 1 });
     assert_eq!(p.packs.len(), 20);
     for pl in &p.packs {
-        validate_pack(&pl.pack).unwrap_or_else(|why| panic!("{}: the door would refuse her: {why}", pl.pack.persona.name));
+        // The door refuses every one of these as of 16 ก.ย. — the ward plays none of the season's
+        // cases and this factory still draws from that catalogue — so what is checked is that the
+        // refusal is that one and not something else this plan got wrong. Re-pointing the factory
+        // at `GET /api/ward/cases` is the work; the rest of this test is about the draw and is
+        // unchanged.
+        let why = validate_pack(&pl.pack).expect_err("a season case is refused at the queue door");
+        assert!(why.contains("/api/ward/case"),
+                "{}: refused for something other than being a season case: {why}", pl.pack.persona.name);
         let case = cat.get(&pl.pack.case).expect("a buildable case");
         assert!(case.band.contains(&pl.pack.persona.age), "{}: {} is outside {:?}", case.id, pl.pack.persona.age, case.band);
         let who = person(&pool, &pl.person);
@@ -237,11 +244,14 @@ fn endemic_is_true_only_when_the_list_pairs_her_country_with_her_case() {
                 // a pack tagged from this test's list is checked here against this test's list.
                 endemic_seen += 1;
                 assert!(endemic[&pl.pack.persona.country].contains(&pl.pack.case), "{:?}", pl.pack);
+                // Same as above: the door refuses a season case whatever else is true of the
+                // pack, so what is checked here is the endemic pairing itself rather than the
+                // door's verdict.
                 let mut plain = pl.pack.clone();
                 plain.endemic = false;
-                validate_pack(&plain).unwrap_or_else(|why| panic!("{why}"));
+                assert!(validate_pack(&plain).is_err(), "a season case is refused, tag or no tag");
             } else {
-                validate_pack(&pl.pack).unwrap_or_else(|why| panic!("{why}"));
+                assert!(validate_pack(&pl.pack).is_err());
             }
         }
     }

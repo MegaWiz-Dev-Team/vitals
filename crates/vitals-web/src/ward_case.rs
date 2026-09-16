@@ -23,6 +23,9 @@ pub const LEVELS: [&str; 3] = ["student", "intern", "resident"];
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CaseSummary {
     pub case_id: String,
+    /// What kind of deterioration this case is — `haemorrhagic_shock`, `airway_obstruction`. The
+    /// compiler's own word, and the one thing a reader of the catalogue wants before opening it.
+    pub archetype: String,
     /// ISO 3166-1 alpha-3, or `None` for a case that belongs to no country in particular.
     pub country: Option<String>,
     pub difficulty: String,
@@ -174,6 +177,7 @@ pub fn validate_case(pack: &Value) -> Result<CaseSummary, String> {
 
     Ok(CaseSummary {
         case_id,
+        archetype: s("archetype"),
         country,
         difficulty,
         endemic: pack.get("endemic").and_then(Value::as_bool).unwrap_or(false),
@@ -248,13 +252,30 @@ pub fn all(store: &crate::store::Store) -> Vec<CaseSummary> {
         .collect()
 }
 
+/// The name this case is filed under.
+///
+/// The case id where the store can take it, and a hash of the id where it cannot. A library case
+/// is called what its library calls it — `embla-hepatic-encephalopathy-precipitated-by-gi-bleeding-resident`
+/// is 65 characters of perfectly good name — and the store's keys are file names capped at 64.
+/// Which of those two facts gives way is not a medical question, so it is this one: the filing is
+/// ours and the id is theirs. The pack keeps its own `case_id` inside the document, so every
+/// reader still sees the library's name and nothing has to know about this.
+pub fn key_for(case_id: &str) -> String {
+    if crate::store::is_safe_key(case_id) {
+        return case_id.to_string();
+    }
+    use sha2::{Digest, Sha256};
+    let h = Sha256::digest(case_id.as_bytes());
+    format!("c-{}", h[..20].iter().map(|b| format!("{b:02x}")).collect::<String>())
+}
+
 /// The scenario one of the ward's own cases runs, as the engine takes it.
 ///
 /// `None` for anything this ward did not accept through the door — a season id, a case that was
 /// never sent, a pack that no longer validates. The caller then says so rather than reaching for a
 /// file: `demo/**` is the season's and a ward patient must never be playing one by accident.
 pub fn sce_of(store: &crate::store::Store, case_id: &str) -> Option<String> {
-    let pack: serde_json::Value = store.get(CASE_STORE, case_id)?;
+    let pack: serde_json::Value = store.get(CASE_STORE, &key_for(case_id))?;
     validate_case(&pack).ok()?;
     serde_json::to_string(pack.get("sce")?).ok()
 }

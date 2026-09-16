@@ -4318,7 +4318,8 @@ fn main() {
                 // Add or replace while it is provisional; add-only once it has been reviewed. A
                 // reviewed case is one the chain carries shifts against, and replacing it under the
                 // same id would rewrite what those shifts were about.
-                if let Some(held) = store.get::<serde_json::Value>(ward_case::CASE_STORE, &summary.case_id) {
+                let key = ward_case::key_for(&summary.case_id);
+                if let Some(held) = store.get::<serde_json::Value>(ward_case::CASE_STORE, &key) {
                     let reviewed = !held.get("provisional").and_then(|p| p.as_bool()).unwrap_or(true);
                     if reviewed {
                         let _ = req.respond(json_code(serde_json::json!({
@@ -4331,7 +4332,7 @@ fn main() {
                         continue;
                     }
                 }
-                match store.put(ward_case::CASE_STORE, &summary.case_id, &pack) {
+                match store.put(ward_case::CASE_STORE, &key, &pack) {
                     Ok(()) => {
                         let _ = req.respond(json(serde_json::json!({
                             "stored": summary.case_id,
@@ -4354,6 +4355,7 @@ fn main() {
                     .into_iter()
                     .map(|c| serde_json::json!({
                         "case_id": c.case_id,
+                        "archetype": c.archetype,
                         "title": c.title,
                         "country": c.country,
                         "difficulty": c.difficulty,

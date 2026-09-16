@@ -213,6 +213,7 @@ pub fn plan(i: &Inputs) -> Plan {
                 placed = Some(Planned {
                     pack: Pack {
                         case: case.id.clone(),
+                        difficulty: None,
                         persona: Persona { name: who.name.clone(), age, country: who.country.clone(), sex: who.sex.letter().into() },
                         portrait,
                         endemic,

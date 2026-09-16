@@ -63,6 +63,9 @@ impl Sent {
     pub fn to_pack(&self) -> Pack {
         Pack {
             case: self.case.clone(),
+            // The patient factory does not choose a level yet; the ward places her by country and
+            // takes what its catalogue holds.
+            difficulty: None,
             persona: Persona { name: self.name.clone(), age: self.age, country: self.country.clone(), sex: self.sex.clone() },
             portrait: self.stable.iter().map(|u| ("stable".to_string(), u.clone())).collect(),
             endemic: self.endemic,

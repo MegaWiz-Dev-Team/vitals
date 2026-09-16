@@ -258,9 +258,13 @@ use vitals_web::ward::{Pack, Persona};
 use vitals_web::ward_chain::{pack_id, validate_pack};
 
 fn a_pack() -> Pack {
-        difficulty: None,
     Pack {
-        case: "ep2".into(),
+        difficulty: None,
+        // No case: the ward places her from its own catalogue. A pack naming one of the season's
+        // sixteen is refused at this door now, and a pack naming a case the ward holds is checked
+        // against the store by `enqueue` rather than by the shape — so the pack's own shape is
+        // tested with the case the factory will most often send, which is none.
+        case: String::new(),
         persona: Persona { name: "Ploy Siriwattana".into(), country: "THA".into(), age: 54, sex: "f".into() },
         portrait: std::collections::BTreeMap::new(),
         endemic: false,
@@ -285,11 +289,18 @@ fn portrait_url(n: u8) -> String {
 fn the_queue_takes_only_patients_the_ward_can_actually_serve() {
     assert!(validate_pack(&a_pack()).is_ok());
 
+    // A case the ward might hold: the shape is fine here and whether this ward *has* it is asked
+    // at the door that can see the store (`enqueue`), because the same pack is good the minute
+    // after the compiler sends that case.
     let mut p = a_pack();
     p.case = "ddx-dengue-fever-1".into();
-    assert!(validate_pack(&p).is_err(),
-            "a case the ward has not converted is a bed nobody can open — and the factory would \
-             never hear about it");
+    assert!(validate_pack(&p).is_ok(), "the shape of a case id is not the question here");
+
+    // One of the season's sixteen is refused outright, whoever sends it.
+    let mut p = a_pack();
+    p.case = "osce-a2".into();
+    let why = validate_pack(&p).expect_err("the season is vitals.academy's");
+    assert!(why.contains("/api/ward/case"), "and the sentence says where cases come from: {why}");
 
     let mut p = a_pack();
     p.persona.country = "Thailand".into();

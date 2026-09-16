@@ -1056,6 +1056,7 @@ fn a_patient_who_cannot_be_rebuilt_is_named_and_gives_up_the_bed() {
     let describable = |id: u64, name: &str| {
         (id, Pack {
             case: "osce-c".into(),
+            difficulty: None,
             persona: Persona { name: name.into(), country: "THA".into(), age: 6, sex: "f".into() },
             portrait: Default::default(),
             endemic: false,

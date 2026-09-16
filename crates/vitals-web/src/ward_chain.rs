@@ -898,12 +898,23 @@ pub const AGE_RANGE: std::ops::RangeInclusive<u16> = 1..=120;
 /// get right.
 pub fn validate_pack(p: &crate::ward::Pack) -> Result<(), String> {
     use crate::ward::CATALOGUE;
-    if !CATALOGUE.contains(&p.case.as_str()) {
+    // The season's sixteen are vitals.academy's (founder, 16 ก.ย.). A pack may name a case the
+    // ward holds, or name none and let the ward place her; whether it *is* held is asked at the
+    // door, where the store is.
+    if CATALOGUE.contains(&p.case.as_str()) {
         return Err(format!(
-            "{} is not a case this ward serves — queueing it would put a patient on the board \
-             that no shift can open",
+            "{} is one of the season's cases, and the ward plays none of them — cases come \
+             through /api/ward/case from the case factory",
             p.case
         ));
+    }
+    if let Some(level) = &p.difficulty {
+        if !crate::ward_case::LEVELS.contains(&level.as_str()) {
+            return Err(format!(
+                "{level} is not a level this ward offers — {:?}, or leave it out",
+                crate::ward_case::LEVELS
+            ));
+        }
     }
     if !p.persona.country_is_alpha3() {
         return Err(format!(
@@ -919,6 +930,10 @@ pub fn validate_pack(p: &crate::ward::Pack) -> Result<(), String> {
     }
     // The case's own patient, where the case has one. The ward renames her and moves her country
     // — that is the premise — but it may not change what the case was written about.
+    //
+    // This reads the season's station files and so answers `None` for every case the factory
+    // compiles: a compiled pack carries `patient{age,sex}` and the ward's persona overrides it by
+    // ruling. It is kept for the patients still mid-stay on season cases and goes with them.
     if let Some(theirs) = crate::ward::case_patient(&p.case) {
         if p.persona.sex != theirs.sex {
             return Err(format!(
@@ -1109,9 +1124,22 @@ pub fn queue_depth(store: &crate::store::Store) -> Result<usize, String> {
 /// put one woman in two beds.
 pub fn enqueue(store: &crate::store::Store, packs: Vec<crate::ward::Pack>) -> Queued {
     let mut out = Queued::default();
+    let held = crate::ward_case::all(store);
     for pack in packs {
         if let Err(why) = validate_pack(&pack) {
             out.rejected.push(why);
+            continue;
+        }
+        // Whether this ward holds the case she was built for. Asked here rather than in the pack's
+        // own shape because it is a question about this ward at this moment: the same pack is good
+        // the minute after the compiler sends that case, which is why the packs already waiting
+        // are left alone rather than deleted.
+        if !pack.case.is_empty() && !held.iter().any(|c| c.case_id == pack.case) {
+            out.rejected.push(format!(
+                "{} is not a case this ward holds — send it through /api/ward/case first, or \
+                 leave the pack's case empty and the ward will place her",
+                pack.case
+            ));
             continue;
         }
         let id = pack_id(&pack);
@@ -1553,7 +1581,12 @@ pub fn tick(
         // The season ids still resolve for the three patients mid-stay on 16 ก.ย. and for nobody
         // else: `sce_of` answers only for cases that came through the door.
         let catalogue = crate::ward_case::all(store);
-        let chosen = crate::ward_case::choose_case(&catalogue, Some(&pack.case), &pack.persona.country, None);
+        let chosen = crate::ward_case::choose_case(
+            &catalogue,
+            (!pack.case.is_empty()).then_some(pack.case.as_str()),
+            &pack.persona.country,
+            pack.difficulty.as_deref(),
+        );
         let sce_json = match &chosen {
             Some(c) => crate::ward_case::sce_of(store, &c.case_id),
             None => None,

@@ -72,6 +72,15 @@ impl Backend {
 /// Keys reach this from the network. A key is a file name, so anything that is not plainly a name
 /// is refused rather than sanitised — sanitising invents a key the caller did not ask for, and
 /// two callers can be sanitised onto the same one.
+/// Would this store take that key?
+///
+/// Public because a caller with an id of its own — a case from somebody else's library — needs to
+/// know before it tries, so a name this store cannot file becomes the caller's filing problem
+/// rather than an outage at write time.
+pub fn is_safe_key(key: &str) -> bool {
+    safe(key).is_some()
+}
+
 fn safe(key: &str) -> Option<&str> {
     let ok = !key.is_empty()
         && key.len() <= 64

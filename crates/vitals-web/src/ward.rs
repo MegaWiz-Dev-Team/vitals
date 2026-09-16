@@ -128,9 +128,22 @@ impl Persona {
 /// is never a reason to withhold a patient.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Pack {
-    /// A case id from [`CATALOGUE`]. A pack naming anything else is a patient the ward cannot
-    /// serve, which is why the door that accepts packs checks it.
+    /// The case the factory built her for — an id the ward holds, or empty for "the ward
+    /// chooses".
+    ///
+    /// It was a season id until 16 ก.ย. and is now one of the case factory's: the ward plays what
+    /// comes through `/api/ward/case` and the season's sixteen are vitals.academy's. Empty rather
+    /// than `Option` because that is what the packs already queued deserialise to, and the
+    /// nineteen waiting when this changed were not deleted to make a field prettier.
+    #[serde(default)]
     pub case: String,
+    /// The level she was built for, when the factory knows it: `student`, `intern` or `resident`.
+    ///
+    /// The ticker uses it to pick a case when the pack names none. Absent means any — better a
+    /// patient at whatever level the ward has a case for than an empty bed, because a bed nobody
+    /// can take teaches nothing.
+    #[serde(default)]
+    pub difficulty: Option<String>,
     pub persona: Persona,
     /// Her pictures, keyed on the state she is in — see [`PORTRAIT_LADDER`] and [`portrait_for`].
     ///
