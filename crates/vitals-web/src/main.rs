@@ -2147,6 +2147,76 @@ fn ward_page_missing(why: &str) -> String {
     )
 }
 
+
+/// A year, immutable — for the files whose URL carries the build stamp.
+///
+/// Safe precisely because of that stamp: `bay.js?v=<build>` cannot mean two different files, so a
+/// browser that never asks again is never wrong. Without the stamp this would be the worst header
+/// in the file.
+fn forever() -> Header {
+    Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=31536000, immutable"[..])
+        .expect("a static header")
+}
+
+/// Does this client take gzip?
+///
+/// Asked of the request rather than assumed of the world: a health check, a curl and the odd proxy
+/// do not, and sending them a compressed body they cannot read is the one failure this whole path
+/// could introduce.
+fn takes_gzip(req: &tiny_http::Request) -> bool {
+    req.headers()
+        .iter()
+        .find(|h| h.field.equiv("accept-encoding"))
+        .is_some_and(|h| h.value.as_str().to_ascii_lowercase().contains("gzip"))
+}
+
+/// Text on the wire, compressed when the client asked and it is worth it.
+///
+/// The ward is 620 KB of text to a first visitor — the globe 274 KB, `bay.js` 247, `bay.css` 99 —
+/// on a service that scales to zero and pays for every byte. gzip takes that to about a tenth.
+///
+/// **The floor is the point of `SQUEEZE_FLOOR`.** Below it a compressor costs a header, a CPU
+/// burst and a round trip's worth of latency to save a few hundred bytes, and the ward answers a
+/// great many small JSON requests.
+const SQUEEZE_FLOOR: usize = 1400;
+
+fn squeezed(
+    req: &tiny_http::Request,
+    body: Vec<u8>,
+    content_type: &[u8],
+) -> Response<std::io::Cursor<Vec<u8>>> {
+    let ctype = Header::from_bytes(&b"Content-Type"[..], content_type).expect("a content type");
+    if body.len() < SQUEEZE_FLOOR || !takes_gzip(req) {
+        return Response::from_data(body).with_header(ctype);
+    }
+    use std::io::Write;
+    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    // A compressor that fails sends the text uncompressed. There is no version of this worth an
+    // error page.
+    if gz.write_all(&body).is_err() {
+        return Response::from_data(body).with_header(ctype);
+    }
+    match gz.finish() {
+        Ok(packed) => Response::from_data(packed)
+            .with_header(ctype)
+            .with_header(Header::from_bytes(&b"Content-Encoding"[..], &b"gzip"[..]).unwrap())
+            // Caches keyed on the URL alone would hand a compressed body to a client that cannot
+            // read one. This is the header that stops that, and it is not optional.
+            .with_header(Header::from_bytes(&b"Vary"[..], &b"Accept-Encoding"[..]).unwrap()),
+        Err(_) => Response::from_data(body).with_header(ctype),
+    }
+}
+
+/// A short, stable name for a body: the first eight bytes of its sha256, quoted as an ETag.
+///
+/// Content-addressed, so two servers behind one URL agree and a restart does not invalidate
+/// everybody's copy — which is what a timestamp or a boot id would do.
+fn etag_of(body: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let h = Sha256::digest(body);
+    format!("\"{}\"", h[..8].iter().map(|b| format!("{b:02x}")).collect::<String>())
+}
+
 fn html(body: &str) -> Response<std::io::Cursor<Vec<u8>>> {
     Response::from_string(body).with_header(
         Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..]).unwrap(),
@@ -2807,7 +2877,9 @@ fn main() {
                 if ward_mode() {
                     usage.arrived(param(&url, "src").as_deref().and_then(usage::channel), &store);
                 }
-                let _ = req.respond(html(if ward_mode() { WORLD } else { LANDING }));
+                let page = compose(if ward_mode() { WORLD } else { LANDING });
+                let resp = squeezed(&req, page.into_bytes(), b"text/html; charset=utf-8");
+                let _ = req.respond(resp);
                 continue;
             }
             (Method::Get, "/play") => {
@@ -4578,27 +4650,19 @@ fn main() {
                 continue;
             }
             (Method::Get, p) if p == "/bay.css" || p.starts_with("/bay.css?") => {
-                let _ = req.respond(
-                    Response::from_string(BAY_CSS.replace(BUILD_STAMP, BUILD)).with_header(
-                        Header::from_bytes(&b"Content-Type"[..], &b"text/css; charset=utf-8"[..])
-                            .unwrap(),
-                    ),
-                );
+                let css = BAY_CSS.replace(BUILD_STAMP, BUILD);
+                let resp = squeezed(&req, css.into_bytes(), b"text/css; charset=utf-8")
+                    .with_header(forever());
+                let _ = req.respond(resp);
                 continue;
             }
             (Method::Get, p) if p == "/bay.js" || p.starts_with("/bay.js?") => {
                 let js = BAY_JS
                     .replace("__VITALS_TOKEN__", token.as_deref().unwrap_or(""))
                     .replace(BUILD_STAMP, BUILD);
-                let _ = req.respond(
-                    Response::from_string(js).with_header(
-                        Header::from_bytes(
-                            &b"Content-Type"[..],
-                            &b"application/javascript; charset=utf-8"[..],
-                        )
-                        .unwrap(),
-                    ),
-                );
+                let resp = squeezed(&req, js.into_bytes(), b"application/javascript; charset=utf-8")
+                    .with_header(forever());
+                let _ = req.respond(resp);
                 continue;
             }
             // One shift, for somebody who never played it. Public and unguarded: a receipt only
@@ -4651,7 +4715,30 @@ fn main() {
                     })));
                     continue;
                 }
-                let _ = req.respond(json(ward_now(&ward_view, &store)));
+                let body = serde_json::to_vec(&ward_now(&ward_view, &store))
+                    .unwrap_or_else(|_| b"{}".to_vec());
+                let tag = etag_of(&body);
+                // Asked again with the tag it already has, the ward says "still that" and sends
+                // nothing. The board is opened by a room full of people at once during a demo.
+                let known = req
+                    .headers()
+                    .iter()
+                    .find(|h| h.field.equiv("if-none-match"))
+                    .is_some_and(|h| h.value.as_str().split(',').any(|t| t.trim() == tag));
+                let resp = if known {
+                    Response::from_data(Vec::new()).with_status_code(304)
+                } else {
+                    squeezed(&req, body, b"application/json")
+                };
+                let resp = resp
+                    .with_header(Header::from_bytes(&b"ETag"[..], tag.as_bytes()).unwrap())
+                        // Fifteen seconds: long enough to absorb a room opening it at once, short
+                        // enough that a death is on screen before anybody has stopped looking.
+                    .with_header(
+                        Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=15"[..])
+                            .unwrap(),
+                    );
+                let _ = req.respond(resp);
                 continue;
             }
             (Method::Get, "/api/chain") => {
