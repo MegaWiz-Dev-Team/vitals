@@ -1,0 +1,29 @@
+[package]
+publish = false   # internal workspace crate, never to crates.io
+name = "vitals-factory"
+description = "The job on the mini that keeps the ward's queue full — packs built from cases we have, people we invented, and faces we made"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+base64 = "0.22"
+ureq = { version = "2", features = ["json"] }
+# The ward's own catalogue, difficulty table, pack shape, pack address and portrait rules. Depended
+# on rather than copied: a factory with its own list of the sixteen would be a second opinion about
+# which patients the ward serves, and the day the two disagreed nothing would say so.
+vitals-web = { path = "../vitals-web" }
+
+[lib]
+name = "vitals_factory"
+path = "src/lib.rs"
+
+[[bin]]
+name = "vitals-factory"
+path = "src/main.rs"
+
+[lints]
+workspace = true
