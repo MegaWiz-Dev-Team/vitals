@@ -23,7 +23,7 @@ use vitals_factory::door::Http;
 use vitals_factory::tick::{default_repo, tick, Config};
 use vitals_factory::tools::Shell;
 
-const USAGE: &str = "usage: vitals-factory [--dry-run]
+const USAGE: &str = "usage: vitals-factory [--once] [--dry-run]
 
 One tick of the patient factory: read WARD's /api/ward, top its queue up to QUEUE_DEPTH, complete
 one patient's faces, exit. Configuration is the environment (see the crate doc); --dry-run reads
@@ -56,6 +56,9 @@ fn main() {
     for a in &args {
         match a.as_str() {
             "--dry-run" => dry_run = true,
+            // One tick is the only mode there is; the word is accepted so a launchd line and a
+            // hand-typed line read the same.
+            "--once" => {}
             "--help" | "-h" => {
                 println!("{USAGE}");
                 return;

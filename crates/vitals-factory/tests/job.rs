@@ -47,6 +47,12 @@ fn without_a_ward_the_binary_says_so_and_does_nothing() {
     let help = Command::new(env!("CARGO_BIN_EXE_vitals-factory")).arg("--help").output().expect("runs");
     assert!(help.status.success());
     assert!(String::from_utf8_lossy(&help.stdout).contains("--dry-run"));
+    // `--once` is accepted: one tick is the only mode, and the word on a launchd line or a
+    // hand-typed line should not be an error.
+    let once = Command::new(env!("CARGO_BIN_EXE_vitals-factory")).env_remove("WARD").args(["--once", "--dry-run"]).output().expect("runs");
+    assert!(String::from_utf8_lossy(&once.stderr).contains("WARD"), "past the arguments, it is WARD that stops it");
+    let bad = Command::new(env!("CARGO_BIN_EXE_vitals-factory")).arg("--twice").output().expect("runs");
+    assert_eq!(bad.status.code(), Some(2), "an argument it does not know is refused");
 }
 
 /// A ward that is one socket answering one GET with the staging fixture.
