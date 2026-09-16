@@ -1,18 +1,23 @@
 //! The cases a pack may be built from, and who each one was written for.
 //!
 //! Which cases exist and what level each is are the ward's to say (`vitals_web::ward::CATALOGUE`,
-//! `difficulty_of`) and are taken from there, never listed again here. What the ward cannot say —
-//! and says so, in `validate_pack` — is the sex and the age the case was written for, because
-//! those live in the case's own files. They are read from two places, in order:
+//! `difficulty_of`) and are taken from there, never listed again here. So, since 949a76b, are the
+//! sex and the age a station was written for: `vitals_web::ward::case_patient` is the door's own
+//! reading of `demo/personas/<id>.json`, `age_band` is how far from the authored age the door
+//! lets a pack sit, and a pack that contradicts either is refused at the door. The factory asks
+//! those two functions and has no rule of its own.
 //!
-//!   1. a `ward` block in the scenario itself: `{"ward": {"sex": "f", "age": [30, 40]}}` — the
-//!      case stating who its patient is, in one place, for this purpose;
-//!   2. the station's persona file, `demo/personas/<id>.json`, whose `patient` carries the sex
-//!      and the one age the bay renders. The band is widened around that age by [`band_around`].
+//! Where the door has nothing baked in — the four episodes today — it takes a pack at its word,
+//! which makes the factory the only check. It reads, in order:
+//!
+//!   1. the persona file, `demo/personas/<id>.json`, parsed the way the door parses the twelve
+//!      it carries, so a file that appears later is read the same way;
+//!   2. a `ward` block in the scenario itself: `{"ward": {"sex": "f", "age": [30, 40]}}` — the
+//!      case stating who its patient is, or a single authored age widened by `age_band`.
 //!
 //! A case that neither describes is **not built**. The alternative — a guess — is exactly the
-//! pack the door cannot refuse: a woman's name on a man's presentation, or a child's disease on a
-//! woman of seventy.
+//! pack nobody refuses: a woman's name on a man's presentation, or a child's disease on a woman
+//! of seventy.
 
 use std::ops::RangeInclusive;
 use std::path::Path;
@@ -91,40 +96,59 @@ impl Catalogue {
     }
 }
 
-/// The oldest a child is, for the purpose of not letting a band cross into adulthood.
-const LAST_CHILD_AGE: u16 = 17;
-
-/// The band around an age a case was written with.
-///
-/// Wide enough that the sixty faces already made — at 28, 45 and 63 — serve every adult case in
-/// the catalogue, and no wider: a quarter of the age, at least a year, at most ten, and clipped so
-/// a child stays a child and an adult stays an adult. Seventy-one becomes 61–81, which a face
-/// made at 63 fits; twenty-five becomes 19–31, which the same face does not.
-///
-/// Mechanical, and said so. A band the case states for itself (the `ward` block) always wins.
-pub fn band_around(age: u16) -> RangeInclusive<u16> {
-    let w = (age / 4).clamp(1, 10);
-    let (lo, hi) = (age.saturating_sub(w).max(1), age.saturating_add(w));
-    if age <= LAST_CHILD_AGE {
-        lo..=hi.min(LAST_CHILD_AGE)
-    } else {
-        lo.max(LAST_CHILD_AGE + 1)..=hi.min(*vitals_web::ward_chain::AGE_RANGE.end())
-    }
-}
-
 /// Read one case from the text of its files.
 ///
 /// `scenario` is the case's own file; `persona` is `demo/personas/<id>.json` when there is one.
-/// Pure over the texts so the rules can be tested without a repository.
+/// Pure over the texts so the rules can be tested without a repository — except that the door's
+/// own baked reading (`case_patient`) wins whenever the door has one, because that is what a pack
+/// is checked against.
 pub fn read_case(id: &str, scenario: &str, persona: Option<&str>) -> Result<Case, Unbuildable> {
+    use vitals_web::ward::{age_band, case_patient};
     let no = |why: String| Unbuildable { id: id.to_string(), why };
     let Some(difficulty) = vitals_web::ward::difficulty_of(id) else {
         return Err(no("the ward gives this case no level, so it is not one the ward serves".into()));
     };
+    let file = format!("demo/personas/{id}.json");
 
-    // 1. the scenario's own word.
-    let sce: serde_json::Value = serde_json::from_str(scenario)
-        .map_err(|e| no(format!("the scenario is not JSON: {e}")))?;
+    // 1. the door's own reading, where it has one. Nothing else may disagree with it.
+    if let Some(theirs) = case_patient(id) {
+        let sex = Sex::parse(&theirs.sex)
+            .ok_or_else(|| no(format!("{file} gives the patient a sex the pool does not know: {}", theirs.sex)))?;
+        return Ok(Case {
+            id: id.into(),
+            sex,
+            band: age_band(theirs.age),
+            difficulty,
+            source: format!("{file}: patient {} {}, as the door reads it; band is the door's age_band", theirs.sex.to_uppercase(), theirs.age),
+        });
+    }
+
+    // 2. a persona file the door has not baked in, read the way the door reads its own.
+    if let Some(persona) = persona {
+        let p: serde_json::Value = serde_json::from_str(persona).map_err(|e| no(format!("{file} is not JSON: {e}")))?;
+        let patient = p.get("patient").ok_or_else(|| no(format!("{file} has no patient block")))?;
+        let sex = patient
+            .get("sex")
+            .and_then(serde_json::Value::as_str)
+            .and_then(Sex::parse)
+            .ok_or_else(|| no(format!("{file} gives the patient no sex the pool knows (f or m)")))?;
+        let age = patient
+            .get("age")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|a| u16::try_from(a).ok())
+            .filter(|a| vitals_web::ward_chain::AGE_RANGE.contains(a))
+            .ok_or_else(|| no(format!("{file} gives the patient no age a person has")))?;
+        return Ok(Case {
+            id: id.into(),
+            sex,
+            band: age_band(age),
+            difficulty,
+            source: format!("{file}: patient {} {age}, read as the door reads its own; band is the door's age_band", sex.letter().to_uppercase()),
+        });
+    }
+
+    // 3. the scenario's own word, for a case with no persona file.
+    let sce: serde_json::Value = serde_json::from_str(scenario).map_err(|e| no(format!("the scenario is not JSON: {e}")))?;
     if let Some(block) = sce.get("ward") {
         let sex = block
             .get("sex")
@@ -134,7 +158,7 @@ pub fn read_case(id: &str, scenario: &str, persona: Option<&str>) -> Result<Case
         let band = match block.get("age") {
             Some(serde_json::Value::Number(n)) => {
                 let a = n.as_u64().and_then(|a| u16::try_from(a).ok()).ok_or_else(|| no("age is not a whole number".into()))?;
-                a..=a
+                age_band(a)
             }
             Some(serde_json::Value::Array(pair)) if pair.len() == 2 => {
                 let at = |i: usize| pair[i].as_u64().and_then(|a| u16::try_from(a).ok());
@@ -145,40 +169,17 @@ pub fn read_case(id: &str, scenario: &str, persona: Option<&str>) -> Result<Case
             }
             _ => return Err(no("the scenario's ward block names no age (a number or [low, high])".into())),
         };
-        if !vitals_web::ward_chain::AGE_RANGE.contains(band.start()) || !vitals_web::ward_chain::AGE_RANGE.contains(band.end()) {
+        let range = vitals_web::ward_chain::AGE_RANGE;
+        if !range.contains(band.start()) || !range.contains(band.end()) {
             return Err(no(format!("nobody is {}–{}", band.start(), band.end())));
         }
-        return Ok(Case { id: id.into(), sex, band, difficulty, source: "the scenario's ward block".into() });
+        return Ok(Case { id: id.into(), sex, band, difficulty, source: "the scenario's ward block (no persona file; the door takes this case at its word)".into() });
     }
 
-    // 2. the station's persona file.
-    let where_it_would_be = format!("demo/personas/{id}.json");
-    let Some(persona) = persona else {
-        return Err(no(format!(
-            "no file states her sex and age — neither a ward block in the scenario nor {where_it_would_be}"
-        )));
-    };
-    let p: serde_json::Value = serde_json::from_str(persona)
-        .map_err(|e| no(format!("{where_it_would_be} is not JSON: {e}")))?;
-    let patient = p.get("patient").ok_or_else(|| no(format!("{where_it_would_be} has no patient block")))?;
-    let sex = patient
-        .get("sex")
-        .and_then(serde_json::Value::as_str)
-        .and_then(Sex::parse)
-        .ok_or_else(|| no(format!("{where_it_would_be} gives the patient no sex the pool knows (f or m)")))?;
-    let age = patient
-        .get("age")
-        .and_then(serde_json::Value::as_u64)
-        .and_then(|a| u16::try_from(a).ok())
-        .filter(|a| vitals_web::ward_chain::AGE_RANGE.contains(a))
-        .ok_or_else(|| no(format!("{where_it_would_be} gives the patient no age a person has")))?;
-    Ok(Case {
-        id: id.into(),
-        sex,
-        band: band_around(age),
-        difficulty,
-        source: format!("{where_it_would_be}: patient {} {age}, band widened around the age", sex.letter().to_uppercase()),
-    })
+    Err(no(format!(
+        "no file states her sex and age — neither {file} nor a ward block in the scenario — and the door \
+         would take a guess at its word"
+    )))
 }
 
 /// Read the ward's whole catalogue from a checkout.
