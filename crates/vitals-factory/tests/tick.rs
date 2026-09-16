@@ -15,7 +15,7 @@ use vitals_factory::door::{Door, FillReply, Filled, Pushed, Queued, Token, WardV
 use vitals_factory::ledger::Ledger;
 use vitals_factory::manifest::{batch_age, Manifest};
 use vitals_factory::pool::{read_pool, Person};
-use vitals_factory::tick::{remake_face, tick, Config, FACE_ATTEMPTS};
+use vitals_factory::tick::{backfill_variants, remake_face, tick, Config, FACE_ATTEMPTS, VARIANT_PX, VARIANT_QUALITY};
 use vitals_factory::tools::Tools;
 use vitals_web::ward::Pack;
 use vitals_web::ward_chain::{pack_id, validate_pack, PORTRAITS};
@@ -74,6 +74,9 @@ fn config(dir: &Path, depth: usize, bases: usize) -> Config {
 struct FakeDoor {
     ward: RefCell<WardView>,
     open: bool,
+    /// Whether this door knows `<state>_256` keys and `<sha>-256.webp` addresses (7b's door does
+    /// not yet, 16 Sep); a door that does not refuses a pack whole and a fill entry by entry.
+    takes_256: bool,
     queue: RefCell<BTreeMap<String, Pack>>,
     pushes: RefCell<Vec<usize>>,
     fills: RefCell<Vec<(u64, BTreeMap<String, String>)>>,
@@ -84,7 +87,7 @@ struct FakeDoor {
 impl FakeDoor {
     fn new(ward: WardView) -> FakeDoor {
         FakeDoor {
-            ward: RefCell::new(ward), open: true, queue: RefCell::new(BTreeMap::new()),
+            ward: RefCell::new(ward), open: true, takes_256: true, queue: RefCell::new(BTreeMap::new()),
             pushes: RefCell::new(vec![]), fills: RefCell::new(vec![]), replaces: RefCell::new(vec![]), tokens_seen: RefCell::new(vec![]),
         }
     }
@@ -103,7 +106,18 @@ impl Door for FakeDoor {
         let mut q = self.queue.borrow_mut();
         let mut out = Queued { queued: 0, duplicates: 0, rejected: vec![], depth: 0 };
         for p in packs {
-            if let Err(why) = validate_pack(p) {
+            let mut plain = p.clone();
+            plain.portrait.retain(|k, _| !k.ends_with("_256"));
+            if !self.takes_256 {
+                if let Some(k) = p.portrait.keys().find(|k| k.ends_with("_256")) {
+                    out.rejected.push(format!("{k} is not a state the engine reports, so nothing would ever draw it. The keys are [\"recovered\", …]"));
+                    continue;
+                }
+            } else if let Some(bad) = p.portrait.iter().find(|(k, v)| k.ends_with("_256") && !v.ends_with("-256.webp")) {
+                out.rejected.push(format!("{}: a 256 px portrait must be {PORTRAITS}/<sha256>-256.webp", bad.0));
+                continue;
+            }
+            if let Err(why) = validate_pack(&plain) {
                 out.rejected.push(why);
                 continue;
             }
@@ -129,6 +143,7 @@ impl Door for FakeDoor {
         };
         let mut f = Filled { added: 0, kept: 0, rejected: vec![], states: vec![] };
         for (k, v) in set {
+            if k.ends_with("_256") && !self.takes_256 { f.rejected.push(format!("{k} is not a state the engine reports")); continue; }
             if p.portraits.contains_key(k) { f.kept += 1 } else { p.portraits.insert(k.clone(), v.clone()); f.added += 1 }
         }
         f.states = p.portraits.keys().cloned().collect();
@@ -146,7 +161,9 @@ impl Door for FakeDoor {
             return Ok(FillReply::Filled(f));
         };
         for (k, v) in set {
-            if !vitals_web::ward_chain::is_portrait_url(v) { f.rejected.push(format!("{k}: a portrait must be {PORTRAITS}/<sha256>.webp")); continue; }
+            if k.ends_with("_256") {
+                if !self.takes_256 { f.rejected.push(format!("{k} is not a state the engine reports")); continue; }
+            } else if !vitals_web::ward_chain::is_portrait_url(v) { f.rejected.push(format!("{k}: a portrait must be {PORTRAITS}/<sha256>.webp")); continue; }
             p.portrait.insert(k.clone(), v.clone());
             f.added += 1;
         }
@@ -170,6 +187,7 @@ struct FakeTools {
     asked: RefCell<Vec<String>>,
     /// Words in a state prompt the editor refuses, as Vertex refused a child's "deteriorating".
     refuse_edits: RefCell<Vec<&'static str>>,
+    resized: RefCell<Vec<(u8, u32)>>,
     edits: RefCell<Vec<String>>,
     uploads: RefCell<Vec<String>>,
     fetches: RefCell<Vec<String>>,
@@ -210,6 +228,10 @@ impl Tools for FakeTools {
     }
     fn webp(&self, png: &[u8], quality: u8) -> Result<Vec<u8>, String> {
         Ok(format!("WEBP{quality}:{}", String::from_utf8_lossy(png)).into_bytes())
+    }
+    fn webp_resized(&self, image: &[u8], quality: u8, size: u32) -> Result<Vec<u8>, String> {
+        self.resized.borrow_mut().push((quality, size));
+        Ok(format!("WEBP{quality}@{size}:{}", String::from_utf8_lossy(image)).into_bytes())
     }
     fn upload(&self, _local: &Path, object: &str) -> Result<(), String> {
         self.uploads.borrow_mut().push(object.to_string());
@@ -739,4 +761,116 @@ fn a_childs_worse_states_are_asked_for_gently_and_an_adults_as_before() {
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     let edits = tools2.edits.borrow();
     assert!(edits.iter().any(|e| e.contains("ashen grey skin")) && edits.iter().any(|e| e.contains("cardiac arrest")), "{edits:?}");
+}
+
+// ── 256 px ───────────────────────────────────────────────────────────────────
+// Every portrait the factory uploads also gets a 256 px sibling — `<sha>-256.webp`, the same sha
+// as the full one so the pair is addressable, quality 80 — for the six state keys, and the pack
+// carries `<state>_256` beside `<state>`. The door that takes those keys is 7b's to build; until
+// it does, the factory sends them, reads the refusal, and sends without — once per tick.
+
+fn sibling(url: &str) -> String {
+    url.replace(".webp", "-256.webp")
+}
+
+#[test]
+fn every_portrait_uploaded_gets_a_256_px_sibling() {
+    let dir = world("v256");
+    let pool = read_pool(POOL).unwrap();
+    seed_manifest(&dir, &pool);
+    let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
+    let tools = FakeTools::default();
+    let r = tick(&config(&dir, 6, 2), &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let ups = tools.uploads.borrow();
+    let fulls: Vec<&String> = ups.iter().filter(|o| !o.contains("-256")).collect();
+    assert!(!fulls.is_empty());
+    for full in &fulls {
+        assert!(ups.contains(&format!("{}-256.webp", full.trim_end_matches(".webp"))), "{full} has its sibling");
+    }
+    assert!(tools.resized.borrow().iter().all(|(q, px)| *q == VARIANT_QUALITY && *px == VARIANT_PX));
+    assert_eq!((VARIANT_QUALITY, VARIANT_PX), (80, 256));
+    let man = Manifest::load(&dir.join("portraits.json")).unwrap();
+    for (k, e) in man.entries.iter().filter(|(k, _)| k.contains('@')) {
+        assert_eq!(e.portrait_256.get("stable").map(String::as_str), Some(sibling(&e.portrait["stable"]).as_str()), "{k}: the sibling is on file beside the face");
+    }
+    // The packs carry both keys, and the sibling's address is the full one's with -256.
+    for p in door.queue.borrow().values() {
+        if let Some(s) = p.portrait.get("stable") {
+            assert_eq!(p.portrait.get("stable_256").map(String::as_str), Some(sibling(s).as_str()), "{}: stable_256 beside stable", p.persona.name);
+        }
+    }
+}
+
+#[test]
+fn a_door_that_does_not_take_256_gets_the_pack_without_it_once_per_tick() {
+    let dir = world("v256-old-door");
+    let pool = read_pool(POOL).unwrap();
+    seed_manifest(&dir, &pool);
+    let mut door = FakeDoor::new(WardView::parse(STAGING).unwrap());
+    door.takes_256 = false;
+    let tools = FakeTools::default();
+    let r = tick(&config(&dir, 6, 2), &door, &tools);
+    assert!(r.errors.is_empty(), "a door that is not there yet is not an error: {:?}", r.errors);
+    assert_eq!(r.rejected, 0, "a refusal of the sibling is not a rejected pack");
+    let q = door.queue.borrow();
+    assert_eq!(q.len(), 6);
+    assert!(q.values().all(|p| !p.portrait.keys().any(|k| k.ends_with("_256"))), "sent without the sibling");
+    let pushes = door.pushes.borrow();
+    assert_eq!(pushes.iter().sum::<usize>(), 6 + 1 + 1, "six packs, the empty probe, and exactly one retry — the door's answer is remembered for the tick");
+    assert_eq!(r.lines.iter().filter(|l| l.contains("does not take 256")).count(), 1, "{:?}", r.lines);
+    // The siblings were still made and uploaded: the bucket is ready for the door that takes them.
+    assert!(tools.uploads.borrow().iter().any(|o| o.ends_with("-256.webp")));
+}
+
+#[test]
+fn the_siblings_of_faces_already_on_file_are_made_once_and_carried_to_the_ward() {
+    let dir = world("v256-backfill");
+    let pool = read_pool(POOL).unwrap();
+    let mut man = seed_manifest(&dir, &pool);
+    for st in ["improving", "critical"] {
+        man.record_state("THA-0", st, &sha_url(format!("THA-0/{st}").as_bytes()));
+    }
+    man.save(&dir.join("portraits.json")).unwrap();
+    let tools = FakeTools::default();
+    let cfg = config(&dir, 0, 0);
+
+    let r = backfill_variants(&cfg, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert_eq!(tools.uploads.borrow().len(), 62, "sixty bases and two states, one sibling each");
+    assert_eq!(tools.fetches.borrow().len(), 62, "each full picture fetched from the bucket once");
+    let man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
+    assert_eq!(man2.entries["THA-0"].portrait_256.len(), 3);
+    assert_eq!(man2.entries["THA-0"].portrait_256["critical"], sibling(&man2.entries["THA-0"].portrait["critical"]));
+    let r = backfill_variants(&cfg, &tools);
+    assert!(r.errors.is_empty());
+    assert_eq!(tools.uploads.borrow().len(), 62, "a second run makes nothing");
+
+    // On the ward: an admitted patient whose board lacks the siblings gets them through her own
+    // door (add only) and a waiting pack through the replace door — when the door takes them.
+    let ploy = pool.iter().find(|p| p.key == "THA-0").unwrap();
+    let stable = man2.entries["THA-0"].portrait["stable"].clone();
+    let mut ward = WardView::parse(STAGING).unwrap();
+    let p = &mut ward.patients[0];
+    p.name = Some(ploy.name.clone()); p.country = Some("THA".into()); p.case = Some("osce-c2".into()); p.age = Some(50);
+    p.portrait = Some(stable.clone());
+    p.portraits = BTreeMap::from([("stable".to_string(), stable.clone()), ("improving".to_string(), man2.entries["THA-0"].portrait["improving"].clone()), ("critical".to_string(), man2.entries["THA-0"].portrait["critical"].clone()),
+        ("recovered".to_string(), sha_url(b"r")), ("deteriorating".to_string(), sha_url(b"d")), ("arrest".to_string(), sha_url(b"a"))]);
+    let door = FakeDoor::new(ward);
+    let anan = pool.iter().find(|p| p.key == "THA-1").unwrap();
+    let mut sent = vitals_factory::ledger::Sent::new("osce-a", anan, 70, false, Some(man2.entries["THA-1"].portrait["stable"].clone()), cfg.now, &cfg.ward);
+    sent.sex = "m".into();
+    let pack = sent.to_pack();
+    let id = pack_id(&pack);
+    door.push(&Token::new("t".into()), std::slice::from_ref(&pack)).unwrap();
+    let mut ledger = Ledger::default();
+    ledger.sent.insert(id.clone(), sent);
+    ledger.save(&dir.join("factory-ledger.json")).unwrap();
+    let r = tick(&cfg, &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let fills = door.fills.borrow();
+    let ploy_fill = fills.iter().find(|(pid, _)| *pid == 1789488342).expect("Ploy's siblings were pushed");
+    assert_eq!(ploy_fill.1.keys().cloned().collect::<Vec<_>>(), vec!["critical_256", "improving_256", "stable_256"], "the siblings she has on file, and nothing the file lacks");
+    assert_eq!(door.queue.borrow()[&id].portrait.get("stable_256").map(String::as_str), Some(sibling(&man2.entries["THA-1"].portrait["stable"]).as_str()), "Anan's waiting pack carries his");
+    assert!(Ledger::load(&dir.join("factory-ledger.json")).unwrap().sent[&id].variants_sent, "and the ledger says so, so it is not sent again");
 }
