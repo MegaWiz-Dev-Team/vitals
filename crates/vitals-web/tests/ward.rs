@@ -1176,3 +1176,56 @@ fn a_bed_is_kept_for_the_whole_stay() {
     assert_eq!(beds.get(&3), None, "unrebuildable holds nothing");
     assert_eq!(beds[&4], 2, "and the numbers of the others do not move because of it");
 }
+
+/// **What a patient is on, and how hard it is, for a ward whose cases came through its own door.**
+///
+/// The board has carried `case` since the first globe. `difficulty` beside it was read from the
+/// season's own table — the sixteen ids and their levels — so from the moment the ward started
+/// playing compiled cases every patient on the board would have said `difficulty: null`. The
+/// factory picks the next patient partly by what is already on the board, at a level mix, so a
+/// null there is not a cosmetic gap: it is the number that mix is computed from.
+///
+/// The level comes from the case's own pack now, and the season's table is the fallback for the
+/// patients still mid-stay on season cases.
+#[test]
+fn the_board_says_which_case_each_patient_is_on_and_how_hard_it_is() {
+    use std::collections::BTreeMap;
+    use vitals_web::ward::{Pack, Persona};
+    use vitals_web::ward_case::CaseSummary;
+
+    let pack = |case: &str| Pack {
+        case: case.into(),
+        difficulty: None,
+        persona: Persona { name: "Anita".into(), country: "NPL".into(), age: 34, sex: "f".into() },
+        portrait: Default::default(),
+        endemic: false,
+    };
+    let packs: BTreeMap<u64, Pack> =
+        [(1, pack("dengue-npl-1")), (2, pack("osce-c"))].into_iter().collect();
+    let held = vec![CaseSummary {
+        case_id: "dengue-npl-1".into(),
+        archetype: "dengue_shock".into(),
+        country: Some("NPL".into()),
+        difficulty: "intern".into(),
+        endemic: true,
+        provisional: true,
+        version: "0.1.0".into(),
+        title: "ไข้เลือดออก".into(),
+    }];
+
+    let patients = vec![patient(1, OPEN, 0, 10, 0), patient(2, OPEN, 0, 20, 0)];
+    let mut r = read(&patients, &[], &packs, None, 100);
+    r.cases = &held;
+    let v = ward_payload(&r);
+    let row = |id: u64| {
+        v["patients"].as_array().unwrap().iter().find(|p| p["patient_id"] == id).unwrap().clone()
+    };
+
+    assert_eq!(row(1)["case"], "dengue-npl-1", "the case she was admitted onto");
+    assert_eq!(row(1)["difficulty"], "intern", "at the level the case factory compiled it for");
+    assert_eq!(row(1)["endemic"], true, "and the ward's own word for why she has it");
+
+    // The three mid-stay on season cases keep their level from the season's table until they go.
+    assert_eq!(row(2)["case"], "osce-c");
+    assert_eq!(row(2)["difficulty"], "resident");
+}
