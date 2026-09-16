@@ -173,7 +173,10 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
   </div>
 
   <div class="tray" id="tray" hidden>
-    <span class="k">Origin unknown &mdash; on the ward, not yet on the map</span>
+    <!-- These are the ward's own patients whose country the 110m atlas has no polygon for — Hong
+         Kong sits inside China's outline, Singapore is a point. Not "origin unknown": everybody
+         here has a country, the map simply cannot draw it. -->
+    <span class="k">On the ward &mdash; not on the map</span>
     <ul class="plist" id="traylist"></ul>
   </div>
 
@@ -341,6 +344,15 @@ let counts = { byId: {}, unknown: 0 };
 let selected = null;       // atlas id
 let hovered = null;
 
+/* Who belongs on the board.
+   A patient the ward cannot describe is on the chain and has no case, so nobody can take a shift
+   on her: showing her offers a stranger something that cannot be done. She stays in /api/ward with
+   the sentence that says what she is — chain truth, readable by anybody — and she is not here.
+   One place decides, so nothing downstream can put her back. */
+function onBoard(ps) {
+  return (ps || []).filter(p => stateOf(p) !== "off_ward");
+}
+
 function recompute() {
   counts = countryCounts(visible(patients, filter), DRAWABLE);
   renderTray();
@@ -352,7 +364,7 @@ function recompute() {
 // event, which is the same payload pushed. `asOf` anchors the read's slot to the moment it
 // arrived, which is what every slot on the board is measured against.
 function render(j) {
-  patients = j && Array.isArray(j.patients) ? j.patients : [];
+  patients = onBoard(j && Array.isArray(j.patients) ? j.patients : []);
   census = j ? (j.census || j) : null;   // the census keys may sit at the top level or under `census`
   beds = j && typeof j.in_beds === "number" ? j.in_beds : null;
   asOf = j && typeof j.as_of_slot === "number" ? { slot: j.as_of_slot, at: Date.now() } : { slot: null, at: Date.now() };
@@ -384,7 +396,10 @@ function renderCensus() {
   /* "on the ward" is the chain's count and "in beds" is the ward's. They differ when somebody
      reached the chain without passing the queue, and a rail that published only the first would
      hand a stranger a number that means something other than what it looks like. */
-  const parts = [["on the ward", n("on_ward")], ["in beds", beds], ["shifts", n("shifts")],
+  /* "in beds" and not "on the ward": the chain's count includes patients that reached it without
+     passing the queue, and a front page is not the place to explain that. The census keeps both
+     and says which is which — a reader who wants the chain's number can read the endpoint. */
+  const parts = [["in beds", beds], ["shifts", n("shifts")],
                  ["went home", n("went_home")], ["died", n("died")]]
     .filter(([, v]) => v !== null).map(([k, v]) => `<span>${k} <b>${v}</b></span>`);
   $("census").innerHTML = parts.join("");
