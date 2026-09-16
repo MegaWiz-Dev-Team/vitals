@@ -866,3 +866,67 @@ fn a_queued_face_may_be_replaced_and_an_admitted_one_may_not() {
 
     let _ = std::fs::remove_dir_all(&root);
 }
+
+// ── the shift receipt ───────────────────────────────────────────────────────
+
+use vitals_web::ward::Pack as WardPack;
+use vitals_web::ward_chain::receipt;
+
+/// **A shift can be checked by somebody who never played it.**
+///
+/// The receipt is the ward's answer to "why should anyone believe you". It carries what the chain
+/// holds — whose key, which patient, which head it extended, at which slot — and what anybody can
+/// recompute from the tape: the beats, the harm this shift added, and the deterministic score for
+/// this shift's own actions.
+///
+/// **The judged 60 is not on it, and the page says why.** A judged score belongs to a finished
+/// case; a shift is a few minutes in the middle of somebody's stay. Publishing a number that
+/// cannot mean what a reader assumes is the failure this product exists not to commit.
+///
+/// The harm is this shift's own, never what it inherited — a stranger is answerable for what they
+/// did, not for what they walked into.
+#[test]
+fn a_shift_receipt_carries_what_the_chain_holds_and_what_anybody_can_recompute() {
+    let sce = ep1();
+    let before = vec![Step::Tick(30.0), Step::Do("stand her up".into()), Step::Tick(30.0)];
+    let mine = vec![Step::Tick(20.0), Step::Do("oxygen".into()), Step::Tick(40.0)];
+
+    let mut tapes: BTreeMap<String, Vec<Step>> = BTreeMap::new();
+    tapes.insert(hex_of("first"), before.clone());
+    tapes.insert(hex_of("mine"), mine.clone());
+    let chart = |h: &str| tapes.get(h).cloned();
+
+    let pack = WardPack {
+        case: "ep1".into(),
+        persona: Persona { name: "Ing".into(), country: "THA".into(), age: 19, sex: "f".into() },
+        portrait: Default::default(),
+        endemic: false,
+    };
+    let shifts = [anchored("first", 1_000_010), anchored("mine", 1_000_020)];
+
+    let r = receipt(&sce, None, &shifts, &shifts[1], &chart, &pack, 1_000_000)
+        .expect("a receipt for a shift the chain names");
+
+    assert_eq!(r["patient_id"], 42);
+    assert_eq!(r["shift"], 2, "the second link in her chain");
+    assert_eq!(r["run_hash"], hex_of("mine"));
+    assert_eq!(r["slot"], 1_000_020, "when the chain says it landed");
+    assert!(r["player"].as_str().is_some_and(|s| !s.is_empty()), "whose key played it");
+
+    let did = &r["did"];
+    assert!(did["beats"].as_u64().is_some());
+    assert_eq!(did["steps"], mine.len());
+    assert_eq!(did["harm"].as_array().map(|h| h.len()).unwrap_or(9), 0,
+               "standing her up was the shift before this one, and this stranger did not do it");
+
+    assert!(r["judged"].is_null(), "no judged score on a shift");
+    let why = r["judged_omitted"].as_str().expect("and it says why rather than leaving a hole");
+    assert!(why.contains("finished case") || why.contains("whole case"),
+            "the reason has to be the reason: {why}");
+
+    // The tape is offered, addressed by the hash the leaf commits to, so a stranger can replay it
+    // without asking us for anything.
+    assert_eq!(r["tape"], format!("/api/tape/{}", hex_of("mine")));
+    let how = r["derivations"]["det"].as_str().expect("the score says how it was got");
+    assert!(how.contains("rubric") || how.contains("recompute"), "{how}");
+}
