@@ -1963,6 +1963,12 @@ fn open_shift(
         "shifts_before": played,
         "portrait": ward::portrait_for(&pack.portrait, "stable"),
         "taken_slot": now_slot,
+        // The case's own words, told about the person in this bed. The page renders from this and
+        // from nothing else: its own table holds the season's sixteen, and a World-case patient
+        // rendered from that came out as EP1's.
+        "content": store
+            .get::<serde_json::Value>(ward_case::CASE_STORE, &ward_case::key_for(&pack.case))
+            .map(|held| ward_case::case_view(&held, &pack.persona)),
     });
 
     Ok((

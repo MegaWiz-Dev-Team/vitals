@@ -375,3 +375,145 @@ fn fits_patient(c: &CaseSummary, who: &crate::ward::Persona) -> bool {
     }
     (hers - theirs).abs() <= 12
 }
+
+// ── the case's own words, told about the person in the bed ──────────────────
+
+/// Fill a pack's placeholders from the persona.
+///
+/// The compiler writes `{age}`, `{sex_word}`, `{he_she}`, `{his_her}`, `{him_her}`,
+/// `{himself_herself}` and capitalised forms of each, because the ward renames every patient it
+/// admits and moves her country: prose with "26-year-old man" baked into it is prose about
+/// somebody else the moment she is placed. A capital first letter means "capitalise the fill".
+///
+/// **Filled where prose leaves the pack, never stored filled.** The pack in the store is the
+/// compiler's own bytes — the ones the admission committed to — and a rendered copy would be a
+/// second version of the case with nobody's name on it.
+///
+/// A brace word this build does not know is left exactly as written. A pack that invents one
+/// should look wrong on the page rather than quietly lose a word.
+pub fn fill_persona(text: &str, who: &crate::ward::Persona) -> String {
+    let female = who.sex.eq_ignore_ascii_case("f");
+    let male = who.sex.eq_ignore_ascii_case("m");
+    let child = who.age < 16;
+    let pick = |f: &'static str, m: &'static str, neither: &'static str| -> &'static str {
+        if female { f } else if male { m } else { neither }
+    };
+    let fill = |name: &str| -> Option<String> {
+        Some(match name {
+            "age" => who.age.to_string(),
+            // The one word that turns on age as well as sex: a six-year-old is a girl, not a woman.
+            "sex_word" => pick(
+                if child { "girl" } else { "woman" },
+                if child { "boy" } else { "man" },
+                "patient",
+            )
+            .to_string(),
+            "he_she" => pick("she", "he", "they").to_string(),
+            "his_her" => pick("her", "his", "their").to_string(),
+            "him_her" => pick("her", "him", "them").to_string(),
+            "himself_herself" => pick("herself", "himself", "themselves").to_string(),
+            _ => return None,
+        })
+    };
+
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(open) = rest.find('{') {
+        out.push_str(&rest[..open]);
+        let Some(close) = rest[open..].find('}').map(|i| open + i) else {
+            break;
+        };
+        let name = &rest[open + 1..close];
+        // A leading capital asks for a capitalised fill: `{Sex_word}` at the start of a sentence.
+        let capitalise = name.starts_with(|c: char| c.is_ascii_uppercase());
+        let lower = name.to_ascii_lowercase();
+        match fill(&lower) {
+            Some(value) if !name.is_empty() => {
+                if capitalise {
+                    let mut cs = value.chars();
+                    if let Some(first) = cs.next() {
+                        out.push_str(&first.to_uppercase().to_string());
+                        out.push_str(cs.as_str());
+                    }
+                } else {
+                    out.push_str(&value);
+                }
+            }
+            // Not ours: left as written, braces and all.
+            _ => out.push_str(&rest[open..=close]),
+        }
+        rest = &rest[close + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// What the ward's page is given about the case in front of it.
+///
+/// Every word from the pack and every person from the persona. The page had been reading the
+/// season's own table for all of this, which holds the sixteen cases of vitals.academy and nothing
+/// the factory compiles — so a World-case patient was rendered as EP1's.
+pub fn case_view(pack: &Value, who: &crate::ward::Persona) -> Value {
+    let say = |v: Option<&Value>| v.and_then(Value::as_str).map(|s| fill_persona(s, who));
+    let presentation = pack.get("presentation");
+
+    // The chips, in the vocabulary the compiler uses for intervention ids. A row with nothing in
+    // it is a row the page does not draw: this case simply has no labs, rather than the ward
+    // hiding them.
+    let mut chips: std::collections::BTreeMap<&str, Vec<Value>> = Default::default();
+    for i in pack.get("sce").and_then(|s| s.get("interventions")).and_then(Value::as_array).into_iter().flatten() {
+        let (Some(id), Some(label)) = (i.get("id").and_then(Value::as_str), say(i.get("label"))) else {
+            continue;
+        };
+        let row = match id.split('_').next().unwrap_or_default() {
+            "ask" => "ask",
+            "exam" => "exam",
+            "ix" => "lab",
+            "tx" => "treat",
+            "dx" => "dx",
+            _ => continue,
+        };
+        chips.entry(row).or_default().push(serde_json::json!({ "id": id, "label": label }));
+    }
+
+    // What she says when she is asked. The words are the case author's, in her person; a question
+    // the case never wrote an answer for gets the pack's own line, or the ward's if it has none.
+    let voice: serde_json::Map<String, Value> = pack
+        .get("voice")
+        .and_then(Value::as_object)
+        .map(|v| {
+            v.iter()
+                .filter_map(|(k, entry)| {
+                    say(entry.get("words")).map(|w| (k.clone(), Value::String(w)))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    serde_json::json!({
+        "case_id": pack.get("case_id").and_then(Value::as_str).unwrap_or_default(),
+        "title": say(pack.get("title")).unwrap_or_default(),
+        "presents": presentation.and_then(|p| say(p.get("chief_complaint"))).unwrap_or_default(),
+        "story": presentation.and_then(|p| say(p.get("hpi"))).unwrap_or_default(),
+        "setting": presentation.and_then(|p| say(p.get("setting"))),
+        "specialty": pack.get("specialty").and_then(Value::as_str),
+        "care_setting": pack.get("care_setting").and_then(Value::as_str),
+        "difficulty": pack.get("difficulty").and_then(Value::as_str).unwrap_or_default(),
+        "archetype": pack.get("archetype_label").and_then(Value::as_str),
+        "chips": chips,
+        "voice": voice,
+        "no_answer": say(pack.get("no_answer")).unwrap_or_else(|| {
+            // A question the case never wrote an answer for. The pronoun is the pronoun of the
+            // person in the bed: the ward admits men, and a hard-coded "she" over Rafael Moreira
+            // is the page contradicting its own chart. An unknown sex is answered the way
+            // patient.rs `pronouns()` answers it — "this patient" rather than a singular "they",
+            // which turns this sentence and the twelve like it into typos.
+            let subject = match who.sex.to_ascii_uppercase().as_str() {
+                "F" => "she",
+                "M" => "he",
+                _ => "this patient",
+            };
+            format!("— {subject} does not answer that, and the case does not say why")
+        }),
+    })
+}
