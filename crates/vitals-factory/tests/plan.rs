@@ -482,9 +482,11 @@ fn no_sentence_about_a_patient_carries_a_fixed_pronoun() {
         }
         out
     };
+    // A sentence: two or more words with a fixed pronoun among them. A literal that is only the
+    // pronoun itself is the helper that chooses it (catalogue::Sex::possessive), not a sentence.
     let pronoun = |lit: &str| {
-        let words: Vec<&str> = lit.split(|c: char| !c.is_alphabetic()).collect();
-        words.iter().any(|w| matches!(*w, "her" | "she" | "hers" | "his" | "him"))
+        let words: Vec<&str> = lit.split(|c: char| !c.is_alphabetic()).filter(|w| !w.is_empty()).collect();
+        words.len() >= 2 && words.iter().any(|w| matches!(*w, "her" | "she" | "hers" | "his" | "him"))
     };
     let mut hits = Vec::new();
     for entry in std::fs::read_dir(&root).unwrap() {

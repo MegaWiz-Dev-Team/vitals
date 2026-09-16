@@ -449,9 +449,9 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
                 pack.portrait.insert("stable_256".into(), sibling_url(&stable));
                 pack.portrait.insert("stable".into(), stable);
             }
-            Ok(None) => r.say(format!("{} goes out without a picture: her stable was refused twice, or waits for tomorrow's edit budget", who.name)),
+            Ok(None) => r.say(format!("{} goes out without a picture: {} stable was refused twice, or waits for tomorrow's edit budget", who.name, who.sex.possessive())),
             Err(e) => {
-                r.fail(format!("{}'s stable could not be made: {e} — no pack for her this tick", who.name));
+                r.fail(format!("{}'s stable could not be made: {e} — no pack for {} this tick", who.name, who.sex.object()));
                 continue;
             }
         }
@@ -563,7 +563,7 @@ fn replace_remade_faces(cfg: &Config, tools: &dyn Tools, door: &dyn Door, token:
             Ok(Some(url)) => url,
             Ok(None) => continue,
             Err(e) => {
-                r.fail(format!("{}'s stable could not be made for her waiting pack: {e}", who.name));
+                r.fail(format!("{}'s stable could not be made for {} waiting pack: {e}", who.name, who.sex.possessive()));
                 continue;
             }
         };
@@ -965,7 +965,7 @@ fn complete_faces(cfg: &Config, door: &dyn Door, tools: &dyn Tools, token: &Toke
                 for why in f.rejected {
                     if refuses_256(&why) {
                         if !said_256 {
-                            r.say("the door does not take 256 px keys yet; her siblings wait for a later tick");
+                            r.say("the door does not take 256 px keys yet; the siblings wait for a later tick");
                             said_256 = true;
                         }
                         continue;
@@ -1002,7 +1002,7 @@ fn make_states(cfg: &Config, tools: &dyn Tools, g: &Gap, manifest: &mut Manifest
     let reference = match read_face(cfg, tools, &g.reference) {
         Ok(b) => b,
         Err(e) => {
-            made.failed.push(("stable", format!("her reference face could not be read: {e}")));
+            made.failed.push(("stable", format!("the reference face could not be read: {e}")));
             return made;
         }
     };

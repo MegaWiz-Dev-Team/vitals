@@ -48,6 +48,31 @@ impl Sex {
         }
     }
 
+    /// The possessive for a sentence about the patient: "her face", "his face".
+    pub fn possessive(self) -> &'static str {
+        match self {
+            Sex::F => "her",
+            Sex::M => "his",
+        }
+    }
+
+    /// The object pronoun: "no pack for her", "no pack for him".
+    pub fn object(self) -> &'static str {
+        match self {
+            Sex::F => "her",
+            Sex::M => "him",
+        }
+    }
+
+    /// The possessive from the pool's letter, for a ledger entry that stores the letter; "their"
+    /// when the letter is neither.
+    pub fn possessive_of(letter: &str) -> &'static str {
+        match Sex::parse(letter) {
+            Some(s) => s.possessive(),
+            None => "their",
+        }
+    }
+
     /// The word the portrait prompt uses.
     pub fn word(self) -> &'static str {
         match self {
