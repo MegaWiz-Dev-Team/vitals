@@ -238,3 +238,111 @@ fn the_mark_in_the_bar_is_the_mark_in_the_tab() {
             "the bar's mark and the tab's mark have drifted apart — the trace in favicon.svg is \
              {trace:?} and the bar draws something else");
 }
+
+/// **At the bedside the face is the biggest thing in the patient block.**
+///
+/// The first attempt put it there at 2.6rem — a circle you have to look for, and the founder who
+/// asked "ไม่มีรูปผู้ป่วยหรอ" would have asked again. She is a 768 px picture on the wire either
+/// way, so drawing her small costs the same bytes and answers nothing.
+#[test]
+fn the_face_is_the_size_of_a_face() {
+    let css = bay_css();
+    let rule = css
+        .split(".pt-face{")
+        .nth(1)
+        .map(|r| r.split('}').next().unwrap_or("").to_string())
+        .expect("the face has a rule of its own");
+    let px = |decl: &str| -> f64 {
+        rule.split(decl)
+            .nth(1)
+            .and_then(|r| r.split(|c: char| !(c.is_ascii_digit() || c == '.')).find(|s| !s.is_empty()))
+            .and_then(|n| n.parse::<f64>().ok())
+            .map(|n| if rule.contains(&format!("{decl}{n}rem")) { n * 16.0 } else { n })
+            .unwrap_or(0.0)
+    };
+    assert!(px("width:") >= 96.0, "the face is {}px wide, which is a thumbnail: {rule}", px("width:"));
+    assert!(px("height:") >= 96.0, "and {}px tall", px("height:"));
+    assert!(rule.contains("object-fit:cover"), "a face squeezed out of shape is worse than none: {rule}");
+
+    // The frame's own image is a different element with a different job, and it must not be the
+    // one wearing this rule — a 128 px still in the stage's frame would be a postage stamp.
+    assert!(!css.contains("#fallback{width:128"), "the frame is not the face");
+}
+
+/// **The corner of the page is the mark, and there is one name for the way out.**
+///
+/// The founder said "มุมบนซ้าย" — the corner. The mark first went into the bay's own bar, which is
+/// the page's third row; above it sat a text wordmark and a button reading "← the ward" while the
+/// strip's button read "← the globe". One door with two names, and neither of them in the corner.
+#[test]
+fn the_corner_is_the_mark_and_the_exits_agree() {
+    let page = compose_ward_page();
+    let first = page.find("<a ").expect("the page has a link in it");
+    let brand = &page[first..first + 400.min(page.len() - first)];
+    assert!(brand.contains("href=\"/\""), "the first link on the page is the way home: {brand}");
+    assert!(brand.contains("class=\"brand\""), "and it is the brand: {brand}");
+    assert!(brand.contains("<svg"), "carrying the mark, not only the words: {brand}");
+    assert!(!page.contains("← the ward"),
+            "\"← the ward\" and \"← the globe\" point at the same door, and a door with two names \
+             is two doors to a reader");
+}
+
+/// The ward's page as the server composes it, which is the only form a visitor ever sees.
+fn compose_ward_page() -> String {
+    let shift = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/world/shift.html"),
+    )
+    .expect("the shift page");
+    let surface = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/bay-surface.html"),
+    )
+    .expect("the bay's surface");
+    let main = std::fs::read_to_string(repo().join("crates/vitals-web/src/main.rs")).expect("main.rs");
+    // The server's own two constants, read out of its source: a copy here would pass while the
+    // page a visitor gets was something else.
+    let brand = rust_concat(&main, "const WORLD_BRAND: &str = concat!(");
+    let eternal = rust_literal(&main.split("const ETERNAL_BRAND: &str = ").nth(1).expect("the wordmark"));
+    shift.replace("<!--BAY-->", &surface.replace(&eternal, &brand)).replace("<!--BRAND-->", &brand)
+}
+
+/// The first Rust string literal in `src`, unescaped.
+fn rust_literal(src: &str) -> String {
+    let mut out = String::new();
+    let mut chars = src[src.find('"').expect("a literal") + 1..].chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => out.push(chars.next().unwrap_or('\\')),
+            '"' => break,
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Every literal in a `concat!(..)`, joined — the way rustc would.
+fn rust_concat(src: &str, header: &str) -> String {
+    let body = src.split(header).nth(1).expect("the concat").split("\n);").next().expect("closed");
+    let mut out = String::new();
+    let mut rest = body;
+    while let Some(i) = rest.find('"') {
+        let piece = rust_literal(&rest[i..]);
+        out.push_str(&piece);
+        // Past this literal: find its closing quote by walking it the same way.
+        let mut n = i + 1;
+        let mut chars = rest[i + 1..].chars();
+        while let Some(c) = chars.next() {
+            n += c.len_utf8();
+            match c {
+                '\\' => {
+                    if let Some(e) = chars.next() {
+                        n += e.len_utf8();
+                    }
+                }
+                '"' => break,
+                _ => {}
+            }
+        }
+        rest = &rest[n..];
+    }
+    out
+}
