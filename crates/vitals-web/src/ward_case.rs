@@ -346,8 +346,16 @@ pub fn choose_case<'a>(
     any.first().copied()
 }
 
+/// "a" or "an", for an age read aloud: an 8-year-old, an 11-year-old, an 18-year-old, an
+/// 80-year-old. Everything else takes "a". The sentence this is for is read by a person, and "a
+/// 8-year-old girl" is the sort of thing that makes a reader trust the rest of it less.
+fn article(age: u32) -> &'static str {
+    let vowel = age == 11 || age == 18 || age == 8 || (80..90).contains(&age);
+    if vowel { "an" } else { "a" }
+}
+
 /// How a case describes its own patient, in words a refusal can be read in: "a 62-year-old man",
-/// "a 7-year-old girl". `None` when the case does not say.
+/// "an 8-year-old girl". `None` when the case does not say.
 pub fn case_patient_words(c: &CaseSummary) -> Option<String> {
     let (age, sex) = (c.patient_age?, c.patient_sex.as_deref()?);
     let child = age < 16;
@@ -356,7 +364,7 @@ pub fn case_patient_words(c: &CaseSummary) -> Option<String> {
         "female" | "f" => if child { "girl" } else { "woman" },
         _ => "patient",
     };
-    Some(format!("a {age}-year-old {word}"))
+    Some(format!("{} {age}-year-old {word}", article(age)))
 }
 
 /// The same, for the person in the pack.
@@ -367,7 +375,7 @@ pub fn persona_words(who: &crate::ward::Persona) -> String {
         "f" | "female" => if child { "girl" } else { "woman" },
         _ => "patient",
     };
-    format!("a {}-year-old {word}", who.age)
+    format!("{} {}-year-old {word}", article(who.age as u32), who.age)
 }
 
 /// Does this case say something about its own patient that this person contradicts?

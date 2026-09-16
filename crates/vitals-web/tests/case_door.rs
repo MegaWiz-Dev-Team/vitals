@@ -944,6 +944,15 @@ fn a_patient_is_queued_only_onto_a_case_written_about_somebody_like_her() {
     let child_on_child = enqueue(&store, vec![pack("auth-demo-child", "Pim", 8, "f")]);
     assert_eq!(child_on_child.queued, 1, "{:?}", child_on_child.rejected);
 
+    // And it reads like a sentence somebody wrote: "an 8-year-old girl", never "a 8-year-old".
+    let child_words = enqueue(&store, vec![pack("auth-demo-child", "Anita Shrestha", 41, "f")]);
+    let why = child_words.rejected.first().cloned().unwrap_or_default();
+    assert!(why.contains("an 7-year-old") || why.contains("a 7-year-old"), "{why}");
+    let eight = enqueue(&store, vec![pack("auth-demo-1", "Pim", 8, "f")]);
+    assert!(eight.rejected.first().is_some_and(|w| w.contains("an 8-year-old")),
+            "a reader who trips over the grammar trusts the rest of the sentence less: {:?}",
+            eight.rejected);
+
     // A case that says nothing about its patient contradicts nobody, and the factory naming it
     // outright is taking a decision this ward has no grounds to overrule.
     let silent_ok = enqueue(&store, vec![pack("auth-demo-silent", "Anita Shrestha", 41, "f")]);
