@@ -17,7 +17,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_sdk::pubkey::Pubkey;
 use vitals_program::{Instruction, PatientAccount, RecordWire, PATIENT_DIED, PATIENT_OPEN};
 use vitals_web::ward::{DIED, OPEN};
-use vitals_web::ward_chain::{decode_patient, shift_in, Seen, SeenShift};
+use vitals_web::ward_chain::{decode_patient, shift_in, Seen};
 
 fn a_patient(id: u64, state: u8, shifts: u32, admitted: u64, closed: u64) -> Vec<u8> {
     let p = PatientAccount {
