@@ -3840,6 +3840,30 @@ function wardPage(html){
   g.innerHTML='<div class="wardpage">'+html+'<p><a href="/">← the globe</a></p></div>';
 }
 
+/* The strip's sentence: which bed, which shift, what the chart was rebuilt from, and what a
+   stranger has to do before any of it is theirs. Every gendered word comes from `pro()` at the
+   moment it is said — the ward admits men, and this line is the most-read one on the page.
+   `bed` is the board's number, not a second one computed here. */
+function shiftLine(bed, shift, before, g){
+  return (bed?'bed '+bed+' · ':'')
+    +'shift '+shift+' of '+g.p+' stay · '+g.p+' chart is rebuilt from '+before
+    +' anchored shift'+(before===1?'':'s')
+    +' — take the shift to treat '+g.o;
+}
+
+/* Which bed she is in, from the board — the one place that works it out. It is a position in a
+   walk of every patient on the ward in admission order, not a field on a patient, so the shift
+   payload would have to redo the board's whole per-request read to answer it; and a second answer
+   is how a page comes to disagree with the board beside it. Best-effort by design: the bed is a
+   courtesy on a strip, and a board that cannot be read must not stop a shift from opening. */
+async function wardBed(){
+  try{
+    const w=await (await fetch('/api/ward')).json();
+    const her=(w.patients||[]).find(p=>String(p.patient_id)===String(WARD));
+    return her&&her.bed?her.bed:null;
+  }catch(e){ return null; }
+}
+
 /* Every control that treats her, opened or closed in one place.
    Called when the page opens her and again when the head is taken, so there is one answer to
    "may I do this yet" and one sentence saying why not. */
@@ -3942,9 +3966,14 @@ async function openShift(){
   /* Said here rather than above, because `pro()` reads the case the select now names: the ward
      admits men and women, and until this line runs the page would be speaking about EP1's
      patient. Driving a shift on Rafael Moreira printed "shift 1 of her stay" over a man. */
-  wardSay('shift '+r.ward.shift+' of '+pro().p+' stay · '+pro().p+' chart is rebuilt from '+
-          r.ward.shifts_before+' anchored shift'+(r.ward.shifts_before===1?'':'s')+
-          ' — take the shift to treat '+pro().o);
+  wardSay(shiftLine(null, r.ward.shift, r.ward.shifts_before, pro()));
+  /* And again with the bed when the board answers, which it does from its own fifteen-second
+     cache. Said twice rather than awaited, so a slow board never holds the page — and dropped if
+     the head has been taken in the meantime, because by then the strip is saying something newer
+     and a late promise overwriting it would be the page talking over itself. */
+  wardBed().then(bed=>{
+    if(bed&&!id)wardSay(shiftLine(bed, r.ward.shift, r.ward.shifts_before, pro()));
+  });
   $('#wardback-shift').textContent='hand '+pro().o+' back';
   /* Read, not treat. Every control that would touch the patient says which of the two this is. */
   wardGate();
