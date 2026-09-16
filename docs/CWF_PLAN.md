@@ -153,6 +153,18 @@ we authored a new disease course this month.
    rather than a fresh admission nobody has touched, and three beds do not eat the catalogue in an
    afternoon. `STAY_CASES` in `vitals-web`, published in `/api/ward`'s `policy`.
 
+   **The ward never holds a bed for a patient it cannot describe** (founder, 16 ก.ย.:
+   *"แก้ไขระยะยาวเลย"* — the long-term fix). A bed is an open patient the ward has a pack for. One
+   that reached the chain some other way is counted by the census, because she is on the chain, and
+   holds no bed, blocks no admission and is listed in her own row as *admitted outside the ward ·
+   no bed*. Three test patients admitted straight from a proof tool filled staging's beds this
+   morning: nobody could take a shift on a patient with no case, so nobody could discharge them, so
+   fourteen packs waited behind them for ever.
+
+   **Admission has one path: the ticker, from a queued pack.** The server exposes no raw admit and
+   the proof tools go through the queue like everybody else. **On production the door opens only
+   once the queue is full**, so the case above cannot arise there.
+
    **The rate is published, not promised.** A bed frees on discharge or death and on nothing else,
    so admissions per day is *as many as leave* — a consequence of how the ward is played rather
    than a number we choose, and readable off the census by anyone. Cases are drawn uniformly from
@@ -223,11 +235,21 @@ we authored a new disease course this month.
     board is live because the ward is, and the patient's body between shifts is what makes that
     more than an animation.
 
-13. **The shift page is the bay, with a parameter** (producer, 16 ก.ย.). `/ward/<patient_id>`
-    serves the same page `/play` serves; it rebuilds her from the chain and begins the run there.
-    One page, one engine, one tape — the alternative was a second play surface, and two surfaces
-    drift. `bay_unchanged.rs` pins that the Eternal entry's own path is untouched when the
-    parameter is absent.
+13. **The shift page is the ward's own page, and the bay underneath it is one bay** (founder,
+    16 ก.ย., on seeing the Eternal shelf over a ward URL: *"ทำให้แยกกันเลยสิ"*).
+    `/ward/<patient_id>` serves `static/world/shift.html`: the ward's header, the patient, the play
+    surface and nothing of the season — no hero, no shelf, no episode list, no stars, nothing a
+    stranger can click that leads into the single-player story. The bay itself is **not** forked:
+    `bay.css`, `bay.js` and `bay-surface.html` are one copy each, served as files and composed into
+    both pages, so the patient, the monitor and the tape are the same in both. One engine, one
+    surface, two pages. `bay_unchanged.rs` pins the Eternal entry's behaviour and
+    `eternal_page.rs` pins its markup byte for byte.
+
+    **Step two, due in the quiet window once Eternal's review is out of our hands (from 26 Sep):**
+    the season's *code* still ships inside the shared script — the shelf, the hero and the record
+    are drawn by it — so the ward page carries code it never runs. Splitting that into a shelf
+    script only the entry loads is what finishes the founder's "separate". It is a day's work on a
+    live page, which is why it waits for a window rather than being half-kept.
 
     **Opening her page takes nothing.** The head is taken when a stranger presses *take this
     shift*, never on load, and until then `id` is unset — every control in that page already
