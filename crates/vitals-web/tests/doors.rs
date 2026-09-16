@@ -98,7 +98,7 @@ fn the_page_token_does_not_open_the_factorys_doors() {
             "the page token is printed into bay.js — if that ever stops being true this test is \
              about a danger that no longer exists and should be re-read, not deleted");
 
-    for door in ["/api/ward/queue", "/api/ward/pack/42"] {
+    for door in ["/api/ward/queue", "/api/ward/pack/42", "/api/ward/case"] {
         let (code, body) = s.post(door, Some("the-page-token"), A_PACK);
         assert_eq!(code, 401,
                    "{door} accepted the token that is printed into a public page: {body}");
@@ -108,6 +108,18 @@ fn the_page_token_does_not_open_the_factorys_doors() {
         assert_ne!(code, 401, "{door} refused the door's own token: {body}");
         assert_ne!(code, 503, "{door} has a door token and must open: {body}");
     }
+}
+
+/// **The catalogue is a read, and reads on this ward are public.**
+///
+/// `/api/ward/case` writes what strangers will be asked to treat and takes the factory's secret.
+/// `/api/ward/cases` says what the ward is holding, which is the same kind of fact as the census:
+/// a list only the people we hand a token to can read is not a catalogue, it is a claim.
+#[test]
+fn the_catalogue_is_readable_without_a_token() {
+    let s = Server::start(Some("the-door-token"));
+    let (code, _) = s.get("/api/ward/cases");
+    assert_eq!(code, 200, "the ward says what it is holding to anybody who asks");
 }
 
 /// The player's own routes keep the page token: the page has to call them.
@@ -126,7 +138,7 @@ fn the_players_own_routes_still_answer_to_the_page() {
 #[test]
 fn a_ward_with_no_door_token_does_not_open_the_doors_at_all() {
     let s = Server::start(None);
-    for door in ["/api/ward/queue", "/api/ward/pack/42"] {
+    for door in ["/api/ward/queue", "/api/ward/pack/42", "/api/ward/case"] {
         let (code, body) = s.post(door, Some("the-page-token"), A_PACK);
         assert_eq!(code, 503,
                    "{door} must say it has no secret to check against, and never fall back to the \

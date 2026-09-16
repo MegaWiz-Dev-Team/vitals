@@ -235,3 +235,15 @@ fn collect_harms(sce: &Value, out: &mut std::collections::BTreeSet<String>) {
         _ => {}
     }
 }
+
+/// Every case this ward holds, as the catalogue reads them.
+///
+/// A pack that no longer validates is left out rather than listed: the door refused its kind on
+/// the way in, and a case the ward would not accept today is not one it should offer a patient.
+pub fn all(store: &crate::store::Store) -> Vec<CaseSummary> {
+    store
+        .list::<serde_json::Value>(CASE_STORE)
+        .into_iter()
+        .filter_map(|(_, pack)| validate_case(&pack).ok())
+        .collect()
+}

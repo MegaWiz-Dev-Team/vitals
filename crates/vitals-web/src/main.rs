@@ -10,7 +10,7 @@
 mod chain;
 use vitals_web::{
     archive, authors, fuel, lang, meter, news2, patient, payout, reading, review, store, usage,
-    ward, ward_chain,
+    ward, ward_case, ward_chain,
 };
 
 use serde::Serialize;
@@ -549,6 +549,11 @@ const WARD_STREAM_POLL: Duration = Duration::from_secs(3);
 /// the twenty the queue is kept at, and small enough that a body arriving from a job nobody is
 /// watching cannot become this server's memory problem.
 const QUEUE_MAX: usize = 64 * 1024;
+
+/// A case pack: the scenario, the mark sheet, the voice and the replay proof. The compiler's own
+/// run between 15 and 40 KB, and a limit that refused one of those would be a limit that refuses
+/// medicine to save bytes.
+const CASE_MAX: usize = 512 * 1024;
 
 /// Payouts this process made, by leaf.
 ///
@@ -2479,7 +2484,9 @@ fn guarded(path: &str) -> bool {
 /// the split exists for, and it is why there is no fallback below: a ward with no door token opens
 /// no doors at all, rather than quietly opening them to the token everybody has.
 fn door(path: &str) -> bool {
-    path == "/api/ward/queue" || path.starts_with("/api/ward/pack/")
+    // `/api/ward/case` is the case factory's, and `/api/ward/cases` — a letter apart — is the
+    // catalogue anybody may read. Exact match on the first, which is why this is not a prefix.
+    path == "/api/ward/queue" || path == "/api/ward/case" || path.starts_with("/api/ward/pack/")
 }
 
 fn bearer_ok(req: &tiny_http::Request, token: &Option<String>) -> bool {
@@ -4242,6 +4249,110 @@ fn main() {
             // The factory's door (CWF_PLAN.md ruling 10). Packs only — an existing case, a
             // person, a portrait — and never a key. Guarded by the same token the signing routes
             // use, because what arrives here becomes the patients strangers are handed.
+            // The case factory's door. Packs of *cases* rather than of patients: the scenario the
+            // engine runs, the mark sheet, and the patient's own words for what she is asked.
+            // Behind the same secret as the queue, because what arrives here is what strangers
+            // will be asked to treat.
+            (Method::Post, "/api/ward/case") => {
+                if !ward_mode() {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "error": "this host has no ward",
+                        "the_ward_is": "https://world.vitals.academy/api/ward/case"
+                    }), 404));
+                    continue;
+                }
+                let body = match read_body(&mut req, CASE_MAX) {
+                    Ok(b) => b,
+                    Err(BadBody::TooLong) => {
+                        let _ = req.respond(json_code(serde_json::json!({
+                            "refused": format!("a case pack is at most {CASE_MAX} bytes")
+                        }), 413));
+                        continue;
+                    }
+                    Err(BadBody::NotText) => {
+                        let _ = req.respond(json_code(serde_json::json!({
+                            "refused": "that body is not UTF-8 text"
+                        }), 400));
+                        continue;
+                    }
+                };
+                let pack: serde_json::Value = match serde_json::from_str(&body) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let _ = req.respond(json_code(serde_json::json!({
+                            "refused": format!("that is not a case pack: {e}")
+                        }), 400));
+                        continue;
+                    }
+                };
+                let summary = match ward_case::validate_case(&pack) {
+                    Ok(s) => s,
+                    // 422 and not 400: the JSON was fine and the case is not. The compiler is the
+                    // only thing that can act on the difference, and it reads this in a log.
+                    Err(why) => {
+                        let _ = req.respond(json_code(serde_json::json!({ "refused": why }), 422));
+                        continue;
+                    }
+                };
+                // Add or replace while it is provisional; add-only once it has been reviewed. A
+                // reviewed case is one the chain carries shifts against, and replacing it under the
+                // same id would rewrite what those shifts were about.
+                if let Some(held) = store.get::<serde_json::Value>(ward_case::CASE_STORE, &summary.case_id) {
+                    let reviewed = !held.get("provisional").and_then(|p| p.as_bool()).unwrap_or(true);
+                    if reviewed {
+                        let _ = req.respond(json_code(serde_json::json!({
+                            "refused": format!(
+                                "{} is already here and reviewed, so it is add-only now: somebody \
+                                 has played it and the chain carries shifts against this case",
+                                summary.case_id
+                            )
+                        }), 409));
+                        continue;
+                    }
+                }
+                match store.put(ward_case::CASE_STORE, &summary.case_id, &pack) {
+                    Ok(()) => {
+                        let _ = req.respond(json(serde_json::json!({
+                            "stored": summary.case_id,
+                            "provisional": summary.provisional,
+                            "version": summary.version,
+                        })));
+                    }
+                    Err(e) => {
+                        let _ = req.respond(json_code(serde_json::json!({
+                            "refused": format!("the case could not be stored: {e}")
+                        }), 503));
+                    }
+                }
+                continue;
+            }
+            // What the ward is holding, without the scenarios: a pack is twenty kilobytes and
+            // nobody reading the catalogue needs one.
+            (Method::Get, "/api/ward/cases") => {
+                let mut cases: Vec<serde_json::Value> = ward_case::all(&store)
+                    .into_iter()
+                    .map(|c| serde_json::json!({
+                        "case_id": c.case_id,
+                        "title": c.title,
+                        "country": c.country,
+                        "difficulty": c.difficulty,
+                        "endemic": c.endemic,
+                        "provisional": c.provisional,
+                        "version": c.version,
+                    }))
+                    .collect();
+                cases.sort_by(|a, b| a["case_id"].as_str().cmp(&b["case_id"].as_str()));
+                let _ = req.respond(json(serde_json::json!({
+                    "cases": cases,
+                    "derivations": {
+                        "cases": "every pack the case factory has put through /api/ward/case and \
+                                  this ward accepted. `provisional` is the compiler's own word for \
+                                  a case that has been compiled and not clinically reviewed; a \
+                                  reviewed one cannot be replaced under the same id",
+                    },
+                })));
+                continue;
+            }
             (Method::Post, "/api/ward/queue") => {
                 if !ward_mode() {
                     let _ = req.respond(json(serde_json::json!({
@@ -6383,9 +6494,9 @@ mod tests {
         for p in ["/api/anchor", "/api/claim", "/api/commit", "/api/say"] {
             assert!(guarded(p), "{p} makes the server sign or spend");
         }
-        // The factory's two doors are on the other guard, and deliberately not on this one: this
-        // one's token is printed into `bay.js` for every visitor.
-        for p in ["/api/ward/queue", "/api/ward/pack/42"] {
+        // The factory's three doors are on the other guard, and deliberately not on this one:
+        // this one's token is printed into `bay.js` for every visitor.
+        for p in ["/api/ward/queue", "/api/ward/pack/42", "/api/ward/case"] {
             assert!(door(p), "{p} writes to the ward and takes the ward's own secret");
             assert!(!guarded(p),
                     "{p} must not answer to the page's token — it is on a public page, and this \
@@ -6397,6 +6508,9 @@ mod tests {
                   // and the thing a judge is invited to re-derive; a token on it would mean
                   // "checkable by anyone we gave a token to", which is not the claim.
                   "/api/ward", "/api/ward/stream",
+                  // What cases the ward holds. The same kind of fact as the census, and a
+                  // catalogue only the people we hand a token to can read is a claim.
+                  "/api/ward/cases",
                   // One shift, and the tape it is checked against. A receipt only the people we
                   // hand a token to can read is not a receipt, it is a claim.
                   "/api/shift/0000000000000000000000000000000000000000000000000000000000000000",
