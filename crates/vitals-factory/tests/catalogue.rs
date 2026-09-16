@@ -1,20 +1,25 @@
 //! The catalogue, as the factory reads it.
 //!
-//! The ward says which sixteen cases it serves (`vitals_web::ward::CATALOGUE`) and what level each
-//! is (`difficulty_of`). What the ward cannot say — and says so in `validate_pack` — is the sex
-//! and the age band the case was written for, because those live in the case's own files. The
-//! factory reads them from there, and a case whose files state neither is not built: a pack that
-//! guessed would put a woman's name on a man's presentation, and the door cannot catch it.
+//! The ward says which sixteen cases it serves (`vitals_web::ward::CATALOGUE`), what level each is
+//! (`difficulty_of`), and — since 949a76b — who each station was written about (`case_patient`,
+//! the door's own reading of `demo/personas/<id>.json`) and how far a pack's age may sit from
+//! that (`age_band`). The door refuses a pack that contradicts any of it. So the factory does not
+//! have a rule of its own here: it asks the ward's functions, and reads a file itself only where
+//! the door has none baked in.
+//!
+//! A case no file describes is not built. The alternative — a guess — is exactly the pack the
+//! door takes at its word: the four episodes carry no persona file, and a pack for one of them
+//! is checked by nobody.
 
 use std::path::PathBuf;
-use vitals_factory::catalogue::{band_around, read_case, read_catalogue, Sex};
-use vitals_web::ward::{difficulty_of, CATALOGUE};
+use vitals_factory::catalogue::{read_case, read_catalogue, Sex};
+use vitals_web::ward::{age_band, case_patient, difficulty_of, CATALOGUE};
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// A station's persona file, as `demo/personas/<id>.json` is shaped today.
+/// A persona file, as `demo/personas/<id>.json` is shaped.
 fn persona(sex: &str, age: u16) -> String {
     format!(r#"{{"id":"x","patient":{{"name":"Somchai","age":{age},"sex":"{sex}","affect":"calm"}}}}"#)
 }
@@ -38,45 +43,66 @@ fn every_case_the_ward_serves_is_either_buildable_or_says_why_not() {
     for u in &cat.unbuildable {
         assert!(!u.why.is_empty(), "{}: a case that is not built says why", u.id);
     }
-    // The twelve stations carry a persona file, so they are buildable as the files are today.
-    for id in CATALOGUE.iter().filter(|c| c.starts_with("osce-")) {
-        assert!(cat.cases.iter().any(|c| &c.id == id), "{id} has a persona file and should build");
+    // The twelve stations are the ones the door has a patient for; as the files stand today the
+    // four episodes have none, and the factory says so rather than guessing.
+    for id in CATALOGUE {
+        match case_patient(id) {
+            Some(_) => assert!(cat.cases.iter().any(|c| c.id == id), "{id}: the door knows her, so she builds"),
+            None => assert!(cat.unbuildable.iter().any(|u| u.id == id), "{id}: nobody states her sex and age"),
+        }
     }
 }
 
-/// `demo/personas/osce-a.json` says M 71; `osce-b3.json` says F 3. The band is around the authored
-/// age and on the same side of childhood.
+/// A station's sex and band are exactly the door's: the same reading of the same file, and the
+/// same distance from the authored age. Anything else is a pack the door refuses.
 #[test]
-fn a_stations_sex_and_age_come_from_its_persona_file() {
+fn a_stations_sex_and_band_are_the_doors_own() {
     let cat = read_catalogue(&repo_root());
-    let a = cat.cases.iter().find(|c| c.id == "osce-a").expect("osce-a builds");
-    assert_eq!(a.sex, Sex::M);
-    assert!(a.band.contains(&71), "the authored age is inside the band");
-    assert!(*a.band.start() >= 18, "an adult case stays adult");
-    assert!(a.source.contains("demo/personas/osce-a.json"), "source: {}", a.source);
-
-    let b3 = cat.cases.iter().find(|c| c.id == "osce-b3").expect("osce-b3 builds");
-    assert_eq!(b3.sex, Sex::F);
-    assert!(b3.band.contains(&3));
-    assert!(*b3.band.end() <= 17, "a child's case stays a child's: {:?}", b3.band);
-    assert!(*b3.band.start() >= 1);
+    for id in CATALOGUE.iter().filter(|c| c.starts_with("osce-")) {
+        let theirs = case_patient(id).expect("a station has a patient");
+        let ours = cat.get(id).unwrap_or_else(|| panic!("{id} builds"));
+        assert_eq!(ours.sex.letter(), theirs.sex, "{id}");
+        assert_eq!(ours.band, age_band(theirs.age), "{id}");
+        assert!(ours.source.contains(&format!("demo/personas/{id}.json")), "{id}: source: {}", ours.source);
+    }
+    let a = cat.get("osce-a").unwrap();
+    assert_eq!((a.sex, a.band.clone()), (Sex::M, 64..=78), "M 71, a tenth either side");
+    let b3 = cat.get("osce-b3").unwrap();
+    assert_eq!((b3.sex, b3.band.clone()), (Sex::F, 1..=5), "F 3, the floor of two years, never below one");
 }
 
-/// A scenario may carry a `ward` block naming sex and band outright. When it does, it wins — it
-/// is the case saying who its patient is, and the persona file is the bay's rendering of one of
-/// them.
+/// Where the door has no patient baked in, the factory reads the persona file the way the door
+/// reads its own — so if one appears for an episode, she is read the same way the stations are.
 #[test]
-fn a_ward_block_in_the_scenario_wins_over_the_persona_file() {
+fn a_persona_file_the_door_has_not_baked_in_is_read_the_way_the_door_reads_them() {
+    assert!(case_patient("ep2-stemi").is_none(), "this test is about the gap");
+    let c = read_case("ep2-stemi", BARE_SCENARIO, Some(&persona("M", 58))).expect("the file builds him");
+    assert_eq!(c.sex, Sex::M);
+    assert_eq!(c.band, age_band(58));
+    assert!(c.source.contains("demo/personas/ep2-stemi.json"), "{}", c.source);
+    let why = read_case("ep2-stemi", BARE_SCENARIO, Some(&persona("x", 40))).expect_err("x is nobody").why;
+    assert!(why.contains("sex"), "{why}");
+}
+
+/// A scenario may also carry a `ward` block naming sex and band outright, for a case with no
+/// persona file. It is read only then: a station's block that disagreed with its persona file
+/// would be a pack the door refuses, so the file the door reads wins.
+#[test]
+fn a_ward_block_in_the_scenario_serves_a_case_with_no_persona_file() {
     let sce = r#"{"_note":"MOCK","ward":{"sex":"f","age":[30,40]},"setting":"ED"}"#;
-    let c = read_case("osce-a", sce, Some(&persona("M", 71))).expect("the block builds her");
+    let c = read_case("ep4-pulmonary-embolism", sce, None).expect("the block builds her");
     assert_eq!(c.sex, Sex::F);
     assert_eq!(c.band, 30..=40);
     assert!(c.source.contains("ward"), "source names the block: {}", c.source);
 
-    // A single number is a band of one.
+    // A single number is widened the way the door widens an authored age.
     let sce = r#"{"ward":{"sex":"m","age":9}}"#;
-    let c = read_case("osce-b2", sce, None).expect("a number is a band of one");
-    assert_eq!(c.band, 9..=9);
+    let c = read_case("ep3-epiglottitis", sce, None).expect("a number is an authored age");
+    assert_eq!(c.band, age_band(9));
+
+    // Against a persona file, the file wins — it is what the door checks.
+    let c = read_case("ep2-stemi", sce, Some(&persona("F", 40))).expect("builds");
+    assert_eq!((c.sex, c.band.clone()), (Sex::F, age_band(40)));
 }
 
 /// No block, no persona file: not built, and the reason names what is missing.
@@ -84,14 +110,14 @@ fn a_ward_block_in_the_scenario_wins_over_the_persona_file() {
 fn a_case_no_file_describes_is_not_built() {
     let why = read_case("ep2-stemi", BARE_SCENARIO, None).expect_err("nothing states her sex or age").why;
     assert!(why.contains("sex") && why.contains("age"), "says what is missing: {why}");
-    assert!(why.contains("demo/personas/ep2-stemi.json") || why.contains("ward"), "and where it would be read from: {why}");
+    assert!(why.contains("demo/personas/ep2-stemi.json"), "and where it would be read from: {why}");
 }
 
 /// The practice case has no level on the ward, so it has no place in a pack.
 #[test]
 fn a_case_the_ward_gives_no_level_is_not_built() {
     let why = read_case("ep1", BARE_SCENARIO, Some(&persona("F", 30))).expect_err("ep1 is practice").why;
-    assert!(why.contains("level") || why.contains("difficulty"), "{why}");
+    assert!(why.contains("level"), "{why}");
 }
 
 /// Sex is one of two letters, in either case, and nothing else is guessed at.
@@ -102,28 +128,6 @@ fn sex_is_read_in_either_case_and_nothing_else() {
     assert_eq!(Sex::parse(" F "), Some(Sex::F));
     assert_eq!(Sex::parse("female"), None, "a word is not a code the pool uses");
     assert_eq!(Sex::parse("x"), None);
-    let why = read_case("osce-a", BARE_SCENARIO, Some(&persona("x", 40))).expect_err("x is nobody").why;
-    assert!(why.contains("sex"), "{why}");
     assert_eq!(Sex::F.letter(), "f");
     assert_eq!(Sex::M.word(), "man");
-}
-
-/// The band around an authored age: wide enough that the sixty faces already made (at 28, 45 and
-/// 63) fit every adult case, narrow enough that a child stays a child and a 25-year-old is not 45.
-#[test]
-fn a_band_around_an_authored_age_keeps_her_the_same_kind_of_patient() {
-    for (authored, face) in [(71, 63), (68, 63), (72, 63), (62, 63), (55, 63), (53, 45), (25, 28)] {
-        let band = band_around(authored);
-        assert!(band.contains(&authored));
-        assert!(band.contains(&face), "a face made at {face} serves a case written at {authored}: {band:?}");
-    }
-    assert!(!band_around(25).contains(&45), "a 25-year-old is not 45");
-    assert!(!band_around(71).contains(&45), "a 71-year-old is not 45");
-    for child in [3, 6, 14] {
-        let band = band_around(child);
-        assert!(band.contains(&child));
-        assert!(*band.start() >= 1 && *band.end() <= 17, "{child}: {band:?}");
-    }
-    assert!(*band_around(18).start() >= 18, "an adult case never dips into childhood");
-    assert!(*band_around(120).end() <= 120);
 }

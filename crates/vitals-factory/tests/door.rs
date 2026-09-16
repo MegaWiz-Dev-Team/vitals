@@ -143,7 +143,7 @@ fn a_portrait_push_is_answered_in_added_kept_and_rejected() {
 fn a_page_of_packs_is_the_shape_the_door_documents() {
     let pack = Pack {
         case: "osce-a".into(),
-        persona: Persona { name: "Anan Thepwong".into(), age: 70, country: "THA".into() },
+        persona: Persona { name: "Anan Thepwong".into(), age: 70, country: "THA".into(), sex: "m".into() },
         portrait: BTreeMap::from([("stable".to_string(), "https://storage.googleapis.com/vitals-world-portraits/a.webp".to_string())]),
         endemic: false,
     };
@@ -154,6 +154,7 @@ fn a_page_of_packs_is_the_shape_the_door_documents() {
     assert_eq!(packs[0]["persona"]["name"], "Anan Thepwong");
     assert_eq!(packs[0]["persona"]["age"], 70);
     assert_eq!(packs[0]["persona"]["country"], "THA");
+    assert_eq!(packs[0]["persona"]["sex"], "m", "since 949a76b the door checks it against the case");
     assert_eq!(packs[0]["portrait"]["stable"], "https://storage.googleapis.com/vitals-world-portraits/a.webp");
     assert_eq!(packs[0]["endemic"], false);
     assert_eq!(body.as_object().unwrap().len(), 1, "packs and nothing else");
