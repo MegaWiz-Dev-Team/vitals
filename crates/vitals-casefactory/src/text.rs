@@ -70,7 +70,7 @@ pub fn fragments(s: &str) -> Vec<String> {
 }
 
 const NEGATIONS: &[&str] = &[
-    "do not", "don't", "never", "avoid", "must not", "should not", "not indicated", "contraindicated",
+    "do not", "don't", "never", "avoid", "must not", "should not", "not indicated", "not routinely", "contraindicated",
     "no ", "not be used", "stop all", "stop ", "withhold", "is not acceptable", "cannot", "not acceptable",
     "ห้าม", "หลีกเลี่ยง", "ไม่ควร", "งด",
 ];
