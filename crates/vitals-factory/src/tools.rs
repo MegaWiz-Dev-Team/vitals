@@ -157,8 +157,12 @@ fn vertex_generate(project: &str, model: &str, image: &[u8], mime: &str, text: &
     );
     let generation = if want_image {
         serde_json::json!({"responseModalities": ["TEXT", "IMAGE"], "imageConfig": {"aspectRatio": "1:1"}})
+    } else if model.starts_with("gemini-2.5") {
+        // 2.5 thinks before it answers and the thoughts count against the budget: with 80 tokens
+        // it returned a candidate with no parts at all. No thinking, and room for the sentence.
+        serde_json::json!({"temperature": 0, "maxOutputTokens": 256, "thinkingConfig": {"thinkingBudget": 0}})
     } else {
-        serde_json::json!({"temperature": 0, "maxOutputTokens": 80})
+        serde_json::json!({"temperature": 0, "maxOutputTokens": 256})
     };
     let body = serde_json::json!({
         "contents": [{"role": "user", "parts": [
@@ -185,7 +189,10 @@ fn vertex_generate(project: &str, model: &str, image: &[u8], mime: &str, text: &
     v.pointer("/candidates/0/content/parts")
         .and_then(|p| p.as_array())
         .cloned()
-        .ok_or_else(|| format!("Vertex returned no candidate: {}", v.to_string().chars().take(300).collect::<String>()))
+        .ok_or_else(|| {
+            let finish = v.pointer("/candidates/0/finishReason").and_then(|f| f.as_str()).unwrap_or("?");
+            format!("Vertex returned no content (finishReason {finish}): {}", v.to_string().chars().take(200).collect::<String>())
+        })
 }
 
 /// sha256 of some bytes, as the bucket names them.
