@@ -174,7 +174,10 @@ pub fn build(case: &Case, a: Archetype, v: &Vitals0, mapped: &Mapped, built: &Bu
     let mut dyn_pres: Vec<Value> = Vec::new();
     for t in &sh.trajs {
         let s0 = start(v, t.var);
-        let rate = (t.target - s0) / tm;
+        // A variable that ends the case reaches its *threshold* at `tm`; the target below it is
+        // only the floor. Every other variable reaches its target at `tm`.
+        let reach = sh.deaths.iter().find(|d| d.var == t.var).map(|d| d.below).unwrap_or(t.target);
+        let rate = (reach - s0) / tm;
         let mut d = json!({ "var": t.var, "rate_per_min": rate });
         if rate < 0.0 { d["floor"] = json!(t.target) } else { d["ceil"] = json!(t.target) }
         if let Some(f) = t.stopped_by {
@@ -264,16 +267,14 @@ pub fn build(case: &Case, a: Archetype, v: &Vitals0, mapped: &Mapped, built: &Bu
         let Some(t) = mapped.timed.get(p.role.id) else { continue };
         let by = by_sec(a, t.named_sec);
         let text = format!("{} delayed past the window it had to happen in", p.role.label.to_lowercase());
-        let nudge = match sh.primary {
-            "sbp" => json!({ "delta": { "sbp": -6.0 }, "floor": 30.0 }),
-            "spo2" => json!({ "delta": { "spo2": -4.0 }, "floor": 40.0 }),
-            _ => json!({ "delta": { "neuro": -1.0 }, "floor": 3.0 }),
-        };
+        // The record is the harm; the physiology is the state's own rate. Late penalties that
+        // also moved the vitals, stacked on three or four timed orders, halved the untreated
+        // time the archetype promises — so a late order costs marks, not a second physiology.
         triggers.push(json!({
             "id": format!("late_{}", p.role.id),
             "once": true,
             "when": { "all": [ { "in_state": "presenting" }, { "var": "t_elapsed", "op": "ge", "value": by }, { "not": { "done": p.tx_id() } } ] },
-            "do": [ { "harm": text }, nudge ]
+            "do": [ { "harm": text }, { "beat": "the window for one of the orders has closed" } ]
         }));
         trigger_harms.push((format!("late_{}", p.role.id), text));
         late.push((p.role.id.to_string(), by));

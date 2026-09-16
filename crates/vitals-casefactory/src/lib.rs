@@ -148,35 +148,44 @@ pub fn compile(case_json: &str, source: Source) -> Result<Pack, Refusal> {
     let sim = scenario::build(&case, a, &v0, &mapped, &built);
     let rubric = rubric::derive(&case, a, &mapped, &built, &sim, &source.sha256);
 
-    // the management path: gates, then every critical order in the plan's order, then the
-    // supportive ones, then the history, the examination, the workup and the diagnosis
+    // the management path: gates, then every critical order in the plan's order, twenty
+    // seconds apart; then everything else the rubric pays for — the supportive orders, the
+    // history, the examination, the workup, the diagnosis — spread across the recovery window,
+    // so the whole path lands before the win is declared and the golden score is the sheet's
+    // full reading of it
     let mut path: Vec<validate::PathStep> = Vec::new();
     let mut t = 20.0;
-    let mut push = |id: String, t: &mut f64| {
-        path.push(validate::PathStep { t_sec: *t, id });
-        *t += 20.0;
-    };
-    for kind in [Kind::Gate, Kind::Critical, Kind::Supportive] {
+    for kind in [Kind::Gate, Kind::Critical] {
         for p in mapped.present.iter().filter(|p| p.role.kind == kind) {
-            push(p.tx_id(), &mut t);
+            path.push(validate::PathStep { t_sec: t, id: p.tx_id() });
+            t += 20.0;
         }
     }
+    let last_critical = t - 20.0;
+    let mut rest: Vec<String> = mapped.present.iter().filter(|p| p.role.kind == Kind::Supportive).map(plan::Present::tx_id).collect();
     let paid: Vec<String> = rubric["items"]
         .as_array()
         .map(|items| items.iter().filter_map(|it| it.get("needle").and_then(|n| n.as_str()).map(str::to_string)).collect())
         .unwrap_or_default();
     for pre in ["ask_", "exam_", "ix_", "dx_"] {
         for n in paid.iter().filter(|n| n.starts_with(pre)) {
-            push(n.clone(), &mut t);
+            rest.push(n.clone());
         }
     }
     // an examination the rubric pays for as "any of" still has to happen on the path
     if let Some(items) = rubric["items"].as_array() {
         for it in items.iter().filter(|it| it["type"] == "action_any") {
             if let Some(first) = it["any_of"].as_array().and_then(|a| a.first()).and_then(|v| v.as_str()) {
-                push(first.to_string(), &mut t);
+                rest.push(first.to_string());
             }
         }
+    }
+    let window = a.recovery_sec() - 40.0;
+    let spacing = if rest.is_empty() { 0.0 } else { (window / rest.len() as f64).clamp(1.0, 20.0).floor() };
+    let mut t = last_critical + 10.0;
+    for id in rest {
+        path.push(validate::PathStep { t_sec: t, id });
+        t += spacing;
     }
 
     let timed: BTreeMap<String, TimedRole> = mapped
