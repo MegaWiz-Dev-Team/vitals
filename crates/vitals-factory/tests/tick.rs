@@ -921,3 +921,46 @@ fn the_states_are_edited_from_the_full_face_never_the_thumbnail_the_board_shows(
     assert_eq!(tools2.fetches.borrow().as_slice(), std::slice::from_ref(&full2));
     assert!(tools2.fetches.borrow().iter().all(|u| !u.ends_with("-256.webp")));
 }
+
+/// A patient whose pictures are on the board but not on file — states edited from a face the
+/// board kept after a remake — still gets her 256 px siblings: made from the full pictures the
+/// board shows, uploaded under their sha, and pushed through her own door. No model is called,
+/// so this is not the one-patient-per-tick step.
+#[test]
+fn siblings_are_made_for_pictures_the_board_has_and_the_file_does_not() {
+    let dir = world("board-siblings");
+    let pool = read_pool(POOL).unwrap();
+    let mut man = seed_manifest(&dir, &pool);
+    let kor0 = pool.iter().find(|p| p.key == "KOR-0").unwrap();
+    man.record_base("KOR-0", 8, &sha_url(b"the face remade after"), kor0);
+    man.save(&dir.join("portraits.json")).unwrap();
+    let states = ["stable", "recovered", "improving", "deteriorating", "critical", "arrest"];
+    let mut ward = WardView::parse(STAGING).unwrap();
+    let p = &mut ward.patients[0];
+    p.name = Some(kor0.name.clone()); p.country = Some("KOR".into()); p.case = Some("osce-c".into()); p.age = Some(8);
+    p.portraits = states.iter().map(|st| (st.to_string(), sha_url(format!("board/{st}").as_bytes()))).collect();
+    p.portrait = p.portraits.get("stable").cloned();
+    let door = FakeDoor::new(ward);
+    let tools = FakeTools::default();
+    let r = tick(&config(&dir, 0, 0), &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert!(tools.edits.borrow().is_empty(), "nothing is edited: every state is already on the board");
+    assert_eq!(tools.fetches.borrow().len(), 6, "each full picture fetched once");
+    assert_eq!(tools.uploads.borrow().len(), 6, "six siblings uploaded");
+    assert!(tools.uploads.borrow().iter().all(|o| o.ends_with("-256.webp")));
+    let fills = door.fills.borrow();
+    assert_eq!(fills.len(), 1);
+    let keys: Vec<&String> = fills[0].1.keys().collect();
+    assert_eq!(keys.len(), 6);
+    assert!(keys.iter().all(|k| k.ends_with("_256")), "{keys:?}");
+    for st in states {
+        assert_eq!(fills[0].1[&format!("{st}_256")], sibling(&sha_url(format!("board/{st}").as_bytes())), "{st}: the sibling of the picture the board shows");
+    }
+    // The manifest is untouched: these pictures are not on file, and the siblings of pictures not on file are not either.
+    let man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
+    assert!(man2.entries["KOR-0@8"].portrait_256.is_empty());
+    // A second tick makes nothing: the board now carries them.
+    let r = tick(&config(&dir, 0, 0), &door, &tools);
+    assert!(r.errors.is_empty());
+    assert_eq!(tools.uploads.borrow().len(), 6);
+}
