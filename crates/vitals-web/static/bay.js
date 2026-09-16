@@ -1122,7 +1122,7 @@ function fire(text,shown,named){
      whose whole promise is that the transcript is what happened. So the refusal belongs here,
      where every press arrives, and it is said out loud rather than swallowed. */
   const no=takeFirst(WARD, id, pro().o);
-  if(no){ if(typeof wardSay==='function')wardSay('<b>'+no+'</b> — nothing you do is on her chart until the head is yours'); return; }
+  if(no){ if(typeof wardSay==='function')wardSay('<b>'+no+'</b> — nothing you do is on '+pro().p+' chart until the head is yours'); return; }
   (mode==='ask' && !ep().station) ? askHer(text) : doOrder(text,shown,named);
 }
 /* Is this order the candidate naming a diagnosis? The station's own differential is the list,
