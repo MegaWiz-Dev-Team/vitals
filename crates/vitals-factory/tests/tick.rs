@@ -467,6 +467,51 @@ fn a_dry_run_reads_and_plans_and_touches_nothing() {
     assert!(text.contains("dry run"), "{text}");
 }
 
+/// Founder, 16 Sep 2026: "ควรมีคนไข้จากทั่วโลกนะ". A dry run also prints the next twenty draws, each
+/// with its country and its region, and one line on the spread — so the founder can be shown,
+/// from any state of the ward, what the queue is about to look like. Twenty regardless of the
+/// shortfall (here the queue wants six), and the spread rules hold: no country more than twice,
+/// twelve countries, six regions.
+#[test]
+fn a_dry_run_prints_the_next_twenty_draws_with_country_and_region() {
+    use std::collections::BTreeSet;
+    use vitals_factory::plan::{MIN_COUNTRIES, MIN_REGIONS, QUEUE_CAP, QUEUE_WINDOW};
+    use vitals_factory::region::{region_of, ALL};
+    let dir = world("dry-twenty");
+    let pool = read_pool(POOL).unwrap();
+    seed_manifest(&dir, &pool);
+    let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
+    let tools = FakeTools::default();
+    let cfg = Config { dry_run: true, ..config(&dir, 6, 2) };
+    let r = tick(&cfg, &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let text = r.lines.join("\n");
+    let start = r.lines.iter().position(|l| l.starts_with(&format!("next {QUEUE_WINDOW} draws"))).unwrap_or_else(|| panic!("a heading for the next twenty draws:\n{text}"));
+    let draws: Vec<&String> = r.lines[start + 1..].iter().take_while(|l| l.starts_with("  ")).collect();
+    assert_eq!(draws.len(), QUEUE_WINDOW, "twenty draws under the heading:\n{text}");
+    let mut countries: Vec<&str> = Vec::new();
+    for (n, line) in draws.iter().enumerate() {
+        // "  1. ETH · Sub-Saharan Africa · Tigist Alemu"
+        let cells: Vec<&str> = line.trim().split(" · ").collect();
+        assert!(cells.len() >= 3, "{line}");
+        let (num, code) = cells[0].split_once(". ").unwrap_or_else(|| panic!("{line}"));
+        assert_eq!(num.trim().parse::<usize>().ok(), Some(n + 1), "{line}");
+        let region = region_of(code).unwrap_or_else(|| panic!("{code} in {line} has no region"));
+        assert_eq!(cells[1], region.name(), "{line}");
+        assert!(pool.iter().any(|p| p.country == code && p.name == cells[2]), "{line}: a person of the pool");
+        countries.push(code);
+    }
+    let distinct: BTreeSet<&str> = countries.iter().copied().collect();
+    assert!(distinct.len() >= MIN_COUNTRIES, "{countries:?}");
+    assert!(distinct.iter().all(|c| countries.iter().filter(|x| x == &c).count() <= QUEUE_CAP), "{countries:?}");
+    let regions: BTreeSet<&str> = countries.iter().map(|c| region_of(c).unwrap().name()).collect();
+    assert!(regions.len() >= MIN_REGIONS && regions.len() <= ALL.len(), "{regions:?}");
+    let spread = r.lines[start + 1 + draws.len()..].iter().find(|l| l.starts_with("spread:")).unwrap_or_else(|| panic!("a spread line after the draws:\n{text}"));
+    assert!(spread.contains(&format!("{} countries", distinct.len())) && spread.contains(&format!("{} regions", regions.len())), "{spread}");
+    // Still a dry run: nothing pushed, no token, no file.
+    assert!(door.pushes.borrow().is_empty() && *tools.token_fetches.borrow() == 0 && !dir.join("factory-ledger.json").exists());
+}
+
 /// Every face is judged before it is recorded or uploaded; the question is the one the brief
 /// wrote, asked of the text model on Vertex with the image inline; a "no" is a new seed, up to
 /// three; and a person whose three faces all failed gets no pack this tick — a pack is never built
