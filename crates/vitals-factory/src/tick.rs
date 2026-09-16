@@ -20,11 +20,12 @@ use crate::door::{Door, FillReply, Pushed, Token, WardView};
 use crate::ledger::{Ledger, Sent};
 use crate::manifest::Manifest;
 use crate::need::{fmt as fmt_weight, weights, Weights};
-use crate::plan::{bed_cap, plan, Base, Inputs, NEAR_FACE};
+use crate::plan::{bed_cap, plan, Base, Inputs, MIN_COUNTRIES, MIN_REGIONS, NEAR_FACE, QUEUE_CAP, QUEUE_WINDOW};
+use crate::region::{Region, ALL};
 use crate::pool::{person_for, read_endemic, read_pool, Person};
 use crate::prompts;
 use crate::tools::{sha256_hex, Tools};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use vitals_web::ward::Pack;
 use vitals_web::ward_chain::{pack_id, PORTRAITS};
@@ -180,6 +181,11 @@ fn publish_sibling(cfg: &Config, tools: &dyn Tools, sha: &str, full: &[u8]) -> R
     Ok(sibling_url(&face_url(sha)))
 }
 
+/// A region's name for the log, or the word for a code the table does not place.
+fn region_name(r: Option<Region>) -> &'static str {
+    r.map_or("region unplaced", Region::name)
+}
+
 /// `…/<sha>.webp` → `…/<sha>-256.webp`.
 pub fn sibling_url(url: &str) -> String {
     match url.strip_suffix(".webp") {
@@ -296,11 +302,18 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
     let known_depth = ward.queue.as_ref().map(|q| q.waiting).unwrap_or(resend.len());
     let want_guess = cfg.queue_depth.saturating_sub(known_depth.max(resend.len()));
     r.say(need.table());
-    r.say(format!("bed cap: no country in more than {} of {} beds at once", bed_cap(ward.beds), ward.beds));
-    let planned = plan(&Inputs {
+    r.say(format!(
+        "spread: no country in more than {} of {} beds at once; among the last {QUEUE_WINDOW} packs no country more than {QUEUE_CAP} times, at least {MIN_COUNTRIES} countries and {MIN_REGIONS} of {} regions; every region within {} draws",
+        bed_cap(ward.beds),
+        ward.beds,
+        ALL.len(),
+        crate::plan::WORLD_WINDOW
+    ));
+    let inputs = Inputs {
         catalogue: &catalogue, pool: &pool, endemic: &endemic, manifest: &manifest, ward: &ward, ledger: &ledger,
         weights: &need, beds: ward.beds, want: want_guess, seed: cfg.seed,
-    });
+    };
+    let planned = plan(&inputs);
     for n in &planned.notes {
         r.say(n.clone());
     }
@@ -318,11 +331,26 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
                 }
             };
             r.say(format!(
-                "  {} — {} {} {} from {} (drawn: {}, weight {} people/doctor){} · {}",
+                "  {} — {} {} {} from {} · {} (drawn: {}, weight {} people/doctor){} · {}",
                 pl.pack.case, pl.pack.persona.name, pl.sex.letter().to_uppercase(), pl.pack.persona.age, pl.pack.persona.country,
-                pl.pack.persona.country, fmt_weight(pl.weight),
+                region_name(pl.region), pl.pack.persona.country, fmt_weight(pl.weight),
                 if pl.pack.endemic { " (endemic)" } else { "" }, face
             ));
+        }
+        // The next twenty draws whatever the shortfall, for the founder: the queue as it is about
+        // to look, country by country and region by region.
+        let next = plan(&Inputs { want: QUEUE_WINDOW, ..inputs });
+        r.say(format!("next {QUEUE_WINDOW} draws from this state, by need under the spread rules (country · region · person):"));
+        let mut countries: BTreeSet<&str> = BTreeSet::new();
+        let mut regions: BTreeSet<Region> = BTreeSet::new();
+        for (n, pl) in next.packs.iter().enumerate() {
+            countries.insert(&pl.pack.persona.country);
+            regions.extend(pl.region);
+            r.say(format!("  {}. {} · {} · {}", n + 1, pl.pack.persona.country, region_name(pl.region), pl.pack.persona.name));
+        }
+        r.say(format!("spread: {} countries, {} regions of {} in these {} draws", countries.len(), regions.len(), ALL.len(), next.packs.len()));
+        for n in next.notes.iter().filter(|n| n.starts_with("redrawn")) {
+            r.say(format!("over the {}: {n}", QUEUE_WINDOW));
         }
         dry_run_faces(cfg, &mut r, &ward, &pool, &manifest);
         return r;
@@ -407,7 +435,11 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
     let planned = if want == want_guess {
         planned
     } else {
-        plan(&Inputs { catalogue: &catalogue, pool: &pool, endemic: &endemic, manifest: &manifest, ward: &ward, ledger: &ledger, weights: &need, beds: ward.beds, want, seed: cfg.seed })
+        let again = plan(&Inputs { catalogue: &catalogue, pool: &pool, endemic: &endemic, manifest: &manifest, ward: &ward, ledger: &ledger, weights: &need, beds: ward.beds, want, seed: cfg.seed });
+        for n in &again.notes {
+            r.say(n.clone());
+        }
+        again
     };
     r.say(format!("queue depth {depth_now}, want {}: building {}", cfg.queue_depth, planned.packs.len()));
     let mut deferred = 0;
@@ -487,10 +519,10 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
                 ledger.sent.insert(id.clone(), sent);
                 save_ledger(cfg, &ledger, &mut r);
                 r.say(format!(
-                    "{} {} — {} {} {} from {} (drawn: {}, weight {} people/doctor){} · id {} · depth {}",
+                    "{} {} — {} {} {} from {} · {} (drawn: {}, weight {} people/doctor){} · id {} · depth {}",
                     if q.queued == 1 { "queued" } else { "already queued" },
                     pack.case, pack.persona.name, pack.persona.sex.to_uppercase(), pack.persona.age, pack.persona.country,
-                    pack.persona.country, fmt_weight(pl.weight),
+                    region_name(pl.region), pack.persona.country, fmt_weight(pl.weight),
                     if pack.endemic { " (endemic)" } else { "" },
                     &id[..12], q.depth
                 ));
