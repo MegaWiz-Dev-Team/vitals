@@ -780,3 +780,83 @@ fn the_ward_renames_the_patient_and_changes_nothing_else() {
     assert_eq!(voiced["patient"]["affect"], case["patient"]["affect"],
                "how she is feeling belongs to the case too");
 }
+
+/// Every time on the ward is a slot or a UTC instant, and never a local one.
+///
+/// Founder's question, 16 ก.ย.: how does the ward handle time zones. The answer the payload has to
+/// make true is that it does not have any. The only truth is the chain, so a time is either the
+/// slot it happened at — which is what a stranger re-derives from — or a UTC instant with a Z on
+/// it. A bare "2026-09-16 14:05" in a payload is a number that means a different moment to every
+/// reader, and nobody can tell which one we meant.
+///
+/// Rendering into somebody's own zone is the browser's job, from these. Nothing about anybody's
+/// zone is asked for or stored.
+#[test]
+fn every_time_the_ward_publishes_is_a_slot_or_a_z() {
+    use vitals_web::ward::{ward_unavailable, Pack, Persona};
+
+    let lease_ends = 5_000u64;
+    let patients = vec![
+        leased(patient(7, OPEN, 2, 10, 0), 0xA1, lease_ends),
+        patient(9, DISCHARGED, 3, 5, 900),
+    ];
+    let mut packs = std::collections::BTreeMap::new();
+    packs.insert(7u64, Pack {
+        case: "ep2-stemi".into(),
+        persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 54, sex: "f".into() },
+        portrait: Default::default(),
+        endemic: false,
+    });
+
+    let payloads = [
+        ward_payload(&vitals_web::ward::WardRead {
+            patients: &patients, shifts: &[], packs: &packs,
+            since: Some(1), as_of_slot: 4_000, now_unix: 1_760_000_000, source: "devnet:ABC",
+        }),
+        ward_unavailable("devnet:ABC", "rpc timed out"),
+    ];
+
+    // Walk every string in the payload and refuse anything that looks like a time and does not
+    // end in Z. Walked rather than listed, so a field added later is covered by this test the day
+    // it appears rather than the day somebody remembers to add it here.
+    fn walk(v: &serde_json::Value, path: String, out: &mut Vec<String>) {
+        match v {
+            serde_json::Value::String(s) => {
+                let looks_like_a_time = s.len() >= 16
+                    && s.as_bytes()[..4].iter().all(u8::is_ascii_digit)
+                    && s.as_bytes()[4] == b'-'
+                    && s.contains(':');
+                if looks_like_a_time && !s.ends_with('Z') {
+                    out.push(format!("{path} = {s}"));
+                }
+            }
+            serde_json::Value::Array(a) => {
+                for (i, x) in a.iter().enumerate() {
+                    walk(x, format!("{path}[{i}]"), out);
+                }
+            }
+            serde_json::Value::Object(o) => {
+                for (k, x) in o {
+                    walk(x, format!("{path}.{k}"), out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    for p in &payloads {
+        let mut bare = Vec::new();
+        walk(p, "payload".into(), &mut bare);
+        assert!(bare.is_empty(),
+                "a time with no zone means a different moment to every reader: {bare:?}");
+    }
+
+    // The one wall-clock field the board has, and it carries its Z.
+    let on_shift_since = payloads[0]["patients"][0]["on_shift_since"].as_str()
+        .expect("on shift since is an instant, not a bare number of seconds");
+    assert!(on_shift_since.ends_with('Z') && on_shift_since.contains('T'),
+            "ISO 8601 in UTC, so a browser can render it in the reader's own zone: {on_shift_since}");
+
+    // And the window says which day it counts by, because a week is a different week in Bangkok.
+    assert_eq!(payloads[0]["week"]["basis"], "UTC");
+}
