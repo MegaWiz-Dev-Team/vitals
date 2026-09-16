@@ -878,3 +878,46 @@ fn the_siblings_of_faces_already_on_file_are_made_once_and_carried_to_the_ward()
     assert_eq!(door.queue.borrow()[&id].portrait.get("stable_256").map(String::as_str), Some(sibling(&man2.entries["THA-1"].portrait["stable"]).as_str()), "Anan's waiting pack carries his");
     assert!(Ledger::load(&dir.join("factory-ledger.json")).unwrap().sent[&id].variants_sent, "and the ledger says so, so it is not sent again");
 }
+
+/// Since 4920a43 the board's `portrait` is the 256 px sibling when one exists. The face the other
+/// states are edited from must be the full-size one: from `portraits.stable`, or the manifest's
+/// stable — never the thumbnail, which would make every state after it softer than the first.
+#[test]
+fn the_states_are_edited_from_the_full_face_never_the_thumbnail_the_board_shows() {
+    let dir = world("thumb");
+    let pool = read_pool(POOL).unwrap();
+    let man = seed_manifest(&dir, &pool);
+    let anan = pool.iter().find(|p| p.key == "THA-1").unwrap();
+    let full = man.entries["THA-1"].portrait["stable"].clone();
+    let small = sibling(&full);
+    let mut ward = WardView::parse(STAGING).unwrap();
+    let p = &mut ward.patients[0];
+    p.name = Some(anan.name.clone()); p.country = Some("THA".into()); p.case = Some("osce-a".into()); p.age = Some(70);
+    p.portrait = Some(small.clone());
+    p.portraits = BTreeMap::from([("stable".to_string(), full.clone()), ("stable_256".to_string(), small.clone())]);
+    let door = FakeDoor::new(ward);
+    let tools = FakeTools::default();
+    let r = tick(&config(&dir, 0, 0), &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert_eq!(tools.fetches.borrow().as_slice(), std::slice::from_ref(&full), "the full face, not the -256");
+    assert_eq!(tools.edits.borrow().len(), 5);
+    let man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
+    assert_eq!(man2.entries["THA-1"].portrait.len(), 6, "recorded under her entry: the reference matched the file");
+
+    // A board that publishes only the thumbnail as `portrait`, with no set: the manifest's full
+    // face is the reference, and the thumbnail is never fetched.
+    let dir2 = world("thumb-only");
+    let man3 = seed_manifest(&dir2, &pool);
+    let full2 = man3.entries["THA-2"].portrait["stable"].clone();
+    let kanya = pool.iter().find(|p| p.key == "THA-2").unwrap();
+    let mut ward2 = WardView::parse(STAGING).unwrap();
+    let p = &mut ward2.patients[0];
+    p.name = Some(kanya.name.clone()); p.country = Some("THA".into()); p.case = Some("osce-d2".into()); p.age = Some(58);
+    p.portrait = Some(sibling(&full2)); p.portraits = BTreeMap::new();
+    let door2 = FakeDoor::new(ward2);
+    let tools2 = FakeTools::default();
+    let r = tick(&config(&dir2, 0, 0), &door2, &tools2);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert_eq!(tools2.fetches.borrow().as_slice(), std::slice::from_ref(&full2));
+    assert!(tools2.fetches.borrow().iter().all(|u| !u.ends_with("-256.webp")));
+}
