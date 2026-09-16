@@ -187,3 +187,26 @@ assert.equal(askedShown(null, 'drug', 'adrenaline IM', 'adrenaline IM'), 'adrena
 assert.equal(askedShown('1789554596', 'dx', 'dx_typhoid', 'Name the diagnosis'), 'Name the diagnosis');
 
 console.log('shift_logic: ok (and the transcript reads like a conversation)');
+
+// ── the strip's own sentence ─────────────────────────────────────────────────
+//
+// Which bed she is in belongs in it: "bed 3" is how a person at a ward says which patient they
+// mean, and the board already prints it in her row. The number comes from the board and not from
+// the shift payload on purpose — the payload would have to recompute it from every patient on the
+// ward to get the same answer, and two independently computed bed numbers is how a page comes to
+// disagree with the board it is standing next to.
+//
+// A ward that does not know the bed says the rest of the sentence rather than "bed null".
+const { shiftLine } = new Function([grab('shiftLine'), 'return { shiftLine };'].join('\n'))();
+
+assert.equal(shiftLine(3, 1, 0, her),
+  'bed 3 · shift 1 of her stay · her chart is rebuilt from 0 anchored shifts — take the shift to treat her');
+assert.equal(shiftLine(null, 1, 0, her),
+  'shift 1 of her stay · her chart is rebuilt from 0 anchored shifts — take the shift to treat her',
+  'a ward that does not know the bed says the rest of it rather than "bed null"');
+assert.equal(shiftLine(0, 1, 0, her).startsWith('shift'), true, 'and bed zero is not a bed');
+assert.equal(shiftLine(2, 4, 1, him),
+  'bed 2 · shift 4 of his stay · his chart is rebuilt from 1 anchored shift — take the shift to treat him',
+  'one shift is one shift, and the patient is a man');
+
+console.log('shift_logic: ok (and the strip says which bed)');
