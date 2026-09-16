@@ -346,3 +346,36 @@ fn rust_concat(src: &str, header: &str) -> String {
     }
     out
 }
+
+/// **The sheet is read before anything is done, so nothing may cover it.**
+///
+/// At 1460×900 the founder's own window, the PRESENTS line was clipped mid-word under the 128 px
+/// face: the sheet lives inside the frame, the frame is a fixed share of a fixed-height column,
+/// and the face took its bottom. A sheet a stranger reads before the first order cannot be
+/// half-hidden — and the fix is not a smaller face but a sheet that is not inside a frame at all
+/// while it is the thing being read.
+#[test]
+fn the_stem_sheet_is_never_under_the_face() {
+    let css = bay_css();
+    // While the sheet is showing on the ward, the frame sizes to it rather than the other way
+    // round: no fixed share of the column, no absolute fill, nothing clipped.
+    assert!(css.contains("html.is-ward .pt-art:has(> .stem:not(.hide))"),
+            "nothing makes room for the sheet on the ward, so the face takes its bottom");
+    let rule = css
+        .split("html.is-ward .pt-art:has(> .stem:not(.hide))")
+        .nth(1)
+        .and_then(|r| r.split('}').next())
+        .unwrap_or("")
+        .to_string();
+    assert!(rule.contains("height:auto"), "the frame takes the sheet's own height: {rule:?}");
+
+    let stem = css
+        .split("html.is-ward .pt-art > .stem:not(.hide)")
+        .nth(1)
+        .and_then(|r| r.split('}').next())
+        .unwrap_or("")
+        .to_string();
+    assert!(stem.contains("position:relative"),
+            "and the sheet sits in the flow rather than filling a box that is too short: {stem:?}");
+    assert!(stem.contains("overflow:visible"), "with nothing cut off: {stem:?}");
+}

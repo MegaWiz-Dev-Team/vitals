@@ -114,3 +114,36 @@ fn a_ward_session_may_not_be_played_before_it_is_declared() {
     assert!(refused.contains("take"),
             "and the refusal is a sentence the person at her bed can act on: {refused}");
 }
+
+/// **A rebuild must not be behind a shift this server just wrote.**
+///
+/// Reopening a patient in the seconds after an anchor reads the chain before the transaction is
+/// finalized: the count comes back one short and the page says "shift 1 · 0 anchored shifts" over
+/// a patient who has just been treated. Measured at ten to twenty seconds on staging.
+///
+/// This server knows better, because it is the one that wrote it. It remembers the shift count it
+/// last anchored per patient for a minute, and a read that comes back behind that is refused with
+/// a sentence rather than served as a chart — a stale count on a page whose whole claim is that
+/// the chart is the chain is the worst possible thing to show.
+#[test]
+fn a_read_behind_what_this_server_just_wrote_is_refused() {
+    use std::time::Duration;
+    use vitals_web::ward::behind_the_head;
+
+    // Nothing remembered: whatever the chain says is the truth.
+    assert!(behind_the_head(3, None).is_none());
+
+    // The chain has caught up, or is ahead because somebody else anchored.
+    assert!(behind_the_head(3, Some((3, Duration::from_secs(2)))).is_none());
+    assert!(behind_the_head(4, Some((3, Duration::from_secs(2)))).is_none());
+
+    // Behind, and recently written: this server wrote shift 3 two seconds ago and the chain still
+    // says 2.
+    let wait = behind_the_head(2, Some((3, Duration::from_secs(2)))).expect("refused");
+    assert!(wait.contains("landing"), "the sentence says what is happening, not what failed: {wait}");
+
+    // Behind, and long ago: the memory has expired and the chain is the authority again. A server
+    // that argued with the chain for ever would be a server with its own opinion of the record.
+    assert!(behind_the_head(2, Some((3, Duration::from_secs(61)))).is_none(),
+            "after a minute the chain is what there is, whatever we think we wrote");
+}
