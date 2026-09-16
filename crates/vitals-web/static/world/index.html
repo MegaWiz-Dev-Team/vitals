@@ -92,9 +92,9 @@ canvas#globe.dragging{cursor:grabbing}
 .panel .k{font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.1em;color:var(--ink-3);text-transform:uppercase}
 .panel .empty{color:var(--ink-2);font-size:.92rem;margin:.6rem 0 0}
 .plist{list-style:none;margin:.8rem 0 0;padding:0;display:flex;flex-direction:column;gap:.6rem}
-.prow{display:grid;grid-template-columns:40px minmax(0,1fr);grid-template-areas:"pic body" "pic act";gap:.15rem .6rem;align-items:start;padding:.55rem .6rem;border:1px solid var(--rule-soft);border-radius:.6rem;background:var(--ground);min-width:0}
+.prow{display:grid;grid-template-columns:56px minmax(0,1fr);grid-template-areas:"pic body" "pic act";gap:.15rem .6rem;align-items:start;padding:.55rem .6rem;border:1px solid var(--rule-soft);border-radius:.6rem;background:var(--ground);min-width:0}
 .prow>img,.prow>.ph{grid-area:pic;align-self:center}.prow>div{grid-area:body}.prow>a.take{grid-area:act;justify-self:start;margin-top:.15rem}
-.prow img,.prow .ph{width:40px;height:40px;border-radius:50%;object-fit:cover;background:var(--surface-2);border:1px solid var(--rule)}
+.prow img,.prow .ph{width:56px;height:56px;border-radius:50%;object-fit:cover;background:var(--surface-2);border:1px solid var(--rule)}
 .prow .ph{display:flex;align-items:center;justify-content:center;font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--ink-3)}
 .prow b{display:block;font-size:.92rem;line-height:1.2;overflow-wrap:anywhere}
 .prow .meta{font-family:"IBM Plex Mono",monospace;font-size:.66rem;color:var(--ink-3);margin-top:.2rem;display:flex;gap:.3rem;flex-wrap:wrap;align-items:center;line-height:1.5}
@@ -574,12 +574,21 @@ function stateLine(p, asOfSlot, nowMs) {
   }
   return { text: label, title: "" };
 }
+// Her face as the ward serves it — since 4920a43 the 256 px sibling when one exists, the full
+// picture otherwise. The address is the ward's to choose; the page never rewrites it, and only
+// tells the browser what it is loading: a 56 px box for a 256 px picture, lazily, off the main
+// thread. No picture is a placeholder, never a broken image.
+function portraitImg(p) {
+  const src = p && p.portrait;
+  if (!src) return `<span class="ph">\u2014</span>`;
+  return `<img src="${String(src).replace(/"/g, "&quot;")}" width="56" height="56" loading="lazy" decoding="async" alt="">`;
+}
 function row(p, showCountry) {
   const li = document.createElement("li"); li.className = "prow";
   const st = stateOf(p);
   const cid = countryId(p.country);
   const where = showCountry && cid && nameOf[cid] ? `<span class="tag">${escapeHtml(nameOf[cid])}</span>` : "";
-  const img = p.portrait ? `<img src="${String(p.portrait).replace(/"/g, "&quot;")}" alt="">` : `<span class="ph">—</span>`;
+  const img = portraitImg(p);
   /* A bed, or the reason there is not one. "no bed" is said out loud on a patient the ward cannot
      describe, so nobody works out from an absence that she is free to take. */
   const bed = p.bed !== undefined && p.bed !== null ? `<span class="tag">bed ${p.bed}</span>`
@@ -616,7 +625,7 @@ function renderDoctors(id) {
   box.hidden = false;
   if (people === null) {
     box.innerHTML = `<span class="k">people per doctor · World Bank/WHO</span><div class="big">no data for ${year}</div>
-      <div class="trend">${l ? `this country's first value is ${l[0] === at ? "" : ""}from ${series.filter(p => p[1] > 0).map(p => p[0]).sort()[0]}` : "this country has no value in the series"} (population per physician, World Bank SH.MED.PHYS.ZS)</div>`;
+      <div class="trend">${l ? `this country's first value is from ${series.filter(p => p[1] > 0).map(p => p[0]).sort()[0]}` : "this country has no value in the series"} (population per physician, World Bank SH.MED.PHYS.ZS)</div>`;
     return;
   }
   const pts = series.filter(p => p[1] > 0).sort((a, b) => a[0] - b[0]).map(p => [p[0], 1000 / p[1]]);
