@@ -1,10 +1,12 @@
 //! Founder, 16 Sep 2026: "ควรมีคนไข้จากทั่วโลกนะ" — the patients must come from the whole world.
 //!
-//! The pool is sixty countries across ten regions, and the crate carries a region table that
-//! places every one of them, so the draw can be held to a spread and not only to a weight. The
-//! twenty countries of the first spread are untouched — the portrait manifest keys on their
-//! positions — and the forty added carry four to six invented people each, both sexes, names
+//! The pool is seventy-four countries across ten regions, and the crate carries a region table
+//! that places every one of them, so the draw can be held to a spread and not only to a weight.
+//! The twenty countries of the first spread are untouched — the portrait manifest keys on their
+//! positions — and the fifty-four added carry four to six invented people each, both sexes, names
 //! plausible for the country's common naming traditions and no name twice anywhere in the pool.
+//! The fourteen with the worst shortage of doctors are among them (coordinator, 16 Sep: the
+//! mission is to bring that number down, so the pool cannot leave them out to keep a test tidy).
 
 use std::collections::{BTreeMap, BTreeSet};
 use vitals_factory::catalogue::Sex;
@@ -31,13 +33,16 @@ fn least(region: Region) -> usize {
 }
 
 #[test]
-fn the_pool_spans_sixty_countries_in_every_region() {
+fn the_pool_spans_the_world_in_every_region_including_the_worst_shortages() {
     let pool = read_pool(POOL).expect("the pool parses");
     let file: serde_json::Value = serde_json::from_str(POOL).unwrap();
     let physicians: serde_json::Value = serde_json::from_str(PHYSICIANS).unwrap();
     let countries: Vec<&str> = file["countries"].as_array().unwrap().iter().map(|c| c["country"].as_str().unwrap()).collect();
-    assert_eq!(countries.len(), 60, "sixty countries, from the whole world");
-    assert_eq!(countries.iter().collect::<BTreeSet<_>>().len(), 60, "no country twice");
+    assert_eq!(countries.len(), 74, "seventy-four countries, from the whole world");
+    assert_eq!(countries.iter().collect::<BTreeSet<_>>().len(), 74, "no country twice");
+    for worst in ["NER", "SSD", "SOM", "TCD", "MWI", "BDI", "SLE", "TZA", "CMR", "ZWE", "SEN", "RWA", "PNG", "YEM"] {
+        assert!(countries.contains(&worst), "{worst}: the worst shortages are the mission, and they are in the pool");
+    }
 
     // Alpha-3, and only codes the physicians table knows, so every country has a need to weigh by.
     for c in &countries {
@@ -74,7 +79,7 @@ fn the_pool_spans_sixty_countries_in_every_region() {
     assert_eq!(pool.iter().find(|p| p.key == "ETH-8").unwrap().name, "Samuel Girma");
     assert_eq!(pool.iter().find(|p| p.key == "USA-2").unwrap().name, "Emily Novak");
 
-    // The forty added: four to six people, both sexes, full names, a place.
+    // The fifty-four added: four to six people, both sexes, full names, a place.
     for c in file["countries"].as_array().unwrap().iter().skip(20) {
         let code = c["country"].as_str().unwrap();
         let people = c["personas"].as_array().unwrap();
@@ -104,7 +109,7 @@ fn the_pool_spans_sixty_countries_in_every_region() {
         let people: Vec<_> = pool.iter().filter(|p| &p.country == c).collect();
         assert!(people.iter().any(|p| p.sex == Sex::F) && people.iter().any(|p| p.sex == Sex::M), "{c}: both sexes");
     }
-    assert_eq!(pool.len(), 323, "one hundred and five of the first spread, and two hundred and eighteen added");
+    assert_eq!(pool.len(), 400, "one hundred and five of the first spread, and two hundred and ninety-five added");
 }
 
 #[test]
