@@ -188,6 +188,9 @@ struct FakeTools {
     /// Words in a state prompt the editor refuses, as Vertex refused a child's "deteriorating".
     refuse_edits: RefCell<Vec<&'static str>>,
     resized: RefCell<Vec<(u8, u32)>>,
+    /// Scripted answers to the two-picture question ("the same person?"); empty means yes.
+    pair_verdicts: RefCell<VecDeque<bool>>,
+    paired: RefCell<Vec<String>>,
     edits: RefCell<Vec<String>>,
     uploads: RefCell<Vec<String>>,
     fetches: RefCell<Vec<String>>,
@@ -215,6 +218,11 @@ impl Tools for FakeTools {
             return Err(format!("Vertex returned no content (finishReason IMAGE_PROHIBITED_CONTENT) for {refused}"));
         }
         Ok(format!("PNG-EDIT:{prompt}:{}", base.len()).into_bytes())
+    }
+    fn judge_pair(&self, _project: &str, model: &str, a: &[u8], _ma: &str, b: &[u8], _mb: &str, question: &str) -> Result<(bool, String), String> {
+        self.paired.borrow_mut().push(format!("{model}|{question}|{}|{}", a.len(), b.len()));
+        let ok = self.pair_verdicts.borrow_mut().pop_front().unwrap_or(true);
+        Ok((ok, if ok { "same face, same hair".into() } else { "a different jaw and eyes".into() }))
     }
     fn ask(&self, _project: &str, model: &str, image: &[u8], _mime: &str, question: &str) -> Result<String, String> {
         self.asked.borrow_mut().push(format!("{model}|{question}"));
@@ -964,4 +972,152 @@ fn siblings_are_made_for_pictures_the_board_has_and_the_file_does_not() {
     let r = tick(&config(&dir, 0, 0), &door, &tools);
     assert!(r.errors.is_empty());
     assert_eq!(tools.uploads.borrow().len(), 6);
+}
+
+// ── stable is a made state, and the base is only the reference ───────────────
+// Founder: รูปควรเป็นรูปที่เห็นเหมือนคนป่วย. A patient admitted vomiting blood does not smile in
+// her "stable" picture. So the painted face is the reference — kept on file as `base`, never
+// sent — and `stable` is made from it by the same edit path as the other states: the same
+// person, in the bed, unwell and tired, eyes open, no smile. The smile belongs to `recovered`.
+
+#[test]
+fn stable_is_made_from_the_base_and_the_base_is_never_sent() {
+    let dir = world("stable-made");
+    let pool = read_pool(POOL).unwrap();
+    seed_manifest(&dir, &pool);
+    let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
+    let tools = FakeTools::default();
+    let r = tick(&config(&dir, 3, 1), &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let man = Manifest::load(&dir.join("portraits.json")).unwrap();
+    let q = door.queue.borrow();
+    assert!(!q.is_empty());
+    for p in q.values() {
+        let stable = &p.portrait["stable"];
+        let (key, e) = man.entry_with_stable(stable).unwrap_or_else(|| panic!("{}: her stable is on file", p.persona.name));
+        let base = e.portrait.get("base").unwrap_or_else(|| panic!("{key}: the base is kept under its own key"));
+        assert_ne!(base, stable, "{key}: stable is a made picture, not the base");
+        assert_eq!(e.portrait_256.get("stable").map(String::as_str), Some(sibling(stable).as_str()), "{key}: with its sibling");
+        assert!(!p.portrait.values().any(|v| v == base), "{key}: the base is never sent");
+        assert_eq!(p.portrait.get("stable_256").map(String::as_str), Some(sibling(stable).as_str()));
+    }
+    // The stable edit is the founder's sentence; recovered keeps the smile.
+    let edits = tools.edits.borrow();
+    let stable_prompts: Vec<&String> = edits.iter().filter(|e| e.contains("holding") || e.contains("no smile")).collect();
+    assert!(!stable_prompts.is_empty(), "stable was made by an edit: {edits:?}");
+    for e in &stable_prompts {
+        assert!(e.starts_with("Edit this photo, keeping exactly the same person"), "{e}");
+        assert!(e.contains("unwell") && e.contains("no smile") && e.contains("eyes open"), "{e}");
+    }
+    assert!(edits.iter().all(|e| !e.contains("smile") || e.contains("no smile") || e.contains("recovered")), "the smile belongs to recovered: {edits:?}");
+    // Every stable was judged twice: the same person as the base, and looking the state.
+    assert!(tools.paired.borrow().iter().all(|j| j.contains("same person as the reference picture")), "{:?}", tools.paired.borrow());
+    assert!(tools.judged.borrow().iter().any(|j| j.contains("Does this picture show a patient who is")), "{:?}", tools.judged.borrow());
+}
+
+/// A face the file already holds as a bare base (the seeded sixty, every face made before this
+/// rule) gets its stable made the first time a pack needs it; a waiting pack that was sent with
+/// the base as its stable has it replaced through the replace door, and the ledger records the
+/// new address so it is done once.
+#[test]
+fn a_waiting_pack_sent_with_the_base_gets_a_made_stable_once() {
+    let dir = world("stable-replace");
+    let pool = read_pool(POOL).unwrap();
+    let man = seed_manifest(&dir, &pool);
+    let anan = pool.iter().find(|p| p.key == "THA-1").unwrap();
+    let base = man.entries["THA-1"].portrait["stable"].clone();
+    let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
+    let tools = FakeTools::default();
+    let cfg = config(&dir, 0, 0);
+    let mut sent = vitals_factory::ledger::Sent::new("osce-a", anan, 70, false, Some(base.clone()), cfg.now, &cfg.ward);
+    sent.sex = "m".into();
+    let pack = sent.to_pack();
+    let id = pack_id(&pack);
+    door.push(&Token::new("t".into()), std::slice::from_ref(&pack)).unwrap();
+    let mut ledger = Ledger::default();
+    ledger.sent.insert(id.clone(), sent);
+    ledger.save(&dir.join("factory-ledger.json")).unwrap();
+
+    let r = tick(&cfg, &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
+    let e = &man2.entries["THA-1"];
+    assert_eq!(e.portrait.get("base"), Some(&base), "the face moves under base");
+    let made = e.portrait.get("stable").expect("a stable was made");
+    assert_ne!(made, &base);
+    assert_eq!(tools.edits.borrow().len(), 1, "one edit: his stable");
+    let reps = door.replaces.borrow();
+    assert_eq!(reps.len(), 1, "{reps:?}");
+    assert_eq!(reps[0].1.get("stable"), Some(made));
+    assert_eq!(reps[0].1.get("stable_256").map(String::as_str), Some(sibling(made).as_str()));
+    assert_eq!(door.queue.borrow()[&id].portrait["stable"], *made, "the waiting pack carries the made stable");
+    assert!(!door.queue.borrow()[&id].portrait.values().any(|v| v == &base), "and not the base");
+    let l2 = Ledger::load(&dir.join("factory-ledger.json")).unwrap();
+    assert_eq!(l2.sent[&id].stable.as_deref(), Some(made.as_str()));
+    drop(reps);
+    let r = tick(&cfg, &door, &tools);
+    assert!(r.errors.is_empty());
+    assert_eq!(door.replaces.borrow().len(), 1, "once");
+    assert_eq!(tools.edits.borrow().len(), 1, "not made again");
+}
+
+// ── the state gate ───────────────────────────────────────────────────────────
+// Two questions per made state, to the same judge: the same person as the reference (both
+// pictures inline), and does it show a patient who is <the state's own sentence>. A no is one
+// re-edit; a second no leaves that state out — the ladder falls back to the nearest milder one —
+// and the tick's "rejected" counts states the judge refused, the ledger recording which.
+
+#[test]
+fn every_made_state_is_judged_twice_and_a_refusal_costs_one_re_edit_then_the_state() {
+    let dir = world("state-gate");
+    let pool = read_pool(POOL).unwrap();
+    let man = seed_manifest(&dir, &pool);
+    let pak1 = pool.iter().find(|p| p.key == "PAK-1").unwrap();
+    let base = man.entries["PAK-1"].portrait["stable"].clone();
+    let mut ward = WardView::parse(STAGING).unwrap();
+    let p = &mut ward.patients[0];
+    p.name = Some(pak1.name.clone()); p.country = Some("PAK".into()); p.case = Some("osce-d".into()); p.age = Some(62);
+    p.portrait = Some(base.clone()); p.portraits = BTreeMap::from([("stable".to_string(), base.clone())]);
+    let door = FakeDoor::new(ward);
+    let tools = FakeTools::default();
+    let cfg = config(&dir, 0, 0);
+    // Her pack is in the ledger, admitted, so the refusal has somewhere to be recorded.
+    let mut sent = vitals_factory::ledger::Sent::new("osce-d", pak1, 62, false, Some(base.clone()), cfg.now, &cfg.ward);
+    sent.sex = "m".into();
+    sent.patient_id = Some(1789488342);
+    let id = pack_id(&sent.to_pack());
+    let mut ledger = Ledger::default();
+    ledger.sent.insert(id.clone(), sent);
+    ledger.save(&dir.join("factory-ledger.json")).unwrap();
+
+    // States are made in ladder order: recovered, improving, deteriorating, critical, arrest.
+    // improving: not the same person once, then fine. critical: shows the state? no, twice.
+    tools.pair_verdicts.borrow_mut().extend([true, false, true, true, true, true, true]);
+    tools.verdicts.borrow_mut().extend([true, true, true, false, false, true]);
+    let r = tick(&cfg, &door, &tools);
+    assert!(r.errors.is_empty(), "a refused state is not an error: {:?}", r.errors);
+    let edits = tools.edits.borrow();
+    assert_eq!(edits.len(), 7, "five states, one re-edit for improving, one for critical: {}", edits.len());
+    let paired = tools.paired.borrow();
+    assert_eq!(paired.len(), 7, "every edit judged for identity");
+    assert!(paired.iter().all(|j| j.contains("Is this the same person as the reference picture?")));
+    let judged = tools.judged.borrow();
+    assert_eq!(judged.len(), 6, "the state question is asked only of a picture that is the same person: {judged:?}");
+    assert!(judged.iter().any(|j| j.contains("Does this picture show a patient who is") && j.contains("recovered")), "{judged:?}");
+    let fills = door.fills.borrow();
+    assert_eq!(fills.len(), 1);
+    let keys: Vec<&String> = fills[0].1.keys().collect();
+    assert!(keys.iter().any(|k| *k == "improving"), "improving passed on the re-edit: {keys:?}");
+    assert!(!keys.iter().any(|k| *k == "critical"), "critical was refused twice and left out: {keys:?}");
+    assert!(keys.iter().any(|k| *k == "arrest") && keys.iter().any(|k| *k == "recovered") && keys.iter().any(|k| *k == "deteriorating"));
+    assert_eq!(r.rejected, 1, "rejected counts states the judge refused");
+    assert_eq!(r.states_made, 4);
+    let text = r.lines.join("\n");
+    assert!(text.contains("critical") && text.contains("left out"), "{text}");
+    assert!(text.contains("re-edit"), "{text}");
+    let l2 = Ledger::load(&dir.join("factory-ledger.json")).unwrap();
+    assert!(l2.sent[&id].refused.iter().any(|w| w.starts_with("critical")), "the ledger records which: {:?}", l2.sent[&id].refused);
+    let man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
+    assert!(!man2.entries["PAK-1"].portrait.contains_key("critical"), "a refused state is not on file");
+    assert_eq!(man2.entries["PAK-1"].portrait.len(), 5, "base, recovered, improving, deteriorating, arrest — stable stays the base for an admitted patient");
 }
