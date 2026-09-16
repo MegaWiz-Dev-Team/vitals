@@ -139,3 +139,48 @@ fn a_hash_of_nothing_names_no_shift() {
     assert!(is_shift_hash(&format!("{}1", "0".repeat(63))), "but one real byte makes it a hash");
     assert!(is_shift_hash(&"a".repeat(64)));
 }
+
+/// **The session that will not replay is the one holding the tape.**
+///
+/// A ward session is restored by rebuilding the patient from the chain, so a session whose own
+/// shift is the one with the missing tape fails to restore — and until now the boot loop then
+/// deleted it. That is the only copy of a tape for a leaf already on chain, thrown away by the
+/// code that found the problem; on staging it is why Abebe's tape was gone before the repair
+/// existed to look for it.
+///
+/// So the repair runs **before** anything is dropped, and it is the same function the ticker uses.
+#[test]
+fn the_repair_offers_every_stored_tape_before_any_session_is_dropped() {
+    use vitals_web::ward_chain::{missing_tapes, recover_tape};
+
+    let sce = ep1();
+    let played = vec![Step::Do("oxygen".into()), Step::Tick(30.0), Step::Tick(2.0)];
+    let r = vitals_replay::replay(&sce, &played).expect("replay");
+    let anchored = vitals_web::ward_chain::hex32(&vitals_replay::leaf(
+        &vitals_replay::sce_hash(&sce),
+        &played,
+        &r,
+    ));
+
+    let st = store("boot");
+    // The chain says this leaf exists; nothing here has its tape.
+    let shifts = vec![vitals_web::ward::ShiftOnChain {
+        patient_id: 1789538329,
+        signer: [3; 32],
+        slot: 499_153_055,
+        run_hash: {
+            let mut b = [0u8; 32];
+            for (i, x) in (0..32).map(|i| (i, u8::from_str_radix(&anchored[i * 2..i * 2 + 2], 16).unwrap())) {
+                b[i] = x;
+            }
+            b
+        },
+    }];
+    assert_eq!(missing_tapes(&st, &shifts), vec![anchored.clone()],
+               "the leaf with no tape is named, and only that one");
+
+    // The session that failed to restore is exactly the one holding it.
+    let found = recover_tape(&st, 1789538329, &anchored, &[(sce, played.clone())]);
+    assert_eq!(found.as_deref(), Some(&played[..]), "offered, and taken");
+    assert!(missing_tapes(&st, &shifts).is_empty(), "and nothing is missing afterwards");
+}
