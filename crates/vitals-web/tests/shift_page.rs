@@ -169,7 +169,10 @@ fn nothing_is_written_to_her_chart_before_the_head_is_taken() {
 #[test]
 fn the_wards_own_sentences_take_the_patients_pronoun() {
     let js = bay_js();
-    for name in ["wardBar", "openShift", "takeShift", "handBack", "handOver"] {
+    // `fire` is on the list because it is the sentence a stranger reads on *every* press before
+    // the head is taken — the most-read line on the page, and it said "her" over a man until the
+    // director caught it in review. The rule was right and the list was short.
+    for name in ["wardBar", "openShift", "takeShift", "handBack", "handOver", "handOverInner", "fire"] {
         // Comments first: they are prose about the code, they are allowed to name a woman, and an
         // apostrophe in one ("the case's own patient") would otherwise be read as a quote and
         // shift every literal after it by one.
