@@ -80,6 +80,10 @@ fn regions(seq: &[&str]) -> BTreeSet<Region> {
     seq.iter().filter_map(|c| region_of(c)).collect()
 }
 
+/// Nineteen countries covering every region, the ten greatest needs after Ethiopia among them:
+/// a queue of these owes no floor, so what the draw does next is need's alone.
+const ROUND: [&str; 19] = ["MDG", "MOZ", "MLI", "UGA", "COD", "AGO", "GHA", "KEN", "HTI", "ZMB", "NGA", "IDN", "EGY", "BGD", "DEU", "KAZ", "JPN", "FJI", "USA"];
+
 /// A ledger holding `seq` as packs already sent and still waiting, oldest first.
 fn waiting(pool: &[Person], seq: &[&str]) -> Ledger {
     let mut l = Ledger::default();
@@ -128,26 +132,35 @@ fn a_country_at_its_cap_is_redrawn_not_skipped_and_the_plan_says_which() {
     let pool = read_pool(POOL).unwrap();
     let (cat, man, endemic) = (catalogue(), full_manifest(&pool), BTreeMap::new());
     let w = weights(PHYSICIANS, &pool).unwrap();
-    let ledger = waiting(&pool, &["ETH", "MDG", "ETH", "MOZ", "KEN"]);
+    // Thirty-eight waiting: a round of nineteen, then the round again with Ethiopia twice in
+    // place of two others. Ethiopia is two of thirty-eight — behind her eight per cent, so need
+    // draws her — and two of the last nineteen, so the cap refuses her.
+    let mut history: Vec<&str> = ROUND.to_vec();
+    history.extend(ROUND.iter().map(|c| if *c == "DEU" || *c == "KAZ" { "ETH" } else { *c }));
+    assert_eq!(history.len(), 38);
+    let ledger = waiting(&pool, &history);
     let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &ledger, weights: &w, beds: 3, want: 15, seed: 4 });
     let seq = countries(&p);
     assert_eq!(seq.len(), 15, "never a tick skipped: {:?}", p.notes);
-    assert!(!seq.contains(&"ETH"), "Ethiopia holds two of the last twenty already: {seq:?}");
-    let whole: Vec<&str> = ["ETH", "MDG", "ETH", "MOZ", "KEN"].into_iter().chain(seq.iter().copied()).collect();
-    assert!(tally(&whole).values().all(|n| *n <= QUEUE_CAP), "{:?}", tally(&whole));
-    // Need drew Ethiopia first — the greatest need — and the redraw took the next allowed.
+    assert!(!seq.contains(&"ETH"), "Ethiopia holds two of the last twenty throughout: {seq:?}");
+    let whole: Vec<&str> = history.iter().copied().chain(seq.iter().copied()).collect();
+    for window in whole.windows(QUEUE_WINDOW) {
+        assert!(tally(window).values().all(|n| *n <= QUEUE_CAP), "{:?}", tally(window));
+    }
+    // Need drew Ethiopia first — the greatest need, behind her share — and the redraw took the
+    // next country allowed; the plan says so, draw by draw and in one line.
     let first = p.redrawn.iter().find(|r| r.slot == 0).expect("the first draw was redrawn");
     assert_eq!(first.drawn, "ETH");
     assert!(first.why.contains("queue cap"), "{}", first.why);
     assert_eq!(first.took, seq[0]);
+    assert!(p.redrawn.iter().filter(|r| r.drawn == "ETH").count() >= 10, "{:?}", p.redrawn);
     assert!(p.notes.iter().any(|n| n.contains("redrawn") && n.contains("ETH")), "{:?}", p.notes);
     // Once the two of Ethiopia have aged out of the last twenty, Ethiopia is drawn again: forty
     // sent, Ethiopia the first two and nineteen others twice each after — every region among
     // them, so no floor is owed — leaves Ethiopia the largest deficit and no longer at the cap.
-    let round = ["MDG", "MOZ", "MLI", "UGA", "COD", "AGO", "GHA", "KEN", "HTI", "ZMB", "NGA", "IDN", "EGY", "BGD", "DEU", "KAZ", "JPN", "FJI", "USA"];
     let mut older: Vec<&str> = vec!["ETH", "ETH"];
-    older.extend(round);
-    older.extend(round);
+    older.extend(ROUND);
+    older.extend(ROUND);
     assert_eq!(older.len(), 40);
     let ledger = waiting(&pool, &older);
     let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &ledger, weights: &w, beds: 3, want: 3, seed: 4 });
@@ -162,14 +175,20 @@ fn the_board_never_holds_a_country_twice_while_another_country_is_available() {
     let pool = read_pool(POOL).unwrap();
     let (cat, man, endemic) = (catalogue(), full_manifest(&pool), BTreeMap::new());
     let w = weights(PHYSICIANS, &pool).unwrap();
+    // Ethiopia and Madagascar in two of the three beds, eighteen others waiting: Ethiopia is one
+    // of twenty on the ward and waiting — behind her share, so need draws her — and in a bed, so
+    // the board rule refuses her while fifty-eight other countries are free.
     let mut ward = empty_ward();
     ward.patients.push(on_board(1, person(&pool, "ETH-0"), "osce-a2", 66));
     ward.patients.push(on_board(2, person(&pool, "MDG-0"), "osce-c2", 50));
-    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &Ledger::default(), weights: &w, beds: 3, want: 10, seed: 2 });
+    let others: Vec<&str> = ROUND.iter().copied().filter(|c| *c != "MDG").collect();
+    let ledger = waiting(&pool, &others);
+    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &w, beds: 3, want: 10, seed: 2 });
     let seq = countries(&p);
-    assert_eq!(seq.len(), 10);
+    assert_eq!(seq.len(), 10, "{:?}", p.notes);
     assert!(!seq.contains(&"ETH") && !seq.contains(&"MDG"), "{seq:?}");
-    assert!(p.redrawn.iter().any(|r| r.drawn == "ETH" && r.why.contains("bed")), "{:?}", p.redrawn);
+    let first = p.redrawn.iter().find(|r| r.slot == 0).expect("the first draw was redrawn");
+    assert!(first.drawn == "ETH" && first.why.contains("bed"), "{first:?}");
 
     // Only Ethiopians free: the board rule yields, and the plan says so.
     let ethiopians: Vec<Person> = pool.iter().filter(|x| x.country == "ETH").cloned().collect();
@@ -179,18 +198,40 @@ fn the_board_never_holds_a_country_twice_while_another_country_is_available() {
     assert!(p.notes.iter().any(|n| n.contains("no other country")), "{:?}", p.notes);
 }
 
-/// Two hundred draws from an empty ward with the real files: Ethiopia's share is the largest, no
-/// country exceeds its cap in any window of twenty, every region appears in the first forty, and
-/// the shares still follow the weights — need decides how often, the spread only where the
-/// weights would have left a corner of the world dark.
+/// Two hundred draws from an empty ward with the real files, the ward admitting as the factory
+/// builds: the queue fills to twenty, then each step the oldest waiting pack is admitted and
+/// discharged (the face is free again) and one pack is built to replace it. Ethiopia's share is
+/// the largest, no country exceeds its cap in any window of twenty, every region appears in the
+/// first forty, and the shares still follow the weights — need decides how often, the spread only
+/// where the weights would have left a corner of the world dark.
 #[test]
 fn over_two_hundred_draws_need_sets_the_shares_and_the_spread_holds() {
     let pool = read_pool(POOL).unwrap();
     let (cat, man, endemic) = (catalogue(), full_manifest(&pool), BTreeMap::new());
     let w = weights(PHYSICIANS, &pool).unwrap();
-    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &w, beds: 60, want: 200, seed: 16 });
-    let seq = countries(&p);
-    assert_eq!(seq.len(), 200, "{:?}", p.notes);
+    let mut ledger = Ledger::default();
+    let mut seq: Vec<String> = Vec::new();
+    let mut redrawn = Vec::new();
+    for step in 0..200u64 {
+        // The ward takes the oldest waiting pack once the queue is full; the face frees.
+        let waiting: Vec<(String, u64)> = ledger.unseen().into_iter().map(|(id, s)| (id.clone(), s.sent_at)).collect();
+        if waiting.len() >= QUEUE_WINDOW {
+            let (oldest, _) = waiting.iter().min_by_key(|(id, at)| (*at, id.clone())).unwrap().clone();
+            let s = ledger.sent.get_mut(&oldest).unwrap();
+            s.patient_id = Some(step + 1);
+            s.closed = true;
+        }
+        let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &ledger, weights: &w, beds: 3, want: 1, seed: 16 + step });
+        assert_eq!(p.packs.len(), 1, "step {step}: {:?}", p.notes);
+        let pl = &p.packs[0];
+        let who = person(&pool, &pl.person);
+        // Keyed by step, not pack id: a person freed and drawn again on the same case at the same
+        // age is the same pack to the door, and this history must keep both draws.
+        ledger.sent.insert(format!("step{step:03}"), Sent::new(&pl.pack.case, who, pl.pack.persona.age, pl.pack.endemic, None, 1000 + step, "test"));
+        seq.push(pl.pack.persona.country.clone());
+        redrawn.extend(p.redrawn);
+    }
+    let seq: Vec<&str> = seq.iter().map(String::as_str).collect();
     let t = tally(&seq);
     let most = t.values().max().copied().unwrap();
     assert_eq!(t["ETH"], most, "Ethiopia, the greatest need, is drawn most: {t:?}");
@@ -219,7 +260,19 @@ fn over_two_hundred_draws_need_sets_the_shares_and_the_spread_holds() {
     for (c, _) in by_count.iter().take(5) {
         assert!(top6.contains(*c), "{c} is among the five most drawn but not the six greatest needs: {by_count:?}");
     }
-    assert!(p.redrawn.iter().any(|r| r.drawn == "ETH"), "Ethiopia met the cap somewhere in two hundred: {:?}", p.redrawn.len());
+    // The floors lift every region to at least one patient in forty — five in two hundred — and
+    // every redraw that did it is on record, with the country need had drawn.
+    let mut per_region: BTreeMap<Region, usize> = BTreeMap::new();
+    for c in &seq {
+        *per_region.entry(region_of(c).unwrap()).or_default() += 1;
+    }
+    for r in ALL {
+        assert!(per_region.get(&r).copied().unwrap_or(0) >= 200 / WORLD_WINDOW, "{}: {:?}", r.name(), per_region);
+    }
+    assert!(!redrawn.is_empty() && redrawn.iter().all(|r| r.drawn != r.took && !r.why.is_empty()), "{redrawn:?}");
+    // At her share Ethiopia is due every twelfth draw or so, and need spaces her out itself: the
+    // cap is a promise about the queue, not the thing that holds her to her share.
+    assert!(redrawn.iter().filter(|r| r.drawn == "ETH").count() <= 2, "{:?}", redrawn.iter().filter(|r| r.drawn == "ETH").collect::<Vec<_>>());
 }
 
 /// The bed rule and the queue rule together on a real board: three in beds, sixteen waiting, four

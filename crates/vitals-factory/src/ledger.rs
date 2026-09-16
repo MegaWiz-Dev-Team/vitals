@@ -144,6 +144,16 @@ impl Ledger {
         self.sent.iter().filter(|(_, s)| s.patient_id.is_none()).collect()
     }
 
+    /// Everything sent, oldest first — the draw's own history. The spread rules in
+    /// [`crate::plan`] read its tail: the last twenty sent are the queue the ward admits from,
+    /// and the last forty are the run no region may be missing from. Ties in time go by pack id,
+    /// so the order is the same on every run.
+    pub fn chronology(&self) -> Vec<&Sent> {
+        let mut v: Vec<(&String, &Sent)> = self.sent.iter().collect();
+        v.sort_by(|a, b| a.1.sent_at.cmp(&b.1.sent_at).then_with(|| a.0.cmp(b.0)));
+        v.into_iter().map(|(_, s)| s).collect()
+    }
+
     /// Learn from the board: an unseen pack whose person, case and age are now on a bed gets her
     /// patient id; a pack whose patient has left is closed. Returns what changed, in words.
     pub fn reconcile(&mut self, ward: &WardView) -> Vec<String> {

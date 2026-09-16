@@ -363,30 +363,43 @@ fn weights_are_people_per_doctor_with_a_floor_and_the_median_for_the_unknown() {
     assert!(w2.table().contains("ETH 6,990") && w2.table().contains("floor 169"), "{}", w2.table());
 }
 
-/// Two countries, twice the need: twice the patients. Exact over a run, not merely likely.
+/// Twice the need: twice the patients. Exact over a run, not merely likely — eight countries at
+/// 2,000 and eight at 1,000, twenty-four packs: two each and one each, with the spread's cap of
+/// two in twenty never in the way.
 #[test]
 fn the_draw_is_weighted_by_need_and_least_on_the_ward_breaks_ties() {
     let mut pool = Vec::new();
-    for (c, n) in [("AAA", 20), ("BBB", 20)] {
-        for i in 0..n {
-            pool.push(Person { key: format!("{c}-{i}"), name: format!("Person {c} {i}"), sex: if i % 2 == 0 { Sex::F } else { Sex::M }, country: c.into(), place: c.into() });
+    let mut table = Vec::new();
+    for n in 0..16 {
+        let c = format!("{}{}{}", (b'A' + n) as char, (b'A' + n) as char, (b'A' + n) as char);
+        table.push((c.clone(), if n < 8 { 2000.0 } else { 1000.0 }));
+        for i in 0..6 {
+            pool.push(Person { key: format!("{c}-{i}"), name: format!("Person {c} {i}"), sex: if i % 2 == 0 { Sex::F } else { Sex::M }, country: c.clone(), place: c.clone() });
         }
     }
     let cat = catalogue();
     let (man, endemic, ledger) = (Manifest::default(), BTreeMap::new(), Ledger::default());
-    let w = Weights::from_table(&[("AAA", 2000.0), ("BBB", 1000.0)]);
-    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &ledger, weights: &w, beds: 3, want: 30, seed: 5 });
-    let from = |c: &str| p.packs.iter().filter(|pl| pl.pack.persona.country == c).count();
-    assert_eq!((from("AAA"), from("BBB")), (20, 10), "{:?}", p.packs.iter().map(|x| x.pack.persona.country.clone()).collect::<Vec<_>>());
+    let rows: Vec<(&str, f64)> = table.iter().map(|(c, w)| (c.as_str(), *w)).collect();
+    let w = Weights::from_table(&rows);
+    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &ledger, weights: &w, beds: 3, want: 24, seed: 5 });
+    let seq: Vec<&str> = p.packs.iter().map(|x| x.pack.persona.country.as_str()).collect();
+    assert_eq!(seq.len(), 24, "{:?}", p.notes);
+    for (c, weight) in &table {
+        let got = seq.iter().filter(|x| *x == c).count();
+        assert_eq!(got, if *weight == 2000.0 { 2 } else { 1 }, "{c} at {weight}: {seq:?}");
+    }
     assert!(p.packs.iter().any(|pl| pl.weight == 2000.0), "each pack carries the weight it was drawn with");
 
-    // Equal need: whoever has fewer on the ward is drawn first.
+    // Equal need: whoever has fewer on the ward is drawn first. Only first — need is measured
+    // against the run this factory has sent, not against the board, so once BBB has a pack the
+    // two are no longer tied and AAA is behind; the board breaks ties, it does not count as need.
+    let two: Vec<Person> = pool.iter().filter(|x| x.country == "AAA" || x.country == "BBB").cloned().collect();
     let w = Weights::from_table(&[("AAA", 1000.0), ("BBB", 1000.0)]);
     let mut ward = empty_ward();
-    ward.patients.push(on_board(1, "on_ward", &pool[0], "osce-c2", 50));
-    ward.patients.push(on_board(2, "on_ward", &pool[2], "osce-a2", 66));
-    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &w, beds: 10, want: 2, seed: 5 });
-    assert!(p.packs.iter().all(|pl| pl.pack.persona.country == "BBB"), "{:?}", p.packs.iter().map(|x| x.pack.persona.country.clone()).collect::<Vec<_>>());
+    ward.patients.push(on_board(1, "on_ward", &two[0], "osce-c2", 50));
+    ward.patients.push(on_board(2, "on_ward", &two[2], "osce-a2", 66));
+    let p = plan(&Inputs { catalogue: &cat, pool: &two, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &w, beds: 10, want: 2, seed: 5 });
+    assert_eq!(p.packs.iter().map(|x| x.pack.persona.country.as_str()).collect::<Vec<_>>(), vec!["BBB", "AAA"]);
 }
 
 /// No country holds more than 40 % of the beds at once: with three beds that is one, so a
@@ -404,11 +417,11 @@ fn no_country_takes_more_than_its_share_of_the_beds() {
     assert!(p.packs.iter().all(|pl| pl.pack.persona.country != "ETH"), "Ethiopia has her bed: {:?}", p.packs.iter().map(|x| x.pack.persona.country.clone()).collect::<Vec<_>>());
     let next = w.ranked().into_iter().map(|(c, _)| c).find(|c| c != "ETH").unwrap();
     assert_eq!(p.packs[0].pack.persona.country, next, "so the highest need without a bed goes first");
-    // With ten beds the cap is four, and Ethiopia is drawn again once the others have caught up
-    // to her share — she already holds one of one, so not first.
-    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &w, beds: 10, want: 30, seed: 9 });
-    assert_ne!(p.packs[0].pack.persona.country, "ETH");
-    assert!(p.packs.iter().any(|pl| pl.pack.persona.country == "ETH"), "{:?}", p.packs.iter().map(|x| x.pack.persona.country.clone()).collect::<Vec<_>>());
+    // With ten beds the cap is four, so her bed does not keep Ethiopia out; and a patient the
+    // ledger never sent is not part of the run need is measured against, so she is first again.
+    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &w, beds: 10, want: 6, seed: 9 });
+    assert_eq!(p.packs[0].pack.persona.country, "ETH", "{:?}", p.packs.iter().map(|x| x.pack.persona.country.clone()).collect::<Vec<_>>());
+    assert_eq!(p.packs.iter().filter(|pl| pl.pack.persona.country == "ETH").count(), 1, "and once in six, at her share");
 }
 
 /// The pool grows where the need is: among the twenty of the first spread, nine people for the
