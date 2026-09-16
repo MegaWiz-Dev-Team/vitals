@@ -1414,6 +1414,18 @@ a.give:hover{filter:brightness(1.06)}
      inside itself, so the verdict never pushes the bay off the bottom. */
   .result{max-height:34vh;overflow:auto}
 }
+/* The ward host's shift page. Everything that belongs to the single-player season is gone rather
+   than hidden late: the lobby with its hero and shelf, the restart and the way back to the
+   episodes, and the account's own tally — none of which means anything to a stranger who came to
+   treat one patient. */
+html.is-ward #lobby,
+html.is-ward #back,
+html.is-ward #start,
+html.is-ward #tally{display:none!important}
+html.is-ward .wardpage{max-width:34rem;margin:4rem auto;padding:0 1.2rem;line-height:1.6}
+html.is-ward .wardpage h1{font-size:1.5rem;margin:0 0 .4rem}
+html.is-ward .wardpage .bed{color:var(--ink-3,#7b8a86);font:600 .85rem/1.6 ui-monospace,monospace;
+  letter-spacing:.06em;text-transform:uppercase}
 </style>
 </head>
 <body>
@@ -1831,6 +1843,19 @@ const $=s=>document.querySelector(s);
    code at the foot of the script, because the card renderer reads it and a const in its temporal
    dead zone would throw the first time a station card is drawn. */
 const WARD=(location.pathname.match(/^\/ward\/(\d+)\/?$/)||[])[1]||null;
+/* On a shift page the season does not exist. Not hidden after it renders — never rendered: a
+   stranger who came from the globe to treat somebody must not land in the single-player product,
+   and must find nothing here that leads into it. The class goes on before anything paints, and
+   the lobby, its hero, its shelf, its stars and the bay's own way back to the shelf all go with
+   it. `/` on this host is the globe; the way back is there. */
+if(WARD){
+  document.documentElement.classList.add('is-ward');
+  addEventListener('DOMContentLoaded',()=>{
+    document.querySelector('#lobby')?.classList.add('hide');
+    document.querySelector('#game')?.classList.remove('hide');
+    const n=document.querySelector('#ep-name'); if(n)n.textContent='the ward';
+  },{once:true});
+}
 /* Escaping, up here with WARD because the renderers below use both and a const in its
    temporal dead zone throws the first time one of them draws. */
 const esc=t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -5450,12 +5475,19 @@ async function openShift(){
   const me=await identity();
   const r=await (await fetch('/api/new?patient='+WARD+(me?'&player='+me.pub:'')+langQ())).json();
   if(r.error){
-    /* Nothing to take, so nothing to press. A button that stays live on a patient who cannot be
-       opened answers "no such session", which tells a stranger the page is broken rather than
-       that this bed is not ready. */
-    $('#wardwho').textContent='patient '+WARD;
-    $('#wardtake').style.display='none';
-    return wardSay(esc(r.error)+' <a href="/">back to the ward</a>');
+    /* A bed that cannot be opened is a page of its own, not a strip above a product this stranger
+       did not come for. The sentence, which bed she is in if the board knows, and the way back. */
+    let bed='';
+    try{
+      const w=await (await fetch('/api/ward')).json();
+      const her=(w.patients||[]).find(p=>String(p.patient_id)===String(WARD));
+      if(her&&her.bed)bed='bed '+her.bed+' · ';
+    }catch(e){ /* the board is not needed to say what happened */ }
+    $('#game').innerHTML='<div class="wardpage">'
+      +'<p class="bed">'+bed+'patient '+esc(WARD)+'</p>'
+      +'<h1>Not this bed</h1><p>'+esc(r.error)+'</p>'
+      +'<p><a href="/">← the ward</a></p></div>';
+    return;
   }
   WARDPENDING=r.id; WARDSHIFT=r.ward;
   $('#wardwho').textContent=(r.ward.name||('patient '+WARD))+' · '+(r.ward.country||'—');
