@@ -14,7 +14,11 @@ pub enum Outcome {
 /// Coarsen a refusal reason to the family it belongs to, for grouping.
 pub fn reason_family(reason: &str) -> String {
     let r = reason;
-    if r.starts_with("no archetype fits") {
+    if r.starts_with("no archetype fits: ") && !r.contains("names no deterioration") {
+        // a diagnosis the library knows it cannot model yet — keep the shape's name
+        let why = r.trim_start_matches("no archetype fits: ");
+        format!("no archetype yet: {}", why.split(" — ").next().unwrap_or(why))
+    } else if r.starts_with("no archetype fits") {
         "no archetype fits (stable presentation)".into()
     } else if r.contains("not forced") {
         let suggested = r.split("words suggest ").nth(1).and_then(|s| s.split(' ').next()).unwrap_or("?");

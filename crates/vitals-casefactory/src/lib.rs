@@ -141,6 +141,9 @@ pub fn compile(case_json: &str, source: Source) -> Result<Pack, Refusal> {
 
     // Words first, then vitals: a clinic case with no blood pressure is refused as the stable
     // presentation it is, not for the number it never needed.
+    if let Some(why) = Archetype::not_yet(&case) {
+        return Err(refuse(&id, why));
+    }
     if Archetype::candidates(&case).is_empty() {
         return Err(refuse(&id, Archetype::none_fits(&case)));
     }
@@ -149,6 +152,10 @@ pub fn compile(case_json: &str, source: Source) -> Result<Pack, Refusal> {
     let mapped = plan::map(&case, a);
     if mapped.critical().is_empty() {
         return Err(refuse(&id, format!("the plan names no therapy the {} archetype can act on — nothing turns the trajectory", a.id())));
+    }
+    // Oxygen alone does not turn respiratory failure; the plan has to name what does.
+    if a.oxygen_is_critical() && mapped.critical().iter().all(|p| p.role.id == "oxygen") {
+        return Err(refuse(&id, format!("the plan names no therapy the {} archetype can act on beyond oxygen — nothing turns the trajectory", a.id())));
     }
 
     let built = interventions::build(&case, &mapped);

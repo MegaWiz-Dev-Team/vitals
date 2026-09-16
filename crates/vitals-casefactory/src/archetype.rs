@@ -339,18 +339,52 @@ impl Archetype {
         ALL.into_iter().find(|a| a.id() == id)
     }
 
-    /// The words that suggest this shape. Matched against the diagnosis first (worth ten), then
-    /// the red flags, tags, specialty and title (worth one each).
-    fn signals(self) -> &'static [&'static str] {
+    /// The diagnoses this shape is written for. A hit in the case's own diagnosis (display,
+    /// aliases, title) is worth ten and is what makes the shape a candidate at all.
+    fn dx_signals(self) -> &'static [&'static str] {
         match self {
-            Archetype::SepticShock => &["septic shock", "sepsis", "septic", "peritonitis", "cholangitis", "urosepsis", "necrotising", "necrotizing", "toxic shock", "meningococc", "perforation", "perforated", "multi-organ failure", "ช็อกจากการติดเชื้อ"],
-            Archetype::HaemorrhagicShock => &["haemorrhagic shock", "hemorrhagic shock", "haemorrhage", "hemorrhage", "bleeding", "blood loss", "ruptured", "rupture", "ectopic", "melaena", "melena", "hematemesis", "haematemesis", "variceal", "postpartum", "viral haemorrhagic fever", "vhf", "lassa", "ebola", "exsanguinat", "เลือดออก"],
-            Archetype::CardiogenicShock => &["cardiogenic shock", "myocarditis", "pulmonary oedema", "pulmonary edema", "heart failure", "stemi", "myocardial infarction", "tamponade", "cardiomyopathy", "low output", "lvef"],
-            Archetype::NeuromuscularRespiratoryFailure => &["neurotoxic", "envenom", "krait", "cobra", "guillain", "myasthenia", "botulism", "neuromuscular", "bulbar", "paralysis", "organophosphate", "ptosis", "periodic paralysis", "งูกัด"],
-            Archetype::CnsDepressionHypoglycaemia => &["cerebral malaria", "coma", "impaired consciousness", "encephalopathy", "hypoglycaemia", "hypoglycemia", "status epilepticus", "meningitis", "encephalitis", "reduced consciousness", "unconscious", "altered mental status", "seizure", "ซึม", "หมดสติ"],
+            Archetype::SepticShock => &["septic shock", "sepsis", "urosepsis", "peritonitis", "cholangitis", "necrotising", "necrotizing", "toxic shock", "meningococc", "perforation", "perforated", "multi-organ", "organ failure", "organ dysfunction", "ช็อกจากการติดเชื้อ", "ติดเชื้อในกระแสเลือด"],
+            Archetype::HaemorrhagicShock => &["haemorrhagic shock", "hemorrhagic shock", "haemorrhage", "hemorrhage", "bleeding", "blood loss", "ruptured", "rupture", "ectopic", "variceal", "postpartum", "viral haemorrhagic fever", "vhf", "lassa", "ebola", "exsanguinat", "coagulation", "เลือดออก"],
+            Archetype::CardiogenicShock => &["cardiogenic shock", "myocarditis", "pulmonary oedema", "pulmonary edema", "heart failure", "stemi", "myocardial infarction", "tamponade", "cardiomyopathy"],
+            Archetype::NeuromuscularRespiratoryFailure => &["neurotoxic", "envenom", "krait", "cobra", "guillain", "myasthenia", "botulism", "organophosphate", "periodic paralysis", "งูกัด"],
+            Archetype::CnsDepressionHypoglycaemia => &["cerebral malaria", "status epilepticus", "meningitis", "encephalitis", "encephalopathy", "hypoglycaemia", "hypoglycemia", "coma", "น้ำตาลในเลือดต่ำ", "หมดสติ"],
             Archetype::PaediatricCompensatedShock => &["dengue shock", "shock", "dehydration", "hypovolaemia", "hypovolemia", "plasma leak", "ช็อก"],
-            Archetype::HypoxicRespiratoryFailure => &["asthma", "copd", "pneumonia", "pulmonary embolism", "pneumothorax", "bronchiolitis", "croup", "epiglottitis", "respiratory failure", "hypoxia", "hypoxaemia", "hypoxemia", "pulmonary oedema", "pulmonary edema", "ards", "bronchospasm", "airway obstruction", "stridor", "laryngospasm", "respiratory distress", "หอบ", "หายใจลำบาก"],
+            Archetype::HypoxicRespiratoryFailure => &["asthma", "copd", "pneumonia", "pulmonary embolism", "pneumothorax", "bronchiolitis", "croup", "epiglottitis", "ards", "bronchospasm", "laryngospasm", "pulmonary oedema", "pulmonary edema", "whooping cough", "pertussis", "pulmonary haemorrhage", "pulmonary hemorrhage", "หอบหืด", "ปอดอักเสบ"],
         }
+    }
+
+    /// Words that lean toward this shape without naming a diagnosis — symptoms, signs, the
+    /// physiology. Worth one wherever they appear; they order candidates, they never create one.
+    fn hint_signals(self) -> &'static [&'static str] {
+        match self {
+            Archetype::SepticShock => &["septic", "lactate", "hypoperfusion", "qsofa"],
+            Archetype::HaemorrhagicShock => &["melaena", "melena", "hematemesis", "haematemesis", "bleed", "petechiae", "coagulopathy"],
+            Archetype::CardiogenicShock => &["low output", "lvef", "congest", "crackles", "gallop"],
+            Archetype::NeuromuscularRespiratoryFailure => &["neuromuscular", "bulbar", "paralysis", "ptosis", "single-breath", "weakness"],
+            Archetype::CnsDepressionHypoglycaemia => &["impaired consciousness", "reduced consciousness", "unconscious", "altered mental status", "seizure", "gcs", "ซึม"],
+            Archetype::PaediatricCompensatedShock => &["pulse pressure", "capillary refill", "cold extremities", "child", "paediatric", "pediatric"],
+            Archetype::HypoxicRespiratoryFailure => &["respiratory failure", "hypoxia", "hypoxaemia", "hypoxemia", "airway obstruction", "stridor", "respiratory distress", "wheeze", "หอบ", "หายใจลำบาก"],
+        }
+    }
+
+    /// Diagnoses the library has no honest shape for yet. Refused by name rather than fitted to
+    /// the nearest shape — an anaphylaxis that wins on oxygen and a nebuliser is a wrong lesson.
+    const NOT_YET: &'static [(&'static str, &'static str)] = &[
+        ("anaphyla", "anaphylaxis — distributive shock with an airway, turned by adrenaline; no archetype yet"),
+        ("ketoacidosis", "diabetic ketoacidosis — a metabolic crisis turned by fluids, insulin and potassium; no archetype yet"),
+        ("hyperosmolar", "hyperosmolar state — a metabolic crisis; no archetype yet"),
+        ("adrenal crisis", "adrenal crisis — turned by hydrocortisone; no archetype yet"),
+        ("thyroid storm", "thyroid storm — no archetype yet"),
+        ("stroke", "stroke — a reperfusion-window case, not a deterioration shape this library has"),
+        ("atrial fibrillation", "arrhythmia — rate and rhythm control; no archetype yet"),
+        ("psvt", "arrhythmia — no archetype yet"),
+        ("hyperkal", "hyperkalaemia — a rhythm-and-membrane case; no archetype yet"),
+    ];
+
+    /// The refusal for a diagnosis the library knows it cannot model yet.
+    pub fn not_yet(case: &Case) -> Option<String> {
+        let dx = case.hidden.correct_diagnosis.display.to_lowercase();
+        Self::NOT_YET.iter().find(|(k, _)| dx.contains(k)).map(|(_, why)| format!("no archetype fits: {why}"))
     }
 
     /// Does the presentation actually look like this shape? Words alone never compile a case.
@@ -402,8 +436,9 @@ impl Archetype {
         let mut scored: Vec<(u32, Archetype)> = ALL
             .into_iter()
             .map(|a| {
-                let score = a.signals().iter().map(|k| if dx.contains(k) { 10 } else if rest.contains(k) { 1 } else { 0 }).sum::<u32>();
-                (score, a)
+                let named: u32 = a.dx_signals().iter().map(|k| if dx.contains(k) { 10 } else { 0 }).sum();
+                let hints: u32 = a.hint_signals().iter().chain(a.dx_signals().iter()).map(|k| if rest.contains(k) { 1 } else { 0 }).sum();
+                (if named > 0 { named + hints } else { 0 }, a)
             })
             .filter(|(s, _)| *s > 0)
             .collect();
@@ -431,6 +466,9 @@ impl Archetype {
     /// diagnosis. Words but no gate: refused, naming what the words suggested and what the
     /// vitals said, so the reviewer sees the case was **not forced**.
     pub fn detect(case: &Case, v0: &Vitals0) -> Result<Archetype, String> {
+        if let Some(why) = Self::not_yet(case) {
+            return Err(why);
+        }
         let scored = Self::candidates(case);
         if scored.is_empty() {
             return Err(Self::none_fits(case));
