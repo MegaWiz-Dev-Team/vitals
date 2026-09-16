@@ -423,3 +423,33 @@ fn the_pool_is_deeper_where_the_need_is() {
     assert_eq!(person(&pool, "ETH-2").name, "Hanan Mohammed");
     assert_eq!(person(&pool, "USA-2").name, "Emily Novak");
 }
+
+/// The draw against the World Bank weights themselves, not a table written for the test: over
+/// twenty packs from an empty ward each country lands within one of its share of twenty, Ethiopia
+/// is drawn first and most, the floored United States at most once. This is the test that pins
+/// plan() to `policy.where_they_come_from`: the country is drawn by need, and "least on the ward"
+/// only breaks ties.
+#[test]
+fn the_draw_follows_the_world_bank_weights_from_the_file() {
+    let pool = read_pool(POOL).unwrap();
+    let cat = catalogue();
+    let (man, endemic, ledger) = (full_manifest(&pool), BTreeMap::new(), Ledger::default());
+    let w = weights(PHYSICIANS, &pool).unwrap();
+    let total: f64 = w.by_country.values().sum();
+    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &ledger, weights: &w, beds: 3, want: 20, seed: 16 });
+    assert_eq!(p.packs.len(), 20);
+    assert_eq!(p.packs[0].pack.persona.country, "ETH", "the greatest need is drawn first");
+    let mut count: BTreeMap<&str, usize> = BTreeMap::new();
+    for pl in &p.packs {
+        *count.entry(pl.pack.persona.country.as_str()).or_default() += 1;
+        assert_eq!(pl.weight, w.of(&pl.pack.persona.country), "each pack carries the weight it was drawn with");
+    }
+    for (c, wc) in &w.by_country {
+        let expected = (wc / total * 20.0).round() as isize;
+        let got = count.get(c.as_str()).copied().unwrap_or(0) as isize;
+        assert!((got - expected).abs() <= 1, "{c}: drawn {got}, share of twenty is {expected} (weight {wc})");
+    }
+    assert_eq!(count["ETH"], 5, "Ethiopia, a quarter of the need, a quarter of the packs");
+    assert!(count.get("USA").copied().unwrap_or(0) <= 1, "the floored United States, at most once in twenty");
+    assert!(count["ETH"] >= count["KEN"] && count["KEN"] >= count["NGA"], "{count:?}");
+}
