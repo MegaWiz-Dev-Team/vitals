@@ -3914,6 +3914,16 @@ function wardFinish(v){
       : '<b>this shift is finished.</b> Hand over, and the next stranger starts where you stopped.');
 }
 
+/* What the chain says happened to her, as a clause. The state is one word — went_home, died,
+   on_ward — and each already carries its own verb: "she is went home" was the page gluing "is"
+   onto a past tense. Anything the chain says that this build does not know is not an ending, so
+   it reads as the state it is rather than as a verb the page invented. */
+function stateSentence(state, p){
+  if(state==='went_home')return p.s+' went home';
+  if(state==='died')return p.s+' died';
+  return p.s+' is on the ward';
+}
+
 /* Who is in the bed, for a sentence: the ward's name for her when the page has one. */
 function nameNow(){ return (WARDSHIFT&&WARDSHIFT.name)||('patient '+WARD); }
 
@@ -4001,7 +4011,7 @@ async function handOverInner(){
   const name=a.head||over_.run_hash;
   const receipt=name?' <a href="/shift/'+encodeURIComponent(name)+'">the receipt for this shift</a> ·':'';
   wardSay('<b>handed over.</b> '+pro().p+' chain is '+a.shifts+' shift'+(a.shifts===1?'':'s')+
-          ' long and '+pro().s+' is '+esc((a.state||'').replace('_',' '))+'.'+receipt+
+          ' long and '+esc(stateSentence(a.state||'', pro()))+'.'+receipt+
           ' <a href="/">back to the globe</a>');
 }
 if(WARD) addEventListener('load',openShift);

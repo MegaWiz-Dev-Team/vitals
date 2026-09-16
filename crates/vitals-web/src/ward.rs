@@ -550,6 +550,50 @@ pub fn beds_taken(
         .count()
 }
 
+/// Which bed each open patient is in — and keeps for her whole stay.
+///
+/// It used to be her position among the open patients, which meant a patient renumbered herself
+/// whenever somebody admitted before her went home: Salma left bed 2 and the man in bed 3 became
+/// the man in bed 2, while he was being told "เตียง 3". A bed that moves under a patient is an
+/// index, not a bed.
+///
+/// Still derived, and still from the chain alone — walk the admissions and the closings in slot
+/// order, give each arrival the lowest free number and hand it back when she leaves. Two readers
+/// of the same chain arrive at the same beds, and this server keeps no note that could disagree
+/// with them. A patient the ward cannot describe or cannot rebuild holds no bed, as everywhere
+/// else, and takes no number out of the sequence.
+pub fn beds_of(
+    patients: &[PatientOnChain],
+    packs: &std::collections::BTreeMap<u64, Pack>,
+    unrebuildable: &std::collections::BTreeMap<u64, String>,
+) -> std::collections::BTreeMap<u64, usize> {
+    // (slot, arriving, patient) — a closing at the same slot as an admission frees the bed first,
+    // so the arrival can take it. `false < true` orders them that way.
+    let mut events: Vec<(u64, bool, &PatientOnChain)> = Vec::new();
+    for p in patients {
+        if !packs.contains_key(&p.patient_id) || unrebuildable.contains_key(&p.patient_id) {
+            continue;
+        }
+        events.push((p.admitted_slot, true, p));
+        if p.state != OPEN && p.closed_slot > 0 {
+            events.push((p.closed_slot, false, p));
+        }
+    }
+    events.sort_by_key(|(slot, arriving, p)| (*slot, *arriving, p.patient_id));
+
+    let mut held: std::collections::BTreeMap<u64, usize> = std::collections::BTreeMap::new();
+    for (_, arriving, p) in events {
+        if !arriving {
+            held.remove(&p.patient_id);
+            continue;
+        }
+        let taken: std::collections::BTreeSet<usize> = held.values().copied().collect();
+        let free = (1..).find(|n| !taken.contains(n)).unwrap_or(1);
+        held.insert(p.patient_id, free);
+    }
+    held
+}
+
 /// How many patients to release right now.
 ///
 /// Free beds, capped by what the queue actually holds. `open` above `beds` — a bed count that
@@ -738,9 +782,11 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                          that case's own level in the catalogue, the same one the bay publishes, \
                          never a second opinion. `on_shift` is the patient's lease standing at \
                          this read's slot, and `on_shift_since` is that lease's start carried to \
-                         wall time; `bed` is a place among the open patients in admission order \
-                         **among the patients the ward can describe**; one it cannot has no case \
-                         to open and holds no bed, and says so in its own row. `portraits` is the \
+                         wall time; `bed` is the number this patient has held since she \
+                         was admitted: the admissions and the closings are walked in slot order \
+                         and each arrival takes the lowest free one, so a bed never moves under \
+                         somebody because a different patient went home. A patient the ward \
+                         cannot describe or cannot rebuild holds none, and says so in its own row. `portraits` is the \
                          whole set and `portrait` is the one to draw now — the nearest picture no \
                          worse than the state reported, at 256 px when that sibling exists \
                          (`<state>_256` in the set) and full size when it does not. The bedside \
