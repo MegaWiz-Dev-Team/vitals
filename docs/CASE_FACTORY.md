@@ -40,8 +40,13 @@ is 128 is refused with the sentence *not forced*, never compiled.
 | `cns_depression_hypoglycaemia` | 14 min | dextrose + the specific therapy; the airway follows the consciousness |
 | `paediatric_compensated_shock` | 12 min | measured fluid, reassessed; the pulse pressure narrows first; overload harms |
 | `hypoxic_respiratory_failure` | 10 min | oxygen + whichever specific therapy the plan names (bronchodilator, drain, anticoagulant, antibiotics, diuretic) |
+| `anaphylaxis` | 8 min | adrenaline IM inside the window; the antihistamine-first reflex and an IV push of adrenaline are the harms |
+| `acls_cardiac_arrest` | 4 min (no-flow) | the algorithm: compressions, shock for a shockable rhythm, adrenaline, amiodarone, the two-minute rhythm check, to ROSC |
+| `acls_tachycardia_svt` | 13 min | vagal → adenosine; synchronised cardioversion when unstable; untreated it destabilises, arrests in VF, dies |
+| `acls_tachycardia_af` | 13 min | rate control + anticoagulation; cardioversion when unstable; adenosine is the wrong drug |
+| `acls_bradycardia` | 12 min | atropine, then pacing or a chronotrope; untreated it arrests in PEA |
 
-Every archetype writes the same two-state scenario: `presenting` (deteriorating, with a
+Every archetype outside the ACLS family writes the same two-state scenario: `presenting` (deteriorating, with a
 `critical` band halfway to death) → `stabilising` (improving) once **every critical role the plan
 names** has been done, then a win 5 sim minutes later. The rates are derived, not tuned — each
 vital moves from its starting value to the archetype's threshold in exactly the archetype's
@@ -56,6 +61,40 @@ keywords (in English or Thai) becomes a `tx_<role>` intervention; a step that fo
 the compiler cannot place is still listed in the pack, with an empty mapping, so nothing the plan
 says disappears silently. If the plan names no critical role at all, the case is refused: nothing
 would turn the trajectory.
+
+### The ACLS family — states by rhythm, moved by the clock
+
+The four `acls_*` archetypes share one arrest core: `arrest_vf` → (shock) → `post_shock_cpr` →
+(rhythm check at 2 minutes) → `rosc` or back to `arrest_vf`; `arrest_pea` and `arrest_asystole`
+with their own checks (2 and 4 minutes); `rosc` → `win_icu` after the recovery time. A patient
+with a pulse enters through `tachy_stable` → `tachy_unstable` → `arrest_vf`, or
+`brady_unstable` → `arrest_pea`, and is turned into `converted` by the plan's critical roles. A
+`perfusion` axis is the no-flow clock: it falls at 20 a minute with nobody on the chest and 4 a
+minute with compressions running, and death is the floor.
+
+The algorithm's tools — `tx_cpr`, `tx_defibrillate`, `tx_adrenaline_iv`, `tx_amiodarone`,
+`tx_cardioversion` — are **rescue** roles: present in every ACLS case whether or not the plan
+spells them out, never required for the turn by themselves, and each one asks which state it is
+in. A shock in `arrest_vf` moves the machine; a shock in PEA, asystole or the post-shock cycle is
+the harm *not shockable*; a shock into a pulse is the harm *perfusing rhythm*. The kit's own
+shock button (`Step::Shock`) reaches the same edges: the engine converts VF to sinus and the
+`arrest_vf` state's `{"rhythm":"sinus"}` transition takes it from there. ROSC is declared at a
+rhythm check when compressions are running, adrenaline is inside its 3–5 minute window, at least
+two shocks have been delivered for a shockable rhythm, and amiodarone is in once a third shock
+has been needed. Nothing is drawn from a hat.
+
+**Rhythm on the monitor.** The engine already carries a per-state `rhythm`
+(`sinus|vf|vt|pea|asystole`), keys the shock button on it and lets a case key an edge on it, so
+VF, PEA and asystole are drawn as themselves. What it cannot show is a *morphology for a rhythm
+with a pulse*: SVT, atrial fibrillation and a heart block all read `sinus` with their rate on
+the monitor, and the compiler speaks the rhythm in a beat on every change ("rhythm: ventricular
+fibrillation — the pulse is gone"). A true strip for those needs an engine variable — a decision
+for the ward's owner, not the compiler's.
+
+**Gate.** Only a case whose *diagnosis* names a rhythm or an arrest enters the family; the word
+"arrhythmia" in a red flag does not. A rhythm that arrives controlled (an atrial fibrillation at
+88 a minute with a normal pressure) is refused as *not forced* and is never handed to another
+archetype — the rhythm is the diagnosis.
 
 ## What else the pack carries
 
@@ -99,7 +138,12 @@ A pack is written only if, in this order:
 4. the rubric parses under `vitals-osce`, every needle names an intervention, an outcome or a
    harm the scenario can fire, it is out of 40, and the management path clears its own bar;
 5. no string in the pack contains a season marker (`osce-`, `EP1`…`EP5`, the season's names,
-   `station `, `/img/`, `/clip/`) or a whole-word token of the Embla patient's name.
+   `station A`…`station D`/`OSCE station`, `/img/`, `/clip/`) or a whole-word token of the
+   Embla patient's name. (An obstetric *fetal station* is not a season station.)
+
+Before any of that, a case the library's own `deployments.jsonl` records as deployed to target
+`vitals` is **refused as a season source** — the founder's rule that World never carries the
+season's content — and `REPORT.md` lists them in a section of their own.
 
 The proof — untreated death time, the winning path with its clock, the golden score — is
 written into the pack under `replay`.
