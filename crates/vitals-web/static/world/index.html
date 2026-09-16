@@ -95,6 +95,7 @@ canvas#globe.dragging{cursor:grabbing}
 .state.went_home{color:var(--ink-2)}
 .state.died{color:var(--ink-3);border-style:dashed}
 .tag{display:inline-block;padding:0 .35rem;border-radius:.3rem;background:var(--surface-2);color:var(--ink-2);white-space:nowrap}
+.prow .note{color:var(--ink-3,#7b8a86);font-size:.86rem;line-height:1.45;margin-top:.15rem}
 .tag.endemic{color:var(--proven);background:var(--proven-soft)}
 a.take{font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.06em;text-decoration:none;color:var(--proven);border:1px solid var(--proven);border-radius:.4rem;padding:.25rem .55rem;white-space:nowrap}
 a.take:hover,a.take:focus-visible{background:var(--proven-soft);outline:none}
@@ -332,6 +333,7 @@ const placed = p => { const id = countryId(p.country); return id !== null && DRA
 
 let patients = [];         // from /api/ward
 let census = null;
+let beds = null;           // how many of them the ward can actually hand to somebody
 let asOf = { slot: null, at: Date.now() };   // the read's slot, and when it arrived
 let filter = { student: true, intern: true, resident: true };
 let layer = "ward";            // "ward" lights the countries with patients; "doctors" colours every country
@@ -352,6 +354,7 @@ function recompute() {
 function render(j) {
   patients = j && Array.isArray(j.patients) ? j.patients : [];
   census = j ? (j.census || j) : null;   // the census keys may sit at the top level or under `census`
+  beds = j && typeof j.in_beds === "number" ? j.in_beds : null;
   asOf = j && typeof j.as_of_slot === "number" ? { slot: j.as_of_slot, at: Date.now() } : { slot: null, at: Date.now() };
   const open = patients.length > 0;
   $("holding").hidden = open;
@@ -378,13 +381,22 @@ async function load() {
 function renderCensus() {
   const c = census || {};
   const n = k => (typeof c[k] === "number") ? c[k] : (c.all && typeof c.all[k] === "number" ? c.all[k] : null);
-  const parts = [["on the ward", n("on_ward")], ["shifts", n("shifts")], ["went home", n("went_home")], ["died", n("died")]]
+  /* "on the ward" is the chain's count and "in beds" is the ward's. They differ when somebody
+     reached the chain without passing the queue, and a rail that published only the first would
+     hand a stranger a number that means something other than what it looks like. */
+  const parts = [["on the ward", n("on_ward")], ["in beds", beds], ["shifts", n("shifts")],
+                 ["went home", n("went_home")], ["died", n("died")]]
     .filter(([, v]) => v !== null).map(([k, v]) => `<span>${k} <b>${v}</b></span>`);
   $("census").innerHTML = parts.join("");
 }
 
 // ── panel + tray ──────────────────────────────────────────────────────────────────────────────
-const STATE_LABEL = { on_ward: "on the ward", on_shift: "on shift", went_home: "went home", died: "died" };
+/* `off_ward` is a patient on the chain the ward has no pack for (CWF_PLAN ruling 5): she
+   holds no bed and nobody can take a shift on her, because there is no case to open. She is
+   listed rather than hidden — the census counts her, and a board that dropped her would
+   disagree with its own rail — and the label says what she is so nobody tries. */
+const STATE_LABEL = { on_ward: "on the ward", on_shift: "on shift", went_home: "went home",
+  died: "died", off_ward: "admitted outside the ward" };
 function stateOf(p) {
   const s = String(p.state || "").toLowerCase().replace(/[\s-]+/g, "_");
   if (s === "open" || s === "0") return "on_ward";
@@ -454,14 +466,21 @@ function row(p, showCountry) {
   const cid = countryId(p.country);
   const where = showCountry && cid && nameOf[cid] ? `<span class="tag">${escapeHtml(nameOf[cid])}</span>` : "";
   const img = p.portrait ? `<img src="${String(p.portrait).replace(/"/g, "&quot;")}" alt="">` : `<span class="ph">—</span>`;
-  const bed = p.bed !== undefined && p.bed !== null ? `<span class="tag">bed ${p.bed}</span>` : "";
+  /* A bed, or the reason there is not one. "no bed" is said out loud on a patient the ward cannot
+     describe, so nobody works out from an absence that she is free to take. */
+  const bed = p.bed !== undefined && p.bed !== null ? `<span class="tag">bed ${p.bed}</span>`
+    : (st === "off_ward" ? `<span class="tag">no bed</span>` : "");
   const age = p.age !== undefined && p.age !== null ? ` · ${p.age}` : "";
   const diff = p.difficulty ? `<span class="tag">${p.difficulty}</span>` : "";
   const end = p.endemic ? `<span class="tag endemic">endemic</span>` : "";
   const canTake = st === "on_ward";
   const line = stateLine(p, asOf.slot, Date.now());
+  /* The endpoint sends a sentence with a patient it cannot describe. It is shown rather than
+     summarised: a reader who wants to know why this one has no bed deserves the whole reason, and
+     it is one line. */
+  const note = p.note ? `<div class="note">${escapeHtml(p.note)}</div>` : "";
   li.innerHTML = `${img}<div><b>${escapeHtml(p.name || ("patient " + p.patient_id))}${age}</b>
-    <div class="meta">${where}${bed}<span class="state ${st}" title="${escapeHtml(line.title)}">${escapeHtml(line.text)}</span>${diff}${end}</div></div>
+    <div class="meta">${where}${bed}<span class="state ${st}" title="${escapeHtml(line.title)}">${escapeHtml(line.text)}</span>${diff}${end}</div>${note}</div>
     <a class="take" href="/ward/${encodeURIComponent(p.patient_id)}" aria-disabled="${!canTake}">${canTake ? "take a shift" : "view"}</a>`;
   return li;
 }
