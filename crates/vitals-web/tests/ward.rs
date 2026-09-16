@@ -1356,3 +1356,45 @@ fn the_policy_survives_a_chain_it_cannot_read() {
             "the rule is still true when the chain is down");
     assert!(cat["held"].is_null(), "and a number nobody took is null, never zero: {cat}");
 }
+
+/// **The board says when somebody last finished a shift on her.**
+///
+/// The globe's row renders "on the ward · handed over 4 minutes ago" for a patient nobody is with
+/// right now — it reads `handed_over` off the row — and the board has never published that field.
+/// So every such row falls back to "admitted 6 hours ago", which is the one number that makes an
+/// active ward look abandoned: a patient treated twice in the last hour reads exactly like a
+/// patient nobody has touched since she arrived.
+///
+/// It is not a new fact and nothing needs to be written down for it. The chain already carries one
+/// leaf per anchored shift, each with the slot it landed in, so the last of those *is* the last
+/// hand-over. Derived at the read the same way `on_shift_since` is: the slot difference carried
+/// back to wall time through this read's own slot.
+#[test]
+fn the_board_says_when_she_was_last_handed_over() {
+    let now = 1_760_000_000u64;
+    let as_of = 100_000u64;
+    let patients = vec![patient(1, OPEN, 0, as_of - 1000, 0), patient(2, OPEN, 0, as_of - 1000, 0)];
+    // Two shifts on patient 1, the later one 200 slots ago. Out of order on purpose: the chain
+    // gives them in whatever order the accounts came back, and "the last one" is not "the last in
+    // the list".
+    let shifts = vec![
+        shift_by(1, 7, as_of - 900),
+        shift_by(1, 9, as_of - 200),
+        shift_by(1, 8, as_of - 500),
+    ];
+
+    let packs = nobody();
+    let v = ward_payload(&read(&patients, &shifts, &packs, None, as_of));
+    let row = |id: u64| {
+        v["patients"].as_array().unwrap().iter().find(|p| p["patient_id"] == id).unwrap().clone()
+    };
+
+    let handed = row(1)["handed_over"].as_str().expect("the last hand-over, as a time").to_string();
+    let want = vitals_web::ward::utc_iso(now - (200.0 * vitals_replay::SLOT_SECONDS) as u64);
+    assert_eq!(handed, want, "the latest of her shifts, carried to wall time");
+
+    // Nobody has finished a shift on her: the field is null, and the globe falls back to the
+    // admission the way it always has. Null rather than her admission time, because "nobody has
+    // treated her yet" and "she was treated the moment she arrived" are different facts.
+    assert!(row(2)["handed_over"].is_null(), "no shift, no hand-over: {}", row(2));
+}
