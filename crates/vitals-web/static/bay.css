@@ -493,10 +493,11 @@ a.brand:focus-visible{outline:2px solid var(--act);outline-offset:3px;border-rad
 @keyframes pulse{50%{opacity:.25}}
 @media (prefers-reduced-motion:reduce){.live::before{animation:none}}
 .spacer{margin-left:auto}
-/* The working text of the play surface. Raised on 16 ก.ย. after the first user test by a
-   medical student: "อยากให้ตัวอักษรใหญ่กว่านี้จะดีมากค่า". The tray, the kit, the ask bar and the
-   sheet's labels are what somebody reads while treating a patient, and they were 9–12 px under a
-   22 px headline. `shift_page.rs` keeps the floor. */
+/* The working text of the play surface. Raised on 16 ก.ย. after measuring it: the tray, the kit,
+   the ask bar and the sheet's labels are what somebody reads while treating a patient, and they
+   were 9–12 px under a 22 px headline. (A medical student's "อยากให้ตัวอักษรใหญ่กว่านี้จะดีมากค่า"
+   sent me to measure, but she was testing embla and has never seen this page — the reason to
+   change it is the measurement.) `shift_page.rs` keeps the floor. */
 select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.78rem;background:var(--card-2);
   color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:.4rem .65rem;cursor:pointer;
   transition:border-color .12s,background .12s,transform .06s}
@@ -1423,7 +1424,7 @@ a.give:hover{filter:brightness(1.06)}
      scrolling column — the patient block, the transcript and the action bar in it — so a tray that
      long put the ask bar at the bottom of a scroll nobody could see the end of. That is the
      founder's own "กด scroll ลงไปพิมพ์ไม่ได้" arriving through a second door, and raising the type
-     for a learner who could not read it moved it further down.
+     moved it further down, which is how it was found.
      So the action bar is pinned to the foot of the stage and the tray scrolls inside itself: the
      line you type into is on the screen whatever the case brought with it, and the sheet above
      scrolls behind it. */

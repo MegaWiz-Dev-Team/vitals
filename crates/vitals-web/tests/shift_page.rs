@@ -606,14 +606,17 @@ fn the_wards_first_paint_carries_no_patient() {
 
 /// **The words a learner works in are big enough to work in.**
 ///
-/// From the first user test by a medical student, 16 ก.ย.: *"น่าใช้งานดี อยากให้ตัวอักษรใหญ่กว่านี้
-/// จะดีมากค่า"* — it is nice to use, the letters should be bigger. Measured in a browser at
-/// 1460×900 afterwards, the text she was working in was: the question chips 11.8 px, the kit's mode
-/// buttons 11.5 px, the ask bar 12.8 px, and the sheet's own labels — PATIENT, PRESENTS — 9.1 px.
+/// Measured in a browser at 1460×900 on 16 ก.ย.: the question chips 11.8 px, the kit's mode buttons
+/// 11.5 px, the ask bar 12.8 px, and the sheet's own labels — PATIENT, PRESENTS — 9.1 px.
 ///
 /// Those are the three surfaces somebody actually reads while treating a patient: what they can
 /// ask, what they can type, and the sheet they read before the clock starts. A headline at 22 px
 /// over a tray at 11.8 px is a page that looks designed and reads badly.
+///
+/// The prompt to go and measure came from a medical student's first user test — *"อยากให้ตัวอักษร
+/// ใหญ่กว่านี้จะดีมากค่า"* — but she was testing **embla**, not this page, and the first version of
+/// this test said otherwise. She has never seen this bay. What is left is the measurement, which is
+/// this page's own and stands on its own; no user of this page has asked for it.
 ///
 /// So this is a floor rather than a type scale: the chips, the kit, the ask bar and the sheet's
 /// labels do not go below it. Asserted in the stylesheet rather than in a browser because it is the
@@ -656,7 +659,8 @@ fn the_words_a_learner_reads_are_big_enough() {
     ] {
         let px = size(selector);
         assert!(px >= floor,
-                "{selector} is {px}px — {what}, and a learner said these were too small to work in");
+                "{selector} is {px}px — {what}, and this page's own measurement put that below \
+                 what somebody can work in");
     }
 
     // And the sheet stays a sheet: even at its smallest the headline leads everything the floor
