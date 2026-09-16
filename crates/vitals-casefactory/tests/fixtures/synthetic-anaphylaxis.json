@@ -1,0 +1,72 @@
+{
+  "meta": {
+    "id": "synthetic-anaphylaxis-test",
+    "title": "Synthetic test case: wheals, a swelling lip and a falling pressure after a meal",
+    "specialty": "eir-emergency",
+    "difficulty": "intern",
+    "clinical_tier": 4,
+    "care_setting": "ER",
+    "language": "en",
+    "source": "authored",
+    "version": "0.0.1",
+    "search_tags": ["synthetic", "anaphylaxis", "test"]
+  },
+  "patient": {
+    "name": "Gamma Testperson",
+    "age": 30,
+    "sex": "F",
+    "persona": { "affect": "frightened", "personality": "cooperative", "health_literacy": "average", "verbosity": "moderate", "hidden_agenda": "none", "evasiveness": "none" }
+  },
+  "presentation": {
+    "chief_complaint": "Itching all over and my lip is swelling; I feel faint.",
+    "hpi": "Synthetic history for a test. Nothing here is a real person.",
+    "pmh": [], "medications": [], "allergies": [], "social": "none", "family": "none"
+  },
+  "symptom_script": [
+    { "finding": { "display": "Known food allergy" }, "present": true, "reveal": "on_ask", "patient_words": "Peanuts. I always check, but this was a shared plate." },
+    { "finding": { "display": "Light-headedness on standing" }, "present": true, "reveal": "on_direct_ask", "patient_words": "I nearly went down in the corridor. I did not want to make a fuss." },
+    { "finding": { "display": "Chest pain" }, "present": false, "reveal": "on_ask", "patient_words": "No, my chest feels tight but it does not hurt." }
+  ],
+  "exam_findings": [
+    { "system": "vitals", "finding": { "display": "Blood pressure" }, "value": "88/56 mmHg" },
+    { "system": "vitals", "finding": { "display": "Heart rate" }, "value": "122/min" },
+    { "system": "vitals", "finding": { "display": "Respiratory rate" }, "value": "24/min" },
+    { "system": "vitals", "finding": { "display": "Oxygen saturation (SpO2)" }, "value": "93% on room air" },
+    { "system": "vitals", "finding": { "display": "Temperature" }, "value": "36.9 °C" },
+    { "system": "skin", "finding": { "display": "Skin" }, "value": "Widespread urticaria; lip and periorbital angioedema" },
+    { "system": "respiratory", "finding": { "display": "Chest auscultation" }, "value": "Bilateral expiratory wheeze; no stridor yet" }
+  ],
+  "investigations": [
+    { "order": { "display": "Serum tryptase" }, "result": { "value": "raised", "flag": "abnormal" } },
+    { "order": { "display": "12-lead ECG" }, "result": { "value": "Sinus tachycardia", "flag": "abnormal" } }
+  ],
+  "hidden": {
+    "correct_diagnosis": { "display": "Anaphylaxis to a food allergen", "aliases": ["anaphylaxis", "anaphylactic reaction"] },
+    "differential": [ { "dx": { "display": "Acute urticaria without systemic involvement" }, "probability": 0.2 } ],
+    "expected_workup": [ { "display": "Serum tryptase" }, { "display": "12-lead ECG" } ],
+    "red_flags": [
+      "Skin plus a falling pressure plus wheeze = anaphylaxis — adrenaline 0.5 mg IM immediately; an antihistamine is not the treatment",
+      "Do not give adrenaline as an IV push to a patient with a pulse"
+    ],
+    "management_plan": [
+      "Adrenaline 0.5 mg IM into the anterolateral thigh at once; repeat after 5 minutes if there is no response",
+      "Lay flat with the legs raised; high-flow oxygen",
+      "IV access and a rapid crystalloid bolus of 500-1000 mL for the hypotension",
+      "Salbutamol nebuliser for the bronchospasm",
+      "Chlorpheniramine 10 mg IV and hydrocortisone 200 mg IV as second-line treatment, after the adrenaline",
+      "Observe for a biphasic reaction for at least 6-12 hours; admit",
+      "Prescribe an adrenaline auto-injector and explain how and when to use it"
+    ],
+    "rubric": {
+      "pass_mark": 60,
+      "dimensions": [
+        { "key": "history_completeness", "label": "History", "weight": 15, "scoring": "checklist", "criteria": ["allergen", "faint"] },
+        { "key": "examination", "label": "Examination", "weight": 10, "scoring": "checklist", "criteria": ["skin", "chest"] },
+        { "key": "investigation_choice", "label": "Investigations", "weight": 10, "scoring": "checklist", "criteria": ["tryptase"] },
+        { "key": "diagnostic_accuracy", "label": "Diagnosis", "weight": 25, "scoring": "snomed_graded" },
+        { "key": "management_safety", "label": "Management", "weight": 25, "scoring": "llm_judge" },
+        { "key": "red_flag_recognition", "label": "Red flags", "weight": 15, "scoring": "llm_judge" }
+      ]
+    }
+  }
+}

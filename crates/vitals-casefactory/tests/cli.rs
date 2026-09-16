@@ -27,6 +27,20 @@ fn library(root: &Path) -> PathBuf {
     let b = lib.join("cases").join("synthetic-stable-test");
     std::fs::create_dir_all(&b).unwrap();
     std::fs::write(b.join("case.json"), stable.to_string()).unwrap();
+    // a third copy, compilable, but recorded as already deployed to the season
+    let mut season: serde_json::Value = serde_json::from_str(SYNTHETIC).unwrap();
+    season["meta"]["id"] = serde_json::json!("synthetic-season-source-test");
+    let c = lib.join("cases").join("synthetic-season-source-test");
+    std::fs::create_dir_all(&c).unwrap();
+    std::fs::write(c.join("case.json"), season.to_string()).unwrap();
+    std::fs::write(
+        lib.join("deployments.jsonl"),
+        concat!(
+            "{\"case_id\": \"synthetic-season-source-test\", \"target\": \"vitals\", \"deployed_version\": \"1.0.0\", \"status\": \"active\"}\n",
+            "{\"case_id\": \"synthetic-septic-shock-test\", \"target\": \"cloud\", \"deployed_version\": \"1.0.0\", \"status\": \"active\"}\n",
+        ),
+    )
+    .unwrap();
     lib
 }
 
@@ -73,7 +87,12 @@ fn all_compiles_the_library_and_writes_a_report() {
     assert!(!out.join("synthetic-stable-test.pack.json").exists());
     let report = std::fs::read_to_string(out.join("REPORT.md")).unwrap();
     assert!(report.contains("compiled 1"), "{report}");
-    assert!(report.contains("refused 1"), "{report}");
+    assert!(report.contains("refused 2"), "{report}");
+    // the season's source is refused by name and listed on its own
+    assert!(!out.join("synthetic-season-source-test.pack.json").exists());
+    assert!(report.contains("season source"), "{report}");
+    assert!(report.contains("## Season sources"), "{report}");
+    assert!(report.contains("synthetic-season-source-test"), "{report}");
     assert!(report.contains("septic_shock"), "{report}");
     assert!(report.contains("synthetic-stable-test"), "{report}");
     assert!(report.contains("not forced"), "{report}");
@@ -93,4 +112,15 @@ fn a_git_ref_after_an_at_sign_reads_the_case_from_that_ref() {
     let pack: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(out.join(format!("{}.pack.json", common::ENDEMIC_SIX[0]))).unwrap()).unwrap();
     assert_eq!(pack["source"]["ref"], common::ENDEMIC_REF);
     assert_eq!(pack["endemic"], true);
+}
+
+#[test]
+fn a_season_source_is_refused_even_when_asked_for_by_id() {
+    let root = scratch("season");
+    let lib = library(&root);
+    let out = root.join("out");
+    let (ok, stdout, stderr) = run(&["compile", "--cases", lib.to_str().unwrap(), "--id", "synthetic-season-source-test", "--out", out.to_str().unwrap()]);
+    assert!(!ok);
+    assert!(!out.join("synthetic-season-source-test.pack.json").exists());
+    assert!((stdout + &stderr).contains("season source"));
 }

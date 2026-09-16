@@ -5,7 +5,7 @@ use vitals_casefactory::validate::scan;
 
 #[test]
 fn season_markers_are_caught_wherever_they_sit() {
-    for bad in ["osce-a2", "the EP3 still", "Somsri said", "somchai", "station 4", "/img/x.webp", "/clip/y.mp4"] {
+    for bad in ["osce-a2", "the EP3 still", "Somsri said", "somchai", "Station A", "station b3", "/img/x.webp", "/clip/y.mp4"] {
         let pack = json!({ "sce": { "interventions": [ { "effects": [ { "beat": bad } ] } ] } });
         assert!(!scan(&pack, "Nobody").is_empty(), "{bad:?} should be caught");
     }
@@ -42,4 +42,11 @@ fn the_opening_is_scrubbed_of_the_name_but_the_voice_is_not() {
     assert_eq!(scrub("Amara came in with her brother. AMARA is 34.", "Amara da Costa"), "the patient came in with her brother. the patient is 34.");
     assert_eq!(scrub("Amaranth is a grain.", "Amara da Costa"), "Amaranth is a grain.");
     assert_eq!(scrub("ผู้ป่วยชื่อสมหญิงมาด้วยไข้", "สมหญิง รักดี"), "ผู้ป่วยชื่อผู้ป่วยมาด้วยไข้");
+}
+
+#[test]
+fn an_obstetric_station_is_not_a_season_station() {
+    assert!(scan(&json!({ "a": "Fetal station retracted (higher than previous exam)" }), "Nobody").is_empty());
+    assert!(scan(&json!({ "a": "the nursing station was busy" }), "Nobody").is_empty());
+    assert!(!scan(&json!({ "a": "OSCE station A2" }), "Nobody").is_empty());
 }

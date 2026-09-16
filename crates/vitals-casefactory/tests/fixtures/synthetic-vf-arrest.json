@@ -1,0 +1,73 @@
+{
+  "meta": {
+    "id": "synthetic-vf-arrest-test",
+    "title": "Synthetic test case: collapsed in the waiting room, no pulse, a coarse irregular trace",
+    "specialty": "eir-emergency",
+    "difficulty": "resident",
+    "clinical_tier": 5,
+    "care_setting": "ER",
+    "language": "en",
+    "source": "authored",
+    "version": "0.0.1",
+    "search_tags": ["synthetic", "cardiac arrest", "ventricular fibrillation", "test"]
+  },
+  "patient": {
+    "name": "Beta Testperson",
+    "age": 58,
+    "sex": "M",
+    "persona": { "affect": "unresponsive", "personality": "n/a", "health_literacy": "n/a", "verbosity": "none", "hidden_agenda": "none", "evasiveness": "none" }
+  },
+  "presentation": {
+    "chief_complaint": "Collapsed while waiting; unresponsive, not breathing normally.",
+    "hpi": "Synthetic history for a test. A witness gives the story. Nothing here is a real person.",
+    "pmh": [], "medications": [], "allergies": [], "social": "none", "family": "none"
+  },
+  "symptom_script": [
+    { "finding": { "display": "Chest pain before the collapse" }, "present": true, "reveal": "on_ask", "patient_words": "[witness] He was holding his chest and sweating before he went down." },
+    { "finding": { "display": "Known heart disease" }, "present": true, "reveal": "on_direct_ask", "patient_words": "[witness] He had a stent two years ago and stopped his tablets." }
+  ],
+  "exam_findings": [
+    { "system": "vitals", "finding": { "display": "Blood pressure" }, "value": "unrecordable — 0/0 mmHg" },
+    { "system": "vitals", "finding": { "display": "Heart rate" }, "value": "no pulse; monitor shows a coarse irregular trace at about 200/min" },
+    { "system": "vitals", "finding": { "display": "Respiratory rate" }, "value": "0/min, agonal gasps" },
+    { "system": "vitals", "finding": { "display": "Oxygen saturation (SpO2)" }, "value": "no trace" },
+    { "system": "general", "finding": { "display": "General appearance" }, "value": "Unresponsive, cyanosed, GCS 3" },
+    { "system": "cardiovascular", "finding": { "display": "Pulse check" }, "value": "No carotid pulse over 10 seconds" }
+  ],
+  "investigations": [
+    { "order": { "display": "Rhythm check" }, "result": { "value": "Ventricular fibrillation", "flag": "critical" } },
+    { "order": { "display": "Blood glucose" }, "result": { "value": "6.1 mmol/L", "flag": "normal" } },
+    { "order": { "display": "Electrolytes and blood gas" }, "result": { "value": "K 4.2, pH 7.10 (during CPR)", "flag": "critical" } }
+  ],
+  "hidden": {
+    "correct_diagnosis": { "display": "Cardiac arrest — ventricular fibrillation, probable acute coronary occlusion", "aliases": ["VF arrest", "ventricular fibrillation", "cardiac arrest"] },
+    "differential": [ { "dx": { "display": "Pulseless ventricular tachycardia" }, "probability": 0.2 } ],
+    "expected_workup": [ { "display": "Rhythm check" }, { "display": "Blood glucose" }, { "display": "Electrolytes and blood gas" } ],
+    "red_flags": [
+      "No pulse with a shockable rhythm — the first shock within 2 minutes; every minute without it costs survival",
+      "Adrenaline 1 mg IV every 3-5 minutes after the second shock",
+      "Do not shock a non-shockable rhythm; do not interrupt compressions for more than 10 seconds"
+    ],
+    "management_plan": [
+      "Start high-quality CPR at once: compressions 100-120/min, depth 5-6 cm, full recoil, 30:2 until the airway is secured; change the compressor every 2 minutes",
+      "Attach the defibrillator and shock a shockable rhythm (VF/pulseless VT) at 200 J biphasic; resume compressions immediately for 2 minutes, then check the rhythm",
+      "Adrenaline 1 mg IV after the second shock and every 3-5 minutes",
+      "Amiodarone 300 mg IV after the third shock (150 mg after the fifth)",
+      "Secure the airway with a supraglottic device or endotracheal tube; ventilate 10/min; waveform capnography",
+      "Look for the reversible causes (the H's and T's): hypovolaemia, hypoxia, hydrogen ion, hypo/hyperkalaemia, hypothermia, tension pneumothorax, tamponade, toxins, thrombosis",
+      "After ROSC: 12-lead ECG, treat the coronary occlusion, targeted temperature management, admit to intensive care",
+      "Explain to the family what happened and what the next hours hold"
+    ],
+    "rubric": {
+      "pass_mark": 60,
+      "dimensions": [
+        { "key": "history_completeness", "label": "History", "weight": 5, "scoring": "checklist", "criteria": ["witness account"] },
+        { "key": "examination", "label": "Examination", "weight": 10, "scoring": "checklist", "criteria": ["pulse check"] },
+        { "key": "investigation_choice", "label": "Investigations", "weight": 10, "scoring": "checklist", "criteria": ["rhythm check", "glucose"] },
+        { "key": "diagnostic_accuracy", "label": "Diagnosis", "weight": 15, "scoring": "snomed_graded" },
+        { "key": "management_safety", "label": "Management", "weight": 45, "scoring": "llm_judge" },
+        { "key": "red_flag_recognition", "label": "Red flags", "weight": 15, "scoring": "llm_judge" }
+      ]
+    }
+  }
+}
