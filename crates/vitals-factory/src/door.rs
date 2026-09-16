@@ -215,7 +215,10 @@ pub fn fill_body(set: &BTreeMap<String, String>) -> String {
 pub trait Door {
     fn read_ward(&self) -> Result<WardView, String>;
     fn push(&self, token: &Token, packs: &[Pack]) -> Result<Pushed, String>;
+    /// More of an admitted patient's pictures, by patient id. Add only.
     fn fill(&self, token: &Token, patient_id: u64, set: &BTreeMap<String, String>) -> Result<FillReply, String>;
+    /// A waiting pack's pictures, by pack id (64 hex), replaced. Refused once she is in a bed.
+    fn replace(&self, token: &Token, pack_id: &str, set: &BTreeMap<String, String>) -> Result<FillReply, String>;
 }
 
 /// The real door, over HTTP.
@@ -270,6 +273,11 @@ impl Door for Http {
 
     fn fill(&self, token: &Token, patient_id: u64, set: &BTreeMap<String, String>) -> Result<FillReply, String> {
         let (status, body) = self.post(&format!("/api/ward/pack/{patient_id}"), token, &fill_body(set))?;
+        FillReply::parse(status, &body)
+    }
+
+    fn replace(&self, token: &Token, pack_id: &str, set: &BTreeMap<String, String>) -> Result<FillReply, String> {
+        let (status, body) = self.post(&format!("/api/ward/pack/{pack_id}"), token, &fill_body(set))?;
         FillReply::parse(status, &body)
     }
 }

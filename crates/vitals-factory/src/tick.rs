@@ -259,6 +259,10 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
         }
     };
 
+    // ── a face remade since her pack was sent reaches the pack while it waits ──
+    replace_remade_faces(door, &token, &manifest, &mut ledger, &mut r);
+    save_ledger(cfg, &ledger, &mut r);
+
     // ── resend what the board has not shown yet: recovery and probe in one ──
     let mut depth: Option<usize> = None;
     let mut lost = 0;
@@ -400,6 +404,46 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
     complete_faces(cfg, door, tools, &token, &ward, &pool, &mut manifest, &mut r);
     save_ledger(cfg, &ledger, &mut r);
     r
+}
+
+/// For every pack still waiting: if the manifest's face for her key and age is no longer the one
+/// she was sent with — a face remade after a person refused it — replace it through the pack door
+/// (e56946b) and record the new address, so this happens once. A door that refuses because she is
+/// in a bed already is logged and nothing is recorded: an admitted patient's faces are added
+/// through her own door and never replaced.
+fn replace_remade_faces(door: &dyn Door, token: &Token, manifest: &Manifest, ledger: &mut Ledger, r: &mut Report) {
+    let due: Vec<(String, String)> = ledger
+        .sent
+        .iter()
+        .filter(|(_, s)| s.patient_id.is_none())
+        .filter_map(|(id, s)| {
+            let now = manifest.base_for(&s.key, &(s.age..=s.age))?;
+            (s.stable.as_deref() != Some(now.url.as_str())).then(|| (id.clone(), now.url))
+        })
+        .collect();
+    for (id, url) in due {
+        let set = BTreeMap::from([("stable".to_string(), url.clone())]);
+        let name = ledger.sent[&id].name.clone();
+        match door.replace(token, &id, &set) {
+            Ok(FillReply::Filled(f)) if f.added > 0 && f.rejected.is_empty() => {
+                if let Some(s) = ledger.sent.get_mut(&id) {
+                    s.stable = Some(url.clone());
+                }
+                r.say(format!("replaced the face of {name} on waiting pack {} with {url}", &id[..12]));
+            }
+            Ok(FillReply::Filled(f)) => {
+                for why in f.rejected {
+                    r.say(format!("the face of {name} on pack {} was not replaced: {why}", &id[..12]));
+                }
+            }
+            Ok(FillReply::Closed { why }) => {
+                r.say(format!("door closed: {why}"));
+                return;
+            }
+            Ok(FillReply::Refused { error }) => r.fail(format!("replacing the face of {name} on pack {}: {error}", &id[..12])),
+            Err(e) => r.fail(format!("replacing the face of {name} on pack {}: {e}", &id[..12])),
+        }
+    }
 }
 
 fn save_ledger(cfg: &Config, ledger: &Ledger, r: &mut Report) {
