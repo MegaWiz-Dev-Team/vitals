@@ -87,6 +87,10 @@ pub struct Persona {
     /// Inside the band her case is written for. The factory picks it; the case decides the band,
     /// so a twelve-year-old never arrives with a disease authored for a woman of seventy.
     pub age: u16,
+    /// `f` or `m`, and it has to match the case's own patient — the dialogue, the examination and
+    /// the differential are written for it. Here rather than only in the pool because the door's
+    /// job is to check it, and a field the door cannot see is a rule the door cannot keep.
+    pub sex: String,
     /// ISO 3166-1 alpha-3 — `THA`, `IDN`, `NGA`. The globe matches on this, and a country written
     /// freely is a country nobody can match: "Thailand", "ไทย" and "TH" are three countries to a
     /// renderer and one to a reader.
@@ -154,6 +158,64 @@ pub fn difficulty_of(case: &str) -> Option<&'static str> {
         "osce-c" | "osce-d2" | "osce-d4" => "resident",
         _ => return None,
     })
+}
+
+/// The patient a case was written about: the one the dialogue, the examination and the
+/// differential all assume.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CasePatient {
+    /// `m` or `f`, lower-cased from the persona file.
+    pub sex: String,
+    pub age: u16,
+    /// What the case itself calls her. The ward renames her — a patient from twenty countries is
+    /// the whole premise — but the name is here because the voice reads this same file, and the
+    /// board and the voice must not disagree out loud about who she is.
+    pub name: String,
+}
+
+/// The case's own patient, for the twelve stations that carry a persona file.
+///
+/// `None` for the four episodes, which have none today: their patients live in the series bible
+/// and the scenario's prose rather than in a field, so a pack paired with one is taken at its
+/// word. That gap is in the test beside this, not hidden — a rule that silently covers three
+/// quarters of a catalogue is a rule nobody can rely on.
+///
+/// Read from `demo/personas/<case>.json`, which is the same file the patient's voice is built
+/// from. One source: a second table of ages and sexes would drift, and the drift would be a board
+/// that says one thing while the patient says another.
+pub fn case_patient(case: &str) -> Option<CasePatient> {
+    let raw = match case {
+        "osce-a" => include_str!("../../../demo/personas/osce-a.json"),
+        "osce-a2" => include_str!("../../../demo/personas/osce-a2.json"),
+        "osce-b" => include_str!("../../../demo/personas/osce-b.json"),
+        "osce-b2" => include_str!("../../../demo/personas/osce-b2.json"),
+        "osce-b3" => include_str!("../../../demo/personas/osce-b3.json"),
+        "osce-c" => include_str!("../../../demo/personas/osce-c.json"),
+        "osce-c2" => include_str!("../../../demo/personas/osce-c2.json"),
+        "osce-c3" => include_str!("../../../demo/personas/osce-c3.json"),
+        "osce-d" => include_str!("../../../demo/personas/osce-d.json"),
+        "osce-d2" => include_str!("../../../demo/personas/osce-d2.json"),
+        "osce-d3" => include_str!("../../../demo/personas/osce-d3.json"),
+        "osce-d4" => include_str!("../../../demo/personas/osce-d4.json"),
+        _ => return None,
+    };
+    let v: serde_json::Value = serde_json::from_str(raw).ok()?;
+    let p = v.get("patient")?;
+    Some(CasePatient {
+        sex: p.get("sex")?.as_str()?.to_lowercase(),
+        age: p.get("age")?.as_u64()? as u16,
+        name: p.get("name")?.as_str()?.to_string(),
+    })
+}
+
+/// How far a pack's age may sit from the case's own.
+///
+/// A tenth of the case's age, never less than two years: proportional because the distance that
+/// matters is proportional. Five years is nothing at seventy and is a different patient entirely
+/// at three — different airway, different doses, different disease.
+pub fn age_band(case_age: u16) -> std::ops::RangeInclusive<u16> {
+    let slack = (case_age / 10).max(2);
+    case_age.saturating_sub(slack).max(1)..=case_age + slack
 }
 
 /// The engine's own status words, mildest first.

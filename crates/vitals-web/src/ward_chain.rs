@@ -699,6 +699,24 @@ pub fn validate_pack(p: &crate::ward::Pack) -> Result<(), String> {
     if !AGE_RANGE.contains(&p.persona.age) {
         return Err(format!("nobody is {}", p.persona.age));
     }
+    // The case's own patient, where the case has one. The ward renames her and moves her country
+    // — that is the premise — but it may not change what the case was written about.
+    if let Some(theirs) = crate::ward::case_patient(&p.case) {
+        if p.persona.sex != theirs.sex {
+            return Err(format!(
+                "{} is written for a patient who is {}, and this pack says {} — the dialogue, the \
+                 examination and the differential are all written for it",
+                p.case, theirs.sex, p.persona.sex
+            ));
+        }
+        let band = crate::ward::age_band(theirs.age);
+        if !band.contains(&p.persona.age) {
+            return Err(format!(
+                "{} is written about a patient of {}, so a pack for it must be {}–{}, not {}",
+                p.case, theirs.age, band.start(), band.end(), p.persona.age
+            ));
+        }
+    }
     for (state, src) in &p.portrait {
         if state == "dead" {
             return Err("no picture of a dead patient is made — the board shows her last living \

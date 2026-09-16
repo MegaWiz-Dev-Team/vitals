@@ -407,7 +407,7 @@ fn the_board_lists_the_patients_and_where_they_are_from() {
     let mut packs = BTreeMap::new();
     packs.insert(7u64, Pack {
         case: "ep2-stemi".into(),
-        persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 34 },
+        persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 34, sex: "f".into() },
         portrait: Default::default(),
         endemic: false,
     });
@@ -459,7 +459,7 @@ fn every_case_the_ward_can_admit_has_a_difficulty_and_the_board_publishes_it() {
     let mut packs = BTreeMap::new();
     packs.insert(7u64, Pack {
         case: "ep2-stemi".into(),
-        persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 34 },
+        persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 34, sex: "f".into() },
         portrait: Default::default(),
         endemic: false,
     });
@@ -558,7 +558,7 @@ fn the_globe_reads_every_field_it_renders() {
     let mut packs = BTreeMap::new();
     packs.insert(7u64, Pack {
         case: "ep2-stemi".into(),
-        persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 34 },
+        persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 34, sex: "f".into() },
         portrait: [("stable".to_string(),
                     "https://storage.googleapis.com/vitals-world-portraits/\
                      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.webp"

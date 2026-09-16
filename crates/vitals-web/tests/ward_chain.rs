@@ -259,7 +259,7 @@ use vitals_web::ward_chain::{pack_id, validate_pack};
 fn a_pack() -> Pack {
     Pack {
         case: "ep2-stemi".into(),
-        persona: Persona { name: "Ploy Siriwattana".into(), country: "THA".into(), age: 54 },
+        persona: Persona { name: "Ploy Siriwattana".into(), country: "THA".into(), age: 54, sex: "f".into() },
         portrait: std::collections::BTreeMap::new(),
         endemic: false,
     }
@@ -409,7 +409,7 @@ use vitals_web::ward_chain::{choose_next, next_patient_id};
 fn queued(case: &str, name: &str) -> (String, Pack) {
     let p = Pack {
         case: case.into(),
-        persona: Persona { name: name.into(), country: "THA".into(), age: 40 },
+        persona: Persona { name: name.into(), country: "THA".into(), age: 40, sex: "f".into() },
         portrait: Default::default(),
         endemic: false,
     };
@@ -653,12 +653,14 @@ fn a_pack_may_not_contradict_the_case_it_is_paired_with() {
     let mut wrong_age = a_pack();
     wrong_age.case = "osce-a".into();
     wrong_age.persona.name = "Anan Thepwong".into();
+    wrong_age.persona.sex = "m".into();
     wrong_age.persona.age = 54;
     assert!(validate_pack(&wrong_age).is_err(), "and 54 is not inside a band written for 71");
 
     let mut right = a_pack();
     right.case = "osce-a".into();
     right.persona.name = "Anan Thepwong".into();
+    right.persona.sex = "m".into();
     right.persona.age = 69;
     assert!(validate_pack(&right).is_ok(), "a man of 69 can be the patient osce-a is written for");
 
@@ -667,7 +669,7 @@ fn a_pack_may_not_contradict_the_case_it_is_paired_with() {
     assert_eq!((pim.sex.as_str(), pim.age), ("f", 3));
     let mut grown_up = a_pack();
     grown_up.case = "osce-b3".into();
-    grown_up.persona.age = 30;
+    grown_up.persona.age = 30;   // Pim is three, and female like this pack
     assert!(validate_pack(&grown_up).is_err(),
             "a case written for a three-year-old is not a case about a woman of thirty, whatever \
              the vitals say");
