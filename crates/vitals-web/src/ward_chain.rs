@@ -1275,7 +1275,10 @@ pub fn repair_tapes(
         // against and nothing can be re-derived — which is itself worth one line, not ten.
         let sce = packs_now
             .get(&p.patient_id)
-            .and_then(|k| std::fs::read_to_string(case_path(root, &k.case)).ok());
+            .and_then(|k| {
+                crate::ward_case::sce_of(store, &k.case)
+                    .or_else(|| std::fs::read_to_string(case_path(root, &k.case)).ok())
+            });
 
         let (mut back, mut gone) = (0usize, Vec::new());
         for hash in missing {
@@ -1369,8 +1372,11 @@ fn reap(
             continue;
         }
         let Some(pack) = packs_now.get(&p.patient_id) else { continue };
-        let path = case_path(root, &pack.case);
-        let Ok(sce) = std::fs::read_to_string(&path) else {
+        // The ward's own catalogue first, the season's files for the three mid-stay patients —
+        // the same order `ward_sce` uses on the request side, so the ticker and the bedside can
+        // never be replaying two different scenarios for one patient.
+        let from_door = crate::ward_case::sce_of(store, &pack.case);
+        let Some(sce) = from_door.or_else(|| std::fs::read_to_string(case_path(root, &pack.case)).ok()) else {
             out.notes.push(format!(
                 "patient {} plays {}, which is not on this host, so the chart cannot be read",
                 p.patient_id, pack.case
@@ -1533,19 +1539,43 @@ pub fn tick(
             );
             break;
         };
-        let Some((_, pack)) = queue.iter().find(|(k, _)| k == &id) else { break };
-        let hash = match scenario_hash(root, &pack.case) {
-            Ok(h) => h,
-            Err(e) => {
-                out.notes.push(format!("{} has no scenario here, so that pack was dropped: {e}", pack.case));
-                store.del(QUEUE_STORE, &id);
-                continue;
+        let Some((_, queued)) = queue.iter().find(|(k, _)| k == &id) else { break };
+        let mut pack = queued.clone();
+
+        // ── which case she is admitted onto ─────────────────────────────────────────────────
+        //
+        // The ward's own catalogue, never `demo/**`: the season's sixteen belong to
+        // vitals.academy (founder, 16 ก.ย.). Her pack's `case` is taken as a request — the patient
+        // factory will name the case it built her for — and the ward falls back to a case for her
+        // country, then to any it holds. Nothing it holds means nobody is admitted, which is an
+        // empty bed rather than a patient on a case that does not exist here.
+        //
+        // The season ids still resolve for the three patients mid-stay on 16 ก.ย. and for nobody
+        // else: `sce_of` answers only for cases that came through the door.
+        let catalogue = crate::ward_case::all(store);
+        let chosen = crate::ward_case::choose_case(&catalogue, Some(&pack.case), &pack.persona.country, None);
+        let sce_json = match &chosen {
+            Some(c) => crate::ward_case::sce_of(store, &c.case_id),
+            None => None,
+        };
+        let hash = match (&chosen, &sce_json) {
+            (Some(c), Some(json)) => {
+                pack.case = c.case_id.clone();
+                vitals_replay::sce_hash(json)
+            }
+            _ => {
+                out.notes.push(format!(
+                    "no case in this ward's catalogue fits {} ({}), so the bed waits. The case \
+                     factory fills it through /api/ward/case",
+                    pack.persona.name, pack.persona.country
+                ));
+                break;
             }
         };
 
         let patient_id = next_patient_id(now_unix, &taken);
         store.del(QUEUE_STORE, &id);
-        if let Err(e) = store.put(PERSONA_STORE, &format!("p{patient_id}"), pack) {
+        if let Err(e) = store.put(PERSONA_STORE, &format!("p{patient_id}"), &pack) {
             out.notes.push(format!("patient {patient_id}'s pack could not be stored: {e}"));
         }
         match chain.admit(patient_id, hash) {

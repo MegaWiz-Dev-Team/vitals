@@ -378,17 +378,24 @@ fn a_patient_is_given_a_case_from_the_wards_own_catalogue() {
         held("ugib-2", None, "resident", "0.2.0"),
     ];
 
-    assert_eq!(choose_case(&cases, Some("dengue-npl-1"), "NPL", "intern").map(|c| c.case_id.clone()),
+    assert_eq!(choose_case(&cases, Some("dengue-npl-1"), "NPL", Some("intern")).map(|c| c.case_id.clone()),
                Some("dengue-npl-1".into()), "the pack's own choice is honoured first");
-    assert_eq!(choose_case(&cases, Some("not-here"), "NPL", "intern").map(|c| c.case_id.clone()),
+    assert_eq!(choose_case(&cases, Some("not-here"), "NPL", Some("intern")).map(|c| c.case_id.clone()),
                Some("dengue-npl-1".into()),
                "a case the ward does not hold is not a reason to admit nobody");
-    assert_eq!(choose_case(&cases, None, "NPL", "intern").map(|c| c.case_id.clone()),
+    assert_eq!(choose_case(&cases, None, "NPL", Some("intern")).map(|c| c.case_id.clone()),
                Some("dengue-npl-1".into()), "her country's case, when there is one");
-    assert_eq!(choose_case(&cases, None, "THA", "resident").map(|c| c.case_id.clone()),
+    assert_eq!(choose_case(&cases, None, "THA", Some("resident")).map(|c| c.case_id.clone()),
                Some("ugib-2".into()), "otherwise her level, newest version first");
-    assert!(choose_case(&cases, None, "THA", "student").is_none(),
+    assert!(choose_case(&cases, None, "THA", Some("student")).is_none(),
             "and nothing at her level means nobody is admitted, rather than somebody admitted \
              onto a case written for a different learner");
-    assert!(choose_case(&[], None, "THA", "resident").is_none(), "an empty catalogue admits nobody");
+    assert!(choose_case(&[], None, "THA", Some("resident")).is_none(), "an empty catalogue admits nobody");
+
+    // No level asked for, which is where the ward is today: the patient pack does not carry one,
+    // so the ticker asks for her country and takes the newest of whatever there is.
+    assert_eq!(choose_case(&cases, None, "NPL", None).map(|c| c.case_id.clone()),
+               Some("dengue-npl-1".into()));
+    assert_eq!(choose_case(&cases, None, "THA", None).map(|c| c.case_id.clone()),
+               Some("ugib-2".into()), "newest version, whatever level it was written for");
 }

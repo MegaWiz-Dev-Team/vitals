@@ -1836,6 +1836,28 @@ fn ward_rebuild(store: &store::Store, patient_id: u64) -> Option<WardRebuild> {
     Some(WardRebuild { shifts: seen.shifts(), admitted_slot: her.admitted_slot })
 }
 
+/// The scenario a ward patient's case runs.
+///
+/// **The ward's own catalogue first.** Her case came through `/api/ward/case`, compiled from
+/// embla-cases, and the bytes the admission committed to on chain are the ones stored there — so a
+/// stranger playing her is playing what the record says she has.
+///
+/// The season's files are the fallback and are named as one: three patients were mid-stay on
+/// season cases when the case factory landed on 16 ก.ย., and finishing their stays is kinder than
+/// stranding them. No patient admitted after that can reach this path — the ticker admits only
+/// from the catalogue — and when the last of the three has gone home it can be deleted.
+fn ward_sce(store: &store::Store, case: &str) -> Result<String, String> {
+    if let Some(json) = ward_case::sce_of(store, case) {
+        return Ok(json);
+    }
+    std::fs::read_to_string(scenario_path(case)).map_err(|e| {
+        format!(
+            "{case} is not a case this ward holds: {e}. The ward plays what the case factory sends \
+             through /api/ward/case"
+        )
+    })
+}
+
 /// Start a shift on a patient the ward is holding.
 ///
 /// Everything this needs is either on the chain or derived from it: she must be a patient this
@@ -1879,8 +1901,7 @@ fn open_shift(
              somebody in it"
         ))?;
 
-    let sce_json = std::fs::read_to_string(scenario_path(&pack.case))
-        .map_err(|e| format!("{} is not a case this server holds: {e}", pack.case))?;
+    let sce_json = ward_sce(store, &pack.case)?;
 
     // Her past, as the chain gives it: the shifts that actually anchored, in slot order, each tape
     // found by the hash its leaf commits to.
@@ -2124,8 +2145,8 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
         return bad("the ward has no pack for that patient, so it cannot say which case this shift was");
     };
     let root = scenario_root();
-    let Ok(sce_json) = std::fs::read_to_string(scenario_path(&pack.case)) else {
-        return bad("this server does not hold that case");
+    let Ok(sce_json) = ward_sce(store, &pack.case) else {
+        return bad("this ward does not hold that case, so this shift cannot be replayed");
     };
     let admitted = chain.patient(patient_id).ok().flatten().map(|p| p.admitted_slot).unwrap_or(0);
     match ward_chain::receipt(

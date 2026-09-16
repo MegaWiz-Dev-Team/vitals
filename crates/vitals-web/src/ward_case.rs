@@ -247,3 +247,57 @@ pub fn all(store: &crate::store::Store) -> Vec<CaseSummary> {
         .filter_map(|(_, pack)| validate_case(&pack).ok())
         .collect()
 }
+
+/// The scenario one of the ward's own cases runs, as the engine takes it.
+///
+/// `None` for anything this ward did not accept through the door — a season id, a case that was
+/// never sent, a pack that no longer validates. The caller then says so rather than reaching for a
+/// file: `demo/**` is the season's and a ward patient must never be playing one by accident.
+pub fn sce_of(store: &crate::store::Store, case_id: &str) -> Option<String> {
+    let pack: serde_json::Value = store.get(CASE_STORE, case_id)?;
+    validate_case(&pack).ok()?;
+    serde_json::to_string(pack.get("sce")?).ok()
+}
+
+/// Which case the next patient is admitted onto.
+///
+/// `wanted` is her own pack's choice, honoured whenever the ward actually holds it — the patient
+/// factory names the case it built her for. A case the ward does not hold is not a reason to admit
+/// nobody, so the fallback is the ward's own: her country's case if there is one, and otherwise
+/// any at her level, newest version first so a recompile is what the next patient plays.
+///
+/// `None` means nobody is admitted this tick. That is the honest answer to an empty catalogue and
+/// to a level nothing has been compiled for yet — better an empty bed than a student on a case
+/// written for a resident.
+pub fn choose_case<'a>(
+    cases: &'a [CaseSummary],
+    wanted: Option<&str>,
+    country: &str,
+    difficulty: Option<&str>,
+) -> Option<&'a CaseSummary> {
+    if let Some(id) = wanted {
+        if let Some(hit) = cases.iter().find(|c| c.case_id == id) {
+            return Some(hit);
+        }
+    }
+    let newest = |a: &&CaseSummary, b: &&CaseSummary| {
+        // Version strings from one compiler, compared piece by piece so 0.10.0 is after 0.9.0.
+        let parts = |v: &str| -> Vec<u64> { v.split('.').map(|p| p.parse().unwrap_or(0)).collect() };
+        parts(&b.version).cmp(&parts(&a.version)).then(a.case_id.cmp(&b.case_id))
+    };
+    // `None` is "any level", which is where the ward is today: the patient pack does not carry one
+    // yet, so the ticker asks for her country and takes what there is.
+    let at_level = |c: &&CaseSummary| difficulty.is_none_or(|d| c.difficulty == d);
+    let mut hers: Vec<&CaseSummary> = cases
+        .iter()
+        .filter(|c| c.country.as_deref() == Some(country))
+        .filter(at_level)
+        .collect();
+    hers.sort_by(newest);
+    if let Some(first) = hers.first() {
+        return Some(first);
+    }
+    let mut any: Vec<&CaseSummary> = cases.iter().filter(at_level).collect();
+    any.sort_by(newest);
+    any.first().copied()
+}
