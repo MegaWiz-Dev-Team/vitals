@@ -85,7 +85,7 @@ fn the_pool_spans_sixty_countries_in_every_region() {
         for p in people {
             let name = p["name"].as_str().unwrap();
             assert!(name.contains(' '), "{code}: {name} is one word — a chart carries a full name");
-            assert!(name.chars().all(|ch| ch.is_ascii()), "{code}: {name} — `name` is romanised, the home script goes in `local`");
+            assert!(name.is_ascii(), "{code}: {name} — `name` is romanised, the home script goes in `local`");
             assert!(!p.as_object().unwrap().contains_key("age"), "{code}: {name} carries an age; the case carries the band");
             if let Some(local) = p.get("local") {
                 let local = local.as_str().unwrap();

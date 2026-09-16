@@ -80,7 +80,7 @@ fn person<'a>(pool: &'a [Person], key: &str) -> &'a Person {
 #[test]
 fn the_pool_and_the_endemic_list_read_from_the_wards_own_files() {
     let pool = read_pool(POOL).expect("the pool parses");
-    assert_eq!(pool.len(), 105, "sixty at first, and deeper where the need is since 16 Sep");
+    assert_eq!(pool.len(), 323, "sixty at first, deeper where the need is, and the whole world since 16 Sep");
     let ploy = person(&pool, "THA-0");
     assert_eq!((ploy.name.as_str(), ploy.sex, ploy.country.as_str(), ploy.place.as_str()), ("Ploy Siriwattana", Sex::F, "THA", "Thailand"));
     assert_eq!(person(&pool, "IDN-2").name, "Agus Pratama");
@@ -130,18 +130,24 @@ fn nobody_is_on_the_ward_twice() {
     ward.patients.push(on_board(2, "went_home", person(&pool, "IDN-1"), "osce-b", 25));
     let mut ledger = Ledger::default();
     ledger.sent.insert("deadbeef".into(), Sent::new("osce-a", anan, 70, false, None, 1, "test"));
-    // More wanted than there are people, so everyone who is free is drawn exactly once (sixty
-    // beds, so the bed cap plays no part here).
+    // Two hundred wanted from a pool of three hundred and more (sixty beds, so the bed cap plays
+    // no part here): nobody is drawn twice and the two who are busy are not drawn at all.
     let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &flat(&pool), beds: 60, want: 200, seed: 3 });
     let keys: Vec<&str> = p.packs.iter().map(|pl| pl.person.as_str()).collect();
-    assert_eq!(keys.len(), pool.len() - 2, "everyone but the two who are busy");
+    assert_eq!(keys.len(), 200, "{:?}", p.notes);
     assert!(!keys.contains(&"THA-0"), "Ploy is in a bed");
     assert!(!keys.contains(&"THA-1"), "Anan is queued and unseen");
-    assert!(keys.contains(&"IDN-1"), "Budi went home, so his face is free again");
     let mut dedup = keys.clone();
     dedup.sort_unstable();
     dedup.dedup();
     assert_eq!(dedup.len(), keys.len(), "no face twice in one plan");
+    // Budi went home, so his face is free again: with everyone else busy he is the one drawn.
+    let mut all_but_budi = Ledger::default();
+    for (n, x) in pool.iter().enumerate().filter(|(_, x)| x.key != "IDN-1") {
+        all_but_budi.sent.insert(format!("id{n}"), Sent::new("osce-a", x, 70, false, None, 1, "test"));
+    }
+    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &all_but_budi, weights: &flat(&pool), beds: 60, want: 3, seed: 3 });
+    assert_eq!(p.packs.iter().map(|pl| pl.person.as_str()).collect::<Vec<_>>(), vec!["IDN-1"]);
 }
 
 #[test]
@@ -226,9 +232,10 @@ fn a_persona_whose_sex_no_case_was_written_for_is_skipped_not_forced() {
     let pool = read_pool(POOL).unwrap();
     let (man, endemic) = (full_manifest(&pool), BTreeMap::new());
     let men_only = Catalogue { cases: vec![case("osce-a")], unbuildable: vec![] };
-    let p = plan(&Inputs { catalogue: &men_only, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&pool), beds: 3, want: 60, seed: 1 });
+    let p = plan(&Inputs { catalogue: &men_only, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&pool), beds: 3, want: 400, seed: 1 });
     let men = pool.iter().filter(|x| x.sex == Sex::M).count();
-    assert_eq!(p.packs.len(), men, "every man, no woman");
+    assert!(p.packs.iter().all(|pl| pl.sex == Sex::M), "no woman on a case written for a man");
+    assert!(!p.packs.is_empty() && p.packs.len() <= men, "{} packs of {men} men", p.packs.len());
     assert!(p.exhausted, "and then the pool is exhausted for this catalogue");
 }
 
@@ -335,23 +342,25 @@ fn the_ledger_learns_from_the_board_who_was_admitted_and_who_has_left() {
 fn weights_are_people_per_doctor_with_a_floor_and_the_median_for_the_unknown() {
     let pool = read_pool(POOL).unwrap();
     let w = weights(PHYSICIANS, &pool).expect("the file parses");
-    assert_eq!(w.median, 1125.0, "the median of the twenty, as the data stands on 16 Sep 2026");
-    assert_eq!(w.floor, 281.25);
+    assert_eq!(w.median, 675.0, "the median of the sixty, as the data stands on 16 Sep 2026");
+    assert_eq!(w.floor, 168.75);
     assert_eq!(w.of("ETH"), 6990.0, "Ethiopia, 1:6,990 (2023)");
     assert_eq!(w.of("JPN"), 380.0);
-    assert_eq!(w.of("USA"), 281.25, "the United States (270) is lifted to the floor");
+    assert_eq!(w.of("USA"), 270.0, "the United States (270) stands above the floor of sixty countries");
+    assert_eq!(w.of("GRC"), 168.75, "Greece (150) is lifted to the floor");
     assert_eq!(w.year("ETH"), Some(2023));
     let ranked_owned = w.ranked();
     let ranked: Vec<&str> = ranked_owned.iter().map(|(c, _)| c.as_str()).collect();
-    assert_eq!(&ranked[..5], &["ETH", "KEN", "NGA", "IDN", "THA"], "the five highest by the numbers, not by a list");
-    assert_eq!(&ranked[5..10], &["EGY", "BGD", "IND", "MMR", "PHL"]);
+    assert_eq!(&ranked[..5], &["ETH", "MDG", "MOZ", "MLI", "UGA"], "the five highest by the numbers, not by a list");
+    assert_eq!(&ranked[5..10], &["COD", "AGO", "GHA", "KEN", "HTI"]);
+    assert_eq!(ranked.last().copied(), Some("GRC"));
     assert!((w.of("ETH") / w.of("JPN") - 18.4).abs() < 0.1, "Ethiopia about eighteen times Japan");
     // A pooled country the series has no value for gets the median.
     let mut with_unknown = pool.clone();
     with_unknown.push(Person { key: "ATA-0".into(), name: "Nobody Here".into(), sex: Sex::F, country: "ATA".into(), place: "Antarctica".into() });
     let w2 = weights(PHYSICIANS, &with_unknown).unwrap();
     assert_eq!(w2.of("ATA"), w2.median);
-    assert!(w2.table().contains("ETH 6,990") && w2.table().contains("floor 281"), "{}", w2.table());
+    assert!(w2.table().contains("ETH 6,990") && w2.table().contains("floor 169"), "{}", w2.table());
 }
 
 /// Two countries, twice the need: twice the patients. Exact over a run, not merely likely.
@@ -393,21 +402,26 @@ fn no_country_takes_more_than_its_share_of_the_beds() {
     let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &w, beds: 3, want: 6, seed: 9 });
     assert_eq!(p.packs.len(), 6);
     assert!(p.packs.iter().all(|pl| pl.pack.persona.country != "ETH"), "Ethiopia has her bed: {:?}", p.packs.iter().map(|x| x.pack.persona.country.clone()).collect::<Vec<_>>());
-    assert_eq!(p.packs[0].pack.persona.country, "KEN", "so the highest need without a bed goes first");
+    let next = w.ranked().into_iter().map(|(c, _)| c).find(|c| c != "ETH").unwrap();
+    assert_eq!(p.packs[0].pack.persona.country, next, "so the highest need without a bed goes first");
     // With ten beds the cap is four, and Ethiopia is drawn again once the others have caught up
     // to her share — she already holds one of one, so not first.
-    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &w, beds: 10, want: 6, seed: 9 });
+    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &w, beds: 10, want: 30, seed: 9 });
     assert_ne!(p.packs[0].pack.persona.country, "ETH");
     assert!(p.packs.iter().any(|pl| pl.pack.persona.country == "ETH"), "{:?}", p.packs.iter().map(|x| x.pack.persona.country.clone()).collect::<Vec<_>>());
 }
 
-/// The pool grows where the need is: nine people for the five highest-weighted countries, six for
-/// the next five, three for the rest — computed from the weights, not from a list — with both
-/// sexes everywhere, full invented names, and no name twice.
+/// The pool grows where the need is: among the twenty of the first spread, nine people for the
+/// five highest-weighted countries, six for the next five, three for the rest — computed from the
+/// weights over those twenty, not from a list — and four to six for each of the forty added on
+/// 16 Sep (tests/world.rs holds those), with both sexes everywhere, full invented names, and no
+/// name twice.
 #[test]
 fn the_pool_is_deeper_where_the_need_is() {
     let pool = read_pool(POOL).unwrap();
-    let w = weights(PHYSICIANS, &pool).unwrap();
+    let first_spread: Vec<Person> = pool.iter().take(105).cloned().collect();
+    assert_eq!(first_spread.iter().map(|p| p.country.as_str()).collect::<std::collections::BTreeSet<_>>().len(), 20, "the twenty come first in the file");
+    let w = weights(PHYSICIANS, &first_spread).unwrap();
     let ranked = w.ranked();
     let mut per_country: BTreeMap<&str, Vec<&Person>> = BTreeMap::new();
     for p in &pool {
@@ -416,7 +430,9 @@ fn the_pool_is_deeper_where_the_need_is() {
     for (rank, (country, _)) in ranked.iter().enumerate() {
         let want = if rank < 5 { 9 } else if rank < 10 { 6 } else { 3 };
         let people = &per_country[country.as_str()];
-        assert_eq!(people.len(), want, "{country} is ranked {} and should carry {want}", rank + 1);
+        assert_eq!(people.len(), want, "{country} is ranked {} among the twenty and should carry {want}", rank + 1);
+    }
+    for (country, people) in &per_country {
         assert!(people.iter().any(|p| p.sex == Sex::F) && people.iter().any(|p| p.sex == Sex::M), "{country}: both sexes");
         for p in people {
             assert!(p.name.contains(' '), "{}: a chart carries a full name", p.name);
@@ -427,7 +443,7 @@ fn the_pool_is_deeper_where_the_need_is() {
     names.sort_unstable();
     names.dedup();
     assert_eq!(names.len(), n, "no name twice in the pool");
-    assert_eq!(pool.len(), 5 * 9 + 5 * 6 + 10 * 3, "one hundred and five people");
+    assert_eq!(pool.len(), 5 * 9 + 5 * 6 + 10 * 3 + 218, "one hundred and five of the first spread, two hundred and eighteen added");
     // The first three of every country are the sixty the faces were made for, in their order:
     // the manifest keys on the position in the file.
     assert_eq!(person(&pool, "THA-0").name, "Ploy Siriwattana");
@@ -460,9 +476,9 @@ fn the_draw_follows_the_world_bank_weights_from_the_file() {
         let got = count.get(c.as_str()).copied().unwrap_or(0) as isize;
         assert!((got - expected).abs() <= 1, "{c}: drawn {got}, share of twenty is {expected} (weight {wc})");
     }
-    assert_eq!(count["ETH"], 5, "Ethiopia, a quarter of the need, a quarter of the packs");
-    assert!(count.get("USA").copied().unwrap_or(0) <= 1, "the floored United States, at most once in twenty");
-    assert!(count["ETH"] >= count["KEN"] && count["KEN"] >= count["NGA"], "{count:?}");
+    assert_eq!(count["ETH"], 2, "Ethiopia, eight per cent of the need of sixty countries, two of twenty");
+    assert!(count.get("USA").copied().unwrap_or(0) <= 1, "the United States, at most once in twenty");
+    assert!(count["ETH"] >= count.get("MDG").copied().unwrap_or(0), "{count:?}");
 }
 
 /// No sentence in the crate about a patient carries a fixed pronoun: the pack's sex chooses it,

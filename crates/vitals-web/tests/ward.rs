@@ -671,7 +671,7 @@ fn the_persona_pool_can_actually_fill_the_catalogue() {
     use vitals_web::ward::persona_pool;
 
     let pool = persona_pool();
-    assert_eq!(pool.len(), 20, "twenty countries, so the globe has something to light up");
+    assert_eq!(pool.len(), 60, "sixty countries, from the whole world (founder, 16 Sep 2026), so the globe has something to light up everywhere");
 
     let globe = include_str!("../static/world/index.html");
     let mut seen_names: HashSet<String> = HashSet::new();

@@ -19,5 +19,6 @@ pub mod need;
 pub mod plan;
 pub mod pool;
 pub mod prompts;
+pub mod region;
 pub mod tick;
 pub mod tools;
