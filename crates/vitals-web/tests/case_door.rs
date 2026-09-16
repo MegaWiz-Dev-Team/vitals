@@ -237,6 +237,12 @@ impl Server {
         me
     }
 
+    /// Where this server keeps what it was given, so a test can read it back the way the ward
+    /// does rather than through an endpoint that has already chosen what to show.
+    fn state(&self) -> std::path::PathBuf {
+        self._state.clone()
+    }
+
     fn post(&self, path: &str, body: &Value) -> (u16, Value) {
         let url = format!("http://127.0.0.1:{}{path}", self.port);
         let r = ureq::post(&url)
@@ -789,4 +795,38 @@ fn the_patient_answers_out_of_the_case_file() {
     // The pack may write its own sentence for that, and then it is the pack's.
     pack["no_answer"] = json!("{He_she} shakes {his_her} head.");
     assert_eq!(answer(&pack, &him, "do you have a dog at home?").words, "He shakes his head.");
+}
+
+/// **What the compiler writes, the ward holds — including the fields this build has no use for.**
+///
+/// The compiler now counts its own placeholders: `placeholders: {age, sex}` says how many of each
+/// the prose carries, which is how a pack declares whether its text is about a person the ward can
+/// rename. Nothing here reads it yet. That is exactly why it is worth a test — a door that
+/// validates a shape tends to grow into a door that *keeps* only that shape, and the next field
+/// the compiler adds would arrive here and quietly stop existing.
+///
+/// So the rule is that the door validates and stores; it does not edit. What comes out of the
+/// store is what was posted, field for field.
+#[test]
+fn the_door_keeps_what_it_was_given() {
+    let s = Server::start();
+    let mut pack = a_pack();
+    pack["case_id"] = json!("auth-placeholders-1");
+    pack["placeholders"] = json!({ "age": 1, "sex": 2 });
+    // A field no build has ever seen, to make the point that this is not about `placeholders`.
+    pack["from_a_later_compiler"] = json!({ "nested": ["and", 3, true] });
+
+    let (code, body) = s.post("/api/ward/case", &pack);
+    assert_eq!(code, 200, "the door refused a pack for carrying a field it does not read: {body}");
+
+    let store = vitals_web::store::Store::open(s.state()).expect("the ward's own store");
+    let held: Value = store
+        .get(vitals_web::ward_case::CASE_STORE, &vitals_web::ward_case::key_for("auth-placeholders-1"))
+        .expect("the ward is holding it");
+
+    assert_eq!(held["placeholders"], pack["placeholders"], "the compiler's count, untouched");
+    assert_eq!(held["from_a_later_compiler"], pack["from_a_later_compiler"]);
+    for field in ["case_id", "title", "sce", "rubric", "voice", "replay", "patient", "source"] {
+        assert_eq!(held[field], pack[field], "{field} came back changed");
+    }
 }
