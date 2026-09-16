@@ -1823,6 +1823,14 @@ fn open_shift(
         "case": pack.case,
         "name": pack.persona.name,
         "country": pack.persona.country,
+        // The name of the place, from the pool that already holds it. The page says "from
+        // Nigeria" rather than "NGA": a code is for matching a map, not for reading aloud.
+        "country_name": ward::persona_pool()
+            .into_iter()
+            .find(|c| c.country == pack.persona.country)
+            .map(|c| c.place)
+            .filter(|p| !p.is_empty())
+            .unwrap_or_else(|| pack.persona.country.clone()),
         "age": pack.persona.age,
         // What this shift must extend. Named before the work, because the program refuses a
         // reveal that does not extend the head it was told — and that refusal is the mechanic.

@@ -1831,6 +1831,9 @@ const $=s=>document.querySelector(s);
    code at the foot of the script, because the card renderer reads it and a const in its temporal
    dead zone would throw the first time a station card is drawn. */
 const WARD=(location.pathname.match(/^\/ward\/(\d+)\/?$/)||[])[1]||null;
+/* Escaping, up here with WARD because the renderers below use both and a const in its
+   temporal dead zone throws the first time one of them draws. */
+const esc=t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 /* Injected by the server when it is running with a token. Empty on a loopback demo. */
 const TOKEN='__VITALS_TOKEN__';
 const _fetch=window.fetch;
@@ -2920,7 +2923,14 @@ function paint(v,named){
   if(v.tr) Object.assign(TR, v.tr);
   /* B9 · the player bar: on air while the case runs, ended when it is over. */
   const onAir=!over&&!v.over;
-  $('#ep-name').innerHTML=(E.sn||E.n)+' · '+E.t
+  /* On a shift the bar reads the patient, not the station (producer, 16 ก.ย.): a stranger is
+     standing at a bed, and "S1 · OSCE D4" is a shelf number. The case stays, one line down and
+     quieter, because which case she is is true and useful — it is just not the point. */
+  $('#ep-name').innerHTML=(WARD&&WARDSHIFT
+      ? esc(WARDSHIFT.name||('patient '+WARD))
+        +(WARDSHIFT.age?' · '+WARDSHIFT.age:'')
+        +(WARDSHIFT.country_name?' · from '+esc(WARDSHIFT.country_name):'')
+      : (E.sn||E.n)+' · '+E.t)
     +' · <span class="live'+(onAir?'':' end')+'">'+(onAir?'LIVE':'ENDED')+'</span>'
     +(EXAMLIVE?' <span class="live exam">OSCE EXAM</span>':'');
   $('#ep-name').title='scenario '+v.sce_hash;
@@ -3150,10 +3160,12 @@ function stemHtml(e){
      so the prefix comes off and what is left is what the row is actually for: who else is
      in there with you. A place that is not a station's keeps every word. */
   const room=String(e.place||'').replace(/^OSCE station · /,'');
-  return `<div class="stem-h"><b>OSCE station ${e.n.replace(/^OSCE /,'')}</b>`
+  return `<div class="stem-h"><b>${WARD?'on the ward':'OSCE station '+e.n.replace(/^OSCE /,'')}</b>`
       +'<span class="sp"></span>'
       +`<span>${specShort(band)}${tier?' · '+tier:''}</span></div>`
     +`<h3 class="stem-t">${title}</h3>`
+    /* The case, said once, quietly, on a shift — the header above it now names the person. */
+    + (WARD?`<p class="stem-case" style="color:var(--ink-3,#7b8a86);margin:-.2rem 0 .6rem">${specShort(band)}${tier?' · '+tier:''} · station ${e.n.replace(/^OSCE /,'')}</p>`:'')
     +'<dl class="stem-g">'
       +`<dt>patient</dt><dd>${e.who||''}</dd>`
       +`<dt>presents</dt><dd>${e.line||''}</dd>`
@@ -5419,7 +5431,14 @@ function wardBar(){
     '<b id="wardwho">…</b><span id="wardsay" style="flex:1"></span>'+
     '<button class="btn go" id="wardtake">take this shift</button>'+
     '<a class="btn" id="wardback" href="/">the ward</a></div>');
-  $('#wardtake').onclick=takeShift;
+  /* Wrapped, because a button that throws is a button that does nothing and says nothing. One
+     driven run ended with the strip showing its opening line and no sign that the press had been
+     received; I could not reproduce it, and the fix for the class is to make any failure in here
+     arrive on the strip rather than in a console nobody has open. */
+  $('#wardtake').onclick=()=>takeShift().catch(e=>{
+    $('#wardtake').disabled=false;
+    wardSay('that did not go through: '+esc(e&&e.message?e.message:e)+' — try again');
+  });
 }
 async function openShift(){
   await identity();
@@ -5487,6 +5506,16 @@ async function takeShift(){
 }
 async function handOver(){
   if(!id)return;
+  try{ await handOverInner(); }
+  catch(e){
+    /* Her tape is on the server either way: a shift that fails to hand over is not a shift that
+       was lost, and telling somebody to open her again is better than a dead button. */
+    $('#endrun').disabled=false;
+    wardSay('that did not go through: '+esc(e&&e.message?e.message:e)+
+            ' — <a href="/ward/'+WARD+'">open her again</a>');
+  }
+}
+async function handOverInner(){
   disarmEnd(); $('#endrun').disabled=true;
   wardSay('reducing your shift…');
   const over_=await (await fetch('/api/handover?id='+id+asMe())).json();
@@ -5503,7 +5532,6 @@ async function handOver(){
   wardSay('<b>handed over.</b> her chain is '+a.shifts+' shift'+(a.shifts===1?'':'s')+' long and '+
           'she is '+esc((a.state||'').replace('_',' '))+'. <a href="/">back to the ward</a>');
 }
-const esc=t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 if(WARD) addEventListener('load',openShift);
 
 refreshRecord();
