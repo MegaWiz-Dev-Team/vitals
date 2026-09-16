@@ -391,6 +391,7 @@ fn the_board_lists_the_patients_and_where_they_are_from() {
     let patients = vec![patient(7, OPEN, 2, 10, 0), patient(8, DIED, 1, 20, 90)];
     let mut packs = BTreeMap::new();
     packs.insert(7u64, Pack {
+        difficulty: None,
         case: "ep2".into(),
         persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 34, sex: "f".into() },
         portrait: Default::default(),
@@ -443,6 +444,7 @@ fn every_case_the_ward_can_admit_has_a_difficulty_and_the_board_publishes_it() {
     let patients = vec![patient(7, OPEN, 2, 10, 0), patient(8, OPEN, 0, 20, 0)];
     let mut packs = BTreeMap::new();
     packs.insert(7u64, Pack {
+        difficulty: None,
         case: "ep2".into(),
         persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 34, sex: "f".into() },
         portrait: Default::default(),
@@ -544,12 +546,14 @@ fn the_globe_reads_every_field_it_renders() {
     // Both open patients are the ward's own. A bed is a patient the ward can describe, so a
     // test about beds describes them; an undescribed one is the other rule's subject.
     packs.insert(8u64, Pack {
+        difficulty: None,
         case: "osce-c".into(),
         persona: Persona { name: "Fon".into(), country: "THA".into(), age: 6, sex: "f".into() },
         portrait: Default::default(),
         endemic: false,
     });
     packs.insert(7u64, Pack {
+        difficulty: None,
         case: "ep2".into(),
         persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 34, sex: "f".into() },
         portrait: [("stable".to_string(),
@@ -799,6 +803,7 @@ fn every_time_the_ward_publishes_is_a_slot_or_a_z() {
     ];
     let mut packs = std::collections::BTreeMap::new();
     packs.insert(7u64, Pack {
+        difficulty: None,
         case: "ep2".into(),
         persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 54, sex: "f".into() },
         portrait: Default::default(),
@@ -807,6 +812,7 @@ fn every_time_the_ward_publishes_is_a_slot_or_a_z() {
     // Both of them are the ward's own patients: a bed is a patient the ward can describe, and a
     // test about beds has to describe them or it is testing the other rule.
     packs.insert(9u64, Pack {
+        difficulty: None,
         case: "osce-c".into(),
         persona: Persona { name: "Fon".into(), country: "THA".into(), age: 6, sex: "f".into() },
         portrait: Default::default(),
@@ -918,6 +924,7 @@ fn a_patient_the_ward_cannot_describe_holds_no_bed() {
     ];
     let mut packs = BTreeMap::new();
     packs.insert(3u64, Pack {
+        difficulty: None,
         case: "osce-a".into(),
         persona: Persona { name: "Anan Thepwong".into(), country: "THA".into(), age: 69, sex: "m".into() },
         portrait: Default::default(),
@@ -973,6 +980,7 @@ fn the_payload_publishes_how_many_are_in_beds_beside_how_many_are_on_the_chain()
     ];
     let mut packs = BTreeMap::new();
     packs.insert(3u64, Pack {
+        difficulty: None,
         case: "osce-a".into(),
         persona: Persona { name: "Anan".into(), country: "THA".into(), age: 69, sex: "m".into() },
         portrait: Default::default(),
@@ -1130,6 +1138,7 @@ fn a_bed_is_kept_for_the_whole_stay() {
     use vitals_web::ward::{beds_of, Pack, Persona};
 
     let pack = |name: &str| Pack {
+        difficulty: None,
         case: "osce-c".into(),
         persona: Persona { name: name.into(), country: "THA".into(), age: 6, sex: "f".into() },
         portrait: Default::default(),

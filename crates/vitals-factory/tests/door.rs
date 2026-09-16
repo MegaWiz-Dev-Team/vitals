@@ -142,6 +142,7 @@ fn a_portrait_push_is_answered_in_added_kept_and_rejected() {
 #[test]
 fn a_page_of_packs_is_the_shape_the_door_documents() {
     let pack = Pack {
+        difficulty: None,
         case: "osce-a".into(),
         persona: Persona { name: "Anan Thepwong".into(), age: 70, country: "THA".into(), sex: "m".into() },
         portrait: BTreeMap::from([("stable".to_string(), "https://storage.googleapis.com/vitals-world-portraits/a.webp".to_string())]),

@@ -258,6 +258,7 @@ use vitals_web::ward::{Pack, Persona};
 use vitals_web::ward_chain::{pack_id, validate_pack};
 
 fn a_pack() -> Pack {
+        difficulty: None,
     Pack {
         case: "ep2".into(),
         persona: Persona { name: "Ploy Siriwattana".into(), country: "THA".into(), age: 54, sex: "f".into() },
@@ -414,6 +415,7 @@ use vitals_web::ward_chain::{choose_next, next_patient_id};
 
 fn queued(case: &str, name: &str) -> (String, Pack) {
     let p = Pack {
+        difficulty: None,
         case: case.into(),
         persona: Persona { name: name.into(), country: "THA".into(), age: 40, sex: "f".into() },
         portrait: Default::default(),
@@ -902,6 +904,7 @@ fn a_shift_receipt_carries_what_the_chain_holds_and_what_anybody_can_recompute()
     let chart = |h: &str| tapes.get(h).cloned();
 
     let pack = WardPack {
+        difficulty: None,
         case: "ep1".into(),
         persona: Persona { name: "Ing".into(), country: "THA".into(), age: 19, sex: "f".into() },
         portrait: Default::default(),
@@ -955,6 +958,7 @@ fn a_receipt_says_when_its_hash_names_more_than_one_shift() {
     let chart = |h: &str| tapes.get(h).cloned();
 
     let pack = WardPack {
+        difficulty: None,
         case: "ep1".into(),
         persona: Persona { name: "Ing".into(), country: "THA".into(), age: 19, sex: "f".into() },
         portrait: Default::default(),

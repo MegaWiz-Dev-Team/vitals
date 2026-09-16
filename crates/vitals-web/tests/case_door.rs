@@ -468,3 +468,49 @@ fn a_patient_pack_may_say_which_level_she_was_built_for() {
     let why = vitals_web::ward_chain::validate_pack(&bad).expect_err("refused");
     assert!(why.contains("consultant"), "named: {why}");
 }
+
+/// **A library case is not renamed to fit our filing.**
+///
+/// `embla-hepatic-encephalopathy-precipitated-by-gi-bleeding-resident` is 65 characters, and the
+/// store's keys are file names capped at 64. The door said yes and the store said no, as a 503
+/// that reads like an outage — two of the compiler's sixty-six refused for a reason that has
+/// nothing to do with medicine.
+///
+/// The id stays the library's and the filing is ours: a key the store cannot take becomes a hash
+/// of that id, with the id itself kept in the document where it always was. Nothing that reads the
+/// catalogue can tell, and nothing about the case changed to suit us.
+#[test]
+fn a_case_id_too_long_to_be_a_file_name_is_still_the_case_id() {
+    use vitals_web::store::Store;
+    use vitals_web::ward_case::{all, key_for, sce_of};
+
+    let long = "embla-hepatic-encephalopathy-precipitated-by-gi-bleeding-resident";
+    assert!(long.len() > 64, "the case that found this is {} characters", long.len());
+    assert!(!vitals_web::store::is_safe_key(long), "and the store will not take it as a key");
+    assert_ne!(key_for(long), long, "so it is filed under a name the store can hold");
+    assert_eq!(key_for(long), key_for(long), "the same one every time, or it is lost");
+    assert_ne!(key_for(long), key_for(&format!("{long}-2")), "and a different case is a different file");
+    assert_eq!(key_for("auth-demo-1"), "auth-demo-1", "a short id is its own key and reads plainly");
+
+    let dir = std::env::temp_dir().join(format!("vitals-longkey-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store = Store::open(dir.clone()).expect("a store");
+
+    let mut pack = a_pack();
+    pack["case_id"] = json!(long);
+    pack["rubric"]["case"] = json!(long);
+    store.put(vitals_web::ward_case::CASE_STORE, &key_for(long), &pack).expect("filed");
+
+    assert!(sce_of(&store, long).is_some(), "and it is found again by the name the library gave it");
+    let listed = all(&store);
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].case_id, long, "the catalogue says the case's own id, not our file name");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The one word that says what kind of deterioration this is.
+#[test]
+fn the_catalogue_says_what_kind_of_case_it_is() {
+    let s = validate_case(&a_pack()).expect("a pack");
+    assert_eq!(s.archetype, "haemorrhagic_shock");
+}
