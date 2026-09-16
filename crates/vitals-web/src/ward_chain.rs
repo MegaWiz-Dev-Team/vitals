@@ -1124,14 +1124,17 @@ pub fn tick(
         }
     };
     let mut taken: Vec<u64> = patients.iter().map(|p| p.patient_id).collect();
-    let packs = packs(store);
+    let packs_now = packs(store);
     let mut on_ward_cases: Vec<String> = patients
         .iter()
         .filter(|p| p.state == OPEN)
-        .filter_map(|p| packs.get(&p.patient_id).map(|k| k.case.clone()))
+        .filter_map(|p| packs_now.get(&p.patient_id).map(|k| k.case.clone()))
         .collect();
 
-    out.open = patients.iter().filter(|p| p.state == OPEN).count();
+    // Beds, not chain rows: a patient the ward cannot describe holds none (`beds_taken`), so she
+    // blocks no admission. Three test patients that reached the chain outside the queue wedged
+    // staging shut against a full queue on 16 ก.ย., and this is the rule that unwedges it.
+    out.open = crate::ward::beds_taken(&patients, &packs_now);
     let depth = match queue_depth(store) {
         Ok(n) => {
             out.depth = Some(n);

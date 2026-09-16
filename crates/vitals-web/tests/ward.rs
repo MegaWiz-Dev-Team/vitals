@@ -555,6 +555,14 @@ fn the_globe_reads_every_field_it_renders() {
         patient(9, DISCHARGED, 3, 5, 900),
     ];
     let mut packs = BTreeMap::new();
+    // Both open patients are the ward's own. A bed is a patient the ward can describe, so a
+    // test about beds describes them; an undescribed one is the other rule's subject.
+    packs.insert(8u64, Pack {
+        case: "osce-c".into(),
+        persona: Persona { name: "Fon".into(), country: "THA".into(), age: 6, sex: "f".into() },
+        portrait: Default::default(),
+        endemic: false,
+    });
     packs.insert(7u64, Pack {
         case: "ep2".into(),
         persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 34, sex: "f".into() },
@@ -808,6 +816,14 @@ fn every_time_the_ward_publishes_is_a_slot_or_a_z() {
         portrait: Default::default(),
         endemic: false,
     });
+    // Both of them are the ward's own patients: a bed is a patient the ward can describe, and a
+    // test about beds has to describe them or it is testing the other rule.
+    packs.insert(9u64, Pack {
+        case: "osce-c".into(),
+        persona: Persona { name: "Fon".into(), country: "THA".into(), age: 6, sex: "f".into() },
+        portrait: Default::default(),
+        endemic: false,
+    });
 
     let payloads = [
         ward_payload(&vitals_web::ward::WardRead {
@@ -910,7 +926,8 @@ fn a_patient_the_ward_cannot_describe_holds_no_bed() {
     assert!(by_id(1)["bed"].is_null(), "she is in no bed");
     assert_eq!(by_id(1)["state"], "off_ward",
                "and the board says what she is rather than calling her one of the three");
-    let note = by_id(1)["note"].as_str().expect("her row says why");
+    let adrift = by_id(1);
+    let note = adrift["note"].as_str().expect("her row says why");
     assert!(note.contains("outside the ward"), "in words a stranger can read: {note}");
 
     assert_eq!(by_id(3)["bed"], 1, "the described patient has the first bed, not the third");

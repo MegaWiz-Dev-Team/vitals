@@ -428,6 +428,26 @@ pub fn census(patients: &[PatientOnChain], shifts: &[ShiftOnChain], since: Optio
     }
 }
 
+/// How many beds are taken.
+///
+/// **A bed is a patient the ward can describe.** She is in one when she is open on the chain *and*
+/// a pack says who she is: a patient the ward cannot name has no case, so nobody can take a shift
+/// on her, so nobody can ever discharge her — and counted as a bed she would wedge the ward shut
+/// against a full queue. Not hypothetical: it is what three test patients did to staging on
+/// 16 ก.ย.
+///
+/// The census is unaffected and must stay so. `on_ward` counts what is open on the chain, because
+/// she is on the chain; this is about beds, which are the ward's own arithmetic.
+pub fn beds_taken(
+    patients: &[PatientOnChain],
+    packs: &std::collections::BTreeMap<u64, Pack>,
+) -> usize {
+    patients
+        .iter()
+        .filter(|p| p.state == OPEN && packs.contains_key(&p.patient_id))
+        .count()
+}
+
 /// How many patients to release right now.
 ///
 /// Free beds, capped by what the queue actually holds. `open` above `beds` — a bed count that
@@ -488,7 +508,11 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
     // — so it is derived the one way that is stable between two reads: open patients in the order
     // they were admitted. A patient who leaves frees her number for the next admission, which is
     // what a bed is.
-    let mut open: Vec<&PatientOnChain> = patients.iter().filter(|p| p.state == OPEN).collect();
+    // Only the patients the ward can describe are in beds — see `beds_taken`.
+    let mut open: Vec<&PatientOnChain> = patients
+        .iter()
+        .filter(|p| p.state == OPEN && packs.contains_key(&p.patient_id))
+        .collect();
     open.sort_by_key(|p| (p.admitted_slot, p.patient_id));
     let bed_of = |id: u64| open.iter().position(|p| p.patient_id == id).map(|i| i + 1);
 
@@ -499,11 +523,20 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
             let on_shift = p.state == OPEN
                 && p.lease_holder != [0; 32]
                 && as_of_slot < p.lease_until_slot;
+            // On the chain and not on the ward: admitted by something other than the queue, so
+            // there is no case to play and no bed to hold. Named rather than hidden — she exists,
+            // and a board that quietly dropped her would disagree with its own census.
+            let adrift = p.state == OPEN && pack.is_none();
             serde_json::json!({
                 "patient_id": p.patient_id,
                 // Words, because the board is what reads this. A renderer switching on 0, 1 and 2
                 // would have to know the program's byte layout to draw a ward.
-                "state": if on_shift { "on_shift" } else { state_word(p.state) },
+                "state": if adrift { "off_ward" }
+                         else if on_shift { "on_shift" }
+                         else { state_word(p.state) },
+                "note": adrift.then_some(
+                    "admitted outside the ward · no bed — she is on the chain and the ward has no \
+                     pack for her, so there is no case to open and no bed she holds"),
                 // When the person in the room with her started, as a time a browser can render.
                 // Derived: the lease ends a known number of slots after it is taken, so the start
                 // is the end minus that, carried back to wall time through this read's own slot.
@@ -556,7 +589,8 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                          bay publishes, never a second opinion. `on_shift` is the patient's lease \
                          standing at this read's slot, and `on_shift_since` is that lease's start \
                          carried to wall time; `bed` is her place among the open patients in \
-                         admission order, because the program knows patients and not furniture. \
+                         admission order **among the patients the ward can describe**; one it \
+                         cannot has no case to open and holds no bed, and says so in her own row. \
                          `portraits` is her whole set and `portrait` is the one to draw now — the \
                          nearest picture no worse than the state she is in. Her physiological \
                          status is not derived here yet, so a patient on the ward is drawn with \
