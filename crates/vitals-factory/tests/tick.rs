@@ -430,7 +430,8 @@ fn a_face_is_a_photograph_or_it_is_not_a_face() {
     assert_eq!(r.faces_made, 1);
 }
 
-/// A child's face asks for a child, in words the painter is known to need.
+/// A child's face asks for a child, in words the painter is known to need: a photographer's
+/// opening and no negatives — the words "anime" and "doll" in a prompt summon what they name.
 #[test]
 fn a_childs_face_is_asked_for_as_a_photograph_of_a_child() {
     let dir = world("child");
@@ -445,8 +446,10 @@ fn a_childs_face_is_asked_for_as_a_photograph_of_a_child() {
     assert!(ages.iter().any(|a| *a < 16) && ages.iter().any(|a| *a >= 16), "the draw made both a child and an adult: {ages:?}");
     for (prompt, _) in paints.iter() {
         let age: u16 = prompt.split("-year-old").next().unwrap().rsplit(' ').next().unwrap().parse().unwrap();
-        let child_words = prompt.contains("photorealistic, natural child proportions, documentary style; not a drawing, not anime, not a doll");
+        let child_words = prompt.starts_with("Documentary photograph, 35mm film") && prompt.contains("natural child proportions");
         assert_eq!(child_words, age < 16, "{age}: {prompt}");
+        assert!(!prompt.contains("anime") && !prompt.contains("doll") && !prompt.contains("not a"), "no negatives, ever: {prompt}");
+        assert!(prompt.contains("no text, no logos, no flags"), "{prompt}");
     }
 }
 

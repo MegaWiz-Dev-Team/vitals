@@ -10,20 +10,36 @@
 
 use crate::catalogue::Sex;
 
-/// Below this age the painter needs telling that a child is a photograph too (developer-16,
-/// 16 Sep: KOR-0 at 8 came out as a doll).
+/// Below this age the painter needs a different opening (developer-16, 16 Sep: KOR-0 at 8 came
+/// out as a doll).
 pub const CHILD_UNDER: u16 = 16;
 
-/// What a child's prompt adds, verbatim from the brief.
-pub const CHILD: &str = "photorealistic, natural child proportions, documentary style; not a drawing, not anime, not a doll";
-
 /// The base: her, in a bed, on the day she was admitted.
+///
+/// Two prompts, not one. The adult prompt is the batch's, verbatim, and made the sixty faces the
+/// founder looked at. A child asked for the same way comes out as anime — "an 8-year-old girl from
+/// South Korea" gave three anime pictures in a row on three seeds — and the brief's clause
+/// ("photorealistic, natural child proportions, documentary style; not a drawing, not anime, not a
+/// doll") did not change that: a diffusion model attends to the words "anime" and "doll" whether
+/// or not a "not" stands before them. What worked, on two seeds, was a positive opening in a
+/// photographer's own vocabulary and no negatives at all; both faces passed the gate on both judge
+/// models (calibration 16 Sep 2026, scratch trials A and C).
 pub fn base(age: u16, sex: Sex, place: &str) -> String {
-    let child = if age < CHILD_UNDER { format!(", {CHILD}") } else { String::new() };
+    if age < CHILD_UNDER {
+        let child = match sex {
+            Sex::F => "girl",
+            Sex::M => "boy",
+        };
+        return format!(
+            "Documentary photograph, 35mm film, natural window light: a {age}-year-old {child} from {place} lying in a \
+             hospital bed, plain pale-green hospital gown, real skin texture with pores, natural child proportions, \
+             calm expression, looking at the camera, shallow depth of field, no text, no logos, no flags"
+        );
+    }
     format!(
         "Portrait photograph of a {age}-year-old {} from {place}, lying in a hospital bed, \
          wearing a plain pale-green hospital gown, soft neutral ward lighting, calm expression, \
-         looking at the camera, shallow depth of field, no text, no logos, no flags{child}",
+         looking at the camera, shallow depth of field, no text, no logos, no flags",
         sex.word()
     )
 }
