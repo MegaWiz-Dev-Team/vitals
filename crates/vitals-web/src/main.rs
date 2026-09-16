@@ -2545,7 +2545,7 @@ fn main() {
     if !held.is_empty() {
         if let Ok(chain) = ward_chain::WardChain::connect() {
             if let Ok(patients) = chain.patients() {
-                for note in ward_chain::repair_tapes(&chain, &store, &patients, &held) {
+                for note in ward_chain::repair_tapes(&chain, &store, &scenario_root(), &patients, &held) {
                     println!("ward       {note}");
                 }
             }

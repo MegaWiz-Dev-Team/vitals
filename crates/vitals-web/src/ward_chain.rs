@@ -776,6 +776,7 @@ impl WardChain {
     /// place it happens.
     pub fn close_unattended(
         &self,
+        store: &crate::store::Store,
         patient_id: u64,
         sce_json: &str,
         difficulty: vitals_progress::Difficulty,
@@ -816,6 +817,10 @@ impl WardChain {
         let rec = vitals_replay::record_for(
             me.to_bytes(), sce, sce, difficulty, false, &[], replay, hash, slot,
         )?;
+        // The tape first, as everywhere else that writes to this chain: no steps, because nobody
+        // did anything to her, filed under the record's own hash. Without it the death is on chain
+        // and cannot be shown — which is what happened to the first two the ticker closed.
+        keep_for_anchor(store, patient_id, &rec, &[])?;
         self.now(anchor_shift_ix(
             &self.program_id, &self.operator, &me, patient_id, WARD_TREE, wire(&rec), prev_head,
         ))
@@ -1199,6 +1204,31 @@ pub fn scenario_hash(root: &std::path::Path, case: &str) -> Result<[u8; 32], Str
     Ok(vitals_replay::sce_hash(&text))
 }
 
+/// The empty tape behind a shift the ward closed itself, when the chain's own numbers say so.
+///
+/// The ticker anchors a closing shift with **no steps** and the idle span before it, so the chain
+/// reads *died, nobody on shift*. Everything that run hash was built from is on chain — the
+/// scenario, the shifts before it, the slot it landed at — so this re-derives it rather than
+/// trusting a signer or a shape: replay the gap, compute the hash an empty tape would have
+/// produced, and answer `Some(vec![])` only if it is the hash the chain actually carries.
+///
+/// `None` for a shift somebody played, whoever signed it.
+pub fn closing_tape(
+    sce_json: &str,
+    before: &[crate::ward::ShiftOnChain],
+    tape_of: &dyn Fn(&str) -> Option<Vec<vitals_replay::Step>>,
+    admitted_slot: u64,
+    this: &crate::ward::ShiftOnChain,
+) -> Option<Vec<vitals_replay::Step>> {
+    let earlier: Vec<crate::ward::ShiftOnChain> =
+        before.iter().filter(|s| s.slot < this.slot).copied().collect();
+    let since = earlier.iter().map(|s| s.slot).max().unwrap_or(admitted_slot).max(admitted_slot);
+    let (mut st, _) = resumed(sce_json, &earlier, tape_of, admitted_slot, since).ok()?;
+    let r = vitals_replay::shift(&mut st, &[], this.slot.saturating_sub(since));
+    let would_be = vitals_replay::leaf(&vitals_replay::sce_hash(sce_json), &[], &r);
+    (would_be == this.run_hash).then(Vec::new)
+}
+
 /// The leaves in this list whose tapes are not here.
 ///
 /// Named as a function of its arguments so the boot, the ticker and the board all ask the same
@@ -1223,10 +1253,12 @@ pub fn missing_tapes(
 pub fn repair_tapes(
     chain: &WardChain,
     store: &crate::store::Store,
+    root: &std::path::Path,
     patients: &[crate::ward::PatientOnChain],
     held: &[(String, Vec<vitals_replay::Step>)],
 ) -> Vec<String> {
     let mut notes = Vec::new();
+    let packs_now = packs(store);
     for p in patients {
         let key = format!("p{}", p.patient_id);
         let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
@@ -1234,21 +1266,50 @@ pub fn repair_tapes(
             continue;
         }
         let _ = store.put(SHIFT_CACHE, &key, &seen);
-        for hash in missing_tapes(store, &seen.shifts()) {
-            match recover_tape(store, p.patient_id, &hash, held) {
-                Some(t) => notes.push(format!(
-                    "patient {}: the tape for {hash} was missing and has been put back from a \
-                     run still stored here — {} steps",
-                    p.patient_id,
-                    t.len()
-                )),
-                None => notes.push(format!(
-                    "patient {}: the chain names a shift with run hash {hash} and no tape here \
-                     reduces to it. That chart cannot be rebuilt, so the patient is off the board \
-                     rather than in a bed nobody can take",
-                    p.patient_id
-                )),
+        let shifts = seen.shifts();
+        let missing = missing_tapes(store, &shifts);
+        if missing.is_empty() {
+            continue;
+        }
+        // Her case, for the closing-shift recovery. Without a pack there is no scenario to replay
+        // against and nothing can be re-derived — which is itself worth one line, not ten.
+        let sce = packs_now
+            .get(&p.patient_id)
+            .and_then(|k| std::fs::read_to_string(case_path(root, &k.case)).ok());
+
+        let (mut back, mut gone) = (0usize, Vec::new());
+        for hash in missing {
+            let found = recover_tape(store, p.patient_id, &hash, held).or_else(|| {
+                // The ward's own closing shift: no steps, and the chain's numbers prove it.
+                let sce = sce.as_deref()?;
+                let this = shifts.iter().find(|s| hex32(&s.run_hash) == hash)?;
+                let tape = closing_tape(sce, &shifts, &|h| tape_by_hash(store, h), p.admitted_slot, this)?;
+                keep_tape(store, &StoredTape {
+                    patient_id: p.patient_id,
+                    run_hash: hash.clone(),
+                    steps: tape.clone(),
+                })
+                .ok()?;
+                Some(tape)
+            });
+            match found {
+                Some(_) => back += 1,
+                None => gone.push(hash),
             }
+        }
+        // One line per patient per pass. The boot printed the same sentence ten times for one old
+        // test patient, which is ten times less readable than saying it once with the count.
+        if back > 0 {
+            notes.push(format!("patient {}: {back} missing tape(s) put back", p.patient_id));
+        }
+        if !gone.is_empty() {
+            notes.push(format!(
+                "patient {}: {} shift(s) the chain names have no tape here — {}. That chart cannot \
+                 be rebuilt, so the patient is off the board rather than in a bed nobody can take",
+                p.patient_id,
+                gone.len(),
+                gone.join(", ")
+            ));
         }
     }
     notes
@@ -1356,7 +1417,7 @@ fn reap(
             Some("intern") => vitals_progress::Difficulty::Intern,
             _ => vitals_progress::Difficulty::Student,
         };
-        match chain.close_unattended(p.patient_id, &sce, difficulty, &closing.replay, head) {
+        match chain.close_unattended(store, p.patient_id, &sce, difficulty, &closing.replay, head) {
             Ok(sig) => {
                 out.closed.push(p.patient_id);
                 out.notes.push(format!(
@@ -1439,7 +1500,7 @@ pub fn tick(
     // anybody sees that somebody died there, and it is the ward the founder chose.
     // Before anything else: a leaf on chain whose tape this ward has lost. She cannot be opened,
     // rebuilt or closed until it is back, so the repair runs ahead of the reaping that needs it.
-    out.notes.extend(repair_tapes(chain, store, &patients, held));
+    out.notes.extend(repair_tapes(chain, store, root, &patients, held));
     // Asked once, after the repair has had its go: the tapes it put back are not missing any more,
     // and the beds it could not save are the ones this tick must give up.
     let lost = lost_tapes(chain, store, &patients);
