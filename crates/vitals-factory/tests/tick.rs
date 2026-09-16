@@ -621,31 +621,48 @@ fn a_ward_that_lists_no_cases_builds_nothing_and_says_so() {
     assert!(tools.paints.borrow().is_empty(), "no face painted for a pack that cannot go");
 }
 
-/// A pack waiting in the ledger with a season id — sent before the ward refused them — is refused
-/// at the re-send in the door's words, dropped from the ledger so the face is free, and the tick
-/// goes on to build World-case packs in its place.
+/// A pack waiting in the ledger whose case the ward does not list — a season id from before
+/// 0543ed7 — is already queued at the ward, and the ward's ticker places such a pack by the
+/// patient's country and then by anything it holds, so it will be admitted with a World case as
+/// beds free. It is left exactly as it is: not re-sent, not refused, not dropped; its face stays
+/// reserved; one line per tick says how many are placed by the ward. The re-send path stays for
+/// packs whose case the ward does list.
 #[test]
-fn a_waiting_pack_with_a_season_id_is_refused_at_the_re_send_and_dropped() {
-    let dir = world("season-resend");
+fn a_waiting_pack_whose_case_the_ward_does_not_list_is_left_to_the_ward() {
+    let dir = world("placed-by-ward");
     let pool = read_pool(POOL).unwrap();
     let man = seed_manifest(&dir, &pool);
     let anan = pool.iter().find(|p| p.key == "THA-1").unwrap();
+    let ploy = pool.iter().find(|p| p.key == "THA-0").unwrap();
     let cfg = config(&dir, 3, 2);
     let mut ledger = Ledger::default();
-    let sent = vitals_factory::ledger::Sent::new("osce-a", anan, 70, false, Some(man.entries["THA-1"].portrait["stable"].clone()), cfg.now - 600, &cfg.ward);
-    let id = pack_id(&sent.to_pack());
-    ledger.sent.insert(id.clone(), sent);
+    // One season-id pack, and one World-case pack the ward's queue has lost: only the second is re-sent.
+    let old = vitals_factory::ledger::Sent::new("osce-a", anan, 70, false, Some(man.entries["THA-1"].portrait["stable"].clone()), cfg.now - 600, &cfg.ward);
+    let old_id = pack_id(&old.to_pack());
+    let mut listed = vitals_factory::ledger::Sent::new("world-copd-woman", ploy, 66, false, Some(man.entries["THA-0"].portrait["stable"].clone()), cfg.now - 500, &cfg.ward);
+    listed.case_id = Some("world-copd-woman".into());
+    listed.difficulty = Some("student".into());
+    let listed_id = pack_id(&listed.to_pack());
+    ledger.sent.insert(old_id.clone(), old);
+    ledger.sent.insert(listed_id.clone(), listed);
     ledger.save(&dir.join("factory-ledger.json")).unwrap();
     let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
     let tools = FakeTools::default();
     let r = tick(&cfg, &door, &tools);
-    assert_eq!(r.errors.len(), 1, "{:?}", r.errors);
-    assert!(r.errors[0].contains("osce-a") && r.errors[0].contains("not a case this ward serves") && r.errors[0].contains("dropped"), "{}", r.errors[0]);
+    assert!(r.errors.is_empty(), "nothing refused, nothing dropped: {:?}", r.errors);
     let after = Ledger::load(&dir.join("factory-ledger.json")).unwrap();
-    assert!(!after.sent.contains_key(&id), "dropped, so the face is free");
-    assert_eq!(after.sent.len(), 3, "and three World packs built in its place: {:?}", after.sent.values().map(|s| s.case.clone()).collect::<Vec<_>>());
-    assert!(after.sent.values().all(|s| s.case.starts_with("world-")));
-    assert!(door.queue.borrow().values().all(|p| p.case.starts_with("world-")));
+    let kept = after.sent.get(&old_id).expect("left exactly as it was");
+    assert!(kept.patient_id.is_none() && !kept.closed && kept.case == "osce-a" && kept.case_id.is_none(), "{kept:?}");
+    assert!(!door.queue.borrow().contains_key(&old_id), "not re-sent");
+    assert!(door.queue.borrow().contains_key(&listed_id), "the World-case pack was re-sent and put back");
+    assert!(!after.sent.values().any(|s| s.key == "THA-1" && s.case != "osce-a"), "Anan's face stays reserved: he is not drawn again");
+    assert!(door.queue.borrow().values().all(|p| p.persona.name != anan.name));
+    let text = r.lines.join("\n");
+    assert!(text.contains("1 waiting pack(s)") && text.contains("placed by the ward") && text.contains("osce-a"), "{text}");
+    assert!(text.contains("resent 1 unseen pack(s)"), "the re-send counts the listed one only:\n{text}");
+    // The queue is topped up with World packs around them.
+    assert_eq!(after.sent.len(), 2 + 2, "two kept, two built to reach depth three with one put back: {:?}", after.sent.values().map(|s| s.case.clone()).collect::<Vec<_>>());
+    assert!(after.sent.values().filter(|s| s.case != "osce-a").all(|s| s.case.starts_with("world-")));
 }
 
 /// Never the same case on the board twice: a case in a bed (`patients[].case`) is chosen for no
