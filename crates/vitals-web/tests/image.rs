@@ -140,9 +140,11 @@ fn the_build_stage_copies_everything_the_crate_bakes_in() {
                 continue;
             }
             let src = std::fs::read_to_string(&path).expect("a source file");
-            for piece in src.split("include_str!(\"").skip(1) {
-                let Some(rel) = piece.split('"').next() else { continue };
-                baked.push((path.clone(), rel.to_string()));
+            for macro_name in ["include_str!(\"", "include_bytes!(\""] {
+                for piece in src.split(macro_name).skip(1) {
+                    let Some(rel) = piece.split('"').next() else { continue };
+                    baked.push((path.clone(), rel.to_string()));
+                }
             }
         }
     }
@@ -160,5 +162,122 @@ fn the_build_stage_copies_everything_the_crate_bakes_in() {
                 "{} bakes in {inside}, and the build stage copies {copied:?} — rustc will not \
                  find it, and the failure arrives twenty minutes into a build rather than here",
                 from.display());
+
+        // A COPY line is only half the answer. The ignore files decide what that COPY can see, and
+        // a path excluded there is absent from the context with no error until rustc looks for it.
+        for ignore in ["\u{2e}dockerignore", "\u{2e}gcloudignore"] {
+            let patterns = ignore_patterns(&repo(), ignore);
+            assert!(!excluded_by(&inside, &patterns),
+                    "{} bakes in {inside}, and {ignore} keeps it out of the build context. The \
+                     COPY line is there and the file is in the repository; it simply never \
+                     arrives, and Cloud Build says `couldn't read {inside}` twenty minutes in. \
+                     Either whitelist it with a ! line or put it where the crate already owns \
+                     its own assets.",
+                    from.display());
+        }
     }
+}
+
+/// The ignore file's patterns, in order, with gcloud's `#!include:` directive expanded.
+///
+/// Comments and blank lines dropped; everything else kept as written, because order is meaning:
+/// the last pattern that matches a path decides, and a `!` line only works if it comes after the
+/// line it is undoing.
+fn ignore_patterns(root: &std::path::Path, name: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let Ok(text) = std::fs::read_to_string(root.join(name)) else { return out };
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(included) = line.strip_prefix("#!include:") {
+            out.extend(ignore_patterns(root, included.trim()));
+            continue;
+        }
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        out.push(line.trim_end_matches('/').to_string());
+    }
+    out
+}
+
+/// Would this path be missing from the build context?
+///
+/// Docker's rule, which is the one that bit us: the last matching pattern wins, `!` undoes, and a
+/// pattern that matches a **parent directory** excludes everything under it — `pitch/*` matches
+/// `pitch/logo`, so `pitch/logo/favicon-world.svg` never reaches the context even though no
+/// pattern names it. That last part is the whole reason this function exists rather than a
+/// `contains` check.
+fn excluded_by(path: &str, patterns: &[String]) -> bool {
+    let mut excluded = false;
+    for pattern in patterns {
+        let (negated, pattern) = match pattern.strip_prefix('!') {
+            Some(rest) => (true, rest),
+            None => (false, pattern.as_str()),
+        };
+        if matches_or_parent(path, pattern) {
+            excluded = !negated;
+        }
+    }
+    excluded
+}
+
+/// The pattern against the path and against every directory above it.
+fn matches_or_parent(path: &str, pattern: &str) -> bool {
+    let segments: Vec<&str> = path.split('/').collect();
+    (1..=segments.len()).any(|n| glob_match(&segments[..n], pattern))
+}
+
+/// Segment-wise glob: `**` spans any number of segments, `*` and `?` stay inside one.
+fn glob_match(path: &[&str], pattern: &str) -> bool {
+    let pat: Vec<&str> = pattern.split('/').collect();
+    fn walk(path: &[&str], pat: &[&str]) -> bool {
+        match (path.first(), pat.first()) {
+            (None, None) => true,
+            (_, Some(&"**")) => walk(path, &pat[1..]) || (!path.is_empty() && walk(&path[1..], pat)),
+            (Some(p), Some(q)) => segment_match(p, q) && walk(&path[1..], &pat[1..]),
+            _ => false,
+        }
+    }
+    walk(path, &pat)
+}
+
+/// One segment against one pattern segment.
+fn segment_match(seg: &str, pat: &str) -> bool {
+    let (s, p): (Vec<char>, Vec<char>) = (seg.chars().collect(), pat.chars().collect());
+    fn walk(s: &[char], p: &[char]) -> bool {
+        match (s.first(), p.first()) {
+            (None, None) => true,
+            (_, Some('*')) => walk(s, &p[1..]) || (!s.is_empty() && walk(&s[1..], p)),
+            (Some(_), Some('?')) => walk(&s[1..], &p[1..]),
+            (Some(a), Some(b)) if a == b => walk(&s[1..], &p[1..]),
+            _ => false,
+        }
+    }
+    walk(&s, &p)
+}
+
+/// The matcher itself, against the case that got through and the lines that were already there.
+///
+/// A test whose own helper is wrong passes for the wrong reason, and this helper is a
+/// reimplementation of somebody else's semantics — so it is pinned against real lines from the
+/// repository's own ignore files rather than invented ones.
+#[test]
+fn the_ignore_matcher_reads_the_rules_the_way_docker_does() {
+    let pitch = vec!["pitch/*".to_string(), "!pitch/deck.html".to_string()];
+    assert!(excluded_by("pitch/logo/favicon-world.svg", &pitch),
+            "a pattern that matches a parent directory takes everything under it — this is the \
+             deploy that failed on 16 ก.ย.");
+    assert!(excluded_by("pitch/video/week3.mp4", &pitch));
+    assert!(!excluded_by("pitch/deck.html", &pitch), "and a later ! line undoes it");
+    assert!(!excluded_by("crates/vitals-web/static/world/index.html", &pitch),
+            "nothing outside pitch/ is touched by a pitch/ rule");
+
+    let starred = vec!["**/*.mp4".to_string(), "target".to_string()];
+    assert!(excluded_by("pitch/video/a.mp4", &starred), "** spans directories");
+    assert!(excluded_by("target/debug/vitals-web", &starred), "a bare directory takes its contents");
+    assert!(!excluded_by("crates/vitals-web/src/main.rs", &starred));
+
+    // Order is meaning: the same two lines the other way round exclude the deck as well.
+    let reversed = vec!["!pitch/deck.html".to_string(), "pitch/*".to_string()];
+    assert!(excluded_by("pitch/deck.html", &reversed), "the last matching pattern wins");
 }
