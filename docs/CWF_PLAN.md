@@ -64,7 +64,7 @@ Being exact about this is the difference between a four-week plan and a wish.
 | "Your shift must extend the current head" | **new** — program work |
 | Starting an attempt **from** a resumed state rather than from the scenario's start | **new** — engine work, small, on top of `resume` |
 | A ward board and a shift receipt page | **new** — web work |
-| Time passing while nobody is on shift | **built 16 ก.ย.** — `idle_seconds()` + `pass_idle()` + `shift(.., idle_slots)` in `vitals-replay`, ticked at the scenario's grain and capped below the catalogue's fastest arrest; 8 handover tests and a catalogue walk |
+| Time passing while nobody is on shift | **built 16 ก.ย.** — `idle_seconds()` + `pass_idle()` + `shift(.., idle_slots)` in `vitals-replay`, ticked at the scenario's grain and uncapped since the founder's 11:30 ruling; the ward's ticker closes whoever the engine finished; 9 handover tests and a catalogue walk |
 | A queue of patients that refills itself from outside the ward | **new** — a launchd job on the mini + `POST /api/ward/queue` + Firestore (rulings 10–11) |
 | A board that changes while you are looking at it | **new** — SSE on the ward host (ruling 12) |
 | A front page you spin to find a patient | **built 16 ก.ย.** — the globe, `cwf/globe` merged: reads `/api/ward` every 30 s, links to `/ward/<id>` |
@@ -104,17 +104,45 @@ we authored a new disease course this month.
    > together make the same night a drift of two simulated minutes.
    >
    > **Decided 16 ก.ย. — the founder's own number: 1:60**, an hour away costs her a simulated
-   > minute, *"ผมอยากได้ 1:60"*. The cap is two simulated minutes, set by the producer below
-   > `ep5`'s 186 s, the quickest arrest in the catalogue, and reached after two real hours. A gap can then only ever deteriorate her, and **death happens only
-   > inside a shift**. That is the part worth saying out loud: every death on this ward is
-   > something a key did or failed to do while holding her, which is what *"the log says who and
-   > when"* has to mean. A patient who died of a gap nobody chose would carry harm on nobody's
-   > record at all.
+   > minute, *"ผมอยากได้ 1:60"*. A cap of two simulated minutes went in beside it the same
+   > morning, set by the producer below `ep5`'s 186 s so that a gap could only ever deteriorate
+   > her and **death happened only inside a shift** — every death on this ward something a key did
+   > or failed to do while holding her.
    >
-   > The cap is a promise about the catalogue, so a test holds it against the catalogue:
-   > `no_case_in_the_catalogue_dies_of_the_idle_clock_alone` walks all sixteen and prints the
-   > fastest arrest, so a case authored to arrest sooner than the cap fails a test rather than
-   > quietly making the promise false.
+   > **The founder removed the cap at 11:30 the same day.** A ward where being abandoned is
+   > survivable is not one. At 1:60 a patient nobody visits deteriorates as the engine says and
+   > can arrest and die unattended, and what keeps the record honest is not a constant but a duty:
+   > *the ticker closes her, never the next stranger*. Each minute the ward replays idle time for
+   > every open bed and, when the engine has reached death, anchors a closing shift signed by the
+   > operator with an **empty tape and the idle span** — so the chain reads *died, nobody on
+   > shift*, and the next person to open her page finds a closed patient rather than a corpse the
+   > board still calls alive. Her bed is not refilled until the following tick: for one minute the
+   > board carries her last face and the sentence, which is the only time anybody sees that
+   > somebody died there.
+   >
+   > **The mortality table, measured 16 ก.ย. at each scenario's own grain** — untreated from the
+   > first second, converted to real hours at 1:60. Fourteen of the sixteen arrest; two never do.
+   >
+   > | case | arrests unattended | | case | arrests unattended |
+   > |---|---|---|---|---|
+   > | `ep5` | 3.1 real hours | | `ep4` | 8.1 |
+   > | `osce-a2` | 5.0 | | `ep3` | 8.6 |
+   > | `osce-d3` | 5.3 | | `osce-b3` | 11.0 |
+   > | `ep2` | 5.5 | | `osce-d4` | 11.0 |
+   > | `osce-d` | 6.7 | | `osce-b` | 11.6 |
+   > | `osce-a` | 6.8 | | `osce-c2` | 12.0 |
+   > | `osce-d2` | 8.0 | | `osce-c3` | 14.0 |
+   > | `osce-b2` (pericarditis) | never | | `osce-c` (croup) | never |
+   >
+   > So a bed left alone overnight is an empty bed by morning, and the queue is what fills it. That
+   > is the ward the founder chose, stated here in numbers rather than discovered on a board a
+   > judge is looking at.
+   >
+   > The promise is about the catalogue, so a test holds it against the catalogue:
+   > `an_unattended_patient_dies_when_the_engine_says_she_does` walks all sixteen through `shift()`
+   > — the call the server makes — and asserts both ends of that range, so a case authored to
+   > empty a bed faster than a stranger can reach it fails a test rather than surprising the
+   > board.
 
 3. **A patient is a chain, the program holds the head.** A `Patient` account with a head; a shift
    commits against the current head (commit–reveal as today); the reveal appends and moves the head;
@@ -427,8 +455,14 @@ anything.
       does not lose it, census still read off the chain.
 - [ ] **The board is live** (ruling 12): SSE — beds, queue depth, on-shift-since, the world clock
       and the census, all moving without a reload.
-- [x] **The idle ratio decided by the founder, 16 ก.ย.: 1:60**, cap two simulated minutes. In
-      force and tested (`an_hour_away_costs_her_a_minute`).
+- [x] **The idle ratio decided by the founder, 16 ก.ย.: 1:60**, and **no cap** — he removed it
+      at 11:30 the same day. In force and tested (`an_hour_away_costs_her_a_minute`,
+      `the_idle_clock_is_slow_linear_and_derivable`), with the mortality table under ruling 2.
+- [x] **The ward closes the patient nobody came back to.** The ticker, never a stranger: an empty
+      tape, the idle span, the operator's signature, and the bed held for one more minute so the
+      board can say it. Decided and built 16 ก.ย.; the decision half is tested
+      (`a_patient_nobody_came_back_to_is_closed_by_the_ward_and_not_by_the_next_stranger`) and
+      the chain half waits on a patient actually dying on staging.
 - [ ] **The endemic cases converted** (ruling 15), after the factory: dengue first, then
       leptospirosis, thalassemia, G6PD and tuberculosis. Until one lands, `endemic.json` stays
       empty and every draw is uniform.
