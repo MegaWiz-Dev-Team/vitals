@@ -1134,3 +1134,33 @@ fn a_patient_who_cannot_be_rebuilt_is_named_and_gives_up_the_bed() {
     // The count the ticker refills against agrees with the board.
     assert_eq!(beds_taken(&patients, &packs, &lost), 1);
 }
+
+/// **At the bedside the frame is never empty.**
+///
+/// The board's rule is strict and right: a patient who went home does not borrow the picture of
+/// herself ill in a bed, so `portrait_for` answers nothing when no picture at or below her state
+/// exists. At the bedside that same nothing is a black frame in front of somebody who is still in
+/// the room with her — and on a discharge, which is where it happens, it is the last thing they
+/// see of a patient they just treated.
+///
+/// So the bedside asks a different question: her own picture if there is one, the nearest milder
+/// one if not, and failing both the nearest picture that exists at all. The board's answer is
+/// unchanged.
+#[test]
+fn the_bedside_never_shows_an_empty_frame() {
+    use vitals_web::ward::{portrait_at_the_bedside, portrait_for};
+
+    let base = "https://storage.googleapis.com/vitals-world-portraits/";
+    let stable = format!("{base}{}.webp", "a".repeat(64));
+    let set: std::collections::BTreeMap<String, String> =
+        [("stable".to_string(), stable.clone())].into_iter().collect();
+
+    assert_eq!(portrait_for(&set, "recovered"), None,
+               "the board says nothing rather than showing her ill in a bed she has left");
+    assert_eq!(portrait_at_the_bedside(&set, "recovered"), Some(stable.as_str()),
+               "the bedside shows the last face there is, because the alternative is a black frame");
+    assert_eq!(portrait_at_the_bedside(&set, "critical"), Some(stable.as_str()),
+               "and the milder-state rule is unchanged where it applies");
+    assert_eq!(portrait_at_the_bedside(&Default::default(), "stable"), None,
+               "a patient with no pictures at all still has none");
+}

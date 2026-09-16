@@ -379,3 +379,28 @@ fn the_stem_sheet_is_never_under_the_face() {
             "and the sheet sits in the flow rather than filling a box that is too short: {stem:?}");
     assert!(stem.contains("overflow:visible"), "with nothing cut off: {stem:?}");
 }
+
+/// **There is no season ending on the ward.**
+///
+/// The founder's shift on Salma Gaber reached `win_discharge` two and a half simulated minutes in,
+/// and the page did what the bay does at a terminal: the result panel, the sweep, the ending flow —
+/// and, in his words, *"ไปใช้ vdo หน้าคนอื่นอีก"*, another person's face. The season's endings are
+/// written for the season's patients. A shift is a few minutes of somebody else's stay, and what
+/// it ends with is a sentence and a hand-over.
+#[test]
+fn the_seasons_ending_never_plays_on_the_ward() {
+    let js = bay_js();
+    let finish = without_comments(&body_of(&js, "finish"));
+    assert!(finish.contains("WARD"),
+            "finish() runs the season's ending for every run, ward or not: {finish}");
+
+    // The ward's own ending: a sentence, the clock stopped, the controls shut. None of the
+    // season's machinery, which is written for the season's patients and their faces.
+    let ward = without_comments(&body_of(&js, "wardFinish"));
+    for season in ["#result", "sweep(", "endFlow(", "flatline(", "settle(", "showMarks(", "showDebrief("] {
+        assert!(!ward.contains(season),
+                "the ward's ending reaches for {season:?}, which belongs to the season: {ward}");
+    }
+    assert!(ward.contains("wardSay("), "it says what happened in the strip");
+    assert!(ward.contains("stop()"), "and the clock stops with the shift");
+}
