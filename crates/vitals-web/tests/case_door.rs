@@ -353,21 +353,28 @@ fn a_wards_scenario_is_the_one_that_came_through_the_door() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// **Which case the next patient gets.**
+/// **Which case the next patient gets, and who it is written about.**
 ///
-/// Her own pack names one when the patient factory knows which it wants. Until it does, the ward
-/// picks from what it holds: a case for her country if there is one — a Nepali woman on a Nepali
-/// case is the whole point of the endemic work — and otherwise any case at her level, newest
-/// first so a recompile is what the next patient plays.
+/// Her own pack names one when the patient factory knows what it wants, and that one is honoured:
+/// the factory chose it with this same fit. When it names none, or names one this ward does not
+/// hold, the ward places her — and placement is where a wrong patient gets made. It made one:
+/// Nusrat Jahan, 64, a woman, was placed on a typhoid case written about a 26-year-old man, whose
+/// own presentation opens "Young man from Bangladesh".
+///
+/// So the fallback fits her to the case: the sex the dialogue and the examination were written
+/// for, and an age near the one the physiology was tuned for. Her country first, because a Nepali
+/// woman on a Nepali case is the whole point of the endemic work, then any case that fits. No case
+/// that fits means the bed waits — an empty bed says nothing false, and a mismatch says several.
 #[test]
-fn a_patient_is_given_a_case_from_the_wards_own_catalogue() {
+fn a_patient_is_placed_only_on_a_case_written_about_somebody_like_her() {
+    use vitals_web::ward::Persona;
     use vitals_web::ward_case::{choose_case, CaseSummary};
 
-    let held = |id: &str, country: Option<&str>, level: &str, version: &str| CaseSummary {
+    let case = |id: &str, country: Option<&str>, level: &str, version: &str, age: u32, sex: &str| CaseSummary {
         case_id: id.into(),
-        archetype: "haemorrhagic_shock".into(),
-        patient_age: Some(62),
-        patient_sex: Some("male".into()),
+        archetype: "sepsis".into(),
+        patient_age: Some(age),
+        patient_sex: Some(sex.into()),
         country: country.map(str::to_string),
         difficulty: level.into(),
         endemic: country.is_some(),
@@ -375,32 +382,62 @@ fn a_patient_is_given_a_case_from_the_wards_own_catalogue() {
         version: version.into(),
         title: id.into(),
     };
+    let who = |country: &str, age: u16, sex: &str| Persona {
+        name: "Nusrat Jahan".into(),
+        country: country.into(),
+        age,
+        sex: sex.into(),
+    };
+
     let cases = vec![
-        held("dengue-npl-1", Some("NPL"), "intern", "0.1.0"),
-        held("ugib-1", None, "resident", "0.1.0"),
-        held("ugib-2", None, "resident", "0.2.0"),
+        case("typhoid-bgd", Some("BGD"), "intern", "0.1.0", 26, "male"),
+        case("ugib-1", None, "resident", "0.1.0", 62, "male"),
+        case("ugib-2", None, "resident", "0.2.0", 62, "male"),
+        case("dengue-npl-1", Some("NPL"), "intern", "0.1.0", 34, "female"),
     ];
+    let pick = |wanted: Option<&str>, p: &Persona, d: Option<&str>| {
+        choose_case(&cases, wanted, p, d).map(|c| c.case_id.clone())
+    };
 
-    assert_eq!(choose_case(&cases, Some("dengue-npl-1"), "NPL", Some("intern")).map(|c| c.case_id.clone()),
-               Some("dengue-npl-1".into()), "the pack's own choice is honoured first");
-    assert_eq!(choose_case(&cases, Some("not-here"), "NPL", Some("intern")).map(|c| c.case_id.clone()),
-               Some("dengue-npl-1".into()),
-               "a case the ward does not hold is not a reason to admit nobody");
-    assert_eq!(choose_case(&cases, None, "NPL", Some("intern")).map(|c| c.case_id.clone()),
-               Some("dengue-npl-1".into()), "her country's case, when there is one");
-    assert_eq!(choose_case(&cases, None, "THA", Some("resident")).map(|c| c.case_id.clone()),
-               Some("ugib-2".into()), "otherwise her level, newest version first");
-    assert!(choose_case(&cases, None, "THA", Some("student")).is_none(),
-            "and nothing at her level means nobody is admitted, rather than somebody admitted \
-             onto a case written for a different learner");
-    assert!(choose_case(&[], None, "THA", Some("resident")).is_none(), "an empty catalogue admits nobody");
+    // The bug, as it happened: a woman of 64 from Bangladesh, and the only Bangladeshi case is
+    // about a man of 26.
+    assert_eq!(pick(None, &who("BGD", 64, "f"), None), None,
+               "her country's case is written about a young man, so the bed waits rather than \
+                putting her on it");
 
-    // No level asked for, which is where the ward is today: the patient pack does not carry one,
-    // so the ticker asks for her country and takes the newest of whatever there is.
-    assert_eq!(choose_case(&cases, None, "NPL", None).map(|c| c.case_id.clone()),
-               Some("dengue-npl-1".into()));
-    assert_eq!(choose_case(&cases, None, "THA", None).map(|c| c.case_id.clone()),
-               Some("ugib-2".into()), "newest version, whatever level it was written for");
+    // A fit in her own country is taken first.
+    assert_eq!(pick(None, &who("NPL", 30, "f"), None), Some("dengue-npl-1".into()));
+    // Same country, wrong sex for its only case: falls through to anything that fits, and here
+    // nothing does.
+    assert_eq!(pick(None, &who("NPL", 30, "m"), None), None);
+    // No case at home, but one elsewhere she fits.
+    assert_eq!(pick(None, &who("THA", 58, "m"), None), Some("ugib-2".into()),
+               "newest version of the ones that fit");
+
+    // Age: near the case's own, and never a child on an adult's physiology or the other way.
+    assert_eq!(pick(None, &who("THA", 50, "m"), None), Some("ugib-2".into()), "twelve years is near");
+    assert_eq!(pick(None, &who("THA", 49, "m"), None), None, "thirteen is not");
+    let paeds = vec![case("croup-1", None, "student", "0.1.0", 6, "female")];
+    let kid = who("THA", 8, "f");
+    assert_eq!(choose_case(&paeds, None, &kid, None).map(|c| c.case_id.clone()), Some("croup-1".into()));
+    let grown = who("THA", 17, "f");
+    assert_eq!(choose_case(&paeds, None, &grown, None), None,
+               "a seventeen-year-old is not put on a case written about a six-year-old, however \
+                close the years look");
+
+    // Her pack's own choice is the factory's, made with this same fit, and is honoured as it is.
+    assert_eq!(pick(Some("typhoid-bgd"), &who("BGD", 64, "f"), None), Some("typhoid-bgd".into()),
+               "the factory named it and the factory is the one that fitted her to it");
+
+    // The level still narrows, when the pack carries one.
+    assert_eq!(pick(None, &who("THA", 58, "m"), Some("resident")), Some("ugib-2".into()));
+    assert_eq!(pick(None, &who("THA", 58, "m"), Some("student")), None);
+
+    // A case that does not say who it is about cannot be fitted to anybody, so the ward does not
+    // place her on it — it can still be named by a factory that knows what it is doing.
+    let silent = vec![CaseSummary { patient_age: None, patient_sex: None, ..case("quiet-1", None, "intern", "0.1.0", 40, "male") }];
+    assert_eq!(choose_case(&silent, None, &who("THA", 40, "m"), None), None);
+    assert!(choose_case(&silent, Some("quiet-1"), &who("THA", 40, "m"), None).is_some());
 }
 
 // ── the patient door, now that cases have one of their own ──────────────────
