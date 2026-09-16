@@ -463,6 +463,10 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
     };
 
     let mut shifts = Vec::new();
+    // Who this ward cannot rebuild, found while it is already walking every patient's shifts: a
+    // leaf on chain whose tape is not here. The board says so in her own row; nothing is written
+    // to the chain about it, because "we lost the tape" is a fact about this ward.
+    let mut lost: std::collections::BTreeMap<u64, String> = std::collections::BTreeMap::new();
     for p in &patients {
         let key = format!("p{}", p.patient_id);
         let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
@@ -476,6 +480,12 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
                 &format!("patient {}'s history could not be read: {e}", p.patient_id),
             );
         }
+        for s in seen.shifts() {
+            let hash = hex32(&s.run_hash);
+            if is_shift_hash(&hash) && tape_by_hash(store, &hash).is_none() {
+                lost.entry(p.patient_id).or_insert(hash);
+            }
+        }
         shifts.extend(seen.shifts());
     }
 
@@ -483,6 +493,7 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
         patients: &patients,
         shifts: &shifts,
         packs: &packs(store),
+        unrebuildable: &lost,
         since: Some(as_of.saturating_sub(WEEK_SLOTS)),
         as_of_slot: as_of,
         now_unix: std::time::SystemTime::now()
@@ -1188,6 +1199,31 @@ pub fn scenario_hash(root: &std::path::Path, case: &str) -> Result<[u8; 32], Str
     Ok(vitals_replay::sce_hash(&text))
 }
 
+/// Which open patients this ward cannot rebuild, and the leaf each one stopped at.
+///
+/// The same question `read_ward` answers for the board, asked by the ticker so a bed nobody can
+/// take is refilled rather than held. Cheap: the shift cache is already on disk and the tapes are
+/// looked up by hash.
+fn lost_tapes(
+    chain: &WardChain,
+    store: &crate::store::Store,
+    patients: &[crate::ward::PatientOnChain],
+) -> std::collections::BTreeMap<u64, String> {
+    let mut lost = std::collections::BTreeMap::new();
+    for p in patients.iter().filter(|p| p.state == crate::ward::OPEN) {
+        let key = format!("p{}", p.patient_id);
+        let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
+        let _ = chain.refresh(p.patient_id, &mut seen);
+        for s in seen.shifts() {
+            let hash = hex32(&s.run_hash);
+            if is_shift_hash(&hash) && tape_by_hash(store, &hash).is_none() {
+                lost.entry(p.patient_id).or_insert(hash);
+            }
+        }
+    }
+    lost
+}
+
 /// Put back a tape the chain names and this ward has lost.
 ///
 /// It happened on 16 ก.ย.: an anchor reduced a tape two ticks longer than the one the hand-over
@@ -1407,7 +1443,7 @@ pub fn tick(
     // Beds, not chain rows: a patient the ward cannot describe holds none (`beds_taken`), so she
     // blocks no admission. Three test patients that reached the chain outside the queue wedged
     // staging shut against a full queue on 16 ก.ย., and this is the rule that unwedges it.
-    out.open = crate::ward::beds_taken(&patients, &packs_now);
+    out.open = crate::ward::beds_taken(&patients, &packs_now, &lost_tapes(chain, store, &patients));
     let depth = match queue_depth(store) {
         Ok(n) => {
             out.depth = Some(n);

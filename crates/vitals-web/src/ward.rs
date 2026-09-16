@@ -494,10 +494,18 @@ pub fn census(patients: &[PatientOnChain], shifts: &[ShiftOnChain], since: Optio
 pub fn beds_taken(
     patients: &[PatientOnChain],
     packs: &std::collections::BTreeMap<u64, Pack>,
+    unrebuildable: &std::collections::BTreeMap<u64, String>,
 ) -> usize {
     patients
         .iter()
-        .filter(|p| p.state == OPEN && packs.contains_key(&p.patient_id))
+        .filter(|p| {
+            p.state == OPEN
+                && packs.contains_key(&p.patient_id)
+                // A patient whose chart cannot be rebuilt holds no bed either: nobody can open
+                // her, so a bed kept for her is a bed the ward has taken out of service without
+                // saying so. The row says why, and the ticker fills the bed.
+                && !unrebuildable.contains_key(&p.patient_id)
+        })
         .count()
 }
 
@@ -534,13 +542,27 @@ pub struct WardRead<'a> {
     pub now_unix: u64,
     /// Which cluster and which program. "The chain says" means nothing until you know which.
     pub source: &'a str,
+    /// Patients whose chain names a shift this ward has no tape for, and the leaf it stopped at.
+    ///
+    /// They are open on chain and unopenable here, which is a fact about this ward rather than
+    /// about them — so it is said on the board, in words, and never written to the chain as an
+    /// ending they did not have.
+    pub unrebuildable: &'a std::collections::BTreeMap<u64, String>,
 }
 
 pub fn ward_payload(r: &WardRead) -> serde_json::Value {
     let (patients, shifts, packs, since, as_of_slot, source) =
         (r.patients, r.shifts, r.packs, r.since, r.as_of_slot, r.source);
+    let lost = r.unrebuildable;
     let all = census(patients, shifts, None);
     let week = census(patients, shifts, since);
+    // How many of the open patients this ward cannot rebuild. Not part of `Census`, which is
+    // chain-derived arithmetic and nothing else: this is a fact about what *this ward* is holding,
+    // and it is published beside the census rather than folded into it.
+    let stuck_now = patients
+        .iter()
+        .filter(|p| p.state == OPEN && lost.contains_key(&p.patient_id))
+        .count() as u64;
     let six = |c: &Census| serde_json::json!({
         "admitted": c.admitted,
         "on_ward": c.on_ward,
@@ -549,6 +571,8 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
         "shifts": c.shifts,
         "keys": c.keys,
     });
+    let mut all_json = six(&all);
+    all_json["unrebuildable"] = serde_json::json!(stuck_now);
     let mut w = six(&week);
     w["since_slot"] = match since {
         Some(s) => serde_json::json!(s),
@@ -564,7 +588,11 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
     // Only the patients the ward can describe are in beds — see `beds_taken`.
     let mut open: Vec<&PatientOnChain> = patients
         .iter()
-        .filter(|p| p.state == OPEN && packs.contains_key(&p.patient_id))
+        .filter(|p| {
+            p.state == OPEN
+                && packs.contains_key(&p.patient_id)
+                && !lost.contains_key(&p.patient_id)
+        })
         .collect();
     open.sort_by_key(|p| (p.admitted_slot, p.patient_id));
     let bed_of = |id: u64| open.iter().position(|p| p.patient_id == id).map(|i| i + 1);
@@ -580,16 +608,31 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
             // there is no case to play and no bed to hold. Named rather than hidden — she exists,
             // and a board that quietly dropped her would disagree with its own census.
             let adrift = p.state == OPEN && pack.is_none();
+            // Open on chain and unopenable here: the chain names a shift whose tape this ward does
+            // not have, so nobody can rebuild the chart and nobody can take the bed. Said in her
+            // own word rather than written to the chain as an ending she did not have.
+            let stuck = (p.state == OPEN).then(|| lost.get(&p.patient_id)).flatten();
             serde_json::json!({
                 "patient_id": p.patient_id,
                 // Words, because the board is what reads this. A renderer switching on 0, 1 and 2
                 // would have to know the program's byte layout to draw a ward.
-                "state": if adrift { "off_ward" }
+                "state": if stuck.is_some() { "unrebuildable" }
+                         else if adrift { "off_ward" }
                          else if on_shift { "on_shift" }
                          else { state_word(p.state) },
-                "note": adrift.then_some(
-                    "admitted outside the ward · no bed — this patient is on the chain and the ward \
-                     has no pack, so there is no case to open and no bed held"),
+                "note": match (stuck, adrift) {
+                    (Some(leaf), _) => Some(format!(
+                        "the chain names a shift whose tape this ward does not have — leaf {leaf}. \
+                         The chart cannot be rebuilt, so no shift can be taken and no bed is held. \
+                         Still open on chain: nothing was written to say otherwise"
+                    )),
+                    (None, true) => Some(
+                        "admitted outside the ward · no bed — this patient is on the chain and the \
+                         ward has no pack, so there is no case to open and no bed held"
+                            .to_string(),
+                    ),
+                    _ => None,
+                },
                 // When the person in the room with her started, as a time a browser can render.
                 // Derived: the lease ends a known number of slots after it is taken, so the start
                 // is the end minus that, carried back to wall time through this read's own slot.
@@ -623,11 +666,11 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
     serde_json::json!({
         "as_of_slot": as_of_slot,
         "source": source,
-        "census": six(&all),
+        "census": all_json,
         // Beside the census and never inside it: the census is what the chain says, and this is
         // what the ward can actually hand to a stranger. A rail that published only the first
         // would be telling somebody six when three of those six cannot be treated by anybody.
-        "in_beds": beds_taken(patients, packs),
+        "in_beds": beds_taken(patients, packs, lost),
         "beds": BEDS,
         "week": w,
         "patients": board,
@@ -642,6 +685,10 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
             "on_ward": "admitted - went_home - died, floored at zero — never a separate tally",
             "went_home": "patient accounts whose state is discharged, counted by closed_slot",
             "died": "patient accounts whose state is died, counted by closed_slot",
+            "unrebuildable": "open patients whose chain names a shift this ward has no tape for. \
+                              Not a chain fact and not an ending: they are open on chain, nobody \
+                              here can rebuild the chart, and nothing was written to the chain to \
+                              say otherwise. They hold no bed, so the ticker refills it",
             "shifts": "anchored leaves, one per shift",
             "patients": "one entry per patient account on chain — id, state, shifts and slots \
                          read from the account. The case, the name and the country are not on \

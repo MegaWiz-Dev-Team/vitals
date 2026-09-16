@@ -37,7 +37,17 @@ fn read<'a>(
 ) -> vitals_web::ward::WardRead<'a> {
     vitals_web::ward::WardRead {
         patients, shifts, packs, since, as_of_slot, now_unix: 1_760_000_000, source: "devnet:ABC",
+        // Every tape the chain names is here, which is the ward working. The one test about the
+        // other case fills this in itself.
+        unrebuildable: nothing_lost(),
     }
+}
+
+/// Nothing is missing — a `&'static` empty map, so every `WardRead` helper can borrow it.
+fn nothing_lost() -> &'static std::collections::BTreeMap<u64, String> {
+    static NONE: std::sync::OnceLock<std::collections::BTreeMap<u64, String>> =
+        std::sync::OnceLock::new();
+    NONE.get_or_init(Default::default)
 }
 
 /// No pack has been queued for anyone — the state every test but one is written against, and the
@@ -603,6 +613,7 @@ fn the_globe_reads_every_field_it_renders() {
     let v = ward_payload(&vitals_web::ward::WardRead {
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 4_000, now_unix: now, source: "devnet:ABC",
+        unrebuildable: nothing_lost(),
     });
 
     assert!(v["census"]["on_ward"].is_u64(),
@@ -651,6 +662,7 @@ fn the_globe_reads_every_field_it_renders() {
     let expired = ward_payload(&vitals_web::ward::WardRead {
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: lease_ends + 1, now_unix: now, source: "devnet:ABC",
+        unrebuildable: nothing_lost(),
     });
     let ploy = expired["patients"].as_array().unwrap().iter()
         .find(|p| p["patient_id"] == 7).cloned().unwrap();
@@ -855,6 +867,7 @@ fn every_time_the_ward_publishes_is_a_slot_or_a_z() {
         ward_payload(&vitals_web::ward::WardRead {
             patients: &patients, shifts: &[], packs: &packs,
             since: Some(1), as_of_slot: 4_000, now_unix: 1_760_000_000, source: "devnet:ABC",
+        unrebuildable: nothing_lost(),
         }),
         ward_unavailable("devnet:ABC", "rpc timed out"),
     ];
@@ -933,13 +946,14 @@ fn a_patient_the_ward_cannot_describe_holds_no_bed() {
         endemic: false,
     });
 
-    assert_eq!(beds_taken(&patients, &packs), 1,
+    assert_eq!(beds_taken(&patients, &packs, nothing_lost()), 1,
                "one bed is taken — the two the ward cannot describe are on the chain and not in a \
                 bed, or they wedge the ward shut against a queue that is full");
 
     let v = ward_payload(&vitals_web::ward::WardRead {
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
+        unrebuildable: nothing_lost(),
     });
 
     assert_eq!(v["census"]["on_ward"], 3,
@@ -990,6 +1004,7 @@ fn the_payload_publishes_how_many_are_in_beds_beside_how_many_are_on_the_chain()
     let v = ward_payload(&vitals_web::ward::WardRead {
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
+        unrebuildable: nothing_lost(),
     });
 
     assert_eq!(v["census"]["on_ward"], 3, "the census is what the chain says, unchanged");
