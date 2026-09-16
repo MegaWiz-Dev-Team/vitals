@@ -160,6 +160,26 @@ pub fn difficulty_of(case: &str) -> Option<&'static str> {
     })
 }
 
+/// The case's persona with the ward's patient in it: her name, her age, nothing else.
+///
+/// The voice is built from the case's persona file, and on the ward the person in the bed is not
+/// the person that file names. Without this she introduces herself as the case's patient while the
+/// board beside her says somebody else — the product contradicting itself out loud, in the one
+/// place a learner is listening.
+///
+/// **Only the person changes.** The room, what she is presenting with, her cadence, her authored
+/// dialogue and her affect are the case's writing; her sex is the case's too, and is what the
+/// brief's pronouns are built from — the door has already refused any pack that disagreed with it.
+/// The ward renames a patient. It does not write medicine.
+pub fn voiced_as(persona: &serde_json::Value, who: &Persona) -> serde_json::Value {
+    let mut out = persona.clone();
+    if let Some(p) = out.get_mut("patient").and_then(|p| p.as_object_mut()) {
+        p.insert("name".into(), serde_json::Value::String(who.name.clone()));
+        p.insert("age".into(), serde_json::json!(who.age));
+    }
+    out
+}
+
 /// The patient a case was written about: the one the dialogue, the examination and the
 /// differential all assume.
 #[derive(Debug, Clone, PartialEq)]

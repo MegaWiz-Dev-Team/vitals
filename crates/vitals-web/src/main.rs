@@ -3211,7 +3211,18 @@ fn main() {
                 // case's file is the failure this whole path exists to prevent: a wrong answer in
                 // a confident voice is worse for a candidate than no answer at all, because there
                 // is nothing on the screen to tell them it was the wrong patient talking.
-                let Some(persona) = personas.get(&ep) else {
+                // On the ward she is not the person the case file names, and the voice has to
+                // agree with the board. Only her name and age are replaced; everything the case
+                // wrote about her stays the case's.
+                let ward_persona = sessions
+                    .lock()
+                    .unwrap()
+                    .get(&id)
+                    .and_then(|s| s.ward.clone())
+                    .and_then(|w| ward_chain::packs(&store).remove(&w.patient_id))
+                    .zip(personas.get(&ep))
+                    .map(|(pack, base)| ward::voiced_as(base, &pack.persona));
+                let Some(persona) = ward_persona.as_ref().or_else(|| personas.get(&ep)) else {
                     let _ = req.respond(json(serde_json::json!({
                         "error": "this patient has no voice here — examine, order and treat instead",
                     })));
