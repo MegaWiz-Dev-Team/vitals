@@ -934,3 +934,41 @@ fn a_patient_the_ward_cannot_describe_holds_no_bed() {
     assert!(by_id(3)["note"].is_null(), "and needs no explanation");
     assert!(by_id(4)["bed"].is_null(), "somebody who went home is in nobody's bed");
 }
+
+/// The rail must not lie by omission: six on the ward, three in beds.
+///
+/// `on_ward` is chain truth and stays so — she is on the chain. But a stranger reading "on the
+/// ward 6" beside three patients has been told a number that means something other than what it
+/// looks like, and the difference is the thing they would most want explained: three of those six
+/// cannot be treated by anybody.
+///
+/// So the payload publishes both, with the sentence that separates them.
+#[test]
+fn the_payload_publishes_how_many_are_in_beds_beside_how_many_are_on_the_chain() {
+    use std::collections::BTreeMap;
+    use vitals_web::ward::{Pack, Persona};
+
+    let patients = vec![
+        patient(1, OPEN, 0, 10, 0),
+        patient(2, OPEN, 0, 20, 0),
+        patient(3, OPEN, 2, 30, 0),
+    ];
+    let mut packs = BTreeMap::new();
+    packs.insert(3u64, Pack {
+        case: "osce-a".into(),
+        persona: Persona { name: "Anan".into(), country: "THA".into(), age: 69, sex: "m".into() },
+        portrait: Default::default(),
+        endemic: false,
+    });
+
+    let v = ward_payload(&vitals_web::ward::WardRead {
+        patients: &patients, shifts: &[], packs: &packs,
+        since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
+    });
+
+    assert_eq!(v["census"]["on_ward"], 3, "the census is what the chain says, unchanged");
+    assert_eq!(v["in_beds"], 1, "and the beds are what the ward can actually hand to a stranger");
+
+    let how = v["derivations"]["in_beds"].as_str().expect("it says how it was counted");
+    assert!(how.contains("pack"), "in the terms that explain the gap: {how}");
+}
