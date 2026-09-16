@@ -1826,6 +1826,11 @@ a.give:hover{filter:brightness(1.06)}
 
 <script>
 const $=s=>document.querySelector(s);
+/* Which patient's shift this page is, when it is one: the bay is one bay, and /ward/<id> is the
+   parameter (CWF_PLAN.md ruling 13). Declared up here rather than beside the rest of the ward's
+   code at the foot of the script, because the card renderer reads it and a const in its temporal
+   dead zone would throw the first time a station card is drawn. */
+const WARD=(location.pathname.match(/^\/ward\/(\d+)\/?$/)||[])[1]||null;
 /* Injected by the server when it is running with a token. Empty on a loopback demo. */
 const TOKEN='__VITALS_TOKEN__';
 const _fetch=window.fetch;
@@ -3152,17 +3157,25 @@ function stemHtml(e){
     +'<dl class="stem-g">'
       +`<dt>patient</dt><dd>${e.who||''}</dd>`
       +`<dt>presents</dt><dd>${e.line||''}</dd>`
-      +`<dt>in the room</dt><dd>${room}</dd>`
-      +`<dt>time</dt><dd>${e.rt||''}</dd>`
+      +`<dt>in the room</dt><dd>${WARD?'a public ward — anybody may take the next shift':room}</dd>`
+      +`<dt>time</dt><dd>${WARD?'your shift, until you hand over':(e.rt||'')}</dd>`
     +'</dl>'
     /* Deliberately the generic candidate instruction and not a per-case one: a task
        written for this station would have to say what the station is about. */
     +'<p class="stem-task">Assess and manage this patient.</p>'
     /* The wording here is narrower than it reads, deliberately. docs/RISKS.md §11 before
        widening it. */
-    +'<p class="stem-f"><b>★ exam conditions</b> — this attempt is declared on chain before '
-    +'it is played, and the score is derived from the tape afterwards. The harm sentences '
-    +'and the mark sheet stay sealed until the bell.</p>';
+    /* On the ward there is no examiner, no bell and no mark sheet — there is a patient somebody
+       else will inherit. Saying "the mark sheet stays sealed until the bell" to a stranger on a
+       public ward promises a thing that does not happen there, which is the sort of small false
+       claim this page is otherwise careful about. */
+    +(WARD
+      ? '<p class="stem-f"><b>★ on the ward</b> — this shift is declared on chain before it is '
+        +'played, and what you do is on her chart under your key. Hand over when you are done: '
+        +'she stays, and the next stranger starts where you left her.</p>'
+      : '<p class="stem-f"><b>★ exam conditions</b> — this attempt is declared on chain before '
+        +'it is played, and the score is derived from the tape afterwards. The harm sentences '
+        +'and the mark sheet stay sealed until the bell.</p>');
 }
 function renderStage(){
   const E=ep(), art=document.querySelector('.pt-art');
@@ -5384,7 +5397,6 @@ bootLang();
    already guards on `id`, so a patient opened but not taken is a chart you can
    read and not a patient you can treat. That is the honest state — you have not
    taken the shift yet — and it needs no second flag to enforce. */
-const WARD=(location.pathname.match(/^\/ward\/(\d+)\/?$/)||[])[1]||null;
 let WARDSHIFT=null, WARDPENDING=null;
 
 /* prepare on the server → sign here → submit to the ward's own program. The Eternal
