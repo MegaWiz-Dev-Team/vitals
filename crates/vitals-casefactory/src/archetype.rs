@@ -244,7 +244,7 @@ const ELECTROLYTES: Role = role("electrolytes", "Correct the electrolytes", &["p
     "electrolytes corrected under ECG monitoring", &[]);
 const ISOLATE: Role = role("isolate", "Isolate and protect staff", &["isolat", "ppe", "personal protective", "precaution", "แยกผู้ป่วย"], Kind::Gate,
     "isolation room, full protective equipment, a contact log started", &[]);
-const HAEMOSTASIS: Role = role("haemostasis", "Stop the bleeding", &["tranexamic", "endoscop", "surgical", "surgery", "laparotomy", "uterotonic", "oxytocin", "uterine massage", "balloon", "pressure dressing", "embolis", "ligat", "ผ่าตัด", "ห้ามเลือด", "ส่องกล้อง"], Kind::Critical,
+const HAEMOSTASIS: Role = role("haemostasis", "Stop the bleeding", &["tranexamic", "endoscop", "egd", "gastroscopy", "banding", "sclerotherapy", "surgical", "surgery", "laparotomy", "uterotonic", "oxytocin", "uterine massage", "balloon", "pressure dressing", "embolis", "ligat", "ผ่าตัด", "ห้ามเลือด", "ส่องกล้อง"], Kind::Critical,
     "the bleeding point is being dealt with — pressure, drugs, or the theatre", &[n("sbp", 4.0)]);
 const PPI: Role = role("ppi", "Proton-pump inhibitor", &["pantoprazole", "omeprazole", "proton pump", "ppi"], Kind::Supportive,
     "proton-pump inhibitor in", &[]);
@@ -304,7 +304,7 @@ const IV_ACCESS: Role = role("iv_access", "Vascular access", &["intraosseous", "
 const FLUID_BOLUS_HARM: Role = harm("fluid_bolus", "Fluid bolus", FLUIDS_KW,
     "a fluid bolus into a congested heart — the lungs fill", &[n("spo2", -4.0), n("sbp", -3.0)]);
 const BETA_BLOCKER_HARM: Role = harm("beta_blocker", "Beta-blocker or rate-slowing drug", BETA_BLOCKER_KW,
-    "a negative inotrope in shock — the output falls further", &[n("sbp", -8.0), n("hr", -10.0)]);
+    "a beta-blocker or rate-slowing drug where it deepens the failure", &[n("sbp", -8.0), n("hr", -10.0)]);
 const SEDATION_HARM: Role = harm("sedation", "Sedative before the airway", SEDATION_KW,
     "a sedative before the airway was secured — the last of the breathing goes", &[n("spo2", -6.0), n("rr", -4.0)]);
 const OVERLOAD_SENTINEL: Role = role("fluids", "Measured crystalloid, reassessed hourly", FLUIDS_KW, Kind::Critical,
