@@ -1198,3 +1198,69 @@ pub fn keep_tape(store: &crate::store::Store, tape: &StoredTape) -> Result<(), S
         .put(TAPE_STORE, &tape.run_hash, tape)
         .map_err(|e| format!("her tape could not be kept, so the shift is unrebuildable: {e}"))
 }
+
+/// A person's account on the ward's program: the key that plays, opened once.
+///
+/// The relay pays for the rent and signs for it; the player signs for themselves, and their key is
+/// what the account is seeded on. A stranger arrives with no account at all, so this is the first
+/// transaction their browser ever signs here.
+pub fn open_account_ix(program_id: &Pubkey, operator: &Pubkey, player: &Pubkey) -> SolInstruction {
+    SolInstruction::new_with_borsh(
+        *program_id,
+        &Instruction::OpenAccount,
+        vec![
+            AccountMeta::new(*operator, true),
+            AccountMeta::new_readonly(*player, true),
+            AccountMeta::new(account_pda(program_id, player), false),
+            AccountMeta::new_readonly(system_program::id(), false),
+        ],
+    )
+}
+
+/// Declare a shift before it is played.
+///
+/// Commit–reveal, exactly as the bay does it: the hash binds the case and the player before
+/// anybody knows how the shift went, and the program stamps the slot. An outcome chosen after the
+/// fact cannot be declared retrospectively, which is what makes the record worth anything.
+pub fn commit_ix(
+    program_id: &Pubkey,
+    operator: &Pubkey,
+    player: &Pubkey,
+    hash: [u8; 32],
+) -> SolInstruction {
+    SolInstruction::new_with_borsh(
+        *program_id,
+        &Instruction::Commit { hash },
+        vec![
+            AccountMeta::new(*operator, true),
+            AccountMeta::new_readonly(*player, true),
+            AccountMeta::new(account_pda(program_id, player), false),
+            AccountMeta::new(commitment_pda(program_id, &player.to_bytes()).0, false),
+            AccountMeta::new_readonly(system_program::id(), false),
+        ],
+    )
+}
+
+/// The ward's own refusals, in words.
+///
+/// The program says no by a number; a person standing at a bed cannot read `custom program error:
+/// 0x10`. Each sentence says what happened to *her* rather than what the program is called,
+/// because this is the moment the ward is most worth watching — the chain deciding, in public,
+/// against somebody who wanted a different answer.
+///
+/// `None` for anything that is not one of ours: an outage is not a refusal, and telling a stranger
+/// their work was rejected when it was never sent is worse than saying the network failed.
+pub fn refusal(err: &str) -> Option<&'static str> {
+    let code = err.split("custom program error: 0x").nth(1)?;
+    let code: String = code.chars().take_while(|c| c.is_ascii_hexdigit()).collect();
+    Some(match u32::from_str_radix(&code, 16).ok()? {
+        16 => "her chart moved while you were with her: somebody else anchored a shift on the head \
+               you were extending. Your work is still on your tape — open her again and it will be \
+               played on the patient as she is now",
+        17 => "someone is already in the room with her. A shift is held until it is anchored or \
+               its time runs out, and then the head is free for anybody",
+        18 => "she has left the ward — a stay that ended is not one anybody can add to",
+        19 => "the head is not yours to give back: somebody else holds this shift",
+        _ => return None,
+    })
+}
