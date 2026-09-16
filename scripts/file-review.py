@@ -36,7 +36,7 @@ ROLES = ("student", "physician")
 
 # Same clamps as review.rs, and counted in characters for the same reason: a byte clamp cuts a
 # Thai character in half and the record comes back as mojibake.
-LIMITS = {"name": 120, "contact": 200, "notes": 8000, "revision": 64}
+LIMITS = {"name": 120, "contact": 200, "notes": 8000, "revision": 64, "form": 64}
 # `asked` holds the whole item as it was shown — the four lines the review documents put in front
 # of every ruling, not a one-line question — so its clamp is `review::ASKED_MAX`, not the 400 it
 # was when the form asked one-line questions.
@@ -118,6 +118,10 @@ def build(raw, at):
         "answers": answers,
         "notes": notes,
         "revision": clamp(raw.get("revision"), LIMITS["revision"]),
+        # Which addressed instance of the form it came through (`/review?for=<id>`), empty for
+        # the bare link — kept like `revision` is, outside the identity: it says which link,
+        # not which review.
+        "form": clamp(raw.get("form"), LIMITS["form"]),
     }
     rec["id"] = key(at, identity(rec))
     return rec

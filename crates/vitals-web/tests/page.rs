@@ -716,6 +716,18 @@ fn the_gauge_did_not_displace_the_donation_itself() {
     assert!(html.contains("solana:9FJRwWnTNQXB9ff5SSmQKytCdVYqTQQPUz1b4zX9mt8y"), "the QR payload changed");
 }
 
+/// `var QS = { … }`, the question table and nothing after it.
+///
+/// Bounded at its closing brace on purpose: read to the end of the script, the last item of the
+/// table swallows every string the page declares after it — the scope texts, the titles, the
+/// greetings — and the clamp check below then reports the shortest question in the form as the
+/// longest, a few hundred characters from failing for a reason nobody could act on.
+fn question_table(js: &str) -> &str {
+    let start = js.find("var QS = {").expect("the question table");
+    let end = js[start..].find("\n  };").expect("the table's closing brace") + start;
+    &js[start..end]
+}
+
 /// Every item the review form asks fits the clamp the store keeps it under.
 ///
 /// `review::Answer::asked` no longer holds a question — it holds the whole item as it was shown,
@@ -731,8 +743,7 @@ fn the_gauge_did_not_displace_the_donation_itself() {
 fn every_item_the_review_form_asks_fits_the_clamp_the_store_keeps() {
     let html = review_page();
     let js = script(&html);
-    let start = js.find("var QS = {").expect("the question table");
-    let table = &js[start..];
+    let table = question_table(js);
     let items: Vec<&str> = table.split("\n      { ").skip(1).collect();
     assert!(items.len() > 30, "only found {} items — the split stopped working", items.len());
 
@@ -772,8 +783,7 @@ fn every_item_the_review_form_asks_fits_the_clamp_the_store_keeps() {
 fn every_ruling_offers_a_way_to_agree_with_what_we_already_do() {
     let html = review_page();
     let js = script(&html);
-    let table = &js[js.find("var QS = {").expect("the question table")..];
-    let items: Vec<&str> = table.split("\n      { ").skip(1).collect();
+    let items: Vec<&str> = question_table(js).split("\n      { ").skip(1).collect();
     let mut optionless = Vec::new();
     for item in &items {
         let id = item.split("id:\"").nth(1).and_then(|s| s.split('"').next()).unwrap_or("?");
@@ -804,9 +814,7 @@ fn every_ruling_offers_a_way_to_agree_with_what_we_already_do() {
 fn the_question_table_keeps_every_string_on_one_line_with_no_double_quote_inside() {
     let html = review_page();
     let js = script(&html);
-    let start = js.find("var QS = {").expect("the question table");
-    let end = js[start..].find("\n  };").expect("the table's closing brace") + start;
-    let table = &js[start..end];
+    let table = question_table(js);
     for (n, line) in table.lines().enumerate() {
         assert!(!line.contains("\\\""), "line {} of the table escapes a double quote — use “ ” instead: {line}", n + 1);
         assert!(line.matches('"').count() % 2 == 0,
