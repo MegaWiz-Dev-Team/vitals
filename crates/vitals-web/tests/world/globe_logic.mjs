@@ -41,11 +41,12 @@ const sandbox = [grabConst('ALPHA3'), grabConst('SLOT_MS'), grabConst('STATE_LAB
   grab('peoplePerDoctor'), grab('latestOf'), grab('tenYearTrend'), grab('fmtTrend'), grab('fmtPeople'), grab('doctorLine'),
   grab('worldAverage'), grab('missionLine'), grab('doctorBin'),
   grab('yearValue'), grab('yearRange'), grab('doctorLineAt'), grab('worldAverageAt'), grab('missionLineAt'),
-  'return { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt };'].join('\n');
+  grab('escapeHtml'), grab('portraitImg'),
+  'return { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg };'].join('\n');
 const { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine,
   stateOf, onBoard, paintOf, hoverText, STATE_LABEL,
   DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin,
-  yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt } = new Function(sandbox)();
+  yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg } = new Function(sandbox)();
 
 // ── countryId ────────────────────────────────────────────────────────────────
 // world-atlas 110m keys its shapes by ISO numeric, as strings ("764"); the ward sends alpha-3.
@@ -320,6 +321,20 @@ assert.match(html, /<input[^>]*type="range"[^>]*id="year"/, 'the year slider');
 assert.match(html, /id="play"/, 'and its ▶');
 assert.match(html, /ward[^<]{0,80}(today|now)[^<]{0,80}whatever the year|whatever the year[^<]{0,80}ward/i, 'the legend says the ward does not follow the year');
 assert.ok(!/<input[^>]*id="year"[^>]*value="20(0\d|1\d)"/.test(html), 'the slider does not start in the past: the page sets it to the latest year');
+
+// ── the face in the tray and the panel ───────────────────────────────────────
+// Since 4920a43 the board's `portrait` is the 256 px sibling when one exists. The page shows it as
+// served — the address is the ward's to choose — with the box sized for a 256 px picture and the
+// browser told what it is loading; no size logic here, ever.
+const T = 'https://storage.googleapis.com/vitals-world-portraits/' + 'a'.repeat(64) + '-256.webp';
+const F = 'https://storage.googleapis.com/vitals-world-portraits/' + 'b'.repeat(64) + '.webp';
+assert.equal(portraitImg({ portrait: T }), `<img src="${T}" width="56" height="56" loading="lazy" decoding="async" alt="">`, 'the thumbnail, as served');
+assert.equal(portraitImg({ portrait: F }), `<img src="${F}" width="56" height="56" loading="lazy" decoding="async" alt="">`, 'a full picture, as served — the page does not rewrite it');
+assert.equal(portraitImg({ portrait: null }), '<span class="ph">—</span>', 'no picture is a placeholder, not a broken image');
+assert.equal(portraitImg({}), '<span class="ph">—</span>');
+assert.equal(portraitImg({ portrait: 'x"y' }), '<img src="x&quot;y" width="56" height="56" loading="lazy" decoding="async" alt="">', 'the address is escaped, never trusted');
+assert.ok(!/-256|_256/.test(script), 'no size logic in the page: the ward chooses the address');
+assert.ok(!/\$\{l\[0\] === at \? "" : ""\}/.test(script), 'the no-op ternary is gone');
 
 console.log('globe_logic: ok');
 
