@@ -2492,6 +2492,32 @@ fn main() {
 
     let mut restored = HashMap::new();
     let mut broken = 0usize;
+    // ── before anything is dropped ──────────────────────────────────────────────────────────
+    //
+    // A ward session is restored by rebuilding its patient from the chain, so a session whose own
+    // shift is the one with the missing tape is exactly the session that fails to restore — and
+    // the loop below then deletes it, loudly, as a run that will not replay. That is the only copy
+    // of the tape for a leaf already on chain, thrown away by the code that found the problem.
+    // Staging redeploys on every commit, and each boot swept the evidence.
+    //
+    // So the repair goes first, over every stored run, through the function the ticker uses.
+    let held: Vec<(String, Vec<Step>)> = store
+        .list::<Saved>(SESSIONS)
+        .into_iter()
+        .filter_map(|(_, sv)| {
+            std::fs::read_to_string(scenario_path(&sv.ep)).ok().map(|sce| (sce, sv.tape))
+        })
+        .collect();
+    if !held.is_empty() {
+        if let Ok(chain) = ward_chain::WardChain::connect() {
+            if let Ok(patients) = chain.patients() {
+                for note in ward_chain::repair_tapes(&chain, &store, &patients, &held) {
+                    println!("ward       {note}");
+                }
+            }
+        }
+    }
+
     for (id, saved) in store.list::<Saved>(SESSIONS) {
         // A ward shift is rebuilt on the patient it was played on, and the chain is what says who
         // that is. Read here rather than inside `restore`, so the rebuild stays a function of its

@@ -1199,6 +1199,61 @@ pub fn scenario_hash(root: &std::path::Path, case: &str) -> Result<[u8; 32], Str
     Ok(vitals_replay::sce_hash(&text))
 }
 
+/// The leaves in this list whose tapes are not here.
+///
+/// Named as a function of its arguments so the boot, the ticker and the board all ask the same
+/// question of the same shifts and cannot answer it differently.
+pub fn missing_tapes(
+    store: &crate::store::Store,
+    shifts: &[crate::ward::ShiftOnChain],
+) -> Vec<String> {
+    shifts
+        .iter()
+        .map(|s| hex32(&s.run_hash))
+        .filter(|h| is_shift_hash(h) && tape_by_hash(store, h).is_none())
+        .collect()
+}
+
+/// Put back every tape the chain names and this ward has lost, from what the server still holds.
+///
+/// Called at boot **before any session is dropped** — a ward session is restored by rebuilding its
+/// patient from the chain, so the session holding the missing tape is exactly the one that fails
+/// to restore, and the loop that noticed used to delete it. Called again each tick, for whatever
+/// has gone missing since.
+pub fn repair_tapes(
+    chain: &WardChain,
+    store: &crate::store::Store,
+    patients: &[crate::ward::PatientOnChain],
+    held: &[(String, Vec<vitals_replay::Step>)],
+) -> Vec<String> {
+    let mut notes = Vec::new();
+    for p in patients {
+        let key = format!("p{}", p.patient_id);
+        let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
+        if chain.refresh(p.patient_id, &mut seen).is_err() {
+            continue;
+        }
+        let _ = store.put(SHIFT_CACHE, &key, &seen);
+        for hash in missing_tapes(store, &seen.shifts()) {
+            match recover_tape(store, p.patient_id, &hash, held) {
+                Some(t) => notes.push(format!(
+                    "patient {}: the tape for {hash} was missing and has been put back from a \
+                     run still stored here — {} steps",
+                    p.patient_id,
+                    t.len()
+                )),
+                None => notes.push(format!(
+                    "patient {}: the chain names a shift with run hash {hash} and no tape here \
+                     reduces to it. That chart cannot be rebuilt, so the patient is off the board \
+                     rather than in a bed nobody can take",
+                    p.patient_id
+                )),
+            }
+        }
+    }
+    notes
+}
+
 /// Which open patients this ward cannot rebuild, and the leaf each one stopped at.
 ///
 /// The same question `read_ward` answers for the board, asked by the ticker so a bed nobody can
@@ -1222,59 +1277,6 @@ fn lost_tapes(
         }
     }
     lost
-}
-
-/// Put back a tape the chain names and this ward has lost.
-///
-/// It happened on 16 ก.ย.: an anchor reduced a tape two ticks longer than the one the hand-over
-/// had filed, so the chain carried a leaf whose tape was nowhere, and a bed sat on the board that
-/// no stranger could take. `keep_for_anchor` is what stops it recurring; this is what repairs the
-/// patients it already happened to.
-///
-/// `held` is every session this server still has. A tape that reduces to the missing leaf **is**
-/// that shift — a leaf commits to the scenario, the steps and the reduction together — so filing
-/// it is recovery rather than a guess. Nothing that reduces to it means the shift is gone, and the
-/// note says so; `read_ward` then marks her unrebuildable on the board rather than offering a bed
-/// nobody can take.
-fn repair(
-    chain: &WardChain,
-    store: &crate::store::Store,
-    patients: &[crate::ward::PatientOnChain],
-    packs_now: &std::collections::BTreeMap<u64, crate::ward::Pack>,
-    held: &[(String, Vec<vitals_replay::Step>)],
-    out: &mut Ticked,
-) {
-    use crate::ward::OPEN;
-    for p in patients.iter().filter(|p| p.state == OPEN) {
-        if !packs_now.contains_key(&p.patient_id) {
-            continue;
-        }
-        let key = format!("p{}", p.patient_id);
-        let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
-        if chain.refresh(p.patient_id, &mut seen).is_err() {
-            continue;
-        }
-        for shift in seen.shifts() {
-            let hash = hex32(&shift.run_hash);
-            if tape_by_hash(store, &hash).is_some() {
-                continue;
-            }
-            match recover_tape(store, p.patient_id, &hash, held) {
-                Some(t) => out.notes.push(format!(
-                    "patient {}: the tape for {hash} was missing and has been put back from a \
-                     session still held here — {} steps",
-                    p.patient_id,
-                    t.len()
-                )),
-                None => out.notes.push(format!(
-                    "patient {}: the chain names a shift at slot {} with run hash {hash} and no \
-                     tape here reduces to it. That chart cannot be rebuilt, so the patient is off \
-                     the board rather than in a bed nobody can take",
-                    p.patient_id, shift.slot
-                )),
-            }
-        }
-    }
 }
 
 /// Close every open patient the engine has already finished.
@@ -1437,7 +1439,7 @@ pub fn tick(
     // anybody sees that somebody died there, and it is the ward the founder chose.
     // Before anything else: a leaf on chain whose tape this ward has lost. She cannot be opened,
     // rebuilt or closed until it is back, so the repair runs ahead of the reaping that needs it.
-    repair(chain, store, &patients, &packs_now, held, &mut out);
+    out.notes.extend(repair_tapes(chain, store, &patients, held));
     reap(chain, store, root, &patients, &packs_now, &mut out);
 
     // Beds, not chain rows: a patient the ward cannot describe holds none (`beds_taken`), so she
