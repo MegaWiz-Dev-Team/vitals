@@ -95,6 +95,9 @@ pub struct Pack {
     pub archetype_label: String,
     /// The patient at presentation, without the name: the ward assigns its own persona.
     pub patient: PackPatient,
+    /// The chief complaint, the history and the room, verbatim from the case — the opening the
+    /// ward's voice speaks from. Scanned for the name like everything else.
+    pub presentation: embla::Presentation,
     /// The full scenario, as `vitals-sce` reads it.
     pub sce: serde_json::Value,
     /// The mark sheet, as `vitals-osce` reads it.
@@ -235,6 +238,11 @@ pub fn compile(case_json: &str, source: Source) -> Result<Pack, Refusal> {
         archetype: a.id().to_string(),
         archetype_label: a.label().to_string(),
         patient: PackPatient { age: case.patient.age, sex: case.sex() },
+        presentation: embla::Presentation {
+            chief_complaint: text::scrub(&case.presentation.chief_complaint, &case.patient.name),
+            hpi: text::scrub(&case.presentation.hpi, &case.patient.name),
+            setting: case.presentation.setting.as_deref().map(|s| text::scrub(s, &case.patient.name)),
+        },
         sce: sim.sce.clone(),
         rubric: rubric.clone(),
         voice: built.voice.clone(),

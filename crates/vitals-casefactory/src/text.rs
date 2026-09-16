@@ -128,3 +128,37 @@ pub fn name_tokens(name: &str) -> BTreeSet<String> {
         .filter(|w| w.chars().count() >= 3 && !TITLES.contains(&w.as_str()))
         .collect()
 }
+
+/// Replace the patient's name in a piece of prose with a neutral placeholder — `the patient`
+/// for a Latin-script name matched as whole words, `ผู้ป่วย` for a Thai one matched as a
+/// substring (Thai has no word spaces). The ward assigns its own persona; the case's opening
+/// must not carry a name the persona will contradict.
+pub fn scrub(text: &str, name: &str) -> String {
+    let mut out = text.to_string();
+    for t in name_tokens(name) {
+        if t.is_ascii() {
+            let mut rebuilt = String::with_capacity(out.len());
+            let low = out.to_lowercase();
+            let mut i = 0;
+            while i < out.len() {
+                let rest = &low[i..];
+                if rest.starts_with(t.as_str()) {
+                    let before = low[..i].chars().next_back().is_none_or(|c| !c.is_alphanumeric());
+                    let after = low[i + t.len()..].chars().next().is_none_or(|c| !c.is_alphanumeric());
+                    if before && after {
+                        rebuilt.push_str("the patient");
+                        i += t.len();
+                        continue;
+                    }
+                }
+                let ch = out[i..].chars().next().unwrap_or(' ');
+                rebuilt.push(ch);
+                i += ch.len_utf8();
+            }
+            out = rebuilt;
+        } else {
+            out = out.replace(t.as_str(), "ผู้ป่วย");
+        }
+    }
+    out
+}

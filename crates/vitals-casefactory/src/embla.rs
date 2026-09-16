@@ -147,11 +147,24 @@ pub struct Hidden {
     pub rubric: Rubric,
 }
 
+/// The opening of the case: what the patient (or whoever speaks for them) says at the door.
+#[derive(Debug, Clone, Default, Deserialize, serde::Serialize)]
+pub struct Presentation {
+    #[serde(default)]
+    pub chief_complaint: String,
+    #[serde(default)]
+    pub hpi: String,
+    #[serde(default)]
+    pub setting: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Case {
     pub meta: Meta,
     #[serde(default)]
     pub patient: Patient,
+    #[serde(default)]
+    pub presentation: Presentation,
     #[serde(default)]
     pub symptom_script: Vec<SymptomLine>,
     #[serde(default)]

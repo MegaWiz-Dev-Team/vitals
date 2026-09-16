@@ -109,7 +109,7 @@ written into the pack under `replay`.
 ```text
 case_id, source{repo, ref, sha256}, title, country (ISO3 | null), difficulty (student|intern|resident),
 clinical_tier, specialty, care_setting, language, tags[], endemic, provisional (always true),
-version, archetype, archetype_label, patient{age, sex},
+version, archetype, archetype_label, patient{age, sex}, presentation{chief_complaint, hpi, setting},
 sce{…vitals-sce scenario…}, rubric{case, pass_bps, status, items[]},
 voice{ask_id → {finding, present, reveal, words}},
 management[{step, interventions[]}], timed{role → {named_sec, by_sec, sentence}},

@@ -35,3 +35,11 @@ fn a_thai_name_is_caught_as_a_substring() {
     let pack = json!({ "title": "ผู้ป่วยชื่อ สมหญิง มาด้วยไข้" });
     assert!(!scan(&pack, "สมหญิง รักดี").is_empty());
 }
+
+#[test]
+fn the_opening_is_scrubbed_of_the_name_but_the_voice_is_not() {
+    use vitals_casefactory::text::scrub;
+    assert_eq!(scrub("Amara came in with her brother. AMARA is 34.", "Amara da Costa"), "the patient came in with her brother. the patient is 34.");
+    assert_eq!(scrub("Amaranth is a grain.", "Amara da Costa"), "Amaranth is a grain.");
+    assert_eq!(scrub("ผู้ป่วยชื่อสมหญิงมาด้วยไข้", "สมหญิง รักดี"), "ผู้ป่วยชื่อผู้ป่วยมาด้วยไข้");
+}
