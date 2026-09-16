@@ -846,25 +846,7 @@ pub fn validate_pack(p: &crate::ward::Pack) -> Result<(), String> {
         }
     }
     for (state, src) in &p.portrait {
-        if state == "dead" {
-            return Err("no picture of a dead patient is made — the board shows her last living \
-                        state and says died in words"
-                .into());
-        }
-        if !crate::ward::PORTRAIT_LADDER.contains(&state.as_str()) {
-            return Err(format!(
-                "{state} is not a state the engine reports, so nothing would ever draw it. The \
-                 keys are {:?}",
-                crate::ward::PORTRAIT_LADDER
-            ));
-        }
-        if !is_portrait_url(src) {
-            return Err(format!(
-                "a portrait must be {PORTRAITS}/<sha256>.webp, not {src} — the board renders this \
-                 as an image on a page strangers open, so the ward publishes one shape and \
-                 refuses every other"
-            ));
-        }
+        portrait_entry(state, src)?;
     }
     if p.endemic {
         let has = crate::ward::endemic()
@@ -894,11 +876,62 @@ pub const PORTRAITS: &str = "https://storage.googleapis.com/vitals-world-portrai
 /// and `.webp`. Everything a near miss could smuggle — another host, another bucket, `http`, a
 /// traversal segment, a different extension — fails by not being that.
 pub fn is_portrait_url(src: &str) -> bool {
-    let Some(name) = src.strip_prefix(PORTRAITS).and_then(|r| r.strip_prefix('/')) else {
-        return false;
+    portrait_size(src).is_some()
+}
+
+/// Which of the two shapes this address is, if it is either: `Some(true)` for the 256 px sibling.
+///
+/// One reader for both, so "is this a portrait" and "which size is it" can never disagree — and
+/// the second question is what lets the doors refuse a thumbnail filed as a picture.
+pub fn portrait_size(src: &str) -> Option<bool> {
+    let name = src.strip_prefix(PORTRAITS).and_then(|r| r.strip_prefix('/'))?;
+    let stem = name.strip_suffix(".webp")?;
+    let (sha, small) = match stem.strip_suffix("-256") {
+        Some(sha) => (sha, true),
+        None => (stem, false),
     };
-    let Some(sha) = name.strip_suffix(".webp") else { return false };
-    sha.len() == 64 && sha.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    let hex = sha.len() == 64 && sha.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+    hex.then_some(small)
+}
+
+/// One portrait entry, read: the state it is a picture of, and whether it is the small sibling.
+///
+/// `Err` carries the sentence a person can act on, because both doors — the queue's and the
+/// portrait door — say the same things for the same reasons and there is no second opinion to
+/// keep in step.
+pub fn portrait_entry(state: &str, src: &str) -> Result<(String, bool), String> {
+    let (at, small) = match state.strip_suffix(crate::ward::SMALL) {
+        Some(at) => (at, true),
+        None => (state, false),
+    };
+    if at == "dead" {
+        return Err("no picture of a dead patient is made — the board shows her last living \
+                    state and says died in words"
+            .into());
+    }
+    if !crate::ward::PORTRAIT_LADDER.contains(&at) {
+        return Err(format!(
+            "{state} is not a state the engine reports, so nothing would ever draw it. The \
+             keys are {:?}, each optionally with {}",
+            crate::ward::PORTRAIT_LADDER,
+            crate::ward::SMALL
+        ));
+    }
+    match portrait_size(src) {
+        None => Err(format!(
+            "a portrait must be {PORTRAITS}/<sha256>.webp or the same name with -256 before the \
+             extension, not {src} — the board renders this as an image on a page strangers open, \
+             so the ward publishes two shapes and refuses every other"
+        )),
+        Some(is_small) if is_small != small => Err(format!(
+            "{state} is filed as the {} and {src} is the {} — a thumbnail under the full-size key \
+             draws correctly and defeats the point of having two, so the key and the address have \
+             to agree",
+            if small { "256 px sibling" } else { "full-size picture" },
+            if is_small { "256 px sibling" } else { "full-size picture" }
+        )),
+        Some(_) => Ok((at.to_string(), small)),
+    }
 }
 
 /// A pack's address: sha256 over its own fields, in a fixed order.
@@ -1234,18 +1267,10 @@ pub fn replace_queued_portraits(
     };
 
     for (state, src) in portraits {
-        if state == "dead" {
-            out.rejected.push(
-                "no picture of a dead patient is made — the board shows her last living state".into(),
-            );
-            continue;
-        }
-        if !crate::ward::PORTRAIT_LADDER.contains(&state.as_str()) {
-            out.rejected.push(format!("{state} is not a state the engine reports"));
-            continue;
-        }
-        if !is_portrait_url(&src) {
-            out.rejected.push(format!("{state}: a portrait must be {PORTRAITS}/<sha256>.webp"));
+        // One reader, three doors. A queued face may still be replaced — she is nobody's patient
+        // yet — but it is held to the same two shapes as one that is already in a bed.
+        if let Err(why) = portrait_entry(&state, &src) {
+            out.rejected.push(why);
             continue;
         }
         pack.portrait.insert(state, src);
@@ -1289,19 +1314,10 @@ pub fn fill_portraits(
             out.kept += 1;
             continue;
         }
-        if state == "dead" {
-            out.rejected.push(
-                "no picture of a dead patient is made — the board shows her last living state"
-                    .into(),
-            );
-            continue;
-        }
-        if !crate::ward::PORTRAIT_LADDER.contains(&state.as_str()) {
-            out.rejected.push(format!("{state} is not a state the engine reports"));
-            continue;
-        }
-        if !is_portrait_url(&src) {
-            out.rejected.push(format!("{state}: a portrait must be {PORTRAITS}/<sha256>.webp"));
+        // The same reader the queue's door uses, so a face refused there is refused here and for
+        // the same stated reason.
+        if let Err(why) = portrait_entry(&state, &src) {
+            out.rejected.push(why);
             continue;
         }
         pack.portrait.insert(state, src);

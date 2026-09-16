@@ -293,12 +293,37 @@ pub fn portrait_for<'a>(
     set: &'a std::collections::BTreeMap<String, String>,
     state: &str,
 ) -> Option<&'a str> {
+    set.get(portrait_state_for(set, state)?).map(String::as_str)
+}
+
+/// The suffix a 256 px sibling is filed under: `stable` is the picture, `stable_256` is the
+/// thumbnail of that same picture, and both are content-addressed objects in the same bucket.
+pub const SMALL: &str = "_256";
+
+/// Which state's picture is the one to draw — the state itself, or the nearest milder one that
+/// exists. The size is a separate question, asked after this one, so a thumbnail can never be a
+/// picture of a different moment than the full-size face it stands in for.
+pub fn portrait_state_for<'a>(
+    set: &std::collections::BTreeMap<String, String>,
+    state: &'a str,
+) -> Option<&'a str> {
     let at = PORTRAIT_LADDER.iter().position(|s| *s == state)?;
-    PORTRAIT_LADDER[..=at]
-        .iter()
-        .rev()
-        .find_map(|s| set.get(*s))
-        .map(String::as_str)
+    PORTRAIT_LADDER[..=at].iter().rev().find(|s| set.contains_key(**s)).copied()
+}
+
+/// The board's picture: the small sibling when the factory has made it, the full one when it has
+/// not.
+///
+/// Twenty patients on a globe is twenty full-size faces over a mobile connection for a board
+/// nobody has clicked yet. The bedside asks [`portrait_for`] and gets the picture; this is the
+/// other half of that sentence, and the fallback is never a broken image — a sibling that does not
+/// exist yet simply is not used.
+pub fn portrait_small_for<'a>(
+    set: &'a std::collections::BTreeMap<String, String>,
+    state: &str,
+) -> Option<&'a str> {
+    let at = portrait_state_for(set, state)?;
+    set.get(&format!("{at}{SMALL}")).or_else(|| set.get(at)).map(String::as_str)
 }
 
 /// One person the factory can make a patient of.
@@ -560,7 +585,7 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                 // What to draw now, and everything there is to draw. The board gets both so it
                 // can change her picture the moment it learns her status without asking again —
                 // and so a reader can see that the set is a set.
-                "portrait": pack.and_then(|k| portrait_for(&k.portrait, portrait_state(p.state))
+                "portrait": pack.and_then(|k| portrait_small_for(&k.portrait, portrait_state(p.state))
                                                   .map(str::to_string)),
                 "portraits": pack.map(|k| k.portrait.clone()).unwrap_or_default(),
             })
@@ -601,7 +626,9 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                          admission order **among the patients the ward can describe**; one it \
                          cannot has no case to open and holds no bed, and says so in her own row. \
                          `portraits` is her whole set and `portrait` is the one to draw now — the \
-                         nearest picture no worse than the state she is in. Her physiological \
+                         nearest picture no worse than the state she is in, at 256 px when that \
+                         sibling exists (`<state>_256` in the set) and full size when it does \
+                         not. The bedside asks for the full one; this is a board. Her physiological \
                          status is not derived here yet, so a patient on the ward is drawn with \
                          her base picture and only the endings are exact",
             "keys": "distinct signers of AnchorShift transactions on the ward's patient accounts, \

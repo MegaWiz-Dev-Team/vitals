@@ -447,7 +447,13 @@ fn gaps(ward: &WardView, pool: &[Person], manifest: &Manifest, r: &mut Report) -
             continue;
         };
         let entry = &manifest.entries[&key];
-        let Some(stable) = p.portraits.get("stable").or(p.portrait.as_ref()).cloned().or_else(|| entry.portrait.get("stable").cloned()) else {
+        // The reference the other states are generated from, so it has to be the full-size face:
+        // the board's `portrait` is the 256 px sibling when one exists (16 ก.ย.), and locking a
+        // face against a thumbnail would make every state after it softer than the first.
+        let full = |s: &String| !s.ends_with("-256.webp");
+        let Some(stable) = p.portraits.get("stable").filter(|s| full(s))
+            .or(p.portrait.as_ref().filter(|s| full(s)))
+            .cloned().or_else(|| entry.portrait.get("stable").cloned()) else {
             continue;
         };
         let has = |st: &str| p.portraits.contains_key(st);
