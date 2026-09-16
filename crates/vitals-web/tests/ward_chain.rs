@@ -731,3 +731,51 @@ fn a_stranger_opens_an_account_and_declares_before_playing() {
     assert!(declare.accounts[0].is_signer && declare.accounts[1].is_signer,
             "the relay pays and the player declares");
 }
+
+/// One unreadable entry in her history must not blind the ward — and must not be skipped past.
+///
+/// Devnet handed back a null where a transaction should have been, and the read failed whole:
+/// "patient 1789490621's history could not be read". The next read was fine, so the ward was
+/// briefly unreadable for a hiccup — but the fix has to be careful in a way the bug was not.
+///
+/// History arrives newest-first. If a null in the middle were simply skipped, the cursor would
+/// move past it and the shift underneath it would never be read again: a shift that happened,
+/// paid for, anchored on chain, and absent from the census for ever. So the page is walked
+/// **oldest-first and stops at the first entry it cannot read**: everything before it is kept, the
+/// cursor stops there, and the next read starts again from exactly that point.
+#[test]
+fn an_unreadable_entry_stops_the_walk_rather_than_being_skipped() {
+    use vitals_web::ward::ShiftOnChain;
+    use vitals_web::ward_chain::{walk_history, Seen};
+
+    // Newest first, the way getSignaturesForAddress answers.
+    let page = vec![("s5".to_string(), 500u64), ("s4".into(), 400), ("s3".into(), 300),
+                    ("s2".into(), 200), ("s1".into(), 100)];
+    let shift_at = |slot: u64| ShiftOnChain {
+        patient_id: 42, signer: [1; 32], slot, run_hash: [slot as u8; 32],
+    };
+
+    // s3 is the null. s1 and s2 are read; s4 and s5 are not reached.
+    let read = |sig: &str, slot: u64| -> Result<Vec<ShiftOnChain>, String> {
+        match sig {
+            "s3" => Err("invalid type: null, expected struct".into()),
+            // Not every signature is a shift — taking the head is a transaction too.
+            "s2" => Ok(vec![]),
+            _ => Ok(vec![shift_at(slot)]),
+        }
+    };
+    let (got, cursor, trouble) = walk_history(page.clone(), read);
+
+    assert_eq!(got.len(), 1, "only s1 produced a shift, and s2 produced none");
+    assert_eq!(cursor.as_ref().map(|(s, _)| s.as_str()), Some("s2"),
+               "the cursor stops at the newest entry that was fully read — including one that was \
+                read and held no shift, or every lease would be re-fetched for ever");
+    let trouble = trouble.expect("the walk says why it stopped");
+    assert!(trouble.contains("s3"), "and names the entry it stopped at: {trouble}");
+
+    // Absorbing keeps the cursor the walk chose, rather than deriving it from the shifts.
+    let mut seen = Seen::default();
+    seen.absorb(got.into_iter().map(|s| (s, "sig".to_string())).collect(), cursor);
+    assert_eq!(seen.until().as_deref(), Some("s2"),
+               "so the next read begins at s3 again and the shift under it is not lost");
+}
