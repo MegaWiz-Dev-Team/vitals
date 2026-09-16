@@ -98,14 +98,17 @@ pub const STABLE: &str = "stable";
 /// carries the same words. One feature, no interpretive words ("critically ill", "struggling")
 /// and no colour of skin or lips: the first run of the gate (16 Sep, Salma Gaber) refused four of
 /// five states on props and adjectives the editor had not rendered, and the identity question
-/// failed on arrest, where colour words change the face most. Stable's stays as it was.
+/// failed on arrest, where colour words change the face most. Stable's stays as it was. Recovered
+/// is the only face that smiles (founder's rule, 16 Sep): improving is better, not well, and the
+/// three worse states end in "not smiling" — the first patient through the gate kept a faint smile
+/// in her critical and arrest faces because nothing had said otherwise.
 pub fn feature(state: &str) -> Option<&'static str> {
     Some(match state {
         "stable" => "unwell and tired but comfortable, lying in a hospital bed, eyes open, not smiling",
-        "improving" => "propped up a little on the pillow, eyes open and clear, no oxygen mask, a small plaster on the back of the hand",
-        "deteriorating" => "wearing an oxygen mask over the nose and mouth, eyes half closed",
-        "critical" => "eyes closed, an oxygen mask on, the blanket drawn up to the chest",
-        "arrest" => "eyes closed, no mask, lying completely still, the blanket flat to the chest",
+        "improving" => "propped up a little on the pillow, eyes open and clear, no oxygen mask, a small plaster on the back of the hand, not smiling",
+        "deteriorating" => "wearing an oxygen mask over the nose and mouth, eyes half closed, not smiling",
+        "critical" => "eyes closed, an oxygen mask on, the blanket drawn up to the chest, not smiling",
+        "arrest" => "eyes closed, no mask, lying completely still, the blanket flat to the chest, not smiling",
         "recovered" => "sitting up in the bed with no oxygen mask, looking well",
         _ => return None,
     })
