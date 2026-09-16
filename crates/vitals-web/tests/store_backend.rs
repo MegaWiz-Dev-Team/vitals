@@ -77,3 +77,35 @@ fn a_document_we_did_not_write_is_skipped_not_fatal() {
         assert_eq!(Store::unwrap(&junk), None, "accepted {junk}");
     }
 }
+
+/// A store that cannot be listed must say so, not say "empty".
+///
+/// Found in production by the factory's first real tick. `keys()` asked Firestore for
+/// `mask.fieldPaths=` — an empty path, which Firestore answers with 400 "Invalid empty property
+/// path string" — and the function turned that into an empty `Vec`. So `queue_depth()` read zero
+/// while ten packs sat in the collection, `/api/ward` published "waiting 0", and a factory topping
+/// the queue up against that number would have rebuilt the pool until it ran out of people.
+///
+/// The one-character bug is not the lesson. The lesson is that an empty list and a failed list are
+/// different facts and this function conflated them, which is the same mistake `ward_unavailable`
+/// exists to prevent one layer up: a zero that means "nobody came" and a zero that means "we could
+/// not look" must never be the same zero.
+#[test]
+fn a_store_that_cannot_be_listed_says_so_rather_than_saying_empty() {
+    use vitals_web::store::{Backend, Store};
+
+    // Port 1 answers nothing. Any failure will do — what is being tested is that a failure is not
+    // silently an empty collection.
+    let s = Store::with(Backend::Firestore { base: "http://127.0.0.1:1/v1/nowhere".into() })
+        .expect("a store may be built against an unreachable base");
+
+    match s.keys("ward_queue") {
+        Err(why) => assert!(!why.is_empty(), "the refusal has to say something"),
+        Ok(keys) => panic!(
+            "listing an unreachable store answered Ok({}) — a caller cannot tell that from a \
+             collection with nothing in it, and one of those means the ward is empty while the \
+             other means we are blind",
+            keys.len()
+        ),
+    }
+}

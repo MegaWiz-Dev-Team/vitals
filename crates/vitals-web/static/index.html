@@ -5421,7 +5421,30 @@ async function openShift(){
           r.ward.shifts_before+' anchored shift'+(r.ward.shifts_before===1?'':'s')+
           ' — take the shift to treat her');
   $('#lobby').classList.add('hide'); $('#game').classList.remove('hide');
+  /* The page is the bay, so it has to be the bay *for her case* — the header, the stage, the
+     still, the kit and the chips are all derived from the episode select, and a ward shift that
+     left it alone wore EP1's title and EP1's key art over another patient's chart. A screenshot
+     of that is the product contradicting itself in the place a judge looks first. */
+  $('#ep').value=r.ward.case;
+  /* The station card names the case's own patient — "Pranom · F 72" — and on the ward the person
+     in that bed is somebody else. Only the name changes: her sex and age are the case's, because
+     the door refuses a pack that disagrees with them. Written into the season entry rather than
+     special-cased in the card, so every place the page reads "who" says the same person; the
+     shelf that entry also feeds is not reachable on the ward host, where the front page is the
+     globe. */
+  const card=SEASON.find(x=>x.id===r.ward.case);
+  if(card&&r.ward.name){
+    const rest=String(card.who||'').split('·').slice(1).join('·').trim();
+    card.who=r.ward.name+(rest?' · '+rest:'');
+  }
+  SHOWN=[]; STAGE=openStage(r.ward.case); stageKey='';
+  renderModes(); renderChips();
   paint(r.view);
+  bootMonitor();
+  /* Two controls that mean something in the bay and nothing here: "restart" would quietly open a
+     practice run of her case and lose the shift, and "← episodes" is a shelf this patient is not
+     on. The strip's own link is where a stranger goes back to. */
+  $('#start').classList.add('hide'); $('#back').classList.add('hide');
 }
 async function takeShift(){
   const b=$('#wardtake'); b.disabled=true;
