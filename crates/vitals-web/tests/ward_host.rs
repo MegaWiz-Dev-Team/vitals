@@ -201,3 +201,33 @@ fn the_refusal_names_the_budget_it_is_refusing_against() {
     }
     panic!("nothing was refused, so there is no sentence to read");
 }
+
+/// **The ward's voice does not depend on a gateway being there.**
+///
+/// `/api/say` refuses at its first line when no model is configured — "no gateway — the patient
+/// has no voice here" — and that line is before everything else on the route. On the Eternal bay
+/// that is the truth: her voice *is* the model. On the ward it is not: the compiler wrote what she
+/// says against every `ask_` in her case, and a ward that told a stranger she has no voice because
+/// a Vertex variable is unset would be refusing to read a file it already holds.
+///
+/// It is also the bill. The bay's spend is metered per address and capped per month because
+/// inference costs money per question; a public ward at a fair would spend the month's ceiling on
+/// strangers in an afternoon, and the answer after that is silence. Reading the case file costs
+/// nothing and cannot be exhausted.
+///
+/// This server starts with no gateway at all, which is how the ward host runs.
+#[test]
+fn the_ward_host_does_not_gate_the_voice_on_a_gateway() {
+    let s = Server::start(true);
+    let (_, body) = s.get("/api/say?id=no-such-session&q=how%20long%20has%20it%20hurt");
+    assert!(!body.contains("no gateway"),
+            "the ward host answers out of the case file and has no gateway to miss: {body}");
+    assert!(body.contains("no such session"),
+            "and what is actually wrong with this request is the session: {body}");
+
+    // The Eternal bay is unchanged: there her voice is the model, and with no model there is
+    // nothing to say. Saying so is the honest answer, and it predates the ward.
+    let e = Server::start(false);
+    let (_, body) = e.get("/api/say?id=no-such-session&q=hello");
+    assert!(body.contains("no gateway"), "the bay still says what is missing: {body}");
+}

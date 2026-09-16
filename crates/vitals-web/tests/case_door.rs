@@ -709,3 +709,84 @@ fn the_view_names_the_person_in_the_bed() {
     assert!(line.split(|c: char| !c.is_ascii_alphabetic()).any(|w| w == "he"),
             "the no-answer line is written about a woman whoever is in the bed: {line:?}");
 }
+
+/// **On the ward the patient answers out of the case file, and out of nothing else.**
+///
+/// In the bay her voice is a language model with her persona in front of it: she improvises, and
+/// the reveal gate is what keeps her from improvising away a fact the candidate has not earned.
+/// A public ward cannot have that. It is free to the stranger, it scales to zero, and the spend is
+/// per question — a ward under a fair's worth of traffic is a bill with no learner attached, and
+/// the first thing that would go wrong is the tenth person of the day being told the patient has
+/// nothing to say because the month's compute is gone.
+///
+/// The compiler already wrote what she says: every `ask_` intervention has a voice entry, in her
+/// person, written by the case's author against that exact finding. So the ward's answer is a
+/// lookup — the chip sends the intervention id, free typing goes through the case's own keywords,
+/// and a question the case never wrote an answer for is told so plainly rather than answered by
+/// something that does not know her.
+#[test]
+fn the_patient_answers_out_of_the_case_file() {
+    use vitals_web::ward::Persona;
+    use vitals_web::ward_case::answer;
+
+    let mut pack = a_pack();
+    pack["sce"]["interventions"] = json!([
+        { "id": "ask_hematemesis", "label": "Ask: Vomiting blood",
+          "match": { "any_kw": ["vomit", "blood", "ask_hematemesis"] }, "effects": [] },
+        { "id": "ask_black_stool", "label": "Ask: Black stool",
+          "match": { "any_kw": ["black stool", "melaena", "ask_black_stool"] }, "effects": [] },
+        { "id": "ask_alcohol", "label": "Ask: Alcohol",
+          "match": { "any_kw": ["alcohol", "drink"], "not_kw": ["water"] }, "effects": [] },
+        { "id": "tx_fluids", "label": "Crystalloid bolus",
+          "match": { "any_kw": ["fluids", "crystalloid"] },
+          "effects": [{ "to_state": "stabilising" }] }
+    ]);
+    pack["voice"] = json!({
+        "ask_hematemesis": { "finding": "Hematemesis", "present": true, "reveal": "volunteered",
+                             "words": "I am {age} and I have never seen so much blood" },
+        "ask_black_stool": { "finding": "Melaena", "present": true, "reveal": "on_direct_ask",
+                             "words": "Yesterday. Black, sticky. I thought it was the medicine." }
+    });
+
+    let her = Persona { name: "Nusrat Jahan".into(), country: "BGD".into(), age: 64, sex: "f".into() };
+    let him = Persona { name: "Rafael Moreira".into(), country: "BRA".into(), age: 26, sex: "m".into() };
+
+    // The chip sends the intervention id — what fires, what lands on the tape, what is marked.
+    let a = answer(&pack, &her, "ask_hematemesis");
+    assert_eq!(a.matched.as_deref(), Some("ask_hematemesis"));
+    assert_eq!(a.words, "I am 64 and I have never seen so much blood",
+               "her words, about her: the placeholders are filled from the person in the bed");
+
+    // And a stranger typing gets there through the case's own keywords, the same ones the engine
+    // matches an order with.
+    assert_eq!(answer(&pack, &her, "have you vomited any blood?").matched.as_deref(),
+               Some("ask_hematemesis"));
+    assert_eq!(answer(&pack, &her, "any melaena?").matched.as_deref(), Some("ask_black_stool"));
+    assert_eq!(answer(&pack, &her, "ASK ABOUT THE BLACK STOOL").matched.as_deref(),
+               Some("ask_black_stool"), "the question is matched however it is typed");
+
+    // A matcher's exclusions are the author's and are kept: "do you drink water" is not a question
+    // about alcohol, and answering it as one would be the patient agreeing to something she was
+    // never asked.
+    assert_eq!(answer(&pack, &her, "do you drink water?").matched, None);
+
+    // An order is not a question. The ask bar is a conversation; "crystalloid bolus" belongs to
+    // the tray, and a patient who answered it would be answering out of the wrong half of her own
+    // case file.
+    assert_eq!(answer(&pack, &her, "crystalloid bolus").matched, None);
+
+    // A question the case never wrote an answer for, and a question it wrote no words for: both
+    // are told so, in the pronoun of the person in the bed.
+    let none = answer(&pack, &her, "do you have a dog at home?");
+    assert_eq!(none.matched, None);
+    assert!(none.words.contains("she"), "in her own pronoun: {:?}", none.words);
+    assert!(!none.words.is_empty());
+    let mute = answer(&pack, &him, "do you drink alcohol?");
+    assert_eq!(mute.matched.as_deref(), Some("ask_alcohol"),
+               "the case knows the question — it simply wrote no words for it");
+    assert!(mute.words.contains(" he "), "and he is a man: {:?}", mute.words);
+
+    // The pack may write its own sentence for that, and then it is the pack's.
+    pack["no_answer"] = json!("{He_she} shakes {his_her} head.");
+    assert_eq!(answer(&pack, &him, "do you have a dog at home?").words, "He shakes his head.");
+}
