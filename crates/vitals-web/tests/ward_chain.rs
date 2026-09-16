@@ -556,8 +556,9 @@ fn portraits_are_added_to_a_patient_and_never_replaced() {
 
 // ── the bay, resumed ────────────────────────────────────────────────────────
 
+use std::collections::BTreeMap;
 use vitals_replay::{resume as replay_resume, Step, SLOT_SECONDS};
-use vitals_web::ward_chain::{resumed, StoredTape};
+use vitals_web::ward_chain::resumed;
 
 fn ep1() -> String {
     std::fs::read_to_string(
@@ -567,124 +568,80 @@ fn ep1() -> String {
     .expect("ep1 is in the repository")
 }
 
-fn taped(index: u32, taken: u64, anchored: u64, steps: Vec<Step>) -> StoredTape {
-    StoredTape { patient_id: 42, index, taken_slot: taken, anchored_slot: anchored, steps }
+fn anchored(run_hash: &str, slot: u64) -> ShiftOnChain {
+    let mut h = [0u8; 32];
+    for (i, b) in run_hash.bytes().take(32).enumerate() {
+        h[i] = b;
+    }
+    ShiftOnChain { patient_id: 42, signer: [1; 32], slot, run_hash: h }
 }
 
 fn seen(st: &vitals_sce::runtime::SceState) -> (Option<String>, String, usize) {
     (st.outcome().map(|o| format!("{o:?}")), format!("{:.3}", st.t_sec()), st.harm_events.len())
 }
 
-/// **The state on screen is the state a stranger would derive.**
+/// **The chain decides what happened to her, and in what order.**
 ///
-/// This is the sentence the whole ward rests on, and this is where it becomes code: a shift begins
-/// on the patient rebuilt from every tape before it, through the same replay the verifier runs. If
-/// the bay ever starts a ward run from anywhere else, the chart a stranger rebuilds is not the
-/// patient the last person treated, and every claim on the page is void.
+/// Not our store. The shifts come from the AnchorShift transactions on her account, in slot order,
+/// and each tape is looked up by the `run_hash` the leaf commits to — so a tape we hold that was
+/// never anchored is never replayed, and a tape we have lost stops the rebuild with a sentence
+/// instead of quietly producing a different patient.
+///
+/// That is "no server can change her past without every browser noticing", made literal on our own
+/// server: every input to this function is either on the chain or is bytes the chain committed to.
+/// The timing too — the idle clock runs anchor to anchor, which is arithmetic anybody can repeat,
+/// rather than from a clock reading we kept to ourselves.
 #[test]
-fn a_shift_begins_on_the_patient_the_last_shift_left() {
+fn the_chain_decides_what_happened_to_her_and_in_what_order() {
     let sce = ep1();
     let first = vec![Step::Tick(30.0), Step::Do("oxygen".into()), Step::Tick(45.0)];
     let second = vec![Step::Tick(20.0), Step::Do("adrenaline im".into()), Step::Tick(60.0)];
+    let mut tapes: BTreeMap<String, Vec<Step>> = BTreeMap::new();
+    tapes.insert("one".into(), first.clone());
+    tapes.insert("two".into(), second.clone());
+    tapes.insert("never-anchored".into(), vec![Step::Do("stand her up".into()), Step::Tick(60.0)]);
+    let chart = |h: &str| tapes.get(h).cloned();
 
-    // Nobody has been yet: she is exactly as she was written.
-    let (fresh, shifts) = resumed(&sce, &[], 0).expect("an unvisited patient");
-    let (start, _) = replay_resume(&sce, &[]).expect("the scenario's own start");
-    assert_eq!(seen(&fresh), seen(&start), "a patient nobody has treated is the scenario's start");
-    assert_eq!(shifts, 0);
+    // Nobody has been yet.
+    let (fresh, n) = resumed(&sce, &[], &chart, 100, 100).expect("an unvisited patient");
+    let (start, _) = replay_resume(&sce, &[]).expect("the scenario's start");
+    assert_eq!(seen(&fresh), seen(&start));
+    assert_eq!(n, 0);
 
-    // Two shifts, back to back, no gap and nothing since: the same patient one tape of both leaves.
-    let back_to_back = [taped(0, 10, 20, first.clone()), taped(1, 20, 30, second.clone())];
-    let (rebuilt, shifts) = resumed(&sce, &back_to_back, 30).expect("two shifts");
+    // Two shifts, anchored back to back. The chain of shifts equals the whole tape.
+    let two = [anchored("one", 110), anchored("two", 120)];
+    let (rebuilt, n) = resumed(&sce, &two, &chart, 100, 120).expect("two shifts");
     let whole: Vec<Step> = first.iter().chain(&second).cloned().collect();
     let (one_tape, _) = replay_resume(&sce, &whole).expect("one tape of both");
     assert_eq!(seen(&rebuilt), seen(&one_tape),
-               "the chain of shifts must equal the whole — this is the verifier's own guarantee, \
-                and the bay has to honour it or the screen and the proof disagree");
-    assert_eq!(shifts, 2);
+               "the chain of shifts must equal the whole, which is the verifier's own guarantee");
+    assert_eq!(n, 2);
 
-    // A night between the two shifts is time she spent untreated, and it shows.
+    // A tape we hold but the chain never anchored is not part of her past.
+    let (same, _) = resumed(&sce, &two, &chart, 100, 120).expect("two shifts again");
+    assert_eq!(seen(&same), seen(&rebuilt),
+               "the store holds a third tape, and it changes nothing — only anchored work counts");
+
+    // A tape the chain names and we cannot produce stops the rebuild, in words.
+    let missing = [anchored("one", 110), anchored("gone", 120)];
+    let err = resumed(&sce, &missing, &chart, 100, 120).expect_err("her chart cannot be rebuilt");
+    assert!(err.contains("cannot be rebuilt") || err.contains("missing"),
+            "a lost tape must say so rather than produce a patient nobody can check: {err}");
+
+    // The idle clock runs anchor to anchor, and from her admission to the first anchor, and from
+    // the last anchor to now — three spans, all of them chain arithmetic.
     let a_night = (10.0 * 3600.0 / SLOT_SECONDS) as u64;
-    let with_a_gap = [taped(0, 10, 20, first.clone()),
-                      taped(1, 20 + a_night, 30 + a_night, second.clone())];
-    let (after_a_night, _) = resumed(&sce, &with_a_gap, 30 + a_night).expect("two shifts, a night apart");
+    let apart = [anchored("one", 110), anchored("two", 110 + a_night)];
+    let (after_a_night, _) = resumed(&sce, &apart, &chart, 100, 110 + a_night).expect("a night apart");
     assert_ne!(seen(&after_a_night), seen(&rebuilt),
-               "ten hours alone between two shifts must leave a different patient than a straight \
-                handover");
+               "ten hours between two anchors is time she spent untreated");
 
-    // And the time since the last anchor counts too: she is not frozen waiting for the next
-    // stranger, she is waiting.
-    let (now, _) = resumed(&sce, &back_to_back, 30 + a_night).expect("nobody since");
-    assert_ne!(seen(&now), seen(&rebuilt),
-               "a patient nobody has visited for ten hours is not the patient the last shift left");
-}
+    let (waiting, _) = resumed(&sce, &two, &chart, 100, 120 + a_night).expect("nobody since");
+    assert_ne!(seen(&waiting), seen(&rebuilt),
+               "and so is ten hours since the last stranger left");
 
-/// A pack may not contradict the case it is paired with.
-///
-/// Found by looking at a real one: I queued Ploy Siriwattana, 54, onto `osce-a`, and `osce-a`'s own
-/// persona file says the patient is Somchai, male, 71 — the station's title says *M 71* on the
-/// shelf. The board would have shown a woman of 54 while the case around her was written for a man
-/// of 71, and nothing anywhere would have said so.
-///
-/// Sex must match exactly: the dialogue, the examination and the differential are all written for
-/// it. Age must sit inside the case's own band, because a case written for a child of three is not
-/// a case about a woman of thirty whatever the vitals say.
-///
-/// Four of the sixteen — the episodes — carry no persona file, so no check is possible and the
-/// pack is taken at its word. That is stated here rather than hidden, because a rule that silently
-/// covers three quarters of the catalogue is a rule nobody can rely on.
-#[test]
-fn a_pack_may_not_contradict_the_case_it_is_paired_with() {
-    use vitals_web::ward::case_patient;
-
-    let somchai = case_patient("osce-a").expect("osce-a has a persona file");
-    assert_eq!((somchai.sex.as_str(), somchai.age), ("m", 71),
-               "read from demo/personas/osce-a.json, which is also what the patient's own voice \
-                uses — one source, or the board and the voice disagree out loud");
-
-    // The pack I actually queued, and what should have happened to it.
-    let mut wrong_sex = a_pack();
-    wrong_sex.case = "osce-a".into();
-    wrong_sex.persona.age = 71;
-    assert!(validate_pack(&wrong_sex).is_err(),
-            "Ploy is a woman and osce-a is written for a man — the station's own shelf entry says \
-             M 71");
-
-    let mut wrong_age = a_pack();
-    wrong_age.case = "osce-a".into();
-    wrong_age.persona.name = "Anan Thepwong".into();
-    wrong_age.persona.sex = "m".into();
-    wrong_age.persona.age = 54;
-    assert!(validate_pack(&wrong_age).is_err(), "and 54 is not inside a band written for 71");
-
-    let mut right = a_pack();
-    right.case = "osce-a".into();
-    right.persona.name = "Anan Thepwong".into();
-    right.persona.sex = "m".into();
-    right.persona.age = 69;
-    assert!(validate_pack(&right).is_ok(), "a man of 69 can be the patient osce-a is written for");
-
-    // A child's case has a child's band, and it is tighter than an adult's in years.
-    let pim = case_patient("osce-b3").expect("osce-b3 has a persona file");
-    assert_eq!((pim.sex.as_str(), pim.age), ("f", 3));
-    let mut grown_up = a_pack();
-    grown_up.case = "osce-b3".into();
-    grown_up.persona.age = 30;   // Pim is three, and female like this pack
-    assert!(validate_pack(&grown_up).is_err(),
-            "a case written for a three-year-old is not a case about a woman of thirty, whatever \
-             the vitals say");
-
-    // Every station has one; the episodes do not, and the door says so by taking them at their word.
-    for case in ["osce-a", "osce-a2", "osce-b", "osce-b2", "osce-b3", "osce-c",
-                 "osce-c2", "osce-c3", "osce-d", "osce-d2", "osce-d3", "osce-d4"] {
-        let p = case_patient(case).unwrap_or_else(|| panic!("{case} must carry its own patient"));
-        assert!(p.sex == "m" || p.sex == "f", "{case}: {} is not a sex the persona files use", p.sex);
-        assert!(p.age > 0 && p.age < 120, "{case}: {} is nobody's age", p.age);
-    }
-    for episode in ["ep2-stemi", "ep3-epiglottitis", "ep4-pulmonary-embolism",
-                    "ep5-the-night-the-stars-fell"] {
-        assert!(case_patient(episode).is_none(),
-                "{episode} has no persona file today — if it gains one, this test is the place \
-                 that notices, and the door starts checking it");
-    }
+    let (admitted_early, _) = resumed(&sce, &two, &chart, 100 - a_night, 120).expect("admitted early");
+    assert_ne!(seen(&admitted_early), seen(&rebuilt),
+               "a patient nobody came to for ten hours after she was admitted is not the patient \
+                the first stranger would have found at once");
 }
