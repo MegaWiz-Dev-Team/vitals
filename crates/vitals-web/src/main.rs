@@ -264,6 +264,13 @@ struct WardShift {
     /// program refuses a reveal that does not extend the head it was told, and that refusal is
     /// the mechanic.
     head: String,
+    /// Her pictures, as the pack carries them — every state the factory has made a face for.
+    ///
+    /// Copied into the session at the moment she is opened rather than read per view: a view that
+    /// reached for the store to draw a face would be a view nobody can test, and this set does not
+    /// change during a shift (the factory adds faces to patients, and add-only is the rule).
+    #[serde(default)]
+    faces: std::collections::BTreeMap<String, String>,
 }
 
 /// A run as it sits on disk.
@@ -645,6 +652,14 @@ struct View {
     /// re-derive it and get it wrong; shocking PEA costs compressions and adrenaline.
     shockable: bool,
     status: String,
+    /// The face to draw at the bedside, on a shift and nowhere else.
+    ///
+    /// **The server chooses it**, from the same word it publishes in `status` and by the same
+    /// ladder the board uses — so the page draws a URL and holds no opinion about states, sizes or
+    /// what to do when a picture for this one has not been made. Absent on the Eternal entry: its
+    /// stills are the season's, chosen by the Director, and a ward pack has no say in them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    portrait: Option<String>,
     beats: Vec<String>,
     /// The display line for each beat above, in the language the page asked for — the language
     /// layer's half of [`View::beats`], and the only part of it a reader ever sees.
@@ -987,6 +1002,10 @@ impl Session {
         // (`examMode()` is true for anything with `station` set), and this is the server
         // finally agreeing with it rather than trusting it.
         let sealed = self.sealed();
+        // The engine's own word for how she is. Bound rather than inlined because the face at the
+        // bedside is chosen from it, and two spellings of one word is how a picture comes to
+        // disagree with the line printed beside it.
+        let status = format!("{:?}", self.state.status);
         // ── the chart says what was ordered, not what the rubric calls it ───────
         // The engine records an order by intervention id, because an id is what replay and the
         // rubric need. The chart then printed that id: `adrenaline_undosed`, `dx_epiglottitis`,
@@ -1044,7 +1063,15 @@ impl Session {
             pulse: m.pulse,
             rhythm: m.rhythm,
             shockable: m.shockable,
-            status: format!("{:?}", self.state.status),
+            status: status.clone(),
+            // One word, two uses: what the rail prints and which face to draw. The ladder's keys
+            // are the engine's words in lower case — `portrait_for` then answers with hers, or
+            // with the nearest milder one, or with nothing at all if no picture of her exists yet.
+            portrait: self
+                .ward
+                .as_ref()
+                .and_then(|w| ward::portrait_for(&w.faces, &status.to_lowercase()))
+                .map(str::to_string),
             // Read off the sealed copy, not the live one: a translation of a withheld sentence
             // is the withheld sentence.
             tr: beat_lines(lang, &beats),
@@ -1838,6 +1865,9 @@ fn open_shift(
         index: played as u32,
         taken_slot: now_slot,
         head: head.clone(),
+        // Her whole set, carried into the session so every view can name the right one without
+        // reaching for the store.
+        faces: pack.portrait.clone(),
     };
     let ward_view = serde_json::json!({
         "patient_id": patient_id,
@@ -1931,8 +1961,41 @@ impl Drop for WatcherLeaves {
 /// lives in the script, which is served separately — so a page is the same bytes for everybody
 /// and only `/bay.js` carries anything that depends on this deployment.
 fn compose(page: &str) -> String {
-    page.replace("<!--BAY-->", SURFACE).replace(BUILD_STAMP, BUILD)
+    compose_for(page, ward_mode())
 }
+
+/// The bay, composed for the host that is serving it.
+///
+/// **The brand is the one element of the shared surface that differs by host** (founder, 16 ก.ย.:
+/// a logo in the top-left, and pressing it leaves the ward for the globe). On vitals.academy the
+/// bar wears the Eternal wordmark a judge may have in a tab; on the ward host it wears the Vitals
+/// World mark and is the way back to the globe.
+///
+/// Done here rather than by a class the script toggles, because a page a visitor is handed already
+/// right has nothing to re-render, nothing to flash, and nothing to get wrong on a slow script.
+fn compose_for(page: &str, ward: bool) -> String {
+    let surface = if ward { SURFACE.replace(ETERNAL_BRAND, WORLD_BRAND) } else { SURFACE.to_string() };
+    page.replace("<!--BAY-->", &surface).replace(BUILD_STAMP, BUILD)
+}
+
+/// The season's wordmark, exactly as `bay-surface.html` carries it.
+const ETERNAL_BRAND: &str = "<span class=\"brand\">Vital<span>s</span></span>";
+
+/// The ward's: the monitor mark and the name, and the whole thing is the way out.
+///
+/// The mark is `static/world/favicon.svg`'s own paths — one drawing, inlined here so the bar needs
+/// no second request, and `the_mark_in_the_bar_is_the_mark_in_the_tab` is what keeps the two from
+/// drifting apart.
+const WORLD_BRAND: &str = concat!(
+    "<a href=\"/\" class=\"brand\" title=\"back to the globe\" ",
+    "aria-label=\"Vitals World — back to the globe\">",
+    "<svg viewBox=\"0 0 64 64\" width=\"18\" height=\"18\" aria-hidden=\"true\" focusable=\"false\">",
+    "<rect x=\"0\" y=\"0\" width=\"64\" height=\"64\" rx=\"14\" fill=\"#0E1719\"/>",
+    "<rect x=\"8\" y=\"14\" width=\"40\" height=\"30\" rx=\"7\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"5\"/>",
+    "<polyline points=\"8,29 20,29 23,25 26,29 29,29 32,17 36,40 39,29 60,29\" fill=\"none\" ",
+    "stroke=\"#26C0A5\" stroke-width=\"5\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/>",
+    "</svg> Vitals World</a>",
+);
 
 /// One shift's receipt, or the reason there is none.
 fn ward_receipt(store: &store::Store, run_hash: &str) -> serde_json::Value {
@@ -5582,7 +5645,10 @@ mod tests {
         .map(|(k, n)| (k.to_string(), format!("{base}{}.webp", n.repeat(64))))
         .collect();
 
-        let mut s = new_session("osce-c").expect("osce-c is in the repository");
+        // ep5 rather than Ji-woo's own case: the picture has to be shown moving, and osce-c is one
+        // of the two in the catalogue that never leaves stable untended (the mortality table in
+        // CWF_PLAN.md). The faces below are synthetic either way.
+        let mut s = new_session("ep5").expect("ep5 is in the repository");
         s.ward = Some(WardShift {
             patient_id: 1789528326,
             index: 0,
@@ -5591,9 +5657,12 @@ mod tests {
             faces: faces.clone(),
         });
 
+        // The engine spells its states `Stable`; the ladder's keys are the same words in lower
+        // case, which is the one place the two vocabularies meet — and the reason the view binds
+        // the word once rather than formatting it twice.
         let seen = |s: &Session| {
             let v = s.view(lang::language(None));
-            (v.status.clone(), v.portrait.clone())
+            (v.status.to_lowercase(), v.portrait.clone())
         };
         let (status, portrait) = seen(&s);
         assert_eq!(portrait.as_deref(), ward::portrait_for(&faces, &status),
@@ -5609,7 +5678,7 @@ mod tests {
             }
         }
         let after = seen(&s);
-        assert_ne!(after.0, before.0, "osce-c left alone must reach another state, or this proves nothing");
+        assert_ne!(after.0, before.0, "ep5 left alone must reach another state, or this proves nothing");
         assert_eq!(after.1.as_deref(), ward::portrait_for(&faces, &after.0),
                    "and the face follows the state rather than staying at the one she arrived in");
 

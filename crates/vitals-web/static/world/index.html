@@ -38,6 +38,10 @@ body{margin:0;background:var(--ground);color:var(--ink);
 .rail{border-bottom:1px solid var(--rule-soft);padding:.8rem 0;display:flex;gap:1rem;align-items:baseline;flex-wrap:wrap;
   font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.7rem;letter-spacing:.08em;color:var(--ink-3)}
 .rail b{color:var(--ink);letter-spacing:.14em}
+.rail .mark{display:inline-flex;align-items:center;gap:.45rem;text-decoration:none;color:inherit}
+.rail .mark svg{width:1.15rem;height:1.15rem;display:block;border-radius:.3rem}
+.rail .mark:hover b{text-decoration:underline;text-underline-offset:.22em}
+.rail .mark:focus-visible{outline:2px solid var(--proven);outline-offset:3px;border-radius:.35rem}
 .rail .census{margin-left:auto;display:flex;gap:1rem}
 .rail .census span b{letter-spacing:0;color:var(--proven)}
 h1{font-family:Archivo,Arial,sans-serif;font-weight:800;font-size:clamp(1.25rem,3.2vw,2rem);line-height:1.18;letter-spacing:-.015em;margin:1.4rem 0 0;text-wrap:balance;overflow-wrap:anywhere}
@@ -132,7 +136,10 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
 <body>
 <div class="wrap">
   <div class="rail">
-    <b>VITALS WORLD</b><span>a public ward</span>
+    <!-- The mark, and the way home even on home (founder, 16 ก.ย.). The same drawing as the tab's
+         icon and the shift page's bar; `the_mark_in_the_bar_is_the_mark_in_the_tab` keeps the
+         three from drifting. -->
+    <a class="mark" href="/" aria-label="Vitals World — the globe"><svg viewBox="0 0 64 64" width="18" height="18" aria-hidden="true" focusable="false"><rect x="0" y="0" width="64" height="64" rx="14" fill="#0E1719"/><rect x="8" y="14" width="40" height="30" rx="7" fill="none" stroke="#FFFFFF" stroke-width="5"/><polyline points="8,29 20,29 23,25 26,29 29,29 32,17 36,40 39,29 60,29" fill="none" stroke="#26C0A5" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/></svg><b>VITALS WORLD</b></a><span>a public ward</span>
     <span class="census" id="census" aria-live="polite"></span>
   </div>
 

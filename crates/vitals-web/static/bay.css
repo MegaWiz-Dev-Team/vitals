@@ -470,6 +470,14 @@ body{margin:0;background:var(--room);color:var(--ink);
   background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.55rem .8rem}
 .brand{font-family:Archivo,sans-serif;font-weight:800;font-size:1.02rem;letter-spacing:-.02em}
 .brand span{color:var(--act)}
+/* On the ward host the brand is a link home, so it is a row with the mark in it rather than a
+   word: the mark sits on the text's own baseline box and the whole thing is the target. Colour
+   and underline are inherited away deliberately — it reads as the product's name, and behaves as
+   the way out (founder, 16 ก.ย.). */
+a.brand{display:inline-flex;align-items:center;gap:.4em;text-decoration:none;color:inherit}
+a.brand svg{width:1.15em;height:1.15em;display:block;border-radius:.26em}
+a.brand:hover{text-decoration:underline;text-underline-offset:.22em}
+a.brand:focus-visible{outline:2px solid var(--act);outline-offset:3px;border-radius:.3em}
 .ep{font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.12em;
   text-transform:uppercase;color:var(--ink-3)}
 /* ── B9 · the player bar ── while the case runs the header reads as a broadcast:
@@ -650,6 +658,12 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
    to be tall enough for the trace to reach the full width of the screen before it stops
    growing. Below that it is the height, not the width, that decides how big a 12-lead is. */
 .pt-art.doc.film{min-height:clamp(23rem,58vh,33rem)}
+/* The face at the bedside. Round, small, and above her name rather than in the frame: the frame
+   on a station is covered by the stem sheet until the first order, and "ไม่มีรูปผู้ป่วยหรอ" was
+   asked of a page whose frame was behind a sheet. */
+.pt-face{width:2.6rem;height:2.6rem;border-radius:50%;object-fit:cover;display:block;
+  margin:.45rem auto 0;border:2px solid var(--card);box-shadow:0 1px 6px rgba(20,40,50,.18)}
+.pt-face[hidden]{display:none}
 .pt-name{font-family:Archivo,sans-serif;font-weight:700;font-size:1.02rem;margin-top:.6rem}
 .pt-status{font-family:"IBM Plex Mono",monospace;font-size:.76rem;font-weight:600;letter-spacing:.06em}
 .pt-status.Deteriorating,.pt-status.Critical{color:var(--warn)}

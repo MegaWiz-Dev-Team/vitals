@@ -19,6 +19,12 @@ const HASLOBBY=()=>!!$('#hero');
    code at the foot of the script, because the card renderer reads it and a const in its temporal
    dead zone would throw the first time a station card is drawn. */
 const WARD=(location.pathname.match(/^\/ward\/(\d+)\/?$/)||[])[1]||null;
+
+/* The face the last view carried, or '' when there was none. Up here with `WARD` and for the same
+   reason: `paintStill` is a long way above the rest of the ward's code and a `let` declared below
+   its first call is a dead zone the page dies in, silently, with the markup looking perfectly
+   fine. Read in `paintStill`, written in `paint` — the only two places a picture and a view meet. */
+let WARDFACE='';
 /* On a shift page the season does not exist. Not hidden after it renders — never rendered: a
    stranger who came from the globe to treat somebody must not land in the single-player product,
    and must find nothing here that leads into it. The class goes on before anything paints, and
@@ -1010,6 +1016,12 @@ function setStill(src,key){
    other episode gets its own key art instead, and a station gets its own patient once one
    has been shot. Until then it gets the black it is expecting underneath the stem. */
 function paintStill(E){
+  /* On a shift the frame is the patient in the bed, and the server said which picture that is —
+     chosen from the same word it publishes as her status, by the same ladder the board uses. The
+     page holds no opinion about states or sizes: it draws the URL that arrived, and when a
+     different one arrives the face changes. No ward view, no WARDFACE, and everything below is
+     the season's, untouched. */
+  if(WARDFACE){ setStill(WARDFACE,true); return; }
   if(E.station){ const src=stationStill(E.id,lastShown); setStill(src,!!src); return; }
   setStill(E.id==='ep1'?'/img/'+lastShown+'.jpg':(E.art||''), E.id!=='ep1');
 }
@@ -1135,6 +1147,21 @@ const namesADiagnosis=t=>{ const l=String(t).trim().toLowerCase();
 
 function paint(v,named){
   const E=ep();
+  /* Her face, as the server chose it for the state it is publishing in the same breath. `undefined`
+     on the Eternal entry — no ward, no field — and the frame then behaves exactly as it always
+     has. */
+  if(v.portrait!==undefined){
+    WARDFACE=v.portrait||'';
+    /* Drawn where the founder looked for it — with her name, not in the frame, which on a station
+       is behind the stem sheet until the first order is given. `alt` is her name because that is
+       what the picture is of; when there is no picture the element is not there at all. */
+    const f=$('#pt-face');
+    if(f){
+      f.hidden=!WARDFACE;
+      if(WARDFACE&&f.getAttribute('src')!==WARDFACE)f.setAttribute('src',WARDFACE);
+      f.alt=WARDSHIFT&&WARDSHIFT.name?WARDSHIFT.name:'the patient';
+    }
+  }
   /* The lines this run has earned, in the chosen language. Merged rather than replaced: beats
      only ever accumulate, and a view is a full snapshot. Absent for English, and absent for a
      case with no translation — both of which mean "show what the case author wrote". */
@@ -3722,7 +3749,7 @@ function wardBar(){
     '<b id="wardwho">…</b><span id="wardsay" style="flex:1"></span>'+
     '<button class="btn go" id="wardtake">take this shift</button>'+
     '<button class="btn" id="wardback-shift" style="display:none">hand back</button>'+
-    '<a class="btn" id="wardback" href="/">the ward</a></div>');
+    '<a class="btn" id="wardback" href="/">← the globe</a></div>');
   /* Wrapped, because a button that throws is a button that does nothing and says nothing. One
      driven run ended with the strip showing its opening line and no sign that the press had been
      received; I could not reproduce it, and the fix for the class is to make any failure in here
@@ -3757,6 +3784,8 @@ async function openShift(){
   }
   WARDPENDING=r.id; WARDSHIFT=r.ward;
   $('#wardwho').textContent=(r.ward.name||('patient '+WARD))+' · '+(r.ward.country||'—');
+  /* The frame is about to hold her face, so what a screen reader is told about it is her name. */
+  $('#fallback').alt=r.ward.name||'the patient';
   $('#lobby').classList.add('hide'); $('#game').classList.remove('hide');
   /* The page is the bay, so it has to be the bay *for her case* — the header, the stage, the
      still, the kit and the chips are all derived from the episode select, and a ward shift that

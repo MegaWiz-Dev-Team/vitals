@@ -189,3 +189,52 @@ fn the_wards_own_sentences_take_the_patients_pronoun() {
         }
     }
 }
+
+/// **The page draws the face the view carries, and holds no opinion about which.**
+///
+/// The frame on a station is the case's own authored still — the canon patient, shot for the
+/// scenario. On the ward the person in that bed is somebody else, so a ward view carries her
+/// portrait and the frame takes it. What must not appear here is a second copy of the ladder: no
+/// state words, no sizes, no bucket, no fallback logic. One truth, on the server.
+#[test]
+fn the_frame_takes_the_face_the_view_sent() {
+    let js = bay_js();
+    let paint = body_of(&js, "paintStill");
+    assert!(paint.contains("WARDFACE"),
+            "the frame does not look at the face the view sent, so a ward shift wears the case's \
+             own patient: {paint}");
+    // The season has a ladder of its own for the stills shot per station, and it predates all of
+    // this — what must not appear is a *second* one for the ward's faces. So the scope is the two
+    // functions where a ward picture is chosen, plus the two things only a copy of the server's
+    // rule would need: where the bucket is, and what the small sibling is called.
+    for ladder in ["deteriorating", "critical", "recovered", "_256"] {
+        for name in ["paintStill", "paint"] {
+            let body = without_comments(&body_of(&js, name));
+            assert!(!body.contains(ladder),
+                    "{name} knows {ladder:?} — that is a second copy of the server's ladder, and \
+                     two copies is how a picture comes to disagree with the line beside it");
+        }
+    }
+    assert!(!js.contains("vitals-world-portraits"),
+            "and the page must not know where portraits live: it draws the URL it was given, and \
+             the day that bucket changes nothing in the page has to");
+}
+
+/// The mark in the bar is the mark in the tab — one drawing, inlined in two places.
+#[test]
+fn the_mark_in_the_bar_is_the_mark_in_the_tab() {
+    let favicon = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/world/favicon.svg"),
+    )
+    .expect("the mark");
+    let trace = favicon
+        .split("points=\"")
+        .nth(1)
+        .and_then(|r| r.split('"').next())
+        .expect("the trace's own path");
+
+    let main = std::fs::read_to_string(repo().join("crates/vitals-web/src/main.rs")).expect("main.rs");
+    assert!(main.contains(trace),
+            "the bar's mark and the tab's mark have drifted apart — the trace in favicon.svg is \
+             {trace:?} and the bar draws something else");
+}
