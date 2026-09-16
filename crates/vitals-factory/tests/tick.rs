@@ -168,6 +168,8 @@ struct FakeTools {
     /// Scripted answers to the age question; empty means "the age the prompt asked for".
     ages: RefCell<VecDeque<String>>,
     asked: RefCell<Vec<String>>,
+    /// Words in a state prompt the editor refuses, as Vertex refused a child's "deteriorating".
+    refuse_edits: RefCell<Vec<&'static str>>,
     edits: RefCell<Vec<String>>,
     uploads: RefCell<Vec<String>>,
     fetches: RefCell<Vec<String>>,
@@ -191,6 +193,9 @@ impl Tools for FakeTools {
     }
     fn edit(&self, _project: &str, _model: &str, base: &[u8], _mime: &str, prompt: &str) -> Result<Vec<u8>, String> {
         self.edits.borrow_mut().push(prompt.to_string());
+        if let Some(refused) = self.refuse_edits.borrow().iter().find(|w| prompt.contains(*w)) {
+            return Err(format!("Vertex returned no content (finishReason IMAGE_PROHIBITED_CONTENT) for {refused}"));
+        }
         Ok(format!("PNG-EDIT:{prompt}:{}", base.len()).into_bytes())
     }
     fn ask(&self, _project: &str, model: &str, image: &[u8], _mime: &str, question: &str) -> Result<String, String> {
@@ -661,4 +666,32 @@ fn states_for_a_face_the_board_kept_are_pushed_and_not_filed_under_the_new_one()
     let man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
     assert_eq!(man2.entries["KOR-0@8"].portrait.len(), 1, "the new face's entry holds no states of the old face");
     assert!(r.lines.iter().any(|l| l.contains("pushed, not recorded")), "{:?}", r.lines);
+}
+
+/// The editor refusing one state does not lose the others: what was made is pushed, the refusal
+/// is an error naming the state, and the board shows the nearest milder picture for the rest.
+#[test]
+fn a_state_the_editor_refuses_costs_only_that_state() {
+    let dir = world("refused-state");
+    let pool = read_pool(POOL).unwrap();
+    let man = seed_manifest(&dir, &pool);
+    let kor0 = pool.iter().find(|p| p.key == "KOR-0").unwrap();
+    let stable = man.entries["KOR-0"].portrait["stable"].clone();
+    let mut ward = WardView::parse(STAGING).unwrap();
+    let p = &mut ward.patients[0];
+    p.name = Some(kor0.name.clone()); p.country = Some("KOR".into()); p.case = Some("osce-c2".into()); p.age = Some(28);
+    p.portrait = Some(stable.clone()); p.portraits = BTreeMap::from([("stable".to_string(), stable)]);
+    let door = FakeDoor::new(ward);
+    let tools = FakeTools::default();
+    tools.refuse_edits.borrow_mut().extend(["deteriorating", "cardiac arrest"]);
+    let r = tick(&config(&dir, 0, 0), &door, &tools);
+    assert_eq!(r.errors.len(), 2, "{:?}", r.errors);
+    assert!(r.errors.iter().any(|e| e.contains("deteriorating could not be made")) && r.errors.iter().any(|e| e.contains("arrest could not be made")), "{:?}", r.errors);
+    assert_eq!(r.states_made, 3, "recovered, improving and critical were made");
+    let fills = door.fills.borrow();
+    assert_eq!(fills.len(), 1, "and pushed");
+    assert_eq!(fills[0].1.len(), 3);
+    assert!(!fills[0].1.contains_key("deteriorating"));
+    let man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
+    assert_eq!(man2.entries["KOR-0"].portrait.len(), 4, "the three made are on file with the base; the refused two are not");
 }

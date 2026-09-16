@@ -681,9 +681,10 @@ fn complete_faces(cfg: &Config, door: &dyn Door, tools: &dyn Tools, token: &Toke
                 r.say(format!("patient {} ({}) still lacks {:?}; next tick", g.patient_id, g.who.name, g.to_make));
             } else {
                 made_one = true;
-                match make_states(cfg, tools, &g, manifest, r) {
-                    Ok(new) => set.extend(new),
-                    Err(e) => r.fail(format!("patient {} ({}): {e}", g.patient_id, g.who.name)),
+                let (new, failed) = make_states(cfg, tools, &g, manifest, r);
+                set.extend(new);
+                for (st, e) in failed {
+                    r.fail(format!("patient {} ({}): {st} could not be made: {e}", g.patient_id, g.who.name));
                 }
             }
         }
@@ -708,27 +709,48 @@ fn complete_faces(cfg: &Config, door: &dyn Door, tools: &dyn Tools, token: &Toke
 }
 
 /// The five other states from her base, each recorded the moment it is in the bucket.
-fn make_states(cfg: &Config, tools: &dyn Tools, g: &Gap, manifest: &mut Manifest, r: &mut Report) -> Result<BTreeMap<String, String>, String> {
+///
+/// One state failing does not lose the others: the editor refuses some pictures outright (Vertex
+/// filtered a child's "deteriorating" as prohibited content, 16 Sep), and what was made is still
+/// pushed — the board shows the nearest milder state for the rest, which is its own rule.
+fn make_states(cfg: &Config, tools: &dyn Tools, g: &Gap, manifest: &mut Manifest, r: &mut Report) -> (BTreeMap<String, String>, Vec<(&'static str, String)>) {
+    let mut out = BTreeMap::new();
+    let mut failed = Vec::new();
     let base = match g.stable.rsplit('/').next().and_then(|n| n.strip_suffix(".webp")) {
-        Some(sha) if cfg.face_path(sha).exists() => std::fs::read(cfg.face_path(sha)).map_err(|e| e.to_string())?,
-        _ => tools.fetch(&g.stable)?,
+        Some(sha) if cfg.face_path(sha).exists() => std::fs::read(cfg.face_path(sha)).map_err(|e| e.to_string()),
+        _ => tools.fetch(&g.stable),
+    };
+    let base = match base {
+        Ok(b) => b,
+        Err(e) => {
+            failed.push(("stable", format!("her base could not be read: {e}")));
+            return (out, failed);
+        }
     };
     let mime = if base.starts_with(b"RIFF") { "image/webp" } else { "image/png" };
-    let mut out = BTreeMap::new();
     for st in &g.to_make {
-        let prompt = prompts::state(st, g.who.sex).ok_or_else(|| format!("no prompt for {st}"))?;
-        let png = tools.edit(&cfg.vertex_project, &cfg.model, &base, mime, &prompt)?;
-        let webp = tools.webp(&png, WEBP_QUALITY)?;
-        let url = publish(cfg, tools, &webp)?;
-        if g.record {
-            manifest.record_state(&g.key, st, &url);
-            manifest.save(&cfg.manifest_path())?;
+        let one = || -> Result<String, String> {
+            let prompt = prompts::state(st, g.who.sex).ok_or_else(|| format!("no prompt for {st}"))?;
+            let png = tools.edit(&cfg.vertex_project, &cfg.model, &base, mime, &prompt)?;
+            let webp = tools.webp(&png, WEBP_QUALITY)?;
+            publish(cfg, tools, &webp)
+        };
+        match one() {
+            Ok(url) => {
+                if g.record {
+                    manifest.record_state(&g.key, st, &url);
+                    if let Err(e) = manifest.save(&cfg.manifest_path()) {
+                        r.fail(e);
+                    }
+                }
+                r.states_made += 1;
+                r.say(format!("made {st} for {} ({}){}", g.who.name, g.key, if g.record { "" } else { " — from the face the board shows, which is not the one on file; pushed, not recorded" }));
+                out.insert(st.to_string(), url);
+            }
+            Err(e) => failed.push((st, e)),
         }
-        r.states_made += 1;
-        r.say(format!("made {st} for {} ({}){}", g.who.name, g.key, if g.record { "" } else { " — from the face the board shows, which is not the one on file; pushed, not recorded" }));
-        out.insert(st.to_string(), url);
     }
-    Ok(out)
+    (out, failed)
 }
 
 /// For the binary: the checkout this binary was built from, when run from anywhere else.
