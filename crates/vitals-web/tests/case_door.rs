@@ -867,3 +867,87 @@ fn the_doors_own_refusals_read_as_sentences() {
     assert_eq!(code, 401, "and an anonymous caller is not let in either: {body}");
     assert!(!body["error"].as_str().unwrap_or_default().contains("  "));
 }
+
+/// **A pack that names a case is held to the same rule as one the ward places.**
+///
+/// The ward will not *choose* a case written about somebody else — `fits_patient` is what stops it
+/// — but a pack that names a case outright was checked for the season's names, a country code, a
+/// name, an age in range, its portraits and its endemic claim, and then queued. So the rule held
+/// for the patients the ward placed and not for the ones the factory placed, which is the half the
+/// factory uses.
+///
+/// Demonstrated on 16 ก.ย. against a local ward holding staging's own sixty-six cases: a pack for
+/// "Forseti Probe · F 66" naming `embla-dengue-shock-syndrome-child-intern` — a case written for a
+/// child — came back `queued: 1`. On the ward that is a page telling a stranger they are treating
+/// a child while the board beside it says sixty-six, and a physiology tuned for a child under an
+/// adult's name.
+///
+/// The door refuses a *contradiction*, which is not quite the same test as the one placement uses:
+/// a case that says nothing about its own patient contradicts nobody, and a factory that names it
+/// outright is taking a decision the ward has no grounds to overrule. Every compiled pack says.
+#[test]
+fn a_patient_is_queued_only_onto_a_case_written_about_somebody_like_her() {
+    use vitals_web::store::Store;
+    use vitals_web::ward::{Pack, Persona};
+    use vitals_web::ward_case::CASE_STORE;
+    use vitals_web::ward_chain::enqueue;
+
+    let dir = std::env::temp_dir().join(format!("vitals-fit-door-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store = Store::open(dir.clone()).expect("a store");
+
+    // The pack fixture is written about a 62-year-old man.
+    store.put(CASE_STORE, "auth-demo-1", &a_pack()).expect("a case the ward holds");
+    // And one written about a child, which is the placement that made this a rule.
+    let mut child = a_pack();
+    child["case_id"] = json!("auth-demo-child");
+    child["patient"] = json!({ "age": 7, "sex": "female" });
+    store.put(CASE_STORE, "auth-demo-child", &child).expect("a child's case");
+    // A case that says nothing about its patient: nothing to contradict.
+    let mut silent = a_pack();
+    silent["case_id"] = json!("auth-demo-silent");
+    silent["patient"] = json!(null);
+    store.put(CASE_STORE, "auth-demo-silent", &silent).expect("a case with no patient block");
+
+    let pack = |case: &str, name: &str, age: u16, sex: &str| Pack {
+        case: case.to_string(),
+        difficulty: None,
+        persona: Persona { name: name.into(), country: "NPL".into(), age, sex: sex.into() },
+        portrait: Default::default(),
+        endemic: false,
+    };
+
+    // Somebody like the case's own patient: queued, as it always was.
+    let ok = enqueue(&store, vec![pack("auth-demo-1", "Anan Thepwong", 60, "m")]);
+    assert_eq!(ok.queued, 1, "{:?}", ok.rejected);
+
+    // The sex the dialogue, the examination and the differential are written for.
+    let wrong_sex = enqueue(&store, vec![pack("auth-demo-1", "Anita Shrestha", 60, "f")]);
+    assert_eq!(wrong_sex.queued, 0);
+    let why = wrong_sex.rejected.first().cloned().unwrap_or_default();
+    assert!(why.contains("auth-demo-1"), "the case is named: {why}");
+    assert!(why.contains("man") && why.contains("woman"), "and both people are: {why}");
+
+    // The age the physiology is tuned for: twelve years either way.
+    let wrong_age = enqueue(&store, vec![pack("auth-demo-1", "Anan Thepwong", 30, "m")]);
+    assert_eq!(wrong_age.queued, 0, "thirty-two years out is not a near miss");
+    assert!(wrong_age.rejected.first().is_some_and(|w| w.contains("62")), "{:?}", wrong_age.rejected);
+
+    // A child only on a child's case, and an adult never on one. Sixteen and six are not a near
+    // miss: a case tuned for one of them alarms wrongly on the other from the first second.
+    let adult_on_child = enqueue(&store, vec![pack("auth-demo-child", "Anita Shrestha", 19, "f")]);
+    assert_eq!(adult_on_child.queued, 0, "{:?}", adult_on_child.rejected);
+    let child_on_child = enqueue(&store, vec![pack("auth-demo-child", "Pim", 8, "f")]);
+    assert_eq!(child_on_child.queued, 1, "{:?}", child_on_child.rejected);
+
+    // A case that says nothing about its patient contradicts nobody, and the factory naming it
+    // outright is taking a decision this ward has no grounds to overrule.
+    let silent_ok = enqueue(&store, vec![pack("auth-demo-silent", "Anita Shrestha", 41, "f")]);
+    assert_eq!(silent_ok.queued, 1, "{:?}", silent_ok.rejected);
+
+    // And a pack that names no case at all is still the ward's to place.
+    let none = enqueue(&store, vec![pack("", "Anita Shrestha", 34, "f")]);
+    assert_eq!(none.queued, 1, "{:?}", none.rejected);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
