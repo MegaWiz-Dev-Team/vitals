@@ -95,10 +95,24 @@ impl BoardPatient {
     }
 }
 
-/// One case the ward holds, as `GET /api/ward/cases` lists it.
+/// The patient a case was written about, as the case door states it (ward commit 92b4181): an
+/// age, and a sex spelled `male` / `female` as the packs spell it. Read into the pool's letters in
+/// one place, [`crate::cases::sex_of`].
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct CasePatient {
+    pub age: u16,
+    pub sex: String,
+}
+
+/// One case the ward holds, as `GET /api/ward/cases` lists it: `{archetype, case_id, country,
+/// difficulty, endemic, provisional, title, version, patient}`.
 #[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct WardCase {
     pub case_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archetype: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     /// ISO 3166-1 alpha-3, or null for a case of the common draw.
     #[serde(default)]
     pub country: Option<String>,
@@ -111,9 +125,13 @@ pub struct WardCase {
     /// Whatever the ward calls a version — a number today, perhaps a date tomorrow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<serde_json::Value>,
+    /// Who the case was written about; null when the case states nobody, which fits any adult.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub patient: Option<CasePatient>,
 }
 
-/// The case door's answer: `{"cases": [...]}` or a bare array, read for what it says.
+/// The case door's answer — `{"cases": [...], "derivations": {...}}`, or a bare array — read for
+/// what it says.
 pub fn parse_cases(body: &str) -> Result<Vec<WardCase>, String> {
     let v: serde_json::Value = serde_json::from_str(body).map_err(|e| format!("not JSON: {e}"))?;
     if let Some(where_it_is) = v.get("the_ward_is").and_then(|s| s.as_str()) {

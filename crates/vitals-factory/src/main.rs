@@ -7,7 +7,7 @@
 //! | `WARD`                   | *(required)*                             | the ward's origin, `https://…run.app`    |
 //! | `QUEUE_DEPTH`            | 20                                       | keep at least this many packs waiting    |
 //! | `BASES_PER_TICK`         | 2                                        | faces made with mflux per tick (≈ 3 min each on the mini, measured 16 Sep) |
-//! | `VITALS_REPO`            | the checkout this binary was built from  | scenarios, persona files, pool, endemic  |
+//! | `VITALS_REPO`            | the checkout this binary was built from  | the pool and the physicians series       |
 //! | `VITALS_WORLD_DIR`       | `~/.vitals/world`                        | the manifest, the ledger, the faces      |
 //! | `VITALS_GCP_PROJECT`     | *(required)*                             | the ward's project, where its `vitals-door-token` secret lives (`vitals-academy-dev` for staging, `vitals-academy` for production) |
 //! | `VITALS_VERTEX_PROJECT`  | `vitals-academy`                         | the image editor's project               |

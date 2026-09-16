@@ -8,7 +8,7 @@
 //! and `dead` has no prompt because no picture of a dead patient is made — the board shows her
 //! last living state and says died in words.
 
-use crate::catalogue::Sex;
+use crate::sex::Sex;
 
 /// Below this age the painter needs a different opening (developer-16, 16 Sep: KOR-0 at 8 came
 /// out as a doll).

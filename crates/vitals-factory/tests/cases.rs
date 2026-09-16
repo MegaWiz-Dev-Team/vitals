@@ -29,7 +29,7 @@ fn nobody() -> BTreeSet<String> {
     BTreeSet::new()
 }
 
-fn ids(ranked: &[(&WardCase, String)]) -> Vec<&str> {
+fn ids<'a>(ranked: &[(&'a WardCase, String)]) -> Vec<&'a str> {
     ranked.iter().map(|(c, _)| c.case_id.as_str()).collect()
 }
 

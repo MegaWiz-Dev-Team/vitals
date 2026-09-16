@@ -1,10 +1,10 @@
 //! Building packs: a pure draw over what the factory holds.
 //!
-//! In: the catalogue (who each case was written for), the pool (who a patient can be), the faces
-//! already made, the ward's last answer and the ledger of what was sent. Out: packs the door will
-//! take, each with the person it is for and whether her face exists or must be made. No clock, no
-//! network, no randomness but the seed — the same inputs give the same packs, which is what makes
-//! a dry run a statement about the real one.
+//! In: the ward's case list (which cases it holds and who each was written about), the pool (who
+//! a patient can be), the faces already made, the ward's last answer and the ledger of what was
+//! sent. Out: packs the door will take, each with the person it is for and whether her face exists
+//! or must be made. No clock, no network, no randomness but the seed — the same inputs give the
+//! same packs, which is what makes a dry run a statement about the real one.
 //!
 //! The rules, in the order they are applied to each pack:
 //!
@@ -28,39 +28,42 @@
 //!      skipped, and the plan records which countries were redrawn and why. The queue cap is
 //!      the one rule that yields to nothing: a queue that could only be filled with a third of
 //!      one country stays short, and the plan says so.
-//!   4. **her disease is not her origin.** Four draws in five ignore where she is from. One in
-//!      [`vitals_web::ward::ENDEMIC_IN`], for a country with an endemic list, takes a case from
-//!      that list — and only then is the pack `endemic`.
-//!   5. **the bands are balanced** against what is in beds and what is waiting: the level with
-//!      fewest patients is filled first, and within it the case least used.
-//!   6. **her sex is the case's**, checked before the case is chosen rather than after; a person
-//!      for whom no case fits is skipped, never forced.
-//!   7. **her age is inside the case's band** — the door's band — and near her face's age when a
-//!      face already fits, so the picture and the number agree. When no face fits, one is to be
-//!      made at the age drawn, and the pack goes out without a picture rather than with a wrong
-//!      one.
+//!   4. **the case first, from the ward's own list** ([`crate::cases::rank`]): a case written for
+//!      her country while none is already on the ward or waiting — and only then is the pack
+//!      `endemic`, when the case is — else the common draw at the level the board and the queue
+//!      are short of, so student, intern and resident stay about 1:1:1; never a case a bed holds;
+//!      never a season id, and never an empty case while the list has cases.
+//!   5. **then a person of the case's sex**, from the country drawn, whose age can fit the case's
+//!      window ([`crate::cases::fits`]); when nobody of that country fits the case, the next case
+//!      is tried, and when no case fits anybody free of that country, the country is passed over
+//!      for this pack — never forced.
+//!   6. **her age is the persona's, drawn to fit the case**: near her face's age when a face
+//!      already fits the window, so the picture and the number agree; when no face fits, one is
+//!      to be made at the age drawn inside the window, and the pack goes out without a picture
+//!      rather than with a wrong one.
 
-use crate::catalogue::{Case, Catalogue, Sex};
-use crate::door::WardView;
+use crate::cases::{age_window, fits, rank, Mix};
+use crate::door::{WardCase, WardView};
 use crate::ledger::Ledger;
 use crate::manifest::Manifest;
 use crate::need::Weights;
 use crate::pool::Person;
 use crate::region::{region_of, Region, ALL};
+use crate::sex::Sex;
 use std::collections::{BTreeMap, BTreeSet};
-use vitals_web::ward::{difficulty_of, Pack, Persona, ENDEMIC_IN};
+use vitals_web::ward::{Pack, Persona};
 
 /// The three levels, in the ward's order.
-pub const BANDS: [&str; 3] = ["student", "intern", "resident"];
+pub const LEVELS: [&str; 3] = ["student", "intern", "resident"];
 
 /// How far from a fitting face's age a pack's age may drift, so the picture and the number agree.
 pub const NEAR_FACE: u16 = 3;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Inputs<'a> {
-    pub catalogue: &'a Catalogue,
+    /// The ward's case list, from its case door.
+    pub cases: &'a [WardCase],
     pub pool: &'a [Person],
-    pub endemic: &'a BTreeMap<String, Vec<String>>,
     pub manifest: &'a Manifest,
     pub ward: &'a WardView,
     pub ledger: &'a Ledger,
@@ -131,6 +134,10 @@ pub struct Planned {
     pub weight: f64,
     /// Where in the world the country is; `None` for a code the region table does not place.
     pub region: Option<Region>,
+    /// The case's level, as the ward lists it.
+    pub level: String,
+    /// Why this case, in the words of [`crate::cases::rank`].
+    pub case_why: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -173,43 +180,38 @@ fn shuffle_key(seed: u64, slot: usize, key: &str) -> u64 {
     r.next()
 }
 
-/// What is on the ward or waiting, tallied by band and by case — what the bands are balanced
-/// against. (Countries are tallied against the run, in `plan()`, not against the ward.)
-#[derive(Default)]
-struct Load {
-    band: BTreeMap<&'static str, usize>,
-    case: BTreeMap<String, usize>,
-}
-
-impl Load {
-    fn count(&mut self, case: &str) {
-        if let Some(b) = difficulty_of(case) {
-            *self.band.entry(b).or_default() += 1;
-        }
-        *self.case.entry(case.to_string()).or_default() += 1;
-    }
-    fn band(&self, b: &str) -> usize {
-        self.band.get(b).copied().unwrap_or(0)
-    }
-    fn case(&self, c: &str) -> usize {
-        self.case.get(c).copied().unwrap_or(0)
-    }
+/// The level of a case a bed or a waiting pack holds, as the list says; `None` when the list does
+/// not know it — a season case, or a case the ward has since dropped — and then it is not counted.
+fn level_of<'a>(cases: &'a [WardCase], case_id: &str) -> Option<&'a str> {
+    cases.iter().find(|w| w.case_id == case_id).map(|w| w.difficulty.as_str())
 }
 
 pub fn plan(i: &Inputs) -> Plan {
     let mut out = Plan::default();
     let mut rng = Rng::new(i.seed);
 
-    // What is already on the ward or waiting, by person, band and case.
+    if i.cases.is_empty() {
+        out.exhausted = true;
+        out.notes.push(format!("the ward lists no cases, so nothing is built: a pack names a case from the ward's own list and nothing else; wanted {}", i.want));
+        return out;
+    }
+
+    // What is already on the ward or waiting: by person, and by level and case for the balance.
     let mut busy: BTreeSet<String> = i.ledger.busy_keys(i.ward, i.pool);
-    let mut load = Load::default();
+    let mut mix = Mix::default();
+    let mut in_beds_cases: BTreeSet<String> = BTreeSet::new();
     for p in i.ward.open() {
-        if let Some(case) = &p.case {
-            load.count(case);
+        if let Some(case) = p.case_held() {
+            in_beds_cases.insert(case.to_string());
+            if let Some(level) = level_of(i.cases, case) {
+                mix.count(level, case);
+            }
         }
     }
     for (_, s) in i.ledger.unseen() {
-        load.count(&s.case);
+        if let Some(level) = s.difficulty.as_deref().or_else(|| level_of(i.cases, &s.case)) {
+            mix.count(level, &s.case);
+        }
     }
 
     // Who is in a bed right now, by country, for the cap.
@@ -299,55 +301,31 @@ pub fn plan(i: &Inputs) -> Plan {
             }
         }
 
-        // 2–4. the case for a person: one draw in five from her country's list when it has one,
-        // otherwise the emptiest band with a case written for someone of her sex. Deterministic
-        // per (seed, slot, person), so trying people in turn draws nothing twice.
-        let choose = |who: &Person| -> Option<(&Case, bool)> {
-            if let Some(list) = i.endemic.get(&who.country) {
-                let draw = shuffle_key(i.seed, slot, &format!("{}/endemic", who.key)) % u64::from(ENDEMIC_IN);
-                if draw == 0 {
-                    let mut fits: Vec<&Case> = list.iter().filter_map(|id| i.catalogue.get(id)).filter(|c| c.sex == who.sex).collect();
-                    fits.sort_by_key(|c| (load.case(&c.id), shuffle_key(i.seed, slot, &c.id)));
-                    if let Some(c) = fits.first() {
-                        return Some((c, true));
-                    }
-                }
-            }
-            let mut bands: Vec<&str> = BANDS.to_vec();
-            bands.sort_by_key(|b| (load.band(b), shuffle_key(i.seed, slot, b)));
-            for band in bands {
-                let mut fits: Vec<&Case> = i.catalogue.in_band(band).into_iter().filter(|c| c.sex == who.sex).collect();
-                fits.sort_by_key(|c| (load.case(&c.id), shuffle_key(i.seed, slot, &c.id)));
-                if let Some(c) = fits.first() {
-                    return Some((c, false));
-                }
-            }
-            None
-        };
-
+        // 4–6. the case first, then a person of its sex from the country drawn. Within a case a
+        // person whose face already fits the window is used before one whose face must be made,
+        // then the seed decides.
         let mut placed = None;
         'countries: for country in countries {
-            // Everyone free from this country, with the case each would get; a person for whom no
-            // case fits is skipped, never forced. Within the country a face that already fits is
-            // used before one is made, then the seed decides.
-            let mut people: Vec<(&Person, &Case, bool, Option<crate::manifest::Base>)> = free
-                .iter()
-                .copied()
-                .filter(|p| p.country == country)
-                .filter_map(|p| choose(p).map(|(c, e)| (p, c, e, i.manifest.base_for(&p.key, &c.band))))
-                .collect();
-            people.sort_by_key(|(p, _, _, fit)| (fit.is_none(), shuffle_key(i.seed, slot, &p.key)));
-            if let Some((who, case, endemic, fit)) = people.into_iter().next() {
-                // 5. her age, inside the band and near her face if she has one that fits.
+            let ranked = rank(i.cases, country, &in_beds_cases, &mix, i.seed, slot);
+            for (case, why) in ranked {
+                let window = age_window(case);
+                let mut people: Vec<(&Person, Option<crate::manifest::Base>)> = free
+                    .iter()
+                    .copied()
+                    .filter(|p| p.country == country && fits(case, p.sex, *window.start()))
+                    .map(|p| (p, i.manifest.base_for(&p.key, &window)))
+                    .collect();
+                people.sort_by_key(|(p, fit)| (fit.is_none(), shuffle_key(i.seed, slot, &p.key)));
+                let Some((who, fit)) = people.into_iter().next() else { continue };
                 let (base, age) = match fit {
                     Some(b) => {
-                        let lo = (*case.band.start()).max(b.age.saturating_sub(NEAR_FACE));
-                        let hi = (*case.band.end()).min(b.age.saturating_add(NEAR_FACE));
+                        let lo = (*window.start()).max(b.age.saturating_sub(NEAR_FACE));
+                        let hi = (*window.end()).min(b.age.saturating_add(NEAR_FACE));
                         let age = lo + rng.below(u64::from(hi - lo) + 1) as u16;
                         (Base::Have { key: b.key, url: b.url, age: b.age }, age)
                     }
                     None => {
-                        let (lo, hi) = (*case.band.start(), *case.band.end());
+                        let (lo, hi) = (*window.start(), *window.end());
                         let age = lo + rng.below(u64::from(hi - lo) + 1) as u16;
                         (Base::Make { key: who.key.clone(), age }, age)
                     }
@@ -358,10 +336,10 @@ pub fn plan(i: &Inputs) -> Plan {
                 };
                 placed = Some(Planned {
                     pack: Pack {
-                        case: case.id.clone(),
+                        case: case.case_id.clone(),
                         persona: Persona { name: who.name.clone(), age, country: who.country.clone(), sex: who.sex.letter().into() },
                         portrait,
-                        endemic,
+                        endemic: case.endemic && case.country.as_deref() == Some(country),
                     },
                     person: who.key.clone(),
                     sex: who.sex,
@@ -369,6 +347,8 @@ pub fn plan(i: &Inputs) -> Plan {
                     base,
                     weight: i.weights.of(&who.country),
                     region: region_of(&who.country),
+                    level: case.difficulty.clone(),
+                    case_why: why,
                 });
                 break 'countries;
             }
@@ -377,11 +357,11 @@ pub fn plan(i: &Inputs) -> Plan {
         match placed {
             Some(pl) => {
                 if let Some(drawn) = need_drew.filter(|d| *d != pl.pack.persona.country) {
-                    let why = refused.get(&drawn).cloned().unwrap_or_else(|| "nobody free from it fits a case the factory can build".to_string());
+                    let why = refused.get(&drawn).cloned().unwrap_or_else(|| "nobody free from it fits a case the ward lists".to_string());
                     out.redrawn.push(Redraw { slot, drawn, why, took: pl.pack.persona.country.clone() });
                 }
                 busy.insert(pl.person.clone());
-                load.count(&pl.pack.case);
+                mix.count(&pl.level, &pl.pack.case);
                 sequence.push(pl.pack.persona.country.clone());
                 *sent.entry(pl.pack.persona.country.clone()).or_default() += 1;
                 out.packs.push(pl);
@@ -389,7 +369,7 @@ pub fn plan(i: &Inputs) -> Plan {
             None if free.is_empty() || refused.is_empty() => {
                 out.exhausted = true;
                 out.notes.push(format!(
-                    "pool exhausted: {} of {} people are free and none can take a case the factory can build \
+                    "pool exhausted: {} of {} people are free and none can take a case the ward lists that is not in a bed \
                      (busy = on the ward or waiting for a bed); built {} of {} wanted",
                     free.len(),
                     i.pool.len(),

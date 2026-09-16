@@ -193,7 +193,7 @@ impl Ledger {
                     if let Some(p) = ward.patients.iter().find(|p| p.patient_id == pid) {
                         if !p.is_open() {
                             s.closed = true;
-                            notes.push(format!("{} ({}) has left — {}; {} face is free", s.name, pid, p.state, crate::catalogue::Sex::possessive_of(&s.sex)));
+                            notes.push(format!("{} ({}) has left — {}; {} face is free", s.name, pid, p.state, crate::sex::Sex::possessive_of(&s.sex)));
                         }
                     }
                 }

@@ -597,7 +597,7 @@ fn every_pack_built_names_a_world_case_that_fits_and_carries_its_level() {
         assert_eq!(difficulty.as_deref(), Some(w.difficulty.as_str()));
     }
     let ledger = Ledger::load(&dir.join("factory-ledger.json")).unwrap();
-    for (_, s) in &ledger.sent {
+    for s in ledger.sent.values() {
         assert_eq!(s.case_id.as_deref(), Some(s.case.as_str()));
         assert!(s.difficulty.is_some());
     }

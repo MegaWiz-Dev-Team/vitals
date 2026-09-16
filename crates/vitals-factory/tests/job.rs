@@ -17,6 +17,7 @@ fn repo_root() -> PathBuf {
 }
 
 const STAGING: &str = include_str!("fixtures/ward-staging-2026-09-16.json");
+const CASES: &str = include_str!("fixtures/ward-cases-2026-09-16.json");
 
 #[test]
 fn the_launchd_job_is_the_one_the_brief_names_and_carries_no_secret() {
@@ -65,7 +66,8 @@ fn without_a_ward_the_binary_says_so_and_does_nothing() {
     assert_eq!(bad.status.code(), Some(2), "an argument it does not know is refused");
 }
 
-/// A ward that is one socket answering one GET with the staging fixture.
+/// A ward that is one socket answering `GET /api/ward` with the staging fixture and
+/// `GET /api/ward/cases` with the case list, and refusing anything else.
 fn one_shot_ward() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
@@ -77,6 +79,8 @@ fn one_shot_ward() -> String {
             let req = String::from_utf8_lossy(&buf[..n]).to_string();
             let (status, body) = if req.starts_with("GET /api/ward ") {
                 ("200 OK", STAGING.to_string())
+            } else if req.starts_with("GET /api/ward/cases ") {
+                ("200 OK", CASES.to_string())
             } else {
                 ("500 Internal Server Error", r#"{"error":"a dry run must not POST"}"#.to_string())
             };
@@ -106,6 +110,8 @@ fn a_dry_run_reads_a_real_socket_and_writes_nothing() {
     assert!(stdout.contains("dry run"), "{stdout}");
     assert!(stdout.contains("would then build 3 pack(s)"), "{stdout}");
     assert!(stdout.contains("this build publishes no queue block"), "read the real fixture over the socket: {stdout}");
-    assert!(stdout.contains("not built: ep2"), "says which cases it will not build: {stdout}");
+    assert!(stdout.contains("case door: 18 cases listed"), "read the case door over the socket: {stdout}");
+    assert!(stdout.contains("case_id world-"), "names the World case of each draw: {stdout}");
+    assert!(!stdout.contains("osce-"), "never a season id: {stdout}");
     assert!(!world.exists(), "a dry run creates nothing, not even the world directory");
 }

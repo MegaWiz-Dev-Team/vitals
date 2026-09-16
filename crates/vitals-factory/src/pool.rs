@@ -5,7 +5,7 @@
 //! time — the same types, so the shapes cannot drift — which is what lets somebody add a country
 //! by adding three people to one file without rebuilding this job.
 
-use crate::catalogue::Sex;
+use crate::sex::Sex;
 use std::collections::BTreeMap;
 
 /// One person, keyed the way the portrait manifest keys her: `<ISO3>-<index>`.

@@ -155,15 +155,21 @@ fn nobody_is_on_the_ward_twice() {
 }
 
 /// Student, intern and resident about 1:1:1 across the board and the queue (the founder's rule:
-/// levels exist so a stranger can choose), and no case twice on the board.
+/// levels exist so a stranger can choose), and no case twice on the board. The balance is the
+/// common draw's; a case written for the country drawn comes first whatever its level, so the
+/// exact thirds are shown on the common cases alone and the whole list is held to within one.
 #[test]
 fn the_levels_are_balanced_against_what_the_ward_already_holds_and_no_case_sits_in_two_beds() {
     let pool = read_pool(POOL).unwrap();
     let (cat, man) = (cases(), full_manifest(&pool));
+    let common: Vec<WardCase> = cat.iter().filter(|c| c.country.is_none()).cloned().collect();
     let count = |p: &vitals_factory::plan::Plan, level: &str| p.packs.iter().filter(|pl| pl.level == level).count();
 
-    let p = plan(&Inputs { cases: &cat, pool: &pool, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&pool), beds: 3, want: 9, seed: 2 });
+    let p = plan(&Inputs { cases: &common, pool: &pool, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&pool), beds: 3, want: 9, seed: 2 });
     assert_eq!((count(&p, "student"), count(&p, "intern"), count(&p, "resident")), (3, 3, 3), "{:?}", p.packs.iter().map(|x| x.pack.case.clone()).collect::<Vec<_>>());
+    let p = plan(&Inputs { cases: &cat, pool: &pool, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&pool), beds: 3, want: 9, seed: 2 });
+    let levels = [count(&p, "student"), count(&p, "intern"), count(&p, "resident")];
+    assert!(levels.iter().max().unwrap() - levels.iter().min().unwrap() <= 2, "{levels:?}: {:?}", p.packs.iter().map(|x| x.pack.case.clone()).collect::<Vec<_>>());
 
     // Two interns already in beds: the next two go to the other levels before intern gets
     // another; and the two cases in beds are chosen for nobody.

@@ -17,7 +17,6 @@ use vitals_factory::need::{weights, Weights};
 use vitals_factory::plan::{bed_cap, plan, Inputs, Plan, MIN_COUNTRIES, MIN_REGIONS, QUEUE_CAP, QUEUE_WINDOW, WORLD_WINDOW};
 use vitals_factory::pool::{read_pool, Person};
 use vitals_factory::region::{region_of, Region, ALL};
-use vitals_factory::sex::Sex;
 use vitals_web::ward_chain::PORTRAITS;
 
 const POOL: &str = include_str!("../../vitals-web/data/personas.json");

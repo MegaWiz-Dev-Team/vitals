@@ -15,20 +15,18 @@
 //! **Dry run** reads and plans and stops before the token: no secret is fetched, no request is
 //! sent, no file is written. What it prints is what the real run would do from the same state.
 
-use crate::cases::{choose, Chosen, Mix, Patient};
-use crate::catalogue::{read_catalogue, Catalogue};
 use crate::door::{Door, FillReply, Outbound, Pushed, Token, WardCase, WardView};
 use crate::ledger::{Ledger, Sent};
 use crate::manifest::Manifest;
 use crate::need::{fmt as fmt_weight, weights, Weights};
 use crate::plan::{bed_cap, plan, Base, Inputs, MIN_COUNTRIES, MIN_REGIONS, NEAR_FACE, QUEUE_CAP, QUEUE_WINDOW};
 use crate::region::{Region, ALL};
-use crate::pool::{person_for, read_endemic, read_pool, Person};
+use crate::pool::{person_for, read_pool, Person};
 use crate::prompts;
 use crate::tools::{sha256_hex, Tools};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use vitals_web::ward::{difficulty_of, Pack};
+use vitals_web::ward::Pack;
 use vitals_web::ward_chain::{pack_id, PORTRAITS};
 
 /// webp quality, as the batch used.
@@ -187,34 +185,9 @@ fn region_name(r: Option<Region>) -> &'static str {
     r.map_or("region unplaced", Region::name)
 }
 
-/// The ward's case door as read this tick: the list, and the cases the beds hold.
-struct CaseDoor {
-    list: Vec<WardCase>,
-    in_beds: BTreeSet<String>,
-}
-
-impl CaseDoor {
-    /// Her case from the ward's list, for one pack; the mix counts it as if she were queued. No
-    /// list, no choice.
-    fn choose_for(&self, catalogue: &Catalogue, pack: &Pack, sex: crate::catalogue::Sex, mix: &mut Mix, seed: u64, slot: usize) -> Option<Chosen> {
-        if self.list.is_empty() {
-            return None;
-        }
-        let who = Patient { country: &pack.persona.country, sex, age: pack.persona.age, own_case: &pack.case };
-        let c = choose(&self.list, catalogue, &who, &self.in_beds, mix, seed, slot);
-        if let Some(c) = &c {
-            mix.count(&c.difficulty, &c.case_id);
-        }
-        c
-    }
-}
-
-/// `case_id osce-a2 (student)`, or the plain word when none was chosen.
-fn case_words(c: &Option<Chosen>) -> String {
-    match c {
-        Some(c) => format!("case_id {} ({})", c.case_id, c.difficulty),
-        None => "no case_id".to_string(),
-    }
+/// `student` and the like, for a line of the log.
+fn level_words(level: &str) -> String {
+    level.to_string()
 }
 
 /// `…/<sha>.webp` → `…/<sha>-256.webp`.
@@ -237,25 +210,10 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
     }
 
     // ── what the factory holds ──
-    let catalogue = read_catalogue(&cfg.repo);
-    for u in &catalogue.unbuildable {
-        r.say(format!("not built: {} — {}", u.id, u.why));
-    }
-    if catalogue.cases.is_empty() {
-        r.fail(format!("no case can be built from {}", cfg.repo.display()));
-        return r;
-    }
     let pool = match std::fs::read_to_string(cfg.repo.join("crates/vitals-web/data/personas.json")).map_err(|e| e.to_string()).and_then(|s| read_pool(&s)) {
         Ok(p) => p,
         Err(e) => {
             r.fail(format!("the pool could not be read: {e}"));
-            return r;
-        }
-    };
-    let endemic = match std::fs::read_to_string(cfg.repo.join("crates/vitals-web/data/endemic.json")).map_err(|e| e.to_string()).and_then(|s| read_endemic(&s)) {
-        Ok(e) => e,
-        Err(e) => {
-            r.fail(format!("the endemic list could not be read: {e}"));
             return r;
         }
     };
@@ -290,13 +248,7 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
         ));
         return r;
     }
-    r.say(format!(
-        "holding {} buildable cases, {} people, {} faces on file, {} packs in the ledger",
-        catalogue.cases.len(),
-        pool.len(),
-        manifest.entries.len(),
-        ledger.sent.len()
-    ));
+    r.say(format!("holding {} people, {} faces on file, {} packs in the ledger", pool.len(), manifest.entries.len(), ledger.sent.len()));
 
     // ── the ward ──
     let ward = match door.read_ward() {
@@ -319,46 +271,27 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
         r.say(note);
     }
 
-    // ── the case door: which cases the ward holds, and which the beds hold ──
+    // ── the case door: the ward's list is the catalogue ──
     let cases: Vec<WardCase> = match door.read_cases() {
         Ok(c) => c,
         Err(e) => {
-            r.say(format!("the case door could not be read ({e}); packs go out with no case_id this tick and the ward's default applies"));
-            Vec::new()
+            r.fail(format!("the case door could not be read ({e}); a pack names a case from the ward's own list and nothing else, so nothing is built"));
+            return r;
         }
     };
     if cases.is_empty() {
-        r.say("the ward lists no cases (no case door on this build); packs go out with no case_id and the ward's default applies");
-    } else {
-        let known = cases.iter().filter(|w| catalogue.get(&w.case_id).is_some()).count();
-        r.say(format!(
-            "case door: {} cases listed, {known} with a band the factory knows and can fit an age to, {} endemic somewhere, {} provisional",
-            cases.len(),
-            cases.iter().filter(|w| w.endemic).count(),
-            cases.iter().filter(|w| w.provisional).count()
-        ));
+        r.fail("the ward lists no cases (no case door on this build, or an empty one); a pack names a case from the ward's own list and nothing else, so nothing is built");
+        return r;
     }
-    let in_beds_cases: BTreeSet<String> = ward.open().filter_map(|p| p.case_held().map(str::to_string)).collect();
-    let case_door = CaseDoor { list: cases, in_beds: in_beds_cases };
-    let cases = &case_door.list;
-    let in_beds_cases = &case_door.in_beds;
-    // The level mix, from what the factory knows — the case door's level for a bed's case, else
-    // the catalogue's, else unknown and not counted; never the board's own `difficulty`, which is
-    // null for patients admitted before the ward's 0543ed7 — and the ledger's own for the queue.
-    let mut mix = Mix::default();
-    for p in ward.open() {
-        if let Some(c) = p.case_held() {
-            if let Some(d) = cases.iter().find(|w| w.case_id == c).map(|w| w.difficulty.as_str()).or_else(|| difficulty_of(c)) {
-                mix.count(d, c);
-            }
-        }
-    }
-    for (_, s) in ledger.unseen() {
-        let c = s.case_id.as_deref().unwrap_or(&s.case);
-        if let Some(d) = s.difficulty.as_deref().or_else(|| difficulty_of(c)) {
-            mix.count(d, c);
-        }
-    }
+    r.say(format!(
+        "case door: {} cases listed — {} with a stated patient, {} written for a country ({} endemic), {} provisional; levels {}",
+        cases.len(),
+        cases.iter().filter(|w| w.patient.is_some()).count(),
+        cases.iter().filter(|w| w.country.is_some()).count(),
+        cases.iter().filter(|w| w.endemic).count(),
+        cases.iter().filter(|w| w.provisional).count(),
+        crate::plan::LEVELS.iter().map(|l| format!("{l} {}", cases.iter().filter(|w| w.difficulty == *l).count())).collect::<Vec<_>>().join(" · ")
+    ));
     if ward.queue.as_ref().is_some_and(|q| q.door != "open") {
         r.say("the door is closed — the ward opens when the founder says so; nothing to do until then");
         if !cfg.dry_run {
@@ -369,26 +302,12 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
         return r;
     }
 
-    // ── waiting packs from before the case door get a case chosen now, and the ledger keeps it ──
-    if !cases.is_empty() {
-        let lacking: Vec<String> = ledger.unseen().into_iter().filter(|(_, s)| s.case_id.is_none()).map(|(id, _)| id.clone()).collect();
-        for (n, id) in lacking.iter().enumerate() {
-            let (who, sex, age, own, name) = {
-                let s = &ledger.sent[id];
-                (s.country.clone(), crate::catalogue::Sex::parse(&s.sex), s.age, s.case.clone(), s.name.clone())
-            };
-            let Some(sex) = sex else { continue };
-            match choose(cases, &catalogue, &Patient { country: &who, sex, age, own_case: &own }, in_beds_cases, &mix, cfg.seed, 1000 + n) {
-                Some(c) => {
-                    mix.count(&c.difficulty, &c.case_id);
-                    r.say(format!("chose case_id {} ({}) for {name}'s waiting pack, sent before the case door — {}; it is re-sent with it", c.case_id, c.difficulty, c.why));
-                    let s = ledger.sent.get_mut(id).expect("just read");
-                    s.case_id = Some(c.case_id);
-                    s.difficulty = Some(c.difficulty);
-                }
-                None => r.say(format!("no case fits {name}'s waiting pack ({own}, {age}) that is not in a bed; it is re-sent with no case_id")),
-            }
-        }
+    // Waiting packs that name a case the ward no longer lists — a season id from before 0543ed7 —
+    // are re-sent as they were: the door refuses them in its own words and the ledger drops them,
+    // which frees the face.
+    let stale: Vec<String> = ledger.unseen().into_iter().filter(|(_, s)| !cases.iter().any(|w| w.case_id == s.case)).map(|(_, s)| format!("{} ({})", s.name, s.case)).collect();
+    if !stale.is_empty() {
+        r.say(format!("{} waiting pack(s) name a case the ward does not list and will be refused at the re-send and dropped: {}", stale.len(), stale.join(", ")));
     }
 
     // ── the plan, before anything is touched ──
@@ -403,10 +322,7 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
         ALL.len(),
         crate::plan::WORLD_WINDOW
     ));
-    let inputs = Inputs {
-        catalogue: &catalogue, pool: &pool, endemic: &endemic, manifest: &manifest, ward: &ward, ledger: &ledger,
-        weights: &need, beds: ward.beds, want: want_guess, seed: cfg.seed,
-    };
+    let inputs = Inputs { cases: &cases, pool: &pool, manifest: &manifest, ward: &ward, ledger: &ledger, weights: &need, beds: ward.beds, want: want_guess, seed: cfg.seed };
     let planned = plan(&inputs);
     for n in &planned.notes {
         r.say(n.clone());
@@ -416,9 +332,7 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
         r.say(format!("would resend {} unseen pack(s) first, one by one, and read the depth off the last answer", resend.len()));
         r.say(format!("would then build {} pack(s) to bring the queue to {} (assuming depth {known_depth}):", planned.packs.len(), cfg.queue_depth));
         let mut to_make = 0;
-        let mut dry_mix = mix.clone();
-        for (n, pl) in planned.packs.iter().enumerate() {
-            let chosen = case_door.choose_for(&catalogue, &pl.pack, pl.sex, &mut dry_mix, cfg.seed, n);
+        for pl in &planned.packs {
             let face = match &pl.base {
                 Base::Have { age, .. } => format!("face on file (made at {age})"),
                 Base::Make { key, age } => {
@@ -427,10 +341,10 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
                 }
             };
             r.say(format!(
-                "  {} — {} {} {} from {} · {} (drawn: {}, weight {} people/doctor){} · {} · {}",
-                pl.pack.case, pl.pack.persona.name, pl.sex.letter().to_uppercase(), pl.pack.persona.age, pl.pack.persona.country,
+                "  {} ({}) — {} {} {} from {} · {} (drawn: {}, weight {} people/doctor){} · {} · {}",
+                pl.pack.case, level_words(&pl.level), pl.pack.persona.name, pl.sex.letter().to_uppercase(), pl.pack.persona.age, pl.pack.persona.country,
                 region_name(pl.region), pl.pack.persona.country, fmt_weight(pl.weight),
-                if pl.pack.endemic { " (endemic)" } else { "" }, case_words(&chosen), face
+                if pl.pack.endemic { " (endemic)" } else { "" }, pl.case_why, face
             ));
         }
         // The next twenty draws whatever the shortfall, for the founder: the queue as it is about
@@ -439,12 +353,10 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
         r.say(format!("next {QUEUE_WINDOW} draws from this state, by need under the spread rules (country · region · person · case):"));
         let mut countries: BTreeSet<&str> = BTreeSet::new();
         let mut regions: BTreeSet<Region> = BTreeSet::new();
-        let mut dry_mix = mix.clone();
         for (n, pl) in next.packs.iter().enumerate() {
             countries.insert(&pl.pack.persona.country);
             regions.extend(pl.region);
-            let chosen = case_door.choose_for(&catalogue, &pl.pack, pl.sex, &mut dry_mix, cfg.seed, n);
-            r.say(format!("  {}. {} · {} · {} · {}", n + 1, pl.pack.persona.country, region_name(pl.region), pl.pack.persona.name, case_words(&chosen)));
+            r.say(format!("  {}. {} · {} · {} · case_id {} ({})", n + 1, pl.pack.persona.country, region_name(pl.region), pl.pack.persona.name, pl.pack.case, level_words(&pl.level)));
         }
         r.say(format!("spread: {} countries, {} regions of {} in these {} draws", countries.len(), regions.len(), ALL.len(), next.packs.len()));
         for n in next.notes.iter().filter(|n| n.starts_with("redrawn")) {
@@ -533,7 +445,7 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
     let planned = if want == want_guess {
         planned
     } else {
-        let again = plan(&Inputs { catalogue: &catalogue, pool: &pool, endemic: &endemic, manifest: &manifest, ward: &ward, ledger: &ledger, weights: &need, beds: ward.beds, want, seed: cfg.seed });
+        let again = plan(&Inputs { cases: &cases, pool: &pool, manifest: &manifest, ward: &ward, ledger: &ledger, weights: &need, beds: ward.beds, want, seed: cfg.seed });
         for n in &again.notes {
             r.say(n.clone());
         }
@@ -542,7 +454,6 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
     r.say(format!("queue depth {depth_now}, want {}: building {}", cfg.queue_depth, planned.packs.len()));
     let mut deferred = 0;
     let mut door_takes_256 = true;
-    let mut built = 0;
     for pl in planned.packs {
         let mut pack = pl.pack;
         let who = pool.iter().find(|p| p.key == pl.person).expect("a planned person is in the pool");
@@ -590,13 +501,9 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
         if !door_takes_256 {
             pack.portrait.retain(|k, _| !k.ends_with("_256"));
         }
-        // Her case, from the ward's own list; the mix counts it once she is queued.
-        let chosen = case_door.choose_for(&catalogue, &pack, pl.sex, &mut mix, cfg.seed, built);
-        built += 1;
-        if !cases.is_empty() && chosen.is_none() {
-            r.say(format!("no case fits {} ({}, {}) that is not in a bed; the pack goes out with no case_id and the ward's default applies", who.name, pack.case, pack.persona.age));
-        }
-        let outbound = |pack: &Pack| Outbound { pack: pack.clone(), case_id: chosen.as_ref().map(|c| c.case_id.clone()), difficulty: chosen.as_ref().map(|c| c.difficulty.clone()) };
+        // The pack names its case; the wire says it again as case_id, with the level, for the
+        // door that reads them.
+        let outbound = |pack: &Pack| Outbound { pack: pack.clone(), case_id: Some(pack.case.clone()), difficulty: Some(pl.level.clone()) };
         let mut reply = door.push(&token, std::slice::from_ref(&outbound(&pack)));
         if let Ok(Pushed::Queued(q)) = &reply {
             if door_takes_256 && q.rejected.iter().any(|why| refuses_256(why)) {
@@ -622,17 +529,17 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
                 let mut sent = Sent::new(&pack.case, who, pack.persona.age, pack.endemic, pack.portrait.get("stable").cloned(), cfg.now, &cfg.ward);
                 sent.sex = pack.persona.sex.clone();
                 sent.variants_sent = pack.portrait.contains_key("stable_256");
-                sent.case_id = chosen.as_ref().map(|c| c.case_id.clone());
-                sent.difficulty = chosen.as_ref().map(|c| c.difficulty.clone());
+                sent.case_id = Some(pack.case.clone());
+                sent.difficulty = Some(pl.level.clone());
                 ledger.sent.insert(id.clone(), sent);
                 save_ledger(cfg, &ledger, &mut r);
                 r.say(format!(
-                    "{} {} — {} {} {} from {} · {} (drawn: {}, weight {} people/doctor){} · {} · id {} · depth {}",
+                    "{} {} — {} {} {} from {} · {} (drawn: {}, weight {} people/doctor){} · {} · {} · id {} · depth {}",
                     if q.queued == 1 { "queued" } else { "already queued" },
                     pack.case, pack.persona.name, pack.persona.sex.to_uppercase(), pack.persona.age, pack.persona.country,
                     region_name(pl.region), pack.persona.country, fmt_weight(pl.weight),
                     if pack.endemic { " (endemic)" } else { "" },
-                    case_words(&chosen),
+                    level_words(&pl.level), pl.case_why,
                     &id[..12], q.depth
                 ));
             }
