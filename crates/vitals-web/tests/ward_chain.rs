@@ -618,3 +618,71 @@ fn a_shift_begins_on_the_patient_the_last_shift_left() {
     assert_ne!(seen(&now), seen(&rebuilt),
                "a patient nobody has visited for ten hours is not the patient the last shift left");
 }
+
+/// A pack may not contradict the case it is paired with.
+///
+/// Found by looking at a real one: I queued Ploy Siriwattana, 54, onto `osce-a`, and `osce-a`'s own
+/// persona file says the patient is Somchai, male, 71 — the station's title says *M 71* on the
+/// shelf. The board would have shown a woman of 54 while the case around her was written for a man
+/// of 71, and nothing anywhere would have said so.
+///
+/// Sex must match exactly: the dialogue, the examination and the differential are all written for
+/// it. Age must sit inside the case's own band, because a case written for a child of three is not
+/// a case about a woman of thirty whatever the vitals say.
+///
+/// Four of the sixteen — the episodes — carry no persona file, so no check is possible and the
+/// pack is taken at its word. That is stated here rather than hidden, because a rule that silently
+/// covers three quarters of the catalogue is a rule nobody can rely on.
+#[test]
+fn a_pack_may_not_contradict_the_case_it_is_paired_with() {
+    use vitals_web::ward::case_patient;
+
+    let somchai = case_patient("osce-a").expect("osce-a has a persona file");
+    assert_eq!((somchai.sex.as_str(), somchai.age), ("m", 71),
+               "read from demo/personas/osce-a.json, which is also what the patient's own voice \
+                uses — one source, or the board and the voice disagree out loud");
+
+    // The pack I actually queued, and what should have happened to it.
+    let mut wrong_sex = a_pack();
+    wrong_sex.case = "osce-a".into();
+    wrong_sex.persona.age = 71;
+    assert!(validate_pack(&wrong_sex).is_err(),
+            "Ploy is a woman and osce-a is written for a man — the station's own shelf entry says \
+             M 71");
+
+    let mut wrong_age = a_pack();
+    wrong_age.case = "osce-a".into();
+    wrong_age.persona.name = "Anan Thepwong".into();
+    wrong_age.persona.age = 54;
+    assert!(validate_pack(&wrong_age).is_err(), "and 54 is not inside a band written for 71");
+
+    let mut right = a_pack();
+    right.case = "osce-a".into();
+    right.persona.name = "Anan Thepwong".into();
+    right.persona.age = 69;
+    assert!(validate_pack(&right).is_ok(), "a man of 69 can be the patient osce-a is written for");
+
+    // A child's case has a child's band, and it is tighter than an adult's in years.
+    let pim = case_patient("osce-b3").expect("osce-b3 has a persona file");
+    assert_eq!((pim.sex.as_str(), pim.age), ("f", 3));
+    let mut grown_up = a_pack();
+    grown_up.case = "osce-b3".into();
+    grown_up.persona.age = 30;
+    assert!(validate_pack(&grown_up).is_err(),
+            "a case written for a three-year-old is not a case about a woman of thirty, whatever \
+             the vitals say");
+
+    // Every station has one; the episodes do not, and the door says so by taking them at their word.
+    for case in ["osce-a", "osce-a2", "osce-b", "osce-b2", "osce-b3", "osce-c",
+                 "osce-c2", "osce-c3", "osce-d", "osce-d2", "osce-d3", "osce-d4"] {
+        let p = case_patient(case).unwrap_or_else(|| panic!("{case} must carry its own patient"));
+        assert!(p.sex == "m" || p.sex == "f", "{case}: {} is not a sex the persona files use", p.sex);
+        assert!(p.age > 0 && p.age < 120, "{case}: {} is nobody's age", p.age);
+    }
+    for episode in ["ep2-stemi", "ep3-epiglottitis", "ep4-pulmonary-embolism",
+                    "ep5-the-night-the-stars-fell"] {
+        assert!(case_patient(episode).is_none(),
+                "{episode} has no persona file today — if it gains one, this test is the place \
+                 that notices, and the door starts checking it");
+    }
+}

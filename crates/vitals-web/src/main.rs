@@ -223,6 +223,26 @@ struct Session {
     /// lose — the tape is the truth and a few seconds of it is a few seconds of sim — so they are
     /// throttled. Anything the player actually *did* is written immediately.
     saved_at: Option<std::time::Instant>,
+    /// Which shift on the ward this run is, when it is one. `None` is the Eternal bay, unchanged.
+    ward: Option<WardShift>,
+}
+
+/// One shift on the ward: whose, which link in her chain, and the head it must extend.
+///
+/// The bay is one bay and this is the parameter (producer, 16 ก.ย.). Absent, every line of the bay
+/// behaves as it did — `bay_unchanged.rs` is what says so.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct WardShift {
+    patient_id: u64,
+    /// Her chain's length when this shift began, which is this tape's index in it.
+    index: u32,
+    /// The slot her lease was taken at. The gap before this shift ends here, and a restored
+    /// session must resume to this slot rather than to the moment the browser came back.
+    taken_slot: u64,
+    /// The head this shift extends, hex. Named before the work rather than read after it: the
+    /// program refuses a reveal that does not extend the head it was told, and that refusal is
+    /// the mechanic.
+    head: String,
 }
 
 /// A run as it sits on disk.
@@ -246,6 +266,10 @@ struct Saved {
     commit: Option<([u8; 32], u64, [u8; 32])>,
     #[serde(default)]
     exam_mode: bool,
+    /// The ward shift this run is, if it is one. Defaulted, so every run stored before the ward
+    /// existed reads back as what it was: a run in the bay.
+    #[serde(default)]
+    ward: Option<WardShift>,
 }
 
 const SESSIONS: &str = "sessions";
@@ -292,17 +316,32 @@ impl Session {
             anchored: self.anchored,
             commit: self.commit,
             exam_mode: self.exam_mode,
+            ward: self.ward.clone(),
         }
     }
 
     /// Rebuild a run from disk by replaying its tape.
-    fn restore(saved: Saved) -> Result<Session, String> {
+    ///
+    /// `prior` is empty for the bay and carries her earlier shifts for a ward run: a shift's tape
+    /// means nothing without the patient it was played on, so the state is rebuilt the same way it
+    /// was built the first time — every tape before this one, then this one. Passed in rather than
+    /// read here because a pure rebuild that reaches for a store is a rebuild nobody can test.
+    fn restore(saved: Saved, prior: &[ward_chain::StoredTape]) -> Result<Session, String> {
         let sce_json = std::fs::read_to_string(scenario_path(&saved.ep)).map_err(|e| e.to_string())?;
         let want = hex(&sce_hash(&sce_json));
         if want != saved.sce_hash {
             return Err(format!("scenario {} changed under this run", saved.ep));
         }
-        let (state, r) = resume(&sce_json, &saved.tape)?;
+        let (state, r) = match &saved.ward {
+            None => resume(&sce_json, &saved.tape)?,
+            // Resumed to the slot her lease was taken at, not to now: the shift's own clock
+            // started then, and the idle time since belongs to whoever comes next.
+            Some(w) => {
+                let (mut st, _) = ward_chain::resumed(&sce_json, prior, w.taken_slot)?;
+                let r = vitals_replay::shift(&mut st, &saved.tape, 0);
+                (st, r)
+            }
+        };
         Ok(Session {
             ep: saved.ep.clone(),
             owner: saved.owner.clone(),
@@ -318,6 +357,7 @@ impl Session {
             exam_mode: saved.exam_mode,
             said: saved.said,
             saved_at: Some(std::time::Instant::now()),
+            ward: saved.ward,
         })
     }
 }
@@ -1672,7 +1712,90 @@ fn new_session(ep: &str) -> Result<Session, String> {
         saved_at: None,
         commit: None,
         exam_mode: false,
+        ward: None,
         })
+}
+
+/// Start a shift on a patient the ward is holding.
+///
+/// Everything this needs is either on the chain or derived from it: she must be a patient this
+/// operator admitted, she must still be open, and the case she is being treated for comes from the
+/// pack that was queued for her. The state the shift begins on is every tape before it, replayed —
+/// the same replay the verifier runs, so what the stranger sees is what a stranger could derive.
+///
+/// The refusals are sentences because each one is a thing the person standing at her bed can act
+/// on: come back to the board, she went home, nobody has described her yet.
+fn open_shift(
+    store: &store::Store,
+    patient_id: u64,
+) -> Result<(Session, serde_json::Value), String> {
+    let chain = ward_chain::WardChain::connect().map_err(|e| format!("no chain to read: {e}"))?;
+    let now_slot = chain.slot().map_err(|e| format!("the chain would not say what slot it is: {e}"))?;
+    let her = chain
+        .patient(patient_id)
+        .map_err(|e| format!("her chart could not be read: {e}"))?
+        .ok_or_else(|| format!("no patient {patient_id} has been admitted here"))?;
+    if her.state != ward::OPEN {
+        return Err(format!(
+            "patient {patient_id} has left the ward — {}, and a stay that ended is not one \
+             anybody can add to",
+            if her.state == ward::DISCHARGED { "she went home" } else { "she died" }
+        ));
+    }
+
+    let pack = ward_chain::packs(store)
+        .remove(&patient_id)
+        .ok_or_else(|| format!(
+            "no pack describes patient {patient_id}, so the ward does not know which case she is. \
+             She was admitted before the factory described her"
+        ))?;
+
+    let sce_json = std::fs::read_to_string(scenario_path(&pack.case))
+        .map_err(|e| format!("{} is not a case this server holds: {e}", pack.case))?;
+    let (state, played) = ward_chain::resumed(&sce_json, &ward_chain::tapes_of(store, patient_id), now_slot)?;
+
+    let head = hex(&her.head);
+    let shift = WardShift {
+        patient_id,
+        index: played as u32,
+        taken_slot: now_slot,
+        head: head.clone(),
+    };
+    let ward_view = serde_json::json!({
+        "patient_id": patient_id,
+        "case": pack.case,
+        "name": pack.persona.name,
+        "country": pack.persona.country,
+        "age": pack.persona.age,
+        // What this shift must extend. Named before the work, because the program refuses a
+        // reveal that does not extend the head it was told — and that refusal is the mechanic.
+        "head": head,
+        "shift": played + 1,
+        "shifts_before": played,
+        "portrait": ward::portrait_for(&pack.portrait, "stable"),
+        "taken_slot": now_slot,
+    });
+
+    Ok((
+        Session {
+            ep: pack.case.clone(),
+            owner: None,
+            state,
+            tape: Vec::new(),
+            beats: Vec::new(),
+            films: Vec::new(),
+            sce_json,
+            scenario: title(&pack.case),
+            difficulty: difficulty(&pack.case),
+            anchored: false,
+            said: Vec::new(),
+            saved_at: None,
+            commit: None,
+            exam_mode: false,
+            ward: Some(shift),
+        },
+        ward_view,
+    ))
 }
 
 /// How many boards are watching right now.
@@ -2015,7 +2138,17 @@ fn main() {
     let mut restored = HashMap::new();
     let mut broken = 0usize;
     for (id, saved) in store.list::<Saved>(SESSIONS) {
-        match Session::restore(saved) {
+        // A ward shift is rebuilt on the patient it was played on, so her earlier tapes come with
+        // it. Only the ones before this shift: a tape anchored after it belongs to somebody else's
+        // work and would rebuild a patient this shift never saw.
+        let prior: Vec<ward_chain::StoredTape> = match &saved.ward {
+            None => Vec::new(),
+            Some(w) => ward_chain::tapes_of(&store, w.patient_id)
+                .into_iter()
+                .filter(|t| t.index < w.index)
+                .collect(),
+        };
+        match Session::restore(saved, &prior) {
             Ok(s) => {
                 restored.insert(id, s);
             }
@@ -2575,6 +2708,37 @@ fn main() {
                         "error": "too many new runs from this address — give it a minute",
                         "retry_in": retry_secs,
                     }), 429));
+                    continue;
+                }
+                // A shift on the ward: the same bay, started on the patient the chain says is
+                // in that bed (producer's ruling, 16 ก.ย. — a parameter, never a second page).
+                if let Some(patient_id) = param(&url, "patient").and_then(|p| p.parse::<u64>().ok()) {
+                    if !ward_mode() {
+                        let _ = req.respond(json_code(serde_json::json!({
+                            "error": "this host has no ward",
+                            "the_ward_is": "https://world.vitals.academy"
+                        }), 404));
+                        continue;
+                    }
+                    match open_shift(&store, patient_id) {
+                        Ok((mut s, ward)) => {
+                            s.owner = param(&url, "player").and_then(|p| pubkey(&p)).map(|k| k.to_string());
+                            let id = fresh_id();
+                            let view = s.view(lang::language(param(&url, "lang").as_deref()));
+                            let mut map = sessions.lock().unwrap();
+                            map.insert(id.clone(), s);
+                            persist(&store, &id, map.get_mut(&id).expect("just inserted"), true);
+                            drop(map);
+                            let _ = req.respond(json(serde_json::json!({
+                                "id": id, "view": view, "ward": ward
+                            })));
+                        }
+                        // Said in words rather than as a code: every one of these is a thing the
+                        // person standing at her bed can understand and act on.
+                        Err(why) => {
+                            let _ = req.respond(json_code(serde_json::json!({ "error": why }), 409));
+                        }
+                    }
                     continue;
                 }
                 let ep = param(&url, "ep").unwrap_or_else(|| "ep1".into());
