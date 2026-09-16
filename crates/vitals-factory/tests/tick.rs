@@ -1194,6 +1194,13 @@ fn the_editor_and_the_judge_read_one_feature_per_state() {
     assert!(feature("deteriorating").unwrap().contains("oxygen mask"));
     assert!(feature("arrest").unwrap().contains("no mask") && feature("arrest").unwrap().contains("still"));
     assert!(feature("stable").unwrap().contains("not smiling"), "stable's stays as it is");
+    // Recovered is the only face that smiles: improving is better, not well, and the three worse
+    // states never smile — the arrest and critical faces of the first patient through the gate kept
+    // a faint smile because the features said nothing about the expression.
+    for st in ["improving", "deteriorating", "critical", "arrest"] {
+        assert!(feature(st).unwrap().ends_with(", not smiling"), "{st}: not smiling, and the editor told so in the same words: {}", feature(st).unwrap());
+    }
+    assert!(!feature("recovered").unwrap().contains("not smiling"), "the smile is recovered's");
     assert!(SAME_PERSON.contains("skin colour and tone"), "identity may differ in skin colour and tone: {SAME_PERSON}");
     assert_eq!(feature("dead"), None);
 }
