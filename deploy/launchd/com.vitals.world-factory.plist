@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The patient factory on the mini: one tick every ten minutes, keeping the ward's queue full.
+
+  Installed by hand, as a user agent of the logged-in user (gcloud and mflux are theirs):
+    cargo build --release -p vitals-factory
+    cp deploy/launchd/com.vitals.world-factory.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.vitals.world-factory.plist
+  and stopped with
+    launchctl bootout gui/$(id -u)/com.vitals.world-factory
+
+  No secret lives here. The ward's bearer token is read at run time from Secret Manager in
+  VITALS_GCP_PROJECT (the vitals-token secret, latest version) and is never written or logged.
+  WARD is the dev ward until the founder opens production; change it here and re-bootstrap.
+  launchd starts no second copy while one tick is still running.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.vitals.world-factory</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/mimir/Developer/vitals/target/release/vitals-factory</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>WARD</key>
+    <string>https://vitals-world-jak4wea54q-as.a.run.app</string>
+    <key>QUEUE_DEPTH</key>
+    <string>20</string>
+    <key>BASES_PER_TICK</key>
+    <string>3</string>
+    <key>VITALS_REPO</key>
+    <string>/Users/mimir/Developer/vitals</string>
+    <key>VITALS_WORLD_DIR</key>
+    <string>/Users/mimir/.vitals/world</string>
+    <key>VITALS_GCP_PROJECT</key>
+    <string>vitals-academy</string>
+    <key>PATH</key>
+    <string>/Users/mimir/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/mimir/Developer/vitals</string>
+
+  <key>StartInterval</key>
+  <integer>600</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/mimir/.vitals/world/factory.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/mimir/.vitals/world/factory.err</string>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>
