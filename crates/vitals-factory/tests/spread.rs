@@ -56,7 +56,7 @@ fn empty_ward() -> WardView {
 fn on_board(id: u64, p: &Person, case: &str, age: u16) -> BoardPatient {
     BoardPatient {
         patient_id: id, state: "on_ward".into(), bed: Some(1), name: Some(p.name.clone()), age: Some(age),
-        country: Some(p.country.clone()), case: Some(case.into()), endemic: false, portrait: None, portraits: BTreeMap::new(),
+        country: Some(p.country.clone()), case: Some(case.into()), case_id: None, endemic: false, portrait: None, portraits: BTreeMap::new(),
     }
 }
 

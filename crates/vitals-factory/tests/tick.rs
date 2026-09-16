@@ -79,6 +79,9 @@ fn config(dir: &Path, depth: usize, bases: usize) -> Config {
     }
 }
 
+/// `(case_id, difficulty)` as a pushed pack carried them.
+type CaseFields = (Option<String>, Option<String>);
+
 /// The door, as the ward runs it: validate, content-address, answer in numbers.
 struct FakeDoor {
     ward: RefCell<WardView>,
@@ -90,7 +93,7 @@ struct FakeDoor {
     /// The case door's list; empty for a ward built before it.
     cases: RefCell<Vec<WardCase>>,
     /// What each pushed pack said beside the pack itself: `(case_id, difficulty)`, by pack id.
-    chosen: RefCell<BTreeMap<String, (Option<String>, Option<String>)>>,
+    chosen: RefCell<BTreeMap<String, CaseFields>>,
     pushes: RefCell<Vec<usize>>,
     fills: RefCell<Vec<(u64, BTreeMap<String, String>)>>,
     replaces: RefCell<Vec<(String, BTreeMap<String, String>)>>,
@@ -836,7 +839,7 @@ fn a_remade_face_replaces_the_one_on_her_waiting_pack_once() {
     sent.sex = "f".into();
     let pack = sent.to_pack();
     let id = pack_id(&pack);
-    door.push(&Token::new("t".into()), std::slice::from_ref(&pack)).unwrap();
+    door.push(&Token::new("t".into()), std::slice::from_ref(&Outbound::plain(pack.clone()))).unwrap();
     let mut ledger = Ledger::default();
     ledger.sent.insert(id.clone(), sent);
     ledger.save(&dir.join("factory-ledger.json")).unwrap();
@@ -1134,7 +1137,7 @@ fn the_siblings_of_faces_already_on_file_are_made_once_and_carried_to_the_ward()
     sent.sex = "m".into();
     let pack = sent.to_pack();
     let id = pack_id(&pack);
-    door.push(&Token::new("t".into()), std::slice::from_ref(&pack)).unwrap();
+    door.push(&Token::new("t".into()), std::slice::from_ref(&Outbound::plain(pack.clone()))).unwrap();
     let mut ledger = Ledger::default();
     ledger.sent.insert(id.clone(), sent);
     ledger.save(&dir.join("factory-ledger.json")).unwrap();
@@ -1295,7 +1298,7 @@ fn a_waiting_pack_sent_with_the_base_gets_a_made_stable_once() {
     sent.sex = "m".into();
     let pack = sent.to_pack();
     let id = pack_id(&pack);
-    door.push(&Token::new("t".into()), std::slice::from_ref(&pack)).unwrap();
+    door.push(&Token::new("t".into()), std::slice::from_ref(&Outbound::plain(pack.clone()))).unwrap();
     let mut ledger = Ledger::default();
     ledger.sent.insert(id.clone(), sent);
     ledger.save(&dir.join("factory-ledger.json")).unwrap();

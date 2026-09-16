@@ -11,6 +11,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod cases;
 pub mod catalogue;
 pub mod door;
 pub mod ledger;

@@ -10,7 +10,7 @@
 //! meets both.
 
 use std::collections::BTreeMap;
-use vitals_factory::door::{push_body, FillReply, Pushed, Token, WardView};
+use vitals_factory::door::{push_body, FillReply, Outbound, Pushed, Token, WardView};
 use vitals_web::ward::{Pack, Persona};
 
 const STAGING: &str = include_str!("fixtures/ward-staging-2026-09-16.json");
@@ -147,7 +147,7 @@ fn a_page_of_packs_is_the_shape_the_door_documents() {
         portrait: BTreeMap::from([("stable".to_string(), "https://storage.googleapis.com/vitals-world-portraits/a.webp".to_string())]),
         endemic: false,
     };
-    let body: serde_json::Value = serde_json::from_str(&push_body(&[pack])).expect("json");
+    let body: serde_json::Value = serde_json::from_str(&push_body(&[Outbound::plain(pack)])).expect("json");
     let packs = body["packs"].as_array().expect("a packs array");
     assert_eq!(packs.len(), 1);
     assert_eq!(packs[0]["case"], "osce-a");

@@ -46,6 +46,13 @@ pub struct Sent {
     /// can see which pictures the board falls back on, and why.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub refused: Vec<String>,
+    /// The case chosen for her from the ward's own list, and its difficulty, as the pack went
+    /// out — so a re-send says the same. None for a pack sent before the case door, or when
+    /// nothing on the list fit her.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub case_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub difficulty: Option<String>,
 }
 
 impl Sent {
@@ -65,6 +72,8 @@ impl Sent {
             closed: false,
             variants_sent: false,
             refused: Vec::new(),
+            case_id: None,
+            difficulty: None,
         }
     }
 
@@ -76,6 +85,11 @@ impl Sent {
             portrait: self.stable.iter().map(|u| ("stable".to_string(), u.clone())).collect(),
             endemic: self.endemic,
         }
+    }
+
+    /// The pack as it goes through the door, with the case chosen for her if one was.
+    pub fn to_outbound(&self) -> crate::door::Outbound {
+        crate::door::Outbound { pack: self.to_pack(), case_id: self.case_id.clone(), difficulty: self.difficulty.clone() }
     }
 }
 
