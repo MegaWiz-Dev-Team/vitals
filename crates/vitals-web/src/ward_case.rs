@@ -453,6 +453,110 @@ pub fn fill_persona(text: &str, who: &crate::ward::Persona) -> String {
 /// Every word from the pack and every person from the persona. The page had been reading the
 /// season's own table for all of this, which holds the sixteen cases of vitals.academy and nothing
 /// the factory compiles — so a World-case patient was rendered as EP1's.
+/// What is said when the case wrote no words for this question.
+///
+/// The pack's own sentence where it has one — it is the case author's patient and they may have
+/// written how she refuses — and otherwise the ward's. The pronoun is the pronoun of the person in
+/// the bed: the ward admits men, and a hard-coded "she" over Rafael Moreira is the page
+/// contradicting its own chart. An unknown sex is answered the way patient.rs `pronouns()` answers
+/// it — "this patient" rather than a singular "they", which turns this sentence and the twelve
+/// like it into typos.
+fn no_answer(pack: &Value, who: &crate::ward::Persona) -> String {
+    if let Some(own) = pack.get("no_answer").and_then(Value::as_str) {
+        return fill_persona(own, who);
+    }
+    let subject = match who.sex.to_ascii_uppercase().as_str() {
+        "F" => "she",
+        "M" => "he",
+        _ => "this patient",
+    };
+    format!("— {subject} does not answer that, and the case does not say why")
+}
+
+/// What the patient said, and what the ward understood the question to be.
+pub struct Answer {
+    /// The `ask_` intervention this question was understood as, when the case knows it. `None` is
+    /// not an error: it is a question this case was never written to answer, and the ward says so.
+    pub matched: Option<String>,
+    /// What is shown at the bedside. Always something: silence at a bed reads as a broken page.
+    pub words: String,
+}
+
+/// What she says when she is asked, on a ward where nothing answers but the case file.
+///
+/// In the bay her voice is a language model with her persona in front of it. A public ward cannot
+/// have that: inference costs money per question and is metered per month, so a fair's worth of
+/// strangers would spend the ceiling in an afternoon and everybody after them would be told the
+/// patient has nothing to say. The ward host runs with no gateway at all.
+///
+/// It does not need one. The compiler writes a voice entry for every `ask_` intervention — her own
+/// words, by the case's author, against that exact finding — so the answer here is a lookup, and a
+/// lookup is a better answer than an improvisation with more ways to be wrong.
+///
+/// The question is matched the way the engine matches an order (`runtime::match_intervention`):
+/// canonicalised on both sides so an IME's full-width text and a case authored in Japanese meet in
+/// the middle, the author's `not_kw` exclusions kept, first match in the pack's own order. Only
+/// `ask_` interventions: the ask bar is a conversation, and "crystalloid bolus" belongs to the
+/// tray.
+pub fn answer(pack: &Value, who: &crate::ward::Persona, q: &str) -> Answer {
+    let matched = asked_about(pack, q);
+    let words = matched
+        .as_deref()
+        .and_then(|id| pack.get("voice")?.get(id)?.get("words")?.as_str())
+        .map(|w| fill_persona(w, who))
+        .unwrap_or_else(|| no_answer(pack, who));
+    Answer { matched, words }
+}
+
+/// Which `ask_` this question is, in the case's own words for it.
+fn asked_about(pack: &Value, q: &str) -> Option<String> {
+    let asks = pack
+        .get("sce")?
+        .get("interventions")?
+        .as_array()?
+        .iter()
+        .filter(|iv| iv.get("id").and_then(Value::as_str).is_some_and(|id| id.starts_with("ask_")));
+
+    let t = vitals_sce::text::canon(q).to_lowercase();
+    let has = |k: &str| !k.is_empty() && t.contains(&vitals_sce::text::canon(k).to_lowercase());
+    let words = |m: Option<&Value>, k: &str| -> Vec<String> {
+        m.and_then(|m| m.get(k))
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+            .unwrap_or_default()
+    };
+
+    for iv in asks {
+        let id = iv.get("id").and_then(Value::as_str).unwrap_or_default();
+        // The chip presses the intervention itself. Most packs list the id among the keywords and
+        // would match below anyway; a pack that does not still has to answer its own chip.
+        if q.trim() == id {
+            return Some(id.to_string());
+        }
+        let m = iv.get("match");
+        let any_kw = words(m, "any_kw");
+        let not_kw = words(m, "not_kw");
+        let groups: Vec<Vec<String>> = m
+            .and_then(|m| m.get("all_groups"))
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .map(|g| g.as_array().map(|g| g.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let has_positive = !any_kw.is_empty() || !groups.is_empty();
+        let any_ok = any_kw.is_empty() || any_kw.iter().any(|k| has(k));
+        let groups_ok = groups.iter().all(|g| g.iter().any(|k| has(k)));
+        let not_ok = !not_kw.iter().any(|k| has(k));
+        if has_positive && any_ok && groups_ok && not_ok {
+            return Some(id.to_string());
+        }
+    }
+    None
+}
+
 pub fn case_view(pack: &Value, who: &crate::ward::Persona) -> Value {
     let say = |v: Option<&Value>| v.and_then(Value::as_str).map(|s| fill_persona(s, who));
     let presentation = pack.get("presentation");
@@ -512,18 +616,6 @@ pub fn case_view(pack: &Value, who: &crate::ward::Persona) -> Value {
         "archetype": pack.get("archetype_label").and_then(Value::as_str),
         "chips": chips,
         "voice": voice,
-        "no_answer": say(pack.get("no_answer")).unwrap_or_else(|| {
-            // A question the case never wrote an answer for. The pronoun is the pronoun of the
-            // person in the bed: the ward admits men, and a hard-coded "she" over Rafael Moreira
-            // is the page contradicting its own chart. An unknown sex is answered the way
-            // patient.rs `pronouns()` answers it — "this patient" rather than a singular "they",
-            // which turns this sentence and the twelve like it into typos.
-            let subject = match who.sex.to_ascii_uppercase().as_str() {
-                "F" => "she",
-                "M" => "he",
-                _ => "this patient",
-            };
-            format!("— {subject} does not answer that, and the case does not say why")
-        }),
+        "no_answer": no_answer(pack, who),
     })
 }

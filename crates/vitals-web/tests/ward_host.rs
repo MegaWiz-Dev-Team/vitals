@@ -226,8 +226,16 @@ fn the_ward_host_does_not_gate_the_voice_on_a_gateway() {
             "and what is actually wrong with this request is the session: {body}");
 
     // The Eternal bay is unchanged: there her voice is the model, and with no model there is
-    // nothing to say. Saying so is the honest answer, and it predates the ward.
+    // nothing to say. Saying so is the honest answer, and it predates the ward — asked of a real
+    // run, because knowing whether a question is a ward question means reading the session first,
+    // and an id that names nothing is answered by that read now.
     let e = Server::start(false);
-    let (_, body) = e.get("/api/say?id=no-such-session&q=hello");
+    let (_, opened) = e.get("/api/new");
+    let run = opened
+        .split("\"id\":\"")
+        .nth(1)
+        .and_then(|r| r.split('"').next())
+        .expect("the bay opens a run");
+    let (_, body) = e.get(&format!("/api/say?id={run}&q=hello"));
     assert!(body.contains("no gateway"), "the bay still says what is missing: {body}");
 }

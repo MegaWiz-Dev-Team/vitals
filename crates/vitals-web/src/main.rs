@@ -3751,6 +3751,75 @@ fn main() {
                 let id = param(&url, "id").unwrap_or_default();
                 let caller = param(&url, "player");
                 let q = param(&url, "q").unwrap_or_default();
+                // Whose question this is, before anything that costs money or needs a gateway.
+                // A ward patient answers out of her own case file: the compiler wrote her words
+                // against every `ask_` in it, the ward host runs with no model at all, and
+                // refusing at the gateway check meant every question at every bed came back "no
+                // gateway — the patient has no voice here" from a server holding the answer.
+                //
+                // `ep` comes out with the rest of it, because *which patient is in this bed* is a
+                // fact about the session. It was not read at all before: one persona was loaded
+                // at boot and every case in the season borrowed it, so asking OSCE-A's
+                // seventy-one-year-old man anything got an answer from a nineteen-year-old woman
+                // about her shrimp allergy — in her name, on her allergy, at her age.
+                let (hist, status, spo2, ep, shift) = {
+                    let mut map = sessions.lock().unwrap();
+                    let Some(s) = map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) else {
+                        let _ = req.respond(no_such_session());
+                        continue;
+                    };
+                    // The question goes on the tape. The answer never will.
+                    s.tape.push(Step::asked(&q));
+                    (
+                        s.said.clone(),
+                        format!("{:?}", s.state.status),
+                        s.state.vitals.spo2,
+                        s.ep.clone(),
+                        s.ward.clone(),
+                    )
+                };
+                let want = lang::language(param(&url, "lang").as_deref());
+
+                // ── the ward: her words, out of the case the ward is holding ──────
+                if let Some(w) = shift {
+                    let held = ward_chain::packs(&store).remove(&w.patient_id);
+                    let case = held.as_ref().and_then(|pack| {
+                        store
+                            .get::<serde_json::Value>(ward_case::CASE_STORE, &ward_case::key_for(&pack.case))
+                            .map(|c| (c, pack))
+                    });
+                    let Some((case, pack)) = case else {
+                        // The bed exists and its case does not: a patient admitted on a case this
+                        // ward no longer holds. Said plainly, because the alternative on a page
+                        // whose whole claim is that the chart is the chain is a confident sentence
+                        // from nobody.
+                        let _ = req.respond(json(serde_json::json!({
+                            "error": "this patient's case is not on this ward — examine, order and treat instead",
+                        })));
+                        continue;
+                    };
+                    let said = ward_case::answer(&case, &pack.persona, &q);
+                    {
+                        let mut map = sessions.lock().unwrap();
+                        if let Some(s) = map.get_mut(&id) {
+                            s.said.push(("user".into(), q));
+                            s.said.push(("assistant".into(), said.words.clone()));
+                            persist(&store, &id, s, true);
+                        }
+                    }
+                    // Her words are the case's, in the language the case was written in. A learner
+                    // who asked for Thai is told that rather than left to wonder — the same note
+                    // the bay puts on a model's reply that drifted, for the same reason.
+                    let off = !lang::reply_is_in(want, &said.words);
+                    let _ = req.respond(json(serde_json::json!({
+                        "reply": said.words,
+                        "who": pack.persona.name,
+                        "asked": said.matched,
+                        "off_language": off,
+                    })));
+                    continue;
+                }
+
                 let Some(pt) = patient.as_ref() else {
                     let _ = req.respond(json(serde_json::json!({ "error": "no gateway — the patient has no voice here" })));
                     continue;
@@ -3775,47 +3844,17 @@ fn main() {
                         continue;
                     }
                 }
-                // Snapshot what the model needs, then release the lock: a local 26B reply takes
-                // seconds and the tick loop must not block behind it.
-                //
-                // `ep` comes out with the rest of it, because *which patient is in this bed* is a
-                // fact about the session. It was not read at all before: one persona was loaded
-                // at boot and every case in the season borrowed it, so asking OSCE-A's
-                // seventy-one-year-old man anything got an answer from a nineteen-year-old woman
-                // about her shrimp allergy — in her name, on her allergy, at her age.
-                let (hist, status, spo2, ep) = {
-                    let mut map = sessions.lock().unwrap();
-                    let Some(s) = map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) else {
-                        let _ = req.respond(no_such_session());
-                        continue;
-                    };
-                    // The question goes on the tape. The answer never will.
-                    s.tape.push(Step::asked(&q));
-                    (s.said.clone(), format!("{:?}", s.state.status), s.state.vitals.spo2, s.ep.clone())
-                };
                 // A case with no persona is mute, and stays mute. Answering it out of another
                 // case's file is the failure this whole path exists to prevent: a wrong answer in
                 // a confident voice is worse for a candidate than no answer at all, because there
                 // is nothing on the screen to tell them it was the wrong patient talking.
-                // On the ward she is not the person the case file names, and the voice has to
-                // agree with the board. Only her name and age are replaced; everything the case
-                // wrote about her stays the case's.
-                let ward_persona = sessions
-                    .lock()
-                    .unwrap()
-                    .get(&id)
-                    .and_then(|s| s.ward.clone())
-                    .and_then(|w| ward_chain::packs(&store).remove(&w.patient_id))
-                    .zip(personas.get(&ep))
-                    .map(|(pack, base)| ward::voiced_as(base, &pack.persona));
-                let Some(persona) = ward_persona.as_ref().or_else(|| personas.get(&ep)) else {
+                let Some(persona) = personas.get(&ep) else {
                     let _ = req.respond(json(serde_json::json!({
                         "error": "this patient has no voice here — examine, order and treat instead",
                     })));
                     continue;
                 };
                 // No hint on this path yet — the reveal-gate wiring passes one when it lands.
-                let want = lang::language(param(&url, "lang").as_deref());
                 match pt.say(persona, &q, &hist, &status, spo2, None, want) {
                     Ok(reply) => {
                         // Counted only when she actually answered — a failed call is not billed

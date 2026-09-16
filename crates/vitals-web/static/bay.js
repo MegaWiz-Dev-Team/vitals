@@ -1150,7 +1150,7 @@ function renderChips(){
      and a Thai sentence in the order column would be this file quietly deciding otherwise. */
   const no=takeFirst(WARD, id, pro().o);
   $('#chips').querySelectorAll('button').forEach(b=>{
-    b.onclick=()=>fire(b.dataset.x, m==='ask'?null:chipLabel(b.dataset.x), m==='dx');
+    b.onclick=()=>fire(b.dataset.x, askedShown(WARD, m, b.dataset.x, chipLabel(b.dataset.x)), m==='dx');
     /* Greyed and titled rather than missing: a stranger who can see what they will be able to do
        knows they are one press away from doing it. */
     b.disabled=!!no; if(no)b.title=no;
@@ -1161,6 +1161,14 @@ function renderChips(){
     ? (PACK.ui.ask_placeholder || `ask ${pro().o} anything…`)
     : (PACK.ui.order_placeholder || 'or type the order yourself…'));
 }
+/* What the transcript reads when a chip is pressed, which is not always what the chip fires.
+   At a station an ask chip *is* the question — "any allergies?" is the button and the line — so the
+   line is what fired and a translated label stays a coat over the button: the chart is written in
+   the language the order is written in. A compiled case's ask chip is an intervention id, because
+   that is what the tape records and the rubric pays for, and `ask_black_tarry_stool` in the middle
+   of a conversation at a bedside is a database key where a sentence should be. So on the ward the
+   line is the case author's own label. An order always says what it was, on either host. */
+function askedShown(ward, mode, x, label){ return mode==='ask' ? (ward?label:null) : label; }
 /* At a station every chip is an order — the asks included. Step::Ask never reaches the tape
    (vitals-replay treats it as inert), so an ask routed through /api/say would leave the
    history-taking marks unearnable. The scenario answers with scripted patient words instead. */
@@ -1171,14 +1179,14 @@ function fire(text,shown,named){
      where every press arrives, and it is said out loud rather than swallowed. */
   const no=takeFirst(WARD, id, pro().o);
   if(no){ if(typeof wardSay==='function')wardSay('<b>'+no+'</b> — nothing you do is on '+pro().p+' chart until the head is yours'); return; }
-  (mode==='ask' && !ep().station) ? askHer(text) : doOrder(text,shown,named);
+  (mode==='ask' && !ep().station) ? askHer(text,shown) : doOrder(text,shown,named);
 }
 /* Is this order the candidate naming a diagnosis? The station's own differential is the list,
    and a typed answer counts — "epiglottitis" in the order box is the same answer as the chip.
    Used for one thing only: whether the case's reply to it is teaching, and therefore whether it
    waits for the bell. It never reaches the tape, the matcher or the score. */
 const namesADiagnosis=t=>{ const l=String(t).trim().toLowerCase();
-  return l.length>2 && (((CHIPS[ep().id]||{}).dx)||[]).some(o=>{ const k=o.toLowerCase();
+  return l.length>2 && ((chipRows().dx)||[]).some(o=>{ const k=o.toLowerCase();
     return l.indexOf(k)>=0 || k.indexOf(l)>=0; }); };
 
 function paint(v,named){
@@ -1767,9 +1775,12 @@ async function step(q,named){
    flag set here would be consumed by whichever paint happened to land first. */
 function doOrder(text,shown,named){ disarmEnd(); ev('order','▸',shown||text);
   step('&do='+encodeURIComponent(text), named===undefined?namesADiagnosis(text):named); }
-async function askHer(q){
+async function askHer(q,shown){
   if(asking||!id)return; asking=true; $('#send').disabled=true;
-  turn('you','you',q);
+  /* What was asked, as a person would read it back. `q` is what goes to the server — on the ward
+     an intervention id, which is what her case is keyed by — and typing gets the same string
+     both ways. */
+  turn('you','you',shown||q);
   const d=turn('her think', ep().who.split(' · ')[0], '…');
   step('&tick=5');                                   // talking costs time
   const r=await (await fetch('/api/say?id='+id+'&q='+encodeURIComponent(q)+asMe()+langQ())).json();
