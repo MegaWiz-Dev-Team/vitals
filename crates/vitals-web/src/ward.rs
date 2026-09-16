@@ -789,7 +789,7 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
         "week": w,
         "patients": board,
         "readable": true,
-        "policy": policy(),
+        "policy": policy(Some(r.cases)),
         "derivations": {
             "admitted": "patient accounts on chain, counted by admitted_slot",
             "in_beds": "open patients the ward holds a pack for, counted at this read. The \
@@ -886,15 +886,25 @@ fn state_word(state: u8) -> &'static str {
 }
 
 /// The policy, on its own — true whether or not the chain can be reached.
-fn policy() -> serde_json::Value {
+///
+/// `cases` is what the ward is holding at this read, when the read could take it. `None` is "we
+/// did not look", which is why the counts are null rather than zero there: an endpoint that
+/// answers `0` because it could not read the store looks exactly like a ward with no cases, and
+/// that zero would be read as a fact about the ward rather than about the answer.
+fn policy(cases: Option<&[crate::ward_case::CaseSummary]>) -> serde_json::Value {
+    let level = |want: &str| {
+        cases.map(|c| c.iter().filter(|c| c.difficulty == want).count())
+    };
     serde_json::json!({
         "beds": BEDS,
         "a_bed_frees_on": ["discharge", "death"],
         "admissions_per_day": "as many as leave — a bed frees on discharge or death and on \
                                nothing else, so the rate is a consequence of how the ward is \
                                played rather than a number we choose. Read it off the census.",
-        "draw": "uniformly from the catalogue, skipping any case already on the ward, so no \
-                 two beds hold the same case at once",
+        "draw": "from the queue the case factory fills, by a ticker on this host every minute. It \
+                 takes the difficulty band with fewest patients on the ward, and never a case \
+                 another bed already holds, so no two beds hold the same case at once and a \
+                 stranger looking for one level is not told the ward is full of another",
         "where_they_come_from": "admissions are weighted by each country's people per doctor \
                                  (World Bank/WHO, latest year), so a country with twice the \
                                  shortage sends twice the patients. The weights and their source \
@@ -905,13 +915,28 @@ fn policy() -> serde_json::Value {
                  the patient goes home, or dies. The chain closes a patient on the first of those \
                  it is told about, so nothing here can span more than one case without the program \
                  changing first",
-        "catalogue": CATALOGUE,
-        // Counted off the catalogue rather than written down, so a case added without a level
-        // cannot quietly shrink a band the panel is still offering.
+        "catalogue": {
+            "from": "cases come through the case door from the case factory — embla-cases, \
+                     compiled by vitals-casefactory. None of the season’s sixteen is here: \
+                     those are vitals.academy’s, and this ward refuses them at the door",
+            // Counted at this read rather than written down: a number in prose is a number that
+            // goes stale the next time the compiler sends anything.
+            "held": cases.map(<[_]>::len),
+            "provisional": cases.map(|c| c.iter().filter(|c| c.provisional).count()),
+            "reviewed": cases.map(|c| c.iter().filter(|c| !c.provisional).count()),
+            "placed_by": "a patient is placed on a case written about somebody of the same sex \
+                          and near the same age — within twelve years of the case’s own, \
+                          and a child only on a child’s case. The cases of that patient’s \
+                          own country are tried first, and a case from anywhere is better than a \
+                          bed nobody can be put in",
+            "read_them_at": "/api/ward/cases",
+        },
+        // Off the packs themselves, so a level nobody compiled cannot be offered and a band that
+        // filled up cannot be advertised as empty.
         "difficulty": serde_json::json!({
-            "student": CATALOGUE.iter().filter(|c| difficulty_of(c) == Some("student")).count(),
-            "intern": CATALOGUE.iter().filter(|c| difficulty_of(c) == Some("intern")).count(),
-            "resident": CATALOGUE.iter().filter(|c| difficulty_of(c) == Some("resident")).count(),
+            "student": level("student"),
+            "intern": level("intern"),
+            "resident": level("resident"),
         }),
         "endemic": format!(
             "where a patient is from never selects the disease. A country with an endemic list \
@@ -937,6 +962,7 @@ pub fn ward_unavailable(source: &str, why: &str) -> serde_json::Value {
         "why": why,
         "census": serde_json::Value::Null,
         "week": serde_json::Value::Null,
-        "policy": policy(),
+        // The rules are still true with no chain; the counts are not taken here, and say so.
+        "policy": policy(None),
     })
 }

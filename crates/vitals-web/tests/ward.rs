@@ -223,15 +223,21 @@ fn the_release_policy_is_published_and_promises_no_rate() {
                "nothing else frees a bed — not time, not us");
     assert!(p["admissions_per_day"].as_str().unwrap().contains("as many as leave"),
             "the rate is derived from the ward, never promised by us");
-    assert!(p["draw"].as_str().unwrap().contains("uniformly"));
-    assert!(p["draw"].as_str().unwrap().contains("already on the ward"),
+    assert!(p["draw"].as_str().unwrap().contains("queue"),
+            "a bed is filled from the queue the factory fills, by the ticker on this host");
+    assert!(p["draw"].as_str().unwrap().contains("another bed already holds"),
             "a case is not drawn while another copy of it is in a bed");
 
-    let cases = p["catalogue"].as_array().expect("the catalogue is a list a stranger can count");
-    assert_eq!(cases.len(), 16, "four episodes and twelve stations, as they exist today");
-    let joined = cases.iter().map(|c| c.as_str().unwrap()).collect::<Vec<_>>().join(" ");
-    assert!(joined.contains("osce-a") && joined.contains("ep2"), "named, not summarised");
-    assert!(!joined.contains("ep1"), "ep1 is the practice case and is not on the ward");
+    // The catalogue was a list of the season's sixteen here until 16 ก.ย. It is not a list any
+    // more, because the ward's cases are not a table compiled into this binary: they arrive
+    // through the case door, they are counted at the read, and the whole of them is one GET away.
+    // `the_policy_says_what_this_ward_actually_does` is where the counts are checked.
+    let cat = &p["catalogue"];
+    assert!(cat["from"].as_str().is_some_and(|s| s.contains("case factory")),
+            "where the ward's cases come from: {cat}");
+    assert_eq!(cat["read_them_at"], "/api/ward/cases", "and where to read them in full");
+    assert!(!p.to_string().contains("ep2"),
+            "no season id anywhere in the policy: this ward refuses every one of them at its door");
 }
 
 /// The failure that would do the most damage is not a wrong number — it is a zero.
@@ -502,23 +508,42 @@ fn the_endemic_list_may_only_name_cases_the_ward_can_serve() {
     }
 }
 
-/// The panel offers levels, so the policy has to say what is actually on the shelf.
+/// The panel offers levels, so the policy has to say what is actually on the shelf — and the shelf
+/// is what came through the case door, counted at the read. A level is on a pack now, not in a
+/// table compiled into this binary, which is why the read carries the cases.
 #[test]
 fn the_policy_publishes_the_levels_and_the_endemic_rule() {
-    use vitals_web::ward::{difficulty_of, CATALOGUE};
+    use vitals_web::ward_case::CaseSummary;
 
-    let v = ward_payload(&read(&[], &[], &nobody(), None, 1));
+    let case = |id: &str, level: &str| CaseSummary {
+        case_id: id.into(),
+        archetype: "septic_shock".into(),
+        patient_age: Some(40),
+        patient_sex: Some("female".into()),
+        country: None,
+        difficulty: level.into(),
+        endemic: false,
+        provisional: true,
+        version: "0.1.0".into(),
+        title: "a compiled case".into(),
+    };
+    let held = vec![case("a-1", "student"), case("a-2", "intern"), case("a-3", "intern")];
+
+    let patients: Vec<_> = Vec::new();
+    let packs = nobody();
+    let mut r = read(&patients, &[], &packs, None, 1);
+    r.cases = &held;
+    let v = ward_payload(&r);
     let levels = &v["policy"]["difficulty"];
-    for level in ["student", "intern", "resident"] {
-        let want = CATALOGUE.iter().filter(|c| difficulty_of(c) == Some(level)).count();
-        assert_eq!(levels[level], want,
-                   "the policy must count {level} the way the catalogue does, or a player picks a \
-                    level the ward cannot fill");
-    }
+    assert_eq!(levels["student"], 1);
+    assert_eq!(levels["intern"], 2);
+    assert_eq!(levels["resident"], 0,
+               "a band with nothing in it is zero and not missing: a player choosing it is told \
+                there is nothing there rather than left to find out at a bed");
     assert_eq!(levels["student"].as_u64().unwrap()
                    + levels["intern"].as_u64().unwrap()
                    + levels["resident"].as_u64().unwrap(),
-               CATALOGUE.len() as u64,
+               held.len() as u64,
                "every case has a level and no case has two");
 
     let rule = v["policy"]["endemic"].as_str().expect("the endemic rule is published");
