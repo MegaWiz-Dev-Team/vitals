@@ -592,3 +592,93 @@ fn the_catalogue_carries_the_patient_on_the_wire() {
     assert_eq!(row["patient"]["age"], 62);
     assert_eq!(row["patient"]["sex"], "male");
 }
+
+// ── the case's own words, in the persona's person ───────────────────────────
+
+/// **The prose is the case's; the person in it is the ward's.**
+///
+/// The compiler stopped baking "26-year-old" and "young man" into its text and writes placeholders
+/// instead, because the ward renames every patient it admits. Nusrat Jahan, 64, was placed on a
+/// case whose presentation opened "Young man from Bangladesh"; the placement rule stops the
+/// mismatch and this fills what is left.
+#[test]
+fn a_cases_prose_is_told_about_the_person_in_the_bed() {
+    use vitals_web::ward::Persona;
+    use vitals_web::ward_case::fill_persona;
+
+    let her = Persona { name: "Nusrat Jahan".into(), country: "BGD".into(), age: 64, sex: "f".into() };
+    let him = Persona { name: "Rafael Moreira".into(), country: "BRA".into(), age: 26, sex: "m".into() };
+    let kid = Persona { name: "Pim".into(), country: "THA".into(), age: 6, sex: "f".into() };
+
+    assert_eq!(fill_persona("Young {sex_word} from Bangladesh, {age}-year-old", &her),
+               "Young woman from Bangladesh, 64-year-old");
+    assert_eq!(fill_persona("Young {sex_word} from Bangladesh, {age}-year-old", &him),
+               "Young man from Bangladesh, 26-year-old");
+    assert_eq!(fill_persona("{Sex_word}, {age}, says {he_she} vomited blood; {his_her} partner drove {him_her}.", &her),
+               "Woman, 64, says she vomited blood; her partner drove her.");
+    assert_eq!(fill_persona("{He_she} cannot settle {himself_herself}.", &him),
+               "He cannot settle himself.");
+
+    // A child is a boy or a girl, not a man or a woman — the one place the word turns on age.
+    assert_eq!(fill_persona("a {sex_word} of {age}", &kid), "a girl of 6");
+    assert_eq!(fill_persona("a {sex_word} of {age}", &her), "a woman of 64");
+
+    // Nothing else is touched, and an unknown brace word is left exactly as written rather than
+    // blanked: a pack that invents one should look wrong, not quietly lose a word.
+    assert_eq!(fill_persona("no placeholders here", &her), "no placeholders here");
+    assert_eq!(fill_persona("{not_a_placeholder} stays", &her), "{not_a_placeholder} stays");
+    assert_eq!(fill_persona("อ้วกเป็นเลือด {age} ปี", &her), "อ้วกเป็นเลือด 64 ปี");
+}
+
+/// **What the ward's own page is given about a case.**
+///
+/// Every word of it from the pack, every person in it from the persona, and nothing at all from
+/// the season's table — which is where the page was getting it: opening a World-case patient
+/// showed EP1's name, EP1's questions and no title.
+#[test]
+fn the_ward_is_given_the_cases_own_words_to_render() {
+    use vitals_web::ward::Persona;
+    use vitals_web::ward_case::case_view;
+
+    let mut pack = a_pack();
+    pack["title"] = json!("Vomiting blood — a {sex_word} of {age}");
+    pack["presentation"]["chief_complaint"] = json!("{He_she} vomited blood");
+    pack["presentation"]["hpi"] = json!("A {sex_word} of {age} brought in by {his_her} partner.");
+    pack["sce"]["interventions"] = json!([
+        { "id": "ask_hematemesis", "label": "Ask: Hematemesis", "match": { "any_kw": ["hematemesis"] }, "effects": [] },
+        { "id": "exam_conjunctiva", "label": "Look at the conjunctiva", "match": { "any_kw": ["conjunctiva"] }, "effects": [] },
+        { "id": "ix_cbc", "label": "CBC", "match": { "any_kw": ["cbc"] }, "effects": [] },
+        { "id": "tx_fluids", "label": "Crystalloid bolus for a {sex_word} of {age}", "match": { "any_kw": ["fluids"] }, "effects": [{ "to_state": "stabilising" }] },
+        { "id": "dx_peptic_ulcer", "label": "Name the diagnosis", "match": { "any_kw": ["ulcer"] }, "effects": [] }
+    ]);
+    pack["voice"] = json!({
+        "ask_hematemesis": { "finding": "Hematemesis", "present": true, "reveal": "volunteered",
+                             "words": "I am {age} and I have never seen so much blood" }
+    });
+
+    let her = Persona { name: "Nusrat Jahan".into(), country: "BGD".into(), age: 64, sex: "f".into() };
+    let v = case_view(&pack, &her);
+
+    assert_eq!(v["title"], "Vomiting blood — a woman of 64");
+    assert_eq!(v["presents"], "She vomited blood");
+    assert_eq!(v["story"], "A woman of 64 brought in by her partner.");
+    assert_eq!(v["difficulty"], "resident");
+
+    // The quick questions are the case's own asks, in the case's own words.
+    let asks = v["chips"]["ask"].as_array().expect("the asks");
+    assert_eq!(asks.len(), 1);
+    assert_eq!(asks[0]["id"], "ask_hematemesis");
+    assert_eq!(asks[0]["label"], "Ask: Hematemesis");
+    assert_eq!(v["chips"]["exam"][0]["id"], "exam_conjunctiva");
+    assert_eq!(v["chips"]["lab"][0]["id"], "ix_cbc");
+    assert_eq!(v["chips"]["treat"][0]["label"], "Crystalloid bolus for a woman of 64");
+    assert_eq!(v["chips"]["dx"][0]["id"], "dx_peptic_ulcer");
+
+    // And what she says when she is asked, in her own person.
+    assert_eq!(v["voice"]["ask_hematemesis"], "I am 64 and I have never seen so much blood");
+    assert!(v["no_answer"].as_str().is_some_and(|s| !s.is_empty()),
+            "and something to say when she is asked about something this case never wrote down");
+
+    // Nothing filled is stored: the pack is untouched by having been rendered.
+    assert_eq!(pack["title"], "Vomiting blood — a {sex_word} of {age}");
+}
