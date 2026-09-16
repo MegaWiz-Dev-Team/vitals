@@ -119,12 +119,15 @@ const REVIEW_MAX: usize = 1024 * 1024;
 /// both failures looked like something else entirely. A deck cannot go missing halfway through a
 /// pitch if there is no file for it to go missing from.
 const DECK: &str = include_str!("../../../pitch/deck.html");
-/// The ward host's mark, baked in for the same reason the deck is: a favicon read off the disk is
-/// a favicon that goes missing in the container, and a tab icon fails silently when it does.
-const FAVICON_WORLD: &[u8] = include_bytes!("../../../pitch/logo/favicon-world.svg");
+/// The ward host's mark. Under `static/world/` with the pages that link it, not under `pitch/`
+/// with the brand it came from: `.dockerignore` keeps all of `pitch/` out of the build context
+/// bar the deck, so a runtime asset kept there is one Cloud Build cannot read. Baked in for the
+/// same reason the deck is — a favicon read off the disk is a favicon that goes missing in the
+/// container, and a tab icon fails silently when it does.
+const FAVICON_WORLD: &[u8] = include_bytes!("../static/world/favicon.svg");
 /// The same mark at 180 px for a home-screen bookmark, because iOS takes a PNG and nothing else.
 /// Rendered from the SVG above rather than drawn again, so there is one mark and one file to edit.
-const TOUCH_ICON_WORLD: &[u8] = include_bytes!("../../../pitch/logo/apple-touch-icon.png");
+const TOUCH_ICON_WORLD: &[u8] = include_bytes!("../static/world/apple-touch-icon.png");
 /// The speaking script is deliberately **not** compiled in beside the deck.
 ///
 /// `pitch/script.html` is the presenter's own notes — what to say, what not to say, and what the

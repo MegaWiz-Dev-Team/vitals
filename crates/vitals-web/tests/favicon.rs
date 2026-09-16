@@ -14,10 +14,6 @@ use std::process::{Child, Command, Stdio};
 
 const LINK: &str = "<link rel=\"icon\" type=\"image/svg+xml\" href=\"/world/favicon.svg\">";
 
-fn repo() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
 fn statics(name: &str) -> String {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static").join(name);
     std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
@@ -91,11 +87,13 @@ fn header<'a>(heads: &'a [(String, String)], name: &str) -> Option<&'a str> {
     heads.iter().find(|(h, _)| h == name).map(|(_, v)| v.as_str())
 }
 
-/// The mark is a file in the repository, not a string in a Rust source file: the designer edits an
-/// SVG, and the server bakes in whatever that file says.
+/// The mark is a file, not a string in a Rust source file: the designer edits an SVG and the
+/// server bakes in whatever it says. It lives under `static/world/` with the pages that link it —
+/// `pitch/` is excluded from the build context bar the deck, and a runtime asset kept there is one
+/// Cloud Build cannot read (16 ก.ย., a failed staging deploy; `image.rs` now holds that).
 #[test]
 fn the_mark_is_a_file_the_server_can_bake_in() {
-    let p = repo().join("pitch/logo/favicon-world.svg");
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/world/favicon.svg");
     let svg = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
     assert!(svg.contains("<svg"), "the mark is an SVG");
     assert!(svg.contains("viewBox=\"0 0 64 64\""),
@@ -109,7 +107,7 @@ fn the_ward_host_serves_its_mark() {
     assert_eq!(code, 200, "the page names this file, so the server has to answer for it");
     assert_eq!(header(&heads, "content-type"), Some("image/svg+xml"),
                "an SVG served as anything else is drawn as nothing, with a 200");
-    let on_disk = std::fs::read(repo().join("pitch/logo/favicon-world.svg")).expect("the mark");
+    let on_disk = std::fs::read(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/world/favicon.svg")).expect("the mark");
     assert_eq!(body, on_disk, "the bytes served are the designer's file, unedited");
     let cache = header(&heads, "cache-control").unwrap_or_default().to_string();
     assert!(cache.contains("max-age="), "a mark that never changes is worth caching: {cache:?}");
