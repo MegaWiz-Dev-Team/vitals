@@ -5430,11 +5430,15 @@ function wardBar(){
     'border-radius:.5rem;background:rgba(15,110,92,.06)">'+
     '<b id="wardwho">…</b><span id="wardsay" style="flex:1"></span>'+
     '<button class="btn go" id="wardtake">take this shift</button>'+
+    '<button class="btn" id="wardback-shift" style="display:none">hand her back</button>'+
     '<a class="btn" id="wardback" href="/">the ward</a></div>');
   /* Wrapped, because a button that throws is a button that does nothing and says nothing. One
      driven run ended with the strip showing its opening line and no sign that the press had been
      received; I could not reproduce it, and the fix for the class is to make any failure in here
      arrive on the strip rather than in a console nobody has open. */
+  $('#wardback-shift').onclick=()=>handBack().catch(e=>{
+    wardSay('that did not go through: '+esc(e&&e.message?e.message:e)+' — try again');
+  });
   $('#wardtake').onclick=()=>takeShift().catch(e=>{
     $('#wardtake').disabled=false;
     wardSay('that did not go through: '+esc(e&&e.message?e.message:e)+' — try again');
@@ -5500,10 +5504,52 @@ async function takeShift(){
   if(said.error&&!said.declared){ b.disabled=false; return wardSay(esc(said.error)); }
   /* Now the bay is live: every control in the page guards on `id`. */
   id=WARDPENDING; over=false; $('#endrun').disabled=false; $('#endrun').textContent='hand over';
-  b.style.display='none';
+  b.style.display='none'; $('#wardback-shift').style.display='';
   wardSay('the head is yours until you hand over. Her chart is the chain — what you do here is '+
           'on it, under your key.');
+  armTheExit();
 }
+
+/* Handing her back: the head goes down, nothing is anchored, and this shift's tape is discarded.
+   Said plainly, because a stranger deserves to know that walking away costs her nothing and
+   records nothing of theirs. */
+async function handBack(){
+  if(!id)return;
+  $('#wardback-shift').disabled=true;
+  wardSay('handing her back…');
+  const r=await wardDo('/api/ward/release?id='+id);
+  if(r.refused){ $('#wardback-shift').disabled=false; return wardSay('<b>refused.</b> '+esc(r.refused)); }
+  if(r.error){ $('#wardback-shift').disabled=false; return wardSay(esc(r.error)); }
+  EXITSIG=null; id='';
+  wardSay('<b>handed back.</b> nothing you did was recorded; the next person gets her as you '+
+          'found her. <a href="/">back to the ward</a>');
+}
+
+/* A stranger who closes the tab should free the bed in seconds rather than in the length of a
+   lease. The signature cannot be made during unload — WebCrypto is async and the page is going —
+   so one is made **now** and refreshed while the shift runs, and `sendBeacon` posts it on the way
+   out. A blockhash is only good for a minute or so, which is why this is refreshed rather than
+   prepared once.
+   Best effort by nature: a beacon can be dropped and a browser can be killed. The lease expiring
+   is still the net under it, and nothing here is load-bearing for correctness. */
+let EXITSIG=null, EXITTIMER=null;
+async function armTheExit(){
+  clearInterval(EXITTIMER);
+  const prime=async()=>{
+    if(!id||!WARD)return;
+    try{
+      const me=await identity(); if(!me)return;
+      const r=await (await fetch('/api/ward/release?id='+id+'&player='+me.pub)).json();
+      if(r&&r.sign) EXITSIG={player:me.pub, sig:await sign(r.sign)};
+    }catch(e){ /* the exit is a courtesy; the lease expiry is the guarantee */ }
+  };
+  await prime();
+  EXITTIMER=setInterval(prime, 45000);
+}
+addEventListener('pagehide',()=>{
+  if(!EXITSIG||!id)return;
+  navigator.sendBeacon('/api/ward/submit?player='+EXITSIG.player+'&sig='+EXITSIG.sig);
+});
 async function handOver(){
   if(!id)return;
   try{ await handOverInner(); }
@@ -5529,6 +5575,7 @@ async function handOverInner(){
                    ' <a href="/ward/'+WARD+'">open her again</a>');
   }
   if(a.error)return wardSay(esc(a.error));
+  clearInterval(EXITTIMER); EXITSIG=null;
   wardSay('<b>handed over.</b> her chain is '+a.shifts+' shift'+(a.shifts===1?'':'s')+' long and '+
           'she is '+esc((a.state||'').replace('_',' '))+'. <a href="/">back to the ward</a>');
 }

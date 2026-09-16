@@ -541,6 +541,34 @@ pub fn take_shift_ix(
     )
 }
 
+/// Put the head down without anchoring anything.
+///
+/// The same three accounts taking it names, and the same absence: the relay pays for the
+/// transaction and is not in it. While a lease stands only its holder may release it — the program
+/// checks that — and once it has expired anybody may clear it, which is what stops a stranger who
+/// closed their laptop from holding a bed until somebody with the right key comes back, who is
+/// nobody.
+///
+/// **Nothing is recorded by this.** The shift's tape is discarded and her chart is untouched: the
+/// next person gets her exactly as this one found her. That is the honest meaning of walking away,
+/// and it is why the page says it in those words.
+pub fn release_shift_ix(
+    program_id: &Pubkey,
+    operator: &Pubkey,
+    player: &Pubkey,
+    patient_id: u64,
+) -> SolInstruction {
+    SolInstruction::new_with_borsh(
+        *program_id,
+        &Instruction::ReleaseShift { patient_id },
+        vec![
+            AccountMeta::new_readonly(*player, true),
+            AccountMeta::new_readonly(account_pda(program_id, player), false),
+            AccountMeta::new(patient_pda(program_id, operator, patient_id).0, false),
+        ],
+    )
+}
+
 /// Anchor the shift that was just played onto the head it extends.
 ///
 /// The one instruction both keys appear in, and each has exactly one job. The relay signs at

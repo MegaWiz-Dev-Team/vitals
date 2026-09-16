@@ -1877,6 +1877,9 @@ enum WardWork {
     Declare { session: String, hash: [u8; 32], nonce: [u8; 32] },
     /// Append this shift's leaf to her chain, extending the head it named.
     Anchor { session: String, patient_id: u64 },
+    /// Put the head down with nothing anchored. Her chart is untouched and this shift's tape is
+    /// discarded — the next person gets her as this one found her.
+    Release { session: String },
 }
 
 /// A half-signed ward transaction, waiting for the browser that must finish it.
@@ -3842,7 +3845,7 @@ fn main() {
             // different map, a different submit (ruling 7).
             (Method::Get, p) if ward_mode() && p.starts_with("/api/ward/")
                 && matches!(p, "/api/ward/open" | "/api/ward/take" | "/api/ward/declare"
-                               | "/api/ward/anchor") =>
+                               | "/api/ward/anchor" | "/api/ward/release") =>
             {
                 let Some(who) = param(&url, "player").and_then(|k| pubkey(&k)) else {
                     let _ = req.respond(json_code(serde_json::json!({
@@ -3874,6 +3877,11 @@ fn main() {
                         None => Err("no such session".to_string()),
                         Some(s) => match (&s.ward, p) {
                             (None, _) => Err("this run is not a shift on the ward".into()),
+                            (Some(w), "/api/ward/release") => Ok((
+                                ward_chain::release_shift_ix(
+                                    chain.program_id(), &chain.operator(), &who, w.patient_id),
+                                WardWork::Release { session: id.clone() },
+                            )),
                             (Some(w), "/api/ward/take") => Ok((
                                 ward_chain::take_shift_ix(
                                     chain.program_id(), &chain.operator(), &who, w.patient_id),
@@ -4036,6 +4044,23 @@ fn main() {
                                 "error": "the declaration landed but could not be read back — try again"
                             }), 503),
                         }
+                    }
+                    (WardWork::Release { session }, Ok(sig)) => {
+                        // The tape goes with it. A shift that was put down is not a shift that
+                        // happened, and a tape left lying about could be anchored later onto a
+                        // patient somebody else has since moved.
+                        let mut map = sessions.lock().unwrap();
+                        if let Some(s) = map.get_mut(session) {
+                            s.tape.clear();
+                            s.beats.clear();
+                            persist(&store, session, s, true);
+                        }
+                        drop(map);
+                        json(serde_json::json!({
+                            "released": true,
+                            "tx": sig,
+                            "recorded": "nothing — the head is back and her chart is as you found it"
+                        }))
                     }
                     (WardWork::Anchor { session, patient_id }, Ok(sig)) => {
                         let mut map = sessions.lock().unwrap();
