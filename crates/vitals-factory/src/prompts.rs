@@ -40,7 +40,7 @@ pub fn base(age: u16, sex: Sex, place: &str) -> String {
 /// question the gate exists to ask.
 pub const PHOTOREAL: &str = "This picture is AI-generated on purpose; do not judge whether it is a real photo. Judge its \
 STYLE only: does it look like a photograph of a real person — natural human proportions, natural skin, natural eyes — \
-rather than a drawing, anime, cartoon, doll, or stylised 3D render? Answer yes or no.";
+rather than a drawing, anime, cartoon, doll, or stylised 3D render? Answer yes or no, then one short sentence why.";
 
 /// What every state edit begins with: the same person, the same room.
 pub const KEEP: &str = "Edit this photo, keeping exactly the same person — same face, same hair, same skin, same age — \

@@ -98,8 +98,13 @@ fn main() {
                 }
                 println!("{t} {url}");
             }
-            Err(e) => {
-                eprintln!("{} ERROR {e}", stamp());
+            Err(boxed) => {
+                let (e, report) = *boxed;
+                let t = stamp();
+                for line in &report.lines {
+                    println!("{t} {line}");
+                }
+                eprintln!("{t} ERROR {e}");
                 std::process::exit(1);
             }
         }

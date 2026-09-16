@@ -21,8 +21,9 @@ pub trait Tools {
     /// One state, edited from the base, as PNG bytes.
     fn edit(&self, project: &str, model: &str, base: &[u8], mime: &str, prompt: &str) -> Result<Vec<u8>, String>;
     /// The photorealism gate: one yes-or-no question about an image, put to the text model on
-    /// Vertex with the image inline. `true` is yes.
-    fn judge(&self, project: &str, model: &str, image: &[u8], mime: &str, question: &str) -> Result<bool, String>;
+    /// Vertex with the image inline. `true` is yes; the string is the model's one sentence why,
+    /// for the log and for whoever reads a refusal.
+    fn judge(&self, project: &str, model: &str, image: &[u8], mime: &str, question: &str) -> Result<(bool, String), String>;
     /// PNG bytes to webp bytes at this quality.
     fn webp(&self, png: &[u8], quality: u8) -> Result<Vec<u8>, String>;
     /// `local` to `gs://<bucket>/<object>`, never overwriting.
@@ -92,14 +93,16 @@ impl Tools for Shell {
         Err("Vertex returned text and no image".into())
     }
 
-    fn judge(&self, project: &str, model: &str, image: &[u8], mime: &str, question: &str) -> Result<bool, String> {
+    fn judge(&self, project: &str, model: &str, image: &[u8], mime: &str, question: &str) -> Result<(bool, String), String> {
         let parts = vertex_generate(project, model, image, mime, question, false)?;
         let text: String = parts.iter().filter_map(|p| p.get("text").and_then(|t| t.as_str())).collect::<Vec<_>>().join(" ");
-        let word = text.trim().trim_start_matches(|c: char| !c.is_alphanumeric()).to_lowercase();
+        let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        let word = text.trim_start_matches(|c: char| !c.is_alphanumeric()).to_lowercase();
+        let why = text.split_once(['.', ',']).map(|x| x.1).unwrap_or("").trim().to_string();
         if word.starts_with("yes") {
-            Ok(true)
+            Ok((true, why))
         } else if word.starts_with("no") {
-            Ok(false)
+            Ok((false, why))
         } else {
             Err(format!("the judge answered neither yes nor no: {}", text.chars().take(120).collect::<String>()))
         }
@@ -155,7 +158,7 @@ fn vertex_generate(project: &str, model: &str, image: &[u8], mime: &str, text: &
     let generation = if want_image {
         serde_json::json!({"responseModalities": ["TEXT", "IMAGE"], "imageConfig": {"aspectRatio": "1:1"}})
     } else {
-        serde_json::json!({"temperature": 0, "maxOutputTokens": 8})
+        serde_json::json!({"temperature": 0, "maxOutputTokens": 80})
     };
     let body = serde_json::json!({
         "contents": [{"role": "user", "parts": [

@@ -427,10 +427,16 @@ fn make_face(cfg: &Config, tools: &dyn Tools, who: &Person, age: u16, place: &st
         let bytes = std::fs::read(&png).map_err(|e| format!("{}: {e}", png.display()))?;
         let _ = std::fs::remove_file(&png);
         let webp = tools.webp(&bytes, WEBP_QUALITY)?;
-        let ok = tools.judge(&cfg.vertex_project, &cfg.judge_model, &webp, "image/webp", prompts::PHOTOREAL)?;
-        r.say(format!("face for {} at {age}, seed {seed}: photorealistic: {}", who.key, if ok { "yes" } else { "no — a new seed" }));
+        let (ok, why) = tools.judge(&cfg.vertex_project, &cfg.judge_model, &webp, "image/webp", prompts::PHOTOREAL)?;
+        r.say(format!("face for {} at {age}, seed {seed}: photorealistic: {}{}", who.key, if ok { "yes" } else { "no — a new seed" }, if why.is_empty() { String::new() } else { format!(" ({why})") }));
         if ok {
             return publish(cfg, tools, &webp);
+        }
+        // A refused face is kept locally, never uploaded, so a person can see what was refused
+        // and why the gate is right or wrong. `work/refused` is safe to delete.
+        let refused = work.join("refused");
+        if std::fs::create_dir_all(&refused).is_ok() {
+            let _ = std::fs::write(refused.join(format!("{}@{age}-{seed}.webp", who.key)), &webp);
         }
     }
     Err(format!(
@@ -443,8 +449,17 @@ fn make_face(cfg: &Config, tools: &dyn Tools, who: &Person, age: u16, place: &st
 /// person looked at and refused. The old picture and every state edited from it leave the
 /// manifest; the new url is returned and recorded. The ward is not touched: a queued pack that
 /// carries the old address keeps it until the door lets a queued pack's portraits be replaced.
-pub fn remake_face(cfg: &Config, tools: &dyn Tools, spec: &str) -> Result<(String, Report), String> {
+///
+/// The report comes back with the error too, so the verdicts on the refused faces are not lost.
+pub fn remake_face(cfg: &Config, tools: &dyn Tools, spec: &str) -> Result<(String, Report), Box<(String, Report)>> {
     let mut r = Report::default();
+    match remake(cfg, tools, spec, &mut r) {
+        Ok(url) => Ok((url, r)),
+        Err(e) => Err(Box::new((e, r))),
+    }
+}
+
+fn remake(cfg: &Config, tools: &dyn Tools, spec: &str, r: &mut Report) -> Result<String, String> {
     let (key, age) = spec
         .split_once('@')
         .and_then(|(k, a)| a.parse::<u16>().ok().map(|a| (k.to_string(), a)))
@@ -453,7 +468,7 @@ pub fn remake_face(cfg: &Config, tools: &dyn Tools, spec: &str) -> Result<(Strin
     let pool = read_pool(&pool_text)?;
     let who = pool.iter().find(|p| p.key == key).ok_or_else(|| format!("nobody in the pool is {key}"))?;
     let mut manifest = Manifest::load(&cfg.manifest_path())?;
-    let url = make_face(cfg, tools, who, age, &who.place, &mut r)?;
+    let url = make_face(cfg, tools, who, age, &who.place, r)?;
     let slot = format!("{key}@{age}");
     manifest.entries.remove(&slot);
     manifest.record_base(&key, age, &url, who);
@@ -467,7 +482,7 @@ pub fn remake_face(cfg: &Config, tools: &dyn Tools, spec: &str) -> Result<(Strin
     manifest.save(&cfg.manifest_path())?;
     r.say(format!("{slot}: {url} recorded; the old face and its states are off the file"));
     r.faces_made = 1;
-    Ok((url, r))
+    Ok(url)
 }
 
 /// Which manifest entry a patient on the board was given her face from.

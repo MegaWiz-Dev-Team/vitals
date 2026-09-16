@@ -162,9 +162,10 @@ impl Tools for FakeTools {
         self.seeds.borrow_mut().push(seed);
         Ok(())
     }
-    fn judge(&self, _project: &str, model: &str, image: &[u8], _mime: &str, question: &str) -> Result<bool, String> {
+    fn judge(&self, _project: &str, model: &str, image: &[u8], _mime: &str, question: &str) -> Result<(bool, String), String> {
         self.judged.borrow_mut().push(format!("{model}|{question}|{}", image.len()));
-        Ok(self.verdicts.borrow_mut().pop_front().unwrap_or(true))
+        let ok = self.verdicts.borrow_mut().pop_front().unwrap_or(true);
+        Ok((ok, if ok { "natural proportions".into() } else { "oversized eyes".into() }))
     }
     fn edit(&self, _project: &str, _model: &str, base: &[u8], _mime: &str, prompt: &str) -> Result<Vec<u8>, String> {
         self.edits.borrow_mut().push(prompt.to_string());
@@ -413,8 +414,9 @@ fn a_face_is_a_photograph_or_it_is_not_a_face() {
     assert_eq!(man.entries.iter().filter(|(k, _)| k.contains('@')).count(), 1, "the rejected face is nowhere on file");
     // The log says so beside each face, and names the person whose face was given up on.
     let text = r.lines.join("\n");
-    assert!(text.contains("photorealistic: no"), "{text}");
+    assert!(text.contains("photorealistic: no") && text.contains("(oversized eyes)"), "the verdict and its why, beside the face: {text}");
     assert!(text.contains("photorealistic: yes"), "{text}");
+    assert_eq!(std::fs::read_dir(dir.join("work/refused")).map(|d| d.count()).unwrap_or(0), 5, "every refused face is kept locally for a person to look at");
     assert_eq!(r.errors.len(), 1, "{:?}", r.errors);
     assert!(r.errors[0].contains("three faces") && r.errors[0].contains("no pack"), "{}", r.errors[0]);
     // Her pack was not pushed, and she is not in the ledger.
@@ -478,4 +480,9 @@ fn a_face_can_be_remade_through_the_gate_and_the_old_one_leaves_the_file() {
 
     assert!(remake_face(&cfg, &tools, "XXX-9@40").is_err(), "nobody by that key");
     assert!(remake_face(&cfg, &tools, "KOR-0").is_err(), "a face has an age");
+    // Three refusals: the error names her, and the verdicts come back with it.
+    tools.verdicts.borrow_mut().extend([false, false, false]);
+    let (e, rep) = *remake_face(&cfg, &tools, "KOR-0@8").expect_err("three refusals");
+    assert!(e.contains("Park Ji-woo") && e.contains("three faces"), "{e}");
+    assert_eq!(rep.lines.iter().filter(|l| l.contains("photorealistic: no")).count(), 3);
 }
