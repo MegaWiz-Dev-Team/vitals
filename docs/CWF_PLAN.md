@@ -525,6 +525,33 @@ Exit: the ward has run for a week without us touching it, and the numbers about 
 Exit: a judge can watch a stranger's mistake survive in a patient's chart, and re-derive it
 themselves from the chain.
 
+## What went wrong, and what it cost (the ward's own list)
+
+A public ward keeps a record strangers can check, so it keeps this one too. Every entry is dated,
+says what was lost, and links the rule that stops it happening twice.
+
+**16 ก.ย. — one shift, two hashes, and a patient nobody could open.** A shift on
+`1789538329` (Abebe Tadesse, ETH) anchored cleanly: the strip said *handed over*, the census went
+from 16 shifts to 17, the transaction landed at slot 499153055. Nobody could open him afterwards.
+`/api/handover` had reduced his tape and filed it under the leaf it computed; the page's clock
+went on posting ticks to `/api/step` between that and the anchor; `record_for` then reduced a
+longer tape and put **its** hash on chain. Two hashes for one shift, and the chain got the one
+nobody kept. Three rules came out of it — a handed-over shift takes no more steps, the tape is
+filed by the code that writes the chain under the record's own hash, and a leaf with no tape is
+repaired from any stored session that reduces to it.
+
+**And the repair could not save him.** The boot loop restores every stored session, and a ward
+session is restored by rebuilding its patient from the chain — so the session holding the missing
+tape is exactly the session that fails to restore, and the loop deleted it as *a run that will not
+replay*. Staging redeploys on every commit; two boots ran between the anchor and the repair
+existing. Leaf `0379444187f6…` is **unrecoverable**: the tape is gone, he cannot be rebuilt, and
+the board says so in his own row rather than offering a bed nobody can take. He stays open on
+chain, because the program closes a patient on death or discharge and a discharge he never got
+would be a lie on the record. The repair now runs at boot, before a single session is dropped.
+
+*What it cost:* one patient's chart, permanently; a bed on a three-bed ward for half a day; and
+the founder's own shift on that patient, which is on chain and unreadable.
+
 ## Evidence, in parallel (not code, still scored)
 
 - [ ] The 17-case clinical audit — **reviewer not identified since 14 Sep**; publish it as "reviewed
