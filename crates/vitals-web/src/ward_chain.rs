@@ -936,10 +936,17 @@ pub fn next_patient_id(now_unix: u64, taken: &[u64]) -> u64 {
 /// and episodes are `demo/scenarios/<id>.json`. Hard-coded rather than searched, because a search
 /// that found the wrong file would admit a patient whose chart is a different disease.
 pub fn case_path(root: &std::path::Path, case: &str) -> std::path::PathBuf {
-    if case.starts_with("osce-") {
-        root.join("demo/stations").join(format!("{case}.sce.json"))
-    } else {
-        root.join("demo/scenarios").join(format!("{case}.json"))
+    match case {
+        // The episodes are shelved under short ids and stored under long filenames, and both
+        // spellings are load-bearing: the id is what every table keys on, the filename is what is
+        // on disk. `the_ward_and_the_bay_resolve_a_case_to_the_same_file` holds these against the
+        // bay's own resolver, because two functions that disagree here play a different patient
+        // under the same name.
+        "ep2" => root.join("demo/scenarios/ep2-stemi.json"),
+        "ep3" => root.join("demo/scenarios/ep3-epiglottitis.json"),
+        "ep4" => root.join("demo/scenarios/ep4-pulmonary-embolism.json"),
+        "ep5" => root.join("demo/scenarios/ep5-the-night-the-stars-fell.json"),
+        _ => root.join("demo/stations").join(format!("{case}.sce.json")),
     }
 }
 

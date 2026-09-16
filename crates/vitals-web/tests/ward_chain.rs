@@ -258,7 +258,7 @@ use vitals_web::ward_chain::{pack_id, validate_pack};
 
 fn a_pack() -> Pack {
     Pack {
-        case: "ep2-stemi".into(),
+        case: "ep2".into(),
         persona: Persona { name: "Ploy Siriwattana".into(), country: "THA".into(), age: 54, sex: "f".into() },
         portrait: std::collections::BTreeMap::new(),
         endemic: false,
@@ -424,7 +424,7 @@ fn queued(case: &str, name: &str) -> (String, Pack) {
 #[test]
 fn the_next_patient_is_the_one_the_ward_is_missing() {
     let student = queued("osce-a", "A Student Case");     // student
-    let intern = queued("ep2-stemi", "An Intern Case");   // intern
+    let intern = queued("ep2", "An Intern Case");   // intern
     let resident = queued("osce-d4", "A Resident Case");  // resident
     let queue = vec![student.clone(), intern.clone(), resident.clone()];
 
@@ -436,19 +436,19 @@ fn the_next_patient_is_the_one_the_ward_is_missing() {
     assert_eq!(first, choose_next(&queue, &empty).unwrap(), "the same state, the same patient");
 
     // Two interns already in beds: the student and the resident are what the ward is missing.
-    let interns = vec!["ep2-stemi".to_string(), "osce-b".to_string()];
+    let interns = vec!["ep2".to_string(), "osce-b".to_string()];
     let pick = choose_next(&queue, &interns).expect("a bed to fill");
     assert!(pick == student.0 || pick == resident.0,
             "with two interns on the ward, a third would leave a student with nothing to open");
 
     // Every band once: the one band with nobody in it wins.
-    let one_each = vec!["osce-a".to_string(), "ep2-stemi".to_string()];
+    let one_each = vec!["osce-a".to_string(), "ep2".to_string()];
     let pick = choose_next(&[intern.clone(), resident.clone()], &one_each)
         .expect("a bed to fill");
     assert_eq!(pick, resident.0, "student and intern are held; resident is the empty band");
 
     // A case already in a bed is not admitted again, whatever else it would balance.
-    let on_ward: Vec<String> = vec!["osce-a".into(), "ep2-stemi".into(), "osce-d4".into()];
+    let on_ward: Vec<String> = vec!["osce-a".into(), "ep2".into(), "osce-d4".into()];
     assert!(choose_next(&queue, &on_ward).is_none(),
             "no two beds hold the same case at once — the published rule, and an empty bed is \
              better than breaking it");

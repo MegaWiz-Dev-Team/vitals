@@ -27,7 +27,10 @@ pub const BEDS: usize = 3;
 ///
 /// A longer queue is more of these, never new clinical writing (CWF_PLAN.md's beds ruling).
 pub const CATALOGUE: [&str; 16] = [
-    "ep2-stemi", "ep3-epiglottitis", "ep4-pulmonary-embolism", "ep5-the-night-the-stars-fell",
+    // The bay's own ids, not the scenario filenames. One vocabulary: `scenario_path`, the persona
+    // files, the age table and the station sets all key on these, and a second spelling here made
+    // the bay resolve an episode to EP1's file under another patient's name.
+    "ep2", "ep3", "ep4", "ep5",
     "osce-a", "osce-a2", "osce-b", "osce-b2", "osce-b3", "osce-c",
     "osce-c2", "osce-c3", "osce-d", "osce-d2", "osce-d3", "osce-d4",
 ];
@@ -157,8 +160,8 @@ pub struct Pack {
 pub fn difficulty_of(case: &str) -> Option<&'static str> {
     Some(match case {
         // the episodes, from vitals-cli's own list
-        "ep2-stemi" => "intern",
-        "ep3-epiglottitis" | "ep4-pulmonary-embolism" | "ep5-the-night-the-stars-fell" => "resident",
+        "ep2" => "intern",
+        "ep3" | "ep4" | "ep5" => "resident",
         // the stations, from SETS in main.rs
         "osce-a" | "osce-a2" => "student",
         "osce-b" | "osce-b2" | "osce-b3" | "osce-c2" | "osce-c3" | "osce-d" | "osce-d3" => "intern",

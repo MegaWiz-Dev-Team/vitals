@@ -289,13 +289,10 @@ use std::path::PathBuf;
 use vitals_replay::{resume, shift};
 use vitals_web::ward::CATALOGUE;
 
+/// The server's own resolver, not a third copy of it. A test that knew where cases live
+/// independently would keep passing on the day the server stopped agreeing with it.
 fn sce_path(id: &str) -> PathBuf {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    if id.starts_with("osce-") {
-        root.join("demo/stations").join(format!("{id}.sce.json"))
-    } else {
-        root.join("demo/scenarios").join(format!("{id}.json"))
-    }
+    vitals_web::ward_chain::case_path(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."), id)
 }
 
 /// Untreated from the start, at the scenario's own grain: when does she arrest?
@@ -371,7 +368,7 @@ fn a_stay_is_three_cases_and_the_policy_publishes_it() {
 
     assert_eq!(STAY_CASES, 3);
 
-    let mut stay = Stay::new(1, vec!["osce-a".into(), "osce-c".into(), "ep2-stemi".into()]);
+    let mut stay = Stay::new(1, vec!["osce-a".into(), "osce-c".into(), "ep2".into()]);
     let mut shifts = 1;
     while stay.advance().is_some() {
         shifts += 1;
@@ -408,7 +405,7 @@ fn the_board_lists_the_patients_and_where_they_are_from() {
     let patients = vec![patient(7, OPEN, 2, 10, 0), patient(8, DIED, 1, 20, 90)];
     let mut packs = BTreeMap::new();
     packs.insert(7u64, Pack {
-        case: "ep2-stemi".into(),
+        case: "ep2".into(),
         persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 34, sex: "f".into() },
         portrait: Default::default(),
         endemic: false,
@@ -460,7 +457,7 @@ fn every_case_the_ward_can_admit_has_a_difficulty_and_the_board_publishes_it() {
     let patients = vec![patient(7, OPEN, 2, 10, 0), patient(8, OPEN, 0, 20, 0)];
     let mut packs = BTreeMap::new();
     packs.insert(7u64, Pack {
-        case: "ep2-stemi".into(),
+        case: "ep2".into(),
         persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 34, sex: "f".into() },
         portrait: Default::default(),
         endemic: false,
@@ -468,7 +465,7 @@ fn every_case_the_ward_can_admit_has_a_difficulty_and_the_board_publishes_it() {
 
     let v = ward_payload(&read(&patients, &[], &packs, None, 1234));
     let list = v["patients"].as_array().expect("patients");
-    assert_eq!(list[0]["case"], "ep2-stemi", "the board says which case she is");
+    assert_eq!(list[0]["case"], "ep2", "the board says which case she is");
     assert_eq!(list[0]["difficulty"], "intern", "at the level the bay already gives that case");
     assert!(list[1]["difficulty"].is_null(),
             "and a patient no pack describes yet has no case, so she has no level either — \
@@ -559,7 +556,7 @@ fn the_globe_reads_every_field_it_renders() {
     ];
     let mut packs = BTreeMap::new();
     packs.insert(7u64, Pack {
-        case: "ep2-stemi".into(),
+        case: "ep2".into(),
         persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 34, sex: "f".into() },
         portrait: [("stable".to_string(),
                     "https://storage.googleapis.com/vitals-world-portraits/\
@@ -806,7 +803,7 @@ fn every_time_the_ward_publishes_is_a_slot_or_a_z() {
     ];
     let mut packs = std::collections::BTreeMap::new();
     packs.insert(7u64, Pack {
-        case: "ep2-stemi".into(),
+        case: "ep2".into(),
         persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 54, sex: "f".into() },
         portrait: Default::default(),
         endemic: false,
