@@ -1,149 +1,250 @@
 {
- "_note": "A snapshot of the ward's case door, GET /api/ward/cases, as 7b described it on 16 Sep 2026 before it landed: every case the ward holds, with its country (alpha-3, or null for the common draw), difficulty, whether it is an endemic case, whether it is provisional, and its version. The two community cases are invented for the tests; the sixteen are the ward's catalogue.",
+ "_note": "A snapshot shaped like the ward's case door, GET /api/ward/cases (0543ed7): {cases:[...], derivations:{...}}. Each row is archetype, case_id, country (alpha-3 or null), difficulty, endemic, provisional, title, version and — the ward owner's addition of 16 Sep — patient {age, sex} spelled male/female, absent on a case with no stated patient (which fits any adult). The eighteen cases are invented for the tests; the real door lists sixty-six.",
  "cases": [
   {
-   "case_id": "osce-a",
+   "archetype": "chest-pain",
+   "case_id": "world-acs-elderly-man",
    "country": null,
    "difficulty": "student",
    "endemic": false,
    "provisional": false,
-   "version": 1
+   "title": "Chest pain in an older man",
+   "version": 1,
+   "patient": {
+    "age": 71,
+    "sex": "male"
+   }
   },
   {
-   "case_id": "osce-a2",
+   "archetype": "breathlessness",
+   "case_id": "world-copd-woman",
    "country": null,
    "difficulty": "student",
    "endemic": false,
    "provisional": false,
-   "version": 1
+   "title": "Breathless at rest",
+   "version": 1,
+   "patient": {
+    "age": 68,
+    "sex": "female"
+   }
   },
   {
-   "case_id": "osce-b",
+   "archetype": "chest-pain",
+   "case_id": "world-pneumothorax-young-man",
    "country": null,
    "difficulty": "intern",
    "endemic": false,
    "provisional": false,
-   "version": 1
+   "title": "Sudden chest pain in a young man",
+   "version": 1,
+   "patient": {
+    "age": 25,
+    "sex": "male"
+   }
   },
   {
-   "case_id": "osce-b2",
+   "archetype": "headache",
+   "case_id": "world-migraine-woman",
    "country": null,
    "difficulty": "intern",
    "endemic": false,
    "provisional": false,
-   "version": 1
+   "title": "The worst headache",
+   "version": 1,
+   "patient": {
+    "age": 25,
+    "sex": "female"
+   }
   },
   {
-   "case_id": "osce-b3",
+   "archetype": "abdominal-pain",
+   "case_id": "world-appendicitis-teen",
    "country": null,
    "difficulty": "intern",
    "endemic": false,
    "provisional": false,
-   "version": 1
+   "title": "Pain that moved",
+   "version": 1,
+   "patient": {
+    "age": 14,
+    "sex": "male"
+   }
   },
   {
-   "case_id": "osce-c2",
+   "archetype": "fever",
+   "case_id": "world-febrile-toddler",
    "country": null,
    "difficulty": "intern",
    "endemic": false,
    "provisional": false,
-   "version": 1
+   "title": "A hot toddler",
+   "version": 1,
+   "patient": {
+    "age": 3,
+    "sex": "female"
+   }
   },
   {
-   "case_id": "osce-c3",
-   "country": null,
-   "difficulty": "intern",
-   "endemic": false,
-   "provisional": false,
-   "version": 1
-  },
-  {
-   "case_id": "osce-d",
-   "country": null,
-   "difficulty": "intern",
-   "endemic": false,
-   "provisional": false,
-   "version": 1
-  },
-  {
-   "case_id": "osce-d3",
-   "country": null,
-   "difficulty": "intern",
-   "endemic": false,
-   "provisional": false,
-   "version": 1
-  },
-  {
-   "case_id": "osce-c",
+   "archetype": "asthma",
+   "case_id": "world-asthma-child",
    "country": null,
    "difficulty": "resident",
    "endemic": false,
    "provisional": false,
-   "version": 1
+   "title": "A child who cannot finish a sentence",
+   "version": 1,
+   "patient": {
+    "age": 6,
+    "sex": "female"
+   }
   },
   {
-   "case_id": "osce-d2",
-   "country": null,
-   "difficulty": "resident",
-   "endemic": false,
-   "provisional": false,
-   "version": 1
-  },
-  {
-   "case_id": "osce-d4",
-   "country": null,
-   "difficulty": "resident",
-   "endemic": false,
-   "provisional": false,
-   "version": 1
-  },
-  {
-   "case_id": "ep2",
+   "archetype": "abdominal-pain",
+   "case_id": "world-cholecystitis-woman",
    "country": null,
    "difficulty": "intern",
    "endemic": false,
    "provisional": false,
-   "version": 1
+   "title": "Pain after a meal",
+   "version": 1,
+   "patient": {
+    "age": 53,
+    "sex": "female"
+   }
   },
   {
-   "case_id": "ep3",
+   "archetype": "stroke",
+   "case_id": "world-stroke-man",
+   "country": null,
+   "difficulty": "intern",
+   "endemic": false,
+   "provisional": false,
+   "title": "A face that dropped",
+   "version": 1,
+   "patient": {
+    "age": 62,
+    "sex": "male"
+   }
+  },
+  {
+   "archetype": "sepsis",
+   "case_id": "world-sepsis-woman",
    "country": null,
    "difficulty": "resident",
    "endemic": false,
    "provisional": false,
-   "version": 1
+   "title": "Confused and cold",
+   "version": 1,
+   "patient": {
+    "age": 55,
+    "sex": "female"
+   }
   },
   {
-   "case_id": "ep4",
+   "archetype": "fall",
+   "case_id": "world-hip-fracture-woman",
    "country": null,
    "difficulty": "resident",
    "endemic": false,
    "provisional": false,
-   "version": 1
+   "title": "A fall at home",
+   "version": 1,
+   "patient": {
+    "age": 72,
+    "sex": "female"
+   }
   },
   {
-   "case_id": "ep5",
+   "archetype": "seizure",
+   "case_id": "world-seizure-child",
+   "country": null,
+   "difficulty": "intern",
+   "endemic": false,
+   "provisional": false,
+   "title": "A first seizure",
+   "version": 1,
+   "patient": {
+    "age": 6,
+    "sex": "female"
+   }
+  },
+  {
+   "archetype": "trauma",
+   "case_id": "world-rta-adult",
    "country": null,
    "difficulty": "resident",
    "endemic": false,
    "provisional": false,
+   "title": "Brought in from the road",
+   "version": 2
+  },
+  {
+   "archetype": "syncope",
+   "case_id": "world-syncope-adult",
+   "country": null,
+   "difficulty": "student",
+   "endemic": false,
+   "provisional": false,
+   "title": "Fainted in the queue",
    "version": 1
   },
   {
-   "case_id": "cmty-th-dengue-01",
+   "archetype": "dengue",
+   "case_id": "world-dengue-thailand",
    "country": "THA",
    "difficulty": "intern",
    "endemic": true,
    "provisional": true,
-   "version": 3
+   "title": "Fever in the rainy season",
+   "version": 3,
+   "patient": {
+    "age": 26,
+    "sex": "female"
+   }
   },
   {
-   "case_id": "cmty-np-altitude-01",
+   "archetype": "altitude",
+   "case_id": "world-altitude-nepal",
    "country": "NPL",
    "difficulty": "resident",
    "endemic": true,
    "provisional": true,
+   "title": "Headache above four thousand metres",
    "version": 1
+  },
+  {
+   "archetype": "malaria",
+   "case_id": "world-malaria-kenya",
+   "country": "KEN",
+   "difficulty": "intern",
+   "endemic": true,
+   "provisional": false,
+   "title": "Fever after the long rains",
+   "version": 2,
+   "patient": {
+    "age": 31,
+    "sex": "male"
+   }
+  },
+  {
+   "archetype": "tuberculosis",
+   "case_id": "world-tb-community-india",
+   "country": "IND",
+   "difficulty": "intern",
+   "endemic": false,
+   "provisional": true,
+   "title": "A cough that would not stop",
+   "version": 1,
+   "patient": {
+    "age": 40,
+    "sex": "male"
+   }
   }
- ]
+ ],
+ "derivations": {
+  "cases": "(prose elided in fixture)",
+  "endemic": "true when the case was written for its country's list; a bed's own endemic flag says the patient was drawn from that list",
+  "patient": "(prose elided in fixture)"
+ }
 }

@@ -11,14 +11,15 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use vitals_factory::cases::fits;
 use vitals_factory::door::{parse_cases, Door, FillReply, Filled, Outbound, Pushed, Queued, Token, WardCase, WardView};
 use vitals_factory::ledger::Ledger;
 use vitals_factory::manifest::{batch_age, Manifest};
 use vitals_factory::pool::{read_pool, Person};
 use vitals_factory::tick::{backfill_variants, estimate_usd, remake_face, tick, Config, EDIT_USD, FACE_ATTEMPTS, JUDGE_USD, VARIANT_PX, VARIANT_QUALITY};
 use vitals_factory::tools::Tools;
-use vitals_web::ward::Pack;
-use vitals_web::ward_chain::{pack_id, validate_pack, PORTRAITS};
+use vitals_web::ward::{Pack, PORTRAIT_LADDER};
+use vitals_web::ward_chain::{is_portrait_url, pack_id, AGE_RANGE, PORTRAITS};
 
 const POOL: &str = include_str!("../../vitals-web/data/personas.json");
 const STAGING: &str = include_str!("fixtures/ward-staging-2026-09-16.json");
@@ -82,6 +83,37 @@ fn config(dir: &Path, depth: usize, bases: usize) -> Config {
 /// `(case_id, difficulty)` as a pushed pack carried them.
 type CaseFields = (Option<String>, Option<String>);
 
+/// The door of 0543ed7: a pack names a World case from the list, a person of the case's sex at an
+/// age inside its window, a real country, portraits at the bucket's address — and a season id is
+/// refused in the door's own words.
+fn validate(p: &Pack, cases: &[WardCase]) -> Result<(), String> {
+    let Some(case) = cases.iter().find(|c| c.case_id == p.case) else {
+        return Err(format!("{} is not a case this ward serves — queueing her would put a patient on the board that no shift can open", p.case));
+    };
+    if !p.persona.country_is_alpha3() {
+        return Err(format!("{} is not an ISO 3166-1 alpha-3 country code", p.persona.country));
+    }
+    if p.persona.name.trim().is_empty() {
+        return Err("a patient with no name".into());
+    }
+    if !AGE_RANGE.contains(&p.persona.age) {
+        return Err(format!("nobody is {}", p.persona.age));
+    }
+    let sex = vitals_factory::sex::Sex::parse(&p.persona.sex).ok_or_else(|| format!("{} is not a sex the pack may carry", p.persona.sex))?;
+    if !fits(case, sex, p.persona.age) {
+        return Err(format!("{} is written for {:?}, and this pack says {} of {}", p.case, case.patient, p.persona.sex, p.persona.age));
+    }
+    for (state, src) in &p.portrait {
+        if state == "dead" || !PORTRAIT_LADDER.contains(&state.as_str()) {
+            return Err(format!("{state} is not a state the engine reports"));
+        }
+        if !is_portrait_url(src) {
+            return Err(format!("a portrait must be {PORTRAITS}/<sha256>.webp, not {src}"));
+        }
+    }
+    Ok(())
+}
+
 /// The door, as the ward runs it: validate, content-address, answer in numbers.
 struct FakeDoor {
     ward: RefCell<WardView>,
@@ -101,17 +133,18 @@ struct FakeDoor {
 }
 
 impl FakeDoor {
+    /// A ward with its case door open on the 16 Sep list, as the real one is.
     fn new(ward: WardView) -> FakeDoor {
         FakeDoor {
             ward: RefCell::new(ward), open: true, takes_256: true, queue: RefCell::new(BTreeMap::new()),
-            cases: RefCell::new(vec![]), chosen: RefCell::new(BTreeMap::new()),
+            cases: RefCell::new(parse_cases(CASES).unwrap()), chosen: RefCell::new(BTreeMap::new()),
             pushes: RefCell::new(vec![]), fills: RefCell::new(vec![]), replaces: RefCell::new(vec![]), tokens_seen: RefCell::new(vec![]),
         }
     }
-    /// The same door with the case door open on the 16 Sep list.
-    fn with_cases(ward: WardView) -> FakeDoor {
+    /// A ward that lists no cases.
+    fn no_cases(ward: WardView) -> FakeDoor {
         let d = FakeDoor::new(ward);
-        *d.cases.borrow_mut() = parse_cases(CASES).unwrap();
+        d.cases.borrow_mut().clear();
         d
     }
 }
@@ -145,7 +178,7 @@ impl Door for FakeDoor {
                 out.rejected.push(format!("{}: a 256 px portrait must be {PORTRAITS}/<sha256>-256.webp", bad.0));
                 continue;
             }
-            if let Err(why) = validate_pack(&plain) {
+            if let Err(why) = validate(&plain, &self.cases.borrow()) {
                 out.rejected.push(why);
                 continue;
             }
@@ -420,9 +453,9 @@ fn the_faces_of_one_patient_are_completed_per_tick_and_known_ones_are_not_made_a
     };
     let budi = pool.iter().find(|p| p.key == "IDN-1").unwrap();
     let priya = pool.iter().find(|p| p.key == "IND-0").unwrap();
-    put(&mut ward.patients[0], ploy, "osce-c2", 50, base_of("THA-0"));
-    put(&mut ward.patients[1], budi, "osce-d", 63, base_of("IDN-1"));
-    put(&mut ward.patients[2], priya, "osce-b", 25, base_of("IND-0"));
+    put(&mut ward.patients[0], ploy, "world-cholecystitis-woman", 50, base_of("THA-0"));
+    put(&mut ward.patients[1], budi, "world-stroke-man", 63, base_of("IDN-1"));
+    put(&mut ward.patients[2], priya, "world-migraine-woman", 25, base_of("IND-0"));
     let door = FakeDoor::new(ward);
     let tools = FakeTools::default();
 
@@ -483,7 +516,7 @@ fn a_dry_run_reads_and_plans_and_touches_nothing() {
     assert!(!dir.join("factory-ledger.json").exists());
     let text = r.lines.join("\n");
     assert!(text.contains("would"), "{text}");
-    assert!(text.contains("osce-"), "names the cases it would build: {text}");
+    assert!(text.contains("world-"), "names the cases it would build: {text}");
     assert!(text.contains("dry run"), "{text}");
 }
 
@@ -533,20 +566,20 @@ fn a_dry_run_prints_the_next_twenty_draws_with_country_and_region() {
 }
 
 // ── the case door ────────────────────────────────────────────────────────────
-// 7b's `GET /api/ward/cases` lists the cases the ward holds, and the queue door is about to read
-// an optional `case_id` and `difficulty` on a pack. The factory chooses one per pack from that
-// list (tests/cases.rs holds the rule), carries it on the wire, records it in the ledger so a
-// re-send says the same, and prints it in the log and the dry run.
+// `GET /api/ward/cases` lists the cases the ward holds — the real payload is `{cases: [{archetype,
+// case_id, country, difficulty, endemic, provisional, title, version, patient}], derivations}` —
+// and the queue door refuses a season id. A pack's `case` is a World case_id from that list,
+// chosen first; the person second, of the case's sex, at an age inside its window. The pack also
+// carries `case_id` (the same id) and `difficulty` for the door that reads them.
 
-/// Every pack built against a ward with a case door goes out with a case_id and a difficulty
-/// from the ward's own list, fitting her age and sex, never an endemic case of another country;
-/// the ledger remembers both; the log says which.
+/// Every pack built against the ward names a World case from its list, fits that case's patient
+/// by sex and age, carries the case again as `case_id` with its level, and the ledger remembers.
 #[test]
-fn every_pack_built_carries_a_case_id_and_difficulty_from_the_wards_list() {
+fn every_pack_built_names_a_world_case_that_fits_and_carries_its_level() {
     let dir = world("cases");
     let pool = read_pool(POOL).unwrap();
     seed_manifest(&dir, &pool);
-    let door = FakeDoor::with_cases(WardView::parse(STAGING).unwrap());
+    let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
     let tools = FakeTools::default();
     let r = tick(&config(&dir, 6, 2), &door, &tools);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
@@ -554,111 +587,97 @@ fn every_pack_built_carries_a_case_id_and_difficulty_from_the_wards_list() {
     let q = door.queue.borrow();
     assert!(!q.is_empty());
     for (id, pack) in q.iter() {
+        let w = listed.iter().find(|c| c.case_id == pack.case).unwrap_or_else(|| panic!("{} is not on the ward's list", pack.case));
+        assert!(!pack.case.starts_with("osce-"), "a season id");
+        let sex = vitals_factory::sex::Sex::parse(&pack.persona.sex).unwrap();
+        assert!(fits(w, sex, pack.persona.age), "{} on {} {} {}", pack.case, pack.persona.name, pack.persona.sex, pack.persona.age);
+        assert!(w.country.is_none() || w.country.as_deref() == Some(pack.persona.country.as_str()), "{} is another country's case on {}", pack.case, pack.persona.name);
         let (case_id, difficulty) = door.chosen.borrow()[id].clone();
-        let case_id = case_id.unwrap_or_else(|| panic!("{}: no case_id", pack.persona.name));
-        let w = listed.iter().find(|c| c.case_id == case_id).unwrap_or_else(|| panic!("{case_id} is not on the ward's list"));
-        assert_eq!(difficulty.as_deref(), Some(w.difficulty.as_str()), "{case_id}");
-        assert!(w.country.is_none() || w.country.as_deref() == Some(pack.persona.country.as_str()), "{case_id} is another country's endemic case on {}", pack.persona.name);
-        // Her age and sex fit the chosen case as the factory knows it.
-        let theirs = vitals_web::ward::case_patient(&case_id).unwrap_or_else(|| panic!("{case_id}: a station the factory has a file for"));
-        assert_eq!(theirs.sex.to_lowercase(), pack.persona.sex, "{case_id} on {}", pack.persona.name);
-        assert!(vitals_web::ward::age_band(theirs.age).contains(&pack.persona.age), "{case_id} at {}", pack.persona.age);
+        assert_eq!(case_id.as_deref(), Some(pack.case.as_str()), "case_id is the case");
+        assert_eq!(difficulty.as_deref(), Some(w.difficulty.as_str()));
     }
     let ledger = Ledger::load(&dir.join("factory-ledger.json")).unwrap();
-    for (id, s) in &ledger.sent {
-        assert_eq!(s.case_id, door.chosen.borrow()[id].0, "the ledger remembers the case the pack went out with");
+    for (_, s) in &ledger.sent {
+        assert_eq!(s.case_id.as_deref(), Some(s.case.as_str()));
         assert!(s.difficulty.is_some());
     }
     let text = r.lines.join("\n");
-    assert!(text.lines().filter(|l| l.starts_with("queued")).all(|l| l.contains("case_id ")), "every queued line names the case_id:\n{text}");
+    assert!(text.contains("case door: 18 cases listed"), "{text}");
+    assert!(text.lines().filter(|l| l.starts_with("queued")).all(|l| l.contains(" · student") || l.contains(" · intern") || l.contains(" · resident")), "every queued line names the level:\n{text}");
 }
 
-/// A ward with no case door yet (an older build, or the door answering nothing): the packs go
-/// out exactly as before — no case fields on the wire, none in the ledger — and the tick says so
-/// once rather than failing.
+/// A ward that lists no cases: nothing is built, nothing season-shaped is sent, and the tick says
+/// so as an error — a factory that cannot read the case door cannot build a pack the door takes.
 #[test]
-fn a_ward_without_a_case_door_gets_packs_without_case_fields() {
+fn a_ward_that_lists_no_cases_builds_nothing_and_says_so() {
     let dir = world("no-cases");
     let pool = read_pool(POOL).unwrap();
     seed_manifest(&dir, &pool);
-    let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
+    let door = FakeDoor::no_cases(WardView::parse(STAGING).unwrap());
     let tools = FakeTools::default();
     let r = tick(&config(&dir, 4, 2), &door, &tools);
-    assert!(r.errors.is_empty(), "{:?}", r.errors);
-    assert!(!door.queue.borrow().is_empty());
-    assert!(door.chosen.borrow().values().all(|(c, d)| c.is_none() && d.is_none()), "{:?}", door.chosen.borrow());
-    let ledger = Ledger::load(&dir.join("factory-ledger.json")).unwrap();
-    assert!(ledger.sent.values().all(|s| s.case_id.is_none()));
-    assert!(r.lines.iter().any(|l| l.contains("no case") && l.contains("case_id")), "{:?}", r.lines);
+    assert!(door.queue.borrow().is_empty(), "nothing built");
+    assert!(r.errors.iter().any(|e| e.contains("no cases")), "{:?}", r.errors);
+    assert!(tools.paints.borrow().is_empty(), "no face painted for a pack that cannot go");
 }
 
-/// A pack sent before the case door existed is re-sent with a case_id chosen now and recorded,
-/// so the pack the ward admits and the ledger agree from then on.
+/// A pack waiting in the ledger with a season id — sent before the ward refused them — is refused
+/// at the re-send in the door's words, dropped from the ledger so the face is free, and the tick
+/// goes on to build World-case packs in its place.
 #[test]
-fn a_waiting_pack_from_before_the_case_door_gets_a_case_id_when_it_is_re_sent() {
-    let dir = world("resend-cases");
+fn a_waiting_pack_with_a_season_id_is_refused_at_the_re_send_and_dropped() {
+    let dir = world("season-resend");
     let pool = read_pool(POOL).unwrap();
-    seed_manifest(&dir, &pool);
+    let man = seed_manifest(&dir, &pool);
+    let anan = pool.iter().find(|p| p.key == "THA-1").unwrap();
+    let cfg = config(&dir, 3, 2);
+    let mut ledger = Ledger::default();
+    let sent = vitals_factory::ledger::Sent::new("osce-a", anan, 70, false, Some(man.entries["THA-1"].portrait["stable"].clone()), cfg.now - 600, &cfg.ward);
+    let id = pack_id(&sent.to_pack());
+    ledger.sent.insert(id.clone(), sent);
+    ledger.save(&dir.join("factory-ledger.json")).unwrap();
+    let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
     let tools = FakeTools::default();
-    // Yesterday: no case door.
-    let r = tick(&config(&dir, 3, 2), &FakeDoor::new(WardView::parse(STAGING).unwrap()), &tools);
-    assert!(r.errors.is_empty(), "{:?}", r.errors);
-    let before = Ledger::load(&dir.join("factory-ledger.json")).unwrap();
-    assert_eq!(before.sent.len(), 3);
-    assert!(before.sent.values().all(|s| s.case_id.is_none()));
-    // Today: the case door is open, the ward's queue lost the packs (a new fake door), and the
-    // three are re-sent — each now with a case_id.
-    let door = FakeDoor::with_cases(WardView::parse(STAGING).unwrap());
-    let r = tick(&config(&dir, 3, 2), &door, &tools);
-    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let r = tick(&cfg, &door, &tools);
+    assert_eq!(r.errors.len(), 1, "{:?}", r.errors);
+    assert!(r.errors[0].contains("osce-a") && r.errors[0].contains("not a case this ward serves") && r.errors[0].contains("dropped"), "{}", r.errors[0]);
     let after = Ledger::load(&dir.join("factory-ledger.json")).unwrap();
-    assert_eq!(after.sent.len(), 3, "the same three, put back, nothing new built");
-    for (id, s) in &after.sent {
-        assert!(s.case_id.is_some(), "{}: chosen at the re-send", s.name);
-        assert_eq!(door.chosen.borrow()[id].0, s.case_id, "the wire and the ledger agree");
-    }
-    assert!(r.lines.iter().any(|l| l.contains("case_id") && l.contains("re-sent") || l.contains("resent")), "{:?}", r.lines);
+    assert!(!after.sent.contains_key(&id), "dropped, so the face is free");
+    assert_eq!(after.sent.len(), 3, "and three World packs built in its place: {:?}", after.sent.values().map(|s| s.case.clone()).collect::<Vec<_>>());
+    assert!(after.sent.values().all(|s| s.case.starts_with("world-")));
+    assert!(door.queue.borrow().values().all(|p| p.case.starts_with("world-")));
 }
 
-/// Never the same case on the board twice: a case in a bed is not chosen for any pack built or
-/// re-sent while it is there. The bed's case is `patients[].case` — the World case id since the
-/// ward's 0543ed7 — and the bed's `endemic` is about the draw, not the case, so it is not read.
+/// Never the same case on the board twice: a case in a bed (`patients[].case`) is chosen for no
+/// pack while it is there; the bed's `endemic` is about the draw, not the case, and is not read.
 #[test]
 fn a_case_in_a_bed_is_not_chosen_for_a_pack() {
     let dir = world("bed-case");
     let pool = read_pool(POOL).unwrap();
     seed_manifest(&dir, &pool);
     let mut ward = WardView::parse(STAGING).unwrap();
-    // The three in beds, by `case`; one of them drawn from an endemic list, which changes nothing here.
-    ward.patients[0].case = Some("osce-a2".into());
-    ward.patients[1].case = Some("osce-c2".into());
+    ward.patients[0].case = Some("world-copd-woman".into());
+    ward.patients[1].case = Some("world-cholecystitis-woman".into());
     ward.patients[1].endemic = true;
-    ward.patients[2].case = Some("osce-d4".into());
-    let door = FakeDoor::with_cases(ward);
+    ward.patients[2].case = Some("world-hip-fracture-woman".into());
+    let door = FakeDoor::new(ward);
     let tools = FakeTools::default();
     let r = tick(&config(&dir, 12, 3), &door, &tools);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     assert!(door.queue.borrow().len() >= 6, "{}", door.queue.borrow().len());
-    for (id, pack) in door.queue.borrow().iter() {
-        let (case_id, _) = door.chosen.borrow()[id].clone();
-        if let Some(c) = &case_id {
-            assert!(!["osce-a2", "osce-c2", "osce-d4"].contains(&c.as_str()), "{c} is in a bed, chosen for {}", pack.persona.name);
-        }
+    for pack in door.queue.borrow().values() {
+        assert!(!["world-copd-woman", "world-cholecystitis-woman", "world-hip-fracture-woman"].contains(&pack.case.as_str()), "{} is in a bed, chosen for {}", pack.case, pack.persona.name);
     }
-    // Women of 62–74 fit only osce-a2 and osce-d4 among the stations, both in beds: such a pack
-    // goes out without a case_id rather than with a duplicate, and the log says so.
-    let text = r.lines.join("\n");
-    assert!(text.contains("no case fits") || door.chosen.borrow().values().all(|(c, _)| c.is_some()), "{text}");
 }
 
-/// The dry run prints the case_id chosen for every draw it lists, both in the build list and in
-/// the twenty ahead, so the founder sees the case beside the country.
+/// The dry run prints the case chosen for every draw it lists, in the build list and in the
+/// twenty ahead, so the founder sees the case beside the country — and never "no case".
 #[test]
-fn a_dry_run_prints_the_case_id_chosen_for_each_draw() {
+fn a_dry_run_prints_the_case_chosen_for_each_draw() {
     let dir = world("dry-cases");
     let pool = read_pool(POOL).unwrap();
     seed_manifest(&dir, &pool);
-    let door = FakeDoor::with_cases(WardView::parse(STAGING).unwrap());
+    let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
     let tools = FakeTools::default();
     let cfg = Config { dry_run: true, ..config(&dir, 6, 2) };
     let r = tick(&cfg, &door, &tools);
@@ -668,23 +687,17 @@ fn a_dry_run_prints_the_case_id_chosen_for_each_draw() {
     let draws: Vec<&String> = r.lines[start + 1..].iter().take_while(|l| l.starts_with("  ")).collect();
     assert_eq!(draws.len(), 20);
     for line in &draws {
-        // "  1. ETH · Sub-Saharan Africa · Tigist Alemu · case_id osce-a2 (student)"
+        // "  1. NER · Sub-Saharan Africa · Hadiza Moussa · case_id world-copd-woman (student)"
         let cells: Vec<&str> = line.trim().split(" · ").collect();
         assert_eq!(cells.len(), 4, "{line}");
-        let tail = cells[3];
-        if tail == "no case_id" {
-            continue;
-        }
-        let (word, rest) = tail.split_once(' ').unwrap_or_else(|| panic!("{line}"));
+        let (word, rest) = cells[3].split_once(' ').unwrap_or_else(|| panic!("{line}"));
         assert_eq!(word, "case_id", "{line}");
         let (case_id, difficulty) = rest.split_once(" (").unwrap_or_else(|| panic!("{line}"));
-        let difficulty = difficulty.trim_end_matches(')');
         let w = listed.iter().find(|c| c.case_id == case_id).unwrap_or_else(|| panic!("{case_id} in {line} is not on the list"));
-        assert_eq!(w.difficulty, difficulty, "{line}");
+        assert_eq!(w.difficulty, difficulty.trim_end_matches(')'), "{line}");
     }
-    assert!(draws.iter().filter(|l| l.contains("case_id ")).count() >= 15, "most draws find a case:\n{}", draws.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n"));
-    let build: Vec<&String> = r.lines.iter().filter(|l| l.starts_with("  osce-")).collect();
-    assert!(!build.is_empty() && build.iter().all(|l| l.contains("case_id")), "the build list too:\n{}", build.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n"));
+    let build: Vec<&String> = r.lines.iter().filter(|l| l.starts_with("  world-")).collect();
+    assert!(!build.is_empty(), "the build list names World cases:\n{}", r.lines.join("\n"));
     assert!(door.pushes.borrow().is_empty() && !dir.join("factory-ledger.json").exists(), "still a dry run");
 }
 
@@ -835,7 +848,7 @@ fn a_remade_face_replaces_the_one_on_her_waiting_pack_once() {
     let cfg = config(&dir, 0, 0);
 
     // Her pack went out with the doll as its stable, as packs were sent before the rule.
-    let mut sent = vitals_factory::ledger::Sent::new("osce-c", kor0, 8, false, Some(doll.clone()), cfg.now, &cfg.ward);
+    let mut sent = vitals_factory::ledger::Sent::new("world-asthma-child", kor0, 8, false, Some(doll.clone()), cfg.now, &cfg.ward);
     sent.sex = "f".into();
     let pack = sent.to_pack();
     let id = pack_id(&pack);
@@ -944,7 +957,7 @@ fn states_for_a_face_the_board_kept_are_pushed_and_not_filed_under_the_new_one()
     man.save(&dir.join("portraits.json")).unwrap();
     let mut ward = WardView::parse(STAGING).unwrap();
     let p = &mut ward.patients[0];
-    p.name = Some(kor0.name.clone()); p.country = Some("KOR".into()); p.case = Some("osce-c".into()); p.age = Some(8);
+    p.name = Some(kor0.name.clone()); p.country = Some("KOR".into()); p.case = Some("world-asthma-child".into()); p.age = Some(8);
     p.portrait = Some(on_board.clone()); p.portraits = BTreeMap::from([("stable".to_string(), on_board.clone())]);
     let door = FakeDoor::new(ward);
     let tools = FakeTools::default();
@@ -971,7 +984,7 @@ fn a_state_the_editor_refuses_costs_only_that_state() {
     let stable = man.entries["KOR-0"].portrait["stable"].clone();
     let mut ward = WardView::parse(STAGING).unwrap();
     let p = &mut ward.patients[0];
-    p.name = Some(kor0.name.clone()); p.country = Some("KOR".into()); p.case = Some("osce-c2".into()); p.age = Some(28);
+    p.name = Some(kor0.name.clone()); p.country = Some("KOR".into()); p.case = Some("world-cholecystitis-woman".into()); p.age = Some(28);
     p.portrait = Some(stable.clone()); p.portraits = BTreeMap::from([("stable".to_string(), stable)]);
     let door = FakeDoor::new(ward);
     let tools = FakeTools::default();
@@ -1003,7 +1016,7 @@ fn a_childs_worse_states_are_asked_for_gently_and_an_adults_as_before() {
         p.name = Some(who.name.clone()); p.country = Some(who.country.clone()); p.case = Some(case.into()); p.age = Some(age);
         p.portrait = Some(stable.clone()); p.portraits = BTreeMap::from([("stable".to_string(), stable)]);
     };
-    put(&mut ward.patients[0], kor0, "osce-c", 8, man.entries["KOR-0"].portrait["stable"].clone());
+    put(&mut ward.patients[0], kor0, "world-asthma-child", 8, man.entries["KOR-0"].portrait["stable"].clone());
     let door = FakeDoor::new(ward);
     let tools = FakeTools::default();
     let r = tick(&config(&dir, 0, 0), &door, &tools);
@@ -1024,7 +1037,7 @@ fn a_childs_worse_states_are_asked_for_gently_and_an_adults_as_before() {
     let man2 = seed_manifest(&dir2, &pool);
     let pak1 = pool.iter().find(|p| p.key == "PAK-1").unwrap();
     let mut ward2 = WardView::parse(STAGING).unwrap();
-    put(&mut ward2.patients[0], pak1, "osce-d", 62, man2.entries["PAK-1"].portrait["stable"].clone());
+    put(&mut ward2.patients[0], pak1, "world-stroke-man", 62, man2.entries["PAK-1"].portrait["stable"].clone());
     let door2 = FakeDoor::new(ward2);
     let tools2 = FakeTools::default();
     let r = tick(&config(&dir2, 0, 0), &door2, &tools2);
@@ -1127,13 +1140,13 @@ fn the_siblings_of_faces_already_on_file_are_made_once_and_carried_to_the_ward()
     let stable = man2.entries["THA-0"].portrait["stable"].clone();
     let mut ward = WardView::parse(STAGING).unwrap();
     let p = &mut ward.patients[0];
-    p.name = Some(ploy.name.clone()); p.country = Some("THA".into()); p.case = Some("osce-c2".into()); p.age = Some(50);
+    p.name = Some(ploy.name.clone()); p.country = Some("THA".into()); p.case = Some("world-cholecystitis-woman".into()); p.age = Some(50);
     p.portrait = Some(stable.clone());
     p.portraits = BTreeMap::from([("stable".to_string(), stable.clone()), ("improving".to_string(), man2.entries["THA-0"].portrait["improving"].clone()), ("critical".to_string(), man2.entries["THA-0"].portrait["critical"].clone()),
         ("recovered".to_string(), sha_url(b"r")), ("deteriorating".to_string(), sha_url(b"d")), ("arrest".to_string(), sha_url(b"a"))]);
     let door = FakeDoor::new(ward);
     let anan = pool.iter().find(|p| p.key == "THA-1").unwrap();
-    let mut sent = vitals_factory::ledger::Sent::new("osce-a", anan, 70, false, Some(man2.entries["THA-1"].portrait["stable"].clone()), cfg.now, &cfg.ward);
+    let mut sent = vitals_factory::ledger::Sent::new("world-acs-elderly-man", anan, 70, false, Some(man2.entries["THA-1"].portrait["stable"].clone()), cfg.now, &cfg.ward);
     sent.sex = "m".into();
     let pack = sent.to_pack();
     let id = pack_id(&pack);
@@ -1166,7 +1179,7 @@ fn the_states_are_edited_from_the_full_face_never_the_thumbnail_the_board_shows(
     let small = sibling(&full);
     let mut ward = WardView::parse(STAGING).unwrap();
     let p = &mut ward.patients[0];
-    p.name = Some(anan.name.clone()); p.country = Some("THA".into()); p.case = Some("osce-a".into()); p.age = Some(70);
+    p.name = Some(anan.name.clone()); p.country = Some("THA".into()); p.case = Some("world-acs-elderly-man".into()); p.age = Some(70);
     p.portrait = Some(small.clone());
     p.portraits = BTreeMap::from([("stable".to_string(), full.clone()), ("stable_256".to_string(), small.clone())]);
     let door = FakeDoor::new(ward);
@@ -1186,7 +1199,7 @@ fn the_states_are_edited_from_the_full_face_never_the_thumbnail_the_board_shows(
     let kanya = pool.iter().find(|p| p.key == "THA-2").unwrap();
     let mut ward2 = WardView::parse(STAGING).unwrap();
     let p = &mut ward2.patients[0];
-    p.name = Some(kanya.name.clone()); p.country = Some("THA".into()); p.case = Some("osce-d2".into()); p.age = Some(58);
+    p.name = Some(kanya.name.clone()); p.country = Some("THA".into()); p.case = Some("world-sepsis-woman".into()); p.age = Some(58);
     p.portrait = Some(sibling(&full2)); p.portraits = BTreeMap::new();
     let door2 = FakeDoor::new(ward2);
     let tools2 = FakeTools::default();
@@ -1211,7 +1224,7 @@ fn siblings_are_made_for_pictures_the_board_has_and_the_file_does_not() {
     let states = ["stable", "recovered", "improving", "deteriorating", "critical", "arrest"];
     let mut ward = WardView::parse(STAGING).unwrap();
     let p = &mut ward.patients[0];
-    p.name = Some(kor0.name.clone()); p.country = Some("KOR".into()); p.case = Some("osce-c".into()); p.age = Some(8);
+    p.name = Some(kor0.name.clone()); p.country = Some("KOR".into()); p.case = Some("world-asthma-child".into()); p.age = Some(8);
     p.portraits = states.iter().map(|st| (st.to_string(), sha_url(format!("board/{st}").as_bytes()))).collect();
     p.portrait = p.portraits.get("stable").cloned();
     let door = FakeDoor::new(ward);
@@ -1294,7 +1307,7 @@ fn a_waiting_pack_sent_with_the_base_gets_a_made_stable_once() {
     let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
     let tools = FakeTools::default();
     let cfg = config(&dir, 0, 0);
-    let mut sent = vitals_factory::ledger::Sent::new("osce-a", anan, 70, false, Some(base.clone()), cfg.now, &cfg.ward);
+    let mut sent = vitals_factory::ledger::Sent::new("world-acs-elderly-man", anan, 70, false, Some(base.clone()), cfg.now, &cfg.ward);
     sent.sex = "m".into();
     let pack = sent.to_pack();
     let id = pack_id(&pack);
@@ -1341,13 +1354,13 @@ fn every_made_state_is_judged_twice_and_a_refusal_costs_one_re_edit_then_the_sta
     let base = man.entries["PAK-1"].portrait["stable"].clone();
     let mut ward = WardView::parse(STAGING).unwrap();
     let p = &mut ward.patients[0];
-    p.name = Some(pak1.name.clone()); p.country = Some("PAK".into()); p.case = Some("osce-d".into()); p.age = Some(62);
+    p.name = Some(pak1.name.clone()); p.country = Some("PAK".into()); p.case = Some("world-stroke-man".into()); p.age = Some(62);
     p.portrait = Some(base.clone()); p.portraits = BTreeMap::from([("stable".to_string(), base.clone())]);
     let door = FakeDoor::new(ward);
     let tools = FakeTools::default();
     let cfg = config(&dir, 0, 0);
     // Her pack is in the ledger, admitted, so the refusal has somewhere to be recorded.
-    let mut sent = vitals_factory::ledger::Sent::new("osce-d", pak1, 62, false, Some(base.clone()), cfg.now, &cfg.ward);
+    let mut sent = vitals_factory::ledger::Sent::new("world-stroke-man", pak1, 62, false, Some(base.clone()), cfg.now, &cfg.ward);
     sent.sex = "m".into();
     sent.patient_id = Some(1789488342);
     let id = pack_id(&sent.to_pack());
@@ -1395,7 +1408,7 @@ fn every_made_state_is_judged_twice_and_a_refusal_costs_one_re_edit_then_the_sta
 // skin colour and tone, which is where arrest changes the face most.
 #[test]
 fn the_editor_and_the_judge_read_one_feature_per_state() {
-    use vitals_factory::catalogue::Sex;
+    use vitals_factory::sex::Sex;
     use vitals_factory::prompts::{feature, sentence, shows, state_for, KEEP, SAME_PERSON, STATES};
     for st in STATES.iter().chain(["stable"].iter()) {
         let f = feature(st).unwrap_or_else(|| panic!("{st} has a feature"));
@@ -1441,7 +1454,7 @@ fn the_edit_budget_is_counted_across_ticks_and_states_wait_when_it_is_spent() {
     let base = man.entries["PAK-1"].portrait["stable"].clone();
     let mut ward = WardView::parse(STAGING).unwrap();
     let p = &mut ward.patients[0];
-    p.name = Some(pak1.name.clone()); p.country = Some("PAK".into()); p.case = Some("osce-d".into()); p.age = Some(62);
+    p.name = Some(pak1.name.clone()); p.country = Some("PAK".into()); p.case = Some("world-stroke-man".into()); p.age = Some(62);
     p.portrait = Some(base.clone()); p.portraits = BTreeMap::from([("stable".to_string(), base.clone())]);
     let door = FakeDoor::new(ward);
     let tools = FakeTools::default();

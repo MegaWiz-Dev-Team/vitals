@@ -10,28 +10,23 @@
 //! never holds a country twice while another country is available.
 
 use std::collections::{BTreeMap, BTreeSet};
-use vitals_factory::catalogue::{Case, Catalogue, Sex};
-use vitals_factory::door::{BoardPatient, WardView};
+use vitals_factory::door::{parse_cases, BoardPatient, WardCase, WardView};
 use vitals_factory::ledger::{Ledger, Sent};
 use vitals_factory::manifest::{batch_age, Manifest};
 use vitals_factory::need::{weights, Weights};
 use vitals_factory::plan::{bed_cap, plan, Inputs, Plan, MIN_COUNTRIES, MIN_REGIONS, QUEUE_CAP, QUEUE_WINDOW, WORLD_WINDOW};
 use vitals_factory::pool::{read_pool, Person};
 use vitals_factory::region::{region_of, Region, ALL};
-use vitals_web::ward::{age_band, case_patient, difficulty_of};
+use vitals_factory::sex::Sex;
 use vitals_web::ward_chain::PORTRAITS;
 
 const POOL: &str = include_str!("../../vitals-web/data/personas.json");
 const PHYSICIANS: &str = include_str!("../../vitals-web/data/physicians.json");
+const CASES: &str = include_str!("fixtures/ward-cases-2026-09-16.json");
 
-fn case(id: &str) -> Case {
-    let theirs = case_patient(id).expect("a station");
-    Case { id: id.into(), sex: Sex::parse(&theirs.sex).unwrap(), band: age_band(theirs.age), difficulty: difficulty_of(id).expect("a ward case"), source: "test".into() }
-}
-
-/// Every band, both sexes.
-fn catalogue() -> Catalogue {
-    Catalogue { cases: ["osce-a", "osce-a2", "osce-b", "osce-c2", "osce-c", "osce-d4", "osce-d2"].iter().map(|id| case(id)).collect(), unbuildable: vec![] }
+/// The ward's list as the fixture has it.
+fn cases() -> Vec<WardCase> {
+    parse_cases(CASES).expect("the fixture parses")
 }
 
 fn url(tag: &str) -> String {
@@ -99,7 +94,7 @@ fn waiting(pool: &[Person], seq: &[&str]) -> Ledger {
     for (n, c) in seq.iter().enumerate() {
         let who = pool.iter().find(|p| &p.country == c && !used.contains(&p.key)).unwrap_or_else(|| panic!("a free person from {c}"));
         used.insert(who.key.clone());
-        l.sent.insert(format!("sent{n:03}"), Sent::new("osce-a2", who, 66, false, None, 1000 + n as u64, "test"));
+        l.sent.insert(format!("sent{n:03}"), Sent::new("world-rta-adult", who, 66, false, None, 1000 + n as u64, "test"));
     }
     l
 }
@@ -116,10 +111,10 @@ fn the_constants_are_the_founders_numbers() {
 #[test]
 fn the_queue_holds_no_country_twice_over_and_shows_twelve_countries_in_six_regions() {
     let pool = read_pool(POOL).unwrap();
-    let (cat, man, endemic) = (catalogue(), full_manifest(&pool), BTreeMap::new());
+    let (cat, man) = (cases(), full_manifest(&pool));
     let w = weights(PHYSICIANS, &pool).unwrap();
     for seed in 0..25 {
-        let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &w, beds: 3, want: QUEUE_WINDOW, seed });
+        let p = plan(&Inputs { cases: &cat, pool: &pool, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &w, beds: 3, want: QUEUE_WINDOW, seed });
         let seq = countries(&p);
         assert_eq!(seq.len(), QUEUE_WINDOW, "seed {seed}: {:?}", p.notes);
         let t = tally(&seq);
@@ -138,7 +133,7 @@ fn the_queue_holds_no_country_twice_over_and_shows_twelve_countries_in_six_regio
 #[test]
 fn a_country_at_its_cap_is_redrawn_not_skipped_and_the_plan_says_which() {
     let pool = read_pool(POOL).unwrap();
-    let (cat, man, endemic) = (catalogue(), full_manifest(&pool), BTreeMap::new());
+    let (cat, man) = (cases(), full_manifest(&pool));
     let w = weights(PHYSICIANS, &pool).unwrap();
     let top = greatest_need(&w);
     assert!(!ROUND.contains(&top.as_str()));
@@ -149,7 +144,7 @@ fn a_country_at_its_cap_is_redrawn_not_skipped_and_the_plan_says_which() {
     history.extend(ROUND.iter().map(|c| if *c == "DEU" || *c == "KAZ" { top.as_str() } else { *c }));
     assert_eq!(history.len(), 44);
     let ledger = waiting(&pool, &history);
-    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &ledger, weights: &w, beds: 3, want: 15, seed: 4 });
+    let p = plan(&Inputs { cases: &cat, pool: &pool, manifest: &man, ward: &empty_ward(), ledger: &ledger, weights: &w, beds: 3, want: 15, seed: 4 });
     let seq = countries(&p);
     assert_eq!(seq.len(), 15, "never a tick skipped: {:?}", p.notes);
     assert!(!seq.contains(&top.as_str()), "{top} holds two of the last twenty throughout: {seq:?}");
@@ -173,7 +168,7 @@ fn a_country_at_its_cap_is_redrawn_not_skipped_and_the_plan_says_which() {
     older.extend(ROUND);
     assert_eq!(older.len(), 46);
     let ledger = waiting(&pool, &older);
-    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &ledger, weights: &w, beds: 3, want: 3, seed: 4 });
+    let p = plan(&Inputs { cases: &cat, pool: &pool, manifest: &man, ward: &empty_ward(), ledger: &ledger, weights: &w, beds: 3, want: 3, seed: 4 });
     assert_eq!(countries(&p)[0], top, "its two are forty-six and forty-five packs back: {:?}", countries(&p));
     assert!(p.redrawn.iter().all(|r| r.slot != 0), "{:?}", p.redrawn);
 }
@@ -183,7 +178,7 @@ fn a_country_at_its_cap_is_redrawn_not_skipped_and_the_plan_says_which() {
 #[test]
 fn the_board_never_holds_a_country_twice_while_another_country_is_available() {
     let pool = read_pool(POOL).unwrap();
-    let (cat, man, endemic) = (catalogue(), full_manifest(&pool), BTreeMap::new());
+    let (cat, man) = (cases(), full_manifest(&pool));
     let w = weights(PHYSICIANS, &pool).unwrap();
     // The two greatest needs in two of the three beds, the rest of the round waiting: the
     // greatest is behind its share, so need draws it — and it is in a bed, so the board rule
@@ -191,11 +186,11 @@ fn the_board_never_holds_a_country_twice_while_another_country_is_available() {
     let ranked: Vec<String> = w.ranked().into_iter().map(|(c, _)| c).collect();
     let (top, second) = (ranked[0].as_str(), ranked[1].as_str());
     let mut ward = empty_ward();
-    ward.patients.push(on_board(1, person(&pool, &format!("{top}-0")), "osce-a2", 66));
-    ward.patients.push(on_board(2, person(&pool, &format!("{second}-0")), "osce-c2", 50));
+    ward.patients.push(on_board(1, person(&pool, &format!("{top}-0")), "world-copd-woman", 66));
+    ward.patients.push(on_board(2, person(&pool, &format!("{second}-0")), "world-cholecystitis-woman", 50));
     let others: Vec<&str> = ROUND.iter().copied().filter(|c| *c != second).collect();
     let ledger = waiting(&pool, &others);
-    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &w, beds: 3, want: 10, seed: 2 });
+    let p = plan(&Inputs { cases: &cat, pool: &pool, manifest: &man, ward: &ward, ledger: &ledger, weights: &w, beds: 3, want: 10, seed: 2 });
     let seq = countries(&p);
     assert_eq!(seq.len(), 10, "{:?}", p.notes);
     assert!(!seq.contains(&top) && !seq.contains(&second), "{seq:?}");
@@ -205,7 +200,7 @@ fn the_board_never_holds_a_country_twice_while_another_country_is_available() {
     // Only people of the country in the bed free: the board rule yields, and the plan says so.
     let one: Vec<Person> = pool.iter().filter(|x| x.country == top).cloned().collect();
     let wf = Weights::flat(&one);
-    let p = plan(&Inputs { catalogue: &cat, pool: &one, endemic: &endemic, manifest: &man, ward: &ward, ledger: &Ledger::default(), weights: &wf, beds: 3, want: 2, seed: 2 });
+    let p = plan(&Inputs { cases: &cat, pool: &one, manifest: &man, ward: &ward, ledger: &Ledger::default(), weights: &wf, beds: 3, want: 2, seed: 2 });
     assert_eq!(countries(&p), vec![top, top], "{:?}", p.notes);
     assert!(p.notes.iter().any(|n| n.contains("no other country")), "{:?}", p.notes);
 }
@@ -220,7 +215,7 @@ fn the_board_never_holds_a_country_twice_while_another_country_is_available() {
 #[test]
 fn over_two_hundred_draws_need_sets_the_shares_and_the_spread_holds() {
     let pool = read_pool(POOL).unwrap();
-    let (cat, man, endemic) = (catalogue(), full_manifest(&pool), BTreeMap::new());
+    let (cat, man) = (cases(), full_manifest(&pool));
     let w = weights(PHYSICIANS, &pool).unwrap();
     let mut ledger = Ledger::default();
     let mut seq: Vec<String> = Vec::new();
@@ -234,7 +229,7 @@ fn over_two_hundred_draws_need_sets_the_shares_and_the_spread_holds() {
             s.patient_id = Some(step + 1);
             s.closed = true;
         }
-        let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &ledger, weights: &w, beds: 3, want: 1, seed: 16 + step });
+        let p = plan(&Inputs { cases: &cat, pool: &pool, manifest: &man, ward: &empty_ward(), ledger: &ledger, weights: &w, beds: 3, want: 1, seed: 16 + step });
         assert_eq!(p.packs.len(), 1, "step {step}: {:?}", p.notes);
         let pl = &p.packs[0];
         let who = person(&pool, &pl.person);
@@ -305,15 +300,15 @@ fn over_two_hundred_draws_need_sets_the_shares_and_the_spread_holds() {
 #[test]
 fn a_tick_against_a_full_board_and_a_deep_queue_still_builds_its_shortfall() {
     let pool = read_pool(POOL).unwrap();
-    let (cat, man, endemic) = (catalogue(), full_manifest(&pool), BTreeMap::new());
+    let (cat, man) = (cases(), full_manifest(&pool));
     let w = weights(PHYSICIANS, &pool).unwrap();
     let mut ward = empty_ward();
-    ward.patients.push(on_board(1, person(&pool, "ETH-0"), "osce-a2", 66));
-    ward.patients.push(on_board(2, person(&pool, "KEN-0"), "osce-c2", 50));
-    ward.patients.push(on_board(3, person(&pool, "IDN-0"), "osce-a2", 66));
+    ward.patients.push(on_board(1, person(&pool, "ETH-0"), "world-copd-woman", 66));
+    ward.patients.push(on_board(2, person(&pool, "KEN-0"), "world-cholecystitis-woman", 50));
+    ward.patients.push(on_board(3, person(&pool, "IDN-0"), "world-copd-woman", 66));
     let queued = ["MDG", "MOZ", "MLI", "UGA", "COD", "AGO", "GHA", "HTI", "ZMB", "NGA", "JAM", "THA", "EGY", "BGD", "MDG", "MOZ"];
     let ledger = waiting(&pool, &queued);
-    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &w, beds: 3, want: 4, seed: 8 });
+    let p = plan(&Inputs { cases: &cat, pool: &pool, manifest: &man, ward: &ward, ledger: &ledger, weights: &w, beds: 3, want: 4, seed: 8 });
     let seq = countries(&p);
     assert_eq!(seq.len(), 4, "{:?}", p.notes);
     for c in ["ETH", "KEN", "IDN"] {

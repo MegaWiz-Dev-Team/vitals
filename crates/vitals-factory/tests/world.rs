@@ -9,7 +9,7 @@
 //! mission is to bring that number down, so the pool cannot leave them out to keep a test tidy).
 
 use std::collections::{BTreeMap, BTreeSet};
-use vitals_factory::catalogue::Sex;
+use vitals_factory::sex::Sex;
 use vitals_factory::pool::read_pool;
 use vitals_factory::region::{region_of, Region, ALL};
 
