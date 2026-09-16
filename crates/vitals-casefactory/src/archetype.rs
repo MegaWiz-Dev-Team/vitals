@@ -33,9 +33,29 @@ pub enum Archetype {
     /// Lungs or airway failing with a beating heart: saturation falls; oxygen plus the specific
     /// therapy the plan names turn it.
     HypoxicRespiratoryFailure,
+    /// Presenting without a pulse: VF/pVT, PEA or asystole by the case's words; the ACLS
+    /// algorithm — compressions, shock, adrenaline, amiodarone, the two-minute check — to ROSC.
+    AclsCardiacArrest,
+    /// A regular narrow-complex tachycardia with a pulse: vagal → adenosine → synchronised
+    /// cardioversion when unstable; untreated it destabilises and arrests.
+    AclsTachycardiaSvt,
+    /// Atrial fibrillation with a rapid response: rate control and anticoagulation; cardioversion
+    /// when unstable; adenosine is the wrong drug.
+    AclsTachycardiaAf,
+    /// A symptomatic bradycardia: atropine, then pacing or a chronotrope infusion; untreated it
+    /// arrests in PEA.
+    AclsBradycardia,
+    /// Anaphylaxis: adrenaline IM inside the window is the whole case; the antihistamine-first
+    /// reflex and an IV push of adrenaline are the harms.
+    Anaphylaxis,
 }
 
-pub const ALL: [Archetype; 7] = [
+pub const ALL: [Archetype; 12] = [
+    Archetype::AclsCardiacArrest,
+    Archetype::AclsTachycardiaSvt,
+    Archetype::AclsTachycardiaAf,
+    Archetype::AclsBradycardia,
+    Archetype::Anaphylaxis,
     Archetype::PaediatricCompensatedShock,
     Archetype::CardiogenicShock,
     Archetype::HaemorrhagicShock,
@@ -58,6 +78,10 @@ pub enum Kind {
     /// Must happen before hands-on care (isolation before examination). A trigger records harm
     /// when it is skipped.
     Gate,
+    /// A tool of the algorithm rather than a therapy for the cause: compressions, the shock,
+    /// the arrest drugs, cardioversion. Present whether or not the plan spells it out, never
+    /// required for the turn by itself, priced by the rubric only where the algorithm times it.
+    Rescue,
 }
 
 /// A one-off nudge to the vitals when the role is applied. Small on purpose: the *turn* comes
@@ -75,6 +99,8 @@ pub struct Role {
     pub label: &'static str,
     /// Found in a plan step ⇒ the role exists in this case; also the free-text matcher keywords.
     pub kw: &'static [&'static str],
+    /// Words that veto a match — `noradrenaline` on the adrenaline order.
+    pub not_kw: &'static [&'static str],
     pub kind: Kind,
     /// The line the engine emits. Neutral: no name, no pronoun that assumes a person.
     pub beat: &'static str,
@@ -93,7 +119,7 @@ const fn role(
     beat: &'static str,
     nudges: &'static [Nudge],
 ) -> Role {
-    Role { id, label, kw, kind, beat, harm: None, nudges, equipment: None }
+    Role { id, label, kw, not_kw: &[], kind, beat, harm: None, nudges, equipment: None }
 }
 
 const fn harm(
@@ -103,7 +129,7 @@ const fn harm(
     text: &'static str,
     nudges: &'static [Nudge],
 ) -> Role {
-    Role { id, label, kw, kind: Kind::Harmful, beat: text, harm: Some(text), nudges, equipment: None }
+    Role { id, label, kw, not_kw: &[], kind: Kind::Harmful, beat: text, harm: Some(text), nudges, equipment: None }
 }
 
 const fn n(var: &'static str, delta: f64) -> Nudge {
@@ -116,6 +142,7 @@ pub const OXYGEN: Role = Role {
     id: "oxygen",
     label: "Oxygen",
     kw: &["oxygen", "high-flow", "high flow", "non-rebreather", "nasal cannula", "face mask", "o2 mask", "ออกซิเจน"],
+    not_kw: &[],
     kind: Kind::Supportive,
     beat: "oxygen on — the reservoir bag fills and the trace steadies a little",
     harm: None,
@@ -227,12 +254,12 @@ const TRANSFUSION_SUPPORT: Role = role("transfusion", "Transfusion", TRANSFUSION
 const SPECIFIC: Role = role("specific_therapy", "Specific therapy for the cause", SPECIFIC_KW, Kind::Critical,
     "the specific therapy is in — the cause is treated, not only the numbers", &[]);
 const AIRWAY: Role = Role {
-    id: "airway", label: "Secure the airway", kw: AIRWAY_KW, kind: Kind::Critical,
+    id: "airway", label: "Secure the airway", kw: AIRWAY_KW, not_kw: &[], kind: Kind::Critical,
     beat: "the airway is secured and the breathing is taken over — the saturation climbs",
     harm: None, nudges: &[n("spo2", 6.0)], equipment: Some(("ett", 0.0)),
 };
 const AIRWAY_SUPPORT: Role = Role {
-    id: "airway", label: "Airway protection", kw: AIRWAY_KW, kind: Kind::Supportive,
+    id: "airway", label: "Airway protection", kw: AIRWAY_KW, not_kw: &[], kind: Kind::Supportive,
     beat: "the airway is protected — suction, positioning, and a plan to intubate if it slips",
     harm: None, nudges: &[n("spo2", 4.0)], equipment: Some(("ett", 0.0)),
 };
@@ -255,7 +282,7 @@ const DIURETIC: Role = role("diuretic", "Diuretic for congestion", &["furosemide
 const DIURETIC_CRITICAL: Role = role("diuretic", "Diuretic for congestion", &["furosemide", "diuretic", "ยาขับปัสสาวะ"], Kind::Critical,
     "furosemide in — the lungs begin to dry", &[n("spo2", 4.0)]);
 const NIV: Role = Role {
-    id: "niv", label: "Non-invasive ventilation", kw: &["cpap", "niv", "non-invasive", "bipap"], kind: Kind::Supportive,
+    id: "niv", label: "Non-invasive ventilation", kw: &["cpap", "niv", "non-invasive", "bipap"], not_kw: &[], kind: Kind::Supportive,
     beat: "the mask seals and the pressure supports each breath", harm: None,
     nudges: &[n("spo2", 4.0)], equipment: Some(("niv", 10.0)),
 };
@@ -300,6 +327,77 @@ const ADRENALINE_NEB: Role = role("adrenaline_nebulised", "Nebulised adrenaline"
 const IV_ACCESS: Role = role("iv_access", "Vascular access", &["intraosseous", "iv lines", "iv access", "two large-bore", "large-bore"], Kind::Supportive,
     "two lines in", &[]);
 
+// ── the ACLS family's tools and turns ─────────────────────────────────────────────────
+const CPR: Role = role("cpr", "Chest compressions", &["cpr", "chest compression", "compressions", "ปั๊มหัวใจ", "กดหน้าอก"], Kind::Rescue,
+    "compressions — hard, fast, full recoil; the compressor changes at two minutes", &[]);
+const DEFIBRILLATE: Role = Role {
+    id: "defibrillate", label: "Unsynchronised shock", kw: &["defibrillat", "unsynchronised shock", "unsynchronized shock", "shock 200", "200 j", "360 j", "ช็อกไฟฟ้า"],
+    not_kw: &["synchron", "cardiovers"], kind: Kind::Rescue,
+    beat: "200 J — the trace jolts; compressions resume at once", harm: None, nudges: &[], equipment: None,
+};
+const ADRENALINE_IV: Role = Role {
+    id: "adrenaline_iv", label: "Adrenaline 1 mg IV", kw: &["adrenaline 1 mg", "epinephrine 1 mg", "adrenaline iv", "epinephrine iv", "adrenaline every", "epinephrine every", "1 mg iv"],
+    not_kw: &["noradrenaline", "norepinephrine", "infusion", " im", "intramuscular"], kind: Kind::Rescue,
+    beat: "adrenaline 1 mg — flushed; the clock for the next dose starts", harm: None, nudges: &[], equipment: None,
+};
+const AMIODARONE: Role = role("amiodarone", "Amiodarone", &["amiodarone", "lidocaine", "lignocaine"], Kind::Rescue,
+    "amiodarone 300 mg — for the rhythm that keeps coming back", &[]);
+const CARDIOVERSION: Role = role("cardioversion", "Synchronised cardioversion", &["cardioversion", "synchronised", "synchronized", "sync shock"], Kind::Rescue,
+    "synchronised shock — the machine waits for the complex, then fires", &[]);
+const VAGAL: Role = role("vagal", "Vagal manoeuvre", &["vagal", "valsalva", "carotid sinus massage", "carotid massage", "ล้วงคอ", "กลั้นหายใจ"], Kind::Critical,
+    "a modified Valsalva — legs up, bear down; the monitor is watched", &[]);
+const ADENOSINE: Role = role("adenosine", "Adenosine", &["adenosine", "อะดีโนซีน"], Kind::Critical,
+    "adenosine 6 mg, rapid flush — a pause on the monitor, then the rhythm breaks", &[]);
+const RATE_CONTROL: Role = role("rate_control", "Rate control", &["rate control", "rate-control", "rate-limiting", "beta-blocker", "beta blocker", "metoprolol", "esmolol", "diltiazem", "verapamil", "digoxin", "ควบคุมอัตรา", "ยาลดอัตราการเต้น"], Kind::Critical,
+    "rate control in — the ventricular response slows and the pressure holds", &[n("hr", -20.0)]);
+const RATE_CONTROL_SUPPORT: Role = role("rate_control", "Rate control", &["rate control", "rate-control", "beta-blocker", "beta blocker", "metoprolol", "esmolol", "diltiazem", "verapamil"], Kind::Supportive,
+    "a rate-slowing drug — second line behind adenosine", &[n("hr", -15.0)]);
+const ANTICOAG_AF: Role = role("anticoagulation", "Anticoagulation", &["anticoag", "doac", "apixaban", "rivaroxaban", "warfarin", "heparin", "enoxaparin", "ยาต้านการแข็งตัว"], Kind::Critical,
+    "anticoagulation started — the atrium's clot risk is priced in", &[]);
+const ATROPINE: Role = role("atropine", "Atropine", &["atropine", "อะโทรปีน"], Kind::Critical,
+    "atropine 1 mg — the rate lifts", &[n("hr", 15.0)]);
+const PACING_BRADY: Role = role("pacing", "Transcutaneous pacing", &["pacing", "transcutaneous", "pads", "pacemaker"], Kind::Critical,
+    "pads on, capture at 70 — the pressure follows the rate", &[]);
+const CHRONOTROPE: Role = role("chronotrope", "Chronotrope infusion", &["dopamine", "adrenaline infusion", "epinephrine infusion", "isoprenaline", "isoproterenol"], Kind::Critical,
+    "the infusion runs — the rate is held while the pads stand by", &[n("hr", 10.0)]);
+const REVERSIBLE_CAUSES: Role = role("reversible_causes", "Look for the reversible causes", &["reversible cause", "h's and t's", "hs and ts", "h and t", "hypovolaemia", "hypovolemia", "tension pneumothorax", "tamponade", "toxins", "thrombosis"], Kind::Supportive,
+    "the H's and T's run through — the cause is looked for while the algorithm runs", &[]);
+const POST_ROSC: Role = role("post_rosc_care", "Post-arrest care", &["post-cardiac arrest", "post-rosc", "after rosc", "targeted temperature", "12-lead ecg"], Kind::Supportive,
+    "post-arrest care — a 12-lead, the cause, the temperature, intensive care", &[]);
+const THYROID: Role = role("thyroid", "Treat the thyroid trigger", &["methimazole", "propylthiouracil", "thyroid"], Kind::Supportive,
+    "the thyroid trigger is treated alongside the rhythm", &[]);
+const ADENOSINE_IN_AF_HARM: Role = harm("adenosine", "Adenosine", &["adenosine"],
+    "adenosine given to an irregular tachycardia — it cannot convert atrial fibrillation and in a wide-complex rhythm it can be lethal", &[n("sbp", -6.0)]);
+
+// ── anaphylaxis ───────────────────────────────────────────────────────────────────
+const ADRENALINE_IM: Role = Role {
+    id: "adrenaline_im", label: "Adrenaline IM",
+    kw: &["adrenaline 0.5", "epinephrine 0.5", "adrenaline 0.3", "epinephrine 0.3", "adrenaline im", "epinephrine im", "intramuscular adrenaline", "intramuscular epinephrine", "anterolateral thigh", "epipen", "auto-injector", "adrenaline", "epinephrine", "อะดรีนาลีน", "เข้ากล้าม"],
+    not_kw: &["noradrenaline", "norepinephrine", "iv push", "intravenous", "infusion", "adrenaline iv", "epinephrine iv"],
+    kind: Kind::Critical, beat: "adrenaline 0.5 mg into the outer thigh — the pressure answers within minutes", harm: None,
+    nudges: &[n("sbp", 12.0), n("spo2", 2.0)], equipment: None,
+};
+const ADRENALINE_IV_PUSH_HARM: Role = Role {
+    id: "adrenaline_iv_push", label: "Adrenaline IV push",
+    kw: &["iv push", "adrenaline iv", "epinephrine iv", "intravenous adrenaline", "intravenous epinephrine", "adrenaline bolus", "epinephrine bolus"],
+    not_kw: &["noradrenaline", "norepinephrine", "infusion"],
+    kind: Kind::Harmful, beat: "adrenaline pushed through the cannula — an arrhythmia on a beating heart",
+    harm: Some("adrenaline pushed IV into a patient with a pulse — an arrhythmia on a beating heart"),
+    nudges: &[n("hr", 30.0), n("sbp", -10.0)], equipment: None,
+};
+const ANTIHISTAMINE: Role = role("antihistamine", "Antihistamine", &["chlorpheniramine", "antihistamine", "cetirizine", "loratadine", "diphenhydramine", "ยาต้านฮีสตามีน", "ยาต้านฮิสตามีน"], Kind::Supportive,
+    "antihistamine for the itch — second line, after the adrenaline", &[]);
+const OBSERVE: Role = role("observe", "Observe for a biphasic reaction", &["observ", "biphasic", "สังเกตอาการ"], Kind::Supportive,
+    "kept under observation — the second wave, if it comes, finds a monitored bed", &[]);
+const AUTO_INJECTOR: Role = role("auto_injector", "Auto-injector and teaching", &["auto-injector", "autoinjector", "epipen", "prescri", "ให้ความรู้", "แจ้งการแพ้"], Kind::Supportive,
+    "an auto-injector is prescribed and the trigger is written on the record", &[]);
+const FLUIDS_SUPPORT: Role = role("fluids", "Crystalloid bolus", FLUIDS_KW, Kind::Supportive,
+    "a crystalloid bolus runs — volume for the leak", &[n("sbp", 8.0)]);
+const BRONCHODILATOR_SUPPORT: Role = role("bronchodilator", "Bronchodilator", &["salbutamol", "nebul", "bronchodilator", "ipratropium", "ยาพ่น", "ขยายหลอดลม"], Kind::Supportive,
+    "nebuliser hissing — the wheeze loosens", &[n("spo2", 3.0)]);
+const AVOID_ALLERGEN: Role = role("avoid_allergen", "Remove and avoid the trigger", &["งดสิ่งที่แพ้", "avoid the allergen", "remove the allergen", "stop the infusion"], Kind::Supportive,
+    "the trigger is removed and written down", &[]);
+
 // intrinsic harms — present in the archetype whether or not the plan mentions them
 const FLUID_BOLUS_HARM: Role = harm("fluid_bolus", "Fluid bolus", FLUIDS_KW,
     "a fluid bolus into a congested heart — the lungs fill", &[n("spo2", -4.0), n("sbp", -3.0)]);
@@ -320,7 +418,17 @@ impl Archetype {
             Archetype::CnsDepressionHypoglycaemia => "cns_depression_hypoglycaemia",
             Archetype::PaediatricCompensatedShock => "paediatric_compensated_shock",
             Archetype::HypoxicRespiratoryFailure => "hypoxic_respiratory_failure",
+            Archetype::AclsCardiacArrest => "acls_cardiac_arrest",
+            Archetype::AclsTachycardiaSvt => "acls_tachycardia_svt",
+            Archetype::AclsTachycardiaAf => "acls_tachycardia_af",
+            Archetype::AclsBradycardia => "acls_bradycardia",
+            Archetype::Anaphylaxis => "anaphylaxis",
         }
+    }
+
+    /// The ACLS family shares one arrest core and one builder.
+    pub fn is_acls(self) -> bool {
+        matches!(self, Archetype::AclsCardiacArrest | Archetype::AclsTachycardiaSvt | Archetype::AclsTachycardiaAf | Archetype::AclsBradycardia)
     }
 
     pub fn label(self) -> &'static str {
@@ -332,6 +440,11 @@ impl Archetype {
             Archetype::CnsDepressionHypoglycaemia => "CNS depression with hypoglycaemia",
             Archetype::PaediatricCompensatedShock => "paediatric compensated shock",
             Archetype::HypoxicRespiratoryFailure => "hypoxic respiratory failure",
+            Archetype::AclsCardiacArrest => "cardiac arrest (ACLS)",
+            Archetype::AclsTachycardiaSvt => "narrow-complex tachycardia with a pulse (ACLS)",
+            Archetype::AclsTachycardiaAf => "atrial fibrillation with a rapid response (ACLS)",
+            Archetype::AclsBradycardia => "symptomatic bradycardia (ACLS)",
+            Archetype::Anaphylaxis => "anaphylaxis",
         }
     }
 
@@ -350,6 +463,11 @@ impl Archetype {
             Archetype::CnsDepressionHypoglycaemia => &["cerebral malaria", "status epilepticus", "meningitis", "encephalitis", "encephalopathy", "hypoglycaemia", "hypoglycemia", "coma", "น้ำตาลในเลือดต่ำ", "หมดสติ"],
             Archetype::PaediatricCompensatedShock => &["dengue shock", "shock", "dehydration", "hypovolaemia", "hypovolemia", "plasma leak", "ช็อก"],
             Archetype::HypoxicRespiratoryFailure => &["asthma", "copd", "pneumonia", "pulmonary embolism", "pneumothorax", "bronchiolitis", "croup", "epiglottitis", "ards", "bronchospasm", "laryngospasm", "pulmonary oedema", "pulmonary edema", "whooping cough", "pertussis", "pulmonary haemorrhage", "pulmonary hemorrhage", "หอบหืด", "ปอดอักเสบ"],
+            Archetype::AclsCardiacArrest => &["cardiac arrest", "ventricular fibrillation", "pulseless", "asystole", "pulseless electrical activity", "vf arrest", "pea arrest", "หัวใจหยุดเต้น"],
+            Archetype::AclsTachycardiaSvt => &["psvt", "svt", "supraventricular tachycardia", "avnrt", "avrt", "narrow-complex tachycardia", "narrow complex tachycardia"],
+            Archetype::AclsTachycardiaAf => &["atrial fibrillation", "atrial flutter", "rapid ventricular response", "af with rvr"],
+            Archetype::AclsBradycardia => &["bradycardia", "heart block", "av block", "sick sinus", "หัวใจเต้นช้า"],
+            Archetype::Anaphylaxis => &["anaphyla", "แอนาฟิแล็กซิส", "ภูมิแพ้รุนแรง"],
         }
     }
 
@@ -364,20 +482,22 @@ impl Archetype {
             Archetype::CnsDepressionHypoglycaemia => &["impaired consciousness", "reduced consciousness", "unconscious", "altered mental status", "seizure", "gcs", "ซึม"],
             Archetype::PaediatricCompensatedShock => &["pulse pressure", "capillary refill", "cold extremities", "child", "paediatric", "pediatric"],
             Archetype::HypoxicRespiratoryFailure => &["respiratory failure", "hypoxia", "hypoxaemia", "hypoxemia", "airway obstruction", "stridor", "respiratory distress", "wheeze", "หอบ", "หายใจลำบาก"],
+            Archetype::AclsCardiacArrest => &["no pulse", "unresponsive", "cpr", "rosc", "defibrillat"],
+            Archetype::AclsTachycardiaSvt => &["palpitation", "regular", "narrow", "adenosine", "vagal", "ใจสั่น"],
+            Archetype::AclsTachycardiaAf => &["irregular", "rate control", "anticoag", "cha₂ds₂", "cha2ds2", "ใจสั่น"],
+            Archetype::AclsBradycardia => &["atropine", "pacing", "syncope", "presyncope", "หน้ามืด"],
+            Archetype::Anaphylaxis => &["urticaria", "angioedema", "wheal", "adrenaline", "epinephrine", "allerg", "แพ้"],
         }
     }
 
     /// Diagnoses the library has no honest shape for yet. Refused by name rather than fitted to
     /// the nearest shape — an anaphylaxis that wins on oxygen and a nebuliser is a wrong lesson.
     const NOT_YET: &'static [(&'static str, &'static str)] = &[
-        ("anaphyla", "anaphylaxis — distributive shock with an airway, turned by adrenaline; no archetype yet"),
         ("ketoacidosis", "diabetic ketoacidosis — a metabolic crisis turned by fluids, insulin and potassium; no archetype yet"),
         ("hyperosmolar", "hyperosmolar state — a metabolic crisis; no archetype yet"),
         ("adrenal crisis", "adrenal crisis — turned by hydrocortisone; no archetype yet"),
         ("thyroid storm", "thyroid storm — no archetype yet"),
         ("stroke", "stroke — a reperfusion-window case, not a deterioration shape this library has"),
-        ("atrial fibrillation", "arrhythmia — rate and rhythm control; no archetype yet"),
-        ("psvt", "arrhythmia — no archetype yet"),
         ("hyperkal", "hyperkalaemia — a rhythm-and-membrane case; no archetype yet"),
     ];
 
@@ -413,6 +533,22 @@ impl Archetype {
             }
             Archetype::CnsDepressionHypoglycaemia => {
                 if v0.gcs <= 13 { Ok(()) } else { Err(format!("GCS {} at presentation is not CNS depression", v0.gcs)) }
+            }
+            // No pulse is the whole gate: the words named an arrest and the vitals are absent.
+            Archetype::AclsCardiacArrest => {
+                if v0.is_arrest() || case.haystack().contains("no pulse") || case.haystack().contains("pulseless") { Ok(()) } else { Err(format!("a pulse and a pressure of {:.0} at presentation are not an arrest", v0.sbp)) }
+            }
+            Archetype::AclsTachycardiaSvt => {
+                if v0.hr >= 140.0 { Ok(()) } else { Err(format!("heart rate {:.0} at presentation is not a supraventricular tachycardia", v0.hr)) }
+            }
+            Archetype::AclsTachycardiaAf => {
+                if v0.hr >= 100.0 || v0.sbp <= 100.0 { Ok(()) } else { Err(format!("heart rate {:.0} with systolic {:.0} at presentation is a controlled rhythm, not a deterioration", v0.hr, v0.sbp)) }
+            }
+            Archetype::AclsBradycardia => {
+                if v0.hr <= 50.0 { Ok(()) } else { Err(format!("heart rate {:.0} at presentation is not a bradycardia", v0.hr)) }
+            }
+            Archetype::Anaphylaxis => {
+                if v0.sbp <= 100.0 || v0.spo2 <= 94.0 || v0.hr >= 100.0 || v0.rr >= 22.0 { Ok(()) } else { Err(format!("systolic {:.0}, saturation {:.0}, rate {:.0} at presentation show no systemic reaction yet", v0.sbp, v0.spo2, v0.hr)) }
             }
         }
     }
@@ -477,7 +613,16 @@ impl Archetype {
         for (_, a) in &scored {
             match a.gate(case, v0) {
                 Ok(()) => return Ok(*a),
-                Err(e) => why.push(format!("{} — {e}", a.id())),
+                Err(e) => {
+                    why.push(format!("{} — {e}", a.id()));
+                    // A rhythm or an anaphylaxis *is* the diagnosis. When its own gate fails the
+                    // case is a controlled version of that diagnosis, not some other shape —
+                    // an atrial fibrillation at 88 a minute must not compile as respiratory
+                    // failure because the sentence about COPD mentions oxygen.
+                    if a.is_acls() || *a == Archetype::Anaphylaxis {
+                        break;
+                    }
+                }
             }
         }
         Err(format!(
@@ -498,7 +643,35 @@ impl Archetype {
             Archetype::CnsDepressionHypoglycaemia => &[DEXTROSE, SPECIFIC, AIRWAY_SUPPORT, ANTICONVULSANT, FLUIDS_CAUTIOUS, TRANSFUSION_SUPPORT, ANTIBIOTICS_SUPPORT, CULTURES, LUMBAR_PUNCTURE, ELECTROLYTES],
             Archetype::PaediatricCompensatedShock => &[OVERLOAD_SENTINEL, DEXTROSE_SUPPORT, TRANSFUSION_SUPPORT, ELECTROLYTES, IV_ACCESS, ANTIBIOTICS_SUPPORT, CULTURES],
             Archetype::HypoxicRespiratoryFailure => &[BRONCHODILATOR, CHEST_DRAIN, ANTICOAG_CRITICAL, ANTIBIOTICS, DIURETIC_CRITICAL, ADRENALINE_NEB, STEROIDS_SUPPORT, MAGNESIUM, NIV, NITRATE, AIRWAY_SUPPORT, CULTURES, IV_ACCESS],
+            Archetype::AclsCardiacArrest => &[AIRWAY_SUPPORT, REVERSIBLE_CAUSES, POST_ROSC, ELECTROLYTES, IV_ACCESS],
+            Archetype::AclsTachycardiaSvt => &[VAGAL, ADENOSINE, RATE_CONTROL_SUPPORT, AIRWAY_SUPPORT, IV_ACCESS, ELECTROLYTES],
+            Archetype::AclsTachycardiaAf => &[RATE_CONTROL, ANTICOAG_AF, DIURETIC, NIV, THYROID, AIRWAY_SUPPORT, IV_ACCESS, ELECTROLYTES],
+            Archetype::AclsBradycardia => &[ATROPINE, PACING_BRADY, CHRONOTROPE, ELECTROLYTES, IV_ACCESS, AIRWAY_SUPPORT],
+            Archetype::Anaphylaxis => &[ADRENALINE_IM, FLUIDS_SUPPORT, BRONCHODILATOR_SUPPORT, ANTIHISTAMINE, STEROIDS_SUPPORT, AIRWAY_SUPPORT, OBSERVE, AUTO_INJECTOR, AVOID_ALLERGEN, PRESSOR_SUPPORT, IV_ACCESS],
         }
+    }
+
+    /// The algorithm's tools, present in every ACLS case whatever the plan spells out.
+    pub fn intrinsic_roles(self) -> &'static [Role] {
+        match self {
+            Archetype::AclsCardiacArrest => &[CPR, DEFIBRILLATE, ADRENALINE_IV, AMIODARONE],
+            Archetype::AclsTachycardiaSvt | Archetype::AclsTachycardiaAf | Archetype::AclsBradycardia => &[CARDIOVERSION, CPR, DEFIBRILLATE, ADRENALINE_IV, AMIODARONE],
+            _ => &[],
+        }
+    }
+
+    /// Rescue roles the rubric pays for, because the algorithm times them.
+    pub fn paid_rescue(self) -> &'static [&'static str] {
+        match self {
+            Archetype::AclsCardiacArrest => &["cpr", "defibrillate", "adrenaline_iv"],
+            _ => &[],
+        }
+    }
+
+    /// Whether the golden path and the rubric expect the specific therapy for a *stable* SVT to
+    /// be the vagal manoeuvre alone (no adenosine in the plan).
+    pub fn is_tachy(self) -> bool {
+        matches!(self, Archetype::AclsTachycardiaSvt | Archetype::AclsTachycardiaAf)
     }
 
     /// Orders that hurt in this shape whatever the plan says.
@@ -508,7 +681,10 @@ impl Archetype {
             Archetype::NeuromuscularRespiratoryFailure => &[SEDATION_HARM],
             Archetype::HypoxicRespiratoryFailure => &[SEDATION_HARM, BETA_BLOCKER_HARM],
             Archetype::CnsDepressionHypoglycaemia => &[SEDATION_HARM],
-            Archetype::SepticShock | Archetype::HaemorrhagicShock | Archetype::PaediatricCompensatedShock => &[],
+            Archetype::AclsTachycardiaAf => &[ADENOSINE_IN_AF_HARM],
+            Archetype::Anaphylaxis => &[ADRENALINE_IV_PUSH_HARM],
+            Archetype::SepticShock | Archetype::HaemorrhagicShock | Archetype::PaediatricCompensatedShock
+            | Archetype::AclsCardiacArrest | Archetype::AclsTachycardiaSvt | Archetype::AclsBradycardia => &[],
         }
     }
 
@@ -529,6 +705,12 @@ impl Archetype {
             Archetype::CnsDepressionHypoglycaemia => 14.0,
             Archetype::PaediatricCompensatedShock => 12.0,
             Archetype::HypoxicRespiratoryFailure => 10.0,
+            // three minutes of no-flow from a witnessed arrest, at the perfusion axis's rate
+            Archetype::AclsCardiacArrest => 4.0,
+            // ten minutes to destabilise and arrest, then the arrest's own three
+            Archetype::AclsTachycardiaSvt | Archetype::AclsTachycardiaAf => 13.0,
+            Archetype::AclsBradycardia => 12.0,
+            Archetype::Anaphylaxis => 8.0,
         }
     }
 

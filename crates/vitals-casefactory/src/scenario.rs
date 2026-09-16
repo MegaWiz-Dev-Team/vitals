@@ -114,6 +114,25 @@ fn shape(a: Archetype, v: &Vitals0) -> Shape {
             variables: vec![],
             primary: "spo2",
         },
+        // The pressure and the airway fall together; adrenaline IM turns both.
+        Archetype::Anaphylaxis => Shape {
+            trajs: vec![
+                Traj { var: "sbp", target: 45.0, recover_to: 115.0, stopped_by: None },
+                Traj { var: "spo2", target: (v.spo2 - 25.0).max(66.0), recover_to: 98.0, stopped_by: None },
+                Traj { var: "hr", target: (v.hr + 35.0).min(165.0), recover_to: 95.0, stopped_by: None },
+                Traj { var: "rr", target: (v.rr + 10.0).min(40.0), recover_to: 18.0, stopped_by: None },
+            ],
+            deaths: vec![Death { var: "sbp", below: 50.0 }, Death { var: "spo2", below: 70.0 }],
+            variables: vec![],
+            primary: "sbp",
+        },
+        // The ACLS family has its own builder; this shape is never read.
+        Archetype::AclsCardiacArrest | Archetype::AclsTachycardiaSvt | Archetype::AclsTachycardiaAf | Archetype::AclsBradycardia => Shape {
+            trajs: vec![],
+            deaths: vec![Death { var: "sbp", below: 0.0 }],
+            variables: vec![],
+            primary: "sbp",
+        },
     }
 }
 
@@ -159,6 +178,9 @@ pub struct Sim {
 }
 
 pub fn build(case: &Case, a: Archetype, v: &Vitals0, mapped: &Mapped, built: &Built) -> Sim {
+    if a.is_acls() {
+        return crate::acls::build(case, a, v, mapped, built);
+    }
     let sh = shape(a, v);
     let tm = a.death_minutes();
     let recover_min = 6.0;
@@ -301,6 +323,18 @@ pub fn build(case: &Case, a: Archetype, v: &Vitals0, mapped: &Mapped, built: &Bu
             "do": [ { "harm": text } ]
         }));
         trigger_harms.push((format!("skipped_{}", g.role.id), text));
+    }
+
+    // the antihistamine-first reflex: the itch treated while the pressure fell
+    if a == Archetype::Anaphylaxis && mapped.get("antihistamine").is_some() {
+        let text = "an antihistamine first while the pressure fell — adrenaline was the treatment".to_string();
+        triggers.push(json!({
+            "id": "antihistamine_first",
+            "once": true,
+            "when": { "all": [ { "in_state": "presenting" }, { "done": "tx_antihistamine" }, { "not": { "done": "tx_adrenaline_im" } }, { "var": "t_elapsed", "op": "ge", "value": 120.0 } ] },
+            "do": [ { "harm": text }, { "beat": "the wheals are paler and the cuff reads lower — the itch was not the emergency" }, { "delta": { "sbp": -6.0 }, "floor": 40.0 } ]
+        }));
+        trigger_harms.push(("antihistamine_first".into(), text));
     }
 
     // too much of a good thing: the child who is filled past the leak

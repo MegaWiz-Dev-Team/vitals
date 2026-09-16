@@ -207,6 +207,16 @@ pub struct Vitals0 {
     pub assumed: Vec<String>,
 }
 
+impl Vitals0 {
+    /// The monitor of a patient with no output: nothing to read but the rhythm.
+    pub fn arrest() -> Vitals0 {
+        Vitals0 { hr: 0.0, sbp: 0.0, dbp: 0.0, spo2: 0.0, rr: 0.0, temp: 36.5, gcs: 3, assumed: vec!["arrest: no pulse, no pressure, no saturation at presentation".into()] }
+    }
+    pub fn is_arrest(&self) -> bool {
+        self.sbp <= 0.0 && self.hr <= 0.0
+    }
+}
+
 fn re(s: &'static str, cell: &'static OnceLock<Regex>) -> &'static Regex {
     cell.get_or_init(|| Regex::new(s).expect("a literal regex compiles"))
 }

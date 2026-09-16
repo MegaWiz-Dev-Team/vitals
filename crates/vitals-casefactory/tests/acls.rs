@@ -68,25 +68,23 @@ fn the_kit_shock_button_converts_vf_the_same_way_the_typed_order_does() {
 
 #[test]
 fn shocking_a_non_shockable_rhythm_is_harm_and_the_rubric_prices_it() {
-    let pack = vf_pack();
-    let sce_json = pack.sce.to_string();
-    let sce = Sce::from_json(&sce_json).unwrap();
-    // drive the machine into PEA by hand: the scenario's own path there is the untreated one,
-    // so instead start from the pea state's declared rhythm by applying the case's typed shock
-    // while the rhythm is not shockable
+    // typed, into PEA: the same sentence the engine's own button writes, so one needle prices both
+    let mut v: serde_json::Value = serde_json::from_str(VF).unwrap();
+    v["meta"]["id"] = serde_json::json!("synthetic-pea-arrest-test");
+    v["hidden"]["correct_diagnosis"] = serde_json::json!({ "display": "Cardiac arrest — pulseless electrical activity", "aliases": ["PEA arrest", "cardiac arrest"] });
+    let s = v.to_string();
+    let pack = compile(&s, Source::of("embla-cases", "test", &s)).unwrap_or_else(|e| panic!("{}", e.reason));
+    let sce = Sce::from_json(&pack.sce.to_string()).unwrap();
     let mut st = SceState::new(sce);
-    // VF degenerates to asystole untreated; walk there
-    let mut t = 0.0;
-    while st.vitals.rhythm != vitals_sce::runtime::Rhythm::Asystole && t < 900.0 && st.outcome().is_none() {
-        st.tick(1.0);
-        t += 1.0;
-    }
-    assert_eq!(st.vitals.rhythm, vitals_sce::runtime::Rhythm::Asystole, "untreated VF reaches asystole before death (t={t})");
+    st.tick(5.0);
     st.apply_id("tx_defibrillate");
     assert!(st.harm_events.iter().any(|h| h.contains("not shockable")), "{:?}", st.harm_events);
     let needles: Vec<String> = pack.rubric["items"].as_array().unwrap().iter()
         .filter(|i| i["type"] == "no_harm").map(|i| i["needle"].as_str().unwrap().to_string()).collect();
     assert!(needles.iter().any(|n| n.contains("not shockable")), "{needles:?}");
+    // and untreated, a VF that nobody shocks dies of no-flow before it can run down to a flat line
+    let vf = vf_pack();
+    assert!(vf.replay.untreated_death_sec < 360.0, "{}", vf.replay.untreated_death_sec);
 }
 
 #[test]
@@ -115,14 +113,24 @@ fn a_synthetic_pea_presentation_compiles_and_shocks_are_harm_from_the_first_seco
 }
 
 #[test]
-fn the_eight_library_rhythm_cases_compile_under_the_tachycardia_archetypes() {
+fn the_library_rhythm_cases_compile_under_the_tachycardia_archetypes_or_are_refused_as_controlled() {
     let Some(dir) = common::embla_dir() else { return common::skip("embla-cases not present"); };
     let mut failures = Vec::new();
+    // two of the four atrial fibrillations arrive rate-controlled (88 and 92 a minute, a normal
+    // pressure): not a deterioration, and never another archetype's patient either
+    for id in ["ddx-atrial-fibrillation-1", "ddx-atrial-fibrillation-3"] {
+        let Some(json) = common::library_case(&dir, id) else { continue };
+        match compile(&json, Source::of("embla-cases", "worktree", &json)) {
+            Ok(p) => failures.push(format!("{id}: compiled as {} but is a controlled rhythm", p.archetype)),
+            Err(e) => {
+                if !e.reason.contains("controlled rhythm") { failures.push(format!("{id}: {}", e.reason)); }
+            }
+        }
+    }
     for (id, want) in [
         ("ddx-psvt-1", "acls_tachycardia_svt"), ("ddx-psvt-2", "acls_tachycardia_svt"),
         ("ddx-psvt-3", "acls_tachycardia_svt"), ("ddx-psvt-4", "acls_tachycardia_svt"),
-        ("ddx-atrial-fibrillation-1", "acls_tachycardia_af"), ("ddx-atrial-fibrillation-2", "acls_tachycardia_af"),
-        ("ddx-atrial-fibrillation-3", "acls_tachycardia_af"), ("ddx-atrial-fibrillation-4", "acls_tachycardia_af"),
+        ("ddx-atrial-fibrillation-2", "acls_tachycardia_af"), ("ddx-atrial-fibrillation-4", "acls_tachycardia_af"),
     ] {
         let Some(json) = common::library_case(&dir, id) else { failures.push(format!("{id}: not in library")); continue };
         match compile(&json, Source::of("embla-cases", "worktree", &json)) {
@@ -151,4 +159,42 @@ fn a_generic_arrhythmia_word_in_a_red_flag_does_not_make_a_rhythm_case() {
     let s = v.to_string();
     let err = compile(&s, Source::of("embla-cases", "test", &s)).unwrap_err();
     assert!(!err.reason.contains("acls"), "{}", err.reason);
+}
+
+#[test]
+fn a_symptomatic_bradycardia_is_turned_by_atropine_then_pacing_and_arrests_in_pea_untreated() {
+    let mut v: serde_json::Value = serde_json::from_str(VF).unwrap();
+    v["meta"]["id"] = serde_json::json!("synthetic-brady-test");
+    v["meta"]["title"] = serde_json::json!("Synthetic test case: dizzy and grey with a pulse of 36");
+    v["hidden"]["correct_diagnosis"] = serde_json::json!({ "display": "Symptomatic bradycardia — complete heart block", "aliases": ["complete heart block", "third-degree AV block"] });
+    v["meta"]["search_tags"] = serde_json::json!(["synthetic", "bradycardia", "test"]);
+    v["exam_findings"][0]["value"] = serde_json::json!("78/50 mmHg");
+    v["exam_findings"][1]["value"] = serde_json::json!("36/min, regular");
+    v["exam_findings"][2]["value"] = serde_json::json!("18/min");
+    v["exam_findings"][3]["value"] = serde_json::json!("95% on room air");
+    v["exam_findings"][4]["value"] = serde_json::json!("Pale, sweaty, GCS 15");
+    v["hidden"]["red_flags"] = serde_json::json!(["Hypotension with a rate of 36 = unstable bradycardia — atropine now, pads on"]);
+    v["hidden"]["management_plan"] = serde_json::json!([
+        "Atropine 1 mg IV, repeated every 3-5 minutes to 3 mg",
+        "Transcutaneous pacing if atropine fails; sedation for the pads",
+        "Dopamine or adrenaline infusion while pacing is prepared",
+        "Admit to a monitored bed for a permanent pacemaker"
+    ]);
+    let s = v.to_string();
+    let pack = compile(&s, Source::of("embla-cases", "test", &s)).unwrap_or_else(|e| panic!("{}", e.reason));
+    assert_eq!(pack.archetype, "acls_bradycardia");
+    let sce = Sce::from_json(&pack.sce.to_string()).unwrap();
+    assert_eq!(sce.initial_state, "brady_unstable");
+    // untreated it arrests in PEA, then dies of no-flow
+    let mut st = SceState::new(sce);
+    let mut saw_pea = false;
+    for _ in 0..1500 {
+        st.tick(1.0);
+        if st.vitals.rhythm == vitals_sce::runtime::Rhythm::Pea { saw_pea = true; }
+        if st.outcome().is_some() { break; }
+    }
+    assert!(saw_pea, "the bradycardia degenerates to PEA before death");
+    assert_eq!(st.outcome_id(), Some("death_arrest"));
+    let ids: Vec<&str> = pack.replay.win_path.iter().map(|p| p.id.as_str()).collect();
+    assert!(ids.contains(&"tx_atropine") && ids.contains(&"tx_pacing"), "{ids:?}");
 }

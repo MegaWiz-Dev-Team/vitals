@@ -5,8 +5,12 @@
 //! `git show`, so a case on a branch nobody has checked out compiles without anyone touching
 //! the library's working tree. Nothing here writes, checks out, or stashes.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+/// The deployment target whose cases are the season's. World never carries them.
+pub const SEASON_TARGET: &str = "vitals";
 
 pub struct Library {
     pub dir: PathBuf,
@@ -63,6 +67,35 @@ impl Library {
                 String::from_utf8(out.stdout).map_err(|e| format!("{spec}: not utf-8: {e}"))
             }
         }
+    }
+
+    /// The raw text of a file at the library root, from the working tree or the ref.
+    fn root_file(&self, name: &str) -> Option<String> {
+        match &self.git_ref {
+            None => std::fs::read_to_string(self.dir.join(name)).ok(),
+            Some(r) => {
+                let out = Command::new("git").arg("-C").arg(&self.dir).arg("show").arg(format!("{r}:{name}")).output().ok()?;
+                out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+            }
+        }
+    }
+
+    /// Case ids the library records as deployed to the season (`deployments.jsonl`, target
+    /// `vitals`). The founder's rule: World never carries the season's content, so these are
+    /// refused by name before the compiler ever reads them. An absent or unreadable file means
+    /// an empty set — and the report says which it was.
+    pub fn season_sources(&self) -> BTreeSet<String> {
+        let mut out = BTreeSet::new();
+        let Some(text) = self.root_file("deployments.jsonl") else { return out };
+        for line in text.lines() {
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+            if v["target"].as_str() == Some(SEASON_TARGET) {
+                if let Some(id) = v["case_id"].as_str() {
+                    out.insert(id.to_string());
+                }
+            }
+        }
+        out
     }
 
     /// Every case id in the library, sorted.

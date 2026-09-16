@@ -60,10 +60,17 @@ fn main() {
     };
 
     let git_ref = lib.ref_label();
+    let season = lib.season_sources();
     let mut results: Vec<(String, Outcome)> = Vec::new();
     let mut refused_any = false;
     for id in ids {
-        let outcome = match lib.read(&id) {
+        let outcome = if season.contains(&id) {
+            Outcome::Refused(vitals_casefactory::Refusal {
+                case_id: id.clone(),
+                reason: vitals_casefactory::report::SEASON_SOURCE_REASON.to_string(),
+            })
+        } else {
+            match lib.read(&id) {
             Err(e) => Outcome::Refused(vitals_casefactory::Refusal { case_id: id.clone(), reason: e }),
             Ok(json) => match compile(&json, Source::of("embla-cases", &git_ref, &json)) {
                 Ok(pack) => {
@@ -81,6 +88,7 @@ fn main() {
                 }
                 Err(r) => Outcome::Refused(r),
             },
+        }
         };
         if let Outcome::Refused(r) = &outcome {
             refused_any = true;

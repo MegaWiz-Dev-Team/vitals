@@ -38,7 +38,15 @@ pub struct GoldenScore {
 }
 
 /// Strings that belong to the season's content and must not appear in a World pack.
-pub const SEASON_MARKERS: &[&str] = &["osce-", "Somsri", "Somchai", "station ", "/img/", "/clip/"];
+pub const SEASON_MARKERS: &[&str] = &["osce-", "Somsri", "Somchai", "/img/", "/clip/"];
+
+/// The season's stations by name — `station A`, `Station B3`, `OSCE station` — and not the
+/// obstetric or the nursing station.
+fn has_station_marker(s: &str) -> bool {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| regex::Regex::new(r"(?i)\b(?:osce station|station [a-d]\d?)\b").expect("a literal regex compiles"));
+    re.is_match(s)
+}
 
 fn has_episode_marker(s: &str) -> bool {
     let b = s.as_bytes();
@@ -73,6 +81,9 @@ pub fn scan(pack: &Value, patient_name: &str) -> Vec<String> {
         }
         if has_episode_marker(s) {
             errs.push(format!("season marker EPn at {path}"));
+        }
+        if has_station_marker(s) {
+            errs.push(format!("season marker 'station <letter>' at {path}"));
         }
         let low = s.to_lowercase();
         for t in &tokens {
@@ -199,6 +210,14 @@ pub fn validate(
     }
     for t in &sce.triggers {
         collect_harms(&t.doo, &mut harms);
+    }
+    for iv in &sce.interventions {
+        collect_harms(&iv.effects, &mut harms);
+    }
+    for st in &sce.states {
+        for t in &st.transitions {
+            collect_harms(&t.doo, &mut harms);
+        }
     }
     for it in &rubric.items {
         match &it.check {

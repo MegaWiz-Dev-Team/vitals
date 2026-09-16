@@ -121,7 +121,7 @@ pub fn derive(case: &Case, a: Archetype, mapped: &Mapped, built: &Built, sim: &S
 
     // ── management: every critical and gate role, timed where a sentence timed it ─
     let mut tx: Vec<Value> = Vec::new();
-    for p in mapped.present.iter().filter(|p| matches!(p.role.kind, crate::archetype::Kind::Critical | crate::archetype::Kind::Gate)) {
+    for p in mapped.present.iter().filter(|p| matches!(p.role.kind, crate::archetype::Kind::Critical | crate::archetype::Kind::Gate) || (p.role.kind == crate::archetype::Kind::Rescue && a.paid_rescue().contains(&p.role.id))) {
         let id = p.tx_id();
         match sim.late.iter().find(|(rid, _)| rid == p.role.id) {
             Some((_, by)) => tx.push(json!({ "label": format!("{} within {}:{:02}", p.role.label, (*by as u32) / 60, (*by as u32) % 60), "type": "action_by", "needle": id, "by_sec": by })),

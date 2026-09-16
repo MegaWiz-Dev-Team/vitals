@@ -2,7 +2,7 @@
 //! diagnosis, the investigations, the examination, and the questions — with the patient's words
 //! kept beside the questions as the ward's voice, never inside the engine's beats.
 
-use crate::archetype::Kind;
+use crate::archetype::{Archetype, Kind};
 use crate::embla::Case;
 use crate::plan::{Mapped, Present};
 use crate::text::{keywords, slug};
@@ -59,29 +59,40 @@ fn bounded_delta(var: &str, delta: f64) -> Value {
     }
 }
 
-fn tx(p: &Present) -> Value {
+fn tx(p: &Present, a: Archetype, mapped: &Mapped) -> Value {
     let role = &p.role;
     let id = p.tx_id();
-    let mut effects: Vec<Value> = Vec::new();
-    match role.kind {
-        Kind::Harmful => {
-            for nd in role.nudges {
-                effects.push(bounded_delta(nd.var, nd.delta));
+    // The algorithm's own tools ask which state they are in; everything else is one effect list.
+    let effects: Vec<Value> = match crate::acls::effects(role.id, a, mapped) {
+        Some(e) => e,
+        None => {
+            let mut effects: Vec<Value> = Vec::new();
+            match role.kind {
+                Kind::Harmful => {
+                    for nd in role.nudges {
+                        effects.push(bounded_delta(nd.var, nd.delta));
+                    }
+                    effects.push(json!({ "beat": role.beat }));
+                }
+                _ => {
+                    effects.push(json!({ "flag": format!("{}_given", role.id) }));
+                    for nd in role.nudges {
+                        effects.push(bounded_delta(nd.var, nd.delta));
+                    }
+                    effects.push(json!({ "beat": role.beat }));
+                }
             }
-            effects.push(json!({ "beat": format!("{} given", role.label.to_lowercase()) }));
+            effects
         }
-        _ => {
-            effects.push(json!({ "flag": format!("{}_given", role.id) }));
-            for nd in role.nudges {
-                effects.push(bounded_delta(nd.var, nd.delta));
-            }
-            effects.push(json!({ "beat": role.beat }));
-        }
+    };
+    let mut matcher = json!({ "any_kw": role.kw.iter().map(|k| k.to_string()).collect::<Vec<_>>() });
+    if !role.not_kw.is_empty() {
+        matcher["not_kw"] = json!(role.not_kw.iter().map(|k| k.to_string()).collect::<Vec<_>>());
     }
     let mut v = json!({
         "id": id,
         "label": role.label,
-        "match": { "any_kw": role.kw.iter().map(|k| k.to_string()).collect::<Vec<_>>() },
+        "match": matcher,
         "effects": effects,
     });
     if let Some(h) = role.harm {
@@ -126,18 +137,26 @@ fn id_for(prefix: &str, display: &str, n: usize, taken: &mut BTreeSet<String>) -
     unique(base, taken)
 }
 
+/// Harmful orders whose keywords are a *more specific* form of a therapy's — the IV push of the
+/// drug that is right IM. Listed before everything else so the specific phrase wins the match.
+const EARLY_HARMS: &[&str] = &["adrenaline_iv_push"];
+
 /// Build the whole list, treatments first — the matcher takes the first intervention whose
 /// keywords hit, and a drug name must beat a display word.
-pub fn build(case: &Case, mapped: &Mapped) -> Built {
+pub fn build(case: &Case, mapped: &Mapped, a: Archetype) -> Built {
     let mut taken: BTreeSet<String> = BTreeSet::new();
     let mut out: Vec<Value> = Vec::new();
 
-    // treatments: critical, gate, supportive, harmful — the order the golden path follows
-    let order = [Kind::Critical, Kind::Gate, Kind::Supportive, Kind::Harmful];
+    for p in mapped.present.iter().filter(|p| p.role.kind == Kind::Harmful && EARLY_HARMS.contains(&p.role.id)) {
+        taken.insert(p.tx_id());
+        out.push(tx(p, a, mapped));
+    }
+    // treatments: critical, gate, rescue, supportive, harmful — the order the golden path follows
+    let order = [Kind::Critical, Kind::Gate, Kind::Rescue, Kind::Supportive, Kind::Harmful];
     for kind in order {
-        for p in mapped.present.iter().filter(|p| p.role.kind == kind) {
+        for p in mapped.present.iter().filter(|p| p.role.kind == kind && !(kind == Kind::Harmful && EARLY_HARMS.contains(&p.role.id))) {
             taken.insert(p.tx_id());
-            out.push(tx(p));
+            out.push(tx(p, a, mapped));
         }
     }
 

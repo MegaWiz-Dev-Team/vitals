@@ -6,6 +6,9 @@ use crate::Pack;
 use crate::Refusal;
 use std::collections::BTreeMap;
 
+/// The refusal every season source carries, word for word, so the report can group on it.
+pub const SEASON_SOURCE_REASON: &str = "season source: recorded in embla-cases deployments.jsonl as deployed to target vitals — World never carries the season's content";
+
 pub enum Outcome {
     Compiled(Box<Pack>),
     Refused(Refusal),
@@ -14,7 +17,9 @@ pub enum Outcome {
 /// Coarsen a refusal reason to the family it belongs to, for grouping.
 pub fn reason_family(reason: &str) -> String {
     let r = reason;
-    if r.starts_with("no archetype fits: ") && !r.contains("names no deterioration") {
+    if r.starts_with("season source") {
+        "season source (the season's content, excluded by rule)".into()
+    } else if r.starts_with("no archetype fits: ") && !r.contains("names no deterioration") {
         // a diagnosis the library knows it cannot model yet — keep the shape's name
         let why = r.trim_start_matches("no archetype fits: ");
         format!("no archetype yet: {}", why.split(" — ").next().unwrap_or(why))
@@ -66,6 +71,17 @@ pub fn render(results: &[(String, Outcome)], library: &str, git_ref: &str, commi
         let lo = deaths.iter().cloned().fold(f64::INFINITY, f64::min);
         let hi = deaths.iter().cloned().fold(0.0, f64::max);
         s.push_str(&format!("| {a} | {} | {endemic} | {lo:.0}–{hi:.0} |\n", packs.len()));
+    }
+
+    // the season's own, refused by rule
+    let season: Vec<&String> = refused.iter().filter(|(_, r)| r.reason.starts_with("season source")).map(|(id, _)| *id).collect();
+    s.push_str("\n## Season sources (refused by rule — World never carries the season's content)\n\n");
+    if season.is_empty() {
+        s.push_str("None recorded for this library (no `deployments.jsonl` entry with target `vitals`).\n");
+    } else {
+        for id in &season {
+            s.push_str(&format!("- `{id}`\n"));
+        }
     }
 
     // per case

@@ -60,6 +60,9 @@ impl Mapped {
     pub fn supportive(&self) -> Vec<&Present> {
         self.present.iter().filter(|p| p.role.kind == Kind::Supportive).collect()
     }
+    pub fn rescue(&self) -> Vec<&Present> {
+        self.present.iter().filter(|p| p.role.kind == Kind::Rescue).collect()
+    }
     pub fn get(&self, id: &str) -> Option<&Present> {
         self.present.iter().find(|p| p.role.id == id)
     }
@@ -102,6 +105,10 @@ pub fn map(case: &Case, archetype: Archetype) -> Mapped {
             add(role, source);
         }
     }
+    for role in archetype.intrinsic_roles() {
+        let source = plan.iter().position(|s| positive_hit(role, s));
+        add(*role, source);
+    }
     for role in archetype.intrinsic_harms() {
         add(*role, None);
     }
@@ -134,7 +141,7 @@ pub fn map(case: &Case, archetype: Archetype) -> Mapped {
     let mut timed: BTreeMap<String, Timed> = BTreeMap::new();
     for s in flags.iter().chain(plan.iter()) {
         let Some(secs) = time_named(s) else { continue };
-        for p in present.iter().filter(|p| matches!(p.role.kind, Kind::Critical | Kind::Gate)) {
+        for p in present.iter().filter(|p| matches!(p.role.kind, Kind::Critical | Kind::Gate | Kind::Rescue)) {
             if positive_hit(&p.role, s) || (p.role.kind == Kind::Gate && s.to_lowercase().contains(p.role.kw[0])) {
                 let e = timed.entry(p.role.id.to_string()).or_insert(Timed { named_sec: secs, sentence: s.clone() });
                 if secs < e.named_sec {

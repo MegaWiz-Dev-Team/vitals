@@ -10,6 +10,7 @@
 //! A case the archetype library cannot honestly model is **refused with a reason**, never forced.
 #![forbid(unsafe_code)]
 
+pub mod acls;
 pub mod archetype;
 pub mod embla;
 pub mod interventions;
@@ -150,10 +151,18 @@ pub fn compile(case_json: &str, source: Source) -> Result<Pack, Refusal> {
     if Archetype::candidates(&case).is_empty() {
         return Err(refuse(&id, Archetype::none_fits(&case)));
     }
-    let v0 = case.vitals0().map_err(|e| refuse(&id, e))?;
+    // A patient without a pulse has no vitals to read; the arrest archetype starts from zeros.
+    let v0 = match case.vitals0() {
+        Ok(v) => v,
+        Err(e) => {
+            let arrest_words = Archetype::candidates(&case).first().is_some_and(|(_, a)| *a == Archetype::AclsCardiacArrest);
+            if arrest_words { embla::Vitals0::arrest() } else { return Err(refuse(&id, e)) }
+        }
+    };
     let a = Archetype::detect(&case, &v0).map_err(|e| refuse(&id, e))?;
     let mapped = plan::map(&case, a);
-    if mapped.critical().is_empty() {
+    // An arrest is turned by the algorithm's own tools, which every arrest case carries.
+    if mapped.critical().is_empty() && a != Archetype::AclsCardiacArrest {
         return Err(refuse(&id, format!("the plan names no therapy the {} archetype can act on — nothing turns the trajectory", a.id())));
     }
     // Oxygen alone does not turn respiratory failure; the plan has to name what does.
@@ -161,7 +170,7 @@ pub fn compile(case_json: &str, source: Source) -> Result<Pack, Refusal> {
         return Err(refuse(&id, format!("the plan names no therapy the {} archetype can act on beyond oxygen — nothing turns the trajectory", a.id())));
     }
 
-    let built = interventions::build(&case, &mapped);
+    let built = interventions::build(&case, &mapped, a);
     let sim = scenario::build(&case, a, &v0, &mapped, &built);
     let rubric = rubric::derive(&case, a, &mapped, &built, &sim, &source.sha256);
 
@@ -172,14 +181,24 @@ pub fn compile(case_json: &str, source: Source) -> Result<Pack, Refusal> {
     // full reading of it
     let mut path: Vec<validate::PathStep> = Vec::new();
     let mut t = 20.0;
-    for kind in [Kind::Gate, Kind::Critical] {
-        for p in mapped.present.iter().filter(|p| p.role.kind == kind) {
-            path.push(validate::PathStep { t_sec: t, id: p.tx_id() });
-            t += 20.0;
+    let last_critical = match acls::golden_prefix(&case, a, &v0, &mapped) {
+        Some(prefix) => {
+            let last = prefix.last().map(|(t, _)| *t).unwrap_or(20.0);
+            path.extend(prefix.into_iter().map(|(t_sec, id)| validate::PathStep { t_sec, id }));
+            last
         }
-    }
-    let last_critical = t - 20.0;
-    let mut rest: Vec<String> = mapped.present.iter().filter(|p| p.role.kind == Kind::Supportive).map(plan::Present::tx_id).collect();
+        None => {
+            for kind in [Kind::Gate, Kind::Critical] {
+                for p in mapped.present.iter().filter(|p| p.role.kind == kind) {
+                    path.push(validate::PathStep { t_sec: t, id: p.tx_id() });
+                    t += 20.0;
+                }
+            }
+            t - 20.0
+        }
+    };
+    let on_path: Vec<String> = path.iter().map(|p| p.id.clone()).collect();
+    let mut rest: Vec<String> = mapped.present.iter().filter(|p| p.role.kind == Kind::Supportive).map(plan::Present::tx_id).filter(|id| !on_path.contains(id)).collect();
     let paid: Vec<String> = rubric["items"]
         .as_array()
         .map(|items| items.iter().filter_map(|it| it.get("needle").and_then(|n| n.as_str()).map(str::to_string)).collect())
