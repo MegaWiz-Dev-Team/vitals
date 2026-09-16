@@ -32,6 +32,9 @@ pub struct Entry {
     /// State → url, in the bucket's one shape.
     #[serde(default)]
     pub portrait: BTreeMap<String, String>,
+    /// State → the 256 px sibling's url (`<sha>-256.webp`, the same sha as the full one).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub portrait_256: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -138,6 +141,16 @@ impl Manifest {
             return false;
         }
         e.portrait.insert(state.into(), url.into());
+        true
+    }
+
+    /// Record a state's 256 px sibling. Add only, like the rest.
+    pub fn record_variant(&mut self, key: &str, state: &str, url: &str) -> bool {
+        let e = self.entries.entry(key.to_string()).or_default();
+        if e.portrait_256.contains_key(state) {
+            return false;
+        }
+        e.portrait_256.insert(state.into(), url.into());
         true
     }
 

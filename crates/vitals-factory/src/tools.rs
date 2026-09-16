@@ -28,6 +28,8 @@ pub trait Tools {
     fn ask(&self, project: &str, model: &str, image: &[u8], mime: &str, question: &str) -> Result<String, String>;
     /// PNG bytes to webp bytes at this quality.
     fn webp(&self, png: &[u8], quality: u8) -> Result<Vec<u8>, String>;
+    /// Any image (PNG or webp) to a square webp of `size` pixels at this quality — the sibling.
+    fn webp_resized(&self, image: &[u8], quality: u8, size: u32) -> Result<Vec<u8>, String>;
     /// `local` to `gs://<bucket>/<object>`, never overwriting.
     fn upload(&self, local: &Path, object: &str) -> Result<(), String>;
     /// A public object, by url — how a base already in the bucket is fetched for editing.
@@ -115,18 +117,12 @@ impl Tools for Shell {
     }
 
     fn webp(&self, png: &[u8], quality: u8) -> Result<Vec<u8>, String> {
-        let dir = std::env::temp_dir().join(format!("vitals-factory-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        let src = dir.join("in.png");
-        let dst = dir.join("out.webp");
-        std::fs::write(&src, png).map_err(|e| e.to_string())?;
-        run(Command::new("cwebp").args([
-            "-quiet", "-q", &quality.to_string(), "-m", "6",
-            &src.display().to_string(), "-o", &dst.display().to_string(),
-        ]))?;
-        let out = std::fs::read(&dst).map_err(|e| e.to_string())?;
-        let _ = std::fs::remove_dir_all(&dir);
-        Ok(out)
+        cwebp(png, &["-q", &quality.to_string(), "-m", "6"])
+    }
+
+    fn webp_resized(&self, image: &[u8], quality: u8, size: u32) -> Result<Vec<u8>, String> {
+        let px = size.to_string();
+        cwebp(image, &["-q", &quality.to_string(), "-m", "6", "-resize", &px, &px])
     }
 
     fn upload(&self, local: &Path, object: &str) -> Result<(), String> {
@@ -150,6 +146,21 @@ impl Tools for Shell {
             .map_err(|e| format!("GET {url}: {e}"))?;
         Ok(buf)
     }
+}
+
+/// `cwebp` over bytes: PNG or webp in, webp out. cwebp reads either.
+fn cwebp(image: &[u8], args: &[&str]) -> Result<Vec<u8>, String> {
+    let dir = std::env::temp_dir().join(format!("vitals-factory-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let src = dir.join(if image.starts_with(b"RIFF") { "in.webp" } else { "in.png" });
+    let dst = dir.join("out.webp");
+    std::fs::write(&src, image).map_err(|e| e.to_string())?;
+    let mut cmd = Command::new("cwebp");
+    cmd.arg("-quiet").args(args).arg(&src).arg("-o").arg(&dst);
+    run(&mut cmd)?;
+    let out = std::fs::read(&dst).map_err(|e| e.to_string())?;
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(out)
 }
 
 /// One `generateContent` call on Vertex's global endpoint with an image inline and a text part,

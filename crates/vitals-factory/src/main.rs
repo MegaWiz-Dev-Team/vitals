@@ -22,15 +22,17 @@
 
 use std::path::PathBuf;
 use vitals_factory::door::Http;
-use vitals_factory::tick::{default_repo, remake_face, tick, Config};
+use vitals_factory::tick::{backfill_variants, default_repo, remake_face, tick, Config};
 use vitals_factory::tools::Shell;
 
-const USAGE: &str = "usage: vitals-factory [--once] [--dry-run] | --face KEY@AGE
+const USAGE: &str = "usage: vitals-factory [--once] [--dry-run] | --face KEY@AGE | --variants
 
 One tick of the patient factory: read WARD's /api/ward, top its queue up to QUEUE_DEPTH, complete
 one patient's faces, exit. Configuration is the environment (see the crate doc); --dry-run reads
 and plans and touches nothing. --face KOR-0@8 remakes one face through the photorealism gate,
-records it, and prints its url; the ward is not touched.";
+records it, and prints its url; the ward is not touched. --variants makes the 256 px sibling of
+every portrait on file that has none, uploads and records them; the next tick carries them to the
+ward.";
 
 fn env_or(name: &str, default: &str) -> String {
     std::env::var(name).ok().filter(|v| !v.trim().is_empty()).unwrap_or_else(|| default.to_string())
@@ -57,10 +59,12 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut dry_run = false;
     let mut face: Option<String> = None;
+    let mut variants = false;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--dry-run" => dry_run = true,
+            "--variants" => variants = true,
             "--face" => match it.next() {
                 Some(spec) => face = Some(spec.clone()),
                 None => {
@@ -89,6 +93,20 @@ fn main() {
         }
     };
     let tools = Shell { bucket: cfg.bucket.clone() };
+    if variants {
+        let report = backfill_variants(&cfg, &tools);
+        let t = stamp();
+        for line in &report.lines {
+            println!("{t} {line}");
+        }
+        for e in &report.errors {
+            eprintln!("{t} ERROR {e}");
+        }
+        if !report.errors.is_empty() {
+            std::process::exit(1);
+        }
+        return;
+    }
     if let Some(spec) = face {
         match remake_face(&cfg, &tools, &spec) {
             Ok((url, report)) => {

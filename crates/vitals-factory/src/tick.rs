@@ -32,6 +32,11 @@ use vitals_web::ward_chain::{pack_id, PORTRAITS};
 /// webp quality, as the batch used.
 pub const WEBP_QUALITY: u8 = 86;
 
+/// The 256 px sibling every portrait gets: `<sha>-256.webp`, the same sha as the full one so the
+/// pair is addressable, at this quality (~7–12 KB). The board can draw a wall of faces from these.
+pub const VARIANT_PX: u32 = 256;
+pub const VARIANT_QUALITY: u8 = 80;
+
 /// How many faces the painter may try for one person before the factory gives up on her this
 /// tick. Each try is a new seed and each is judged; a pack is never built on a rejected face.
 pub const FACE_ATTEMPTS: u32 = 3;
@@ -113,7 +118,8 @@ fn face_url(sha: &str) -> String {
     format!("{PORTRAITS}/{sha}.webp")
 }
 
-/// Write a face locally and put it in the bucket; the url is content-addressed either way.
+/// Write a face locally and put it in the bucket, with its 256 px sibling; the url is
+/// content-addressed either way and the sibling's is the same sha with `-256`.
 fn publish(cfg: &Config, tools: &dyn Tools, webp: &[u8]) -> Result<String, String> {
     let sha = sha256_hex(webp);
     let path = cfg.face_path(&sha);
@@ -124,7 +130,35 @@ fn publish(cfg: &Config, tools: &dyn Tools, webp: &[u8]) -> Result<String, Strin
         std::fs::write(&path, webp).map_err(|e| format!("{}: {e}", path.display()))?;
     }
     tools.upload(&path, &format!("{sha}.webp"))?;
+    publish_sibling(cfg, tools, &sha, webp)?;
     Ok(face_url(&sha))
+}
+
+/// The 256 px sibling of a full portrait, by the full one's sha.
+fn publish_sibling(cfg: &Config, tools: &dyn Tools, sha: &str, full: &[u8]) -> Result<String, String> {
+    let small = tools.webp_resized(full, VARIANT_QUALITY, VARIANT_PX)?;
+    let path = cfg.face_path(&format!("{sha}-256"));
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    }
+    if !path.exists() {
+        std::fs::write(&path, &small).map_err(|e| format!("{}: {e}", path.display()))?;
+    }
+    tools.upload(&path, &format!("{sha}-256.webp"))?;
+    Ok(sibling_url(&face_url(sha)))
+}
+
+/// `…/<sha>.webp` → `…/<sha>-256.webp`.
+pub fn sibling_url(url: &str) -> String {
+    match url.strip_suffix(".webp") {
+        Some(stem) => format!("{stem}-256.webp"),
+        None => url.to_string(),
+    }
+}
+
+/// The sha a portrait url names.
+fn sha_of(url: &str) -> Option<&str> {
+    url.rsplit('/').next().and_then(|n| n.strip_suffix(".webp"))
 }
 
 pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
@@ -272,6 +306,7 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
 
     // ── a face remade since her pack was sent reaches the pack while it waits ──
     replace_remade_faces(door, &token, &manifest, &mut ledger, &mut r);
+    carry_siblings_to_waiting_packs(door, &token, &manifest, &mut ledger, &mut r);
     save_ledger(cfg, &ledger, &mut r);
 
     // ── resend what the board has not shown yet: recovery and probe in one ──
@@ -343,8 +378,14 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
     };
     r.say(format!("queue depth {depth_now}, want {}: building {}", cfg.queue_depth, planned.packs.len()));
     let mut deferred = 0;
+    let mut door_takes_256 = true;
     for pl in planned.packs {
         let mut pack = pl.pack;
+        if let Base::Have { key, .. } = &pl.base {
+            if let Some(v) = manifest.entries.get(key).and_then(|e| e.portrait_256.get("stable")) {
+                pack.portrait.insert("stable_256".into(), v.clone());
+            }
+        }
         if let Base::Make { key, age } = &pl.base {
             if r.faces_tried >= cfg.bases_per_tick {
                 deferred += 1;
@@ -354,10 +395,13 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
             match make_face(cfg, tools, who, *age, pl.place.as_str(), &mut r) {
                 Ok(url) => {
                     manifest.record_base(key, *age, &url, who);
+                    let slot = manifest.entry_with_stable(&url).map(|(k, _)| k.clone()).unwrap_or_else(|| format!("{key}@{age}"));
+                    manifest.record_variant(&slot, "stable", &sibling_url(&url));
                     if let Err(e) = manifest.save(&cfg.manifest_path()) {
                         r.fail(e);
                         return r;
                     }
+                    pack.portrait.insert("stable_256".into(), sibling_url(&url));
                     pack.portrait.insert("stable".into(), url);
                     r.faces_made += 1;
                     r.say(format!("made a face for {key} at {age}"));
@@ -370,7 +414,22 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
         }
         let who = pool.iter().find(|p| p.key == pl.person).expect("a planned person is in the pool");
         let id = pack_id(&pack);
-        match door.push(&token, std::slice::from_ref(&pack)) {
+        if !door_takes_256 {
+            pack.portrait.retain(|k, _| !k.ends_with("_256"));
+        }
+        let mut reply = door.push(&token, std::slice::from_ref(&pack));
+        if let Ok(Pushed::Queued(q)) = &reply {
+            if door_takes_256 && q.rejected.iter().any(|why| refuses_256(why)) {
+                // 7b's door does not know the sibling keys yet: say so once, send without, and
+                // remember for the rest of the tick. The siblings are in the bucket for the door
+                // that takes them.
+                door_takes_256 = false;
+                r.say("the door does not take 256 px keys yet; sending packs without their siblings this tick");
+                pack.portrait.retain(|k, _| !k.ends_with("_256"));
+                reply = door.push(&token, std::slice::from_ref(&pack));
+            }
+        }
+        match reply {
             Ok(Pushed::Queued(q)) => {
                 r.queued += q.queued;
                 r.duplicates += q.duplicates;
@@ -382,6 +441,7 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
                 }
                 let mut sent = Sent::new(&pack.case, who, pack.persona.age, pack.endemic, pack.portrait.get("stable").cloned(), cfg.now, &cfg.ward);
                 sent.sex = pack.persona.sex.clone();
+                sent.variants_sent = pack.portrait.contains_key("stable_256");
                 ledger.sent.insert(id.clone(), sent);
                 save_ledger(cfg, &ledger, &mut r);
                 r.say(format!(
@@ -454,6 +514,53 @@ fn replace_remade_faces(door: &dyn Door, token: &Token, manifest: &Manifest, led
             }
             Ok(FillReply::Refused { error }) => r.fail(format!("replacing the face of {name} on pack {}: {error}", &id[..12])),
             Err(e) => r.fail(format!("replacing the face of {name} on pack {}: {e}", &id[..12])),
+        }
+    }
+}
+
+/// Is this the door saying it does not know 256 px keys or addresses?
+fn refuses_256(why: &str) -> bool {
+    why.contains("_256") || why.contains("-256.webp")
+}
+
+/// Waiting packs that carry no siblings yet get them through the replace door, when the door takes
+/// them; the first refusal in a tick stops the rest until the next tick.
+fn carry_siblings_to_waiting_packs(door: &dyn Door, token: &Token, manifest: &Manifest, ledger: &mut Ledger, r: &mut Report) {
+    let due: Vec<(String, String)> = ledger
+        .sent
+        .iter()
+        .filter(|(_, s)| s.patient_id.is_none() && !s.variants_sent)
+        .filter_map(|(id, s)| {
+            let stable = s.stable.as_deref()?;
+            let (_, e) = manifest.entry_with_stable(stable)?;
+            e.portrait_256.get("stable").map(|v| (id.clone(), v.clone()))
+        })
+        .collect();
+    for (id, url) in due {
+        let set = BTreeMap::from([("stable_256".to_string(), url)]);
+        let name = ledger.sent[&id].name.clone();
+        match door.replace(token, &id, &set) {
+            Ok(FillReply::Filled(f)) if f.added > 0 && f.rejected.is_empty() => {
+                if let Some(s) = ledger.sent.get_mut(&id) {
+                    s.variants_sent = true;
+                }
+                r.say(format!("carried the 256 px sibling to {name}'s waiting pack {}", &id[..12]));
+            }
+            Ok(FillReply::Filled(f)) => {
+                if f.rejected.iter().any(|w| refuses_256(w)) {
+                    r.say("the door does not take 256 px keys yet; the waiting packs keep theirs for a later tick");
+                    return;
+                }
+                for why in f.rejected {
+                    r.say(format!("{name}'s waiting pack {} did not take the sibling: {why}", &id[..12]));
+                }
+            }
+            Ok(FillReply::Closed { why }) => {
+                r.say(format!("door closed: {why}"));
+                return;
+            }
+            Ok(FillReply::Refused { error }) => r.fail(format!("siblings for {name}'s pack {}: {error}", &id[..12])),
+            Err(e) => r.fail(format!("siblings for {name}'s pack {}: {e}", &id[..12])),
         }
     }
 }
@@ -565,6 +672,7 @@ fn remake(cfg: &Config, tools: &dyn Tools, spec: &str, r: &mut Report) -> Result
     let slot = format!("{key}@{age}");
     manifest.entries.remove(&slot);
     manifest.record_base(&key, age, &url, who);
+    manifest.record_variant(&slot, "stable", &sibling_url(&url));
     // record_base files a batch-age face under the bare key; a remake is always its own entry.
     if !manifest.entries.contains_key(&slot) {
         if let Some(mut e) = manifest.entries.remove(&key) {
@@ -647,6 +755,15 @@ fn gaps(ward: &WardView, pool: &[Person], manifest: &Manifest, r: &mut Report) -
             // A build that publishes no set at all: the stable is pushed too, so the board can show her.
             from_manifest.insert("stable".into(), stable.clone());
         }
+        // The 256 px siblings of every state she has on file that the board does not show yet.
+        if record {
+            for (st, v) in &entry.portrait_256 {
+                let k = format!("{st}_256");
+                if !p.portraits.contains_key(&k) {
+                    from_manifest.insert(k, v.clone());
+                }
+            }
+        }
         if from_manifest.is_empty() && to_make.is_empty() {
             continue;
         }
@@ -696,7 +813,15 @@ fn complete_faces(cfg: &Config, door: &dyn Door, tools: &dyn Tools, token: &Toke
         match door.fill(token, g.patient_id, &set) {
             Ok(FillReply::Filled(f)) => {
                 r.say(format!("patient {} ({}): {} added, {} kept, now {:?}", g.patient_id, g.who.name, f.added, f.kept, f.states));
+                let mut said_256 = false;
                 for why in f.rejected {
+                    if refuses_256(&why) {
+                        if !said_256 {
+                            r.say("the door does not take 256 px keys yet; her siblings wait for a later tick");
+                            said_256 = true;
+                        }
+                        continue;
+                    }
                     r.fail(format!("patient {}: {why}", g.patient_id));
                 }
             }
@@ -742,18 +867,75 @@ fn make_states(cfg: &Config, tools: &dyn Tools, g: &Gap, manifest: &mut Manifest
             Ok(url) => {
                 if g.record {
                     manifest.record_state(&g.key, st, &url);
+                    manifest.record_variant(&g.key, st, &sibling_url(&url));
                     if let Err(e) = manifest.save(&cfg.manifest_path()) {
                         r.fail(e);
                     }
                 }
                 r.states_made += 1;
                 r.say(format!("made {st} for {} ({}){}", g.who.name, g.key, if g.record { "" } else { " — from the face the board shows, which is not the one on file; pushed, not recorded" }));
+                out.insert(format!("{st}_256"), sibling_url(&url));
                 out.insert(st.to_string(), url);
             }
             Err(e) => failed.push((st, e)),
         }
     }
     (out, failed)
+}
+
+/// The 256 px siblings of every portrait already on file that has none: fetched from the bucket
+/// (or read locally), resized, uploaded under the full one's sha with `-256`, and recorded. Runs
+/// until nothing is missing; a second run makes nothing. The ward is not touched here — the next
+/// tick carries the siblings to the patients and packs whose doors take them.
+pub fn backfill_variants(cfg: &Config, tools: &dyn Tools) -> Report {
+    let mut r = Report::default();
+    let mut manifest = match Manifest::load(&cfg.manifest_path()) {
+        Ok(m) => m,
+        Err(e) => {
+            r.fail(e);
+            return r;
+        }
+    };
+    let due: Vec<(String, String, String)> = manifest
+        .entries
+        .iter()
+        .flat_map(|(k, e)| {
+            e.portrait
+                .iter()
+                .filter(|(st, _)| !e.portrait_256.contains_key(*st))
+                .map(|(st, url)| (k.clone(), st.clone(), url.clone()))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    r.say(format!("{} portrait(s) on file without a 256 px sibling", due.len()));
+    let mut made = 0;
+    for (key, st, url) in due {
+        let Some(sha) = sha_of(&url) else {
+            r.fail(format!("{key} {st}: {url} is not a portrait address"));
+            continue;
+        };
+        let full = if cfg.face_path(sha).exists() { std::fs::read(cfg.face_path(sha)).map_err(|e| e.to_string()) } else { tools.fetch(&url) };
+        let full = match full {
+            Ok(b) => b,
+            Err(e) => {
+                r.fail(format!("{key} {st}: {e}"));
+                continue;
+            }
+        };
+        match publish_sibling(cfg, tools, sha, &full) {
+            Ok(small) => {
+                manifest.record_variant(&key, &st, &small);
+                if let Err(e) = manifest.save(&cfg.manifest_path()) {
+                    r.fail(e);
+                    return r;
+                }
+                made += 1;
+            }
+            Err(e) => r.fail(format!("{key} {st}: {e}")),
+        }
+    }
+    r.say(format!("{made} sibling(s) made and recorded"));
+    r
 }
 
 /// For the binary: the checkout this binary was built from, when run from anywhere else.

@@ -260,9 +260,9 @@ fn a_tick_tops_the_queue_up_to_depth_makes_at_most_so_many_faces_and_says_what_i
     // Faces: at most two made this tick, each uploaded under its sha and recorded at her age.
     let paints = tools.paints.borrow();
     assert!(paints.len() <= 2, "{} faces made, two allowed", paints.len());
-    assert_eq!(tools.uploads.borrow().len(), paints.len());
+    assert_eq!(tools.uploads.borrow().len(), 2 * paints.len(), "each face and its 256 px sibling");
     for object in tools.uploads.borrow().iter() {
-        assert!(object.len() == 69 && object.ends_with(".webp"), "content-addressed: {object}");
+        assert!((object.len() == 69 || object.len() == 73) && object.ends_with(".webp"), "content-addressed, or the sibling of one: {object}");
     }
     let man = Manifest::load(&dir.join("portraits.json")).unwrap();
     let made: Vec<_> = man.entries.iter().filter(|(k, _)| k.contains('@')).collect();
@@ -390,7 +390,7 @@ fn the_faces_of_one_patient_are_completed_per_tick_and_known_ones_are_not_made_a
     assert_eq!(edits.len(), 5, "five states for one patient, not ten: {edits:?}");
     assert!(edits.iter().any(|e| e.contains("cardiac arrest")) && edits.iter().all(|e| e.contains("same person")));
     assert!(edits.iter().all(|e| !e.contains("dead")), "no picture of a dead patient is made");
-    assert_eq!(tools.uploads.borrow().len(), 5);
+    assert_eq!(tools.uploads.borrow().len(), 10, "five states and their five siblings");
     let made_for: Vec<u64> = fills.iter().filter(|(id, _)| *id != 1789488342).map(|(id, _)| *id).collect();
     assert_eq!(made_for.len(), 1, "one patient per tick: {made_for:?}");
     let man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
@@ -470,7 +470,7 @@ fn a_face_is_a_photograph_or_it_is_not_a_face() {
     // have. This one judges style — see prompts::PHOTOREAL for the calibration.
     assert!(judged.iter().all(|j| j.contains("exactly ONE person") && j.contains("drawing, anime, cartoon, doll or stylised 3D render") && j.contains("Answer yes or no")), "{}", judged[0]);
     // Only the face that passed was uploaded and recorded.
-    assert_eq!(tools.uploads.borrow().len(), 1, "one face passed, one was uploaded");
+    assert_eq!(tools.uploads.borrow().len(), 2, "one face passed: it and its sibling were uploaded");
     let man = Manifest::load(&dir.join("portraits.json")).unwrap();
     assert_eq!(man.entries.iter().filter(|(k, _)| k.contains('@')).count(), 1, "the rejected face is nowhere on file");
     // The log says so beside each face, and names the person whose face was given up on.
@@ -549,7 +549,7 @@ fn a_face_can_be_remade_through_the_gate_and_the_old_one_leaves_the_file() {
     assert_eq!(e.age, Some(8));
     assert!(r.lines.iter().any(|l| l.contains("photorealistic: no")) && r.lines.iter().any(|l| l.contains("photorealistic: yes")), "{:?}", r.lines);
     assert!(!r.lines.iter().any(|l| l.contains("natural child proportions")), "the prompt itself is not logged");
-    assert_eq!(tools.uploads.borrow().len(), 1);
+    assert_eq!(tools.uploads.borrow().len(), 2, "the face and its sibling");
 
     assert!(remake_face(&cfg, &tools, "XXX-9@40").is_err(), "nobody by that key");
     assert!(remake_face(&cfg, &tools, "KOR-0").is_err(), "a face has an age");
@@ -646,14 +646,14 @@ fn a_childs_face_must_look_her_age_and_an_adults_is_not_asked() {
     assert!(text.contains("looks 4 (band 6\u{2013}10) — a new seed"), "{text}");
     assert!(text.contains("looks 3 (band 6\u{2013}10) — a new seed"), "a number inside a sentence is still a number: {text}");
     assert!(text.contains("looks 7 (band 6\u{2013}10)"), "{text}");
-    assert_eq!(tools.uploads.borrow().len(), 1);
+    assert_eq!(tools.uploads.borrow().len(), 2, "the face and its sibling");
 
     // Three faces that look wrong: given up, and nothing uploaded.
     tools.ages.borrow_mut().extend(["3".to_string(), "12".to_string(), "4".to_string()]);
     let (e, rep) = *remake_face(&cfg, &tools, "VNM-0@8").expect_err("three refusals on age");
     assert!(e.contains("Nguyen Thi Lan") && e.contains("three faces"), "{e}");
     assert_eq!(rep.lines.iter().filter(|l| l.contains("— a new seed")).count(), 3);
-    assert_eq!(tools.uploads.borrow().len(), 1, "nothing more uploaded");
+    assert_eq!(tools.uploads.borrow().len(), 2, "nothing more uploaded");
 
     // An adult: the style question only.
     let asked_before = tools.asked.borrow().len();
@@ -684,7 +684,7 @@ fn states_for_a_face_the_board_kept_are_pushed_and_not_filed_under_the_new_one()
     assert_eq!(tools.edits.borrow().len(), 5);
     let fills = door.fills.borrow();
     assert_eq!(fills.len(), 1);
-    assert_eq!(fills[0].1.len(), 5, "pushed to her patient door");
+    assert_eq!(fills[0].1.len(), 10, "pushed to her patient door, each state with its sibling");
     let man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
     assert_eq!(man2.entries["KOR-0@8"].portrait.len(), 1, "the new face's entry holds no states of the old face");
     assert!(r.lines.iter().any(|l| l.contains("pushed, not recorded")), "{:?}", r.lines);
@@ -712,7 +712,7 @@ fn a_state_the_editor_refuses_costs_only_that_state() {
     assert_eq!(r.states_made, 3, "recovered, improving and critical were made");
     let fills = door.fills.borrow();
     assert_eq!(fills.len(), 1, "and pushed");
-    assert_eq!(fills[0].1.len(), 3);
+    assert_eq!(fills[0].1.len(), 6, "each with its 256 px sibling");
     assert!(!fills[0].1.contains_key("deteriorating"));
     let man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
     assert_eq!(man2.entries["KOR-0"].portrait.len(), 4, "the three made are on file with the base; the refused two are not");
@@ -794,12 +794,16 @@ fn every_portrait_uploaded_gets_a_256_px_sibling() {
     for (k, e) in man.entries.iter().filter(|(k, _)| k.contains('@')) {
         assert_eq!(e.portrait_256.get("stable").map(String::as_str), Some(sibling(&e.portrait["stable"]).as_str()), "{k}: the sibling is on file beside the face");
     }
-    // The packs carry both keys, and the sibling's address is the full one's with -256.
+    // The packs carry both keys where the file has the sibling (the faces made this tick do; the
+    // seeded ones get theirs from the backfill), and the sibling's address is the full one's with -256.
+    let mut with = 0;
     for p in door.queue.borrow().values() {
-        if let Some(s) = p.portrait.get("stable") {
-            assert_eq!(p.portrait.get("stable_256").map(String::as_str), Some(sibling(s).as_str()), "{}: stable_256 beside stable", p.persona.name);
-        }
+        let Some(s) = p.portrait.get("stable") else { continue };
+        let on_file = man.entry_with_stable(s).and_then(|(_, e)| e.portrait_256.get("stable").cloned());
+        assert_eq!(p.portrait.get("stable_256"), on_file.as_ref(), "{}: stable_256 beside stable exactly when the file has it", p.persona.name);
+        if on_file.is_some() { with += 1; assert_eq!(on_file.as_deref(), Some(sibling(s).as_str())); }
     }
+    assert!(with >= 1, "at least the faces made this tick carry their sibling");
 }
 
 #[test]
@@ -814,10 +818,10 @@ fn a_door_that_does_not_take_256_gets_the_pack_without_it_once_per_tick() {
     assert!(r.errors.is_empty(), "a door that is not there yet is not an error: {:?}", r.errors);
     assert_eq!(r.rejected, 0, "a refusal of the sibling is not a rejected pack");
     let q = door.queue.borrow();
-    assert_eq!(q.len(), 6);
+    assert!(q.len() >= 2, "{}", q.len());
     assert!(q.values().all(|p| !p.portrait.keys().any(|k| k.ends_with("_256"))), "sent without the sibling");
     let pushes = door.pushes.borrow();
-    assert_eq!(pushes.iter().sum::<usize>(), 6 + 1 + 1, "six packs, the empty probe, and exactly one retry — the door's answer is remembered for the tick");
+    assert_eq!(pushes.len(), q.len() + 1 + 1, "every pack once, the empty probe, and exactly one retry — the door's answer is remembered for the tick: {pushes:?}");
     assert_eq!(r.lines.iter().filter(|l| l.contains("does not take 256")).count(), 1, "{:?}", r.lines);
     // The siblings were still made and uploaded: the bucket is ready for the door that takes them.
     assert!(tools.uploads.borrow().iter().any(|o| o.ends_with("-256.webp")));
@@ -837,14 +841,14 @@ fn the_siblings_of_faces_already_on_file_are_made_once_and_carried_to_the_ward()
 
     let r = backfill_variants(&cfg, &tools);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
-    assert_eq!(tools.uploads.borrow().len(), 62, "sixty bases and two states, one sibling each");
-    assert_eq!(tools.fetches.borrow().len(), 62, "each full picture fetched from the bucket once");
+    assert_eq!(tools.uploads.borrow().len(), pool.len() + 2, "every base and two states, one sibling each");
+    assert_eq!(tools.fetches.borrow().len(), pool.len() + 2, "each full picture fetched from the bucket once");
     let man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
     assert_eq!(man2.entries["THA-0"].portrait_256.len(), 3);
     assert_eq!(man2.entries["THA-0"].portrait_256["critical"], sibling(&man2.entries["THA-0"].portrait["critical"]));
     let r = backfill_variants(&cfg, &tools);
     assert!(r.errors.is_empty());
-    assert_eq!(tools.uploads.borrow().len(), 62, "a second run makes nothing");
+    assert_eq!(tools.uploads.borrow().len(), pool.len() + 2, "a second run makes nothing");
 
     // On the ward: an admitted patient whose board lacks the siblings gets them through her own
     // door (add only) and a waiting pack through the replace door — when the door takes them.

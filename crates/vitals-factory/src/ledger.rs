@@ -39,6 +39,9 @@ pub struct Sent {
     /// Set when the board shows she has left. Her face is free from then on.
     #[serde(default)]
     pub closed: bool,
+    /// Set once her waiting pack carries the 256 px siblings — the door that takes them accepted.
+    #[serde(default)]
+    pub variants_sent: bool,
 }
 
 impl Sent {
@@ -56,6 +59,7 @@ impl Sent {
             ward: ward.into(),
             patient_id: None,
             closed: false,
+            variants_sent: false,
         }
     }
 
