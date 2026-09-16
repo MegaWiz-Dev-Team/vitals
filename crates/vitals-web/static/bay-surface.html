@@ -190,8 +190,11 @@
       <!--WARD--><div class="k">this shift</div>
       <button class="btn end" id="endrun" data-ga="handover" disabled
               aria-describedby="endnote">hand over</button>
-      <em class="endnote" id="endnote">Ends your shift and writes it to her chain. She stays on the
-        ward, and the next stranger starts where you stopped.</em><!--/WARD-->
+      <!-- First paint only, and it names nobody: the ward admits men and women, and this is the
+           served markup, before the page knows which. `endWords` writes it again in the patient's
+           own pronoun as soon as the payload says who is in the bed. -->
+      <em class="endnote" id="endnote">Ends your shift and writes it to the chart on chain. The
+        patient stays on the ward, and the next stranger starts where you stopped.</em><!--/WARD-->
     </div>
   </aside>
 

@@ -1812,10 +1812,29 @@ const stop=()=>{clearInterval(timer);timer=null};
 const ARM_MS=6000;
 let armT=null;
 const ENDLABEL='I have finished';
+/* What that button says on the ward, and the line under it — `null` in the bay, where the words are
+   the pack's and are not this function's business.
+   A shift is not an attempt and does not end: it is handed to whoever comes next, and whether the
+   stay ends is the engine's to decide and the chain's to record. So the ward says "hand over"
+   twice rather than "I have finished", and the pronoun is the pronoun of the person in the bed. */
+function endWords(ward, armed, g){
+  if(!ward)return null;
+  const Cap=w=>w.charAt(0).toUpperCase()+w.slice(1);
+  return armed
+    ? { label:'press again to hand over',
+        note:'Hands '+g.o+' to whoever comes next. Your shift is written to '+g.p+
+             ' chain and cannot be taken back.' }
+    : { label:'hand over',
+        note:'Ends your shift and writes it to '+g.p+' chain. '+Cap(g.s)+
+             ' stays on the ward, and the next stranger starts where you stopped.' };
+}
 function disarmEnd(){
   if(armT){clearTimeout(armT);armT=null}
   const b=$('#endrun'); if(!b)return;
-  b.classList.remove('armed'); b.textContent=ENDLABEL;
+  b.classList.remove('armed');
+  const w=endWords(WARD, false, pro());
+  if(w){ b.textContent=w.label; $('#endnote').textContent=w.note; return; }
+  b.textContent=ENDLABEL;
   $('#endnote').textContent=PACK.ui.end_note||'Ends the attempt. The case plays out from here and the marks are computed.';
 }
 async function endRun(){
@@ -1846,8 +1865,10 @@ $('#endrun').onclick=()=>{
   if(over)return;
   if(b.classList.contains('armed'))return endRun();
   b.classList.add('armed');
-  b.textContent=PACK.ui.end_confirm||'press again to end';
-  $('#endnote').textContent=PACK.ui.end_warn||'The case plays out from where you leave it — this cannot be undone.';
+  const w=endWords(WARD, true, pro());
+  b.textContent=w?w.label:(PACK.ui.end_confirm||'press again to end');
+  $('#endnote').textContent=w?w.note
+    :(PACK.ui.end_warn||'The case plays out from where you leave it — this cannot be undone.');
   armT=setTimeout(disarmEnd,ARM_MS);
 };
 

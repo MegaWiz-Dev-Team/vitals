@@ -174,7 +174,8 @@ fn the_wards_own_sentences_take_the_patients_pronoun() {
     // director caught it in review. The rule was right and the list was short.
     // `stemHtml` joined the list when the ward started drawing its own sheet: its footer told every
     // stranger that "what you do is on her chart" and that "she stays", over whoever was in the bed.
-    for name in ["wardBar", "openShift", "takeShift", "handBack", "handOver", "handOverInner", "fire", "stemHtml", "shiftLine", "wardBed"] {
+    for name in ["wardBar", "openShift", "takeShift", "handBack", "handOver", "handOverInner", "fire", "stemHtml", "shiftLine", "wardBed", "endWords",
+                     "disarmEnd"] {
         // Comments first: they are prose about the code, they are allowed to name a woman, and an
         // apostrophe in one ("the case's own patient") would otherwise be read as a quote and
         // shift every literal after it by one.
