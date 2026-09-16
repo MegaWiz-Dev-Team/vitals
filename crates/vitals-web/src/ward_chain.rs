@@ -1406,6 +1406,62 @@ pub fn resumed(
     Ok((st, ordered.len()))
 }
 
+/// A death the ward has to write down, and the span it happened in.
+///
+/// `outcome` is the engine's own word, carried rather than restated. `idle_slots` and `since_slot`
+/// are the chain's arithmetic — the last anchor (or her admission) and the gap since — so the
+/// record a stranger recomputes is the record we anchored.
+pub struct Unattended {
+    pub outcome: String,
+    pub since_slot: u64,
+    pub idle_slots: u64,
+    pub replay: vitals_replay::Replay,
+    /// Her machine at the moment it stopped — the anchor is built from this, never from a second
+    /// replay that might not agree with the first.
+    pub state: vitals_sce::runtime::SceState,
+}
+
+/// Has the ward finished her while nobody was in the room?
+///
+/// The founder removed the idle cap on 16 ก.ย., so time alone can now end a stay — and a death
+/// nobody records is worse than no death at all: the board would keep offering her, and the next
+/// stranger would open a corpse the page still called alive. So the ticker asks this of every open
+/// bed, every minute, and closes the ones the engine has already finished.
+///
+/// Pure and chain-derived: her scenario, her anchored shifts, the tapes those shifts name, the
+/// slot she was admitted at and the slot now. `Err` when a tape the chain names cannot be found —
+/// her chart cannot be rebuilt, and closing her on a chart nobody can check is the one thing the
+/// ward may not do.
+pub fn died_unattended(
+    sce_json: &str,
+    shifts: &[crate::ward::ShiftOnChain],
+    tape_of: &dyn Fn(&str) -> Option<Vec<vitals_replay::Step>>,
+    admitted_slot: u64,
+    now_slot: u64,
+) -> Result<Option<Unattended>, String> {
+    // Where her chart stops: the last shift anybody anchored, or her admission if nobody has.
+    let since = shifts.iter().map(|s| s.slot).max().unwrap_or(admitted_slot).max(admitted_slot);
+    let (mut st, _) = resumed(sce_json, shifts, tape_of, admitted_slot, since)?;
+    let idle_slots = now_slot.saturating_sub(since);
+
+    // The span itself, as a shift with no steps in it — which is what happened.
+    let replay = vitals_replay::shift(&mut st, &[], idle_slots);
+    let Some(outcome) = replay.outcome.clone() else { return Ok(None) };
+    let finished = vitals_progress::record::Outcome::parse(&outcome).is_some_and(|o| {
+        matches!(
+            o,
+            vitals_progress::record::Outcome::DeathArrest
+                | vitals_progress::record::Outcome::DeathBiphasic
+        )
+    });
+    if !finished {
+        // She reached an ending the ward does not close on its own. A discharge nobody was there
+        // to give is not a discharge, and ICU is a transfer: the next stranger continues her.
+        return Ok(None);
+    }
+    Ok(Some(Unattended { outcome, since_slot: since, idle_slots, replay, state: st }))
+}
+
 /// A run hash as the tapes are keyed by it.
 pub fn hex32(b: &[u8; 32]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()

@@ -1101,18 +1101,19 @@ fn a_patient_nobody_came_back_to_is_closed_by_the_ward_and_not_by_the_next_stran
                 .is_none(),
             "a patient who is merely deteriorating is not a patient to close");
 
-    // The span runs from the last anchor, not from admission: somebody was with her at the end of
-    // it, and the time before that is already on her chart.
-    let recent = anchored("one", admitted + nine_hours);
-    let after = died_unattended(&sce, &[recent.clone()], &chart, admitted, admitted + nine_hours + one_hour)
+    // The span runs from the last anchor rather than from admission — somebody was with her at the
+    // end of it. Her chart still carries the hour before that shift, because that hour happened:
+    // what moves is where the *next* span is measured from.
+    let seen_at = admitted + one_hour;
+    let recent = anchored("one", seen_at);
+    let after = died_unattended(&sce, &[recent.clone()], &chart, admitted, seen_at + one_hour)
         .expect("the chain reads");
-    assert!(after.is_none(),
-            "an hour after a shift is an hour, however long she had been admitted before it");
+    assert!(after.is_none(), "an hour after a shift is an hour — two real hours has not killed her");
 
-    let long_after = died_unattended(&sce, &[recent], &chart, admitted, admitted + nine_hours * 2)
+    let long_after = died_unattended(&sce, &[recent], &chart, admitted, seen_at + nine_hours)
         .expect("the chain reads")
         .expect("nine hours after the last shift is nine hours");
-    assert_eq!(long_after.since_slot, admitted + nine_hours, "measured from the last anchor");
+    assert_eq!(long_after.since_slot, seen_at, "measured from the last anchor");
     assert_eq!(long_after.idle_slots, nine_hours);
 
     // A tape the chain names and we have lost stops the reading. The alternative is closing a
