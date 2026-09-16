@@ -223,6 +223,28 @@ we authored a new disease course this month.
     board is live because the ward is, and the patient's body between shifts is what makes that
     more than an animation.
 
+13. **The shift page is the bay, with a parameter** (producer, 16 ก.ย.). `/ward/<patient_id>`
+    serves the same page `/play` serves; it rebuilds her from the chain and begins the run there.
+    One page, one engine, one tape — the alternative was a second play surface, and two surfaces
+    drift. `bay_unchanged.rs` pins that the Eternal entry's own path is untouched when the
+    parameter is absent.
+
+    **Opening her page takes nothing.** The head is taken when a stranger presses *take this
+    shift*, never on load, and until then `id` is unset — every control in that page already
+    guards on it, so a patient you have opened is a chart you can read and not a patient you can
+    treat. That is the honest state and it needs no second flag. It also closes a hole worth
+    naming: a page that took the head on load would let one crawler lock every bed for the length
+    of a lease.
+
+    **The idle clock is measured anchor to anchor**, which over-counts by the length of the shift
+    itself. Deliberate: the alternative is a take-slot only our store knows, and a number nobody
+    can check is worth less than one that is slightly generous. The cap bounds it either way.
+
+    **The ward has no time zone** (founder's question, 16 ก.ย.). Every time it publishes is a slot
+    or a UTC instant with a Z; the server computes in no other zone and stores nobody's. A browser
+    renders them in the reader's own zone, which needs no question asked and nothing kept. The
+    ward's day and its week are UTC, and `/api/ward` says so beside `since_slot`.
+
 13. **The front page is a globe** (founder, 15 ก.ย. 23:15). You spin it, you find a patient by
     country, you click her. developer-4d built it on `cwf/globe` and it is merged into `cwf/ward`:
     a self-contained page — d3-geo, topojson and the 110m atlas inlined, so a judge on a bad
