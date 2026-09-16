@@ -256,6 +256,20 @@ impl Server {
         }
     }
 
+    /// The same POST with somebody else's token — or none at all.
+    fn post_with(&self, path: &str, body: &Value, token: Option<&str>) -> (u16, Value) {
+        let url = format!("http://127.0.0.1:{}{path}", self.port);
+        let mut r = ureq::post(&url).set("Content-Type", "application/json");
+        if let Some(t) = token {
+            r = r.set("Authorization", &format!("Bearer {t}"));
+        }
+        match r.send_string(&body.to_string()) {
+            Ok(res) => (res.status(), res.into_json().unwrap_or(Value::Null)),
+            Err(ureq::Error::Status(c, res)) => (c, res.into_json().unwrap_or(Value::Null)),
+            Err(e) => panic!("{url}: {e}"),
+        }
+    }
+
     fn get(&self, path: &str) -> (u16, Value) {
         let url = format!("http://127.0.0.1:{}{path}", self.port);
         match ureq::get(&url).call() {
@@ -829,4 +843,27 @@ fn the_door_keeps_what_it_was_given() {
     for field in ["case_id", "title", "sce", "rubric", "voice", "replay", "patient", "source"] {
         assert_eq!(held[field], pack[field], "{field} came back changed");
     }
+}
+
+/// **The door's refusals are sentences, and a sentence has one space between its words.**
+///
+/// The two refusals that guard the doors themselves — no door token configured, and a caller
+/// presenting the wrong one — were written as single-line Rust literals with the source's own
+/// indentation inside them, so what went over the wire had thirty-one spaces in the middle of each
+/// sentence. They are read by the one person who can act on them, in a log, and a sentence with a
+/// hole in it reads like a corrupted field rather than an instruction.
+#[test]
+fn the_doors_own_refusals_read_as_sentences() {
+    let s = Server::start();
+    let (code, body) = s.post_with("/api/ward/case", &a_pack(), Some("not-the-door-token"));
+    assert_eq!(code, 401, "the door took somebody else's token: {body}");
+    let said = body["error"].as_str().unwrap_or_default();
+    assert!(!said.contains("  "), "the refusal has a hole in it: {said:?}");
+    assert!(said.contains("VITALS_DOOR_TOKEN"),
+            "and it names the variable the operator has to set: {said:?}");
+
+    // The same door, with no token at all.
+    let (code, body) = s.post_with("/api/ward/case", &a_pack(), None);
+    assert_eq!(code, 401, "and an anonymous caller is not let in either: {body}");
+    assert!(!body["error"].as_str().unwrap_or_default().contains("  "));
 }
