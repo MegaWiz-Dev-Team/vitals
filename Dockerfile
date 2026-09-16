@@ -12,6 +12,12 @@ COPY crates ./crates
 # The deck is compiled into the binary, so it is a build input and not a runtime file.
 # `.dockerignore` lets that one file through and nothing else out of pitch/.
 COPY pitch ./pitch
+# The stations' persona files are baked in too: `ward::case_patient` reads each patient's own sex
+# and age from them at compile time, so the ward's door can refuse a pack that contradicts the case
+# it is paired with. They are copied into the runtime stage as well, further down, because the
+# patient's voice reads the same files while she is being played — one source, read twice.
+# `the_build_stage_copies_everything_the_crate_bakes_in` holds this against the crate.
+COPY demo/personas ./demo/personas
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
     cargo build --release -p vitals-web && \
