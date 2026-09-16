@@ -36,9 +36,10 @@ const grabConst = (name) => {
   return `${m[1]} ${name} = ${m[2]};`;
 };
 
-const sandbox = [grabConst('ALPHA3'), grab('countryId'), grab('countryCounts'), grab('visible'),
-  'return { countryId, countryCounts, visible, ALPHA3 };'].join('\n');
-const { countryId, countryCounts, visible, ALPHA3 } = new Function(sandbox)();
+const sandbox = [grabConst('ALPHA3'), grabConst('SLOT_MS'), grab('countryId'), grab('countryCounts'), grab('visible'),
+  grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
+  'return { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine };'].join('\n');
+const { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine } = new Function(sandbox)();
 
 // ── countryId ────────────────────────────────────────────────────────────────
 // world-atlas 110m keys its shapes by ISO numeric, as strings ("764"); the ward sends alpha-3.
@@ -95,5 +96,67 @@ assert.deepEqual(visible(ward, { student: false, intern: false, resident: false 
   'all off = nobody, and the page must say so rather than show a lit globe');
 assert.deepEqual(visible([P(9, 'THA', { difficulty: 'weird' })], all).map(p => p.patient_id), [9],
   'an unknown difficulty is shown, not silently filtered — a new tier must not vanish patients');
+
+// ── time ─────────────────────────────────────────────────────────────────────
+// Every timestamp the page shows comes from the payload as a slot (relative to as_of_slot, 0.4 s
+// each), unix seconds, or a Z-suffixed UTC string. The page renders the distance from now first
+// and the absolute moment in the viewer's own zone on hover — never a server-side local time.
+const NOW = Date.UTC(2026, 8, 16, 12, 0, 0);          // 16 Sep 2026 12:00:00Z
+const AS_OF = 500_000_000;                             // the read's slot
+assert.equal(SLOT_MS, 400, 'a slot is 0.4 s, as vitals_replay::SLOT_SECONDS says');
+assert.equal(whenMs({ unix: NOW / 1000 - 360 }, AS_OF, NOW), NOW - 360_000, 'unix seconds → ms');
+assert.equal(whenMs({ slot: AS_OF - 9000 }, AS_OF, NOW), NOW - 9000 * 400, 'a slot is as_of minus the gap, at 0.4 s a slot');
+assert.equal(whenMs({ slot: AS_OF + 5 }, AS_OF, NOW), NOW, 'a slot past the read is now, never the future');
+assert.equal(whenMs({ iso: '2026-09-16T11:54:00Z' }, AS_OF, NOW), NOW - 360_000, 'a Z string is UTC');
+assert.equal(whenMs({ iso: '2026-09-16T11:54:00' }, AS_OF, NOW), null, 'a string with no zone is not a time the page will guess at');
+assert.equal(whenMs({ slot: null }, AS_OF, NOW), null);
+assert.equal(whenMs({ unix: 0 }, AS_OF, NOW), null, 'zero is the program\'s "never", not 1970');
+assert.equal(whenMs({}, AS_OF, NOW), null);
+assert.equal(whenMs({ slot: 10 }, null, NOW), null, 'a slot without the read\'s slot cannot be placed');
+
+assert.equal(relative(NOW - 10_000, NOW), 'just now');
+assert.equal(relative(NOW - 6 * 60_000, NOW), '6 min');
+assert.equal(relative(NOW - 89 * 60_000, NOW), '89 min');
+assert.equal(relative(NOW - 95 * 60_000, NOW), '2 h', 'past ninety minutes it is hours, rounded');
+assert.equal(relative(NOW - 6 * 3_600_000, NOW), '6 h');
+assert.equal(relative(NOW - 35 * 3_600_000, NOW), '35 h');
+assert.equal(relative(NOW - 3 * 86_400_000, NOW), '3 days');
+assert.equal(relative(NOW - 86_400_000 * 1.6, NOW), '2 days');
+assert.equal(relative(NOW + 60_000, NOW), 'just now', 'a clock ahead of ours is now, not "-1 min"');
+
+const abs = absolute(NOW);
+assert.equal(typeof abs, 'string');
+assert.ok(abs.includes('2026'), `the absolute time carries the date: ${abs}`);
+const hours = new Date(NOW).getHours();                // this machine's zone, which is the viewer's
+assert.ok(abs.includes(String(hours)) || abs.includes(String(hours % 12 || 12)),
+  `rendered in the viewer's own zone (Intl), not the server's: ${abs} vs local hour ${hours}`);
+
+// stateLine: the words under a patient, and the title behind them.
+const line = (p) => stateLine(p, AS_OF, NOW);
+const onShift = line({ state: 'on_shift', on_shift_since: NOW / 1000 - 360, admitted_slot: AS_OF - 9000 });
+assert.equal(onShift.text, 'on shift · 6 min');
+assert.equal(onShift.title, `since ${absolute(NOW - 360_000)}`);
+const waiting = line({ state: 'on_ward', on_shift_since: null, admitted_slot: AS_OF - 3 * 86_400_000 / 400 });
+assert.equal(waiting.text, 'on the ward · admitted 3 days ago');
+assert.equal(waiting.title, `admitted ${absolute(NOW - 3 * 86_400_000)}`);
+const home = line({ state: 'went_home', admitted_slot: AS_OF - 900_000, closed_slot: AS_OF - 6 * 9000 });
+assert.equal(home.text, 'went home · 6 h ago');
+assert.equal(home.title, `left ${absolute(NOW - 6 * 3_600_000)}`);
+const died = line({ state: 'died', admitted_slot: AS_OF - 900_000, closed_slot: AS_OF - 150 });
+assert.equal(died.text, 'died · just now');
+const bare = line({ state: 'on_ward' });
+assert.equal(bare.text, 'on the ward', 'no time in the payload, no time on the page');
+assert.equal(bare.title, '');
+const future = line({ state: 'on_ward', handed_over: '2026-09-16T06:00:00Z' });
+assert.equal(future.text, 'on the ward · handed over 6 h ago', 'a Z string the payload may carry later is read the same way');
+
+// ── the wire ─────────────────────────────────────────────────────────────────
+// Pushed, and still polled: the 30-second refetch stays for browsers and proxies that drop the
+// stream, and the stream's `ward` event goes to the same consumer the fetch feeds.
+assert.match(script, /setInterval\(load, 30000\)/, 'the 30-second refetch stays');
+assert.match(script, /new EventSource\("\/api\/ward\/stream"\)/, 'the stream is opened');
+assert.match(script, /addEventListener\("ward", /, 'and its ward event is listened for');
+assert.match(script, /function render\(j\)/, 'one consumer, render(j), for both the fetch and the stream');
+assert.ok(!/toLocaleTimeString|toLocaleDateString|toLocaleString/.test(script), 'every absolute time goes through Intl.DateTimeFormat');
 
 console.log('globe_logic: ok');
