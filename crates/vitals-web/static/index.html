@@ -5414,7 +5414,14 @@ async function openShift(){
   wardBar();
   const me=await identity();
   const r=await (await fetch('/api/new?patient='+WARD+(me?'&player='+me.pub:'')+langQ())).json();
-  if(r.error){ $('#wardwho').textContent='patient '+WARD; return wardSay(esc(r.error)); }
+  if(r.error){
+    /* Nothing to take, so nothing to press. A button that stays live on a patient who cannot be
+       opened answers "no such session", which tells a stranger the page is broken rather than
+       that this bed is not ready. */
+    $('#wardwho').textContent='patient '+WARD;
+    $('#wardtake').style.display='none';
+    return wardSay(esc(r.error)+' <a href="/">back to the ward</a>');
+  }
   WARDPENDING=r.id; WARDSHIFT=r.ward;
   $('#wardwho').textContent=(r.ward.name||('patient '+WARD))+' · '+(r.ward.country||'—');
   wardSay('shift '+r.ward.shift+' of her stay · her chart is rebuilt from '+

@@ -1788,8 +1788,9 @@ fn open_shift(
     let pack = ward_chain::packs(store)
         .remove(&patient_id)
         .ok_or_else(|| format!(
-            "no pack describes patient {patient_id}, so the ward does not know which case she is. \
-             She was admitted before the factory described her"
+            "we do not know who patient {patient_id} is yet — she reached a bed before her details \
+             did, and nobody can be treated by a chart with no name on it. Another bed will have \
+             somebody in it"
         ))?;
 
     let sce_json = std::fs::read_to_string(scenario_path(&pack.case))
