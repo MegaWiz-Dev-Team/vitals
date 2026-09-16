@@ -407,9 +407,10 @@ fn a_patient_is_placed_only_on_a_case_written_about_somebody_like_her() {
 
     // A fit in her own country is taken first.
     assert_eq!(pick(None, &who("NPL", 30, "f"), None), Some("dengue-npl-1".into()));
-    // Same country, wrong sex for its only case: falls through to anything that fits, and here
-    // nothing does.
-    assert_eq!(pick(None, &who("NPL", 30, "m"), None), None);
+    // Same country, wrong sex for its only case: the country is a preference, so he falls through
+    // to any case that fits him — and a man of 30 on a typhoid case written about a man of 26 is
+    // exactly what fitting means. He does not get the Nepali dengue case written about a woman.
+    assert_eq!(pick(None, &who("NPL", 30, "m"), None), Some("typhoid-bgd".into()));
     // No case at home, but one elsewhere she fits.
     assert_eq!(pick(None, &who("THA", 58, "m"), None), Some("ugib-2".into()),
                "newest version of the ones that fit");

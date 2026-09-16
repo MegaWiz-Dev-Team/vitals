@@ -1585,7 +1585,7 @@ pub fn tick(
         let chosen = crate::ward_case::choose_case(
             &catalogue,
             (!pack.case.is_empty()).then_some(pack.case.as_str()),
-            &pack.persona.country,
+            &pack.persona,
             pack.difficulty.as_deref(),
         );
         let sce_json = match &chosen {
@@ -1599,9 +1599,10 @@ pub fn tick(
             }
             _ => {
                 out.notes.push(format!(
-                    "no case in this ward's catalogue fits {} ({}), so the bed waits. The case \
-                     factory fills it through /api/ward/case",
-                    pack.persona.name, pack.persona.country
+                    "no case in this ward's catalogue is written about somebody like {} ({}, {}, \
+                     {}), so the bed waits rather than putting her on a case about somebody else. \
+                     The case factory fills it through /api/ward/case",
+                    pack.persona.name, pack.persona.country, pack.persona.age, pack.persona.sex
                 ));
                 break;
             }

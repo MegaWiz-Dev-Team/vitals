@@ -296,18 +296,23 @@ pub fn sce_of(store: &crate::store::Store, case_id: &str) -> Option<String> {
 
 /// Which case the next patient is admitted onto.
 ///
-/// `wanted` is her own pack's choice, honoured whenever the ward actually holds it — the patient
-/// factory names the case it built her for. A case the ward does not hold is not a reason to admit
-/// nobody, so the fallback is the ward's own: her country's case if there is one, and otherwise
-/// any at her level, newest version first so a recompile is what the next patient plays.
+/// `wanted` is her own pack's choice, honoured whenever the ward holds it — the patient factory
+/// names the case it built her for, and it fitted her to it. Everything below is what happens when
+/// it named none, or named one this ward has not been sent.
 ///
-/// `None` means nobody is admitted this tick. That is the honest answer to an empty catalogue and
-/// to a level nothing has been compiled for yet — better an empty bed than a student on a case
-/// written for a resident.
+/// **The ward fits her before it places her.** It placed Nusrat Jahan, 64, a woman, on a typhoid
+/// case written about a 26-year-old man because they were both Bangladeshi, and the case's own
+/// presentation opens "Young man from Bangladesh" — the wrong-patient error the ward has made
+/// twice already in other forms. So a fallback case must be written for her sex and near her age,
+/// and her country is a preference on top of that rather than a reason to ignore it.
+///
+/// `None` means nobody is admitted this tick, and that is the right answer to "nothing here fits
+/// her": an empty bed says nothing false, and a mismatch says several — the dialogue, the
+/// examination, the differential and the picture are all about somebody else.
 pub fn choose_case<'a>(
     cases: &'a [CaseSummary],
     wanted: Option<&str>,
-    country: &str,
+    who: &crate::ward::Persona,
     difficulty: Option<&str>,
 ) -> Option<&'a CaseSummary> {
     if let Some(id) = wanted {
@@ -323,16 +328,50 @@ pub fn choose_case<'a>(
     // `None` is "any level", which is where the ward is today: the patient pack does not carry one
     // yet, so the ticker asks for her country and takes what there is.
     let at_level = |c: &&CaseSummary| difficulty.is_none_or(|d| c.difficulty == d);
+    let fits = |c: &&CaseSummary| fits_patient(c, who);
+    // Her country first: a Nepali woman on a Nepali case is the whole point of the endemic work.
+    // It is a preference among the cases that fit her, never a reason to take one that does not.
     let mut hers: Vec<&CaseSummary> = cases
         .iter()
-        .filter(|c| c.country.as_deref() == Some(country))
+        .filter(|c| c.country.as_deref() == Some(who.country.as_str()))
         .filter(at_level)
+        .filter(fits)
         .collect();
     hers.sort_by(newest);
     if let Some(first) = hers.first() {
         return Some(first);
     }
-    let mut any: Vec<&CaseSummary> = cases.iter().filter(at_level).collect();
+    let mut any: Vec<&CaseSummary> = cases.iter().filter(at_level).filter(fits).collect();
     any.sort_by(newest);
     any.first().copied()
+}
+
+/// Is this case written about somebody like her?
+///
+/// The sex is the dialogue's, the examination's and the differential's, so it has to match. The
+/// age is the physiology's: twelve years either way, and a child only with a child — sixteen and
+/// six are not a near miss, and a case tuned for one of them alarms wrongly on the other.
+///
+/// The two vocabularies meet here and nowhere else: a persona says `f`, a compiled case says
+/// `female`, and one of them has to translate. A case that does not say who it is about cannot be
+/// fitted to anybody, so it answers `false` — it can still be named outright by a factory that
+/// knows what it is doing.
+fn fits_patient(c: &CaseSummary, who: &crate::ward::Persona) -> bool {
+    let (Some(age), Some(sex)) = (c.patient_age, c.patient_sex.as_deref()) else {
+        return false;
+    };
+    let same_sex = match sex.to_ascii_lowercase().as_str() {
+        "male" | "m" => who.sex.eq_ignore_ascii_case("m"),
+        "female" | "f" => who.sex.eq_ignore_ascii_case("f"),
+        _ => false,
+    };
+    if !same_sex {
+        return false;
+    }
+    let hers = who.age as i64;
+    let theirs = age as i64;
+    if (hers < 16) != (theirs < 16) {
+        return false;
+    }
+    (hers - theirs).abs() <= 12
 }

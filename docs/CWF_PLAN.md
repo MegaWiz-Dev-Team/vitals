@@ -543,6 +543,24 @@ themselves from the chain.
 A public ward keeps a record strangers can check, so it keeps this one too. Every entry is dated,
 says what was lost, and links the rule that stops it happening twice.
 
+**16 ก.ย. — a woman of 64 placed on a case written about a man of 26.** The ward's first
+admission from its own catalogue put Nusrat Jahan (BGD, 64, a woman's name and a woman's persona)
+on `embla-typhoid-ileal-perforation-septic-shock-intern`, whose patient block says 26 and male and
+whose presentation opens *"Young man from Bangladesh… 26-year-old garment-factory worker"*. The
+ward matched her country and nothing else.
+
+The wrong-patient error, for the third time and in a third form — after the season's still over a
+ward patient and the season's clip over Salma Gaber. It is the same failure each time: a page or a
+placement asserting something about a patient that the record does not say. Placement now fits the
+sex the dialogue, the examination and the differential were written for, and an age within twelve
+years of the one the physiology was tuned for, with a child only ever on a child's case; her
+country is a preference among the cases that fit rather than a reason to ignore the fit. No case
+that fits means the bed waits.
+
+*What it cost:* nothing yet — she is mid-stay on staging and stays there rather than being
+deleted, which is the second half of the ruling: the record says a stranger may be handed her, and
+quietly removing her would be the ward editing its own past.
+
 **16 ก.ย. — one shift, two hashes, and a patient nobody could open.** A shift on
 `1789538329` (Abebe Tadesse, ETH) anchored cleanly: the strip said *handed over*, the census went
 from 16 shifts to 17, the transaction landed at slot 499153055. Nobody could open him afterwards.
