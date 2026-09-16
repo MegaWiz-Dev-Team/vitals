@@ -292,6 +292,9 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
         cases.iter().filter(|w| w.provisional).count(),
         crate::plan::LEVELS.iter().map(|l| format!("{l} {}", cases.iter().filter(|w| w.difficulty == *l).count())).collect::<Vec<_>>().join(" · ")
     ));
+    if cases.iter().all(|w| w.patient.is_none()) {
+        r.say("no case states its patient, so every case fits any adult of either sex this tick — a man may be drawn for a case written about a woman; the ward's 92b4181 adds `patient` to each row and the fit rule reads it");
+    }
     if ward.queue.as_ref().is_some_and(|q| q.door != "open") {
         r.say("the door is closed — the ward opens when the founder says so; nothing to do until then");
         if !cfg.dry_run {
