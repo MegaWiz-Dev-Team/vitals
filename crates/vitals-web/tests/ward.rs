@@ -734,3 +734,47 @@ fn a_portrait_is_a_set_and_never_shows_her_worse_than_she_is() {
     assert_eq!(portrait_for(&set, "on_ward"), None,
                "a word the engine does not report resolves to nothing rather than to a guess");
 }
+
+/// The board and the voice are the same person.
+///
+/// The ward renames the case's patient and moves her country — that is the premise — and the case
+/// file is also what the patient's voice is built from. So on a ward shift she would introduce
+/// herself as the name in the file while the board beside her said something else, which is the
+/// product contradicting itself out loud in the one place a learner is listening.
+///
+/// Only the person changes. The room, what she is presenting with, her cadence, her authored
+/// dialogue and her sex are the case's and stay the case's — they are the medicine and the
+/// writing, and the ward writes neither.
+#[test]
+fn the_ward_renames_the_patient_and_changes_nothing_else() {
+    use vitals_web::ward::{voiced_as, Persona};
+
+    let case: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../demo/personas/osce-a.json"),
+        )
+        .expect("osce-a has a persona"),
+    )
+    .expect("it parses");
+
+    let her = Persona {
+        name: "Anan Thepwong".into(),
+        country: "THA".into(),
+        age: 69,
+        sex: "m".into(),
+    };
+    let voiced = voiced_as(&case, &her);
+
+    assert_eq!(voiced["patient"]["name"], "Anan Thepwong", "the voice uses the ward's name");
+    assert_eq!(voiced["patient"]["age"], 69);
+    assert_eq!(voiced["patient"]["sex"], case["patient"]["sex"],
+               "sex is the case's own and is never overwritten — the door already refused a pack \
+                that disagreed with it, and the pronouns in the brief are built from this");
+
+    for untouched in ["room", "presenting", "cadence", "fallback", "dialogue", "speaker"] {
+        assert_eq!(voiced[untouched], case[untouched],
+                   "{untouched} is the case's writing and the ward does not write medicine");
+    }
+    assert_eq!(voiced["patient"]["affect"], case["patient"]["affect"],
+               "how she is feeling belongs to the case too");
+}
