@@ -3917,8 +3917,9 @@ fn main() {
                 } else {
                     let id = param(&url, "id").unwrap_or_default();
                     let map = sessions.lock().unwrap();
-                    match map.get(&id).filter(|s| s.answers_to(Some(&who.to_string()))
-                                                  || s.owner.is_none()) {
+                    // The same rule the rest of the bay uses: an owned run answers to its owner
+                    // and an anonymous one to whoever holds the id.
+                    match map.get(&id).filter(|s| s.answers_to(Some(&who.to_string()))) {
                         None => Err("no such session".to_string()),
                         Some(s) => match (&s.ward, p) {
                             (None, _) => Err("this run is not a shift on the ward".into()),
