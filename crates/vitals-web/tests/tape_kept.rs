@@ -225,3 +225,42 @@ fn a_shift_can_be_found_by_the_name_the_chain_knows_it_by() {
                "the leaf is an address for this shift's receipt");
     assert!(run_hash_of_leaf(&st, &"b".repeat(64)).is_none(), "and only for shifts we anchored");
 }
+
+/// **A shift the ward closed itself has an empty tape — and that can be proven, not assumed.**
+///
+/// The ticker anchors a closing shift with no steps and the idle span, so the chain reads *died,
+/// nobody on shift*. It never kept the tape, so the two deaths on staging cannot be shown as
+/// receipts: the chain names a run hash and this ward has nothing filed under it. Third place for
+/// the same rule, and the first two were mine as well.
+///
+/// The repair for the ones already anchored does not have to guess. Everything the run hash was
+/// built from is on the chain — the scenario, the shifts before it, the slot the closing landed at
+/// — so the empty tape is *re-derived*: replay the gap, compute what the run hash would be, and
+/// file the empty tape only if it matches what the chain actually says.
+#[test]
+fn a_closing_shift_is_proven_to_be_the_empty_one() {
+    use vitals_web::ward::ShiftOnChain;
+    use vitals_web::ward_chain::closing_tape;
+
+    let sce = ep1();
+    let admitted = 1_000_000u64;
+    // Nine real hours at 1:60 finishes EP1, which is what the ticker would have closed her on.
+    let died_at = admitted + (9.0 * 3600.0 / vitals_replay::SLOT_SECONDS) as u64;
+
+    // What the ticker built: resume to the last head, let the gap run, reduce an empty tape.
+    let (mut st, _) = vitals_replay::resume(&sce, &[]).expect("scenario");
+    let r = vitals_replay::shift(&mut st, &[], died_at - admitted);
+    let run_hash = vitals_replay::leaf(&vitals_replay::sce_hash(&sce), &[], &r);
+    assert!(r.outcome.is_some(), "nine hours alone must finish her, or this proves nothing");
+
+    let this = ShiftOnChain { patient_id: 1789528325, signer: [9; 32], slot: died_at, run_hash };
+    let found = closing_tape(&sce, &[], &|_| None, admitted, &this)
+        .expect("the empty tape is what the chain's own numbers produce");
+    assert!(found.is_empty(), "nobody did anything to her — that is what the record must say");
+
+    // And it refuses when the numbers do not agree: a shift somebody played is not an empty one,
+    // whoever signed it.
+    let played = ShiftOnChain { run_hash: [7; 32], ..this };
+    assert!(closing_tape(&sce, &[], &|_| None, admitted, &played).is_none(),
+            "an empty tape is filed only where the chain's own hash says it belongs");
+}
