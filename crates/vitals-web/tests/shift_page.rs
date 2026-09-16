@@ -404,3 +404,66 @@ fn the_seasons_ending_never_plays_on_the_ward() {
     assert!(ward.contains("wardSay("), "it says what happened in the strip");
     assert!(ward.contains("stop()"), "and the clock stops with the shift");
 }
+
+/// **Nothing of the season is on the ward host** (founder, 16 ก.ย.: *"ผมไม่ได้ให้เอาเคสของ vitals
+/// เดิมมาใช้ใน world"*).
+///
+/// Not its episodes and stations as the ward's cases, not their stills or films, not the result
+/// flow, not the names. The symptom was Somsri's face over Salma Gaber, but the page carried far
+/// more than that: the season's whole episode list sat in the composed markup, and so did the
+/// result panel the founder was shown at his discharge.
+///
+/// The season's entry keeps every one of them, which is the other half of the test — this is a
+/// page composed per host, not a feature deleted from both.
+#[test]
+fn the_ward_host_carries_nothing_of_the_season() {
+    let ward = compose_ward_page();
+    for season in [
+        "OSCE", "EP1", "EP5", "value=\"osce-", "value=\"ep1\"",
+        "/img/cases", "/clip/", "id=\"result\"", "id=\"cine\"", "id=\"sweep\"",
+        "← episodes", "restart",
+    ] {
+        assert!(!ward.contains(season),
+                "the ward page still carries {season:?} — the season's, not this ward's");
+    }
+
+    // And the bay is still the bay on vitals.academy.
+    let eternal = compose_for_test(PAGE_FILE, false);
+    for kept in ["OSCE", "value=\"osce-", "id=\"result\"", "← episodes"] {
+        assert!(eternal.contains(kept),
+                "the Eternal entry lost {kept:?} — this is a page composed per host, not a feature \
+                 taken from both");
+    }
+}
+
+const PAGE_FILE: &str = "static/index.html";
+
+/// The page as the server composes it for one host or the other.
+fn compose_for_test(page: &str, ward: bool) -> String {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let html = std::fs::read_to_string(dir.join(page)).expect("the page");
+    let surface = std::fs::read_to_string(dir.join("static/bay-surface.html")).expect("the surface");
+    let main = std::fs::read_to_string(repo().join("crates/vitals-web/src/main.rs")).expect("main.rs");
+    let brand = rust_concat(&main, "const WORLD_BRAND: &str = concat!(");
+    let eternal = rust_literal(main.split("const ETERNAL_BRAND: &str = ").nth(1).expect("the wordmark"));
+    let open = rust_literal(main.split("const SEASON_ONLY_OPEN: &str = ").nth(1).expect("the marker"));
+    let close = rust_literal(main.split("const SEASON_ONLY_CLOSE: &str = ").nth(1).expect("the marker"));
+
+    let surface = if ward {
+        let mut out = String::new();
+        let mut rest = surface.as_str();
+        while let Some(i) = rest.find(&open) {
+            out.push_str(&rest[..i]);
+            rest = match rest[i..].find(&close) {
+                Some(e) => &rest[i + e + close.len()..],
+                None => "",
+            };
+        }
+        out.push_str(rest);
+        out.replace(&eternal, &brand)
+    } else {
+        surface.replace(&open, "").replace(&close, "")
+    };
+    html.replace("<!--BAY-->", &surface)
+        .replace("<!--BRAND-->", if ward { &brand } else { "" })
+}
