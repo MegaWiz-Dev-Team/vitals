@@ -161,3 +161,29 @@ assert.equal(epOf(built.entry, 'embla-typhoid-bgd-1').t, CONTENT.title,
 assert.equal(epOf(built.entry, '').id, 'embla-typhoid-bgd-1');
 
 console.log('shift_logic: ok (and the case is the payload’s)');
+
+// ── what the transcript reads when a chip is pressed ─────────────────────────
+//
+// At a station the ask chips *are* the questions — "any allergies?" is both the button and the
+// line — so the transcript writes what was fired and the translated label stays a coat over the
+// button: the chart is written in the language the order is written in, and a Thai sentence in it
+// would be the page quietly deciding otherwise.
+//
+// A compiled case's ask chips are not sentences. They are intervention ids — `ask_black_tarry_stool`
+// — because that is what the tape records and the rubric pays for. Writing that into the transcript
+// puts a database key in the middle of a conversation at a bedside, so on the ward the line is the
+// case author's own label for it.
+const { askedShown } = new Function(
+  [grab('askedShown'), 'return { askedShown };'].join('\n'))();
+
+assert.equal(askedShown('1789554596', 'ask', 'ask_black_tarry_stool', 'Ask: Black tarry stool'),
+             'Ask: Black tarry stool',
+             'on the ward the transcript reads the question in the case’s own words');
+assert.equal(askedShown(null, 'ask', 'any allergies?', 'แพ้ยาอะไรไหม'), null,
+             'in the bay the chart stays the language the order is written in — the chip’s \
+translation is a coat over the button and nothing else');
+assert.equal(askedShown(null, 'drug', 'adrenaline IM', 'adrenaline IM'), 'adrenaline IM',
+             'and an order always says what it was');
+assert.equal(askedShown('1789554596', 'dx', 'dx_typhoid', 'Name the diagnosis'), 'Name the diagnosis');
+
+console.log('shift_logic: ok (and the transcript reads like a conversation)');
