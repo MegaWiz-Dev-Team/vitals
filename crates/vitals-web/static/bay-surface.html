@@ -9,15 +9,15 @@
     <span class="brand">Vital<span>s</span></span>
     <span class="ep" id="ep-name">the resus bay</span>
     <select id="ep" class="hide">
-      <option value="ep1">EP1</option><option value="osce-a">OSCE A</option><option value="osce-a2">OSCE A2</option>
+      <!--SEASON--><option value="ep1">EP1</option><option value="osce-a">OSCE A</option><option value="osce-a2">OSCE A2</option>
       <option value="ep2">EP2</option><option value="osce-b">OSCE B</option><option value="osce-b2">OSCE B2</option>
       <option value="osce-b3">OSCE B3</option><option value="ep3">EP3</option><option value="osce-c">OSCE C</option>
       <option value="osce-c2">OSCE C2</option><option value="osce-c3">OSCE C3</option><option value="ep4">EP4</option>
       <option value="osce-d">OSCE D</option><option value="osce-d2">OSCE D2</option><option value="osce-d3">OSCE D3</option>
-      <option value="osce-d4">OSCE D4</option><option value="ep5">EP5</option>
+      <option value="osce-d4">OSCE D4</option><option value="ep5">EP5</option><!--/SEASON-->
     </select>
-    <button class="btn" id="back">← episodes</button>
-    <button class="btn go" id="start">restart</button>
+    <!--SEASON--><button class="btn" id="back">← episodes</button>
+    <button class="btn go" id="start">restart</button><!--/SEASON-->
     <button class="btn" id="pause" disabled>hold</button>
     <span class="spacer"></span>
     <button class="btn" id="diff" data-d="easy">easy</button>
@@ -163,8 +163,8 @@
     </div>
 
     <!-- ── the end of the attempt ────────────────────────────────────────────────
-         Deliberately not in the top bar. That row holds "← episodes" and "restart", two
-         plain pills a thumb's width apart, and a third one beside them would be the control
+         Deliberately not in the top bar. On the season's entry that row holds the two navigation
+         pills a thumb's width apart, and a third one beside them would be the control
          that ends somebody's exam sitting where the two harmless ones are. It is here instead:
          the foot of the column the candidate works down — history, orders, kit, chart,
          disposition, done — which is the order the act happens in and the place a hand is
@@ -177,10 +177,15 @@
          What it does *not* do is stop the patient: see /api/finish. Ending resolves the
          encounter forward, so pressing this a second before an arrest buys nothing at all. -->
     <div class="panel endp">
-      <div class="k">the station</div>
+      <!--SEASON--><div class="k">the station</div>
       <button class="btn end" id="endrun" data-ga="finish" disabled
               aria-describedby="endnote">I have finished</button>
-      <em class="endnote" id="endnote">Ends the attempt. The case plays out from here and the marks are computed.</em>
+      <em class="endnote" id="endnote">Ends the attempt. The case plays out from here and the marks are computed.</em><!--/SEASON-->
+      <!--WARD--><div class="k">this shift</div>
+      <button class="btn end" id="endrun" data-ga="handover" disabled
+              aria-describedby="endnote">hand over</button>
+      <em class="endnote" id="endnote">Ends your shift and writes it to her chain. She stays on the
+        ward, and the next stranger starts where you stopped.</em><!--/WARD-->
     </div>
   </aside>
 
@@ -189,6 +194,7 @@
   </div>
 
 
+  <!--SEASON-->
   <section class="result" id="result">
     <h2 id="outcome"></h2>
     <div class="sub" id="outnote"></div>
@@ -234,12 +240,13 @@
     <div class="runback"><button class="btn go" id="runback" data-ga="debrief:runback">↻ run it back</button></div>
     <div class="hint" style="margin-top:.5rem">Hand the tape and the scenario to anyone — they recompute this leaf without asking us.</div>
   </section>
+  <!--/SEASON-->
 </div>
 
   <!-- The cinema layer: recap, title card, stinger, up-next and trailers all share this
        one black surface. cineShow() runs a queue of steps; a tap advances the skippable
        ones; cards that carry their own buttons drive themselves. -->
-  <div class="cine hide" id="cine"></div>
+  <!--SEASON--><div class="cine hide" id="cine"></div><!--/SEASON-->
 
   <!-- ── the motion surfaces ────────────────────────────────────────────────────
        Five fixed layers that are display:none until something asks for them, so an
@@ -249,6 +256,7 @@
 
        The sweep is the game's signature: a heartbeat trace crossing the screen and
        leaving the next scene behind it. -->
+  <!--SEASON-->
   <div class="sweep hide" id="sweep" aria-hidden="true">
     <div class="sw-panel" id="sw-panel">
       <svg class="sw-edge" viewBox="0 0 60 1000" preserveAspectRatio="none" aria-hidden="true">
@@ -257,6 +265,7 @@
     </div>
   </div>
   <div class="cbars hide" id="cbars" aria-hidden="true"><i></i><i></i></div>
+  <!--/SEASON-->
   <div class="alarmv hide" id="alarm" aria-hidden="true"></div>
   <div class="vig hide" id="vig" aria-hidden="true"><i></i></div>
   <div class="flash hide" id="flash" aria-hidden="true"></div>

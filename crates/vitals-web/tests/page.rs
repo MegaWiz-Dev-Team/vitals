@@ -28,7 +28,36 @@ fn static_page(name: &str) -> String {
 /// file, is exactly the failure this file exists to catch, and splitting the read would have
 /// stopped catching it.
 fn page() -> String {
-    [static_page("index.html"), static_page("bay-surface.html"), static_page("bay.js")].concat()
+    [static_page("index.html"), surface_for(false), static_page("bay.js")].concat()
+}
+
+/// The ward's shift page, composed the same way.
+fn ward_page() -> String {
+    [static_page("world/shift.html"), surface_for(true), static_page("bay.js")].concat()
+}
+
+/// The surface as one host gets it.
+///
+/// The two hosts do not get the same markup any more (founder, 16 ก.ย.: the ward carries nothing
+/// of the season), so the shared file marks which parts are whose and the server hands each host
+/// its own page. These checks are about what a **browser** parses, so they read what a browser is
+/// sent — and the raw file, which carries both, is not that for either of them.
+fn surface_for(ward: bool) -> String {
+    let src = static_page("bay-surface.html");
+    let (drop_open, drop_close) = if ward { ("<!--SEASON-->", "<!--/SEASON-->") } else { ("<!--WARD-->", "<!--/WARD-->") };
+    let mut out = String::with_capacity(src.len());
+    let mut rest = src.as_str();
+    while let Some(i) = rest.find(drop_open) {
+        out.push_str(&rest[..i]);
+        let after = &rest[i + drop_open.len()..];
+        rest = match after.find(drop_close) {
+            Some(e) => &after[e + drop_close.len()..],
+            None => "",
+        };
+    }
+    out.push_str(rest);
+    out.replace("<!--SEASON-->", "").replace("<!--/SEASON-->", "")
+        .replace("<!--WARD-->", "").replace("<!--/WARD-->", "")
 }
 
 /// The reviewer's form. Hand-written HTML and JavaScript like the bay's, served by the same
@@ -40,14 +69,28 @@ fn review_page() -> String {
 /// Every hand-written page this binary serves that carries a script, by the name it is served
 /// under. A page added here inherits the three checks below and costs nothing else.
 fn scripted_pages() -> Vec<(&'static str, String)> {
-    vec![("index.html", page()), ("review.html", review_page())]
+    vec![
+        ("index.html", page()),
+        ("world/shift.html", ward_page()),
+        ("review.html", review_page()),
+    ]
 }
 
-/// Everything between the first `<script>` and its `</script>`.
+/// Everything between the first `<script>` and its `</script>`, or nothing when a page has no
+/// inline block — the ward's carries all of its logic in `bay.js`.
 fn script(html: &str) -> &str {
-    let a = html.find("<script>").expect("no <script>") + "<script>".len();
+    let Some(a) = html.find("<script>").map(|i| i + "<script>".len()) else { return "" };
     let b = html[a..].find("</script>").expect("unterminated <script>") + a;
     &html[a..b]
+}
+
+/// The inline script of one of these pages, which is what the checks below are written for.
+///
+/// Empty for the ward's page, which carries none: all of its logic is in `bay.js`, and that file
+/// is parsed as a whole by node in `shift_page.rs::the_bay_parses_as_one_script` rather than by
+/// the brace scanner here, which was written for a page's own block and does not survive it.
+fn js_of(html: &str) -> String {
+    script(html).to_string()
 }
 
 /// Strip strings, template literals and comments so a scan sees code and not prose.
@@ -135,7 +178,10 @@ fn code_only(js: &str) -> String {
 #[test]
 fn brackets_balance() {
     for (name, html) in scripted_pages() {
-        let js = code_only(script(&html));
+        let js = code_only(&js_of(&html));
+        if js.trim().is_empty() {
+            continue;   // no inline block — see `js_of`
+        }
         let mut stack: Vec<(char, usize)> = Vec::new();
         let mut line = 1usize;
         for c in js.chars() {
@@ -171,7 +217,7 @@ fn brackets_balance() {
 /// SyntaxError anywhere takes the entire script with it.
 #[test]
 fn no_top_level_name_is_declared_twice() {
-    let js = code_only(script(&page()));
+    let js = code_only(&js_of(&page()));
     let mut seen: HashMap<String, usize> = HashMap::new();
     let mut dupes = Vec::new();
     for (n, raw) in js.lines().enumerate() {
@@ -204,7 +250,8 @@ fn no_top_level_name_is_declared_twice() {
 #[test]
 fn every_selector_points_at_something() {
     let html = page();
-    let js = script(&html);
+    let js = js_of(&html);
+    let js = js.as_str();
     let mut missing = Vec::new();
     for (i, _) in js.match_indices("$('#") {
         let rest = &js[i + 4..];

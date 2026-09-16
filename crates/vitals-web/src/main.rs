@@ -2012,12 +2012,61 @@ fn compose(page: &str) -> String {
 /// above `<!--BRAND-->` in `world/shift.html` did, and the page carried three marks until it was
 /// reworded. Name the marker in the markup and describe it in the prose.
 fn compose_for(page: &str, ward: bool) -> String {
-    let surface = if ward { SURFACE.replace(ETERNAL_BRAND, WORLD_BRAND) } else { SURFACE.to_string() };
+    let surface = if ward {
+        between(SURFACE, SEASON_ONLY_OPEN, SEASON_ONLY_CLOSE, false)
+            .replace(WARD_ONLY_OPEN, "")
+            .replace(WARD_ONLY_CLOSE, "")
+            .replace(ETERNAL_BRAND, WORLD_BRAND)
+    } else {
+        between(SURFACE, WARD_ONLY_OPEN, WARD_ONLY_CLOSE, false)
+            .replace(SEASON_ONLY_OPEN, "")
+            .replace(SEASON_ONLY_CLOSE, "")
+    };
     page.replace("<!--BAY-->", &surface)
         // The page's own corner, on the pages that ask for one. The bay's bar carries the same
         // link a row further down; this is the one the founder meant.
         .replace("<!--BRAND-->", if ward { WORLD_BRAND } else { "" })
         .replace(BUILD_STAMP, BUILD)
+}
+
+/// The surface is one file and the two hosts are not one product.
+///
+/// "ผมไม่ได้ให้เอาเคสของ vitals เดิมมาใช้ใน world" — the founder, 16 ก.ย. The ward must carry none
+/// of the season: not its episodes, not its stills or films, not its result flow, not its names.
+/// So the shared surface marks which parts belong to which host and the server hands each one the
+/// page it should have — the same idiom as the brand, for the same reason. A class the script
+/// toggles would leave the season's markup in the ward's page, one devtools tab away from a judge,
+/// and one missed rule away from rendering.
+const SEASON_ONLY_OPEN: &str = "<!--SEASON-->";
+const SEASON_ONLY_CLOSE: &str = "<!--/SEASON-->";
+const WARD_ONLY_OPEN: &str = "<!--WARD-->";
+const WARD_ONLY_CLOSE: &str = "<!--/WARD-->";
+
+/// Everything outside `open`..`close` (or inside, with `keep`), markers included.
+fn between(src: &str, open: &str, close: &str, keep: bool) -> String {
+    let mut out = String::with_capacity(src.len());
+    let mut rest = src;
+    while let Some(i) = rest.find(open) {
+        if !keep {
+            out.push_str(&rest[..i]);
+        }
+        let after = &rest[i + open.len()..];
+        match after.find(close) {
+            Some(e) => {
+                if keep {
+                    out.push_str(&after[..e]);
+                }
+                rest = &after[e + close.len()..];
+            }
+            // An unclosed marker takes the rest of the file rather than leaking half of it: a
+            // truncated page is obvious, and half the season's markup on the ward is not.
+            None => return out,
+        }
+    }
+    if !keep {
+        out.push_str(rest);
+    }
+    out
 }
 
 /// The season's wordmark, exactly as `bay-surface.html` carries it.

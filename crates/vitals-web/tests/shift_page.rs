@@ -289,20 +289,7 @@ fn the_corner_is_the_mark_and_the_exits_agree() {
 
 /// The ward's page as the server composes it, which is the only form a visitor ever sees.
 fn compose_ward_page() -> String {
-    let shift = std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/world/shift.html"),
-    )
-    .expect("the shift page");
-    let surface = std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/bay-surface.html"),
-    )
-    .expect("the bay's surface");
-    let main = std::fs::read_to_string(repo().join("crates/vitals-web/src/main.rs")).expect("main.rs");
-    // The server's own two constants, read out of its source: a copy here would pass while the
-    // page a visitor gets was something else.
-    let brand = rust_concat(&main, "const WORLD_BRAND: &str = concat!(");
-    let eternal = rust_literal(main.split("const ETERNAL_BRAND: &str = ").nth(1).expect("the wordmark"));
-    shift.replace("<!--BAY-->", &surface.replace(&eternal, &brand)).replace("<!--BRAND-->", &brand)
+    compose_for_test("static/world/shift.html", true)
 }
 
 /// The first Rust string literal in `src`, unescaped.
@@ -466,4 +453,56 @@ fn compose_for_test(page: &str, ward: bool) -> String {
     };
     html.replace("<!--BAY-->", &surface)
         .replace("<!--BRAND-->", if ward { &brand } else { "" })
+}
+
+/// **The bay parses as one script.**
+///
+/// `page.rs` scans a page's own inline block for the edit that left half of itself behind. The
+/// ward's page has no inline block — every line of its logic is in `bay.js` — and that file defeats
+/// the brace scanner, which was written for a page. So it is handed to node, which is the thing
+/// that has to parse it in the end: a syntax error anywhere in `bay.js` takes the whole bay down
+/// on both hosts, silently, with the markup still looking perfectly fine.
+#[test]
+fn the_bay_parses_as_one_script() {
+    let bay = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/bay.js");
+    let out = Command::new("node")
+        .arg("-e")
+        .arg("new Function(require('fs').readFileSync(process.argv[1], 'utf8'))")
+        .arg(&bay)
+        .output()
+        .expect("run node");
+    assert!(out.status.success(),
+            "bay.js does not parse, so nothing on either host runs:\n{}",
+            String::from_utf8_lossy(&out.stderr));
+}
+
+/// **On the ward `over` closes treatment, never the hand-over.**
+///
+/// The director took a patient whose case had already reached discharge from the idle replay: the
+/// strip said *"is ready to go home. Hand over to close her stay on chain"*, and pressing hand over
+/// did nothing at all — two presses, sixty seconds, no request. `wardFinish` sets `over` and then
+/// enables the one control it leaves open, and both `endRun` and the button's own handler begin
+/// `if(!id||over)return`.
+///
+/// The consequence is the whole discharge path: the stranger who got her well cannot close her,
+/// the next stranger inherits a finished state and cannot either, and only the ticker's death ever
+/// closes a patient. The founder's "หายแล้วกลับบ้าน" ending was unreachable on a public ward.
+#[test]
+fn a_finished_shift_can_still_be_handed_over() {
+    let js = bay_js();
+    for name in ["endRun"] {
+        let body = without_comments(&body_of(&js, name));
+        assert!(!body.contains("if(!id||over)return;"),
+                "{name} refuses a finished shift, and on the ward the finished shift is exactly \
+                 the one with something left to do: {body}");
+    }
+    // The guard that remains has to let the ward through, and the season's bay keep its own
+    // behaviour — a finished station is finished, and its button is disabled anyway.
+    let end = without_comments(&body_of(&js, "endRun"));
+    assert!(end.contains("WARD"), "the ward is what the exception is for: {end}");
+    // And the press reaches it without arming: there is nothing left to lose on a shift the
+    // engine has already ended, and a second press to confirm is a second chance to do nothing.
+    let ward = without_comments(&body_of(&js, "wardFinish"));
+    assert!(ward.contains("armed") || ward.contains("disarmEnd"),
+            "the finished shift's button must not be sitting armed from before: {ward}");
 }

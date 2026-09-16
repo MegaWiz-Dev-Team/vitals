@@ -1820,7 +1820,7 @@ async function chainState(){
   $('#chainstate').textContent = c.connected
     ? `${c.cluster||'?'} · tree #${c.tree_id} · ${c.anchored} anchored`+(c.proven!=null?` · ${c.proven} yours`:'')
     : 'no validator';
-  $('#anchor').disabled = !c.connected || !over;
+  onLobby('#anchor','disabled', !c.connected || !over);
   if(me && c.connected){
     const a=await accountState();
     if(a && a.started!=null) TALLY.started=a.started;
@@ -1830,7 +1830,7 @@ async function chainState(){
   return c;
 }
 
-$('#start').onclick=async()=>{
+onLobby('#start','onclick',async()=>{
   // Before the case exists, not after. A case opened while the key was still being generated
   // would belong to nobody, and a case that belongs to nobody answers to anyone holding its id.
   await identity();
@@ -1868,15 +1868,15 @@ $('#start').onclick=async()=>{
   emptyState();
   if(!voice) ev('note','—',`no gateway, so ${pro().s} cannot answer — orders still work`);
   run(); chainState();
-};
+});
 /* Leaving is not a sweep. The sweep is the signature of going forward — running it
    backwards would say the story moved on when the player just stepped out of it. Two
    hundred milliseconds through black instead. DOORWATCH opens here because the shelf
    the player is about to see is the one a finished run may have unlocked, and that is
    the only moment a door opening deserves a fanfare. */
-$('#back').onclick=()=>{ stop(); EXAMRUN=false; EXAMLIVE=false; DOORWATCH=true; examControls();
+onLobby('#back','onclick',()=>{ stop(); EXAMRUN=false; EXAMLIVE=false; DOORWATCH=true; examControls();
   fadeSwap(()=>{ $('#game').classList.add('hide'); $('#lobby').classList.remove('hide');
-    renderSeason(); }); };
+    renderSeason(); }); });
 $('#pause').onclick=()=>{ if(examMode())return;
   if(timer){stop();$('#pause').textContent='resume';} else{run();$('#pause').textContent='hold';} };
 $('#diff').onclick=()=>{ if(examMode())return;
@@ -1929,7 +1929,7 @@ $('#sound').onclick=()=>{
   $('#loop').muted=true;
 };
 
-$('#anchor').onclick=async()=>{
+onLobby('#anchor','onclick',async()=>{
   $('#anchor').disabled=true; $('#anchor').textContent='anchoring…';
   const r=await chainDo('/api/anchor?id='+id); const v=$('#verdict');
   if(r.error){v.innerHTML+=`<span class="r">${r.error}</span>`;$('#anchor').textContent='anchor this run on chain';$('#anchor').disabled=false;return;}
@@ -1959,7 +1959,7 @@ $('#anchor').onclick=async()=>{
   }
   refreshStars();
   $('#anchor').textContent='anchored'; ['#c1','#c2','#c3','#c4'].forEach(s=>$(s).disabled=false); chainState();
-};
+});
 [['#c4',4],['#c3',3],['#c2',2],['#c1',1]].forEach(([sel,lv])=>{
   $(sel).onclick=async()=>{ const r=await chainDo('/api/claim?level='+lv);
     $('#verdict').innerHTML += r.granted?`<span class="g">✓ ${r.message}</span>`:`<span class="r">✗ ${r.message}</span>`;
@@ -3341,8 +3341,10 @@ function cineHide(){
      several exits was taken. */
   bars(false);
 }
-$('#cine').onclick=()=>{ if(cineQ&&$('#cine').dataset.skip!=='no')cineNext(); };
-addEventListener('keydown',e=>{ if(e.key==='Escape'&&cineQ&&$('#cine').dataset.skip!=='no')cineNext(); });
+/* The cinema is the season's, and the ward host composes none of it — so these bind only where
+   there is something to bind to, like every other control that differs by host. */
+onLobby('#cine','onclick',()=>{ if(cineQ&&$('#cine').dataset.skip!=='no')cineNext(); });
+addEventListener('keydown',e=>{ const c=$('#cine'); if(c&&e.key==='Escape'&&cineQ&&c.dataset.skip!=='no')cineNext(); });
 
 /* B6 · the title card: the name of the episode pulling into focus out of a blur over
    600ms, then holding for the rest of the step. It is never faded out — the sweep is
@@ -3832,7 +3834,8 @@ async function openShift(){
   /* Two controls that mean something in the bay and nothing here: "restart" would quietly open a
      practice run of her case and lose the shift, and "← episodes" is a shelf this patient is not
      on. The strip's own link is where a stranger goes back to. */
-  $('#start').classList.add('hide'); $('#back').classList.add('hide');
+  /* Nothing to hide: the ward host composes neither. "restart" would quietly open a practice run
+     of her case and lose the shift; "← episodes" is a shelf this patient is not on. */
 }
 async function takeShift(){
   const b=$('#wardtake'); b.disabled=true;
@@ -3995,5 +3998,5 @@ if(location.hash.startsWith('#play')){
     doOrder('let the patient stand up');
   }, 2500);
   $('#lobby').classList.add('hide'); $('#game').classList.remove('hide');
-  addEventListener('load',()=>$('#start').click());
+  addEventListener('load',()=>{ const b=$('#start'); if(b)b.click(); });
 }
