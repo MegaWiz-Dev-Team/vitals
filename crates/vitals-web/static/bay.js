@@ -3779,7 +3779,7 @@ async function openShift(){
     $('#game').innerHTML='<div class="wardpage">'
       +'<p class="bed">'+bed+'patient '+esc(WARD)+'</p>'
       +'<h1>Not this bed</h1><p>'+esc(r.error)+'</p>'
-      +'<p><a href="/">← the ward</a></p></div>';
+      +'<p><a href="/">← the globe</a></p></div>';
     return;
   }
   WARDPENDING=r.id; WARDSHIFT=r.ward;

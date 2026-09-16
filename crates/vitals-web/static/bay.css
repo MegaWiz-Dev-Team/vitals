@@ -661,8 +661,9 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
 /* The face at the bedside. Round, small, and above her name rather than in the frame: the frame
    on a station is covered by the stem sheet until the first order, and "ไม่มีรูปผู้ป่วยหรอ" was
    asked of a page whose frame was behind a sheet. */
-.pt-face{width:2.6rem;height:2.6rem;border-radius:50%;object-fit:cover;display:block;
-  margin:.45rem auto 0;border:2px solid var(--card);box-shadow:0 1px 6px rgba(20,40,50,.18)}
+.pt-face{width:96px;height:96px;border-radius:12px;object-fit:cover;display:block;
+  margin:.55rem auto .1rem;border:1px solid var(--line);background:var(--room)}
+@media (min-width:900px){ .pt-face{width:128px;height:128px} }
 .pt-face[hidden]{display:none}
 .pt-name{font-family:Archivo,sans-serif;font-weight:700;font-size:1.02rem;margin-top:.6rem}
 .pt-status{font-family:"IBM Plex Mono",monospace;font-size:.76rem;font-weight:600;letter-spacing:.06em}
@@ -1366,6 +1367,11 @@ a.give:hover{filter:brightness(1.06)}
   /* The strip is a row of the bay, not a fourth thing in its first column: it is inserted into the
      grid at run time and without this it takes a cell the header wanted. */
   html.is-ward #wardbar{grid-column:1/-1}
+  /* The face is 128 px of the patient block, and it comes out of the frame above it — which is
+     where the stem sheet is. So on the ward the patient block takes more of the column and the
+     transcript gives it up: before the head is taken the transcript is empty, and the sheet is
+     the thing a stranger is actually reading. */
+  html.is-ward .stage .pt{flex:3.4 1 0}
   .stage{min-height:0;overflow-y:auto;overscroll-behavior:contain;gap:.6rem}
   .pt{display:flex;flex-direction:column;min-height:0;flex:2.2 1 0;padding-bottom:.55rem}
   .pt-art{aspect-ratio:auto;flex:1 1 auto;min-height:7rem}

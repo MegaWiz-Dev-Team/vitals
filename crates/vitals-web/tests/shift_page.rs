@@ -301,7 +301,7 @@ fn compose_ward_page() -> String {
     // The server's own two constants, read out of its source: a copy here would pass while the
     // page a visitor gets was something else.
     let brand = rust_concat(&main, "const WORLD_BRAND: &str = concat!(");
-    let eternal = rust_literal(&main.split("const ETERNAL_BRAND: &str = ").nth(1).expect("the wordmark"));
+    let eternal = rust_literal(main.split("const ETERNAL_BRAND: &str = ").nth(1).expect("the wordmark"));
     shift.replace("<!--BAY-->", &surface.replace(&eternal, &brand)).replace("<!--BRAND-->", &brand)
 }
 

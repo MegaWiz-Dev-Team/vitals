@@ -1975,7 +1975,11 @@ fn compose(page: &str) -> String {
 /// right has nothing to re-render, nothing to flash, and nothing to get wrong on a slow script.
 fn compose_for(page: &str, ward: bool) -> String {
     let surface = if ward { SURFACE.replace(ETERNAL_BRAND, WORLD_BRAND) } else { SURFACE.to_string() };
-    page.replace("<!--BAY-->", &surface).replace(BUILD_STAMP, BUILD)
+    page.replace("<!--BAY-->", &surface)
+        // The page's own corner, on the pages that ask for one. The bay's bar carries the same
+        // link a row further down; this is the one the founder meant.
+        .replace("<!--BRAND-->", if ward { WORLD_BRAND } else { "" })
+        .replace(BUILD_STAMP, BUILD)
 }
 
 /// The season's wordmark, exactly as `bay-surface.html` carries it.
@@ -2051,7 +2055,7 @@ fn receipt_page(r: &serde_json::Value) -> String {
              <meta name=viewport content='width=device-width,initial-scale=1'>\
              <style>body{{font:16px/1.6 ui-sans-serif,system-ui,sans-serif;max-width:34rem;\
              margin:4rem auto;padding:0 1.2rem;color:#16302b;background:#fbfaf7}}a{{color:#0f6e5c}}\
-             </style><h1>No such shift</h1><p>{}</p><p><a href=/>← the ward</a></p>",
+             </style><h1>No such shift</h1><p>{}</p><p><a href=/>← the globe</a></p>",
             esc(why)
         );
     }
@@ -2138,7 +2142,7 @@ fn ward_page_missing(why: &str) -> String {
          <meta name=viewport content='width=device-width,initial-scale=1'>\
          <style>body{{font:16px/1.6 ui-sans-serif,system-ui,sans-serif;max-width:34rem;\
          margin:4rem auto;padding:0 1.2rem;color:#16302b;background:#fbfaf7}}a{{color:#0f6e5c}}\
-         </style><h1>Nobody here</h1><p>{}</p><p><a href=/>← the ward</a></p>",
+         </style><h1>Nobody here</h1><p>{}</p><p><a href=/>← the globe</a></p>",
         why.replace('&', "&amp;").replace('<', "&lt;")
     )
 }
@@ -5752,8 +5756,14 @@ mod tests {
         let ward = compose_for(SHIFT, true);
         assert!(ward.contains("Vitals World</a>"),
                 "the ward's bar says which world this is: {}", &ward[..0]);
-        assert!(ward.matches("class=\"brand\"").count() == 1, "one brand in the bar");
-        let brand = ward.split("class=\"brand\"").nth(1).expect("the brand").split("</a>").next().expect("closed");
+        // Two now, and deliberately: the page's own corner, which is what the founder asked for,
+        // and the bay's bar a row below it. One drawing and one link — what must not happen is two
+        // different marks, or two different destinations.
+        let marks: Vec<&str> = ward.match_indices("class=\"brand\"").map(|(i, _)| &ward[i..]).collect();
+        assert_eq!(marks.len(), 2, "the corner and the bar");
+        let brand = marks[0].split("</a>").next().expect("closed");
+        assert_eq!(brand, marks[1].split("</a>").next().expect("closed"),
+                   "the two marks on the page must be the same mark, pointing at the same door");
         assert!(brand.contains("<svg"), "and it carries the mark, not only the words: {brand}");
         assert!(ward.contains("href=\"/\" class=\"brand\"") || brand.starts_with(" href=\"/\"")
                 || ward.contains("<a href=\"/\" class=\"brand\""),
