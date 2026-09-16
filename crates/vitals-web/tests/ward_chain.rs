@@ -553,3 +553,68 @@ fn portraits_are_added_to_a_patient_and_never_replaced() {
 
     let _ = std::fs::remove_dir_all(&root);
 }
+
+// ── the bay, resumed ────────────────────────────────────────────────────────
+
+use vitals_replay::{resume as replay_resume, Step, SLOT_SECONDS};
+use vitals_web::ward_chain::{resumed, StoredTape};
+
+fn ep1() -> String {
+    std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../conformance/sce-anaphylaxis-ep1.json"),
+    )
+    .expect("ep1 is in the repository")
+}
+
+fn taped(index: u32, taken: u64, anchored: u64, steps: Vec<Step>) -> StoredTape {
+    StoredTape { patient_id: 42, index, taken_slot: taken, anchored_slot: anchored, steps }
+}
+
+fn seen(st: &vitals_sce::runtime::SceState) -> (Option<String>, String, usize) {
+    (st.outcome().map(|o| format!("{o:?}")), format!("{:.3}", st.t_sec()), st.harm_events.len())
+}
+
+/// **The state on screen is the state a stranger would derive.**
+///
+/// This is the sentence the whole ward rests on, and this is where it becomes code: a shift begins
+/// on the patient rebuilt from every tape before it, through the same replay the verifier runs. If
+/// the bay ever starts a ward run from anywhere else, the chart a stranger rebuilds is not the
+/// patient the last person treated, and every claim on the page is void.
+#[test]
+fn a_shift_begins_on_the_patient_the_last_shift_left() {
+    let sce = ep1();
+    let first = vec![Step::Tick(30.0), Step::Do("oxygen".into()), Step::Tick(45.0)];
+    let second = vec![Step::Tick(20.0), Step::Do("adrenaline im".into()), Step::Tick(60.0)];
+
+    // Nobody has been yet: she is exactly as she was written.
+    let (fresh, shifts) = resumed(&sce, &[], 0).expect("an unvisited patient");
+    let (start, _) = replay_resume(&sce, &[]).expect("the scenario's own start");
+    assert_eq!(seen(&fresh), seen(&start), "a patient nobody has treated is the scenario's start");
+    assert_eq!(shifts, 0);
+
+    // Two shifts, back to back, no gap and nothing since: the same patient one tape of both leaves.
+    let back_to_back = [taped(0, 10, 20, first.clone()), taped(1, 20, 30, second.clone())];
+    let (rebuilt, shifts) = resumed(&sce, &back_to_back, 30).expect("two shifts");
+    let whole: Vec<Step> = first.iter().chain(&second).cloned().collect();
+    let (one_tape, _) = replay_resume(&sce, &whole).expect("one tape of both");
+    assert_eq!(seen(&rebuilt), seen(&one_tape),
+               "the chain of shifts must equal the whole — this is the verifier's own guarantee, \
+                and the bay has to honour it or the screen and the proof disagree");
+    assert_eq!(shifts, 2);
+
+    // A night between the two shifts is time she spent untreated, and it shows.
+    let a_night = (10.0 * 3600.0 / SLOT_SECONDS) as u64;
+    let with_a_gap = [taped(0, 10, 20, first.clone()),
+                      taped(1, 20 + a_night, 30 + a_night, second.clone())];
+    let (after_a_night, _) = resumed(&sce, &with_a_gap, 30 + a_night).expect("two shifts, a night apart");
+    assert_ne!(seen(&after_a_night), seen(&rebuilt),
+               "ten hours alone between two shifts must leave a different patient than a straight \
+                handover");
+
+    // And the time since the last anchor counts too: she is not frozen waiting for the next
+    // stranger, she is waiting.
+    let (now, _) = resumed(&sce, &back_to_back, 30 + a_night).expect("nobody since");
+    assert_ne!(seen(&now), seen(&rebuilt),
+               "a patient nobody has visited for ten hours is not the patient the last shift left");
+}
