@@ -55,7 +55,7 @@ pub struct Config {
     pub repo: PathBuf,
     /// `~/.vitals/world`: the manifest, the ledger, the faces.
     pub world_dir: PathBuf,
-    /// The ward's own GCP project: where its `vitals-token` secret lives. Staging is
+    /// The ward's own GCP project: where its `vitals-door-token` secret lives. Staging is
     /// `vitals-academy-dev`, production `vitals-academy`, and a token read from the wrong one is
     /// a door that says `unauthorised` — which is how this became two fields.
     pub secret_project: String,

@@ -1,7 +1,7 @@
 //! Everything the tick reaches outside itself, behind one trait.
 //!
-//! Five things, all of which the mini already has on the path: the token from Secret Manager
-//! (`gcloud secrets versions access`), a face from mflux, a state from the Gemini image editor on
+//! Five things, all of which the mini already has on the path: the door token from Secret Manager
+//! (`gcloud secrets versions access`, [`DOOR_SECRET`]), a face from mflux, a state from the Gemini image editor on
 //! Vertex, webp from `cwebp`, and an upload with `gcloud storage cp --no-clobber`. A test hands
 //! the tick a fake; `--dry-run` hands it nothing at all, because a dry run never gets this far.
 //!
@@ -12,6 +12,11 @@
 use crate::door::Token;
 use std::path::Path;
 use std::process::Command;
+
+/// The secret the ward's doors check, in the ward's own project. Its own name since 16 Sep 2026:
+/// the Forseti sweep found the doors' earlier token (`vitals-token`) injected into the public
+/// /bay.js, so the doors moved to `VITALS_DOOR_TOKEN` and this secret, in both projects.
+pub const DOOR_SECRET: &str = "vitals-door-token";
 
 pub trait Tools {
     /// `VITALS_TOKEN`, from the target project's Secret Manager.
@@ -62,7 +67,7 @@ impl Shell {
 impl Tools for Shell {
     fn secret_token(&self, project: &str) -> Result<Token, String> {
         let out = run(Command::new("gcloud").args([
-            "secrets", "versions", "access", "latest", "--secret", "vitals-token", "--project", project,
+            "secrets", "versions", "access", "latest", "--secret", DOOR_SECRET, "--project", project,
         ]))
         .map_err(|e| format!("the token could not be read from Secret Manager in {project}: {e}"))?;
         let s = String::from_utf8(out).map_err(|_| "the secret is not text".to_string())?;

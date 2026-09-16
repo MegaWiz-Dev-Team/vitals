@@ -11,7 +11,8 @@
     launchctl bootout gui/$(id -u)/com.vitals.world-factory
 
   No secret lives here. The ward's bearer token is read at run time from Secret Manager in
-  VITALS_GCP_PROJECT (the vitals-token secret, latest version) and is never written or logged.
+  VITALS_GCP_PROJECT (the vitals-door-token secret, latest version — the doors' own since 16 Sep,
+  after the earlier token was found in the public /bay.js) and is never written or logged.
   VITALS_GCP_PROJECT is the ward's own project: vitals-academy-dev for the staging ward below,
   vitals-academy for production — the two carry different tokens. The image editor always runs
   in vitals-academy (VITALS_VERTEX_PROJECT); the dev project has no Vertex.

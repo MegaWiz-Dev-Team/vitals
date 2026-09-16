@@ -9,7 +9,7 @@
 //! | `BASES_PER_TICK`         | 2                                        | faces made with mflux per tick (≈ 3 min each on the mini, measured 16 Sep) |
 //! | `VITALS_REPO`            | the checkout this binary was built from  | scenarios, persona files, pool, endemic  |
 //! | `VITALS_WORLD_DIR`       | `~/.vitals/world`                        | the manifest, the ledger, the faces      |
-//! | `VITALS_GCP_PROJECT`     | *(required)*                             | the ward's project, where its `vitals-token` secret lives (`vitals-academy-dev` for staging, `vitals-academy` for production) |
+//! | `VITALS_GCP_PROJECT`     | *(required)*                             | the ward's project, where its `vitals-door-token` secret lives (`vitals-academy-dev` for staging, `vitals-academy` for production) |
 //! | `VITALS_VERTEX_PROJECT`  | `vitals-academy`                         | the image editor's project               |
 //! | `VITALS_PORTRAIT_BUCKET` | `vitals-world-portraits`                 | where faces are published                |
 //! | `VITALS_IMAGE_MODEL`     | `gemini-2.5-flash-image`                 | the state editor                         |
@@ -170,7 +170,7 @@ fn config(dry_run: bool) -> Result<Config, String> {
         repo: default_repo(),
         world_dir,
         secret_project: std::env::var("VITALS_GCP_PROJECT").ok().filter(|v| !v.trim().is_empty()).ok_or_else(|| {
-            "VITALS_GCP_PROJECT is not set — the ward's own project, where its vitals-token secret lives \
+            "VITALS_GCP_PROJECT is not set — the ward's own project, where its vitals-door-token secret lives \
              (vitals-academy-dev for staging, vitals-academy for production); a token from the wrong project is a door \
              that says unauthorised"
                 .to_string()
