@@ -474,10 +474,15 @@ fn a_childs_face_is_asked_for_as_a_photograph_of_a_child() {
     let r = tick(&config(&dir, 20, 20), &door, &tools);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     let paints = tools.paints.borrow();
-    let ages: Vec<u16> = paints.iter().map(|(p, _)| p.split("-year-old").next().unwrap().rsplit(' ').next().unwrap().parse().unwrap()).collect();
+    // Adults are "a 57-year-old woman"; children are "a schoolgirl aged 8".
+    let age_in = |p: &str| -> u16 {
+        if let Some(rest) = p.split("aged ").nth(1) { return rest.split(' ').next().unwrap().parse().unwrap(); }
+        p.split("-year-old").next().unwrap().rsplit(' ').next().unwrap().parse().unwrap()
+    };
+    let ages: Vec<u16> = paints.iter().map(|(p, _)| age_in(p)).collect();
     assert!(ages.iter().any(|a| *a < 16) && ages.iter().any(|a| *a >= 16), "the draw made both a child and an adult: {ages:?}");
     for (prompt, _) in paints.iter() {
-        let age: u16 = prompt.split("-year-old").next().unwrap().rsplit(' ').next().unwrap().parse().unwrap();
+        let age = age_in(prompt);
         let child_words = prompt.starts_with("Documentary photograph, 35mm film") && prompt.contains(&format!("aged {age} from"));
         assert_eq!(child_words, age < 16, "{age}: {prompt}");
         if age < 16 {

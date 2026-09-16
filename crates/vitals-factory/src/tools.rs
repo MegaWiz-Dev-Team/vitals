@@ -24,6 +24,8 @@ pub trait Tools {
     /// Vertex with the image inline. `true` is yes; the string is the model's one sentence why,
     /// for the log and for whoever reads a refusal.
     fn judge(&self, project: &str, model: &str, image: &[u8], mime: &str, question: &str) -> Result<(bool, String), String>;
+    /// Any other question about an image, answered in the model's own words — the age question.
+    fn ask(&self, project: &str, model: &str, image: &[u8], mime: &str, question: &str) -> Result<String, String>;
     /// PNG bytes to webp bytes at this quality.
     fn webp(&self, png: &[u8], quality: u8) -> Result<Vec<u8>, String>;
     /// `local` to `gs://<bucket>/<object>`, never overwriting.
@@ -93,10 +95,14 @@ impl Tools for Shell {
         Err("Vertex returned text and no image".into())
     }
 
-    fn judge(&self, project: &str, model: &str, image: &[u8], mime: &str, question: &str) -> Result<(bool, String), String> {
+    fn ask(&self, project: &str, model: &str, image: &[u8], mime: &str, question: &str) -> Result<String, String> {
         let parts = vertex_generate(project, model, image, mime, question, false)?;
         let text: String = parts.iter().filter_map(|p| p.get("text").and_then(|t| t.as_str())).collect::<Vec<_>>().join(" ");
-        let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        Ok(text.split_whitespace().collect::<Vec<_>>().join(" "))
+    }
+
+    fn judge(&self, project: &str, model: &str, image: &[u8], mime: &str, question: &str) -> Result<(bool, String), String> {
+        let text = self.ask(project, model, image, mime, question)?;
         let word = text.trim_start_matches(|c: char| !c.is_alphanumeric()).to_lowercase();
         let why = text.split_once(['.', ',']).map(|x| x.1).unwrap_or("").trim().to_string();
         if word.starts_with("yes") {

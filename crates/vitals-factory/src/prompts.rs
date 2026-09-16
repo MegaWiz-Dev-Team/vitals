@@ -26,14 +26,11 @@ pub const CHILD_UNDER: u16 = 16;
 /// models (calibration 16 Sep 2026, scratch trials A and C).
 pub fn base(age: u16, sex: Sex, place: &str) -> String {
     if age < CHILD_UNDER {
-        let child = match sex {
-            Sex::F => "girl",
-            Sex::M => "boy",
-        };
         return format!(
-            "Documentary photograph, 35mm film, natural window light: a {age}-year-old {child} from {place} lying in a \
-             hospital bed, plain pale-green hospital gown, real skin texture with pores, natural child proportions, \
-             calm expression, looking at the camera, shallow depth of field, no text, no logos, no flags"
+            "Documentary photograph, 35mm film, natural window light: {} from {place} lying in a hospital bed, plain \
+             pale-green hospital gown, real skin texture with pores, natural proportions for her age, calm expression, \
+             looking at the camera, shallow depth of field, no text, no logos, no flags",
+            child_phrase(age, sex)
         );
     }
     format!(
@@ -43,6 +40,23 @@ pub fn base(age: u16, sex: Sex, place: &str) -> String {
         sex.word()
     )
 }
+
+/// Who the child is, in words the painter reads as an age. "An 8-year-old girl" comes out as a
+/// toddler (judged 3–4 on every seed tried); "a schoolgirl aged 8" comes out as a schoolgirl
+/// (judged 7; a schoolgirl aged 6 judged 6). Three brackets, because "schoolgirl aged 3" is not a
+/// thing and "schoolboy aged 14" is a younger boy than fourteen.
+pub fn child_phrase(age: u16, sex: Sex) -> String {
+    let (girl, boy) = match age {
+        0..=5 => ("a little girl", "a little boy"),
+        6..=12 => ("a schoolgirl", "a schoolboy"),
+        _ => ("a teenage girl", "a teenage boy"),
+    };
+    format!("{} aged {age}", if sex == Sex::F { girl } else { boy })
+}
+
+/// The second question the gate asks of a child's face, verbatim from the brief. The answer is
+/// read as a number and held to the door's band for the drawn age.
+pub const AGE: &str = "About how old does this child look? Answer with one number.";
 
 /// The one question the gate asks of every face.
 ///

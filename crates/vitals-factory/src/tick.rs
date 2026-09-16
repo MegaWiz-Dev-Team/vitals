@@ -472,8 +472,36 @@ fn make_face(cfg: &Config, tools: &dyn Tools, who: &Person, age: u16, place: &st
         let _ = std::fs::remove_file(&png);
         let webp = tools.webp(&bytes, WEBP_QUALITY)?;
         let (ok, why) = tools.judge(&cfg.vertex_project, &cfg.judge_model, &webp, "image/webp", prompts::PHOTOREAL)?;
-        r.say(format!("face for {} at {age}, seed {seed}: photorealistic: {}{}", who.key, if ok { "yes" } else { "no — a new seed" }, if why.is_empty() { String::new() } else { format!(" ({why})") }));
-        if ok {
+        // A child's face is also asked how old it looks; only an answer inside the door's band
+        // for the drawn age passes, because the painter renders "eight" as four unless told
+        // otherwise and the door's band at eight is 6–10.
+        let looks = if ok && age < prompts::CHILD_UNDER {
+            let answer = tools.ask(&cfg.vertex_project, &cfg.judge_model, &webp, "image/webp", prompts::AGE)?;
+            let n = first_number(&answer);
+            let band = vitals_web::ward::age_band(age);
+            let fits = n.is_some_and(|n| band.contains(&n));
+            Some((n, band, fits))
+        } else {
+            None
+        };
+        let fits = looks.as_ref().is_none_or(|l| l.2);
+        r.say(format!(
+            "face for {} at {age}, seed {seed}: photorealistic: {}{}{}",
+            who.key,
+            if ok { "yes" } else { "no — a new seed" },
+            if why.is_empty() { String::new() } else { format!(" ({why})") },
+            match &looks {
+                Some((n, band, fits)) => format!(
+                    " · looks {} (band {}\u{2013}{}){}",
+                    n.map_or("?".to_string(), |n| n.to_string()),
+                    band.start(),
+                    band.end(),
+                    if *fits { "" } else { " — a new seed" }
+                ),
+                None => String::new(),
+            }
+        ));
+        if ok && fits {
             return publish(cfg, tools, &webp);
         }
         // A refused face is kept locally, never uploaded, so a person can see what was refused
@@ -487,6 +515,12 @@ fn make_face(cfg: &Config, tools: &dyn Tools, who: &Person, age: u16, place: &st
         "{} ({} at {age}): three faces in a row were not photographs of a person, and no pack is built on a rejected face",
         who.name, who.key
     ))
+}
+
+/// The first whole number in a sentence — "7", "She looks about 3." — or none.
+fn first_number(text: &str) -> Option<u16> {
+    let digits: String = text.chars().skip_while(|c| !c.is_ascii_digit()).take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse().ok()
 }
 
 /// Remake one face on request — `KEY@AGE`, e.g. `KOR-0@8` — through the same gate, for a face a
