@@ -1968,11 +1968,25 @@ fn bs58(bytes: &[u8; 32]) -> String {
 /// somebody opening a receipt for a shift the board has already seen — costs no chain read at all.
 /// A hash that is nowhere is reported as such: it may never have anchored, or it may belong to
 /// another ward, and this one does not guess between them.
+/// Is this string a hash a shift could actually have?
+///
+/// Sixty-four hex characters, and **not all of them zero**. All-zero is what an uninitialised
+/// record deserialises to: a proof-tool leaf in the shift cache carried one, and `/api/shift/000…0`
+/// answered with a receipt for it. A tape does not hash to nothing.
+pub fn is_shift_hash(run_hash: &str) -> bool {
+    run_hash.len() == 64
+        && run_hash.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        && run_hash.bytes().any(|b| b != b'0')
+}
+
 pub fn find_shift(
     chain: &WardChain,
     store: &crate::store::Store,
     run_hash: &str,
 ) -> Result<Option<(u64, Vec<crate::ward::ShiftOnChain>, crate::ward::ShiftOnChain)>, String> {
+    if !is_shift_hash(run_hash) {
+        return Ok(None);
+    }
     let patients = chain.patients()?;
     for refreshing in [false, true] {
         for p in &patients {
@@ -1981,7 +1995,10 @@ pub fn find_shift(
             if refreshing && chain.refresh(p.patient_id, &mut seen).is_ok() {
                 let _ = store.put(SHIFT_CACHE, &key, &seen);
             }
-            let all = seen.shifts();
+            // Skipped rather than matched: a cached row with an empty hash is a row about
+            // nothing, and it must not be found by a search for anything.
+            let all: Vec<crate::ward::ShiftOnChain> =
+                seen.shifts().into_iter().filter(|s| is_shift_hash(&hex32(&s.run_hash))).collect();
             if let Some(this) = all.iter().find(|s| hex32(&s.run_hash) == run_hash) {
                 return Ok(Some((p.patient_id, all.clone(), *this)));
             }

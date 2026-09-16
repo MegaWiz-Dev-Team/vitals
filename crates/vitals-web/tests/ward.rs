@@ -1034,3 +1034,60 @@ fn the_board_takes_the_small_face_and_the_bedside_the_full_one() {
     assert_eq!(portrait_small_for(&set, "recovered"), None,
                "a patient who went home has no picture until one of her leaving is made");
 }
+
+/// **A patient the ward cannot rebuild is named on the board and gives up the bed.**
+///
+/// It happened on 16 ก.ย.: an anchor put a leaf on chain whose tape was never kept, and the
+/// patient sat in bed 3 where nobody could open her. The ticker's repair puts the tape back when a
+/// session still holds it; this is what the board says when nothing does.
+///
+/// **Not closed on chain**, and that is the founder's rule about the record read the other way:
+/// the program closes a patient on death or on discharge, and a discharge nobody gave would be a
+/// lie on the one record we are asking strangers to trust. So the chain keeps her open and the
+/// board — which is ours, and derived — says what is true: the chain names a shift whose tape is
+/// gone, so nobody can take this bed.
+#[test]
+fn a_patient_who_cannot_be_rebuilt_is_named_and_gives_up_the_bed() {
+    use std::collections::BTreeMap;
+    use vitals_web::ward::{beds_taken, Pack, Persona};
+
+    let patients = vec![patient(7, OPEN, 1, 10, 0), patient(8, OPEN, 0, 20, 0)];
+    let describable = |id: u64, name: &str| {
+        (id, Pack {
+            case: "osce-c".into(),
+            persona: Persona { name: name.into(), country: "THA".into(), age: 6, sex: "f".into() },
+            portrait: Default::default(),
+            endemic: false,
+        })
+    };
+    let packs: BTreeMap<u64, Pack> =
+        [describable(7, "Fon"), describable(8, "Ploy")].into_iter().collect();
+
+    let whole = ward_payload(&read(&patients, &[], &packs, None, 100));
+    assert_eq!(whole["in_beds"], 2, "two describable patients, two beds");
+
+    // Now one of them names a tape this ward does not have.
+    let leaf = "9".repeat(64);
+    let lost: BTreeMap<u64, String> = [(8u64, leaf.clone())].into_iter().collect();
+    let mut r = read(&patients, &[], &packs, None, 100);
+    r.unrebuildable = &lost;
+    let v = ward_payload(&r);
+
+    let her = v["patients"].as_array().expect("a board").iter()
+        .find(|p| p["patient_id"] == 8).expect("still on the board").clone();
+    assert_eq!(her["state"], "unrebuildable", "her own word — not died, and not went home");
+    let note = her["note"].as_str().unwrap_or_default();
+    assert!(note.contains(&leaf[..16]), "the note names the leaf it stopped at: {note}");
+    assert!(her["bed"].is_null(), "and she holds no bed nobody can take");
+
+    assert_eq!(v["in_beds"], 1, "the other bed is free for the ticker to fill");
+    assert_eq!(v["census"]["unrebuildable"], 1, "counted under her own word");
+    assert_eq!(v["census"]["died"], 0, "not as a death");
+    assert_eq!(v["census"]["went_home"], 0, "and not as a discharge");
+    assert_eq!(v["census"]["on_ward"], 2,
+               "the chain still holds her open and the census is the chain's arithmetic — the \
+                board is where the ward says what it can and cannot do with her");
+
+    // The count the ticker refills against agrees with the board.
+    assert_eq!(beds_taken(&patients, &packs, &lost), 1);
+}
