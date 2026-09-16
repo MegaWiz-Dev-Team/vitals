@@ -77,6 +77,7 @@ struct FakeDoor {
     queue: RefCell<BTreeMap<String, Pack>>,
     pushes: RefCell<Vec<usize>>,
     fills: RefCell<Vec<(u64, BTreeMap<String, String>)>>,
+    replaces: RefCell<Vec<(String, BTreeMap<String, String>)>>,
     tokens_seen: RefCell<Vec<String>>,
 }
 
@@ -84,7 +85,7 @@ impl FakeDoor {
     fn new(ward: WardView) -> FakeDoor {
         FakeDoor {
             ward: RefCell::new(ward), open: true, queue: RefCell::new(BTreeMap::new()),
-            pushes: RefCell::new(vec![]), fills: RefCell::new(vec![]), tokens_seen: RefCell::new(vec![]),
+            pushes: RefCell::new(vec![]), fills: RefCell::new(vec![]), replaces: RefCell::new(vec![]), tokens_seen: RefCell::new(vec![]),
         }
     }
 }
@@ -132,6 +133,24 @@ impl Door for FakeDoor {
         }
         f.states = p.portraits.keys().cloned().collect();
         self.fills.borrow_mut().push((patient_id, set.clone()));
+        Ok(FillReply::Filled(f))
+    }
+    /// e56946b: a waiting pack's faces may be replaced, by pack id; an admitted one's may not.
+    fn replace(&self, token: &Token, pack_id: &str, set: &BTreeMap<String, String>) -> Result<FillReply, String> {
+        self.tokens_seen.borrow_mut().push(token.bearer());
+        self.replaces.borrow_mut().push((pack_id.to_string(), set.clone()));
+        let mut q = self.queue.borrow_mut();
+        let mut f = Filled { added: 0, kept: 0, rejected: vec![], states: vec![] };
+        let Some(p) = q.get_mut(pack_id) else {
+            f.rejected.push(format!("no pack {pack_id} is waiting — she may be in a bed already, and a patient's faces are added through her own door and never replaced"));
+            return Ok(FillReply::Filled(f));
+        };
+        for (k, v) in set {
+            if !vitals_web::ward_chain::is_portrait_url(v) { f.rejected.push(format!("{k}: a portrait must be {PORTRAITS}/<sha256>.webp")); continue; }
+            p.portrait.insert(k.clone(), v.clone());
+            f.added += 1;
+        }
+        f.states = p.portrait.keys().cloned().collect();
         Ok(FillReply::Filled(f))
     }
 }
@@ -488,4 +507,67 @@ fn a_face_can_be_remade_through_the_gate_and_the_old_one_leaves_the_file() {
     let (e, rep) = *remake_face(&cfg, &tools, "KOR-0@8").expect_err("three refusals");
     assert!(e.contains("Park Ji-woo") && e.contains("three faces"), "{e}");
     assert_eq!(rep.lines.iter().filter(|l| l.contains("photorealistic: no")).count(), 3);
+}
+
+/// A face remade after her pack was queued reaches the queue: the ledger sees that the manifest's
+/// face for her key and age is no longer the one it sent, replaces it through the pack door, and
+/// records the new address. Once, not every tick; and never for a patient already in a bed, whose
+/// faces are added through her own door and never replaced.
+#[test]
+fn a_remade_face_replaces_the_one_on_her_waiting_pack_once() {
+    let dir = world("replace");
+    let pool = read_pool(POOL).unwrap();
+    let mut man = seed_manifest(&dir, &pool);
+    let kor0 = pool.iter().find(|p| p.key == "KOR-0").unwrap();
+    let old = sha_url(b"a doll");
+    man.record_base("KOR-0", 8, &old, kor0);
+    man.save(&dir.join("portraits.json")).unwrap();
+    let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
+    let tools = FakeTools::default();
+    let cfg = config(&dir, 0, 0);
+
+    // Her pack goes out with the doll, by hand, as the ledger would have sent it.
+    let mut sent = vitals_factory::ledger::Sent::new("osce-c", kor0, 8, false, Some(old.clone()), cfg.now, &cfg.ward);
+    sent.sex = "f".into();
+    let pack = sent.to_pack();
+    let id = pack_id(&pack);
+    door.push(&Token::new("t".into()), std::slice::from_ref(&pack)).unwrap();
+    let mut ledger = Ledger::default();
+    ledger.sent.insert(id.clone(), sent);
+    ledger.save(&dir.join("factory-ledger.json")).unwrap();
+
+    // Nothing to do while the manifest and the ledger agree.
+    let r = tick(&cfg, &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert!(door.replaces.borrow().is_empty(), "the face she was sent with is the face on file");
+
+    // The face is remade; the next tick replaces it on the waiting pack, once.
+    let new = sha_url(b"a child, photographed");
+    man.record_base("KOR-0", 8, &new, kor0);
+    man.save(&dir.join("portraits.json")).unwrap();
+    let r = tick(&cfg, &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    {
+        let reps = door.replaces.borrow();
+        assert_eq!(reps.len(), 1);
+        assert_eq!(reps[0].0, id);
+        assert_eq!(reps[0].1, BTreeMap::from([("stable".to_string(), new.clone())]));
+    }
+    assert_eq!(door.queue.borrow()[&id].portrait["stable"], new, "the waiting pack carries the new face");
+    assert_eq!(Ledger::load(&dir.join("factory-ledger.json")).unwrap().sent[&id].stable.as_deref(), Some(new.as_str()));
+    assert!(r.lines.iter().any(|l| l.contains("replaced") && l.contains("Park Ji-woo")), "{:?}", r.lines);
+    let r = tick(&cfg, &door, &tools);
+    assert_eq!(door.replaces.borrow().len(), 1, "once");
+    assert!(r.errors.is_empty());
+
+    // She is admitted (the pack left the queue): the door refuses, the ledger keeps what it has,
+    // and the line says why.
+    let newer = sha_url(b"a third face");
+    man.record_base("KOR-0", 8, &newer, kor0);
+    man.save(&dir.join("portraits.json")).unwrap();
+    door.queue.borrow_mut().remove(&id);
+    let r = tick(&cfg, &door, &tools);
+    assert_eq!(door.replaces.borrow().len(), 2);
+    assert!(r.lines.iter().any(|l| l.contains("in a bed already") || l.contains("never replaced")), "{:?}", r.lines);
+    assert_eq!(Ledger::load(&dir.join("factory-ledger.json")).unwrap().sent[&id].stable.as_deref(), Some(new.as_str()), "not recorded as replaced");
 }
