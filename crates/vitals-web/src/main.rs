@@ -2028,6 +2028,10 @@ fn receipt_page(r: &serde_json::Value) -> String {
                     .collect::<Vec<_>>().join("<br>")
             }),
             row("deterministic score", esc(&det)),
+            match r["also_anchored_note"].as_str() {
+                Some(n) => row("also on this ward", esc(n)),
+                None => String::new(),
+            },
             row("outcome", match r["did"]["outcome"].as_str() {
                 Some(o) => esc(o),
                 None => "she was handed on, still on the ward".to_string(),

@@ -1547,6 +1547,13 @@ pub fn receipt(
 
     let det = rubric_json.and_then(|rj| vitals_osce::det_for_run(sce_json, &tape, rj).ok());
 
+    // The same bytes can be anchored more than once: a run hash is the hash of the tape, and two
+    // strangers who did exactly the same things to the same case produce the same one. Their
+    // leaves differ — a leaf carries the player and the commitment — so those are different shifts
+    // wearing one address, and a receipt that showed the first and said nothing would read as
+    // "this is the shift" when the truth is "this is one of three".
+    let sharing = shifts.iter().filter(|s| s.run_hash == this.run_hash).count().saturating_sub(1);
+
     Ok(serde_json::json!({
         "patient_id": this.patient_id,
         "name": pack.persona.name,
@@ -1567,6 +1574,13 @@ pub fn receipt(
         "judged_omitted": "a judged score belongs to a finished case. This is one shift in the \
                            middle of her stay, and a number that cannot mean what a reader assumes \
                            is worse than no number",
+        "also_anchored": sharing,
+        "also_anchored_note": (sharing > 0).then(|| format!(
+            "{sharing} other shift{} on this ward anchored the same tape — the same bytes, played \
+             again. They are different shifts: each leaf carries its own player and its own \
+             declaration, and only the tape's hash is shared",
+            if sharing == 1 { "" } else { "s" }
+        )),
         "tape": format!("/api/tape/{hash}"),
         "derivations": {
             "player": "the key that signed this shift's AnchorShift transaction",
