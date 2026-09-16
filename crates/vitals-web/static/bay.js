@@ -3870,7 +3870,7 @@ async function handBack(){
      closed before the head was taken — and say the same thing about why. */
   wardGate();
   wardSay('<b>handed back.</b> nothing you did was recorded; the next person gets '+pro().o+
-          ' as you found '+pro().o+'. <a href="/">back to the ward</a>');
+          ' as you found '+pro().o+'. <a href="/">back to the globe</a>');
 }
 
 /* A stranger who closes the tab should free the bed in seconds rather than in the length of a
@@ -3930,9 +3930,13 @@ async function handOverInner(){
   }
   if(a.error)return wardSay(esc(a.error));
   clearInterval(EXITTIMER); EXITSIG=null;
+  /* The receipt is the point of the whole thing and it had no link: a stranger who just anchored
+     a shift was told it landed and given a way back to the globe, and nothing that shows what
+     they did. `/shift/<run hash>` is public and needs no key — see the receipt page. */
+  const receipt=over_.run_hash?' <a href="/shift/'+encodeURIComponent(over_.run_hash)+'">the receipt for this shift</a> ·':'';
   wardSay('<b>handed over.</b> '+pro().p+' chain is '+a.shifts+' shift'+(a.shifts===1?'':'s')+
-          ' long and '+pro().s+' is '+esc((a.state||'').replace('_',' '))+
-          '. <a href="/">back to the ward</a>');
+          ' long and '+pro().s+' is '+esc((a.state||'').replace('_',' '))+'.'+receipt+
+          ' <a href="/">back to the globe</a>');
 }
 if(WARD) addEventListener('load',openShift);
 
