@@ -110,7 +110,27 @@ impl Meter {
         self.window(addr)
     }
 
+    /// The same window against a budget the caller names.
+    ///
+    /// For a counter that is not one reader at one bay. The ward counts a browser's own key rather
+    /// than its address — a school is one address, and thirty students opening patients in a
+    /// minute are not one abuser — and the address budget behind that has to be a classroom's.
+    pub fn allow_budget(
+        &mut self,
+        key: &str,
+        per_min: usize,
+        per_day: usize,
+        store: &Store,
+    ) -> Verdict {
+        self.roll(store);
+        self.window_within(key, per_min, per_day)
+    }
+
     fn window(&mut self, addr: &str) -> Verdict {
+        self.window_within(addr, self.per_min, self.per_day)
+    }
+
+    fn window_within(&mut self, addr: &str, per_min: usize, per_day: usize) -> Verdict {
         // Bounded memory before a new entry, not after: the map only grows one address at a
         // time, so pruning at a threshold keeps it at the threshold.
         if self.windows.len() >= 4096 && !self.windows.contains_key(addr) {
@@ -122,12 +142,12 @@ impl Meter {
         let w = self.windows.entry(addr.to_string()).or_default();
         w.retain(|t| t.elapsed() < DAY);
         let in_minute: Vec<&Instant> = w.iter().filter(|t| t.elapsed() < MINUTE).collect();
-        if in_minute.len() >= self.per_min {
+        if in_minute.len() >= per_min {
             // When the oldest question inside the window ages out is when the next one fits.
             let oldest = in_minute.iter().map(|t| t.elapsed()).max().unwrap_or_default();
             return Verdict::SlowDown { retry_secs: (MINUTE.saturating_sub(oldest)).as_secs().max(1) };
         }
-        if w.len() >= self.per_day {
+        if w.len() >= per_day {
             let oldest = w.first().map(|t| t.elapsed()).unwrap_or_default();
             return Verdict::SlowDown { retry_secs: (DAY.saturating_sub(oldest)).as_secs().max(1) };
         }

@@ -550,6 +550,20 @@ const WARD_STREAM_POLL: Duration = Duration::from_secs(3);
 /// watching cannot become this server's memory problem.
 const QUEUE_MAX: usize = 64 * 1024;
 
+/// How often one browser may open a patient on the ward, and how often one address may.
+///
+/// The key is a person: a shift is minutes long, so six a minute is a loop rather than a learner,
+/// and two hundred a day is more patients than anybody will meet.
+///
+/// The address is a building. A class of thirty opening a patient each minute for a ninety-minute
+/// session is two thousand seven hundred opens from one NAT, and every one of them is somebody
+/// learning — so the budget is a classroom's. It is still a budget: it is the only thing standing
+/// between the ward and a script with no key, and a script with no key cannot take a shift anyway.
+const OPENS_PER_KEY_MIN: usize = 6;
+const OPENS_PER_KEY_DAY: usize = 200;
+const OPENS_PER_ADDR_MIN: usize = 120;
+const OPENS_PER_ADDR_DAY: usize = 3_000;
+
 /// A case pack: the scenario, the mark sheet, the voice and the replay proof. The compiler's own
 /// run between 15 and 40 KB, and a limit that refused one of those would be a limit that refuses
 /// medicine to save bytes.
@@ -3221,11 +3235,34 @@ fn main() {
                 // A run is a stored document, and a loop hammering "new" is a bill with no
                 // learner attached. The window only, never the ceiling: opening a run must
                 // survive the month's voice budget running out.
-                if let meter::Verdict::SlowDown { retry_secs } =
-                    meter.allow_free(&format!("new:{}", client_addr(&req)), &store)
-                {
+                //
+                // **What is counted differs by host.** The Eternal entry counts an address, which
+                // is one learner at one bay. A public ward counts the browser's own key: a school
+                // is one address, and thirty students opening patients in the same minute are not
+                // one abuser — the seventh of them was refused until 16 ก.ย. The address is still
+                // counted behind the key, for browsers that have none yet, against a classroom's
+                // budget rather than a reader's.
+                let counted = match (ward_mode(), param(&url, "player").and_then(|p| pubkey(&p))) {
+                    (true, Some(key)) => Some((format!("new:key:{key}"), OPENS_PER_KEY_MIN, OPENS_PER_KEY_DAY, "this browser")),
+                    (true, None) => Some((format!("new:{}", client_addr(&req)), OPENS_PER_ADDR_MIN, OPENS_PER_ADDR_DAY, "this address")),
+                    (false, _) => None,
+                };
+                let verdict = match &counted {
+                    Some((key, per_min, per_day, _)) => meter.allow_budget(key, *per_min, *per_day, &store),
+                    None => meter.allow_free(&format!("new:{}", client_addr(&req)), &store),
+                };
+                if let meter::Verdict::SlowDown { retry_secs } = verdict {
+                    let (what, per_min) = counted
+                        .as_ref()
+                        .map(|(_, m, _, what)| (*what, *m))
+                        .unwrap_or(("this address", 0));
                     let _ = req.respond(json_code(serde_json::json!({
-                        "error": "too many new runs from this address — give it a minute",
+                        "error": if per_min > 0 {
+                            format!("{what} has opened {per_min} runs in a minute, which is all \
+                                     this ward counts for one — give it a minute")
+                        } else {
+                            "too many new runs from this address — give it a minute".to_string()
+                        },
                         "retry_in": retry_secs,
                     }), 429));
                     continue;
