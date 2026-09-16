@@ -326,6 +326,25 @@ pub fn portrait_small_for<'a>(
     set.get(&format!("{at}{SMALL}")).or_else(|| set.get(at)).map(String::as_str)
 }
 
+/// May this session be advanced?
+///
+/// The page refuses to play a patient before the head is taken, and until 16 ก.ย. the page was the
+/// only thing that refused — so a scripted client could play a stranger's patient to the end.
+/// The chain still refuses the anchor, but the work is done, the tape exists, and the board says
+/// nothing about it.
+///
+/// The gate is **the declaration**, not a flag of our own: it is the thing the chain stamps, and
+/// the server only prepares one for a player the chain says is holding her head. A run that is not
+/// a shift is not gated at all — there is no head to take in the season's bay.
+pub fn may_step(on_the_ward: bool, declared: bool) -> Result<(), String> {
+    if !on_the_ward || declared {
+        return Ok(());
+    }
+    Err("take the shift first — her chart is the chain, and nothing you do is on it until the \
+         head is yours"
+        .into())
+}
+
 /// One person the factory can make a patient of.
 ///
 /// No age: the case carries the band and the factory picks inside it, so an age here would be one

@@ -2990,6 +2990,19 @@ fn main() {
                 }
                 // A shift on the ward: the same bay, started on the patient the chain says is
                 // in that bed (producer's ruling, 16 ก.ย. — a parameter, never a second page).
+                // `patient` on the ward host is the whole request, well formed or not. It used to
+                // be read as "a patient if it parses, otherwise never mind", and never-minding
+                // fell through to `ep`, defaulted to ep1 and opened a practice run of the season's
+                // first episode on the host whose front page is a globe (ruling 13: nothing of the
+                // season lives here). A mistyped id is a mistyped id, and it is answered as one.
+                if ward_mode() && param(&url, "patient").is_some_and(|p| p.parse::<u64>().is_err()) {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "error": "a patient id is a whole number, and this host has no episodes to \
+                                  open instead",
+                        "the_ward_is": "/api/ward"
+                    }), 404));
+                    continue;
+                }
                 if let Some(patient_id) = param(&url, "patient").and_then(|p| p.parse::<u64>().ok()) {
                     if !ward_mode() {
                         let _ = req.respond(json_code(serde_json::json!({
@@ -3063,6 +3076,15 @@ fn main() {
                 let mut map = sessions.lock().unwrap();
                 match map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) {
                     None => no_such_session(),
+                    // A shift nobody has taken is a chart you may read and not a patient you may
+                    // treat. The page has refused this since the morning of 16 ก.ย.; this is the
+                    // server refusing it, which is the half a scripted client cannot skip.
+                    Some(s) if ward::may_step(s.ward.is_some(), s.commit.is_some()).is_err() => {
+                        let why = ward::may_step(s.ward.is_some(), s.commit.is_some()).unwrap_err();
+                        drop(map);
+                        let _ = req.respond(json_code(serde_json::json!({ "error": why }), 409));
+                        continue;
+                    }
                     Some(s) => {
                         // Read before anything moves: the increment belongs to the transition
                         // into a finished run, not to every request made after it. It is also
@@ -4129,7 +4151,37 @@ fn main() {
                                     chain.program_id(), &chain.operator(), &who, w.patient_id),
                                 WardWork::Take { patient_id: w.patient_id },
                             )),
-                            (Some(_), "/api/ward/declare") => {
+                            (Some(w), "/api/ward/declare") => {
+                                // Declared only by the key the chain says is holding her. The
+                                // declaration is what makes a shift playable at all — `may_step`
+                                // gates every tick on it — so the lease is checked here, once,
+                                // rather than on every step, and a client that skipped the take
+                                // is refused before it has a tape rather than at the anchor.
+                                match chain.patient(w.patient_id) {
+                                    Ok(Some(p)) if p.lease_holder == who.to_bytes() => {}
+                                    Ok(Some(_)) => {
+                                        drop(map);
+                                        let _ = req.respond(json_code(serde_json::json!({
+                                            "refused": "her head is not yours — take the shift \
+                                                        before declaring it"
+                                        }), 409));
+                                        continue;
+                                    }
+                                    Ok(None) => {
+                                        drop(map);
+                                        let _ = req.respond(json_code(serde_json::json!({
+                                            "error": "no such patient on this ward"
+                                        }), 404));
+                                        continue;
+                                    }
+                                    Err(e) => {
+                                        drop(map);
+                                        let _ = req.respond(json_code(serde_json::json!({
+                                            "error": format!("her chart could not be read: {e}")
+                                        }), 503));
+                                        continue;
+                                    }
+                                }
                                 // The nonce keeps the case hidden from chain observers until the
                                 // reveal, and never leaves this process.
                                 use solana_sdk::signature::Signer;
