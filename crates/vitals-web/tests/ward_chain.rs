@@ -780,3 +780,32 @@ fn an_unreadable_entry_stops_the_walk_rather_than_being_skipped() {
     assert_eq!(seen.until().as_deref(), Some("s2"),
                "so the next read begins at s3 again and the shift under it is not lost");
 }
+
+/// Putting a shift down is a thing a stranger must be able to do.
+///
+/// Producer's ruling, 16 ก.ย., after I kept holding beds open by walking away from my own tests:
+/// there has to be a way to hand her back. "I have to go" happens more often on a public ward
+/// than "I have finished", and without it one closed laptop holds a bed for the length of a lease.
+///
+/// Only the holder may put it down while it stands — otherwise anyone could clear anyone's shift
+/// — and the relay is not in the instruction at all, exactly as taking it is not.
+#[test]
+fn the_head_can_be_handed_back_by_the_person_holding_it() {
+    use vitals_web::ward_chain::release_shift_ix;
+
+    let program = Pubkey::new_unique();
+    let operator = Pubkey::new_unique();
+    let player = Pubkey::new_unique();
+
+    let ix = release_shift_ix(&program, &operator, &player, 42);
+    match Instruction::deserialize(&mut &ix.data[..]).expect("decodes") {
+        Instruction::ReleaseShift { patient_id } => assert_eq!(patient_id, 42),
+        other => panic!("handing her back must be ReleaseShift, not {other:?}"),
+    }
+    assert_eq!(ix.accounts.len(), 3, "the player, who they are, and the patient");
+    assert_eq!(ix.accounts[0].pubkey, player);
+    assert!(ix.accounts[0].is_signer, "only the person holding it may put it down");
+    assert!(ix.accounts[2].is_writable, "the lease is written on her");
+    assert!(!ix.accounts.iter().any(|a| a.pubkey == operator),
+            "the relay pays for this and takes no part in it — the same bargain as taking it");
+}
