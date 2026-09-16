@@ -631,3 +631,32 @@ fn a_childs_face_must_look_her_age_and_an_adults_is_not_asked() {
     remake_face(&cfg, &tools, "PAK-0@57").expect("an adult passes on style alone");
     assert_eq!(tools.asked.borrow().len(), asked_before, "adults are not asked their age");
 }
+
+/// A face remade after she was admitted stays old on the board (add only), so her states are
+/// edited from the face the board shows and pushed — and not recorded under the new face's entry.
+#[test]
+fn states_for_a_face_the_board_kept_are_pushed_and_not_filed_under_the_new_one() {
+    let dir = world("kept");
+    let pool = read_pool(POOL).unwrap();
+    let mut man = seed_manifest(&dir, &pool);
+    let kor0 = pool.iter().find(|p| p.key == "KOR-0").unwrap();
+    let on_board = sha_url(b"the face she was admitted with");
+    man.record_base("KOR-0", 8, &sha_url(b"the face remade after"), kor0);
+    man.save(&dir.join("portraits.json")).unwrap();
+    let mut ward = WardView::parse(STAGING).unwrap();
+    let p = &mut ward.patients[0];
+    p.name = Some(kor0.name.clone()); p.country = Some("KOR".into()); p.case = Some("osce-c".into()); p.age = Some(8);
+    p.portrait = Some(on_board.clone()); p.portraits = BTreeMap::from([("stable".to_string(), on_board.clone())]);
+    let door = FakeDoor::new(ward);
+    let tools = FakeTools::default();
+    let r = tick(&config(&dir, 0, 0), &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert_eq!(tools.fetches.borrow().as_slice(), std::slice::from_ref(&on_board), "edited from the face the board shows");
+    assert_eq!(tools.edits.borrow().len(), 5);
+    let fills = door.fills.borrow();
+    assert_eq!(fills.len(), 1);
+    assert_eq!(fills[0].1.len(), 5, "pushed to her patient door");
+    let man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
+    assert_eq!(man2.entries["KOR-0@8"].portrait.len(), 1, "the new face's entry holds no states of the old face");
+    assert!(r.lines.iter().any(|l| l.contains("pushed, not recorded")), "{:?}", r.lines);
+}

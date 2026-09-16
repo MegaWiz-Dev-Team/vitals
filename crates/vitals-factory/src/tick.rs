@@ -588,6 +588,11 @@ struct Gap {
     from_manifest: BTreeMap<String, String>,
     /// Not on file: make these.
     to_make: Vec<&'static str>,
+    /// Whether the manifest entry under `key` holds the very face the board shows. When a face was
+    /// remade after she was admitted the board keeps the old one (add only), the states are edited
+    /// from the board's face, and recording them under the new face's entry would file one
+    /// woman's expressions under another's picture. So they are pushed and not recorded.
+    record: bool,
 }
 
 fn gaps(ward: &WardView, pool: &[Person], manifest: &Manifest, r: &mut Report) -> Vec<Gap> {
@@ -610,13 +615,14 @@ fn gaps(ward: &WardView, pool: &[Person], manifest: &Manifest, r: &mut Report) -
             continue;
         };
         let has = |st: &str| p.portraits.contains_key(st);
+        let record = entry.portrait.get("stable") == Some(&stable);
         let mut from_manifest = BTreeMap::new();
         let mut to_make = Vec::new();
         for st in prompts::STATES {
             if has(st) {
                 continue;
             }
-            match entry.portrait.get(st) {
+            match entry.portrait.get(st).filter(|_| record) {
                 Some(url) => {
                     from_manifest.insert(st.to_string(), url.clone());
                 }
@@ -630,7 +636,7 @@ fn gaps(ward: &WardView, pool: &[Person], manifest: &Manifest, r: &mut Report) -
         if from_manifest.is_empty() && to_make.is_empty() {
             continue;
         }
-        out.push(Gap { patient_id: p.patient_id, who: who.clone(), key, stable, from_manifest, to_make });
+        out.push(Gap { patient_id: p.patient_id, who: who.clone(), key, stable, from_manifest, to_make, record });
     }
     out
 }
@@ -702,10 +708,12 @@ fn make_states(cfg: &Config, tools: &dyn Tools, g: &Gap, manifest: &mut Manifest
         let png = tools.edit(&cfg.vertex_project, &cfg.model, &base, mime, &prompt)?;
         let webp = tools.webp(&png, WEBP_QUALITY)?;
         let url = publish(cfg, tools, &webp)?;
-        manifest.record_state(&g.key, st, &url);
-        manifest.save(&cfg.manifest_path())?;
+        if g.record {
+            manifest.record_state(&g.key, st, &url);
+            manifest.save(&cfg.manifest_path())?;
+        }
         r.states_made += 1;
-        r.say(format!("made {st} for {} ({})", g.who.name, g.key));
+        r.say(format!("made {st} for {} ({}){}", g.who.name, g.key, if g.record { "" } else { " — from the face the board shows, which is not the one on file; pushed, not recorded" }));
         out.insert(st.to_string(), url);
     }
     Ok(out)
