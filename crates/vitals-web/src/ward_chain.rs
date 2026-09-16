@@ -222,6 +222,11 @@ impl WardChain {
         })
     }
 
+    /// The program these patients live on.
+    pub fn program_id(&self) -> &Pubkey {
+        &self.program_id
+    }
+
     /// Which chain and which program — the half of every figure that says what it is a figure *of*.
     pub fn source(&self) -> &str {
         &self.source
@@ -549,6 +554,21 @@ pub fn prepare_for(
 }
 
 impl WardChain {
+    /// The commitment this player declared, as the chain recorded it.
+    ///
+    /// Read back rather than assumed: the slot was assigned on chain and the record anchored later
+    /// must carry the same one, or the leaf the server builds is not the leaf the program checks.
+    pub fn commitment(&self, player: &Pubkey) -> Option<vitals_program::Commitment> {
+        let pda = commitment_pda(&self.program_id, &player.to_bytes()).0;
+        let data = self.rpc.get_account_data(&pda).ok()?;
+        borsh::BorshDeserialize::deserialize(&mut &data[..]).ok()
+    }
+
+    /// Does this key already have an account here? A stranger's first shift begins with one.
+    pub fn has_account(&self, player: &Pubkey) -> bool {
+        self.rpc.get_account_data(&account_pda(&self.program_id, player)).is_ok()
+    }
+
     /// The key that pays, if this host holds one. The ward board shows it so a stranger can check
     /// the balance that is funding their shift rather than take our word that one exists.
     pub fn relay_pubkey(&self) -> Option<String> {
@@ -1197,6 +1217,32 @@ pub fn keep_tape(store: &crate::store::Store, tape: &StoredTape) -> Result<(), S
     store
         .put(TAPE_STORE, &tape.run_hash, tape)
         .map_err(|e| format!("her tape could not be kept, so the shift is unrebuildable: {e}"))
+}
+
+/// The ward's leaf list on chain.
+///
+/// One tree for the whole ward, seeded on the operator — every shift anybody plays here appends to
+/// it, and a proof about one shift is a path through the same tree as everyone else's. A second
+/// tree would mean two lists nobody can compare.
+pub const WARD_TREE: u64 = 1;
+
+/// An attempt record as the instruction carries it.
+pub fn wire(r: &vitals_progress::record::AttemptRecord) -> RecordWire {
+    RecordWire {
+        player: r.player,
+        sce_hash: r.sce_hash,
+        case: r.case,
+        run_hash: r.run_hash,
+        difficulty: r.difficulty as u8,
+        exam_mode: r.exam_mode,
+        outcome: r.outcome as u8,
+        harm_count: r.harm_count,
+        rubric_hash: r.rubric_hash,
+        det_score: r.det_score,
+        det_max: r.det_max,
+        judged_score: r.judged_score,
+        judged_max: r.judged_max,
+    }
 }
 
 /// A person's account on the ward's program: the key that plays, opened once.

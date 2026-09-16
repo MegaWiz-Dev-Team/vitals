@@ -1854,6 +1854,31 @@ fn open_shift(
     ))
 }
 
+/// What a ward transaction, once signed, is for.
+///
+/// The ward's program is not Eternal's and its work is kept apart from `PendingWork` deliberately
+/// (ruling 7): one map, one submit route, one program. Merging them would put Eternal's anchoring
+/// one refactor away from a sprint change.
+enum WardWork {
+    /// A stranger's first transaction here: an account of their own.
+    Open,
+    /// Take the head of a patient's chain for the length of a shift.
+    Take { patient_id: u64 },
+    /// Declare the shift before it is played. The nonce never reaches the chain.
+    Declare { session: String, hash: [u8; 32], nonce: [u8; 32] },
+    /// Append this shift's leaf to her chain, extending the head it named.
+    Anchor { session: String, patient_id: u64 },
+}
+
+/// A half-signed ward transaction, waiting for the browser that must finish it.
+struct WardPending {
+    pending: ward_chain::Pending,
+    work: WardWork,
+    player: solana_sdk::pubkey::Pubkey,
+}
+
+type WardPendings = Arc<Mutex<HashMap<String, WardPending>>>;
+
 /// How many boards are watching right now.
 static WARD_WATCHERS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
@@ -2362,6 +2387,7 @@ fn main() {
     // The author ledger's chain read, held for AUTHOR_COUNT_TTL. See /api/authors.
     let author_counts: AuthorCounts = Arc::new(Mutex::new(None));
     let ward_view: WardView = Arc::new(Mutex::new(None));
+    let ward_pendings: WardPendings = Arc::new(Mutex::new(HashMap::new()));
 
     // The refill, on its own thread (CWF_PLAN.md ruling 11). The ward keeps running while we are
     // asleep and after 12 Oct, which is the whole point of admitting from a queue rather than by
@@ -3856,6 +3882,233 @@ fn main() {
                 }
                 continue;
             }
+            // ── the chain, at both ends of a shift ──────────────────────────────
+            //
+            // Four transactions, and the browser signs every one of them: an account of their
+            // own, the head, the declaration, and the anchor. The relay pays for all four and can
+            // produce none of the signatures, which is what makes the record theirs. Kept apart
+            // from the Eternal bay's own chain routes on purpose — a different program, a
+            // different map, a different submit (ruling 7).
+            (Method::Get, p) if ward_mode() && p.starts_with("/api/ward/")
+                && matches!(p, "/api/ward/open" | "/api/ward/take" | "/api/ward/declare"
+                               | "/api/ward/anchor") =>
+            {
+                let Some(who) = param(&url, "player").and_then(|k| pubkey(&k)) else {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "error": "no player key — the browser signs its own shift, so it has to \
+                                  say which key it will sign with"
+                    }), 400));
+                    continue;
+                };
+                let chain = match ward_chain::WardChain::connect() {
+                    Ok(c) => c,
+                    Err(e) => {
+                        let _ = req.respond(json_code(serde_json::json!({ "error": e }), 503));
+                        continue;
+                    }
+                };
+                // Everything below needs the session except opening an account, which is a
+                // stranger's first transaction and happens before they have one.
+                let built = if p == "/api/ward/open" {
+                    Ok((
+                        ward_chain::open_account_ix(chain.program_id(), &chain.operator(), &who),
+                        WardWork::Open,
+                    ))
+                } else {
+                    let id = param(&url, "id").unwrap_or_default();
+                    let map = sessions.lock().unwrap();
+                    match map.get(&id).filter(|s| s.answers_to(Some(&who.to_string()))
+                                                  || s.owner.is_none()) {
+                        None => Err("no such session".to_string()),
+                        Some(s) => match (&s.ward, p) {
+                            (None, _) => Err("this run is not a shift on the ward".into()),
+                            (Some(w), "/api/ward/take") => Ok((
+                                ward_chain::take_shift_ix(
+                                    chain.program_id(), &chain.operator(), &who, w.patient_id),
+                                WardWork::Take { patient_id: w.patient_id },
+                            )),
+                            (Some(_), "/api/ward/declare") => {
+                                // The nonce keeps the case hidden from chain observers until the
+                                // reveal, and never leaves this process.
+                                use solana_sdk::signature::Signer;
+                                let nonce = solana_sdk::signature::Keypair::new().pubkey().to_bytes();
+                                let case = sce_hash(&s.sce_json);
+                                let hash = vitals_progress::record::commitment_hash(
+                                    &case, &who.to_bytes(), &nonce, 0);
+                                Ok((
+                                    ward_chain::commit_ix(
+                                        chain.program_id(), &chain.operator(), &who, hash),
+                                    WardWork::Declare { session: id.clone(), hash, nonce },
+                                ))
+                            }
+                            (Some(w), _) => {
+                                // The anchor. Everything it carries is rebuilt rather than
+                                // remembered: the reduction comes from the tape through the shared
+                                // reducer, so what lands on chain is what a verifier recomputes.
+                                let Some((chash, cslot, _)) = s.commit else {
+                                    drop(map);
+                                    let _ = req.respond(json_code(serde_json::json!({
+                                        "error": "this shift was never declared — the chain \
+                                                  refuses a shift that was not declared before it \
+                                                  was played"
+                                    }), 409));
+                                    continue;
+                                };
+                                let Some(prev_head) = hex32(&w.head) else {
+                                    drop(map);
+                                    let _ = req.respond(json_code(serde_json::json!({
+                                        "error": "this session does not know which head it extends"
+                                    }), 500));
+                                    continue;
+                                };
+                                let rebuild = ward_rebuild(&store, w.patient_id);
+                                let r = match rebuild.as_ref().map(|b| ward_chain::resumed(
+                                    &s.sce_json, &b.shifts,
+                                    &|h| ward_chain::tape_by_hash(&store, h),
+                                    b.admitted_slot, w.taken_slot)) {
+                                    Some(Ok((mut st, _))) => vitals_replay::shift(&mut st, &s.tape, 0),
+                                    Some(Err(e)) => { drop(map);
+                                        let _ = req.respond(json_code(
+                                            serde_json::json!({ "error": e }), 409));
+                                        continue; }
+                                    None => { drop(map);
+                                        let _ = req.respond(json_code(serde_json::json!({
+                                            "error": "the chain could not be read, so this shift \
+                                                      cannot be reduced against the patient it \
+                                                      was played on"
+                                        }), 503));
+                                        continue; }
+                                };
+                                let sce = sce_hash(&s.sce_json);
+                                match record_for(who.to_bytes(), sce, sce, s.difficulty,
+                                                 s.exam_mode, &s.tape, &r, chash, cslot) {
+                                    Ok(rec) => Ok((
+                                        ward_chain::anchor_shift_ix(
+                                            chain.program_id(), &chain.operator(), &who,
+                                            w.patient_id, ward_chain::WARD_TREE,
+                                            ward_chain::wire(&rec), prev_head),
+                                        WardWork::Anchor { session: id.clone(), patient_id: w.patient_id },
+                                    )),
+                                    Err(e) => Err(e),
+                                }
+                            }
+                        },
+                    }
+                };
+                match built {
+                    Err(e) => {
+                        let _ = req.respond(json_code(serde_json::json!({ "error": e }), 409));
+                    }
+                    Ok((ix, work)) => match chain.prepare(ix, &who) {
+                        Ok(pending) => {
+                            let msg = hex_bytes(&pending.message());
+                            ward_pendings.lock().unwrap()
+                                .insert(who.to_string(), WardPending { pending, work, player: who });
+                            let _ = req.respond(json(serde_json::json!({ "sign": msg })));
+                        }
+                        Err(e) => {
+                            let _ = req.respond(json_code(serde_json::json!({ "error": e }), 503));
+                        }
+                    },
+                }
+                continue;
+            }
+            // The other half: the browser signed the bytes, we drop the signature into its slot
+            // and send. A refusal from the program comes back as a sentence, because this is the
+            // moment the ward is most worth watching — the chain deciding, in public, against
+            // somebody who wanted a different answer.
+            (Method::Get, "/api/ward/submit") if ward_mode() => {
+                let Some(who) = param(&url, "player").and_then(|k| pubkey(&k)) else {
+                    let _ = req.respond(json_code(serde_json::json!({ "error": "no player key" }), 400));
+                    continue;
+                };
+                let Some(sig) = param(&url, "sig").and_then(|h| sig64(&h)) else {
+                    let _ = req.respond(json_code(serde_json::json!({ "error": "no signature" }), 400));
+                    continue;
+                };
+                let Some(work) = ward_pendings.lock().unwrap().remove(&who.to_string()) else {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "error": "nothing of yours is waiting to be signed"
+                    }), 409));
+                    continue;
+                };
+                let chain = match ward_chain::WardChain::connect() {
+                    Ok(c) => c,
+                    Err(e) => {
+                        let _ = req.respond(json_code(serde_json::json!({ "error": e }), 503));
+                        continue;
+                    }
+                };
+                let tx = match work.pending.signed(&sig) {
+                    Ok(tx) => tx,
+                    Err(e) => {
+                        let _ = req.respond(json_code(serde_json::json!({ "error": e }), 400));
+                        continue;
+                    }
+                };
+                let sent = chain.submit(&tx);
+                let answer = match (&work.work, sent) {
+                    (_, Err(e)) => {
+                        // A refusal is the program saying no and is answered in words; anything
+                        // else is an outage and is answered as one.
+                        match ward_chain::refusal(&e) {
+                            Some(said) => json_code(serde_json::json!({
+                                "refused": said, "by": "the ward's program, on chain"
+                            }), 409),
+                            None => json_code(serde_json::json!({ "error": e }), 503),
+                        }
+                    }
+                    (WardWork::Open, Ok(sig)) => json(serde_json::json!({ "opened": true, "tx": sig })),
+                    (WardWork::Take { patient_id }, Ok(sig)) => {
+                        let until = chain.patient(*patient_id).ok().flatten()
+                            .map(|p| p.lease_until_slot);
+                        json(serde_json::json!({
+                            "took": true, "tx": sig, "lease_until_slot": until,
+                            "note": "the head is yours until you anchor or the lease runs out"
+                        }))
+                    }
+                    (WardWork::Declare { session, hash, nonce }, Ok(sig)) => {
+                        // Read back rather than assumed: the slot was assigned on chain, and the
+                        // record anchored later must carry the same one or the leaf the server
+                        // builds is not the leaf the program checks.
+                        match chain.commitment(&work.player) {
+                            Some(c) if c.open && c.hash == *hash => {
+                                let mut map = sessions.lock().unwrap();
+                                if let Some(s) = map.get_mut(session) {
+                                    s.commit = Some((*hash, c.slot, *nonce));
+                                    persist(&store, session, s, true);
+                                }
+                                json(serde_json::json!({ "declared": true, "tx": sig, "slot": c.slot }))
+                            }
+                            _ => json_code(serde_json::json!({
+                                "error": "the declaration landed but could not be read back — try again"
+                            }), 503),
+                        }
+                    }
+                    (WardWork::Anchor { session, patient_id }, Ok(sig)) => {
+                        let mut map = sessions.lock().unwrap();
+                        if let Some(s) = map.get_mut(session) {
+                            s.anchored = true;
+                            persist(&store, session, s, true);
+                        }
+                        drop(map);
+                        let her = chain.patient(*patient_id).ok().flatten();
+                        json(serde_json::json!({
+                            "anchored": true,
+                            "tx": sig,
+                            "head": her.map(|h| hex_bytes(&h.head)),
+                            "shifts": her.map(|h| h.shifts),
+                            "state": her.map(|h| match h.state {
+                                ward::DISCHARGED => "went_home",
+                                ward::DIED => "died",
+                                _ => "on_ward",
+                            }),
+                        }))
+                    }
+                };
+                let _ = req.respond(answer);
+                continue;
+            }
             // The end of a shift: hand her over. Not the end of her stay — that is the engine's
             // to decide and the chain's to record. This reduces what this stranger did, keeps the
             // tape under the hash their leaf will commit to, and hands back what the anchor needs.
@@ -4767,6 +5020,18 @@ fn pubkey(s: &str) -> Option<solana_sdk::pubkey::Pubkey> {
 
 fn hex_bytes(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+/// A 32-byte hash as hex, the other way round.
+fn hex32(h: &str) -> Option<[u8; 32]> {
+    if h.len() != 64 {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    for (i, b) in out.iter_mut().enumerate() {
+        *b = u8::from_str_radix(h.get(i * 2..i * 2 + 2)?, 16).ok()?;
+    }
+    Some(out)
 }
 
 /// A 64-byte signature as hex.
@@ -6318,6 +6583,34 @@ mod tests {
     // One decision hangs off this: whether NEWS2 may report a score. It is an adult score, and
     // it is not validated under 16 — see `news2`. `osce-b3` is three years old and was being
     // handed "7 · HIGH RISK · emergency response" on vitals that are normal for three.
+
+    /// The ward and the bay must mean the same case by the same name.
+    ///
+    /// They did not. The ward's catalogue took its episode ids from the scenario **filenames** —
+    /// `ep2-stemi` — and the bay has always keyed on the shelf ids `ep2` to `ep5`. So
+    /// `scenario_path("ep2-stemi")` fell through to its last arm and answered with **EP1's file**,
+    /// and a shift opened on an episode patient would have played anaphylaxis under her name,
+    /// anchored it against her chain, and looked entirely healthy doing it.
+    ///
+    /// Two resolvers is the underlying fault — `ward_chain::case_path` for the refill, this one
+    /// for the bay — so the test pins that they agree on every case the ward can admit, rather
+    /// than only that each one resolves to something.
+    #[test]
+    fn the_ward_and_the_bay_resolve_a_case_to_the_same_file() {
+        let root = scenario_root();
+        for case in vitals_web::ward::CATALOGUE {
+            let bay = scenario_path(case);
+            let ward = ward_chain::case_path(&root, case);
+            assert_eq!(bay, ward,
+                       "{case}: the bay reads {} and the ward reads {} — one of them is playing a \
+                        different patient under the same name",
+                       bay.display(), ward.display());
+            assert!(bay.exists(), "{case} resolves to {}, which is not there", bay.display());
+            assert_ne!(bay.file_name(), std::path::Path::new("sce-anaphylaxis-ep1.json").file_name(),
+                       "{case} fell through to EP1's file, which is the fallback this catalogue \
+                        must never reach: it would anchor anaphylaxis under another case's name");
+        }
+    }
 
     /// Nothing may be added to the shelf without saying how old its patient is. This is the test
     /// that makes "no age declared means adult" a safe default rather than a back door.
