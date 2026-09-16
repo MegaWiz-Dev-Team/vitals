@@ -1080,3 +1080,80 @@ pub fn fill_portraits(
     out.states = pack.portrait.keys().cloned().collect();
     out
 }
+
+// ── the bay, resumed ────────────────────────────────────────────────────────
+
+/// Where a patient's tapes live: one document per shift.
+pub const TAPE_STORE: &str = "ward_tape";
+
+/// One shift's tape, kept so the next stranger can be handed the patient it left.
+///
+/// **The chain holds `run_hash`, not the tape.** These bytes are the off-chain half, and the
+/// honest sentence about them is in CWF_PLAN.md: no server can change her past without every
+/// browser noticing, because the hash on chain is of exactly these steps. A tape that went missing
+/// would not let us rewrite her — it would stop her being rebuildable at all, which is why the
+/// shift receipt offers every tape for download and why a mirror is worth having.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredTape {
+    pub patient_id: u64,
+    /// Its place in her chain, from zero. The order shifts are replayed in.
+    pub index: u32,
+    /// The slot the shift's lease was taken at — the end of the gap before it.
+    pub taken_slot: u64,
+    /// The slot the shift anchored at — the start of the gap after it.
+    pub anchored_slot: u64,
+    pub steps: Vec<vitals_replay::Step>,
+}
+
+/// Rebuild the patient as she is now: every shift before this one, and the time since.
+///
+/// One loop, and every step of it is something a stranger can repeat from the chain and the tapes:
+/// the first shift runs from the scenario's start, each later shift runs after the idle time its
+/// own gap bought ([`vitals_replay::idle_seconds`]), and the time since the last anchor is applied
+/// last so the patient a shift opens on is the patient at *this* slot rather than at the moment
+/// the previous stranger left.
+///
+/// `now_slot` is the chain's clock, not ours. Everything here is a pure function of (tapes, slot
+/// numbers), which is what lets a browser derive the same patient we did.
+pub fn resumed(
+    sce_json: &str,
+    tapes: &[StoredTape],
+    now_slot: u64,
+) -> Result<(vitals_sce::runtime::SceState, usize), String> {
+    let mut ordered: Vec<&StoredTape> = tapes.iter().collect();
+    ordered.sort_by_key(|t| t.index);
+
+    let first = ordered.first().map(|t| t.steps.clone()).unwrap_or_default();
+    let (mut st, _) = vitals_replay::resume(sce_json, &first)?;
+
+    let mut last_anchor = ordered.first().map(|t| t.anchored_slot).unwrap_or(now_slot);
+    for tape in ordered.iter().skip(1) {
+        let gap = tape.taken_slot.saturating_sub(last_anchor);
+        vitals_replay::shift(&mut st, &tape.steps, gap);
+        last_anchor = tape.anchored_slot;
+    }
+
+    // What has happened to her since the last stranger left: nothing anybody did, and time.
+    vitals_replay::pass_idle(&mut st, vitals_replay::idle_seconds(now_slot.saturating_sub(last_anchor)));
+    Ok((st, ordered.len()))
+}
+
+/// Every tape this patient has, in the order they were played.
+pub fn tapes_of(store: &crate::store::Store, patient_id: u64) -> Vec<StoredTape> {
+    let mut out: Vec<StoredTape> = store
+        .list::<StoredTape>(TAPE_STORE)
+        .into_iter()
+        .map(|(_, t)| t)
+        .filter(|t| t.patient_id == patient_id)
+        .collect();
+    out.sort_by_key(|t| t.index);
+    out
+}
+
+/// Keep a finished shift's tape. Keyed by patient and index, so replaying a shift cannot append a
+/// second copy of it — the same failure the queue's content addressing prevents, one layer down.
+pub fn keep_tape(store: &crate::store::Store, tape: &StoredTape) -> Result<(), String> {
+    store
+        .put(TAPE_STORE, &format!("p{}s{}", tape.patient_id, tape.index), tape)
+        .map_err(|e| format!("her tape could not be kept, so the shift is unrebuildable: {e}"))
+}
