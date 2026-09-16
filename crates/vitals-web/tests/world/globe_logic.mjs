@@ -40,8 +40,9 @@ const sandbox = [grabConst('ALPHA3'), grabConst('SLOT_MS'), grabConst('STATE_LAB
   grab('stateOf'), grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
   grab('peoplePerDoctor'), grab('latestOf'), grab('tenYearTrend'), grab('fmtTrend'), grab('fmtPeople'), grab('doctorLine'),
   grab('worldAverage'), grab('missionLine'), grab('doctorBin'),
-  'return { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin };'].join('\n');
+  'return { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine, stateOf, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin };'].join('\n');
 const { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine,
+  stateOf, STATE_LABEL,
   DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin } = new Function(sandbox)();
 
 // ── countryId ────────────────────────────────────────────────────────────────
@@ -275,3 +276,27 @@ assert.match(html, /people per doctor · World Bank\/WHO, latest year/, 'the leg
 assert.match(html, /population per physician/, 'and says once that it is population per physician, not patients');
 
 console.log('globe_logic: ok');
+
+// ── a patient the ward cannot describe ────────────────────────────────────────────────────────
+// She is on the chain and in no bed (CWF_PLAN ruling 5). The page knew four states and fell back
+// to "on the ward" for anything else, so these appeared as ordinary patients somebody could take
+// a shift on — and nobody can: the ward has no case for them. The label has to say what they are,
+// and the row has to carry the sentence the endpoint sends.
+{
+  const adrift = {
+    patient_id: 7, name: null, country: null, bed: null, state: "off_ward",
+    note: "admitted outside the ward · no bed — she is on the chain and the ward has no pack for her",
+  };
+  assert.equal(stateOf(adrift), "off_ward",
+    "a state the endpoint sends must not fall back to on_ward: a stranger would try to treat her");
+  assert.equal(STATE_LABEL.off_ward, "admitted outside the ward",
+    "and the label says what she is, in the endpoint's own terms");
+
+  const line = stateLine(adrift, 1000, Date.parse("2026-09-16T12:00:00Z"));
+  assert.ok(line.text.includes("admitted outside the ward"), `the row says it: ${line.text}`);
+
+  // An unknown state still falls back, because the page must render something for a word it has
+  // never heard of — what it must not do is pretend that word means "on the ward".
+  assert.equal(stateOf({ state: "something-new" }), "on_ward");
+}
+
