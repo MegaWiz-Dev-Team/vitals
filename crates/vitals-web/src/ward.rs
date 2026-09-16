@@ -747,6 +747,21 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                     let ago = as_of_slot.saturating_sub(took) as f64 * SLOT_SECONDS;
                     utc_iso(r.now_unix.saturating_sub(ago as u64))
                 }),
+                // When somebody last finished a shift on her, as a time a browser can render.
+                // The chain carries one leaf per anchored shift with the slot it landed in, so the
+                // latest of hers is the last hand-over — the max rather than the last in the list,
+                // because the accounts come back in whatever order the RPC gives them. Null when
+                // nobody has: the globe then says when she was admitted, which is the honest thing
+                // to say about a patient nobody has treated yet.
+                "handed_over": shifts
+                    .iter()
+                    .filter(|s| s.patient_id == p.patient_id)
+                    .map(|s| s.slot)
+                    .max()
+                    .map(|slot| {
+                        let ago = as_of_slot.saturating_sub(slot) as f64 * SLOT_SECONDS;
+                        utc_iso(r.now_unix.saturating_sub(ago as u64))
+                    }),
                 "bed": bed_of(p.patient_id),
                 "shifts": p.shifts,
                 "admitted_slot": p.admitted_slot,
@@ -812,7 +827,10 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                          for the patients still mid-stay on a season case, until the last of them \
                          goes home. `on_shift` is the patient's lease standing at \
                          this read's slot, and `on_shift_since` is that lease's start carried to \
-                         wall time; `bed` is the number this patient has held since \
+                         wall time. `handed_over` is the slot of the latest anchored shift on \
+                         this patient, \
+                         carried to wall time the same way — when somebody last finished a shift, \
+                         and null when nobody has. `bed` is the number this patient has held since \
                          admission: the admissions and the closings are walked in slot order \
                          and each arrival takes the lowest free one, so a bed never moves under \
                          somebody because a different patient went home. A patient the ward \
