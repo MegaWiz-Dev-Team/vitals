@@ -38,12 +38,16 @@ const { takeFirst, wardWho, wardAged } = new Function(
    'return { takeFirst, wardWho, wardAged };'].join('\n'))();
 
 // ── the sentence, and when there is one ──────────────────────────────────────
-assert.equal(takeFirst(null, null), null, 'the Eternal bay is not a ward and is never gated');
-assert.equal(takeFirst(null, 'run-7'), null);
-assert.equal(takeFirst('1789528326', null), 'take the shift to treat her',
+assert.equal(takeFirst(null, null, 'her'), null, 'the Eternal bay is not a ward and is never gated');
+assert.equal(takeFirst(null, 'run-7', 'her'), null);
+assert.equal(takeFirst('1789528326', null, 'her'), 'take the shift to treat her',
              'on the ward with no head taken, every control has to say this rather than sit inert');
-assert.equal(takeFirst('1789528326', 'run-7'), null,
-             'and once the head is hers the page gets out of the way');
+assert.equal(takeFirst('1789528327', null, 'him'), 'take the shift to treat him',
+             'and the ward admits men — the pronoun is the patient\u2019s, never the sentence\u2019s');
+assert.equal(takeFirst('1789528326', null, null), 'take the shift to treat the patient',
+             'a page that does not yet know who is in the bed says so rather than guessing');
+assert.equal(takeFirst('1789528326', 'run-7', 'her'), null,
+             'and once the head is theirs the page gets out of the way');
 
 // ── whose age is on the card ─────────────────────────────────────────────────
 // The door refuses a pack whose sex or band contradicts the case, so only the number moves.

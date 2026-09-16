@@ -515,6 +515,8 @@ const CHIPS={
    in view-source. `osce-d3` pays three points for asking the weight and six more for the dose
    drawn off it, and both were readable out of this comment before it said so.
    Presentation only: no beat key, no chip, no order and no tape entry changes with it. */
+/* A pronoun at the start of a sentence. Here rather than inline because the ward says several. */
+const Cap=s=>String(s).charAt(0).toUpperCase()+String(s).slice(1);
 const PRO_F={s:'she',o:'her',p:'her'}, PRO_M={s:'he',o:'him',p:'his'},
       PRO_N={s:'the patient',o:'the patient',p:"the patient's"};
 /* A `who` string that names neither M nor F gets `they`, not a coin flip weighted to EP1.
@@ -1098,7 +1100,7 @@ function renderChips(){
   /* The label goes with the press for everything except the ask row, whose label is a
      translation — the chart and its echo are English by design (docs/internal/LANGUAGE_LAYER.md),
      and a Thai sentence in the order column would be this file quietly deciding otherwise. */
-  const no=takeFirst(WARD, id);
+  const no=takeFirst(WARD, id, pro().o);
   $('#chips').querySelectorAll('button').forEach(b=>{
     b.onclick=()=>fire(b.dataset.x, m==='ask'?null:chipLabel(b.dataset.x), m==='dx');
     /* Greyed and titled rather than missing: a stranger who can see what they will be able to do
@@ -1119,7 +1121,7 @@ function fire(text,shown,named){
      already written the order into the transcript — a line at 0:00 that nobody answered, on a page
      whose whole promise is that the transcript is what happened. So the refusal belongs here,
      where every press arrives, and it is said out loud rather than swallowed. */
-  const no=takeFirst(WARD, id);
+  const no=takeFirst(WARD, id, pro().o);
   if(no){ if(typeof wardSay==='function')wardSay('<b>'+no+'</b> — nothing you do is on her chart until the head is yours'); return; }
   (mode==='ask' && !ep().station) ? askHer(text) : doOrder(text,shown,named);
 }
@@ -3666,7 +3668,9 @@ let WARDSHIFT=null, WARDPENDING=null;
    `null` on the Eternal entry, always: there is no head to take there, and a gate that reached
    it would be this file quietly turning a single-player bay into a ward. Tested in
    tests/shift_logic.mjs. */
-function takeFirst(ward, runId){ return ward && !runId ? 'take the shift to treat her' : null; }
+function takeFirst(ward, runId, whom){
+  return ward && !runId ? 'take the shift to treat '+(whom||'the patient') : null;
+}
 
 /* An authored line, retold with the age of the person actually in the bed.
    The case says "F 6" because somebody wrote a six-year-old; the ward admitted an eight-year-old
@@ -3689,7 +3693,7 @@ function wardWho(caseWho, name, age){
    Called when the page opens her and again when the head is taken, so there is one answer to
    "may I do this yet" and one sentence saying why not. */
 function wardGate(){
-  const no=takeFirst(WARD, id);
+  const no=takeFirst(WARD, id, pro().o);
   document.documentElement.classList.toggle('untaken', !!no);
   const cmd=$('#cmd'), send=$('#send'), mic=$('#mic');
   if(cmd)cmd.disabled=!!no;   // the placeholder is renderChips's, and it runs below
@@ -3717,7 +3721,7 @@ function wardBar(){
     'border-radius:.5rem;background:rgba(15,110,92,.06)">'+
     '<b id="wardwho">…</b><span id="wardsay" style="flex:1"></span>'+
     '<button class="btn go" id="wardtake">take this shift</button>'+
-    '<button class="btn" id="wardback-shift" style="display:none">hand her back</button>'+
+    '<button class="btn" id="wardback-shift" style="display:none">hand back</button>'+
     '<a class="btn" id="wardback" href="/">the ward</a></div>');
   /* Wrapped, because a button that throws is a button that does nothing and says nothing. One
      driven run ended with the strip showing its opening line and no sign that the press had been
@@ -3753,9 +3757,6 @@ async function openShift(){
   }
   WARDPENDING=r.id; WARDSHIFT=r.ward;
   $('#wardwho').textContent=(r.ward.name||('patient '+WARD))+' · '+(r.ward.country||'—');
-  wardSay('shift '+r.ward.shift+' of her stay · her chart is rebuilt from '+
-          r.ward.shifts_before+' anchored shift'+(r.ward.shifts_before===1?'':'s')+
-          ' — take the shift to treat her');
   $('#lobby').classList.add('hide'); $('#game').classList.remove('hide');
   /* The page is the bay, so it has to be the bay *for her case* — the header, the stage, the
      still, the kit and the chips are all derived from the episode select, and a ward shift that
@@ -3785,7 +3786,14 @@ async function openShift(){
   renderModes(); renderChips();
   paint(r.view);
   bootMonitor();
-  /* Read, not treat. Every control that would touch her says which of the two this is. */
+  /* Said here rather than above, because `pro()` reads the case the select now names: the ward
+     admits men and women, and until this line runs the page would be speaking about EP1's
+     patient. Driving a shift on Rafael Moreira printed "shift 1 of her stay" over a man. */
+  wardSay('shift '+r.ward.shift+' of '+pro().p+' stay · '+pro().p+' chart is rebuilt from '+
+          r.ward.shifts_before+' anchored shift'+(r.ward.shifts_before===1?'':'s')+
+          ' — take the shift to treat '+pro().o);
+  $('#wardback-shift').textContent='hand '+pro().o+' back';
+  /* Read, not treat. Every control that would touch the patient says which of the two this is. */
   wardGate();
   /* Two controls that mean something in the bay and nothing here: "restart" would quietly open a
      practice run of her case and lose the shift, and "← episodes" is a shelf this patient is not
@@ -3813,8 +3821,8 @@ async function takeShift(){
      much: the controls open, and the clock runs. Without the clock a shift sits at 0:00 for ever
      and the idle span is the only time she has — the founder watched exactly that. */
   wardGate(); $('#cmd').focus(); run();
-  wardSay('the head is yours until you hand over. Her chart is the chain — what you do here is '+
-          'on it, under your key.');
+  wardSay('the head is yours until you hand over. '+Cap(pro().p)+' chart is the chain — what you '+
+          'do here is on it, under your key.');
   armTheExit();
 }
 
@@ -3824,7 +3832,7 @@ async function takeShift(){
 async function handBack(){
   if(!id)return;
   $('#wardback-shift').disabled=true;
-  wardSay('handing her back…');
+  wardSay('handing '+pro().o+' back…');
   const r=await wardDo('/api/ward/release?id='+id);
   if(r.refused){ $('#wardback-shift').disabled=false; return wardSay('<b>refused.</b> '+esc(r.refused)); }
   if(r.error){ $('#wardback-shift').disabled=false; return wardSay(esc(r.error)); }
@@ -3832,8 +3840,8 @@ async function handBack(){
   /* She is somebody else's patient from this second, so the controls close the way they were
      closed before the head was taken — and say the same thing about why. */
   wardGate();
-  wardSay('<b>handed back.</b> nothing you did was recorded; the next person gets her as you '+
-          'found her. <a href="/">back to the ward</a>');
+  wardSay('<b>handed back.</b> nothing you did was recorded; the next person gets '+pro().o+
+          ' as you found '+pro().o+'. <a href="/">back to the ward</a>');
 }
 
 /* A stranger who closes the tab should free the bed in seconds rather than in the length of a
@@ -3865,11 +3873,11 @@ async function handOver(){
   if(!id)return;
   try{ await handOverInner(); }
   catch(e){
-    /* Her tape is on the server either way: a shift that fails to hand over is not a shift that
-       was lost, and telling somebody to open her again is better than a dead button. */
+    /* The tape is on the server either way: a shift that fails to hand over is not a shift that
+       was lost, and telling somebody to open the patient again is better than a dead button. */
     $('#endrun').disabled=false;
     wardSay('that did not go through: '+esc(e&&e.message?e.message:e)+
-            ' — <a href="/ward/'+WARD+'">open her again</a>');
+            ' — <a href="/ward/'+WARD+'">open '+pro().o+' again</a>');
   }
 }
 async function handOverInner(){
@@ -3877,18 +3885,19 @@ async function handOverInner(){
   wardSay('reducing your shift…');
   const over_=await (await fetch('/api/handover?id='+id+asMe())).json();
   if(over_.error)return wardSay(esc(over_.error));
-  wardSay('anchoring '+over_.shift.beats+' beat'+(over_.shift.beats===1?'':'s')+' onto her chain…');
+  wardSay('anchoring '+over_.shift.beats+' beat'+(over_.shift.beats===1?'':'s')+' onto '+pro().p+' chain…');
   const a=await wardDo('/api/ward/anchor?id='+id);
   if(a.refused){
     /* The refusal is the mechanic, and it is shown in the words the server chose — a person at a
        bed cannot read a program error code. Their work is not lost: it is on their tape. */
     return wardSay('<b>refused.</b> '+esc(a.refused)+
-                   ' <a href="/ward/'+WARD+'">open her again</a>');
+                   ' <a href="/ward/'+WARD+'">open '+pro().o+' again</a>');
   }
   if(a.error)return wardSay(esc(a.error));
   clearInterval(EXITTIMER); EXITSIG=null;
-  wardSay('<b>handed over.</b> her chain is '+a.shifts+' shift'+(a.shifts===1?'':'s')+' long and '+
-          'she is '+esc((a.state||'').replace('_',' '))+'. <a href="/">back to the ward</a>');
+  wardSay('<b>handed over.</b> '+pro().p+' chain is '+a.shifts+' shift'+(a.shifts===1?'':'s')+
+          ' long and '+pro().s+' is '+esc((a.state||'').replace('_',' '))+
+          '. <a href="/">back to the ward</a>');
 }
 if(WARD) addEventListener('load',openShift);
 

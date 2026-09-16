@@ -25,6 +25,22 @@ fn bay_css() -> String {
     std::fs::read_to_string(repo().join("crates/vitals-web/static/bay.css")).expect("bay.css")
 }
 
+/// The code, with the prose taken out — block comments and line comments both.
+fn without_comments(src: &str) -> String {
+    let mut out = String::with_capacity(src.len());
+    let mut rest = src;
+    while let Some(i) = rest.find("/*").into_iter().chain(rest.find("//")).min() {
+        out.push_str(&rest[..i]);
+        rest = if rest[i..].starts_with("/*") {
+            rest[i..].find("*/").map(|e| &rest[i + e + 2..]).unwrap_or("")
+        } else {
+            rest[i..].find('\n').map(|e| &rest[i + e..]).unwrap_or("")
+        };
+    }
+    out.push_str(rest);
+    out
+}
+
 /// One function out of the page, by brace matching from its header.
 fn body_of(script: &str, name: &str) -> String {
     for head in [format!("function {name}("), format!("const {name}="), format!("async function {name}(")] {
@@ -154,7 +170,10 @@ fn nothing_is_written_to_her_chart_before_the_head_is_taken() {
 fn the_wards_own_sentences_take_the_patients_pronoun() {
     let js = bay_js();
     for name in ["wardBar", "openShift", "takeShift", "handBack", "handOver"] {
-        let body = body_of(&js, name);
+        // Comments first: they are prose about the code, they are allowed to name a woman, and an
+        // apostrophe in one ("the case's own patient") would otherwise be read as a quote and
+        // shift every literal after it by one.
+        let body = without_comments(&body_of(&js, name));
         for literal in body.split('\'').skip(1).step_by(2) {
             for word in ["her", "she", "Her", "She", "his", "him", "he", "His"] {
                 let bare = literal
