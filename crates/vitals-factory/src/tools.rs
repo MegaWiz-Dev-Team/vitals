@@ -20,6 +20,9 @@ pub trait Tools {
     fn paint(&self, prompt: &str, seed: u64, out_png: &Path) -> Result<(), String>;
     /// One state, edited from the base, as PNG bytes.
     fn edit(&self, project: &str, model: &str, base: &[u8], mime: &str, prompt: &str) -> Result<Vec<u8>, String>;
+    /// The photorealism gate: one yes-or-no question about an image, put to the text model on
+    /// Vertex with the image inline. `true` is yes.
+    fn judge(&self, project: &str, model: &str, image: &[u8], mime: &str, question: &str) -> Result<bool, String>;
     /// PNG bytes to webp bytes at this quality.
     fn webp(&self, png: &[u8], quality: u8) -> Result<Vec<u8>, String>;
     /// `local` to `gs://<bucket>/<object>`, never overwriting.
@@ -78,37 +81,8 @@ impl Tools for Shell {
 
     fn edit(&self, project: &str, model: &str, base: &[u8], mime: &str, prompt: &str) -> Result<Vec<u8>, String> {
         use base64::Engine;
-        let token = Shell::access_token()?;
-        let url = format!(
-            "https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/{model}:generateContent"
-        );
-        let body = serde_json::json!({
-            "contents": [{"role": "user", "parts": [
-                {"inlineData": {"mimeType": mime, "data": base64::engine::general_purpose::STANDARD.encode(base)}},
-                {"text": prompt}
-            ]}],
-            "generationConfig": {"responseModalities": ["TEXT", "IMAGE"], "imageConfig": {"aspectRatio": "1:1"}}
-        });
-        let resp = ureq::AgentBuilder::new()
-            .timeout(std::time::Duration::from_secs(180))
-            .build()
-            .post(&url)
-            .set("Authorization", &format!("Bearer {token}"))
-            .set("Content-Type", "application/json")
-            .send_string(&body.to_string());
-        let v: serde_json::Value = match resp {
-            Ok(r) => r.into_json().map_err(|e| format!("Vertex answered something that is not JSON: {e}"))?,
-            Err(ureq::Error::Status(code, r)) => {
-                let text = r.into_string().unwrap_or_default();
-                return Err(format!("Vertex HTTP {code}: {}", text.chars().take(400).collect::<String>()));
-            }
-            Err(e) => return Err(format!("Vertex: {e}")),
-        };
-        let parts = v
-            .pointer("/candidates/0/content/parts")
-            .and_then(|p| p.as_array())
-            .ok_or_else(|| format!("Vertex returned no candidate: {}", v.to_string().chars().take(300).collect::<String>()))?;
-        for part in parts {
+        let parts = vertex_generate(project, model, base, mime, prompt, true)?;
+        for part in &parts {
             if let Some(data) = part.pointer("/inlineData/data").and_then(|d| d.as_str()) {
                 return base64::engine::general_purpose::STANDARD
                     .decode(data)
@@ -116,6 +90,19 @@ impl Tools for Shell {
             }
         }
         Err("Vertex returned text and no image".into())
+    }
+
+    fn judge(&self, project: &str, model: &str, image: &[u8], mime: &str, question: &str) -> Result<bool, String> {
+        let parts = vertex_generate(project, model, image, mime, question, false)?;
+        let text: String = parts.iter().filter_map(|p| p.get("text").and_then(|t| t.as_str())).collect::<Vec<_>>().join(" ");
+        let word = text.trim().trim_start_matches(|c: char| !c.is_alphanumeric()).to_lowercase();
+        if word.starts_with("yes") {
+            Ok(true)
+        } else if word.starts_with("no") {
+            Ok(false)
+        } else {
+            Err(format!("the judge answered neither yes nor no: {}", text.chars().take(120).collect::<String>()))
+        }
     }
 
     fn webp(&self, png: &[u8], quality: u8) -> Result<Vec<u8>, String> {
@@ -154,6 +141,48 @@ impl Tools for Shell {
             .map_err(|e| format!("GET {url}: {e}"))?;
         Ok(buf)
     }
+}
+
+/// One `generateContent` call on Vertex's global endpoint with an image inline and a text part,
+/// as `gcloud auth print-access-token`'s user. `want_image` asks for an image back (the editor);
+/// without it the model answers in text (the judge). Returns the first candidate's parts.
+fn vertex_generate(project: &str, model: &str, image: &[u8], mime: &str, text: &str, want_image: bool) -> Result<Vec<serde_json::Value>, String> {
+    use base64::Engine;
+    let token = Shell::access_token()?;
+    let url = format!(
+        "https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/{model}:generateContent"
+    );
+    let generation = if want_image {
+        serde_json::json!({"responseModalities": ["TEXT", "IMAGE"], "imageConfig": {"aspectRatio": "1:1"}})
+    } else {
+        serde_json::json!({"temperature": 0, "maxOutputTokens": 8})
+    };
+    let body = serde_json::json!({
+        "contents": [{"role": "user", "parts": [
+            {"inlineData": {"mimeType": mime, "data": base64::engine::general_purpose::STANDARD.encode(image)}},
+            {"text": text}
+        ]}],
+        "generationConfig": generation
+    });
+    let resp = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(180))
+        .build()
+        .post(&url)
+        .set("Authorization", &format!("Bearer {token}"))
+        .set("Content-Type", "application/json")
+        .send_string(&body.to_string());
+    let v: serde_json::Value = match resp {
+        Ok(r) => r.into_json().map_err(|e| format!("Vertex answered something that is not JSON: {e}"))?,
+        Err(ureq::Error::Status(code, r)) => {
+            let text = r.into_string().unwrap_or_default();
+            return Err(format!("Vertex HTTP {code}: {}", text.chars().take(400).collect::<String>()));
+        }
+        Err(e) => return Err(format!("Vertex: {e}")),
+    };
+    v.pointer("/candidates/0/content/parts")
+        .and_then(|p| p.as_array())
+        .cloned()
+        .ok_or_else(|| format!("Vertex returned no candidate: {}", v.to_string().chars().take(300).collect::<String>()))
 }
 
 /// sha256 of some bytes, as the bucket names them.

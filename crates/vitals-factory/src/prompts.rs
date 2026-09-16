@@ -10,15 +10,27 @@
 
 use crate::catalogue::Sex;
 
+/// Below this age the painter needs telling that a child is a photograph too (developer-16,
+/// 16 Sep: KOR-0 at 8 came out as a doll).
+pub const CHILD_UNDER: u16 = 16;
+
+/// What a child's prompt adds, verbatim from the brief.
+pub const CHILD: &str = "photorealistic, natural child proportions, documentary style; not a drawing, not anime, not a doll";
+
 /// The base: her, in a bed, on the day she was admitted.
 pub fn base(age: u16, sex: Sex, place: &str) -> String {
+    let child = if age < CHILD_UNDER { format!(", {CHILD}") } else { String::new() };
     format!(
         "Portrait photograph of a {age}-year-old {} from {place}, lying in a hospital bed, \
          wearing a plain pale-green hospital gown, soft neutral ward lighting, calm expression, \
-         looking at the camera, shallow depth of field, no text, no logos, no flags",
+         looking at the camera, shallow depth of field, no text, no logos, no flags{child}",
         sex.word()
     )
 }
+
+/// The one question the gate asks of every face, verbatim from the brief.
+pub const PHOTOREAL: &str = "Is this a photorealistic photograph-style image of one real-looking human patient with \
+natural proportions — not a drawing, anime, doll, or 3D render? Answer yes or no.";
 
 /// What every state edit begins with: the same person, the same room.
 pub const KEEP: &str = "Edit this photo, keeping exactly the same person — same face, same hair, same skin, same age — \

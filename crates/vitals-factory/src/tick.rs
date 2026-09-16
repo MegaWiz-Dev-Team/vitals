@@ -31,13 +31,19 @@ use vitals_web::ward_chain::{pack_id, PORTRAITS};
 /// webp quality, as the batch used.
 pub const WEBP_QUALITY: u8 = 86;
 
+/// How many faces the painter may try for one person before the factory gives up on her this
+/// tick. Each try is a new seed and each is judged; a pack is never built on a rejected face.
+pub const FACE_ATTEMPTS: u32 = 3;
+
 #[derive(Debug, Clone)]
 pub struct Config {
     /// The ward's origin, e.g. `https://vitals-world-….run.app`.
     pub ward: String,
     /// Keep the queue at least this deep.
     pub queue_depth: usize,
-    /// Faces made with mflux per tick, so a tick stays under the interval. Packs past this wait.
+    /// Faces painted with mflux per tick, so a tick stays under the interval: a person is started
+    /// only while fewer than this have been painted, and then gets her [`FACE_ATTEMPTS`] tries.
+    /// Packs past this wait for the next tick.
     pub bases_per_tick: usize,
     /// The checkout: the scenarios, the persona files, the pool and the endemic list.
     pub repo: PathBuf,
@@ -50,7 +56,10 @@ pub struct Config {
     /// The project the image editor runs in (`vitals-academy`; the dev project has no Vertex).
     pub vertex_project: String,
     pub bucket: String,
+    /// The image editor (states from a base).
     pub model: String,
+    /// The text model that judges whether a face is a photograph of a person.
+    pub judge_model: String,
     pub dry_run: bool,
     pub seed: u64,
     /// Unix seconds, for the ledger.
@@ -82,6 +91,8 @@ pub struct Report {
     /// The queue's depth as the door last reported it.
     pub depth: Option<usize>,
     pub faces_made: usize,
+    /// Faces painted, passed or refused — what the per-tick cap counts.
+    pub faces_tried: usize,
     pub states_made: usize,
 }
 
@@ -320,12 +331,12 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
     for pl in planned.packs {
         let mut pack = pl.pack;
         if let Base::Make { key, age } = &pl.base {
-            if r.faces_made >= cfg.bases_per_tick {
+            if r.faces_tried >= cfg.bases_per_tick {
                 deferred += 1;
                 continue;
             }
             let who = pool.iter().find(|p| &p.key == key).expect("a planned person is in the pool");
-            match make_face(cfg, tools, who, *age, pl.place.as_str()) {
+            match make_face(cfg, tools, who, *age, pl.place.as_str(), &mut r) {
                 Ok(url) => {
                     manifest.record_base(key, *age, &url, who);
                     if let Err(e) = manifest.save(&cfg.manifest_path()) {
@@ -337,7 +348,7 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
                     r.say(format!("made a face for {key} at {age}"));
                 }
                 Err(e) => {
-                    r.fail(format!("a face for {key} at {age} could not be made: {e} — her pack waits"));
+                    r.fail(format!("{e} — no pack for {} this tick", who.name));
                     continue;
                 }
             }
@@ -381,9 +392,9 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
         }
     }
     if deferred > 0 {
-        r.say(format!("{deferred} pack(s) deferred to the next tick: their faces are past the cap of {} per tick", cfg.bases_per_tick));
+        r.say(format!("{deferred} pack(s) deferred to the next tick: their faces are past the cap of {} painted per tick", cfg.bases_per_tick));
     }
-    r.say(format!("pushed: {} queued, {} duplicates, {} rejected, depth {}", r.queued, r.duplicates, r.rejected, r.depth.map_or("?".into(), |d| d.to_string())));
+    r.say(format!("pushed: {} queued, {} duplicates, {} rejected, depth {} · {} face(s) painted, {} passed", r.queued, r.duplicates, r.rejected, r.depth.map_or("?".into(), |d| d.to_string()), r.faces_tried, r.faces_made));
 
     // ── the rest of one patient's faces ──
     complete_faces(cfg, door, tools, &token, &ward, &pool, &mut manifest, &mut r);
@@ -397,18 +408,66 @@ fn save_ledger(cfg: &Config, ledger: &Ledger, r: &mut Report) {
     }
 }
 
-/// A base face: mflux, webp, sha, bucket. The url is the face's address.
-fn make_face(cfg: &Config, tools: &dyn Tools, who: &Person, age: u16, place: &str) -> Result<String, String> {
+/// A base face: mflux, webp, the gate, sha, bucket. The url is the face's address.
+///
+/// The gate is the text model on Vertex, asked the brief's one question with the face inline. A
+/// "no" is a new seed; after [`FACE_ATTEMPTS`] the person is given up on for this tick with a
+/// sentence naming her, and nothing of the refused faces is recorded or uploaded — a doll that
+/// reached the bucket would have an address, and an address is something a pack can carry.
+fn make_face(cfg: &Config, tools: &dyn Tools, who: &Person, age: u16, place: &str, r: &mut Report) -> Result<String, String> {
     let work = cfg.world_dir.join("work");
     std::fs::create_dir_all(&work).map_err(|e| format!("{}: {e}", work.display()))?;
     let png = work.join(format!("{}@{age}.png", who.key));
-    let seed = sha256_hex(format!("{}@{age}", who.key).as_bytes())[..8].chars().fold(0u64, |a, c| a * 16 + c.to_digit(16).unwrap_or(0) as u64);
-    tools.paint(&prompts::base(age, who.sex, place), seed, &png)?;
-    let bytes = std::fs::read(&png).map_err(|e| format!("{}: {e}", png.display()))?;
-    let webp = tools.webp(&bytes, WEBP_QUALITY)?;
-    let url = publish(cfg, tools, &webp)?;
-    let _ = std::fs::remove_file(&png);
-    Ok(url)
+    let base_seed = sha256_hex(format!("{}@{age}", who.key).as_bytes())[..8].chars().fold(0u64, |a, c| a * 16 + c.to_digit(16).unwrap_or(0) as u64);
+    let prompt = prompts::base(age, who.sex, place);
+    for attempt in 0..FACE_ATTEMPTS {
+        let seed = base_seed.wrapping_add(u64::from(attempt) * 7919);
+        tools.paint(&prompt, seed, &png)?;
+        r.faces_tried += 1;
+        let bytes = std::fs::read(&png).map_err(|e| format!("{}: {e}", png.display()))?;
+        let _ = std::fs::remove_file(&png);
+        let webp = tools.webp(&bytes, WEBP_QUALITY)?;
+        let ok = tools.judge(&cfg.vertex_project, &cfg.judge_model, &webp, "image/webp", prompts::PHOTOREAL)?;
+        r.say(format!("face for {} at {age}, seed {seed}: photorealistic: {}", who.key, if ok { "yes" } else { "no — a new seed" }));
+        if ok {
+            return publish(cfg, tools, &webp);
+        }
+    }
+    Err(format!(
+        "{} ({} at {age}): three faces in a row were not photographs of a person, and no pack is built on a rejected face",
+        who.name, who.key
+    ))
+}
+
+/// Remake one face on request — `KEY@AGE`, e.g. `KOR-0@8` — through the same gate, for a face a
+/// person looked at and refused. The old picture and every state edited from it leave the
+/// manifest; the new url is returned and recorded. The ward is not touched: a queued pack that
+/// carries the old address keeps it until the door lets a queued pack's portraits be replaced.
+pub fn remake_face(cfg: &Config, tools: &dyn Tools, spec: &str) -> Result<(String, Report), String> {
+    let mut r = Report::default();
+    let (key, age) = spec
+        .split_once('@')
+        .and_then(|(k, a)| a.parse::<u16>().ok().map(|a| (k.to_string(), a)))
+        .ok_or_else(|| format!("{spec} is not KEY@AGE (e.g. KOR-0@8): a face has an age"))?;
+    let pool_text = std::fs::read_to_string(cfg.repo.join("crates/vitals-web/data/personas.json")).map_err(|e| e.to_string())?;
+    let pool = read_pool(&pool_text)?;
+    let who = pool.iter().find(|p| p.key == key).ok_or_else(|| format!("nobody in the pool is {key}"))?;
+    let mut manifest = Manifest::load(&cfg.manifest_path())?;
+    let url = make_face(cfg, tools, who, age, &who.place, &mut r)?;
+    let slot = format!("{key}@{age}");
+    manifest.entries.remove(&slot);
+    manifest.record_base(&key, age, &url, who);
+    // record_base files a batch-age face under the bare key; a remake is always its own entry.
+    if !manifest.entries.contains_key(&slot) {
+        if let Some(mut e) = manifest.entries.remove(&key) {
+            e.portrait.retain(|k, _| k == "stable");
+            manifest.entries.insert(slot.clone(), e);
+        }
+    }
+    manifest.save(&cfg.manifest_path())?;
+    r.say(format!("{slot}: {url} recorded; the old face and its states are off the file"));
+    r.faces_made = 1;
+    Ok((url, r))
 }
 
 /// Which manifest entry a patient on the board was given her face from.

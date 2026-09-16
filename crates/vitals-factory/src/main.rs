@@ -13,6 +13,7 @@
 //! | `VITALS_VERTEX_PROJECT`  | `vitals-academy`                         | the image editor's project               |
 //! | `VITALS_PORTRAIT_BUCKET` | `vitals-world-portraits`                 | where faces are published                |
 //! | `VITALS_IMAGE_MODEL`     | `gemini-2.5-flash-image`                 | the state editor                         |
+//! | `VITALS_JUDGE_MODEL`     | `gemini-3.1-flash-lite`                  | the text model that judges each face     |
 //! | `FACTORY_SEED`           | the clock                                | the draw; set it to repeat a run         |
 //!
 //! `--dry-run` reads the ward and prints what a tick would do, fetching no secret, sending no
@@ -21,14 +22,15 @@
 
 use std::path::PathBuf;
 use vitals_factory::door::Http;
-use vitals_factory::tick::{default_repo, tick, Config};
+use vitals_factory::tick::{default_repo, remake_face, tick, Config};
 use vitals_factory::tools::Shell;
 
-const USAGE: &str = "usage: vitals-factory [--once] [--dry-run]
+const USAGE: &str = "usage: vitals-factory [--once] [--dry-run] | --face KEY@AGE
 
 One tick of the patient factory: read WARD's /api/ward, top its queue up to QUEUE_DEPTH, complete
 one patient's faces, exit. Configuration is the environment (see the crate doc); --dry-run reads
-and plans and touches nothing.";
+and plans and touches nothing. --face KOR-0@8 remakes one face through the photorealism gate,
+records it, and prints its url; the ward is not touched.";
 
 fn env_or(name: &str, default: &str) -> String {
     std::env::var(name).ok().filter(|v| !v.trim().is_empty()).unwrap_or_else(|| default.to_string())
@@ -54,9 +56,18 @@ fn stamp() -> String {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut dry_run = false;
-    for a in &args {
+    let mut face: Option<String> = None;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
         match a.as_str() {
             "--dry-run" => dry_run = true,
+            "--face" => match it.next() {
+                Some(spec) => face = Some(spec.clone()),
+                None => {
+                    eprintln!("--face needs KEY@AGE\n{USAGE}");
+                    std::process::exit(2);
+                }
+            },
             // One tick is the only mode there is; the word is accepted so a launchd line and a
             // hand-typed line read the same.
             "--once" => {}
@@ -77,8 +88,24 @@ fn main() {
             std::process::exit(2);
         }
     };
-    let door = Http::new(&cfg.ward);
     let tools = Shell { bucket: cfg.bucket.clone() };
+    if let Some(spec) = face {
+        match remake_face(&cfg, &tools, &spec) {
+            Ok((url, report)) => {
+                let t = stamp();
+                for line in &report.lines {
+                    println!("{t} {line}");
+                }
+                println!("{t} {url}");
+            }
+            Err(e) => {
+                eprintln!("{} ERROR {e}", stamp());
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+    let door = Http::new(&cfg.ward);
     let report = tick(&cfg, &door, &tools);
     let t = stamp();
     for line in &report.lines {
@@ -88,12 +115,13 @@ fn main() {
         eprintln!("{t} ERROR {e}");
     }
     println!(
-        "{t} tick done: {} queued, {} duplicates, {} rejected, depth {}, {} faces made, {} states made, {} error(s)",
+        "{t} tick done: {} queued, {} duplicates, {} rejected, depth {}, {} faces made of {} painted, {} states made, {} error(s)",
         report.queued,
         report.duplicates,
         report.rejected,
         report.depth.map_or("?".to_string(), |d| d.to_string()),
         report.faces_made,
+        report.faces_tried,
         report.states_made,
         report.errors.len()
     );
@@ -127,6 +155,7 @@ fn config(dry_run: bool) -> Result<Config, String> {
         vertex_project: env_or("VITALS_VERTEX_PROJECT", "vitals-academy"),
         bucket: env_or("VITALS_PORTRAIT_BUCKET", "vitals-world-portraits"),
         model: env_or("VITALS_IMAGE_MODEL", "gemini-2.5-flash-image"),
+        judge_model: env_or("VITALS_JUDGE_MODEL", "gemini-3.1-flash-lite"),
         dry_run,
         seed,
         now: now(),

@@ -388,14 +388,17 @@ fn a_face_is_a_photograph_or_it_is_not_a_face() {
     seed_manifest(&dir, &pool);
     let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
     let tools = FakeTools::default();
-    // The first face: no, no, yes. The second face: no, no, no.
+    // The first face: no, no, yes. The second face: no, no, no. The cap counts paintings, and a
+    // person started under the cap gets all her tries: with a cap of four, the second person
+    // starts at three painted and the third is deferred at six.
     tools.verdicts.borrow_mut().extend([false, false, true, false, false, false]);
-    let cfg = config(&dir, 20, 2);
+    let cfg = config(&dir, 20, 4);
     let r = tick(&cfg, &door, &tools);
 
     assert_eq!(FACE_ATTEMPTS, 3);
     let seeds = tools.seeds.borrow();
-    assert_eq!(seeds.len(), 6, "three tries for each of the two faces: {seeds:?}");
+    assert_eq!(seeds.len(), 6, "three tries for each of the two faces, and nobody after them: {seeds:?}");
+    assert_eq!(r.faces_tried, 6);
     assert!(seeds[0] != seeds[1] && seeds[1] != seeds[2], "each try is a new seed");
     assert!(seeds[3] != seeds[4] && seeds[4] != seeds[5]);
     let judged = tools.judged.borrow();
@@ -415,7 +418,7 @@ fn a_face_is_a_photograph_or_it_is_not_a_face() {
     // Her pack was not pushed, and she is not in the ledger.
     let ledger = Ledger::load(&dir.join("factory-ledger.json")).unwrap();
     let q = door.queue.borrow();
-    for (_, s) in &ledger.sent {
+    for s in ledger.sent.values() {
         assert!(q.values().any(|p| p.persona.name == s.name), "ledger and queue agree");
     }
     let rejected_name = r.errors[0].clone();
@@ -431,7 +434,7 @@ fn a_childs_face_is_asked_for_as_a_photograph_of_a_child() {
     seed_manifest(&dir, &pool);
     let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
     let tools = FakeTools::default();
-    let r = tick(&config(&dir, 20, 4), &door, &tools);
+    let r = tick(&config(&dir, 20, 20), &door, &tools);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     let paints = tools.paints.borrow();
     let ages: Vec<u16> = paints.iter().map(|(p, _)| p.split("-year-old").next().unwrap().rsplit(' ').next().unwrap().parse().unwrap()).collect();
@@ -468,7 +471,7 @@ fn a_face_can_be_remade_through_the_gate_and_the_old_one_leaves_the_file() {
     assert!(!e.portrait.contains_key("critical"), "states edited from the refused face go with it");
     assert_eq!(e.age, Some(8));
     assert!(r.lines.iter().any(|l| l.contains("photorealistic: no")) && r.lines.iter().any(|l| l.contains("photorealistic: yes")), "{:?}", r.lines);
-    assert!(r.lines.iter().any(|l| l.contains("natural child proportions")) == false, "the prompt itself is not logged");
+    assert!(!r.lines.iter().any(|l| l.contains("natural child proportions")), "the prompt itself is not logged");
     assert_eq!(tools.uploads.borrow().len(), 1);
 
     assert!(remake_face(&cfg, &tools, "XXX-9@40").is_err(), "nobody by that key");
