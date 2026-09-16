@@ -84,3 +84,28 @@ fn the_wards_own_sentences_name_no_pronoun() {
         }
     }
 }
+
+/// **The scanner has to read the whole file, and it stops at the first lifetime.**
+///
+/// `'a` in `fn f<'a>(…)` is an apostrophe with no partner. The scanner treats every apostrophe as
+/// the start of a char literal and runs to the next one, so from the first lifetime onward it is
+/// reading code as if it were inside a quote — and every string literal after that point is
+/// invisible to the test above.
+///
+/// Which means the test has been passing on a file it stopped reading: `ward_chain.rs` tells the
+/// factory to "leave the pack's case empty and the ward will place her", in a sentence sent to
+/// whoever queued a patient who may be a man, and this test has never seen it.
+#[test]
+fn the_scanner_reads_past_a_lifetime() {
+    let src = "fn f<'a>(x: &'a str) -> &'a str { let s = \"she is in here\"; s }";
+    let found = literals(src);
+    assert!(found.iter().any(|l| l.contains("she is in here")),
+            "everything after the first lifetime is invisible to this test: {found:?}");
+
+    // And a char literal is still a char literal, quote and all — reading `'\"'` as the start of a
+    // string is the other way this scanner has desynchronised before.
+    let src = "match c { '\"' => 1, '\\\\' => 2, _ => 0 } let s = \"he is in here\";";
+    let found = literals(src);
+    assert!(found.iter().any(|l| l.contains("he is in here")), "{found:?}");
+    assert_eq!(found.len(), 1, "a char literal is not a string: {found:?}");
+}
