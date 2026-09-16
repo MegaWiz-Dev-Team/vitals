@@ -324,3 +324,51 @@ console.log('globe_logic: ok');
     "one patient in Nepal, not two: the chain-only one is not a patient anybody can take");
 }
 
+// ── both layers at once ───────────────────────────────────────────────────────────────────────
+// The founder, 16 ก.ย.: "ต้องการให้ default ทั้ง ward และ doctor เลย" — both, by default. The two
+// facts are one sentence, not two modes: this country is short of doctors, and this country has
+// somebody on the ward right now. Reading them together is the argument the product is making.
+//
+// A lit fill cannot survive over the ramp, so "lit" becomes an outline ring, and the count badge
+// stays. The checkboxes are independent — a viewer can still isolate either — and never a radio,
+// because a radio is what made the two facts alternatives in the first place.
+{
+  const both = { doctors: true, ward: true };
+  const shortage = { fill: "ramp", ring: true };
+
+  // A country with a shortage figure and somebody on the ward: coloured by the ramp, ringed for
+  // the ward.
+  const kenya = paintOf({ people: 3460, patients: 1, layers: both });
+  assert.equal(kenya.fill, shortage.fill, "the ramp is the base fill when the doctors layer is on");
+  assert.ok(kenya.bin !== null, "and it has a bin to colour with");
+  assert.equal(kenya.ring, true, "a country with somebody on the ward is ringed, not filled");
+
+  // No shortage figure: hatched, and still ringed if somebody is there.
+  const nodata = paintOf({ people: null, patients: 2, layers: both });
+  assert.equal(nodata.fill, "hatch", "no figure is hatched rather than coloured as though it were zero");
+  assert.equal(nodata.ring, true);
+
+  // Ward alone: the old behaviour, a lit fill, because there is no ramp to sit on.
+  const wardOnly = paintOf({ people: 3460, patients: 1, layers: { doctors: false, ward: true } });
+  assert.equal(wardOnly.fill, "lit", "with no ramp under it, lit is a fill again");
+  assert.equal(wardOnly.ring, false, "and a ring on a lit fill would say the same thing twice");
+
+  // Doctors alone: no ring, whoever is on the ward.
+  const docsOnly = paintOf({ people: 3460, patients: 3, layers: { doctors: true, ward: false } });
+  assert.equal(docsOnly.ring, false, "the ward layer is off, so the ward is not drawn");
+  assert.equal(docsOnly.fill, "ramp");
+
+  // Neither: plain land. The page still draws a globe rather than nothing.
+  assert.equal(paintOf({ people: 3460, patients: 1, layers: { doctors: false, ward: false } }).fill, "land");
+
+  // The hover says both facts in one line when both are on.
+  const series = [["2023", 0.289]];
+  const line = hoverText("Kenya", series, 1, both);
+  assert.ok(line.includes("1 doctor per"), `the shortage: ${line}`);
+  assert.ok(line.includes("1 on the ward"), `and the ward: ${line}`);
+  assert.equal(hoverText("Kenya", series, 0, both).includes("on the ward"), false,
+    "a country with nobody on the ward says nothing about the ward");
+  assert.equal(hoverText("Kenya", series, 1, { doctors: false, ward: true }), "Kenya · 1 on the ward",
+    "with the doctors layer off the line is the ward's alone");
+}
+
