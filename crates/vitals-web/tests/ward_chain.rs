@@ -16,7 +16,7 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_sdk::pubkey::Pubkey;
 use vitals_program::{Instruction, PatientAccount, RecordWire, PATIENT_DIED, PATIENT_OPEN};
-use vitals_web::ward::{ShiftOnChain, DIED, OPEN};
+use vitals_web::ward::{DIED, OPEN};
 use vitals_web::ward_chain::{decode_patient, shift_in, Seen, SeenShift};
 
 fn a_patient(id: u64, state: u8, shifts: u32, admitted: u64, closed: u64) -> Vec<u8> {
@@ -115,7 +115,7 @@ fn the_cache_reads_only_what_is_new_and_counts_no_shift_twice() {
 
     let page = |sig: &str, id: u64, signer: u8, slot: u64| SeenShift {
         signature: sig.to_string(),
-        shift: ShiftOnChain { patient_id: id, signer: [signer; 32], slot },
+        shift: ShiftOnChain { patient_id: id, signer: [signer; 32], slot, run_hash: [0; 32] },
     };
 
     // Newest first, the way getSignaturesForAddress answers.
@@ -558,6 +558,7 @@ fn portraits_are_added_to_a_patient_and_never_replaced() {
 
 use std::collections::BTreeMap;
 use vitals_replay::{resume as replay_resume, Step, SLOT_SECONDS};
+use vitals_web::ward::ShiftOnChain;
 use vitals_web::ward_chain::resumed;
 
 fn ep1() -> String {
@@ -568,12 +569,22 @@ fn ep1() -> String {
     .expect("ep1 is in the repository")
 }
 
-fn anchored(run_hash: &str, slot: u64) -> ShiftOnChain {
+/// A readable stand-in for a run hash: the name's bytes, zero-padded.
+fn hash_of(name: &str) -> [u8; 32] {
     let mut h = [0u8; 32];
-    for (i, b) in run_hash.bytes().take(32).enumerate() {
+    for (i, b) in name.bytes().take(32).enumerate() {
         h[i] = b;
     }
-    ShiftOnChain { patient_id: 42, signer: [1; 32], slot, run_hash: h }
+    h
+}
+
+/// The same hash as the tapes are keyed by — hex, which is what the chain hands back.
+fn hex_of(name: &str) -> String {
+    vitals_web::ward_chain::hex32(&hash_of(name))
+}
+
+fn anchored(name: &str, slot: u64) -> ShiftOnChain {
+    ShiftOnChain { patient_id: 42, signer: [1; 32], slot, run_hash: hash_of(name) }
 }
 
 fn seen(st: &vitals_sce::runtime::SceState) -> (Option<String>, String, usize) {
@@ -597,50 +608,60 @@ fn the_chain_decides_what_happened_to_her_and_in_what_order() {
     let first = vec![Step::Tick(30.0), Step::Do("oxygen".into()), Step::Tick(45.0)];
     let second = vec![Step::Tick(20.0), Step::Do("adrenaline im".into()), Step::Tick(60.0)];
     let mut tapes: BTreeMap<String, Vec<Step>> = BTreeMap::new();
-    tapes.insert("one".into(), first.clone());
-    tapes.insert("two".into(), second.clone());
-    tapes.insert("never-anchored".into(), vec![Step::Do("stand her up".into()), Step::Tick(60.0)]);
+    tapes.insert(hex_of("one"), first.clone());
+    tapes.insert(hex_of("two"), second.clone());
+    tapes.insert(hex_of("never-anchored"), vec![Step::Do("stand her up".into()), Step::Tick(60.0)]);
     let chart = |h: &str| tapes.get(h).cloned();
 
     // Nobody has been yet.
-    let (fresh, n) = resumed(&sce, &[], &chart, 100, 100).expect("an unvisited patient");
+    let (fresh, n) = resumed(&sce, &[], &chart, 1_000_000, 1_000_000).expect("an unvisited patient");
     let (start, _) = replay_resume(&sce, &[]).expect("the scenario's start");
     assert_eq!(seen(&fresh), seen(&start));
     assert_eq!(n, 0);
 
     // Two shifts, anchored back to back. The chain of shifts equals the whole tape.
-    let two = [anchored("one", 110), anchored("two", 120)];
-    let (rebuilt, n) = resumed(&sce, &two, &chart, 100, 120).expect("two shifts");
+    let two = [anchored("one", 1_000_010), anchored("two", 1_000_020)];
+    let (rebuilt, n) = resumed(&sce, &two, &chart, 1_000_000, 1_000_020).expect("two shifts");
     let whole: Vec<Step> = first.iter().chain(&second).cloned().collect();
     let (one_tape, _) = replay_resume(&sce, &whole).expect("one tape of both");
-    assert_eq!(seen(&rebuilt), seen(&one_tape),
-               "the chain of shifts must equal the whole, which is the verifier's own guarantee");
+    // The chain of shifts equals the whole tape **plus the idle the chain's own gaps buy** — ten
+    // slots from her admission to the first anchor and ten between the anchors. Not a tolerance: a
+    // number, because every part of it is arithmetic a stranger repeats from two slot numbers.
+    let bought = vitals_replay::idle_seconds(10) * 2.0;
+    assert!((rebuilt.t_sec() - (one_tape.t_sec() + bought)).abs() < 1e-6,
+            "the chain of shifts must equal the whole plus its own gaps — {} against {} + {bought}",
+            rebuilt.t_sec(), one_tape.t_sec());
+    assert_eq!(seen(&rebuilt).0, seen(&one_tape).0, "and the same outcome");
+    assert_eq!(seen(&rebuilt).2, seen(&one_tape).2, "and the same harm");
     assert_eq!(n, 2);
 
     // A tape we hold but the chain never anchored is not part of her past.
-    let (same, _) = resumed(&sce, &two, &chart, 100, 120).expect("two shifts again");
+    let (same, _) = resumed(&sce, &two, &chart, 1_000_000, 1_000_020).expect("two shifts again");
     assert_eq!(seen(&same), seen(&rebuilt),
                "the store holds a third tape, and it changes nothing — only anchored work counts");
 
     // A tape the chain names and we cannot produce stops the rebuild, in words.
-    let missing = [anchored("one", 110), anchored("gone", 120)];
-    let err = resumed(&sce, &missing, &chart, 100, 120).expect_err("her chart cannot be rebuilt");
+    let missing = [anchored("one", 1_000_010), anchored("gone", 1_000_020)];
+    let err = match resumed(&sce, &missing, &chart, 1_000_000, 1_000_020) {
+        Err(e) => e,
+        Ok(_) => panic!("a tape the chain names and we cannot produce must stop the rebuild"),
+    };
     assert!(err.contains("cannot be rebuilt") || err.contains("missing"),
             "a lost tape must say so rather than produce a patient nobody can check: {err}");
 
     // The idle clock runs anchor to anchor, and from her admission to the first anchor, and from
     // the last anchor to now — three spans, all of them chain arithmetic.
     let a_night = (10.0 * 3600.0 / SLOT_SECONDS) as u64;
-    let apart = [anchored("one", 110), anchored("two", 110 + a_night)];
-    let (after_a_night, _) = resumed(&sce, &apart, &chart, 100, 110 + a_night).expect("a night apart");
+    let apart = [anchored("one", 1_000_010), anchored("two", 1_000_010 + a_night)];
+    let (after_a_night, _) = resumed(&sce, &apart, &chart, 1_000_000, 1_000_010 + a_night).expect("a night apart");
     assert_ne!(seen(&after_a_night), seen(&rebuilt),
                "ten hours between two anchors is time she spent untreated");
 
-    let (waiting, _) = resumed(&sce, &two, &chart, 100, 120 + a_night).expect("nobody since");
+    let (waiting, _) = resumed(&sce, &two, &chart, 1_000_000, 1_000_020 + a_night).expect("nobody since");
     assert_ne!(seen(&waiting), seen(&rebuilt),
                "and so is ten hours since the last stranger left");
 
-    let (admitted_early, _) = resumed(&sce, &two, &chart, 100 - a_night, 120).expect("admitted early");
+    let (admitted_early, _) = resumed(&sce, &two, &chart, 1_000_000 - a_night, 1_000_020).expect("admitted early");
     assert_ne!(seen(&admitted_early), seen(&rebuilt),
                "a patient nobody came to for ten hours after she was admitted is not the patient \
                 the first stranger would have found at once");

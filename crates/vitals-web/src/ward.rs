@@ -68,6 +68,13 @@ pub struct PatientOnChain {
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ShiftOnChain {
     pub patient_id: u64,
+    /// What the leaf commits to: the hash of the tape this shift played.
+    ///
+    /// The chain names her past by this, and the tape is looked up by it — so a tape nobody
+    /// anchored is never part of her, and a tape we have lost is a rebuild that stops rather than
+    /// a patient nobody can check.
+    #[serde(default)]
+    pub run_hash: [u8; 32],
     /// The key that signed the leaf. A key, not a person: there is no signup here, so one human
     /// may hold several and a shared machine may be many humans behind one.
     pub signer: [u8; 32],

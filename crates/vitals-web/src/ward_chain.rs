@@ -99,8 +99,8 @@ pub fn shift_in(
     if program != ours {
         return None;
     }
-    let patient_id = match Instruction::deserialize(&mut &data[..]).ok()? {
-        Instruction::AnchorShift { patient_id, .. } => patient_id,
+    let (patient_id, run_hash) = match Instruction::deserialize(&mut &data[..]).ok()? {
+        Instruction::AnchorShift { patient_id, record, .. } => (patient_id, record.run_hash),
         _ => return None,
     };
     // The program takes exactly these seven, and it is the account list rather than the data that
@@ -111,7 +111,7 @@ pub fn shift_in(
         return None;
     }
     let player = accounts.get(1)?;
-    Some(ShiftOnChain { patient_id, signer: player.to_bytes(), slot })
+    Some(ShiftOnChain { patient_id, signer: player.to_bytes(), slot, run_hash })
 }
 
 /// One shift and the signature it was read from.
@@ -1106,72 +1106,96 @@ pub const TAPE_STORE: &str = "ward_tape";
 
 /// One shift's tape, kept so the next stranger can be handed the patient it left.
 ///
-/// **The chain holds `run_hash`, not the tape.** These bytes are the off-chain half, and the
-/// honest sentence about them is in CWF_PLAN.md: no server can change her past without every
-/// browser noticing, because the hash on chain is of exactly these steps. A tape that went missing
-/// would not let us rewrite her — it would stop her being rebuildable at all, which is why the
-/// shift receipt offers every tape for download and why a mirror is worth having.
+/// **The chain holds `run_hash`, not the tape.** These bytes are the off-chain half, and they are
+/// addressed by that hash — the chain says which tapes are hers and in what order, and this is
+/// only the lookup. A tape that went missing would not let us rewrite her; it would stop her being
+/// rebuildable at all, which is why the receipt offers every tape for download.
+///
+/// No slots on it. When a shift happened is the chain's to say, and a timing we held privately
+/// would be one nobody could check.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StoredTape {
     pub patient_id: u64,
-    /// Its place in her chain, from zero. The order shifts are replayed in.
-    pub index: u32,
-    /// The slot the shift's lease was taken at — the end of the gap before it.
-    pub taken_slot: u64,
-    /// The slot the shift anchored at — the start of the gap after it.
-    pub anchored_slot: u64,
+    /// Hex of the hash the leaf commits to. The key this tape is found by.
+    pub run_hash: String,
     pub steps: Vec<vitals_replay::Step>,
 }
 
-/// Rebuild the patient as she is now: every shift before this one, and the time since.
+/// Rebuild the patient as she is now: every anchored shift, in the chain's order, and the time
+/// between them.
 ///
-/// One loop, and every step of it is something a stranger can repeat from the chain and the tapes:
-/// the first shift runs from the scenario's start, each later shift runs after the idle time its
-/// own gap bought ([`vitals_replay::idle_seconds`]), and the time since the last anchor is applied
-/// last so the patient a shift opens on is the patient at *this* slot rather than at the moment
-/// the previous stranger left.
+/// **Every input is either on the chain or is bytes the chain committed to.** `shifts` are her
+/// AnchorShift transactions in slot order; each tape is found by the `run_hash` in its leaf;
+/// `admitted_slot` and `now_slot` are the chain's. Nothing here is a number this server kept to
+/// itself, which is what lets a stranger who trusts nobody arrive at the same patient.
 ///
-/// `now_slot` is the chain's clock, not ours. Everything here is a pure function of (tapes, slot
-/// numbers), which is what lets a browser derive the same patient we did.
+/// The idle clock runs over three spans, all of them chain arithmetic: admission to the first
+/// anchor, anchor to anchor, and the last anchor to now. Anchor-to-anchor over-counts by the
+/// length of the shift itself, deliberately — the alternative is a take-slot only our store knows,
+/// and a number nobody can check is worth less than one that is slightly generous. The cap bounds
+/// it either way.
+///
+/// `Err` when a tape the chain names cannot be produced. Her chart then **cannot be rebuilt**, and
+/// saying so is the only honest answer: replaying what is left would hand somebody a patient who
+/// never existed.
 pub fn resumed(
     sce_json: &str,
-    tapes: &[StoredTape],
+    shifts: &[crate::ward::ShiftOnChain],
+    tape_of: &dyn Fn(&str) -> Option<Vec<vitals_replay::Step>>,
+    admitted_slot: u64,
     now_slot: u64,
 ) -> Result<(vitals_sce::runtime::SceState, usize), String> {
-    let mut ordered: Vec<&StoredTape> = tapes.iter().collect();
-    ordered.sort_by_key(|t| t.index);
+    let mut ordered: Vec<&crate::ward::ShiftOnChain> = shifts.iter().collect();
+    ordered.sort_by_key(|s| s.slot);
 
-    let first = ordered.first().map(|t| t.steps.clone()).unwrap_or_default();
-    let (mut st, _) = vitals_replay::resume(sce_json, &first)?;
-
-    let mut last_anchor = ordered.first().map(|t| t.anchored_slot).unwrap_or(now_slot);
-    for tape in ordered.iter().skip(1) {
-        let gap = tape.taken_slot.saturating_sub(last_anchor);
-        vitals_replay::shift(&mut st, &tape.steps, gap);
-        last_anchor = tape.anchored_slot;
+    let (mut st, _) = vitals_replay::resume(sce_json, &[])?;
+    let mut since = admitted_slot;
+    for s in &ordered {
+        let hash = hex32(&s.run_hash);
+        let steps = tape_of(&hash).ok_or_else(|| {
+            format!(
+                "her chart cannot be rebuilt: the chain says a shift anchored at slot {} with run \
+                 hash {hash}, and that tape is not here. Nothing is shown rather than a patient \
+                 nobody can check",
+                s.slot
+            )
+        })?;
+        vitals_replay::shift(&mut st, &steps, s.slot.saturating_sub(since));
+        since = s.slot;
     }
 
-    // What has happened to her since the last stranger left: nothing anybody did, and time.
-    vitals_replay::pass_idle(&mut st, vitals_replay::idle_seconds(now_slot.saturating_sub(last_anchor)));
+    // What has happened to her since the last anchor: nothing anybody did, and time.
+    vitals_replay::pass_idle(&mut st, vitals_replay::idle_seconds(now_slot.saturating_sub(since)));
     Ok((st, ordered.len()))
 }
 
-/// Every tape this patient has, in the order they were played.
-pub fn tapes_of(store: &crate::store::Store, patient_id: u64) -> Vec<StoredTape> {
-    let mut out: Vec<StoredTape> = store
+/// A run hash as the tapes are keyed by it.
+pub fn hex32(b: &[u8; 32]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+/// Every tape this ward holds for one patient, by run hash.
+///
+/// A map rather than a list, because the order is the chain's to give and this is only the lookup.
+pub fn tapes_of(
+    store: &crate::store::Store,
+    patient_id: u64,
+) -> std::collections::BTreeMap<String, Vec<vitals_replay::Step>> {
+    store
         .list::<StoredTape>(TAPE_STORE)
         .into_iter()
         .map(|(_, t)| t)
         .filter(|t| t.patient_id == patient_id)
-        .collect();
-    out.sort_by_key(|t| t.index);
-    out
+        .map(|t| (t.run_hash, t.steps))
+        .collect()
 }
 
-/// Keep a finished shift's tape. Keyed by patient and index, so replaying a shift cannot append a
-/// second copy of it — the same failure the queue's content addressing prevents, one layer down.
+/// Keep a finished shift's tape, addressed by the hash its leaf commits to.
+///
+/// Content-addressed, so keeping the same tape twice is keeping it once — and so the name it is
+/// stored under is the name the chain will call it by.
 pub fn keep_tape(store: &crate::store::Store, tape: &StoredTape) -> Result<(), String> {
     store
-        .put(TAPE_STORE, &format!("p{}s{}", tape.patient_id, tape.index), tape)
+        .put(TAPE_STORE, &format!("p{}h{}", tape.patient_id, tape.run_hash), tape)
         .map_err(|e| format!("her tape could not be kept, so the shift is unrebuildable: {e}"))
 }

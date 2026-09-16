@@ -322,24 +322,38 @@ impl Session {
 
     /// Rebuild a run from disk by replaying its tape.
     ///
-    /// `prior` is empty for the bay and carries her earlier shifts for a ward run: a shift's tape
-    /// means nothing without the patient it was played on, so the state is rebuilt the same way it
-    /// was built the first time — every tape before this one, then this one. Passed in rather than
-    /// read here because a pure rebuild that reaches for a store is a rebuild nobody can test.
-    fn restore(saved: Saved, prior: &[ward_chain::StoredTape]) -> Result<Session, String> {
+    /// `prior` is `None` for the bay and carries the chain's account of her for a ward run: a
+    /// shift's tape means nothing without the patient it was played on, so the state is rebuilt
+    /// the way it was built the first time — every anchored shift in the chain's order, then this
+    /// one. Passed in rather than read here, because a rebuild that reaches for a chain is a
+    /// rebuild nobody can test.
+    fn restore(saved: Saved, prior: Option<&WardRebuild>) -> Result<Session, String> {
         let sce_json = std::fs::read_to_string(scenario_path(&saved.ep)).map_err(|e| e.to_string())?;
         let want = hex(&sce_hash(&sce_json));
         if want != saved.sce_hash {
             return Err(format!("scenario {} changed under this run", saved.ep));
         }
-        let (state, r) = match &saved.ward {
-            None => resume(&sce_json, &saved.tape)?,
-            // Resumed to the slot her lease was taken at, not to now: the shift's own clock
-            // started then, and the idle time since belongs to whoever comes next.
-            Some(w) => {
-                let (mut st, _) = ward_chain::resumed(&sce_json, prior, w.taken_slot)?;
+        let (state, r) = match (&saved.ward, prior) {
+            (None, _) => resume(&sce_json, &saved.tape)?,
+            // Resumed to the slot this shift opened at, not to now: the shift's own clock started
+            // then, and the idle time since belongs to whoever comes next.
+            (Some(w), Some(p)) => {
+                let (mut st, _) = ward_chain::resumed(
+                    &sce_json,
+                    &p.shifts,
+                    &|h| p.tapes.get(h).cloned(),
+                    p.admitted_slot,
+                    w.taken_slot,
+                )?;
                 let r = vitals_replay::shift(&mut st, &saved.tape, 0);
                 (st, r)
+            }
+            (Some(w), None) => {
+                return Err(format!(
+                    "this is a shift on patient {}, and the chain could not be read to rebuild \
+                     her — the run is dropped rather than replayed onto a patient nobody checked",
+                    w.patient_id
+                ))
             }
         };
         Ok(Session {
@@ -1716,6 +1730,35 @@ fn new_session(ep: &str) -> Result<Session, String> {
         })
 }
 
+/// Everything a run in progress needs to be rebuilt on the patient it was played on.
+///
+/// Chain facts and the tapes they name, gathered once so [`Session::restore`] stays a function of
+/// its arguments: a rebuild that reaches for a cluster is a rebuild nobody can test.
+struct WardRebuild {
+    shifts: Vec<ward::ShiftOnChain>,
+    tapes: std::collections::BTreeMap<String, Vec<Step>>,
+    admitted_slot: u64,
+}
+
+/// Read the chain's account of one patient, for a run being restored after a restart.
+///
+/// `None` when the chain cannot be read or she is not there — and the caller drops the run rather
+/// than replaying it onto a patient nobody checked. A stranger's unfinished shift is lost, which
+/// is what a crash means; what must not happen is a shift resumed onto the wrong woman.
+fn ward_rebuild(store: &store::Store, patient_id: u64) -> Option<WardRebuild> {
+    let chain = ward_chain::WardChain::connect().ok()?;
+    let her = chain.patient(patient_id).ok()??;
+    let mut seen: ward_chain::Seen = store
+        .get(ward_chain::SHIFT_CACHE, &format!("p{patient_id}"))
+        .unwrap_or_default();
+    let _ = chain.refresh(patient_id, &mut seen);
+    Some(WardRebuild {
+        shifts: seen.shifts(),
+        tapes: ward_chain::tapes_of(store, patient_id),
+        admitted_slot: her.admitted_slot,
+    })
+}
+
 /// Start a shift on a patient the ward is holding.
 ///
 /// Everything this needs is either on the chain or derived from it: she must be a patient this
@@ -1752,7 +1795,22 @@ fn open_shift(
 
     let sce_json = std::fs::read_to_string(scenario_path(&pack.case))
         .map_err(|e| format!("{} is not a case this server holds: {e}", pack.case))?;
-    let (state, played) = ward_chain::resumed(&sce_json, &ward_chain::tapes_of(store, patient_id), now_slot)?;
+
+    // Her past, as the chain gives it: the shifts that actually anchored, in slot order, each tape
+    // found by the hash its leaf commits to.
+    let key = format!("p{patient_id}");
+    let mut seen: ward_chain::Seen = store.get(ward_chain::SHIFT_CACHE, &key).unwrap_or_default();
+    if matches!(chain.refresh(patient_id, &mut seen), Ok(n) if n > 0) {
+        let _ = store.put(ward_chain::SHIFT_CACHE, &key, &seen);
+    }
+    let tapes = ward_chain::tapes_of(store, patient_id);
+    let (state, played) = ward_chain::resumed(
+        &sce_json,
+        &seen.shifts(),
+        &|h| tapes.get(h).cloned(),
+        her.admitted_slot,
+        now_slot,
+    )?;
 
     let head = hex(&her.head);
     let shift = WardShift {
@@ -2138,17 +2196,11 @@ fn main() {
     let mut restored = HashMap::new();
     let mut broken = 0usize;
     for (id, saved) in store.list::<Saved>(SESSIONS) {
-        // A ward shift is rebuilt on the patient it was played on, so her earlier tapes come with
-        // it. Only the ones before this shift: a tape anchored after it belongs to somebody else's
-        // work and would rebuild a patient this shift never saw.
-        let prior: Vec<ward_chain::StoredTape> = match &saved.ward {
-            None => Vec::new(),
-            Some(w) => ward_chain::tapes_of(&store, w.patient_id)
-                .into_iter()
-                .filter(|t| t.index < w.index)
-                .collect(),
-        };
-        match Session::restore(saved, &prior) {
+        // A ward shift is rebuilt on the patient it was played on, and the chain is what says who
+        // that is. Read here rather than inside `restore`, so the rebuild stays a function of its
+        // arguments and this loop is the only thing that talks to a cluster.
+        let prior = saved.ward.as_ref().and_then(|w| ward_rebuild(&store, w.patient_id));
+        match Session::restore(saved, prior.as_ref()) {
             Ok(s) => {
                 restored.insert(id, s);
             }
