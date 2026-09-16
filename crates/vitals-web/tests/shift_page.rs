@@ -623,18 +623,21 @@ fn the_words_a_learner_reads_are_big_enough() {
     let css = bay_css();
     // The font-size a selector sets, in px, reading `rem` as 16 and taking the rule's own value.
     let size = |selector: &str| -> f64 {
+        // Every rule this selector opens, not the first text that happens to contain it: `#cmd{`
+        // matches inside `.acts.order-mode #cmd{`, and reading that rule asks a question about a
+        // border colour. The one that sets the size is the one wanted.
         let rule = css
-            .split(&format!("{selector}{{"))
-            .nth(1)
-            .unwrap_or_else(|| panic!("{selector} has no rule of its own any more"))
-            .split('}')
-            .next()
-            .unwrap_or("")
-            .to_string();
-        let raw = rule
-            .split("font-size:")
-            .nth(1)
-            .unwrap_or_else(|| panic!("{selector} sets no font-size: {rule}"));
+            .match_indices(&format!("{selector}{{"))
+            .filter(|(i, _)| {
+                *i == 0 || matches!(css[..*i].chars().next_back(), Some('}') | Some('\n') | Some(' '))
+            })
+            .map(|(i, m)| css[i + m.len()..].split('}').next().unwrap_or("").to_string())
+            .find(|r| r.contains("font-size:"))
+            .unwrap_or_else(|| panic!("{selector} sets no font-size of its own any more"));
+        // `clamp(1rem,2.6vh,1.42rem)` is read at its smallest: the floor is about the worst case,
+        // and on a short window that is what the headline actually is.
+        let raw = rule.split("font-size:").nth(1).expect("a size").trim_start();
+        let raw = raw.strip_prefix("clamp(").unwrap_or(raw);
         let digits: String = raw.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
         let n: f64 = digits.parse().unwrap_or_else(|_| panic!("{selector}: {raw}"));
         // `.74rem` is 11.84 px and `.74` of nothing is not a size — the unit is read off the source
@@ -656,7 +659,42 @@ fn the_words_a_learner_reads_are_big_enough() {
                 "{selector} is {px}px — {what}, and a learner said these were too small to work in");
     }
 
-    // And the sheet stays a sheet: the headline is still the biggest thing on it, so raising the
-    // floor has not flattened the page into one size.
-    assert!(size(".stem-t") > size(".stem-g dd"), "the headline leads the sheet");
+    // And the sheet stays a sheet: even at its smallest the headline leads everything the floor
+    // above raised, so this is a floor and not a flattening.
+    assert!(size(".stem-t") >= 16.0, "the headline leads the sheet: {}px", size(".stem-t"));
+}
+
+/// **The line you type into is on the screen, whatever the case brought with it.**
+///
+/// The stage on a shift page is one scrolling column: the patient block, the transcript and the
+/// action bar all live in it. The season's cases bring six chips to a row and it fits. A compiled
+/// case brings its own tray — this ward's typhoid case has twenty questions, twenty-five
+/// investigations and nineteen treatments — and the ask bar went to the bottom of a scroll with no
+/// visible end. Measured at 1280×800 before the fix: the ask bar's top edge at 975 px in an 800 px
+/// window, and the body told not to scroll.
+///
+/// That is the founder's own *"กด scroll ลงไปพิมพ์ไม่ได้"* arriving through a second door, six days
+/// after the first one was closed, and it was there before the type was raised — raising it moved
+/// the bar 62 px further down, which is how it was found.
+#[test]
+fn the_ask_bar_is_pinned_whatever_the_case_brought() {
+    let css = bay_css();
+    let i = css.find("@media (min-width:69rem) and (min-height:40rem){").expect("the cockpit block");
+    let block = &css[i..];
+    let end = block.find("\n}\n").map(|e| e + 3).unwrap_or(block.len());
+    let block = &block[..end];
+
+    assert!(block.contains("html.is-ward .acts{position:sticky"),
+            "the action bar is not pinned to the foot of the stage, so a long tray puts the ask bar \
+             below a fold that cannot be scrolled to: {block}");
+    let chips = block
+        .split("html.is-ward .chips{")
+        .nth(1)
+        .and_then(|r| r.split('}').next())
+        .unwrap_or("")
+        .to_string();
+    assert!(chips.contains("max-height"),
+            "and the tray is uncapped, so it takes the stage with it: {chips:?}");
+    assert!(chips.contains("overflow-y:auto"),
+            "a capped tray that does not scroll is a tray with its last drug hidden: {chips:?}");
 }

@@ -493,7 +493,11 @@ a.brand:focus-visible{outline:2px solid var(--act);outline-offset:3px;border-rad
 @keyframes pulse{50%{opacity:.25}}
 @media (prefers-reduced-motion:reduce){.live::before{animation:none}}
 .spacer{margin-left:auto}
-select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:var(--card-2);
+/* The working text of the play surface. Raised on 16 ก.ย. after the first user test by a
+   medical student: "อยากให้ตัวอักษรใหญ่กว่านี้จะดีมากค่า". The tray, the kit, the ask bar and the
+   sheet's labels are what somebody reads while treating a patient, and they were 9–12 px under a
+   22 px headline. `shift_page.rs` keeps the floor. */
+select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.78rem;background:var(--card-2);
   color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:.4rem .65rem;cursor:pointer;
   transition:border-color .12s,background .12s,transform .06s}
 .btn:hover:not(:disabled){border-color:var(--act);background:var(--act-soft)}
@@ -594,11 +598,11 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
 /* dt/dd straight into the grid: label column, value column, no wrapper divs. */
 .stem-g{margin:.15rem 0 0;display:grid;grid-template-columns:auto minmax(0,1fr);
   gap:.28rem .9rem;align-items:baseline;flex:none;font-size:clamp(.78rem,1.9vh,.92rem)}
-.stem-g dt{font-family:"IBM Plex Mono",monospace;font-size:.57rem;letter-spacing:.14em;
+.stem-g dt{font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.14em;
   text-transform:uppercase;color:var(--ink-3);white-space:nowrap;padding-top:.15rem}
 .stem-g dd{margin:0;color:var(--ink-2);line-height:1.4}
 .stem-task{margin:.35rem 0 0;flex:none;font-size:clamp(.82rem,2vh,1rem);font-weight:600}
-.stem-f{margin:auto 0 0;flex:none;font-family:"IBM Plex Mono",monospace;font-size:.57rem;
+.stem-f{margin:auto 0 0;flex:none;font-family:"IBM Plex Mono",monospace;font-size:.68rem;
   letter-spacing:.05em;line-height:1.7;color:var(--ink-3);border-top:1px solid var(--line);
   padding-top:.4rem}
 .stem-f b{color:#c68f1f;letter-spacing:.14em;text-transform:uppercase}
@@ -709,17 +713,17 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
   display:flex;flex-direction:column;gap:.55rem}
 .modes{display:inline-flex;flex-wrap:wrap;gap:2px;background:var(--card-2);border:1px solid var(--line);
   border-radius:9px;padding:2px;align-self:flex-start}
-.modes .btn{border:0;background:none;border-radius:7px;padding:.35rem .6rem;font-size:.72rem;color:var(--ink-2)}
+.modes .btn{border:0;background:none;border-radius:7px;padding:.35rem .6rem;font-size:.84rem;color:var(--ink-2)}
 .modes .btn:hover{background:#fff;color:var(--ink)}
 .modes .btn.on{background:var(--act);color:#fff}
 .chips{display:flex;flex-wrap:wrap;gap:.35rem;min-height:1.9rem}
 /* A question is something you say; an order is something you write down. They should not
    look like the same control. */
-.chips .btn{font-size:.74rem;border-radius:999px;font-family:"IBM Plex Sans",sans-serif}
-.acts.order-mode .chips .btn{border-radius:7px;font-family:"IBM Plex Mono",monospace;font-size:.71rem}
+.chips .btn{font-size:.88rem;border-radius:999px;font-family:"IBM Plex Sans",sans-serif}
+.acts.order-mode .chips .btn{border-radius:7px;font-family:"IBM Plex Mono",monospace;font-size:.83rem}
 .acts.order-mode #cmd{border-color:#CFE4DC}
 #cmdf{display:flex;gap:.45rem}
-#cmd{flex:1;min-width:0;font-family:"IBM Plex Mono",monospace;font-size:.8rem;background:var(--card-2);
+#cmd{flex:1;min-width:0;font-family:"IBM Plex Mono",monospace;font-size:.9rem;background:var(--card-2);
   color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:.55rem .7rem}
 #cmd:focus{outline:2px solid var(--act);outline-offset:1px;background:#fff}
 .mic{padding:.4rem .6rem}
@@ -773,7 +777,7 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:va
    belong in a row with the mute button. */
 .dispo{display:flex;flex-direction:column;gap:.5rem}
 .dispo-opts{display:flex;flex-wrap:wrap;gap:.3rem}
-.dispo-opts .btn{font-size:.74rem;padding:.35rem .5rem}
+.dispo-opts .btn{font-size:.82rem;padding:.35rem .5rem}
 .dispo-why{font-style:normal;font-size:.74rem;color:var(--ink-3)}
 .dispo-why:empty{display:none}
 
@@ -1407,6 +1411,25 @@ a.give:hover{filter:brightness(1.06)}
   .pt-name{margin-top:.4rem}
   .chat{flex:1 1 0;min-height:6rem;max-height:none;overscroll-behavior:contain}
   .acts{flex:none}
+  /* A compiled case brings its own tray, and it is not the season's six chips: this ward's typhoid
+     case has twenty questions, twenty-five investigations and nineteen treatments. At the season's
+     sizes that already pushed the ask bar 183 px below a window that is not allowed to scroll —
+     the founder's own "กด scroll ลงไปพิมพ์ไม่ได้", back through a different door — and raising the
+     type for a learner who could not read it made it worse. So on the ward the tray is what gives
+     way: it scrolls inside itself, the line you type into keeps its place, and nothing a stranger
+     needs is below the fold of a page with no fold. */
+  /* A compiled case brings its own tray, and it is not the season's six chips: this ward's typhoid
+     case has twenty questions, twenty-five investigations and nineteen treatments. The stage is one
+     scrolling column — the patient block, the transcript and the action bar in it — so a tray that
+     long put the ask bar at the bottom of a scroll nobody could see the end of. That is the
+     founder's own "กด scroll ลงไปพิมพ์ไม่ได้" arriving through a second door, and raising the type
+     for a learner who could not read it moved it further down.
+     So the action bar is pinned to the foot of the stage and the tray scrolls inside itself: the
+     line you type into is on the screen whatever the case brought with it, and the sheet above
+     scrolls behind it. */
+  html.is-ward .acts{position:sticky;bottom:0;z-index:2}
+  html.is-ward .chips{max-height:7.5rem;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+  html.is-ward #cmdf,html.is-ward .modes{flex:none}
   .rail{min-height:0;overflow-y:auto;overscroll-behavior:contain;gap:.55rem}
   .panel{padding:.6rem .7rem}
   .device{height:12.5rem}
