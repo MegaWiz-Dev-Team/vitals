@@ -86,3 +86,82 @@ does not invent a verb for it');
 assert.equal(stateSentence('unrebuildable', him), 'he is on the ward');
 
 console.log('shift_logic: ok (sentences too)');
+
+// ── the case the page draws is the case the payload described ────────────────
+//
+// Opening a World-case patient showed EP1's name, EP1's questions and no title at all. Every word
+// of case content on that page is looked up in the page's own table of the season's sixteen, and a
+// compiled case is not in it: `SEASON.find(e=>e.id===sel.value)||SEASON[0]` answered "EP1" and
+// everything downstream believed it — the header, the sheet, the six quick questions, the pronoun
+// table and the monitor's age limits.
+//
+// The payload carries the case now (`case_view` on the server) and these two functions are where
+// it lands: `wardCard` turns it into the card the bay already knows how to draw, and `epOf` is the
+// one place that answers "which case is this" — the ward's, never the shelf's first entry.
+const SEASON_FIXTURE = [
+  { id: 'ep1', n: 'EP1', t: 'Nine Minutes', who: 'Ing · F 19', tier: 'student' },
+  { id: 'ep2', n: 'EP2', t: 'Time Is Muscle', who: 'Somchai · M 71', tier: 'intern' },
+];
+const { epOf, wardCard } = new Function('SEASON',
+  [grab('epOf'), grab('wardCard'), 'return { epOf, wardCard };'].join('\n'))(SEASON_FIXTURE);
+
+// What the server sends about Nusrat Jahan's case, as `case_view` builds it.
+const CONTENT = {
+  case_id: 'embla-typhoid-bgd-1',
+  title: 'Nine days of fever and abdominal pain — a woman of 64',
+  presents: 'She has had a fever for nine days and cannot keep water down',
+  story: 'A woman of 64 brought in by her son.',
+  who: 'Nusrat Jahan · F 64',
+  difficulty: 'resident', specialty: 'eir-emergency', care_setting: 'ER',
+  setting: 'a district hospital ward', archetype: 'enteric fever',
+  chips: {
+    ask:   [{ id: 'ask_fever_days', label: 'Ask how long the fever' }],
+    exam:  [{ id: 'exam_abdomen', label: 'Examine the abdomen' }],
+    lab:   [{ id: 'ix_blood_culture', label: 'Blood culture' }],
+    treat: [{ id: 'tx_ceftriaxone', label: 'Ceftriaxone 2 g IV' }],
+    dx:    [{ id: 'dx_typhoid', label: 'Name the diagnosis' }],
+  },
+  voice: { ask_fever_days: 'Nine days now' },
+  no_answer: '— she does not answer that, and the case does not say why',
+};
+
+const built = wardCard(CONTENT);
+assert.equal(built.entry.id, 'embla-typhoid-bgd-1');
+assert.equal(built.entry.t, CONTENT.title, 'the headline is the case’s own title');
+assert.equal(built.entry.line, CONTENT.presents, 'and the briefing is its presenting line');
+assert.equal(built.entry.who, 'Nusrat Jahan · F 64',
+             'the card names the person in the bed, which is what ageOf and pro() read');
+assert.equal(built.entry.tier, 'resident');
+
+// The tray: the case's own interventions, in the rows the bay's kit already has. `tx_` is what the
+// compiler writes and "drugs" is what the tray calls that row.
+assert.deepEqual(built.chips.ask, ['ask_fever_days']);
+assert.deepEqual(built.chips.exam, ['exam_abdomen']);
+assert.deepEqual(built.chips.lab, ['ix_blood_culture']);
+assert.deepEqual(built.chips.drug, ['tx_ceftriaxone']);
+assert.deepEqual(built.chips.dx, ['dx_typhoid']);
+assert.equal(built.chips.proc, undefined,
+             'a row this case has nothing in is a row the tray does not draw, rather than an empty \
+shelf of somebody else’s procedures');
+
+// What the button fires is the intervention id — the thing the tape records and the rubric pays
+// for — and what it *says* is the case's own label.
+assert.equal(built.labels.tx_ceftriaxone, 'Ceftriaxone 2 g IV');
+assert.equal(built.labels.ask_fever_days, 'Ask how long the fever');
+assert.equal(JSON.stringify(built).includes('ep1'), false, 'and nothing of the season is in it');
+
+assert.equal(wardCard(null), null,
+             'no content, no card: the page says so rather than drawing another patient');
+assert.equal(wardCard({}), null);
+assert.equal(wardCard({ case_id: '' }), null);
+
+// ── which case is this ───────────────────────────────────────────────────────
+assert.equal(epOf(null, 'ep1').t, 'Nine Minutes', 'the shelf still answers for the season');
+assert.equal(epOf(null, 'embla-typhoid-bgd-1').id, 'ep1',
+             'and this is the bug, kept here on purpose: an id the shelf does not know falls \
+through to its first entry, which is why a World patient wore EP1’s name');
+assert.equal(epOf(built.entry, 'embla-typhoid-bgd-1').t, CONTENT.title,
+             'so on the ward the card decides, and the shelf is never asked');
+assert.equal(epOf(built.entry, '').id, 'embla-typhoid-bgd-1');
+
+console.log('shift_logic: ok (and the case is the payload’s)');

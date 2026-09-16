@@ -682,3 +682,30 @@ fn the_ward_is_given_the_cases_own_words_to_render() {
     // Nothing filled is stored: the pack is untouched by having been rendered.
     assert_eq!(pack["title"], "Vomiting blood — a {sex_word} of {age}");
 }
+
+/// **Who the page says is in the bed.**
+///
+/// The bay draws a card whose `who` reads "Name · SEX AGE", and three things read that one string:
+/// the bed label prints it, `ageOf` parses it for the monitor's alarm limits (a three-year-old at
+/// 118 and 28 is a normal three-year-old), and `pro()` takes the patient's pronoun out of it. On
+/// the season it is written by the case's author. On the ward the person is the ward's, so the
+/// view that replaces the season's card has to say who is actually there — otherwise the page
+/// reads the case's author's patient for all three.
+#[test]
+fn the_view_names_the_person_in_the_bed() {
+    use vitals_web::ward::Persona;
+    use vitals_web::ward_case::case_view;
+
+    let her = Persona { name: "Nusrat Jahan".into(), country: "BGD".into(), age: 64, sex: "f".into() };
+    let him = Persona { name: "Rafael Moreira".into(), country: "BRA".into(), age: 26, sex: "m".into() };
+
+    assert_eq!(case_view(&a_pack(), &her)["who"], "Nusrat Jahan · F 64");
+    assert_eq!(case_view(&a_pack(), &him)["who"], "Rafael Moreira · M 26");
+
+    // And the one sentence the ward writes itself takes his pronoun too: the ward admits men, and
+    // "she does not answer that" over Rafael is the page contradicting its own chart.
+    let his = case_view(&a_pack(), &him);
+    let line = his["no_answer"].as_str().expect("something to say");
+    assert!(line.split(|c: char| !c.is_ascii_alphabetic()).any(|w| w == "he"),
+            "the no-answer line is written about a woman whoever is in the bed: {line:?}");
+}

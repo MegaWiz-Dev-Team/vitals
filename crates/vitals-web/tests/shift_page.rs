@@ -504,3 +504,43 @@ fn a_finished_shift_can_still_be_handed_over() {
     assert!(ward.contains("armed") || ward.contains("disarmEnd"),
             "the finished shift's button must not be sitting armed from before: {ward}");
 }
+
+/// **On the ward, every word about the case comes off the wire.**
+///
+/// The founder opened a World-case patient and read EP1's name over her, EP1's six questions under
+/// her, and no title at all. `bay.js` ships to both hosts, so the season's table is in the file on
+/// the ward too — and the ward's opener asked it which case this was. A compiled case is not in it,
+/// so `SEASON.find(…)||SEASON[0]` answered EP1 and the whole page believed it: the header, the
+/// sheet, the tray, the pronouns, the monitor's alarm limits.
+///
+/// So the opener reads the payload and nothing else. A patient whose case the payload could not
+/// describe gets a sentence saying so — never another patient's name, which is the failure this
+/// replaces and the only one that can put a wrong drug under a real hand.
+#[test]
+fn a_world_case_is_drawn_from_the_payload_and_never_from_the_season() {
+    let js = bay_js();
+    let open = without_comments(&body_of(&js, "openShift"));
+
+    assert!(open.contains("wardCard("),
+            "the ward's opener does not build its card from the payload: {open}");
+    assert!(open.contains("content"),
+            "and nothing in it reads the case content the payload carries: {open}");
+    assert!(!open.contains("SEASON"),
+            "the opener still consults the page's table of the season's sixteen, which on the ward \
+             host is a table of sixteen patients who are not in this bed: {open}");
+    assert!(open.contains("not on this page yet"),
+            "a case the payload could not describe has to be a sentence: {open}");
+
+    // One place answers "which case is this", and on a shift the answer is the ward's card. The
+    // season's shelf keeps its own lookup — this is a page that serves two hosts, not a feature
+    // taken from one of them.
+    let src = without_comments(&js);
+    assert!(src.contains("const ep=()=>epOf("),
+            "the page still falls through to the shelf's first entry, which is how EP1 got over \
+             another patient");
+
+    // The tray is the case's own, by the same rule: `CHIPS` is the season's table of questions.
+    let chips = without_comments(&body_of(&js, "renderChips"));
+    assert!(chips.contains("WARDCHIPS") || chips.contains("chipRows("),
+            "the quick questions still come from the season's table: {chips}");
+}
