@@ -467,7 +467,13 @@ anything.
       a person's work, and the thing a stranger wants to check is the second. So the leaf comes out
       of the `AnchorShift` record into what the census reads, and `/shift/<leaf>` becomes the
       shift's own page: one leaf, one player, one declaration, one shift. Founder's standing rule,
-      root cause over workaround.
+      root cause over workaround. **Done 16 ก.ย., by a different route than this line assumed:**
+      the leaf cannot be carried out of the record, because `RecordWire` deliberately holds no
+      commitment — the program reads that from the account, and a field the caller fills in
+      records only what the caller asserted. So the pairing is written down where both are
+      legitimately known, when the server builds the record it is about to anchor, and
+      `/shift/<leaf>` and `/shift/<run hash>` are the same page. A leaf anchored by another host
+      resolves to nothing rather than to a guess.
 - [ ] Shift receipt at a QR: the browser re-derives that shift from the tape and the chain, shows
       the deterministic 40 — and no judged number, for the reasons under ruling 3 — and offers
       **download every tape of this patient** so a stranger can mirror the whole stay and check us

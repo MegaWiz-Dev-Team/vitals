@@ -2040,11 +2040,17 @@ const WORLD_BRAND: &str = concat!(
 );
 
 /// One shift's receipt, or the reason there is none.
-fn ward_receipt(store: &store::Store, run_hash: &str) -> serde_json::Value {
+fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
     let bad = |why: &str| serde_json::json!({ "error": why });
-    if run_hash.len() != 64 || !run_hash.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
-        return bad("that is not a run hash");
+    if !ward_chain::is_shift_hash(address) {
+        return bad("that is not the name of a shift");
     }
+    // **Two addresses, one page.** The run hash names the tape — two strangers who did exactly the
+    // same things to the same case share one, and the receipt says so. The leaf names this shift
+    // and no other, and it is what the chain itself holds as her head, so it is the address a
+    // judge can arrive with. Looked up first: a leaf we anchored resolves to its tape's hash, and
+    // anything else falls through to being a tape hash itself.
+    let run_hash = &ward_chain::run_hash_of_leaf(store, address).unwrap_or_else(|| address.to_string());
     let chain = match ward_chain::WardChain::connect() {
         Ok(c) => c,
         Err(e) => return bad(&e),
@@ -2077,7 +2083,15 @@ fn ward_receipt(store: &store::Store, run_hash: &str) -> serde_json::Value {
         &pack,
         admitted,
     ) {
-        Ok(v) => v,
+        Ok(mut v) => {
+            // The chain's own name for this shift, when the address was one or when this server
+            // anchored it. Published so a reader can cite the thing the tree holds rather than the
+            // thing the tape hashes to — they are different facts and the page says which is which.
+            if address != run_hash {
+                v["leaf"] = serde_json::json!(address);
+            }
+            v
+        }
         Err(e) => bad(&e),
     }
 }

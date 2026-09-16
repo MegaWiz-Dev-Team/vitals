@@ -1788,7 +1788,37 @@ pub fn keep_for_anchor(
 ) -> Result<String, String> {
     let run_hash = hex32(&rec.run_hash);
     keep_tape(store, &StoredTape { patient_id, run_hash: run_hash.clone(), steps: tape.to_vec() })?;
+    // And the chain's own name for this shift. The leaf binds the player, the declaration and the
+    // tape; the run hash binds only the tape, and two strangers who did the same things share one.
+    // It cannot be recomputed later — `RecordWire` carries no commitment, by design — so it is
+    // written down here, where the record was built. A failure is not fatal: the receipt is still
+    // reachable by run hash, and a leaf nobody can look up is a missing convenience rather than a
+    // missing shift.
+    let _ = store.put(
+        LEAF_INDEX,
+        &hex32(&rec.leaf()),
+        &serde_json::json!({ "run_hash": run_hash, "patient_id": patient_id }),
+    );
     Ok(run_hash)
+}
+
+/// Where the leaf of each shift this server anchored is filed, against the tape's own hash.
+pub const LEAF_INDEX: &str = "ward_leaf";
+
+/// The tape hash behind a leaf, when this server anchored the shift.
+///
+/// `None` for a leaf anchored by somebody else's host, or before this index existed — the receipt
+/// is then reachable by run hash and by nothing else, which is a smaller address book rather than
+/// a wrong answer.
+pub fn run_hash_of_leaf(store: &crate::store::Store, leaf: &str) -> Option<String> {
+    if !is_shift_hash(leaf) {
+        return None;
+    }
+    store
+        .get::<serde_json::Value>(LEAF_INDEX, leaf)?
+        .get("run_hash")?
+        .as_str()
+        .map(str::to_string)
 }
 
 /// Find the tape behind a leaf the chain carries and this ward has lost.

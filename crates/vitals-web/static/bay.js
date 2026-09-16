@@ -3933,7 +3933,11 @@ async function handOverInner(){
   /* The receipt is the point of the whole thing and it had no link: a stranger who just anchored
      a shift was told it landed and given a way back to the globe, and nothing that shows what
      they did. `/shift/<run hash>` is public and needs no key — see the receipt page. */
-  const receipt=over_.run_hash?' <a href="/shift/'+encodeURIComponent(over_.run_hash)+'">the receipt for this shift</a> ·':'';
+  /* Addressed by the leaf when the chain gave us one: that is this shift and no other, and it is
+     what a judge reads off her account as the head. The run hash is the tape's, which two people
+     who did the same things would share — a good fallback, a worse name. */
+  const name=a.head||over_.run_hash;
+  const receipt=name?' <a href="/shift/'+encodeURIComponent(name)+'">the receipt for this shift</a> ·':'';
   wardSay('<b>handed over.</b> '+pro().p+' chain is '+a.shifts+' shift'+(a.shifts===1?'':'s')+
           ' long and '+pro().s+' is '+esc((a.state||'').replace('_',' '))+'.'+receipt+
           ' <a href="/">back to the globe</a>');
