@@ -9,6 +9,7 @@ use vitals_factory::catalogue::{Case, Catalogue, Sex};
 use vitals_factory::door::{BoardPatient, WardView};
 use vitals_factory::ledger::{Ledger, Sent};
 use vitals_factory::manifest::{batch_age, Manifest};
+use vitals_factory::need::{weights, Weights};
 use vitals_factory::plan::{plan, Base, Inputs};
 use vitals_factory::pool::{read_endemic, read_pool, Person};
 use vitals_web::ward::{age_band, case_patient, difficulty_of};
@@ -16,6 +17,7 @@ use vitals_web::ward_chain::{pack_id, validate_pack, PORTRAITS};
 
 const POOL: &str = include_str!("../../vitals-web/data/personas.json");
 const ENDEMIC: &str = include_str!("../../vitals-web/data/endemic.json");
+const PHYSICIANS: &str = include_str!("../../vitals-web/data/physicians.json");
 
 /// A station exactly as the door reads it — the only band a pack for it may carry.
 fn case(id: &str) -> Case {
@@ -55,6 +57,11 @@ fn full_manifest(pool: &[Person]) -> Manifest {
     m
 }
 
+/// Equal need everywhere, so the tests of the other rules are not moved by the weighting.
+fn flat(pool: &[Person]) -> Weights {
+    Weights::flat(pool)
+}
+
 fn empty_ward() -> WardView {
     WardView { readable: true, source: "test".into(), why: None, beds: 3, catalogue: vec![], queue: None, patients: vec![] }
 }
@@ -85,7 +92,7 @@ fn the_pool_and_the_endemic_list_read_from_the_wards_own_files() {
 fn the_same_inputs_and_seed_give_the_same_packs() {
     let pool = read_pool(POOL).unwrap();
     let (cat, man, ward, ledger, endemic) = (catalogue(), full_manifest(&pool), empty_ward(), Ledger::default(), BTreeMap::new());
-    let i = Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, want: 6, seed: 7 };
+    let i = Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &flat(&pool), beds: 3, want: 6, seed: 7 };
     let a = plan(&i);
     let b = plan(&i);
     assert_eq!(a.packs.len(), 6);
@@ -98,7 +105,7 @@ fn the_same_inputs_and_seed_give_the_same_packs() {
 fn every_pack_is_one_the_door_would_take_and_agrees_with_its_own_case() {
     let pool = read_pool(POOL).unwrap();
     let (cat, man, ward, ledger, endemic) = (catalogue(), full_manifest(&pool), empty_ward(), Ledger::default(), BTreeMap::new());
-    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, want: 20, seed: 1 });
+    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &flat(&pool), beds: 3, want: 20, seed: 1 });
     assert_eq!(p.packs.len(), 20);
     for pl in &p.packs {
         validate_pack(&pl.pack).unwrap_or_else(|why| panic!("{}: the door would refuse her: {why}", pl.pack.persona.name));
@@ -124,7 +131,7 @@ fn nobody_is_on_the_ward_twice() {
     let mut ledger = Ledger::default();
     ledger.sent.insert("deadbeef".into(), Sent::new("osce-a", anan, 70, false, None, 1, "test"));
     // More wanted than there are people, so everyone who is free is drawn exactly once.
-    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, want: 61, seed: 3 });
+    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &flat(&pool), beds: 3, want: 61, seed: 3 });
     let keys: Vec<&str> = p.packs.iter().map(|pl| pl.person.as_str()).collect();
     assert_eq!(keys.len(), 58, "sixty people, two of them busy");
     assert!(!keys.contains(&"THA-0"), "Ploy is in a bed");
@@ -142,14 +149,14 @@ fn the_bands_are_balanced_against_what_the_ward_already_holds() {
     let (cat, man, endemic) = (catalogue(), full_manifest(&pool), BTreeMap::new());
     let count = |p: &vitals_factory::plan::Plan, band: &str| p.packs.iter().filter(|pl| difficulty_of(&pl.pack.case) == Some(band)).count();
 
-    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), want: 9, seed: 2 });
+    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&pool), beds: 3, want: 9, seed: 2 });
     assert_eq!((count(&p, "student"), count(&p, "intern"), count(&p, "resident")), (3, 3, 3));
 
     // Two interns already in beds: the next two go to the other bands before intern gets another.
     let mut ward = empty_ward();
     ward.patients.push(on_board(1, "on_ward", person(&pool, "JPN-1"), "osce-b", 25));
     ward.patients.push(on_board(2, "on_ward", person(&pool, "KOR-0"), "osce-c2", 50));
-    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &Ledger::default(), want: 2, seed: 2 });
+    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &Ledger::default(), weights: &flat(&pool), beds: 3, want: 2, seed: 2 });
     assert_eq!(count(&p, "intern"), 0, "{:?}", p.packs.iter().map(|x| x.pack.case.clone()).collect::<Vec<_>>());
     assert_eq!(count(&p, "student") + count(&p, "resident"), 2);
 }
@@ -162,7 +169,7 @@ fn a_face_already_made_is_used_and_a_missing_one_is_made_at_her_age() {
     // so every pack carries a stable portrait, needs nothing made, and stays near the face's age.
     let adults = Catalogue { cases: vec![case("osce-a2"), case("osce-d")], unbuildable: vec![] };
     let man = full_manifest(&pool);
-    let p = plan(&Inputs { catalogue: &adults, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), want: 5, seed: 4 });
+    let p = plan(&Inputs { catalogue: &adults, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&pool), beds: 3, want: 5, seed: 4 });
     assert_eq!(p.packs.len(), 5);
     for pl in &p.packs {
         let Base::Have { url, age, .. } = &pl.base else { panic!("{}: a face exists at 63 and fits", pl.person) };
@@ -174,14 +181,14 @@ fn a_face_already_made_is_used_and_a_missing_one_is_made_at_her_age() {
     // osce-b is written for a man of 25 (23–27): no batch face fits, so one is to be made at the
     // age drawn, and the pack goes out without a picture rather than with a wrong one.
     let young = Catalogue { cases: vec![case("osce-b")], unbuildable: vec![] };
-    let p = plan(&Inputs { catalogue: &young, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), want: 2, seed: 4 });
+    let p = plan(&Inputs { catalogue: &young, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&pool), beds: 3, want: 2, seed: 4 });
     assert_eq!(p.packs.len(), 2);
     for pl in &p.packs {
         assert!(matches!(&pl.base, Base::Make { .. }), "a face at 28 is not a man of 23–27: {:?}", pl.base);
     }
     // A child's case, the same way.
     let child = Catalogue { cases: vec![case("osce-c")], unbuildable: vec![] };
-    let p = plan(&Inputs { catalogue: &child, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), want: 2, seed: 4 });
+    let p = plan(&Inputs { catalogue: &child, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&pool), beds: 3, want: 2, seed: 4 });
     assert_eq!(p.packs.len(), 2);
     for pl in &p.packs {
         let Base::Make { key, age } = &pl.base else { panic!("no adult face fits a six-year-old") };
@@ -193,7 +200,7 @@ fn a_face_already_made_is_used_and_a_missing_one_is_made_at_her_age() {
     let mut man2 = man.clone();
     let first = &p.packs[0];
     man2.record_base(&first.person, first.pack.persona.age, &url("child"), person(&pool, &first.person));
-    let p2 = plan(&Inputs { catalogue: &child, pool: &pool, endemic: &endemic, manifest: &man2, ward: &empty_ward(), ledger: &Ledger::default(), want: 2, seed: 4 });
+    let p2 = plan(&Inputs { catalogue: &child, pool: &pool, endemic: &endemic, manifest: &man2, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&pool), beds: 3, want: 2, seed: 4 });
     let again = p2.packs.iter().find(|pl| pl.person == first.person).expect("same seed, same person");
     assert!(matches!(&again.base, Base::Have { url: u, .. } if u == &url("child")));
 }
@@ -206,7 +213,7 @@ fn pool_exhausted_builds_nothing_and_says_so() {
     for (n, p) in pool.iter().enumerate() {
         ledger.sent.insert(format!("id{n}"), Sent::new("osce-a", p, 70, false, None, 1, "test"));
     }
-    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &ledger, want: 3, seed: 1 });
+    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &ledger, weights: &flat(&pool), beds: 3, want: 3, seed: 1 });
     assert!(p.packs.is_empty());
     assert!(p.exhausted);
     assert!(p.notes.iter().any(|n| n.contains("pool exhausted")), "{:?}", p.notes);
@@ -217,7 +224,7 @@ fn a_persona_whose_sex_no_case_was_written_for_is_skipped_not_forced() {
     let pool = read_pool(POOL).unwrap();
     let (man, endemic) = (full_manifest(&pool), BTreeMap::new());
     let men_only = Catalogue { cases: vec![case("osce-a")], unbuildable: vec![] };
-    let p = plan(&Inputs { catalogue: &men_only, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), want: 60, seed: 1 });
+    let p = plan(&Inputs { catalogue: &men_only, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&pool), beds: 3, want: 60, seed: 1 });
     let men = pool.iter().filter(|x| x.sex == Sex::M).count();
     assert_eq!(p.packs.len(), men, "every man, no woman");
     assert!(p.exhausted, "and then the pool is exhausted for this catalogue");
@@ -230,7 +237,7 @@ fn endemic_is_true_only_when_the_list_pairs_her_country_with_her_case() {
     let endemic = read_endemic(r#"{"endemic": {"THA": ["osce-c2", "osce-a"], "IDN": ["osce-b"]}}"#).unwrap();
     let mut endemic_seen = 0;
     for seed in 0..40 {
-        let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), want: 12, seed });
+        let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&pool), beds: 3, want: 12, seed });
         for pl in &p.packs {
             if pl.pack.endemic {
                 // The door checks the tag against the list baked into the ward — empty today — so
@@ -246,7 +253,7 @@ fn endemic_is_true_only_when_the_list_pairs_her_country_with_her_case() {
         }
     }
     assert!(endemic_seen > 0, "one draw in five for a listed country, over forty seeds, is never zero");
-    let none = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &BTreeMap::new(), manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), want: 12, seed: 5 });
+    let none = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &BTreeMap::new(), manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&pool), beds: 3, want: 12, seed: 5 });
     assert!(none.packs.iter().all(|pl| !pl.pack.endemic), "no list, no endemic tag");
 }
 
@@ -303,4 +310,77 @@ fn the_ledger_learns_from_the_board_who_was_admitted_and_who_has_left() {
     assert!(ledger.busy_keys(&ward, &pool).contains("NGA-2"));
     let round = Ledger::parse(&ledger.to_json()).unwrap();
     assert_eq!(round, ledger);
+}
+
+// ── need ─────────────────────────────────────────────────────────────────────
+// Founder, 16 Sep 10:40: the ward's patients must reflect real need. The country draw is weighted
+// by people per doctor (World Bank SH.MED.PHYS.ZS, latest value, 1000 / per_1000 to the nearest
+// ten), floored at the pooled countries' median ÷ 4 so every country still appears, and a country
+// with no value gets the median.
+
+#[test]
+fn weights_are_people_per_doctor_with_a_floor_and_the_median_for_the_unknown() {
+    let pool = read_pool(POOL).unwrap();
+    let w = weights(PHYSICIANS, &pool).expect("the file parses");
+    assert_eq!(w.median, 1125.0, "the median of the twenty, as the data stands on 16 Sep 2026");
+    assert_eq!(w.floor, 281.25);
+    assert_eq!(w.of("ETH"), 6990.0, "Ethiopia, 1:6,990 (2023)");
+    assert_eq!(w.of("JPN"), 380.0);
+    assert_eq!(w.of("USA"), 281.25, "the United States (270) is lifted to the floor");
+    assert_eq!(w.year("ETH"), Some(2023));
+    let ranked: Vec<&str> = w.ranked().iter().map(|(c, _)| c.as_str()).collect();
+    assert_eq!(&ranked[..5], &["ETH", "KEN", "NGA", "IDN", "THA"], "the five highest by the numbers, not by a list");
+    assert_eq!(&ranked[5..10], &["EGY", "BGD", "IND", "MMR", "PHL"]);
+    assert!((w.of("ETH") / w.of("JPN") - 18.4).abs() < 0.1, "Ethiopia about eighteen times Japan");
+    // A pooled country the series has no value for gets the median.
+    let mut with_unknown = pool.clone();
+    with_unknown.push(Person { key: "ATA-0".into(), name: "Nobody Here".into(), sex: Sex::F, country: "ATA".into(), place: "Antarctica".into() });
+    let w2 = weights(PHYSICIANS, &with_unknown).unwrap();
+    assert_eq!(w2.of("ATA"), w2.median);
+    assert!(w2.table().contains("ETH 6,990") && w2.table().contains("floor 281"), "{}", w2.table());
+}
+
+/// Two countries, twice the need: twice the patients. Exact over a run, not merely likely.
+#[test]
+fn the_draw_is_weighted_by_need_and_least_on_the_ward_breaks_ties() {
+    let mut pool = Vec::new();
+    for (c, n) in [("AAA", 20), ("BBB", 20)] {
+        for i in 0..n {
+            pool.push(Person { key: format!("{c}-{i}"), name: format!("Person {c} {i}"), sex: if i % 2 == 0 { Sex::F } else { Sex::M }, country: c.into(), place: c.into() });
+        }
+    }
+    let cat = catalogue();
+    let (man, endemic, ledger) = (Manifest::default(), BTreeMap::new(), Ledger::default());
+    let w = Weights::from_table(&[("AAA", 2000.0), ("BBB", 1000.0)]);
+    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &ledger, weights: &w, beds: 3, want: 30, seed: 5 });
+    let from = |c: &str| p.packs.iter().filter(|pl| pl.pack.persona.country == c).count();
+    assert_eq!((from("AAA"), from("BBB")), (20, 10), "{:?}", p.packs.iter().map(|x| x.pack.persona.country.clone()).collect::<Vec<_>>());
+    assert!(p.packs.iter().any(|pl| pl.weight == 2000.0), "each pack carries the weight it was drawn with");
+
+    // Equal need: whoever has fewer on the ward is drawn first.
+    let w = Weights::from_table(&[("AAA", 1000.0), ("BBB", 1000.0)]);
+    let mut ward = empty_ward();
+    ward.patients.push(on_board(1, "on_ward", &pool[0], "osce-c2", 50));
+    ward.patients.push(on_board(2, "on_ward", &pool[2], "osce-a2", 66));
+    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &w, beds: 10, want: 2, seed: 5 });
+    assert!(p.packs.iter().all(|pl| pl.pack.persona.country == "BBB"), "{:?}", p.packs.iter().map(|x| x.pack.persona.country.clone()).collect::<Vec<_>>());
+}
+
+/// No country holds more than 40 % of the beds at once: with three beds that is one, so a
+/// country with somebody in a bed is not drawn until she leaves.
+#[test]
+fn no_country_takes_more_than_its_share_of_the_beds() {
+    let pool = read_pool(POOL).unwrap();
+    let cat = catalogue();
+    let (man, endemic, ledger) = (full_manifest(&pool), BTreeMap::new(), Ledger::default());
+    let w = weights(PHYSICIANS, &pool).unwrap();
+    let mut ward = empty_ward();
+    ward.patients.push(on_board(1, "on_shift", person(&pool, "ETH-0"), "osce-a2", 66));
+    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &w, beds: 3, want: 6, seed: 9 });
+    assert_eq!(p.packs.len(), 6);
+    assert!(p.packs.iter().all(|pl| pl.pack.persona.country != "ETH"), "Ethiopia has her bed: {:?}", p.packs.iter().map(|x| x.pack.persona.country.clone()).collect::<Vec<_>>());
+    assert_eq!(p.packs[0].pack.persona.country, "KEN", "so the highest need without a bed goes first");
+    // With ten beds the cap is four, and Ethiopia is drawn again.
+    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &w, beds: 10, want: 3, seed: 9 });
+    assert!(p.packs.iter().any(|pl| pl.pack.persona.country == "ETH"));
 }

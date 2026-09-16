@@ -254,9 +254,11 @@ fn a_tick_tops_the_queue_up_to_depth_makes_at_most_so_many_faces_and_says_what_i
         assert!(ledger.sent.contains_key(id), "the ledger holds the door's own id for her");
         assert!(ledger.sent[id].patient_id.is_none());
     }
-    // The report says what happened in the door's words.
+    // The report says what happened in the door's words, and what each pack was drawn with.
     let text = r.lines.join("\n");
     assert!(text.contains("queued") && text.contains("depth"), "{text}");
+    assert!(text.contains("people/doctor)"), "the weight beside each pack: {text}");
+    assert!(text.contains("weights:") && text.contains("floor"), "the table the tick used: {text}");
     assert!(text.contains("deferred") || paints.len() < 2 || q.len() == 6, "faces past the cap wait for the next tick: {text}");
     assert!(!text.contains("sekrit"), "the token is in no line: {text}");
     assert_eq!(*tools.token_fetches.borrow(), 1, "fetched once per tick");
