@@ -4362,6 +4362,10 @@ fn main() {
                         "endemic": c.endemic,
                         "provisional": c.provisional,
                         "version": c.version,
+                        // Who the case is written about: the sex its dialogue and examination
+                        // assume, and the age its physiology was tuned for. The factory places a
+                        // person against these.
+                        "patient": { "age": c.patient_age, "sex": c.patient_sex },
                     }))
                     .collect();
                 cases.sort_by(|a, b| a["case_id"].as_str().cmp(&b["case_id"].as_str()));

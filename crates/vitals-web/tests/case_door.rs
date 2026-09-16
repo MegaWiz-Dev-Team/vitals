@@ -366,6 +366,8 @@ fn a_patient_is_given_a_case_from_the_wards_own_catalogue() {
     let held = |id: &str, country: Option<&str>, level: &str, version: &str| CaseSummary {
         case_id: id.into(),
         archetype: "haemorrhagic_shock".into(),
+        patient_age: Some(62),
+        patient_sex: Some("male".into()),
         country: country.map(str::to_string),
         difficulty: level.into(),
         endemic: country.is_some(),

@@ -35,6 +35,14 @@ pub struct CaseSummary {
     pub provisional: bool,
     pub version: String,
     pub title: String,
+    /// The age the case is written about, and the sex it is written for — the pack's own
+    /// `patient{age, sex}`, passed through as the compiler spells it (`male`, `female`).
+    ///
+    /// The factory matches a person against these: the sex is what the dialogue, the examination
+    /// and the differential assume, and the age is what the physiology was tuned for. `None` where
+    /// a pack does not say, because "about a man" and "nobody wrote it down" are different answers.
+    pub patient_age: Option<u32>,
+    pub patient_sex: Option<String>,
 }
 
 /// Is this pack one the ward can admit a patient onto?
@@ -184,6 +192,12 @@ pub fn validate_case(pack: &Value) -> Result<CaseSummary, String> {
         provisional: pack.get("provisional").and_then(Value::as_bool).unwrap_or(true),
         version,
         title: s("title"),
+        patient_age: pack.get("patient").and_then(|p| p.get("age")).and_then(Value::as_u64).map(|a| a as u32),
+        patient_sex: pack
+            .get("patient")
+            .and_then(|p| p.get("sex"))
+            .and_then(Value::as_str)
+            .map(str::to_string),
     })
 }
 

@@ -1214,6 +1214,8 @@ fn the_board_says_which_case_each_patient_is_on_and_how_hard_it_is() {
     let held = vec![CaseSummary {
         case_id: "dengue-npl-1".into(),
         archetype: "dengue_shock".into(),
+        patient_age: Some(34),
+        patient_sex: Some("female".into()),
         country: Some("NPL".into()),
         difficulty: "intern".into(),
         endemic: true,
