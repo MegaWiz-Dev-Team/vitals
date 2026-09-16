@@ -687,10 +687,24 @@ fn remake(cfg: &Config, tools: &dyn Tools, spec: &str, r: &mut Report) -> Result
 }
 
 /// Which manifest entry a patient on the board was given her face from.
+/// The full-size address of a portrait the board shows: a 256 px sibling names the full picture
+/// it was made from (same sha, `-256` off), and anything else is already full-size.
+fn full_of(url: &str) -> String {
+    match url.strip_suffix("-256.webp") {
+        Some(stem) => format!("{stem}.webp"),
+        None => url.to_string(),
+    }
+}
+
+/// The full-size face the board shows for her, whichever field carries it and whichever size:
+/// `portraits.stable`, else `portrait` — as the full address, never the thumbnail.
+fn board_stable(p: &crate::door::BoardPatient) -> Option<String> {
+    p.portraits.get("stable").or(p.portrait.as_ref()).map(|s| full_of(s))
+}
+
 fn entry_for(manifest: &Manifest, who: &Person, p: &crate::door::BoardPatient) -> Option<String> {
-    let stable = p.portraits.get("stable").or(p.portrait.as_ref());
-    if let Some(url) = stable {
-        if let Some((k, _)) = manifest.entry_with_stable(url) {
+    if let Some(url) = board_stable(p) {
+        if let Some((k, _)) = manifest.entry_with_stable(&url) {
             return Some(k.clone());
         }
     }
@@ -733,7 +747,10 @@ fn gaps(ward: &WardView, pool: &[Person], manifest: &Manifest, r: &mut Report) -
             continue;
         };
         let entry = &manifest.entries[&key];
-        let Some(stable) = p.portraits.get("stable").or(p.portrait.as_ref()).cloned().or_else(|| entry.portrait.get("stable").cloned()) else {
+        // The reference the other states are edited from has to be the full-size face: the
+        // board's `portrait` is the 256 px sibling when one exists (4920a43), and a face locked
+        // against a thumbnail would make every state after it softer than the first.
+        let Some(stable) = board_stable(p).or_else(|| entry.portrait.get("stable").cloned()) else {
             continue;
         };
         let has = |st: &str| p.portraits.contains_key(st);
