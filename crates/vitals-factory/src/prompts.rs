@@ -46,17 +46,19 @@ pub fn base(age: u16, sex: Sex, place: &str) -> String {
 
 /// The one question the gate asks of every face.
 ///
-/// Not the brief's wording, and here is why: asked "Is this a photorealistic photograph-style image
+/// Not the brief's wording, and here is why. Asked "Is this a photorealistic photograph-style image
 /// of one real-looking human patient with natural proportions — not a drawing, anime, doll, or 3D
-/// render? Answer yes or no.", gemini-3.1-flash-lite answered **No** to every face we have — the
-/// doll, and the six the founder had already looked at — because it read the question as "is this
-/// a real photograph?" and correctly recognised AI-generated skin (16 Sep 2026, calibrated on
-/// KOR-0@8, VNM-0@8, THA-0, IDN-1, MMR-1@16, PAK-0@57, PHL-0@69). Told that the picture is generated
-/// on purpose and asked about STYLE only, it says No to the doll and Yes to the six. That is the
-/// question the gate exists to ask.
-pub const PHOTOREAL: &str = "This picture is AI-generated on purpose; do not judge whether it is a real photo. Judge its \
-STYLE only: does it look like a photograph of a real person — natural human proportions, natural skin, natural eyes — \
-rather than a drawing, anime, cartoon, doll, or stylised 3D render? Answer yes or no, then one short sentence why.";
+/// render? Answer yes or no.", both judge models answered **No** to every face we have — the doll
+/// and the six the founder had already looked at — because they read it as "is this a real
+/// photograph?" and correctly recognised AI-generated skin. Told that the picture is generated on
+/// purpose and asked what it shows and in what style, they say No to the doll, No to anime, No to
+/// a picture with two children in it (the first remake of KOR-0@8 passed one before this clause
+/// existed), and Yes to the singles. Calibrated 16 Sep 2026 on 11 faces: gemini-2.5-flash 11/11,
+/// gemini-3.1-flash-lite 10/11 (one false refusal, KEN-1, for a garbled gown tag).
+pub const PHOTOREAL: &str = "This picture is AI-generated on purpose; do not judge whether it is a real photo. Judge only \
+what it shows and its STYLE: is it a photograph-style picture of exactly ONE person — one patient in the bed and nobody \
+else — with natural human proportions, natural skin and natural eyes, rather than a drawing, anime, cartoon, doll or \
+stylised 3D render? Answer yes or no, then one short sentence why.";
 
 /// What every state edit begins with: the same person, the same room.
 pub const KEEP: &str = "Edit this photo, keeping exactly the same person — same face, same hair, same skin, same age — \

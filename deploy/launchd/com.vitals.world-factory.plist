@@ -45,6 +45,8 @@
     <string>vitals-academy-dev</string>
     <key>VITALS_VERTEX_PROJECT</key>
     <string>vitals-academy</string>
+    <key>VITALS_JUDGE_MODEL</key>
+    <string>gemini-2.5-flash</string>
     <key>PATH</key>
     <string>/Users/mimir/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
   </dict>

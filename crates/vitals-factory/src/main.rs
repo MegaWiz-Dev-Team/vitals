@@ -13,7 +13,7 @@
 //! | `VITALS_VERTEX_PROJECT`  | `vitals-academy`                         | the image editor's project               |
 //! | `VITALS_PORTRAIT_BUCKET` | `vitals-world-portraits`                 | where faces are published                |
 //! | `VITALS_IMAGE_MODEL`     | `gemini-2.5-flash-image`                 | the state editor                         |
-//! | `VITALS_JUDGE_MODEL`     | `gemini-3.1-flash-lite`                  | the text model that judges each face     |
+//! | `VITALS_JUDGE_MODEL`     | `gemini-2.5-flash`                       | the model that judges each face (11/11 on the 16 Sep calibration; gemini-3.1-flash-lite was 10/11 and is the fallback when 2.5 retires) |
 //! | `FACTORY_SEED`           | the clock                                | the draw; set it to repeat a run         |
 //!
 //! `--dry-run` reads the ward and prints what a tick would do, fetching no secret, sending no
@@ -160,7 +160,7 @@ fn config(dry_run: bool) -> Result<Config, String> {
         vertex_project: env_or("VITALS_VERTEX_PROJECT", "vitals-academy"),
         bucket: env_or("VITALS_PORTRAIT_BUCKET", "vitals-world-portraits"),
         model: env_or("VITALS_IMAGE_MODEL", "gemini-2.5-flash-image"),
-        judge_model: env_or("VITALS_JUDGE_MODEL", "gemini-3.1-flash-lite"),
+        judge_model: env_or("VITALS_JUDGE_MODEL", "gemini-2.5-flash"),
         dry_run,
         seed,
         now: now(),

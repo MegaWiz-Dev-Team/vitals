@@ -63,7 +63,7 @@ fn config(dir: &Path, depth: usize, bases: usize) -> Config {
         vertex_project: "vitals-academy".into(),
         bucket: "vitals-world-portraits".into(),
         model: "gemini-2.5-flash-image".into(),
-        judge_model: "gemini-3.1-flash-lite".into(),
+        judge_model: "gemini-2.5-flash".into(),
         dry_run: false,
         seed: 11,
         now: 1_789_500_000,
@@ -404,10 +404,10 @@ fn a_face_is_a_photograph_or_it_is_not_a_face() {
     assert!(seeds[3] != seeds[4] && seeds[4] != seeds[5]);
     let judged = tools.judged.borrow();
     assert_eq!(judged.len(), 6, "every painted face was judged, none skipped");
-    assert!(judged.iter().all(|j| j.starts_with("gemini-3.1-flash-lite|")), "the text model, not the image model: {}", judged[0]);
+    assert!(judged.iter().all(|j| j.starts_with("gemini-2.5-flash|")), "the judge model from the config, not the image model: {}", judged[0]);
     // Not the brief's sentence: that one made the model judge provenance and refuse every face we
     // have. This one judges style — see prompts::PHOTOREAL for the calibration.
-    assert!(judged.iter().all(|j| j.contains("Judge its STYLE only") && j.contains("drawing, anime, cartoon, doll, or stylised 3D render") && j.contains("Answer yes or no")), "{}", judged[0]);
+    assert!(judged.iter().all(|j| j.contains("exactly ONE person") && j.contains("drawing, anime, cartoon, doll or stylised 3D render") && j.contains("Answer yes or no")), "{}", judged[0]);
     // Only the face that passed was uploaded and recorded.
     assert_eq!(tools.uploads.borrow().len(), 1, "one face passed, one was uploaded");
     let man = Manifest::load(&dir.join("portraits.json")).unwrap();
