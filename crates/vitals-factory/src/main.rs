@@ -9,7 +9,8 @@
 //! | `BASES_PER_TICK`         | 3                                        | faces made with mflux per tick           |
 //! | `VITALS_REPO`            | the checkout this binary was built from  | scenarios, persona files, pool, endemic  |
 //! | `VITALS_WORLD_DIR`       | `~/.vitals/world`                        | the manifest, the ledger, the faces      |
-//! | `VITALS_GCP_PROJECT`     | `vitals-academy`                         | Secret Manager and Vertex                |
+//! | `VITALS_GCP_PROJECT`     | *(required)*                             | the ward's project, where its `vitals-token` secret lives (`vitals-academy-dev` for staging, `vitals-academy` for production) |
+//! | `VITALS_VERTEX_PROJECT`  | `vitals-academy`                         | the image editor's project               |
 //! | `VITALS_PORTRAIT_BUCKET` | `vitals-world-portraits`                 | where faces are published                |
 //! | `VITALS_IMAGE_MODEL`     | `gemini-2.5-flash-image`                 | the state editor                         |
 //! | `FACTORY_SEED`           | the clock                                | the draw; set it to repeat a run         |
@@ -117,7 +118,13 @@ fn config(dry_run: bool) -> Result<Config, String> {
         bases_per_tick: env_num("BASES_PER_TICK", 3)? as usize,
         repo: default_repo(),
         world_dir,
-        project: env_or("VITALS_GCP_PROJECT", "vitals-academy"),
+        secret_project: std::env::var("VITALS_GCP_PROJECT").ok().filter(|v| !v.trim().is_empty()).ok_or_else(|| {
+            "VITALS_GCP_PROJECT is not set — the ward's own project, where its vitals-token secret lives \
+             (vitals-academy-dev for staging, vitals-academy for production); a token from the wrong project is a door \
+             that says unauthorised"
+                .to_string()
+        })?,
+        vertex_project: env_or("VITALS_VERTEX_PROJECT", "vitals-academy"),
         bucket: env_or("VITALS_PORTRAIT_BUCKET", "vitals-world-portraits"),
         model: env_or("VITALS_IMAGE_MODEL", "gemini-2.5-flash-image"),
         dry_run,

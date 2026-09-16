@@ -51,6 +51,11 @@ fn without_a_ward_the_binary_says_so_and_does_nothing() {
     // hand-typed line should not be an error.
     let once = Command::new(env!("CARGO_BIN_EXE_vitals-factory")).env_remove("WARD").args(["--once", "--dry-run"]).output().expect("runs");
     assert!(String::from_utf8_lossy(&once.stderr).contains("WARD"), "past the arguments, it is WARD that stops it");
+    // And the ward's project: a token read from the wrong project is a door that says unauthorised,
+    // which is what the first real tick against staging did, so there is no default.
+    let no_project = Command::new(env!("CARGO_BIN_EXE_vitals-factory")).env("WARD", "https://ward.test").env_remove("VITALS_GCP_PROJECT").arg("--dry-run").output().expect("runs");
+    assert!(!no_project.status.success());
+    assert!(String::from_utf8_lossy(&no_project.stderr).contains("VITALS_GCP_PROJECT"), "names the variable");
     let bad = Command::new(env!("CARGO_BIN_EXE_vitals-factory")).arg("--twice").output().expect("runs");
     assert_eq!(bad.status.code(), Some(2), "an argument it does not know is refused");
 }
@@ -84,6 +89,7 @@ fn a_dry_run_reads_a_real_socket_and_writes_nothing() {
         .env("WARD", one_shot_ward())
         .env("VITALS_REPO", repo_root())
         .env("VITALS_WORLD_DIR", &world)
+        .env("VITALS_GCP_PROJECT", "vitals-academy-dev")
         .env("QUEUE_DEPTH", "3")
         .env("FACTORY_SEED", "5")
         .arg("--dry-run")

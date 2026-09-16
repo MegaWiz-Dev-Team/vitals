@@ -43,8 +43,12 @@ pub struct Config {
     pub repo: PathBuf,
     /// `~/.vitals/world`: the manifest, the ledger, the faces.
     pub world_dir: PathBuf,
-    /// The GCP project the token and the image editor live in.
-    pub project: String,
+    /// The ward's own GCP project: where its `vitals-token` secret lives. Staging is
+    /// `vitals-academy-dev`, production `vitals-academy`, and a token read from the wrong one is
+    /// a door that says `unauthorised` — which is how this became two fields.
+    pub secret_project: String,
+    /// The project the image editor runs in (`vitals-academy`; the dev project has no Vertex).
+    pub vertex_project: String,
     pub bucket: String,
     pub model: String,
     pub dry_run: bool,
@@ -236,7 +240,7 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
     }
 
     // ── the token, once ──
-    let token = match tools.secret_token(&cfg.project) {
+    let token = match tools.secret_token(&cfg.secret_project) {
         Ok(t) => t,
         Err(e) => {
             r.fail(e);
@@ -540,7 +544,7 @@ fn make_states(cfg: &Config, tools: &dyn Tools, g: &Gap, manifest: &mut Manifest
     let mut out = BTreeMap::new();
     for st in &g.to_make {
         let prompt = prompts::state(st, g.who.sex).ok_or_else(|| format!("no prompt for {st}"))?;
-        let png = tools.edit(&cfg.project, &cfg.model, &base, mime, &prompt)?;
+        let png = tools.edit(&cfg.vertex_project, &cfg.model, &base, mime, &prompt)?;
         let webp = tools.webp(&png, WEBP_QUALITY)?;
         let url = publish(cfg, tools, &webp)?;
         manifest.record_state(&g.key, st, &url);

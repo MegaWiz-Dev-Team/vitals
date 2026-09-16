@@ -12,7 +12,11 @@
 
   No secret lives here. The ward's bearer token is read at run time from Secret Manager in
   VITALS_GCP_PROJECT (the vitals-token secret, latest version) and is never written or logged.
-  WARD is the dev ward until the founder opens production; change it here and re-bootstrap.
+  VITALS_GCP_PROJECT is the ward's own project: vitals-academy-dev for the staging ward below,
+  vitals-academy for production — the two carry different tokens. The image editor always runs
+  in vitals-academy (VITALS_VERTEX_PROJECT); the dev project has no Vertex.
+  WARD is the dev ward until the founder opens production; change WARD and VITALS_GCP_PROJECT
+  together and re-bootstrap.
   launchd starts no second copy while one tick is still running.
 -->
 <plist version="1.0">
@@ -38,6 +42,8 @@
     <key>VITALS_WORLD_DIR</key>
     <string>/Users/mimir/.vitals/world</string>
     <key>VITALS_GCP_PROJECT</key>
+    <string>vitals-academy-dev</string>
+    <key>VITALS_VERTEX_PROJECT</key>
     <string>vitals-academy</string>
     <key>PATH</key>
     <string>/Users/mimir/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
