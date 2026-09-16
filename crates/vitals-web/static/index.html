@@ -3485,6 +3485,9 @@ function disarmEnd(){
 }
 async function endRun(){
   if(!id||over)return;
+  /* On the ward the end of a shift is not the end of her stay: she is handed to whoever comes
+     next, and whether the stay ends is the engine's to decide and the chain's to record. */
+  if(WARD)return handOver();
   disarmEnd();
   $('#endrun').disabled=true;
   ev('note','·',PACK.ui.time_called||'time — the station ends');
@@ -5366,6 +5369,100 @@ meterState();
    they are wearing. It is one small fetch and everything downstream degrades to English if it
    never answers. */
 bootLang();
+
+/* ─── a shift on the ward ──────────────────────────────────────────────────────
+   The bay is one bay. Opened at /ward/<patient_id> it plays a stranger's patient
+   from the state the chain says she is in, and everything below this line is the
+   only difference: four transactions the browser signs, and a strip that says
+   whose shift this is.
+
+   The bar is built here rather than written into the markup because it exists
+   only on the ward host, and the Eternal entry's page should not carry a control
+   that never shows for it.
+
+   Why `id` is left unset until the head is taken: every control in this page
+   already guards on `id`, so a patient opened but not taken is a chart you can
+   read and not a patient you can treat. That is the honest state — you have not
+   taken the shift yet — and it needs no second flag to enforce. */
+const WARD=(location.pathname.match(/^\/ward\/(\d+)\/?$/)||[])[1]||null;
+let WARDSHIFT=null, WARDPENDING=null;
+
+/* prepare on the server → sign here → submit to the ward's own program. The Eternal
+   bay's chainDo is the same shape against a different program, and they stay apart
+   on purpose: one refactor between them is one refactor away from Eternal's anchors. */
+async function wardDo(path){
+  const me=await identity();
+  if(!me)return {error:'this browser has no Ed25519 — try Chrome, Safari 17+ or Firefox 129+'};
+  const r=await (await fetch(path+(path.includes('?')?'&':'?')+'player='+me.pub)).json();
+  if(r.error||!r.sign)return r;
+  return await (await fetch('/api/ward/submit?player='+me.pub+'&sig='+await sign(r.sign))).json();
+}
+function wardSay(html){ const b=$('#wardbar'); if(b)$('#wardsay').innerHTML=html; }
+function wardBar(){
+  if($('#wardbar'))return;
+  $('#game').insertAdjacentHTML('afterbegin',
+    '<div id="wardbar" style="display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;'+
+    'padding:.6rem .9rem;margin-bottom:.6rem;border:1px solid var(--rule,#d8ded9);'+
+    'border-radius:.5rem;background:rgba(15,110,92,.06)">'+
+    '<b id="wardwho">…</b><span id="wardsay" style="flex:1"></span>'+
+    '<button class="btn go" id="wardtake">take this shift</button>'+
+    '<a class="btn" id="wardback" href="/">the ward</a></div>');
+  $('#wardtake').onclick=takeShift;
+}
+async function openShift(){
+  await identity();
+  wardBar();
+  const me=await identity();
+  const r=await (await fetch('/api/new?patient='+WARD+(me?'&player='+me.pub:'')+langQ())).json();
+  if(r.error){ $('#wardwho').textContent='patient '+WARD; return wardSay(esc(r.error)); }
+  WARDPENDING=r.id; WARDSHIFT=r.ward;
+  $('#wardwho').textContent=(r.ward.name||('patient '+WARD))+' · '+(r.ward.country||'—');
+  wardSay('shift '+r.ward.shift+' of her stay · her chart is rebuilt from '+
+          r.ward.shifts_before+' anchored shift'+(r.ward.shifts_before===1?'':'s')+
+          ' — take the shift to treat her');
+  $('#lobby').classList.add('hide'); $('#game').classList.remove('hide');
+  paint(r.view);
+}
+async function takeShift(){
+  const b=$('#wardtake'); b.disabled=true;
+  wardSay('opening an account for this browser…');
+  const opened=await wardDo('/api/ward/open');
+  /* Already open is not a failure: a key that has played here before has an account, and the
+     program says so rather than making a second one. */
+  if(opened.error&&!/already/i.test(opened.error)) { b.disabled=false; return wardSay(esc(opened.error)); }
+  wardSay('taking the head…');
+  const took=await wardDo('/api/ward/take?id='+WARDPENDING);
+  if(took.refused){ b.disabled=false; return wardSay('<b>refused.</b> '+esc(took.refused)); }
+  if(took.error){ b.disabled=false; return wardSay(esc(took.error)); }
+  wardSay('declaring the shift before it is played…');
+  const said=await wardDo('/api/ward/declare?id='+WARDPENDING);
+  if(said.error&&!said.declared){ b.disabled=false; return wardSay(esc(said.error)); }
+  /* Now the bay is live: every control in the page guards on `id`. */
+  id=WARDPENDING; over=false; $('#endrun').disabled=false; $('#endrun').textContent='hand over';
+  b.style.display='none';
+  wardSay('the head is yours until you hand over. Her chart is the chain — what you do here is '+
+          'on it, under your key.');
+}
+async function handOver(){
+  if(!id)return;
+  disarmEnd(); $('#endrun').disabled=true;
+  wardSay('reducing your shift…');
+  const over_=await (await fetch('/api/handover?id='+id+asMe())).json();
+  if(over_.error)return wardSay(esc(over_.error));
+  wardSay('anchoring '+over_.shift.beats+' beat'+(over_.shift.beats===1?'':'s')+' onto her chain…');
+  const a=await wardDo('/api/ward/anchor?id='+id);
+  if(a.refused){
+    /* The refusal is the mechanic, and it is shown in the words the server chose — a person at a
+       bed cannot read a program error code. Their work is not lost: it is on their tape. */
+    return wardSay('<b>refused.</b> '+esc(a.refused)+
+                   ' <a href="/ward/'+WARD+'">open her again</a>');
+  }
+  if(a.error)return wardSay(esc(a.error));
+  wardSay('<b>handed over.</b> her chain is '+a.shifts+' shift'+(a.shifts===1?'':'s')+' long and '+
+          'she is '+esc((a.state||'').replace('_',' '))+'. <a href="/">back to the ward</a>');
+}
+const esc=t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+if(WARD) addEventListener('load',openShift);
 
 refreshRecord();
 if(location.hash.startsWith('#play')){

@@ -1909,61 +1909,6 @@ fn ward_now(held: &WardView, store: &store::Store) -> serde_json::Value {
     }
 }
 
-/// One patient's page: what the chain says about her, and what cannot be done here yet.
-///
-/// Deliberately plain, and deliberately not a bay. The shift itself — take the head, play, anchor
-/// — is week 2, and a page that looked like a bay and did nothing would be the worst version of
-/// this. Every field shown is from `/api/ward`, so anyone can check the page against the endpoint
-/// and the endpoint against the chain.
-fn ward_patient_page(p: &serde_json::Value) -> String {
-    let esc = |v: &serde_json::Value| match v.as_str() {
-        Some(s) => s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;"),
-        None => v.to_string(),
-    };
-    let field = |label: &str, v: &serde_json::Value| {
-        if v.is_null() {
-            String::new()
-        } else {
-            format!("<tr><th>{label}</th><td>{}</td></tr>", esc(v))
-        }
-    };
-    let name = p["name"].as_str().map(str::to_string)
-        .unwrap_or_else(|| format!("Patient {}", p["patient_id"]));
-    format!(
-        "<!doctype html><meta charset=utf-8><title>{name} — Vitals World</title>\
-         <meta name=viewport content='width=device-width,initial-scale=1'>\
-         <style>body{{font:16px/1.6 ui-sans-serif,system-ui,sans-serif;max-width:34rem;\
-         margin:4rem auto;padding:0 1.2rem;color:#16302b;background:#fbfaf7}}\
-         h1{{font-size:1.5rem;margin:0 0 .2rem}}a{{color:#0f6e5c}}\
-         table{{border-collapse:collapse;margin:1.4rem 0;width:100%}}\
-         th{{text-align:left;font-weight:600;color:#5d6f6d;padding:.35rem 1rem .35rem 0;\
-         white-space:nowrap;vertical-align:top}}td{{padding:.35rem 0}}\
-         p.note{{color:#5d6f6d}}</style>\
-         <h1>{name}</h1><p class=note>Her chart is the chain. Everything below is read from it.</p>\
-         <table>{id}{state}{bed}{shifts}{country}{age}{case}{difficulty}{since}</table>\
-         <p>Taking a shift opens in week 2 of the sprint. Until then this page shows what anyone \
-         can read for themselves at <a href=/api/ward>/api/ward</a>.</p>\
-         <p><a href=/>← the ward</a></p>",
-        name = esc(&serde_json::Value::String(name.clone())),
-        id = field("patient", &p["patient_id"]),
-        // The endpoint's words are for a renderer; this page is read by a person.
-        state = field("state", &serde_json::json!(match p["state"].as_str() {
-            Some("on_ward") => "on the ward",
-            Some("on_shift") => "on shift now",
-            Some("went_home") => "went home",
-            Some("died") => "died",
-            other => other.unwrap_or("unknown"),
-        })),
-        bed = field("bed", &p["bed"]),
-        shifts = field("shifts anchored", &p["shifts"]),
-        country = field("country", &p["country"]),
-        age = field("age", &p["age"]),
-        case = field("case", &p["case"]),
-        difficulty = field("level", &p["difficulty"]),
-        since = field("on shift since", &p["on_shift_since"]),
-    )
-}
-
 /// No such patient, or no readable chain — said in a sentence rather than as a status code alone.
 fn ward_page_missing(why: &str) -> String {
     format!(
@@ -3387,20 +3332,17 @@ fn main() {
             // her opens in week 2; until then this answers with what the chain says about her,
             // which is more than a 404 and is true today.
             (Method::Get, p) if ward_mode() && p.starts_with("/ward/") => {
+                // Her page is **the bay** (producer's ruling, 16 ก.ย.): one page, one engine, one
+                // tape, with a start-state parameter. The page reads the id out of its own path,
+                // rebuilds her from the chain and shows a strip saying whose shift this is.
+                //
+                // Every refusal a patient can carry — she went home, no pack describes her, the
+                // chain cannot be read — arrives through `/api/new` and is shown on that strip, so
+                // there is one place a stranger reads bad news rather than two pages that disagree
+                // about which of them is the ward.
                 let body = match ward::patient_id_in_path(p) {
+                    Some(_) => PAGE.replace(BUILD_STAMP, BUILD),
                     None => ward_page_missing("that is not a patient id"),
-                    Some(id) => {
-                        let v = ward_now(&ward_view, &store);
-                        match v["patients"].as_array().and_then(|list| {
-                            list.iter().find(|q| q["patient_id"] == id).cloned()
-                        }) {
-                            Some(who) => ward_patient_page(&who),
-                            None if v["readable"] == false => ward_page_missing(
-                                v["why"].as_str().unwrap_or("the chain could not be read"),
-                            ),
-                            None => ward_page_missing("no patient by that number has been admitted"),
-                        }
-                    }
                 };
                 let _ = req.respond(html(&body));
                 continue;
