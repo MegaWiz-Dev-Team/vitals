@@ -165,6 +165,9 @@ struct FakeTools {
     /// Scripted answers to the photorealism question; empty means "yes".
     verdicts: RefCell<VecDeque<bool>>,
     judged: RefCell<Vec<String>>,
+    /// Scripted answers to the age question; empty means "the age the prompt asked for".
+    ages: RefCell<VecDeque<String>>,
+    asked: RefCell<Vec<String>>,
     edits: RefCell<Vec<String>>,
     uploads: RefCell<Vec<String>>,
     fetches: RefCell<Vec<String>>,
@@ -189,6 +192,16 @@ impl Tools for FakeTools {
     fn edit(&self, _project: &str, _model: &str, base: &[u8], _mime: &str, prompt: &str) -> Result<Vec<u8>, String> {
         self.edits.borrow_mut().push(prompt.to_string());
         Ok(format!("PNG-EDIT:{prompt}:{}", base.len()).into_bytes())
+    }
+    fn ask(&self, _project: &str, model: &str, image: &[u8], _mime: &str, question: &str) -> Result<String, String> {
+        self.asked.borrow_mut().push(format!("{model}|{question}"));
+        if let Some(a) = self.ages.borrow_mut().pop_front() {
+            return Ok(a);
+        }
+        // The fake's "image" is the prompt it was painted from, so the age asked for is in it.
+        let text = String::from_utf8_lossy(image).to_string();
+        let aged = text.split("aged ").nth(1).and_then(|r| r.split(' ').next()).unwrap_or("30");
+        Ok(aged.to_string())
     }
     fn webp(&self, png: &[u8], quality: u8) -> Result<Vec<u8>, String> {
         Ok(format!("WEBP{quality}:{}", String::from_utf8_lossy(png)).into_bytes())
@@ -465,8 +478,12 @@ fn a_childs_face_is_asked_for_as_a_photograph_of_a_child() {
     assert!(ages.iter().any(|a| *a < 16) && ages.iter().any(|a| *a >= 16), "the draw made both a child and an adult: {ages:?}");
     for (prompt, _) in paints.iter() {
         let age: u16 = prompt.split("-year-old").next().unwrap().rsplit(' ').next().unwrap().parse().unwrap();
-        let child_words = prompt.starts_with("Documentary photograph, 35mm film") && prompt.contains("natural child proportions");
+        let child_words = prompt.starts_with("Documentary photograph, 35mm film") && prompt.contains(&format!("aged {age} from"));
         assert_eq!(child_words, age < 16, "{age}: {prompt}");
+        if age < 16 {
+            let word = if age < 6 { "little" } else if age < 13 { "school" } else { "teenage" };
+            assert!(prompt.contains(word), "{age}: a {word} child: {prompt}");
+        }
         assert!(!prompt.contains("anime") && !prompt.contains("doll") && !prompt.contains("not a"), "no negatives, ever: {prompt}");
         assert!(prompt.contains("no text, no logos, no flags"), "{prompt}");
     }
@@ -570,4 +587,42 @@ fn a_remade_face_replaces_the_one_on_her_waiting_pack_once() {
     assert_eq!(door.replaces.borrow().len(), 2);
     assert!(r.lines.iter().any(|l| l.contains("in a bed already") || l.contains("never replaced")), "{:?}", r.lines);
     assert_eq!(Ledger::load(&dir.join("factory-ledger.json")).unwrap().sent[&id].stable.as_deref(), Some(new.as_str()), "not recorded as replaced");
+}
+
+/// A child's face is also asked how old it looks, and only a face inside the door's band for the
+/// drawn age passes — the painter renders "eight" as four unless told otherwise, and the door's
+/// band at eight is 6–10. A refusal on age is a new seed against the same three tries. Adults are
+/// never asked.
+#[test]
+fn a_childs_face_must_look_her_age_and_an_adults_is_not_asked() {
+    let dir = world("age");
+    let pool = read_pool(POOL).unwrap();
+    seed_manifest(&dir, &pool);
+    let tools = FakeTools::default();
+    let cfg = config(&dir, 20, 2);
+
+    tools.ages.borrow_mut().extend(["4".to_string(), "She looks about 3.".to_string(), "7".to_string()]);
+    let (url, r) = remake_face(&cfg, &tools, "KOR-0@8").expect("the third face looks her age");
+    assert!(url.ends_with(".webp"));
+    assert_eq!(tools.seeds.borrow().len(), 3, "two refused on age, the third passed");
+    assert_eq!(tools.judged.borrow().len(), 3, "the style question first, every time");
+    assert_eq!(tools.asked.borrow().len(), 3, "then the age question, for a child");
+    assert!(tools.asked.borrow().iter().all(|a| a.ends_with("|About how old does this child look? Answer with one number.")), "{:?}", tools.asked.borrow());
+    let text = r.lines.join("\n");
+    assert!(text.contains("looks 4 (band 6\u{2013}10) — a new seed"), "{text}");
+    assert!(text.contains("looks 3 (band 6\u{2013}10) — a new seed"), "a number inside a sentence is still a number: {text}");
+    assert!(text.contains("looks 7 (band 6\u{2013}10)"), "{text}");
+    assert_eq!(tools.uploads.borrow().len(), 1);
+
+    // Three faces that look wrong: given up, and nothing uploaded.
+    tools.ages.borrow_mut().extend(["3".to_string(), "12".to_string(), "4".to_string()]);
+    let (e, rep) = *remake_face(&cfg, &tools, "VNM-0@8").expect_err("three refusals on age");
+    assert!(e.contains("Nguyen Thi Lan") && e.contains("three faces"), "{e}");
+    assert_eq!(rep.lines.iter().filter(|l| l.contains("— a new seed")).count(), 3);
+    assert_eq!(tools.uploads.borrow().len(), 1, "nothing more uploaded");
+
+    // An adult: the style question only.
+    let asked_before = tools.asked.borrow().len();
+    remake_face(&cfg, &tools, "PAK-0@57").expect("an adult passes on style alone");
+    assert_eq!(tools.asked.borrow().len(), asked_before, "adults are not asked their age");
 }
