@@ -121,3 +121,21 @@ fn an_anchored_leaf_with_no_tape_is_repaired_from_a_session_that_reduces_to_it()
     assert!(recover_tape(&other, 1, &anchored, &[(sce, short)]).is_none(),
             "a tape that reduces to a different leaf is a different shift");
 }
+
+/// **A zero run hash is not a shift.**
+///
+/// `/api/shift/000…0` resolved to a real-looking receipt on staging: a proof-tool leaf sat in the
+/// shift cache with an all-zero `run_hash`, and a lookup by hash found it. A hash of nothing is
+/// what an uninitialised record deserialises to, never what a tape hashes to — so it is refused at
+/// the door rather than reasoned about downstream, and the cached row that produced it is skipped
+/// wherever it appears.
+#[test]
+fn a_hash_of_nothing_names_no_shift() {
+    use vitals_web::ward_chain::is_shift_hash;
+    assert!(!is_shift_hash(&"0".repeat(64)), "all zeroes is an empty record, not a shift");
+    assert!(!is_shift_hash(""), "nor is nothing at all");
+    assert!(!is_shift_hash(&"a".repeat(63)), "nor a hash of the wrong length");
+    assert!(!is_shift_hash(&format!("{}z", "a".repeat(63))), "nor one that is not hex");
+    assert!(is_shift_hash(&format!("{}1", "0".repeat(63))), "but one real byte makes it a hash");
+    assert!(is_shift_hash(&"a".repeat(64)));
+}
