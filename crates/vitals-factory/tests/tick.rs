@@ -383,15 +383,15 @@ fn the_faces_of_one_patient_are_completed_per_tick_and_known_ones_are_not_made_a
     // Ploy: filled from the manifest, nothing made.
     let fills = door.fills.borrow();
     let ploy_fill = fills.iter().find(|(id, _)| *id == 1789488342).expect("Ploy's set was pushed");
-    assert_eq!(ploy_fill.1.len(), 5);
+    assert_eq!(ploy_fill.1.len(), 6, "five states from the file, and the sibling of the stable the board shows");
     assert_eq!(ploy_fill.1["critical"], sha_url(b"THA-0/critical"));
     // One of the other two: five states made from her base, uploaded, recorded, pushed.
     let edits = tools.edits.borrow();
     assert_eq!(edits.len(), 5, "five states for one patient, not ten: {edits:?}");
     assert!(edits.iter().any(|e| e.contains("cardiac arrest")) && edits.iter().all(|e| e.contains("same person")));
     assert!(edits.iter().all(|e| !e.contains("dead")), "no picture of a dead patient is made");
-    assert_eq!(tools.uploads.borrow().len(), 10, "five states and their five siblings");
-    let made_for: Vec<u64> = fills.iter().filter(|(id, _)| *id != 1789488342).map(|(id, _)| *id).collect();
+    assert_eq!(tools.uploads.borrow().len(), 13, "five states and their five siblings, and the siblings of the three stables the board shows");
+    let made_for: Vec<u64> = fills.iter().filter(|(id, _)| *id != 1789488342 && fills.iter().any(|(i2, set)| i2 == id && set.keys().any(|k| !k.ends_with("_256")))).map(|(id, _)| *id).collect();
     assert_eq!(made_for.len(), 1, "one patient per tick: {made_for:?}");
     let man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
     let done = if made_for[0] == 1789490620 { "IDN-1" } else { "IND-0" };
@@ -399,7 +399,7 @@ fn the_faces_of_one_patient_are_completed_per_tick_and_known_ones_are_not_made_a
     let waiting = if done == "IDN-1" { "IND-0" } else { "IDN-1" };
     assert_eq!(man2.entries[waiting].portrait.len(), 1, "the other waits for the next tick");
     assert!(r.lines.iter().any(|l| l.contains("added")), "{:?}", r.lines);
-    assert_eq!(tools.fetches.borrow().len(), 1, "her base was fetched once");
+    assert!(tools.fetches.borrow().iter().all(|u| !u.ends_with("-256.webp")), "only full pictures are ever fetched: {:?}", tools.fetches.borrow());
     drop(fills);
     drop(edits);
 
@@ -680,11 +680,11 @@ fn states_for_a_face_the_board_kept_are_pushed_and_not_filed_under_the_new_one()
     let tools = FakeTools::default();
     let r = tick(&config(&dir, 0, 0), &door, &tools);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
-    assert_eq!(tools.fetches.borrow().as_slice(), std::slice::from_ref(&on_board), "edited from the face the board shows");
+    assert!(tools.fetches.borrow().iter().all(|u| u == &on_board), "edited from the face the board shows: {:?}", tools.fetches.borrow());
     assert_eq!(tools.edits.borrow().len(), 5);
     let fills = door.fills.borrow();
     assert_eq!(fills.len(), 1);
-    assert_eq!(fills[0].1.len(), 10, "pushed to her patient door, each state with its sibling");
+    assert_eq!(fills[0].1.len(), 11, "pushed to her patient door, each state with its sibling, and the board's stable's sibling");
     let man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
     assert_eq!(man2.entries["KOR-0@8"].portrait.len(), 1, "the new face's entry holds no states of the old face");
     assert!(r.lines.iter().any(|l| l.contains("pushed, not recorded")), "{:?}", r.lines);
@@ -712,7 +712,7 @@ fn a_state_the_editor_refuses_costs_only_that_state() {
     assert_eq!(r.states_made, 3, "recovered, improving and critical were made");
     let fills = door.fills.borrow();
     assert_eq!(fills.len(), 1, "and pushed");
-    assert_eq!(fills[0].1.len(), 6, "each with its 256 px sibling");
+    assert_eq!(fills[0].1.len(), 7, "each with its 256 px sibling, and the board's stable gets its sibling too");
     assert!(!fills[0].1.contains_key("deteriorating"));
     let man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
     assert_eq!(man2.entries["KOR-0"].portrait.len(), 4, "the three made are on file with the base; the refused two are not");
@@ -874,7 +874,8 @@ fn the_siblings_of_faces_already_on_file_are_made_once_and_carried_to_the_ward()
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     let fills = door.fills.borrow();
     let ploy_fill = fills.iter().find(|(pid, _)| *pid == 1789488342).expect("Ploy's siblings were pushed");
-    assert_eq!(ploy_fill.1.keys().cloned().collect::<Vec<_>>(), vec!["critical_256", "improving_256", "stable_256"], "the siblings she has on file, and nothing the file lacks");
+    assert_eq!(ploy_fill.1.keys().cloned().collect::<Vec<_>>(), vec!["arrest_256", "critical_256", "deteriorating_256", "improving_256", "recovered_256", "stable_256"],
+        "the siblings she has on file, and the rest made from the pictures the board shows");
     assert_eq!(door.queue.borrow()[&id].portrait.get("stable_256").map(String::as_str), Some(sibling(&man2.entries["THA-1"].portrait["stable"]).as_str()), "Anan's waiting pack carries his");
     assert!(Ledger::load(&dir.join("factory-ledger.json")).unwrap().sent[&id].variants_sent, "and the ledger says so, so it is not sent again");
 }

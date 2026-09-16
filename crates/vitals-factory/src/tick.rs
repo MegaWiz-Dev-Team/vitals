@@ -687,6 +687,11 @@ fn remake(cfg: &Config, tools: &dyn Tools, spec: &str, r: &mut Report) -> Result
 }
 
 /// Which manifest entry a patient on the board was given her face from.
+/// Is this a full-size portrait address (not a 256 px sibling)?
+fn is_full_url(url: &str) -> bool {
+    !url.ends_with("-256.webp")
+}
+
 /// The full-size address of a portrait the board shows: a 256 px sibling names the full picture
 /// it was made from (same sha, `-256` off), and anything else is already full-size.
 fn full_of(url: &str) -> String {
@@ -722,6 +727,9 @@ struct Gap {
     from_manifest: BTreeMap<String, String>,
     /// Not on file: make these.
     to_make: Vec<&'static str>,
+    /// Pictures the board shows (full size) that have no 256 px sibling on the board or on file:
+    /// made from the board's own picture, under its sha. No model, no filing.
+    siblings_from_board: Vec<(String, String)>,
     /// Her age on the board, for the choice of wording: a child's states are asked for gently.
     age: Option<u16>,
     /// Whether the manifest entry under `key` holds the very face the board shows. When a face was
@@ -781,10 +789,23 @@ fn gaps(ward: &WardView, pool: &[Person], manifest: &Manifest, r: &mut Report) -
                 }
             }
         }
-        if from_manifest.is_empty() && to_make.is_empty() {
+        // And of every full-size picture the board shows that neither the board nor the file has
+        // a sibling for — states edited from a face the board kept, pushed and never filed.
+        let mut siblings_from_board = Vec::new();
+        for (st, url) in &p.portraits {
+            if st.ends_with("_256") || !is_full_url(url) {
+                continue;
+            }
+            let k = format!("{st}_256");
+            if p.portraits.contains_key(&k) || from_manifest.contains_key(&k) {
+                continue;
+            }
+            siblings_from_board.push((st.clone(), url.clone()));
+        }
+        if from_manifest.is_empty() && to_make.is_empty() && siblings_from_board.is_empty() {
             continue;
         }
-        out.push(Gap { patient_id: p.patient_id, who: who.clone(), key, stable, from_manifest, to_make, age: p.age, record });
+        out.push(Gap { patient_id: p.patient_id, who: who.clone(), key, stable, from_manifest, to_make, siblings_from_board, age: p.age, record });
     }
     out
 }
@@ -812,6 +833,20 @@ fn complete_faces(cfg: &Config, door: &dyn Door, tools: &dyn Tools, token: &Toke
     let found = gaps(ward, pool, manifest, r);
     for g in found {
         let mut set = g.from_manifest.clone();
+        // Siblings of the board's own pictures: fetched, resized, uploaded under their sha. No
+        // model is called, so this is not the one-patient-per-tick step.
+        for (st, url) in &g.siblings_from_board {
+            let full = match sha_of(url).filter(|sha| cfg.face_path(sha).exists()) {
+                Some(sha) => std::fs::read(cfg.face_path(sha)).map_err(|e| e.to_string()),
+                None => tools.fetch(url),
+            };
+            match full.and_then(|bytes| sha_of(url).ok_or_else(|| format!("{url} is not a portrait address")).and_then(|sha| publish_sibling(cfg, tools, sha, &bytes))) {
+                Ok(small) => {
+                    set.insert(format!("{st}_256"), small);
+                }
+                Err(e) => r.fail(format!("patient {} ({}): the sibling of {st} could not be made: {e}", g.patient_id, g.who.name)),
+            }
+        }
         if !g.to_make.is_empty() {
             if made_one {
                 r.say(format!("patient {} ({}) still lacks {:?}; next tick", g.patient_id, g.who.name, g.to_make));
