@@ -1987,6 +1987,10 @@ fn compose(page: &str) -> String {
 ///
 /// Done here rather than by a class the script toggles, because a page a visitor is handed already
 /// right has nothing to re-render, nothing to flash, and nothing to get wrong on a slow script.
+///
+/// **A comment that spells out a marker becomes a copy of what the marker stands for** — the one
+/// above `<!--BRAND-->` in `world/shift.html` did, and the page carried three marks until it was
+/// reworded. Name the marker in the markup and describe it in the prose.
 fn compose_for(page: &str, ward: bool) -> String {
     let surface = if ward { SURFACE.replace(ETERNAL_BRAND, WORLD_BRAND) } else { SURFACE.to_string() };
     page.replace("<!--BAY-->", &surface)

@@ -29,7 +29,8 @@ on are unchanged and all three are now answered by the ward: the episode gate st
 ([UNLOCK.md](UNLOCK.md): `required_badge` is designed, not built) — the shift gate moves it on chain;
 the Case Registry is unbuilt because "who pays" was unanswered — the ward answers "who plays" first
 and honestly defers the rest; and 60 of 100 rubric points are an LLM's word ([RISKS.md](RISKS.md) §3)
-— the shift receipt shows the deterministic 40 and the judged 60 as two numbers, never one.
+— the shift receipt shows the deterministic 40 alone, and says in words why there is no second
+number beside it (ruling 3 below, 16 ก.ย.).
 
 ## The ward
 
@@ -143,6 +144,29 @@ we authored a new disease course this month.
    > — the call the server makes — and asserts both ends of that range, so a case authored to
    > empty a bed faster than a stranger can reach it fails a test rather than surprising the
    > board.
+
+3. **The judged sixty, 16 ก.ย. — put to the founder, not built.** He asked for the model-judged 60
+   on every shift receipt, computed at hand-over over that shift's own tape by "the same judge path
+   the bell uses", shown apart from the deterministic 40 and never summed with it.
+
+   > **There is no judge path in this repository, and that is a decision somebody already made.**
+   > The twelve rubrics say it in their own status line — *"llm_judge dimensions dropped (not
+   > deterministic — feedback only, never points)"* — `record_for` writes `judged_score: 0` and
+   > `judged_max: 0` on every record, and nothing anywhere computes a judged number. The bell's
+   > mark sheet is the deterministic half alone.
+   >
+   > So building this is not wiring up an existing path: it is a model call, a prompt, a rubric
+   > mapping and a rule for what happens when two runs of the same tape disagree — and it would be
+   > the first number on this ward that a stranger with the tape and the chain could not re-derive.
+   > That is the property the whole thing is being judged on.
+   >
+   > **The receipt therefore keeps saying what it says today**: a judged mark belongs to a finished
+   > case, this is one shift in the middle of a stay, and a number that cannot mean what a reader
+   > assumes is worse than no number. If the founder still wants it after the Eternal filing, it is
+   > built after 26 Sep as **feedback shown apart from the 40**, with its own stated disagreement
+   > rule, and never as points on a record.
+   >
+   > Pending the founder. Producer's position, 16 ก.ย.
 
 3. **A patient is a chain, the program holds the head.** A `Patient` account with a head; a shift
    commits against the current head (commit–reveal as today); the reveal appends and moves the head;
@@ -445,8 +469,9 @@ anything.
       shift's own page: one leaf, one player, one declaration, one shift. Founder's standing rule,
       root cause over workaround.
 - [ ] Shift receipt at a QR: the browser re-derives that shift from the tape and the chain, shows
-      the deterministic 40 and the judged 60 as two numbers, and offers **download every tape of
-      this patient** so a stranger can mirror her and check us without asking.
+      the deterministic 40 — and no judged number, for the reasons under ruling 3 — and offers
+      **download every tape of this patient** so a stranger can mirror the whole stay and check us
+      without asking.
 - [ ] **The patient factory on the mini** (ruling 10): packs — case + persona + portrait — pushed
       to `POST /api/ward/queue` behind `VITALS_TOKEN`, content-addressed so a pack is never queued
       twice, queue kept at least 20 deep, launchd like the other `com.asgard.*` jobs. The dev
