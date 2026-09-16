@@ -117,32 +117,32 @@ pub const SLOT_SECONDS: f64 = 0.4;
 /// turn over slowly enough that the queue is not eaten by time simply passing. An hour away costs
 /// her a simulated minute.
 ///
-/// With [`IDLE_CAP_SIM_SECONDS`] at two simulated minutes, this ratio governs the first two real
-/// hours of a gap; past that the cap has taken over and every longer gap looks the same.
+/// Nothing bounds it. A gap is worth exactly what it lasted, so ten real hours is ten simulated
+/// minutes and a long weekend is seventy-two — past the arrest of most of the catalogue, which is
+/// the ruling and not a side effect of it (see the mortality table in docs/CWF_PLAN.md).
 ///
 /// **A design choice, not a physical constant.** The founder can move it; the number is here, in
 /// one place, so moving it is one edit and every browser still derives the same patient.
 pub const IDLE_SIM_PER_REAL: f64 = 1.0 / 60.0;
 
-/// The most simulated time one gap may add: **two simulated minutes**, however long the real gap.
-///
-/// Set below the fastest untreated arrest in the catalogue, and that is the whole design rather
-/// than a round number: measured 16 ก.ย., `ep5-the-night-the-stars-fell` arrests at **186 s** left
-/// alone from the start, and it is the quickest of the sixteen. Under that number a gap can only
-/// ever make her worse — **the ward does not kill patients nobody visited.**
-///
-/// Which matters because of what the record is for. Death only inside a shift means every death
-/// on this ward is attributable to what a key did, or failed to do, while holding her; a patient
-/// who died of a gap nobody chose would carry harm on nobody's record at all, and "the log says
-/// who and when" would be a sentence about the easy half.
-///
-/// `vitals-web`'s `no_case_in_the_catalogue_dies_of_the_idle_clock_alone` walks all sixteen cases
-/// against this constant, so a new case that arrests faster than the cap fails a test rather than
-/// quietly making this comment false.
-///
-/// It also bounds the gap itself: a patient abandoned over a long weekend is where a patient
-/// abandoned for twenty minutes is, so nothing about her depends on how long we were away.
-pub const IDLE_CAP_SIM_SECONDS: f64 = 120.0;
+// There is no cap, and there was one until 16 ก.ย. — the history is the design.
+//
+// It stood at two simulated minutes, set below the fastest untreated arrest in the catalogue
+// (`ep5-the-night-the-stars-fell`, 186 s left alone from the start) so that a gap could only ever
+// make a patient worse. The argument was about the record: death only inside a shift means every
+// death on this ward is attributable to what a key did, or failed to do, while holding her.
+//
+// The founder removed it the same day, and the reason is about the ward: a place where being
+// abandoned is survivable is not one. A patient nobody visits deteriorates as the engine says and
+// can arrest and die unattended.
+//
+// What replaces the cap is not a constant but a duty. The ward's ticker — never a stranger —
+// replays idle time for every open bed each minute and, when the engine reaches death, anchors a
+// closing shift with an empty tape and the idle span, so the chain says *died, nobody on shift*
+// and the next stranger never opens a corpse believing she is alive.
+//
+// `vitals-web`'s `an_unattended_patient_dies_when_the_engine_says_she_does` walks all sixteen
+// cases and holds both ends of the published range.
 
 /// Simulated seconds to advance for a gap of `slots` between two shifts.
 ///
@@ -150,7 +150,7 @@ pub const IDLE_CAP_SIM_SECONDS: f64 = 120.0;
 /// off the chain computes the same idle time we did, which is the whole reason the gap is measured
 /// in slots.
 pub fn idle_seconds(slots: u64) -> f64 {
-    ((slots as f64) * SLOT_SECONDS * IDLE_SIM_PER_REAL).min(IDLE_CAP_SIM_SECONDS)
+    (slots as f64) * SLOT_SECONDS * IDLE_SIM_PER_REAL
 }
 
 /// Let `seconds` of simulated time pass with nobody in the room.
@@ -163,10 +163,10 @@ pub fn idle_seconds(slots: u64) -> f64 {
 /// her at 518 s. Two physiologies, one for time somebody watched and one for time nobody did, and
 /// every promise on the ward rests on there being only one.
 ///
-/// Mechanism, not policy: how much time passes is [`idle_seconds`] and the cap above it. This is
-/// public so the grain rule can be tested at its own level, whatever the cap is set to — under
-/// today's cap of two simulated minutes no catalogue case tells the coarse version from this one,
-/// so a test that went through [`shift`] would pass either way and guard nothing.
+/// Mechanism, not policy: how much time passes is [`idle_seconds`]. This is public so the grain
+/// rule can be tested at its own level and stay pinned to something no constant can move — the
+/// ratio and the cap were both changed in a single day, and "there is one physiology" has to
+/// survive that.
 pub fn pass_idle(st: &mut SceState, seconds: f64) {
     let grain = st.tick_seconds().max(f64::MIN_POSITIVE);
     let mut left = seconds;
