@@ -743,6 +743,11 @@ fn policy() -> serde_json::Value {
                                played rather than a number we choose. Read it off the census.",
         "draw": "uniformly from the catalogue, skipping any case already on the ward, so no \
                  two beds hold the same case at once",
+        "where_they_come_from": "admissions are weighted by each country's people per doctor \
+                                 (World Bank/WHO, latest year), so a country with twice the \
+                                 shortage sends twice the patients. The weights and their source \
+                                 are published by the factory: the ward does not choose countries, \
+                                 it admits what the queue holds",
         "stay": format!("a stay is {STAY_CASES} cases, joined mechanically — the state one case \
                          ends in is the state the next begins from — so one patient spans at \
                          least {STAY_CASES} shifts and no case is authored for the ward"),

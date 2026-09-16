@@ -161,6 +161,13 @@ we authored a new disease course this month.
    morning: nobody could take a shift on a patient with no case, so nobody could discharge them, so
    fourteen packs waited behind them for ever.
 
+   **The ward's patients follow the world's need** (founder, 16 ก.ย.). The factory draws countries
+   weighted by each country's people per doctor (World Bank/WHO, latest year), floor and cap
+   included, so a country with twice the shortage sends twice the patients. **The ward does no
+   arithmetic about countries**: it admits what the queue holds, and `/api/ward`'s policy says who
+   does and where the weights are published. That separation is the point — the board can be
+   checked against the factory's own numbers rather than taking either's word.
+
    **Admission has one path: the ticker, from a queued pack.** The server exposes no raw admit and
    the proof tools go through the queue like everybody else. **On production the door opens only
    once the queue is full**, so the case above cannot arise there.

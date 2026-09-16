@@ -300,3 +300,27 @@ console.log('globe_logic: ok');
   assert.equal(stateOf({ state: "something-new" }), "on_ward");
 }
 
+// ── a patient the ward cannot describe is not on the board ────────────────────────────────────
+// The founder opened staging, saw three chain-only test patients in the tray offering "take a
+// shift", and called them dummies. He is right: they are on the chain and the ward has no case for
+// them, so a stranger who clicks one gets a refusal and a product that wasted their time.
+//
+// They stay in /api/ward — chain truth, anyone can read it, with the sentence saying what they are
+// — and they appear nowhere a stranger looks. `onBoard` is the one place that decides, so nothing
+// downstream can put them back: not the counts, not the tray, not the panel, not the rail.
+{
+  const packed = { patient_id: 1, name: "Anita Shrestha", country: "NPL", bed: 1, state: "on_ward" };
+  const adrift = { patient_id: 2, name: null, country: null, bed: null, state: "off_ward" };
+  const gone = { patient_id: 3, name: "Fon", country: "THA", bed: null, state: "went_home" };
+
+  const board = onBoard([packed, adrift, gone]);
+  assert.deepEqual(board.map(p => p.patient_id), [1, 3],
+    "a patient the ward cannot describe is not on the board at all — no row, no badge, no count");
+
+  // And the counts the globe lights from never see her either, whatever her country said.
+  const withCountry = { ...adrift, country: "NPL" };
+  const counts = countryCounts(onBoard([packed, withCountry]), null);
+  assert.equal(counts.byId[countryId("NPL")], 1,
+    "one patient in Nepal, not two: the chain-only one is not a patient anybody can take");
+}
+
