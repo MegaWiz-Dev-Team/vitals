@@ -153,3 +153,22 @@ fn the_season_s_tab_is_not_touched() {
                 "{name} is the Eternal entry, and the ward's mark has no business on it");
     }
 }
+
+/// iOS takes a PNG for a home-screen bookmark and nothing else — an SVG there is no icon at all.
+/// Rendered from the same SVG rather than drawn again, so there is one mark and one file to edit.
+#[test]
+fn a_home_screen_bookmark_gets_a_square_png() {
+    let s = Server::start();
+    let (code, heads, body) = s.get("/world/apple-touch-icon.png");
+    assert_eq!(code, 200);
+    assert_eq!(header(&heads, "content-type"), Some("image/png"));
+    assert_eq!(&body[1..4], b"PNG", "a PNG, whatever the route is called");
+    // The IHDR dimensions, straight out of the file: 180x180 is what iOS asks for.
+    let w = u32::from_be_bytes([body[16], body[17], body[18], body[19]]);
+    let h = u32::from_be_bytes([body[20], body[21], body[22], body[23]]);
+    assert_eq!((w, h), (180, 180), "180 px square");
+    for page in ["world/index.html", "world/shift.html"] {
+        assert!(statics(page).contains("<link rel=\"apple-touch-icon\" href=\"/world/apple-touch-icon.png\">"),
+                "{page} offers the home-screen icon");
+    }
+}

@@ -119,6 +119,12 @@ const REVIEW_MAX: usize = 1024 * 1024;
 /// both failures looked like something else entirely. A deck cannot go missing halfway through a
 /// pitch if there is no file for it to go missing from.
 const DECK: &str = include_str!("../../../pitch/deck.html");
+/// The ward host's mark, baked in for the same reason the deck is: a favicon read off the disk is
+/// a favicon that goes missing in the container, and a tab icon fails silently when it does.
+const FAVICON_WORLD: &[u8] = include_bytes!("../../../pitch/logo/favicon-world.svg");
+/// The same mark at 180 px for a home-screen bookmark, because iOS takes a PNG and nothing else.
+/// Rendered from the SVG above rather than drawn again, so there is one mark and one file to edit.
+const TOUCH_ICON_WORLD: &[u8] = include_bytes!("../../../pitch/logo/apple-touch-icon.png");
 /// The speaking script is deliberately **not** compiled in beside the deck.
 ///
 /// `pitch/script.html` is the presenter's own notes — what to say, what not to say, and what the
@@ -1975,6 +1981,7 @@ fn receipt_page(r: &serde_json::Value) -> String {
     if let Some(why) = r["error"].as_str() {
         return format!(
             "<!doctype html><meta charset=utf-8><title>No such shift — Vitals World</title>\
+             <link rel=\"icon\" type=\"image/svg+xml\" href=\"/world/favicon.svg\">\
              <meta name=viewport content='width=device-width,initial-scale=1'>\
              <style>body{{font:16px/1.6 ui-sans-serif,system-ui,sans-serif;max-width:34rem;\
              margin:4rem auto;padding:0 1.2rem;color:#16302b;background:#fbfaf7}}a{{color:#0f6e5c}}\
@@ -1991,6 +1998,7 @@ fn receipt_page(r: &serde_json::Value) -> String {
     };
     format!(
         "<!doctype html><meta charset=utf-8><title>One shift — Vitals World</title>\
+         <link rel=\"icon\" type=\"image/svg+xml\" href=\"/world/favicon.svg\">\
          <meta name=viewport content='width=device-width,initial-scale=1'>\
          <style>body{{font:16px/1.6 ui-sans-serif,system-ui,sans-serif;max-width:40rem;\
          margin:3rem auto;padding:0 1.2rem;color:#16302b;background:#fbfaf7}}\
@@ -4382,6 +4390,40 @@ fn main() {
             // The bay's own two files, shared by the Eternal entry and the ward's shift page.
             // Served by the same process that holds the token, for the same reason the page is:
             // reaching the script and reaching the API are one boundary.
+            // The ward host's mark. Public, unguarded and cached for a year: it is on every page
+            // of the ward, it never changes without a deploy, and nothing about it is a secret.
+            (Method::Get, "/world/apple-touch-icon.png") => {
+                let _ = req.respond(
+                    Response::from_data(TOUCH_ICON_WORLD)
+                        .with_header(
+                            Header::from_bytes(&b"Content-Type"[..], &b"image/png"[..]).unwrap(),
+                        )
+                        .with_header(
+                            Header::from_bytes(
+                                &b"Cache-Control"[..],
+                                &b"public, max-age=31536000, immutable"[..],
+                            )
+                            .unwrap(),
+                        ),
+                );
+                continue;
+            }
+            (Method::Get, "/world/favicon.svg") => {
+                let _ = req.respond(
+                    Response::from_data(FAVICON_WORLD)
+                        .with_header(
+                            Header::from_bytes(&b"Content-Type"[..], &b"image/svg+xml"[..]).unwrap(),
+                        )
+                        .with_header(
+                            Header::from_bytes(
+                                &b"Cache-Control"[..],
+                                &b"public, max-age=31536000, immutable"[..],
+                            )
+                            .unwrap(),
+                        ),
+                );
+                continue;
+            }
             (Method::Get, p) if p == "/bay.css" || p.starts_with("/bay.css?") => {
                 let _ = req.respond(
                     Response::from_string(BAY_CSS.replace(BUILD_STAMP, BUILD)).with_header(
