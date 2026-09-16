@@ -1440,12 +1440,15 @@ pub fn tick(
     // Before anything else: a leaf on chain whose tape this ward has lost. She cannot be opened,
     // rebuilt or closed until it is back, so the repair runs ahead of the reaping that needs it.
     out.notes.extend(repair_tapes(chain, store, &patients, held));
+    // Asked once, after the repair has had its go: the tapes it put back are not missing any more,
+    // and the beds it could not save are the ones this tick must give up.
+    let lost = lost_tapes(chain, store, &patients);
     reap(chain, store, root, &patients, &packs_now, &mut out);
 
     // Beds, not chain rows: a patient the ward cannot describe holds none (`beds_taken`), so she
     // blocks no admission. Three test patients that reached the chain outside the queue wedged
     // staging shut against a full queue on 16 ก.ย., and this is the rule that unwedges it.
-    out.open = crate::ward::beds_taken(&patients, &packs_now, &lost_tapes(chain, store, &patients));
+    out.open = crate::ward::beds_taken(&patients, &packs_now, &lost);
     let depth = match queue_depth(store) {
         Ok(n) => {
             out.depth = Some(n);
