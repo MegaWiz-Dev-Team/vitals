@@ -546,3 +546,59 @@ fn a_world_case_is_drawn_from_the_payload_and_never_from_the_season() {
     assert!(chips.contains("WARDCHIPS") || chips.contains("chipRows("),
             "the quick questions still come from the season's table: {chips}");
 }
+
+/// **Before the payload lands, the ward's page names nobody.**
+///
+/// The director opened a shift on staging throttled to 1.5 Mbit and watched `#pt-name` read
+/// "Ing · F 19" for about a second before the payload arrived and the card was rebuilt. It is the
+/// bay's own initial markup — EP1's patient, written into the HTML so the bay paints something
+/// before its first view — and on a shift page it is another patient's name over this bed. A
+/// screenshot at 800 ms is the same error as a screenshot at eight seconds; it is *the* error this
+/// whole batch of work is about, arriving through the one door nothing had closed.
+///
+/// So on the ward host the markup carries no patient at all and the card fills from the payload.
+/// The Eternal page keeps its defaults: this is a page composed per host, not a default deleted
+/// from both.
+#[test]
+fn the_wards_first_paint_carries_no_patient() {
+    let ward = compose_ward_page();
+
+    // The season's own people, read out of the page's table so this test cannot go stale when the
+    // shelf changes. A `who` is "Name · SEX AGE" and a `line` is what that patient presents with —
+    // both distinctive enough to match whole, which is the point: a bare "Ing" is a substring of
+    // half the English on the page.
+    let js = bay_js();
+    let mut people = Vec::new();
+    for (field, src) in [("who:'", &js), ("line:'", &js)] {
+        for piece in src.split(field).skip(1) {
+            if let Some(v) = piece.split('\'').next() {
+                if !v.is_empty() {
+                    people.push(v.to_string());
+                }
+            }
+        }
+    }
+    assert!(people.len() > 10, "the season's table is where these come from: {people:?}");
+    for who in &people {
+        assert!(!ward.contains(who.as_str()),
+                "the ward's markup carries the season's {who:?} before a single byte of payload \
+                 has arrived");
+    }
+
+    // And the two elements that carried them are empty rather than gone: the card writes into
+    // them the moment the payload lands.
+    let inner = |html: &str, id: &str| -> String {
+        html.split(&format!("id=\"{id}\""))
+            .nth(1)
+            .and_then(|r| r.split_once('>'))
+            .and_then(|(_, r)| r.split_once('<'))
+            .map(|(t, _)| t.to_string())
+            .unwrap_or_else(|| panic!("no #{id} on the page"))
+    };
+    for id in ["pt-name", "pt-line"] {
+        assert!(inner(&ward, id).trim().is_empty(),
+                "#{id} opens with {:?} over a patient nobody has read yet", inner(&ward, id));
+        assert!(!inner(&compose_for_test(PAGE_FILE, false), id).trim().is_empty(),
+                "and the bay keeps its own first paint — this is composed per host, not deleted");
+    }
+}
