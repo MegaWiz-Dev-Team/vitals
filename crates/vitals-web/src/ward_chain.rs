@@ -1115,6 +1115,8 @@ pub const TAPE_STORE: &str = "ward_tape";
 /// would be one nobody could check.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StoredTape {
+    /// Who it was first kept for. Provenance, not identity — the tape is found by its hash, and
+    /// two patients with byte-identical tapes share one record because they are the same bytes.
     pub patient_id: u64,
     /// Hex of the hash the leaf commits to. The key this tape is found by.
     pub run_hash: String,
@@ -1174,20 +1176,17 @@ pub fn hex32(b: &[u8; 32]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
 
-/// Every tape this ward holds for one patient, by run hash.
+/// One tape, by the hash its leaf commits to.
 ///
-/// A map rather than a list, because the order is the chain's to give and this is only the lookup.
-pub fn tapes_of(
+/// **Addressed by content and by nothing else.** Two patients whose shifts produced byte-identical
+/// tapes have the same hash, and that is not a collision to defend against — it is the same bytes,
+/// and either patient replaying them arrives where she should. Keying by patient as well would
+/// have made one of them unable to find her own tape.
+pub fn tape_by_hash(
     store: &crate::store::Store,
-    patient_id: u64,
-) -> std::collections::BTreeMap<String, Vec<vitals_replay::Step>> {
-    store
-        .list::<StoredTape>(TAPE_STORE)
-        .into_iter()
-        .map(|(_, t)| t)
-        .filter(|t| t.patient_id == patient_id)
-        .map(|t| (t.run_hash, t.steps))
-        .collect()
+    run_hash: &str,
+) -> Option<Vec<vitals_replay::Step>> {
+    store.get::<StoredTape>(TAPE_STORE, run_hash).map(|t| t.steps)
 }
 
 /// Keep a finished shift's tape, addressed by the hash its leaf commits to.
@@ -1196,6 +1195,6 @@ pub fn tapes_of(
 /// stored under is the name the chain will call it by.
 pub fn keep_tape(store: &crate::store::Store, tape: &StoredTape) -> Result<(), String> {
     store
-        .put(TAPE_STORE, &format!("p{}h{}", tape.patient_id, tape.run_hash), tape)
+        .put(TAPE_STORE, &tape.run_hash, tape)
         .map_err(|e| format!("her tape could not be kept, so the shift is unrebuildable: {e}"))
 }

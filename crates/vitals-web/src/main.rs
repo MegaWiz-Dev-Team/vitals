@@ -327,7 +327,11 @@ impl Session {
     /// the way it was built the first time — every anchored shift in the chain's order, then this
     /// one. Passed in rather than read here, because a rebuild that reaches for a chain is a
     /// rebuild nobody can test.
-    fn restore(saved: Saved, prior: Option<&WardRebuild>) -> Result<Session, String> {
+    fn restore(
+        saved: Saved,
+        prior: Option<&WardRebuild>,
+        tape_of: &dyn Fn(&str) -> Option<Vec<Step>>,
+    ) -> Result<Session, String> {
         let sce_json = std::fs::read_to_string(scenario_path(&saved.ep)).map_err(|e| e.to_string())?;
         let want = hex(&sce_hash(&sce_json));
         if want != saved.sce_hash {
@@ -341,7 +345,7 @@ impl Session {
                 let (mut st, _) = ward_chain::resumed(
                     &sce_json,
                     &p.shifts,
-                    &|h| p.tapes.get(h).cloned(),
+                    tape_of,
                     p.admitted_slot,
                     w.taken_slot,
                 )?;
@@ -1736,7 +1740,6 @@ fn new_session(ep: &str) -> Result<Session, String> {
 /// its arguments: a rebuild that reaches for a cluster is a rebuild nobody can test.
 struct WardRebuild {
     shifts: Vec<ward::ShiftOnChain>,
-    tapes: std::collections::BTreeMap<String, Vec<Step>>,
     admitted_slot: u64,
 }
 
@@ -1752,11 +1755,7 @@ fn ward_rebuild(store: &store::Store, patient_id: u64) -> Option<WardRebuild> {
         .get(ward_chain::SHIFT_CACHE, &format!("p{patient_id}"))
         .unwrap_or_default();
     let _ = chain.refresh(patient_id, &mut seen);
-    Some(WardRebuild {
-        shifts: seen.shifts(),
-        tapes: ward_chain::tapes_of(store, patient_id),
-        admitted_slot: her.admitted_slot,
-    })
+    Some(WardRebuild { shifts: seen.shifts(), admitted_slot: her.admitted_slot })
 }
 
 /// Start a shift on a patient the ward is holding.
@@ -1803,11 +1802,10 @@ fn open_shift(
     if matches!(chain.refresh(patient_id, &mut seen), Ok(n) if n > 0) {
         let _ = store.put(ward_chain::SHIFT_CACHE, &key, &seen);
     }
-    let tapes = ward_chain::tapes_of(store, patient_id);
     let (state, played) = ward_chain::resumed(
         &sce_json,
         &seen.shifts(),
-        &|h| tapes.get(h).cloned(),
+        &|h| ward_chain::tape_by_hash(store, h),
         her.admitted_slot,
         now_slot,
     )?;
@@ -2200,7 +2198,7 @@ fn main() {
         // that is. Read here rather than inside `restore`, so the rebuild stays a function of its
         // arguments and this loop is the only thing that talks to a cluster.
         let prior = saved.ward.as_ref().and_then(|w| ward_rebuild(&store, w.patient_id));
-        match Session::restore(saved, prior.as_ref()) {
+        match Session::restore(saved, prior.as_ref(), &|h| ward_chain::tape_by_hash(&store, h)) {
             Ok(s) => {
                 restored.insert(id, s);
             }
@@ -3856,6 +3854,83 @@ fn main() {
                         })));
                     }
                 }
+                continue;
+            }
+            // The end of a shift: hand her over. Not the end of her stay — that is the engine's
+            // to decide and the chain's to record. This reduces what this stranger did, keeps the
+            // tape under the hash their leaf will commit to, and hands back what the anchor needs.
+            (Method::Get, "/api/handover") => {
+                let id = param(&url, "id").unwrap_or_default();
+                let caller = param(&url, "player");
+                let mut map = sessions.lock().unwrap();
+                let Some(s) = map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) else {
+                    let _ = req.respond(no_such_session());
+                    continue;
+                };
+                let Some(w) = s.ward.clone() else {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "error": "this run is not a shift on the ward — the bay's own ending is \
+                                  /api/finish, and it ends a case rather than handing a patient on"
+                    }), 409));
+                    continue;
+                };
+                // Reduced from the patient this shift walked into, so the harm and the beats are
+                // this stranger's own and not the ones they inherited.
+                let Some(rebuild) = ward_rebuild(&store, w.patient_id) else {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "error": "the chain could not be read, so this shift cannot be reduced \
+                                  against the patient it was played on — nothing is recorded"
+                    }), 503));
+                    continue;
+                };
+                let base = ward_chain::resumed(
+                    &s.sce_json,
+                    &rebuild.shifts,
+                    &|h| ward_chain::tape_by_hash(&store, h),
+                    rebuild.admitted_slot,
+                    w.taken_slot,
+                );
+                let r = match base {
+                    Ok((mut st, _)) => vitals_replay::shift(&mut st, &s.tape, 0),
+                    Err(e) => {
+                        let _ = req.respond(json_code(serde_json::json!({ "error": e }), 409));
+                        continue;
+                    }
+                };
+                let run_hash = hex(&leaf(&sce_hash(&s.sce_json), &s.tape, &r));
+                let kept = ward_chain::keep_tape(&store, &ward_chain::StoredTape {
+                    patient_id: w.patient_id,
+                    run_hash: run_hash.clone(),
+                    steps: s.tape.clone(),
+                });
+                let out = serde_json::json!({
+                    "patient_id": w.patient_id,
+                    // What the anchor must name, and what it must extend. Both go on chain; the
+                    // program refuses a reveal that does not extend the head it was told.
+                    "run_hash": run_hash,
+                    "prev_head": w.head,
+                    "shift": {
+                        "beats": r.beats.len(),
+                        "harm": r.harm_events,
+                        "outcome": r.outcome,
+                        "sim_seconds": r.sim_seconds,
+                        "steps": r.steps,
+                    },
+                    // Said plainly because it is not done yet: the tape is kept and reduced, and
+                    // nothing is on chain until the browser signs the anchor.
+                    "anchored": false,
+                    "tape_kept": kept.is_ok(),
+                    "next": "declare and anchor from the browser — this shift is on nobody's \
+                             record until its leaf extends her head on chain",
+                });
+                if let Err(e) = kept {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "error": e,
+                        "shift": out["shift"].clone(),
+                    }), 500));
+                    continue;
+                }
+                let _ = req.respond(json(out));
                 continue;
             }
             // The factory again, after admission: the rest of her portraits (ruling 10, and the
