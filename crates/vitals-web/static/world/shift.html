@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A shift on the ward — Vitals World</title>
+<!-- The ward's own page. It shares the bay's stylesheet and the bay's script with the Eternal
+     entry, because the patient, the monitor and the tape must be the same in both — and it shares
+     none of the season: no hero, no shelf, no episode list, no stars, nothing a stranger who came
+     to treat one patient can click that leads into a single-player story.
+
+     The founder's word for this, 16 ก.ย.: "ทำให้แยกกันเลยสิ" — separate them. -->
+<link rel="stylesheet" href="/bay.css?v=__VITALS_BUILD__">
+<style>
+  .wd-bar{display:flex;gap:.9rem;align-items:baseline;flex-wrap:wrap;
+    padding:.7rem 1rem;border-bottom:1px solid var(--rule,#d8ded9)}
+  .wd-bar b{letter-spacing:.14em;font-size:.82rem;text-transform:uppercase}
+  .wd-bar .sub{color:var(--ink-3,#7b8a86);font-size:.82rem;letter-spacing:.1em;text-transform:uppercase}
+  .wd-bar .sp{flex:1}
+</style>
+</head>
+<body>
+
+<div class="wd-bar">
+  <b>Vitals World</b>
+  <span class="sub">a public ward</span>
+  <span class="sp"></span>
+  <a class="btn" href="/">← the ward</a>
+</div>
+
+<!-- The script hides and shows these two by name. On this page the lobby is an empty anchor: the
+     season it holds on the Eternal entry is exactly what must not exist here. -->
+<div id="lobby" class="hide"></div>
+
+<!-- Which case is being played. One option, added when the ward says who she is — not a list of
+     the season, which is the thing a stranger must not find on this page. -->
+<select id="ep" class="hide" aria-hidden="true"></select>
+
+<!--BAY-->
+
+<script src="/bay.js?v=__VITALS_BUILD__"></script>
+</body>
+</html>

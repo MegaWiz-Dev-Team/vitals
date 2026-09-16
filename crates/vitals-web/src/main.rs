@@ -24,6 +24,18 @@ use vitals_replay::{hex, leaf, record_for, replay, resume, sce_hash, Step};
 use vitals_sce::{render_beat, Sce, SceState};
 
 const PAGE: &str = include_str!("../static/index.html");
+/// The play surface — the bar, the patient, the monitor, the kit, the log — composed into both
+/// pages at their `<!--BAY-->` marker.
+///
+/// One copy, because two products drawing the same monitor from two copies of the markup is two
+/// monitors that drift. The Eternal entry wraps it in the season; the ward's shift page wraps it
+/// in a patient and nothing else.
+const SURFACE: &str = include_str!("../static/bay-surface.html");
+/// The bay's stylesheet and the bay's script, shared by both pages and served as files.
+const BAY_CSS: &str = include_str!("../static/bay.css");
+const BAY_JS: &str = include_str!("../static/bay.js");
+/// The ward's own shift page: the same surface, none of the season.
+const SHIFT: &str = include_str!("../static/world/shift.html");
 /// The front door. The product page lives at `/` and the game one click behind it at `/play`,
 /// because the first visitor a public URL meets is as likely to be a reviewer deciding what this
 /// company is as a learner deciding whether to press play — and the bay answers only the second.
@@ -1904,6 +1916,15 @@ impl Drop for WatcherLeaves {
     }
 }
 
+/// A page, with the surface composed in and the build stamped.
+///
+/// Both pages go through here. The token is not injected into the markup at all any more — it
+/// lives in the script, which is served separately — so a page is the same bytes for everybody
+/// and only `/bay.js` carries anything that depends on this deployment.
+fn compose(page: &str) -> String {
+    page.replace("<!--BAY-->", SURFACE).replace(BUILD_STAMP, BUILD)
+}
+
 /// The ward as it stands, from the held read — one source for the endpoint and the patient page,
 /// so a judge who opens both in one minute cannot be shown two different wards.
 fn ward_now(held: &WardView, store: &store::Store) -> serde_json::Value {
@@ -2567,11 +2588,9 @@ fn main() {
             }
             (Method::Get, "/play") => {
                 // The page is served by the same process that holds the token, so handing it over
-                // does not widen anything: reaching the page and reaching the API are one boundary.
-                let page = match &token {
-                    Some(tk) => PAGE.replace("__VITALS_TOKEN__", tk),
-                    None => PAGE.replace("__VITALS_TOKEN__", ""),
-                };
+                // does not widen anything: reaching the page and reaching the API are one
+                // boundary. The token itself now rides on /bay.js, which this same process serves.
+                let page = compose(PAGE);
                 let _ = req.respond(
                     Response::from_string(page).with_header(
                         Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
@@ -3353,7 +3372,10 @@ fn main() {
                 // there is one place a stranger reads bad news rather than two pages that disagree
                 // about which of them is the ward.
                 let body = match ward::patient_id_in_path(p) {
-                    Some(_) => PAGE.replace(BUILD_STAMP, BUILD),
+                    // The ward's own page (founder, 16 ก.ย.: "ทำให้แยกกันเลยสิ"). The same play
+                    // surface as the Eternal entry, composed from the same file, and none of the
+                    // season around it.
+                    Some(_) => compose(SHIFT),
                     None => ward_page_missing("that is not a patient id"),
                 };
                 let _ = req.respond(html(&body));
@@ -4240,6 +4262,33 @@ fn main() {
                         })));
                     }
                 }
+                continue;
+            }
+            // The bay's own two files, shared by the Eternal entry and the ward's shift page.
+            // Served by the same process that holds the token, for the same reason the page is:
+            // reaching the script and reaching the API are one boundary.
+            (Method::Get, p) if p == "/bay.css" || p.starts_with("/bay.css?") => {
+                let _ = req.respond(
+                    Response::from_string(BAY_CSS.replace(BUILD_STAMP, BUILD)).with_header(
+                        Header::from_bytes(&b"Content-Type"[..], &b"text/css; charset=utf-8"[..])
+                            .unwrap(),
+                    ),
+                );
+                continue;
+            }
+            (Method::Get, p) if p == "/bay.js" || p.starts_with("/bay.js?") => {
+                let js = BAY_JS
+                    .replace("__VITALS_TOKEN__", token.as_deref().unwrap_or(""))
+                    .replace(BUILD_STAMP, BUILD);
+                let _ = req.respond(
+                    Response::from_string(js).with_header(
+                        Header::from_bytes(
+                            &b"Content-Type"[..],
+                            &b"application/javascript; charset=utf-8"[..],
+                        )
+                        .unwrap(),
+                    ),
+                );
                 continue;
             }
             // The ward's census. Public, and every figure on it carries where it came from —
@@ -5273,6 +5322,16 @@ fn settle(
 
 #[cfg(test)]
 mod tests {
+    /// The page as a browser gets it: the markup, the play surface composed into it, and the
+    /// script.
+    ///
+    /// It was one file until 16 ก.ย., when the bay's surface, stylesheet and script were pulled
+    /// out so the ward's shift page could share them and carry none of the season. These tests ask
+    /// what a *player* is shown, so they ask the composition rather than the shell.
+    fn served() -> String {
+        [PAGE, SURFACE, BAY_JS].concat()
+    }
+
     use super::*;
 
     // ── unwinding a leaf that was never anchored ────────────────────────────
@@ -5751,7 +5810,8 @@ mod tests {
     fn the_shelf_card_and_the_server_agree_about_the_clock() {
         // The array itself, and not the rest of the file after it: `{id:'…'` occurs elsewhere,
         // and a count taken over the tail would be counting something else.
-        let season = PAGE
+        let page = served();
+        let season = page
             .split_once("const SEASON=[")
             .map(|(_, rest)| rest)
             .and_then(|rest| rest.split_once("\n];"))
@@ -5918,7 +5978,8 @@ mod tests {
     fn the_shelf_card_and_the_server_print_the_same_stem() {
         // The one table in the page that carries a station card. Anchored so a stray `{id:'…'`
         // somewhere else in the file can never be read as the shelf.
-        let season = PAGE
+        let page = served();
+        let season = page
             .split_once("const SEASON=[")
             .map(|(_, rest)| rest)
             .expect("SEASON is gone from the page");
@@ -5976,8 +6037,9 @@ mod tests {
         // bay caption, or a comment quoting one. Read from the marker to the end of whatever is
         // holding it and fail on a second separator.
         let ends = |c: char| c == '\'' || c == '"' || c == '<' || c == '\n';
-        for (i, _) in PAGE.match_indices("· M").chain(PAGE.match_indices("· F")) {
-            let rest = &PAGE[i..];
+        let page = served();
+        for (i, _) in page.match_indices("· M").chain(page.match_indices("· F")) {
+            let rest = &page[i..];
             let field = &rest[..rest.find(ends).unwrap_or(rest.len())];
             assert_eq!(
                 field.matches('·').count(),
@@ -5987,8 +6049,9 @@ mod tests {
             );
         }
         // And no body weight, in any of them or anywhere else.
-        for (i, _) in PAGE.match_indices("kg") {
-            let head = PAGE[..i].trim_end_matches(' ');
+        let page = served();
+        for (i, _) in page.match_indices("kg") {
+            let head = page[..i].trim_end_matches(' ');
             if !head.ends_with(|c: char| c.is_ascii_digit()) {
                 continue; // `mg/kg`, `ml/kg`, `20 ml/kg` — a rate per kilo, not a weight.
             }
@@ -6048,7 +6111,7 @@ mod tests {
         // And the bay does not offer one either — the parameter is gone from the URL it builds,
         // so there is nothing for a pane to start reading again.
         assert!(
-            !PAGE.contains("&exam=1"),
+            !served().contains("&exam=1"),
             "the page still hangs an exam flag on a device URL"
         );
     }

@@ -1,0 +1,325 @@
+<!-- The play surface: the bar, the patient, the monitor, the kit, the log and the result.
+     One copy, composed into both pages by the server at the BAY marker each of them carries.
+     Duplicating it would be a fork of the thing this whole extraction exists to keep single.
+     (The marker is not written out here: a comment that contains it ends at it, and the rest of
+     the sentence lands on the page as text. It did.) -->
+<div class="app hide" id="game">
+
+  <div class="bar">
+    <span class="brand">Vital<span>s</span></span>
+    <span class="ep" id="ep-name">the resus bay</span>
+    <select id="ep" class="hide">
+      <option value="ep1">EP1</option><option value="osce-a">OSCE A</option><option value="osce-a2">OSCE A2</option>
+      <option value="ep2">EP2</option><option value="osce-b">OSCE B</option><option value="osce-b2">OSCE B2</option>
+      <option value="osce-b3">OSCE B3</option><option value="ep3">EP3</option><option value="osce-c">OSCE C</option>
+      <option value="osce-c2">OSCE C2</option><option value="osce-c3">OSCE C3</option><option value="ep4">EP4</option>
+      <option value="osce-d">OSCE D</option><option value="osce-d2">OSCE D2</option><option value="osce-d3">OSCE D3</option>
+      <option value="osce-d4">OSCE D4</option><option value="ep5">EP5</option>
+    </select>
+    <button class="btn" id="back">← episodes</button>
+    <button class="btn go" id="start">restart</button>
+    <button class="btn" id="pause" disabled>hold</button>
+    <span class="spacer"></span>
+    <button class="btn" id="diff" data-d="easy">easy</button>
+    <!-- The same choice, reachable without leaving the bay: a learner finds out they wanted
+         Thai when the patient's first answer arrives, not on the shelf. -->
+    <span class="langpill" title="the language the patient speaks">
+      <span aria-hidden="true">🌐</span>
+      <select id="lang-gm" aria-label="the language the patient speaks"></select>
+    </span>
+    <span class="ep" id="chainstate">—</span>
+    <!-- The design's point, on screen: the chain knows how many times you started. Five
+         practice runs need five visible commitments, and this is where they are visible. -->
+    <span class="ep" id="tally" title="what the chain has counted for this account">—</span>
+  </div>
+
+  <main class="stage">
+    <!-- patient card -->
+    <div class="pt">
+      <div class="pt-art">
+        <video id="loop" autoplay loop muted playsinline preload="auto"></video>
+        <video id="cut" muted playsinline preload="auto"></video>
+        <img id="fallback" src="/img/stable.jpg" alt="the patient">
+        <!-- The grade on the still, as a layer rather than a filter: a dark room falling off
+             at the edges, and a floor under the place tag. It sits between the still and
+             everything that is allowed to cover the still — the stem, a film, a cutscene, the
+             tags — which is exactly what its position in this list buys it. -->
+        <i class="scrim" aria-hidden="true"></i>
+        <!-- What a station puts in the frame an episode fills with film: the stem sheet
+             before the first order, the film itself once one has been ordered, and a strip
+             in the corner to move between them. renderStage() drives all three, and paints
+             none of them for an episode. -->
+        <div class="stem hide" id="stem"></div>
+        <figure class="filmv hide" id="filmv"></figure>
+        <div class="sgt hide" id="sgt"></div>
+        <span class="cut-tag" id="cut-tag">cutscene</span>
+        <span class="place" id="place">📷 Emergency department · night</span>
+      </div>
+      <div class="pt-name" id="pt-name">Ing · F 19</div>
+      <div class="pt-status" id="pt-status">—</div>
+      <div class="pt-line" id="pt-line">breathless, urticaria all over, lips swelling</div>
+    </div>
+
+    <!-- conversation -->
+    <div class="chat" id="chat"></div>
+
+    <!-- action bar -->
+    <div class="acts">
+      <div class="modes" id="modes"></div>
+      <div class="chips" id="chips"></div>
+      <form id="cmdf" autocomplete="off">
+        <button class="mic btn" type="button" id="mic" title="voice">🎤</button>
+        <input id="cmd" placeholder="or type it yourself…" disabled>
+        <button class="btn go" id="send" type="submit" disabled>➤</button>
+      </form>
+    </div>
+  </main>
+
+  <!-- right rail -->
+  <aside class="rail">
+    <div class="mini" id="mini">
+      <div class="mini-h"><span>MONITOR</span><span id="mini-status">—</span></div>
+      <!-- The trace. It is the one thing on the rail that is allowed to move on its own:
+           it arrives from the right when a case opens, drops its amplitude when she
+           settles, and is overtaken by the flat red line when she dies. Decorative to a
+           screen reader — every number it stands for is already read out below it. -->
+      <div class="mini-tr" id="mtrace" aria-hidden="true">
+        <svg viewBox="0 0 300 40" preserveAspectRatio="none">
+          <path class="tr-w" d="M0 28 H36 l5 -3 l4 6 l5 -20 l5 26 l6 -12 l4 3 H110 l5 -3 l4 6 l5 -20 l5 26 l6 -12 l4 3 H184 l5 -3 l4 6 l5 -20 l5 26 l6 -12 l4 3 H258 l5 -3 l4 6 l5 -20 l5 26 l6 -12 l4 3 H300"/>
+          <path class="tr-f" d="M0 28 H300"/>
+        </svg>
+      </div>
+      <div class="mini-g">
+        <div><i>HR</i><b id="m-hr">—</b></div>
+        <div><i>SpO₂</i><b id="m-spo2">—</b></div>
+        <div><i>BP</i><b id="m-bp">—</b></div>
+        <div><i>RR</i><b id="m-rr">—</b></div>
+      </div>
+    </div>
+    <div class="devtabs">
+      <button class="btn dev on" data-dev="monitor">Monitor</button>
+      <button class="btn dev" data-dev="vent">Vent</button>
+      <button class="btn dev" data-dev="pump">Pump</button>
+    </div>
+    <iframe class="device" id="device" title="bedside device" src="about:blank"></iframe>
+
+    <!-- NEWS2 is what a ward escalates on, so it goes where the eye lands first. -->
+    <div class="panel news" id="newsbox">
+      <div class="news-l">
+        <div class="k" style="margin:0">news2</div>
+        <div class="news-n" id="news-n">0</div>
+      </div>
+      <div class="news-r">
+        <div class="news-band" id="news-band">low</div>
+        <div class="news-do" id="news-do">routine observations</div>
+        <div class="news-bar" id="news-bar"></div>
+      </div>
+      <span class="clock2" id="clock">0:00</span>
+    </div>
+
+    <div class="panel">
+      <div class="k">attached</div>
+      <!-- An empty-chart warning, and nothing more: it never names a drug. Naming the drug the
+           rubric is marking turned the rail into an answer key — see paint(). -->
+      <div id="nudge" class="nudge"></div>
+      <div class="tray" id="kit"><span class="muted">nothing on the patient</span></div>
+      <button class="btn" id="addkit" style="width:100%">+ attach a device</button>
+    </div>
+
+    <!-- The films had a panel of their own here: a row of 69px thumbnails of a 12-lead ECG,
+         which is a grey smudge and not a film anybody read. They are on the stage now, at the
+         size they are read at, with a strip in that frame's corner to switch between them —
+         so this panel would have been a second list of the same one or two things, in the one
+         column of the fit that has no height to spare. Removed rather than kept as a shortcut
+         to something already on screen and larger. -->
+
+    <div class="panel">
+      <div class="k">chart</div>
+      <div class="chart" id="chart"><span class="muted">nothing recorded yet</span></div>
+    </div>
+
+    <!-- A disposition is a clinical decision. It does not belong in a row with the mute button.
+         It was a single checkbox, and a decision with one option on the ballot is not a
+         decision — it is a mark collected by clicking, by a candidate who had decided nothing.
+         Four now — four places a patient can go, at least one of them wrong wherever you are
+         standing, none of them arguing for itself. Written at one level for the same reason the
+         order chips are. -->
+    <div class="panel dispo">
+      <div class="k">disposition</div>
+      <div class="dispo-opts" id="dispo-opts">
+        <button type="button" class="btn" data-dispo="discharge home" data-ga="dispo:discharge">discharge home</button>
+        <button type="button" class="btn" data-dispo="admit for observation" data-ga="dispo:observe">admit for observation</button>
+        <button type="button" class="btn" data-dispo="short-stay bed" data-ga="dispo:shortstay">short-stay bed</button>
+        <button type="button" class="btn" data-dispo="intensive care unit" data-ga="dispo:icu">intensive care unit</button>
+      </div>
+      <!-- The reason under the row is a teaching line, and a teaching line during an exam is
+           the answer read off the wall. paint() fills it in practice and leaves it empty at a
+           station — and only on the case it is actually true of. -->
+      <em id="dispo-why" class="dispo-why"></em>
+      <button class="btn" id="sound" title="the clips carry their own room tone">🔇 sound off</button>
+    </div>
+
+    <!-- ── the end of the attempt ────────────────────────────────────────────────
+         Deliberately not in the top bar. That row holds "← episodes" and "restart", two
+         plain pills a thumb's width apart, and a third one beside them would be the control
+         that ends somebody's exam sitting where the two harmless ones are. It is here instead:
+         the foot of the column the candidate works down — history, orders, kit, chart,
+         disposition, done — which is the order the act happens in and the place a hand is
+         already resting when the decision is made.
+
+         And it arms rather than fires. One press says what will happen and starts a short
+         window; the second press inside that window ends the attempt. Nothing else on this
+         page needs confirming, because nothing else on this page cannot be undone.
+
+         What it does *not* do is stop the patient: see /api/finish. Ending resolves the
+         encounter forward, so pressing this a second before an arrest buys nothing at all. -->
+    <div class="panel endp">
+      <div class="k">the station</div>
+      <button class="btn end" id="endrun" data-ga="finish" disabled
+              aria-describedby="endnote">I have finished</button>
+      <em class="endnote" id="endnote">Ends the attempt. The case plays out from here and the marks are computed.</em>
+    </div>
+  </aside>
+
+<div class="veil" id="veil" hidden>
+    <div class="sheet" id="sheet"></div>
+  </div>
+
+
+  <section class="result" id="result">
+    <h2 id="outcome"></h2>
+    <div class="sub" id="outnote"></div>
+    <div class="leaf" id="leaf"></div>
+    <div class="chainrow">
+      <button class="btn go" id="anchor" aria-describedby="anchornote">anchor this run on chain</button>
+      <button class="btn" id="c4" disabled>claim Expert</button>
+      <button class="btn" id="c3" disabled>claim Proficient</button>
+      <button class="btn" id="c2" disabled>claim Competent</button>
+      <button class="btn" id="c1" disabled>claim Advanced beginner</button>
+      <button class="btn" id="copy">copy the tape</button>
+    </div>
+    <!-- The one control on this page whose effect outlives the tab. The policy says it at length;
+         a player who never opens the policy still has to be told before pressing, so the fact goes
+         here in one line. Not a dialog: this is a game about deciding under time pressure, and a
+         modal in front of a button nobody is obliged to press would be theatre. Stated as fact —
+         what it writes, that it is public, that it cannot be undone — with the detail one tap away. -->
+    <em class="endnote" id="anchornote">Anchoring writes this run — your key, the case, the outcome,
+      the harm count and the scores — onto a public chain, permanently, and nobody can delete it
+      afterwards: <a href="/privacy#anchoring">what ends up there</a>.</em>
+    <!-- The debrief reads top to bottom in the order a candidate needs it: what the run was
+         worth and how far the next star is (#verdict, filled by the anchor), then the mark
+         sheet worst-first, then the harm and the timeline, then the answer and where the case
+         came from, then the way back in. Filled only from finish() — every one of these is
+         sealed while the case is running. -->
+    <div class="verdict" id="verdict"></div>
+    <!-- The mark sheet: every rubric item, what it paid, and — for a timed one — the second it
+         actually happened against the window it had. Server-sorted by what each miss cost, so
+         the top line is the thing to fix. showMarks() fills it; /api/marks refuses to answer
+         until the case is over. -->
+    <div class="marks" id="marks"></div>
+    <div class="db" id="db"></div>
+    <!-- The answer, released by the bell. The station's own title is a stem all the way through
+         the exam — the rubric pays for naming the diagnosis — so this is where the candidate is
+         finally told what they were looking at. Filled by showReveal(); stations only. -->
+    <div class="reveal" id="reveal"></div>
+    <!-- Provenance belongs where it means something: after the score, not on the card of a case
+         you are about to sit. Filled by showProvenance() for stations; empty everywhere else. -->
+    <div class="prov" id="prov"></div>
+    <!-- The other half of the mastery loop. Seeing what you missed is worth nothing if the way
+         back in is three clicks through the shelf, so it is one button, here, at the bottom of
+         the sheet the player just read. -->
+    <div class="runback"><button class="btn go" id="runback" data-ga="debrief:runback">↻ run it back</button></div>
+    <div class="hint" style="margin-top:.5rem">Hand the tape and the scenario to anyone — they recompute this leaf without asking us.</div>
+  </section>
+</div>
+
+  <!-- The cinema layer: recap, title card, stinger, up-next and trailers all share this
+       one black surface. cineShow() runs a queue of steps; a tap advances the skippable
+       ones; cards that carry their own buttons drive themselves. -->
+  <div class="cine hide" id="cine"></div>
+
+  <!-- ── the motion surfaces ────────────────────────────────────────────────────
+       Five fixed layers that are display:none until something asks for them, so an
+       idle page carries no cost for any of it. They sit above the cinema layer (80)
+       and below nothing except the season-2 splice, and every one of them is either
+       pointer-events:none or is itself the skip target.
+
+       The sweep is the game's signature: a heartbeat trace crossing the screen and
+       leaving the next scene behind it. -->
+  <div class="sweep hide" id="sweep" aria-hidden="true">
+    <div class="sw-panel" id="sw-panel">
+      <svg class="sw-edge" viewBox="0 0 60 1000" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M8 0 V200 l0 12 l12 6 l-6 8 l30 14 l-38 16 l14 8 l-12 6 V480 l0 12 l12 6 l-6 8 l30 14 l-38 16 l14 8 l-12 6 V760 l0 12 l12 6 l-6 8 l30 14 l-38 16 l14 8 l-12 6 V1000"/>
+      </svg>
+    </div>
+  </div>
+  <div class="cbars hide" id="cbars" aria-hidden="true"><i></i><i></i></div>
+  <div class="alarmv hide" id="alarm" aria-hidden="true"></div>
+  <div class="vig hide" id="vig" aria-hidden="true"><i></i></div>
+  <div class="flash hide" id="flash" aria-hidden="true"></div>
+
+  <!-- The film, full size. Top level rather than inside #game, because the lobby opens it too
+       for the image credits, and the lobby is not inside #game. -->
+  <div class="lightbox hide" id="lightbox" role="dialog" aria-modal="true" aria-label="film"></div>
+
+  <!-- The visible ceiling: when the month's compute is spent this card says what the money did
+       and where more comes from. Fixed at the bottom so it reads the same from the lobby and
+       from the bay. Hidden until the meter says so. -->
+  <div id="ceiling" class="ceiling hide" role="status"></div>
+
+  <!-- Top level, not inside #game. The picker's veil lives in the game view because that is the
+       only place it opens; this one opens from the lobby bar, and #game carries `hide` there —
+       which is display:none on the parent, so the sheet was being opened invisibly. -->
+  <div class="veil" id="recveil" hidden>
+    <div class="sheet sheet-rec">
+      <div class="sheet-h"><b id="rc-title">My record</b>
+        <span class="pill" id="rc-pill">—</span><span class="sp"></span>
+        <button class="btn" id="rec-close">close</button></div>
+    <div class="rec" id="rec">
+      <p class="rec-level" id="rc-level">—</p>
+      <p class="rec-sub" id="rc-sub"></p>
+
+      <div class="rec-list" id="rc-list">
+        <h4>Machines that play into it</h4>
+        <div id="rc-devices"></div>
+      </div>
+
+      <div class="rec-acts" id="rc-acts">
+        <button class="rbtn go" id="rc-open">Play on another machine</button>
+        <button class="rbtn" id="rc-join">Use another account</button>
+      </div>
+
+      <!-- one flow, in the order you actually do it, on the machine you do it from -->
+      <div class="steps hide" id="rc-flow">
+        <ol>
+          <li>On the other machine, open Vitals and press <b>Use another account</b>.
+            <div class="row"><span class="tok"><span id="rc-acct">—</span>
+              <button id="rc-copy">copy</button></span></div>
+          </li>
+          <li>It will show you a key. Paste it here.
+            <div class="row"><input id="rc-add" placeholder="the key that machine shows" spellcheck="false">
+              <button class="rbtn go" id="rc-link">Add it</button></div>
+          </li>
+        </ol>
+      </div>
+
+      <div class="steps hide" id="rc-joinbox">
+        <ol>
+          <li>Paste the account from the machine you already play on.
+            <div class="row"><input id="rc-use" placeholder="that machine's account" spellcheck="false">
+              <button class="rbtn go" id="rc-adopt">Use it</button></div>
+          </li>
+        </ol>
+      </div>
+
+      <p class="rec-hint hide" id="rc-handover">This machine can watch the record but not play into
+        it yet. Give this key to a machine that already can:
+        <span class="row"><span class="tok"><span id="rc-dev">—</span>
+          <button id="rc-devcopy">copy</button></span></span></p>
+
+      <p class="rec-msg" id="rc-msg"></p>
+    </div>
+
+    </div>
+  </div>
+

@@ -1829,6 +1829,21 @@ mod tests {
 
     /// Every alias points at a phrase the English chips already fire, so nothing here invents an
     /// order no case was written to understand. Ask aliases point back at their own key.
+    /// The page as a browser gets it.
+    ///
+    /// It used to be one file. The bay's markup, stylesheet and script were pulled out on 16 ก.ย.
+    /// so the ward's shift page could share them without carrying the season, and these tests are
+    /// about what a *player* is shown — which is all three put back together, exactly as the
+    /// server composes them.
+    fn served_page() -> String {
+        [
+            include_str!("../static/index.html"),
+            include_str!("../static/bay-surface.html"),
+            include_str!("../static/bay.js"),
+        ]
+        .concat()
+    }
+
     #[test]
     fn every_alias_names_an_order_a_case_could_recognise() {
         for (k, v) in ORDERS {
@@ -1839,7 +1854,7 @@ mod tests {
         // one. A key that no chip fires is a translation nobody will ever see; a chip phrase
         // renamed in the page and not here silently reverts to English. Both are caught by
         // reading the page itself rather than by keeping a second list in a comment.
-        let page = include_str!("../static/index.html");
+        let page = &served_page();
         for line in ASKS {
             assert!(
                 page.contains(&format!("'{}'", line.key)),
@@ -1870,7 +1885,7 @@ mod tests {
         // is a recorded hole and not a silent one, and so a *second* dead row cannot hide behind
         // the first.
         const UNWIRED: &[&str] = &["picker_label"];
-        let page = include_str!("../static/index.html");
+        let page = &served_page();
         for line in UI {
             assert!(
                 page.contains(&format!("PACK.ui.{}", line.key))

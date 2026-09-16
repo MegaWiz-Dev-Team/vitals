@@ -1,63 +1,3 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Vitals — the resus bay</title>
-<!-- Google Analytics 4 · production-only, consent mode (analytics denied until accepted) -->
-<script>
-window.dataLayer=window.dataLayer||[];
-function gtag(){dataLayer.push(arguments);}
-if(location.hostname.endsWith('vitals.academy')){
-  gtag('consent','default',{analytics_storage:'denied',ad_storage:'denied'});
-  var s=document.createElement('script');s.async=true;
-  s.src='https://www.googletagmanager.com/gtag/js?id=G-LH5JSMQBSL';
-  document.head.appendChild(s);
-  gtag('js',new Date());
-  gtag('config','G-LH5JSMQBSL');
-  (function(){
-    var KEY='vitals-analytics-consent',c=null;
-    try{c=localStorage.getItem(KEY)}catch(e){}
-    if(c==='granted'){gtag('consent','update',{analytics_storage:'granted'});return;}
-    if(c==='denied'){return;}
-    function show(){
-      if(document.getElementById('va-consent'))return;
-      var b=document.createElement('div');b.id='va-consent';
-      b.setAttribute('style','position:fixed;left:0;right:0;bottom:0;z-index:2147483647;background:#0F1719;color:#E9F0F0;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;padding:13px 18px;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:center;box-shadow:0 -1px 0 rgba(255,255,255,.09)');
-      var t=document.createElement('span');t.setAttribute('style','max-width:44em');
-      t.textContent='We use privacy-respecting analytics to see how the site is used. No cookies are set until you accept.';
-      b.appendChild(t);
-      function btn(txt,bg,fg,bd){var x=document.createElement('button');x.textContent=txt;x.setAttribute('style','cursor:pointer;font:600 14px inherit;padding:.5em 1.25em;border-radius:7px;border:'+bd+';background:'+bg+';color:'+fg);return x;}
-      var yes=btn('Accept','#0B6E58','#fff','none'),no=btn('Decline','transparent','#E9F0F0','1px solid rgba(255,255,255,.35)');
-      yes.onclick=function(){try{localStorage.setItem(KEY,'granted')}catch(e){}gtag('consent','update',{analytics_storage:'granted'});b.remove();};
-      no.onclick=function(){try{localStorage.setItem(KEY,'denied')}catch(e){}b.remove();};
-      b.appendChild(yes);b.appendChild(no);document.body.appendChild(b);
-    }
-    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',show);else show();
-  })();
-}
-/* Every button, link, tile, and [data-ga] click reports once — delegated, so new
-   controls are covered without hand-tagging. gtag() is a harmless no-op off production. */
-addEventListener('click',function(e){
-  var el=e.target.closest('button,a,[role="button"],[data-ga],.tile');
-  if(!el)return;
-  /* No textContent fallback, structurally: a control that could ever render learner-typed
-     text must never name itself by it. Anything wanting a readable label opts in via
-     data-ga / id / aria-label; the rest report their href or bare tag. */
-  var label=el.getAttribute('data-ga')||el.id||el.getAttribute('aria-label')
-    ||el.getAttribute('href')||el.tagName.toLowerCase();
-  gtag('event','ui_click',{control:label,page:location.pathname});
-},true);
-</script>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🫀</text></svg>">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<!-- The bay's stylesheet, shared with the ward's shift page. Served by this same
-     binary at /bay.css so the two pages cannot drift apart. -->
-<link rel="stylesheet" href="/bay.css?v=__VITALS_BUILD__">
-</head>
-<body>
-
-<!-- ─── scene select ─────────────────────────────────────────────────────── -->
 <div id="lobby">
   <div class="lb-bar">
     <b>VITALS</b>
@@ -143,9 +83,3 @@ addEventListener('click',function(e){
   </div>
 </div>
 
-<!--BAY-->
-<!-- The bay, shared with the ward's shift page. The token and the build stamp are
-     injected into it by the server, exactly as they were when it lived here. -->
-<script src="/bay.js?v=__VITALS_BUILD__"></script>
-</body>
-</html>

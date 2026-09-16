@@ -144,7 +144,9 @@ fn transcript(run: &serde_json::Value, mode: &str, tag: &str) -> serde_json::Val
     std::fs::write(&path, run.to_string()).expect("write the run");
     let out = Command::new("node")
         .arg(repo().join("crates/vitals-web/tests/feed_replay.mjs"))
-        .arg(repo().join("crates/vitals-web/static/index.html"))
+        // The bay's own script, which is where the feed lives since it was pulled out of the
+        // page so the ward's shift page could share it.
+        .arg(repo().join("crates/vitals-web/static/bay.js"))
         .arg(&path)
         .arg(mode)
         .output()
