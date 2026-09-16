@@ -47,7 +47,9 @@ fn nobody() -> std::collections::BTreeMap<u64, vitals_web::ward::Pack> {
 }
 
 fn shift_by(patient_id: u64, signer: u8, slot: u64) -> ShiftOnChain {
-    ShiftOnChain { patient_id, signer: [signer; 32], slot }
+    // The census counts shifts and signers; which tape each one played is the resume's business,
+    // so these fixtures carry no run hash and say so by carrying zero.
+    ShiftOnChain { patient_id, signer: [signer; 32], slot, run_hash: [0; 32] }
 }
 
 const OPEN: u8 = 0;
