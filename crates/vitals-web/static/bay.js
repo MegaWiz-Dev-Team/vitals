@@ -1588,6 +1588,11 @@ function finish(v){
      `outcome` here is exactly what left `osce-b2` and `osce-c` running for ever with the mark
      sheet shut. The server owns the predicate (`Session::over`); this reads its answer. */
   if(!v.over || over) return;
+  /* A shift is a few minutes of somebody else's stay, and the season's endings are written for
+     the season's patients — their words, their faces, their cinema. The founder's shift reached a
+     discharge two sim-minutes in and was shown all three. On the ward the ending is a sentence
+     and a hand-over. */
+  if(WARD) return wardFinish(v);
   over=true; stop(); disarmEnd();
   /* The film stops being the thing the screen is for. It borrowed height from the transcript
      while it was being read; the verdict is what wants the room now, and the frame gives it
@@ -3854,6 +3859,34 @@ async function takeShift(){
           'do here is on it, under your key.');
   armTheExit();
 }
+
+/* The end of a shift on the ward: what happened, in the ward's words, and the one thing left to
+   do about it. No result panel, no mark sheet, no sweep, no cinema — those are the season's, and
+   every one of them speaks about the season's patient. The chart stays on screen exactly as the
+   next stranger will inherit it. */
+function wardFinish(v){
+  over=true; stop(); disarmEnd();
+  const win=!!v.outcome&&v.outcome.startsWith('Win');
+  const died=!!v.outcome&&v.outcome.startsWith('Death');
+  /* The controls close because there is nothing more to do to her: what is on the tape is what
+     the chain will carry. Handing over stays open, and is now the only thing that is. */
+  const cmd=$('#cmd'), send=$('#send'), mic=$('#mic');
+  if(cmd){ cmd.disabled=true; cmd.placeholder='this shift is finished — hand over'; }
+  if(send)send.disabled=true;
+  if(mic)mic.disabled=true;
+  $('#chips').querySelectorAll('button').forEach(b=>{ b.disabled=true; b.title='this shift is finished — hand over'; });
+  $('#pause').disabled=true;
+  $('#endrun').disabled=false; $('#endrun').textContent='hand over';
+  armTheExit();
+  wardSay(died
+    ? '<b>'+esc(nameNow())+' died on your shift.</b> Hand over — the chain records it, under your key.'
+    : win
+      ? '<b>'+esc(nameNow())+' is ready to go home.</b> Hand over to close '+pro().p+' stay on chain.'
+      : '<b>this shift is finished.</b> Hand over, and the next stranger starts where you stopped.');
+}
+
+/* Who is in the bed, for a sentence: the ward's name for her when the page has one. */
+function nameNow(){ return (WARDSHIFT&&WARDSHIFT.name)||('patient '+WARD); }
 
 /* Handing her back: the head goes down, nothing is anchored, and this shift's tape is discarded.
    Said plainly, because a stranger deserves to know that walking away costs her nothing and

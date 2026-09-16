@@ -1082,7 +1082,7 @@ impl Session {
             portrait: self
                 .ward
                 .as_ref()
-                .and_then(|w| ward::portrait_for(&w.faces, &status.to_lowercase()))
+                .and_then(|w| ward::portrait_at_the_bedside(&w.faces, &status.to_lowercase()))
                 .map(str::to_string),
             // Read off the sealed copy, not the live one: a translation of a withheld sentence
             // is the withheld sentence.

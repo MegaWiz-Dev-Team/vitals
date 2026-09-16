@@ -311,6 +311,22 @@ pub fn portrait_state_for<'a>(
     PORTRAIT_LADDER[..=at].iter().rev().find(|s| set.contains_key(**s)).copied()
 }
 
+/// The picture at the bedside: hers, the nearest milder one, or failing both the nearest there is.
+///
+/// The board's rule is strict and right — a patient who went home does not borrow the picture of
+/// herself ill in a bed, so [`portrait_for`] answers nothing when no picture at or below her state
+/// exists. At the bedside that nothing is a black frame in front of the person still in the room
+/// with her, at the moment she is discharged, which is exactly when it happens. The last face
+/// there is beats no face at all.
+pub fn portrait_at_the_bedside<'a>(
+    set: &'a std::collections::BTreeMap<String, String>,
+    state: &str,
+) -> Option<&'a str> {
+    portrait_for(set, state).or_else(|| {
+        PORTRAIT_LADDER.iter().find_map(|s| set.get(*s)).map(String::as_str)
+    })
+}
+
 /// The board's picture: the small sibling when the factory has made it, the full one when it has
 /// not.
 ///
