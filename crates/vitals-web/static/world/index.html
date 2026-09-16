@@ -75,6 +75,12 @@ canvas#globe.dragging{cursor:grabbing}
 .legend .sw.hatch{background:repeating-linear-gradient(135deg,var(--land) 0 2px,var(--land-edge) 2px 3px)}
 .legend .sw.ring{background:var(--ramp-1);border:2px solid var(--lit-edge)}
 .legend .note{display:block;margin-top:.3rem;color:var(--ink-3)}
+.yearrow{display:flex;align-items:center;gap:.6rem;margin:.55rem 0 0;font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-2)}
+.yearrow input[type=range]{flex:1 1 10rem;min-width:8rem;max-width:22rem;accent-color:var(--proven)}
+.yearrow button{font:inherit;cursor:pointer;width:2rem;height:1.7rem;border-radius:.4rem;border:1px solid var(--rule);background:var(--surface);color:var(--proven);line-height:1}
+.yearrow button:focus-visible{outline:2px solid var(--proven);outline-offset:2px}
+.yearrow output{min-width:3.2em;font-weight:600;color:var(--ink);letter-spacing:.06em}
+.yearrow .from{color:var(--ink-3)}
 .pdoc{margin:.7rem 0 0;padding:.6rem .7rem;border:1px solid var(--rule-soft);border-radius:.6rem;background:var(--ground)}
 .pdoc[hidden]{display:none}
 .pdoc .k{display:block}
@@ -169,10 +175,17 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
       <!-- Visible from the first paint: the doctors layer is on by default, and a ramp with no
            legend is a picture nobody can read. -->
       <div class="legend" id="legend">
-        <span class="k">people per doctor · World Bank/WHO, latest year</span>
+        <span class="k" id="legendk">people per doctor · World Bank/WHO, latest year</span>
         <div class="bins" id="bins"></div>
         <div class="bins" id="wardkey"><span class="bin"><i class="sw ring"></i>somebody on the ward, and how many</span></div>
-        <span class="note">people per doctor = population per physician, not patients · each country at its own latest year · no value = hatched, never coloured · World Bank SH.MED.PHYS.ZS (WHO data), CC BY 4.0</span>
+        <div class="yearrow">
+          <button type="button" id="play" aria-label="Step a year per second" title="step a year per second">&#9654;</button>
+          <label for="year" class="sr">Year</label>
+          <input type="range" id="year" min="2000" max="2024" step="1" value="2024">
+          <output id="yearout" for="year">2024</output>
+          <span class="from" id="yearfrom"></span>
+        </div>
+        <span class="note">people per doctor = population per physician, not patients · each country at the chosen year, or its latest earlier value marked "(value from YEAR)" · no value = hatched, never coloured · the ward ring and its counts are today's whatever the year · World Bank SH.MED.PHYS.ZS (WHO data), CC BY 4.0</span>
       </div>
       <p class="hint" id="hint">drag to rotate · scroll or pinch does nothing · idle and it turns on its own</p>
       <div class="holding" id="holding" hidden>The ward opens in <b>week 2 of Crypto World&rsquo;s Fair</b> &mdash; 21&ndash;27 September 2026. Nobody is admitted yet; the globe is here so the link works before they are.</div>
@@ -330,9 +343,9 @@ function paintOf(people, patients, layers) {
 
 /* What the hover says. One line, both facts, in the order they matter: the shortage is why the
    ward exists, and the patient is what it is doing about it. */
-function hoverText(name, series, patients, layers) {
+function hoverText(name, series, patients, layers, year) {
   const bits = [];
-  if (layers.doctors) bits.push(doctorLine(name, series));
+  if (layers.doctors) bits.push(Number.isInteger(year) ? doctorLineAt(name, series, year) : doctorLine(name, series));
   else bits.push(name);
   if (layers.ward && patients > 0) bits.push(`${patients} on the ward`);
   return bits.join(" · ");
@@ -362,13 +375,58 @@ function doctorBin(people) {
   return b;
 }
 
+// ── the year (tested) ─────────────────────────────────────────────────────────────────────────
+// The value a series has at a year: exact when that year has one; else the latest earlier one,
+// and which year it is from; else nothing — a later value is never read backwards in time.
+function yearValue(series, year) {
+  if (!Array.isArray(series) || !Number.isInteger(year)) return null;
+  const pts = series.filter(p => Array.isArray(p) && Number.isInteger(p[0]) && typeof p[1] === "number" && p[1] > 0 && p[0] <= year)
+    .sort((a, b) => a[0] - b[0]);
+  if (!pts.length) return null;
+  const p = pts[pts.length - 1];
+  return { year: p[0], per_1000: p[1], exact: p[0] === year };
+}
+// 2000 to the latest year any country in the file has a value for.
+function yearRange(data) {
+  let max = 2000;
+  const cs = (data && data.countries) || {};
+  for (const c of Object.values(cs)) {
+    const l = latestOf(c && c.series);
+    if (l && l[0] > max) max = l[0];
+  }
+  return { min: 2000, max };
+}
+// "Kenya · 1 doctor per 6,290 people (2020)", "(value from 2020)" when the year had none, or
+// "Kenya · no data for 2005".
+function doctorLineAt(name, series, year) {
+  const v = yearValue(series, year);
+  const people = v ? peoplePerDoctor(v.per_1000) : null;
+  if (people === null) return `${name} · no data for ${year}`;
+  return `${name} · 1 doctor per ${fmtPeople(people)} people (${v.exact ? v.year : "value from " + v.year})`;
+}
+// The world's figure at a year, from WLD alone, the same way.
+function worldAverageAt(data, year) {
+  const w = data && data.countries && data.countries.WLD;
+  const v = w ? yearValue(w.series, year) : null;
+  const people = v ? peoplePerDoctor(v.per_1000) : null;
+  return people === null ? null : { people, year: v.year, exact: v.exact };
+}
+// The mission at a year: the sentence names the year the value is from, never the slider's.
+function missionLineAt(data, year) {
+  const w = worldAverageAt(data, year);
+  if (!w) return null;
+  return `One doctor for every ${fmtPeople(w.people)} people, world average (World Bank, ${w.year}). We exist to bring that number down by 1% a year.`;
+}
+
 // ── data ──────────────────────────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const PHYS = JSON.parse($("physicians").textContent);
 const ID2A3 = {};
 for (const [a3, id] of Object.entries(ALPHA3)) ID2A3[id] = a3;
 const seriesOfId = id => { const c = ID2A3[id] && PHYS.countries[ID2A3[id]]; return c ? c.series : null; };
-const peopleOfId = id => { const l = latestOf(seriesOfId(id)); return l ? peoplePerDoctor(l[1]) : null; };
+const YEARS = yearRange(PHYS);
+let year = YEARS.max;   // the slider; latest by default, and the ward never follows it
+const peopleOfId = id => { const v = yearValue(seriesOfId(id), year); return v ? peoplePerDoctor(v.per_1000) : null; };
 const topo = JSON.parse($("atlas").textContent);
 const countries = topojson.feature(topo, topo.objects.countries).features;
 const borders = topojson.mesh(topo, topo.objects.countries, (a, b) => a !== b);
@@ -560,11 +618,12 @@ function renderDoctors(id) {
   if (!layers.doctors) { box.hidden = true; return; }
   const series = seriesOfId(id);
   const l = latestOf(series);
-  const people = l ? peoplePerDoctor(l[1]) : null;
+  const at = yearValue(series, year);
+  const people = at ? peoplePerDoctor(at.per_1000) : null;
   box.hidden = false;
   if (people === null) {
-    box.innerHTML = `<span class="k">people per doctor · World Bank/WHO</span><div class="big">no data</div>
-      <div class="trend">this country has no value in the series (population per physician, World Bank SH.MED.PHYS.ZS)</div>`;
+    box.innerHTML = `<span class="k">people per doctor · World Bank/WHO</span><div class="big">no data for ${year}</div>
+      <div class="trend">${l ? `this country's first value is ${l[0] === at ? "" : ""}from ${series.filter(p => p[1] > 0).map(p => p[0]).sort()[0]}` : "this country has no value in the series"} (population per physician, World Bank SH.MED.PHYS.ZS)</div>`;
     return;
   }
   const pts = series.filter(p => p[1] > 0).sort((a, b) => a[0] - b[0]).map(p => [p[0], 1000 / p[1]]);
@@ -577,10 +636,12 @@ function renderDoctors(id) {
   const d = pts.map((p, i) => (i ? "L" : "M") + X(p[0]).toFixed(1) + " " + Y(p[1]).toFixed(1)).join(" ");
   const dot = (p, cls) => `<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="3" class="${cls}"/>`;
   const fromPt = t ? [t.from[0], 1000 / t.from[1]] : null;
-  const svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="people per doctor, ${x0} to ${x1}">
+  const atPt = [at.year, 1000 / at.per_1000];
+  const svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="people per doctor, ${x0} to ${x1}, ${at.year} marked">
     <path d="${d}" fill="none" stroke="var(--proven)" stroke-width="1.6" stroke-linejoin="round"/>
     ${fromPt ? dot(fromPt, "") .replace('class=""', 'fill="var(--ink-3)"') : ""}
     ${dot(pts[pts.length - 1], "").replace('class=""', 'fill="var(--proven)"')}
+    <circle cx="${X(atPt[0]).toFixed(1)}" cy="${Y(atPt[1]).toFixed(1)}" r="5" fill="none" stroke="var(--ink)" stroke-width="1.4"/>
     <text x="${PAD}" y="${H - 1}" font-size="9" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">${x0}</text>
     <text x="${W - PAD}" y="${H - 1}" font-size="9" fill="var(--ink-3)" text-anchor="end" font-family="IBM Plex Mono, monospace">${x1}</text>
   </svg>`;
@@ -588,7 +649,7 @@ function renderDoctors(id) {
     ? `${t.from[0]} \u2192 ${t.to[0]}: <b class="${t.pct_per_year > 0.05 ? "up" : ""}">${fmtTrend(t.pct_per_year)}</b> <span class="yr">people per doctor, ${t.years} years</span>`
     : `<span class="yr">${fmtTrend(null)} (${pts.length} value${pts.length === 1 ? "" : "s"}, ${x0}${x1 !== x0 ? "\u2013" + x1 : ""})</span>`;
   box.innerHTML = `<span class="k">people per doctor · World Bank/WHO</span>
-    <div class="big">1 doctor per ${fmtPeople(people)} people <span class="yr">(${l[0]})</span></div>
+    <div class="big">1 doctor per ${fmtPeople(people)} people <span class="yr">(${at.exact ? at.year : "value from " + at.year})</span></div>
     ${pts.length > 1 ? svg : ""}
     <div class="trend">${trend}</div>`;
 }
@@ -647,15 +708,42 @@ $("layers").addEventListener("click", e => {
   $("bins").innerHTML = labels.map((l, i) => `<span class="bin"><i class="sw" style="background:var(--ramp-${i})"></i>${l}</span>`).join("")
     + `<span class="bin"><i class="sw hatch"></i>no data</span>`;
 })();
-// The mission, under the headline, from the world figure in the file.
-(function renderMission() {
-  const line = missionLine(PHYS);
+// The mission, under the headline, from the world figure in the file — at the chosen year.
+function renderMission() {
+  const line = missionLineAt(PHYS, year);
   const el = $("mission");
   if (!line) { el.hidden = true; return; }
-  const w = worldAverage(PHYS);
+  const w = worldAverageAt(PHYS, year);
   el.innerHTML = escapeHtml(line).replace(fmtPeople(w.people), `<b>${fmtPeople(w.people)}</b>`);
   el.hidden = false;
-})();
+}
+renderMission();
+
+// ── the year slider ───────────────────────────────────────────────────────────────────────────
+// Everything on the doctors layer follows it; the ward's ring and counts never do. ▶ steps a year
+// a second to the end and stops; any touch of the slider stops it too.
+const yearEl = $("year"), playEl = $("play");
+yearEl.min = YEARS.min; yearEl.max = YEARS.max; yearEl.value = YEARS.max;
+let playing = null;
+function setYear(y) {
+  year = Math.max(YEARS.min, Math.min(YEARS.max, Number(y) || YEARS.max));
+  yearEl.value = year;
+  $("yearout").textContent = String(year);
+  $("legendk").textContent = year === YEARS.max ? "people per doctor · World Bank/WHO, latest year" : `people per doctor · World Bank/WHO, ${year}`;
+  const w = worldAverageAt(PHYS, year);
+  $("yearfrom").textContent = w && !w.exact ? `world figure from ${w.year}` : "";
+  renderMission();
+  if (selected) renderDoctors(selected);
+  draw();
+}
+function stopPlaying() { if (playing) { clearInterval(playing); playing = null; playEl.innerHTML = "&#9654;"; playEl.setAttribute("aria-label", "Step a year per second"); } }
+yearEl.addEventListener("input", () => { stopPlaying(); setYear(yearEl.value); });
+playEl.addEventListener("click", () => {
+  if (playing) { stopPlaying(); return; }
+  if (year >= YEARS.max) setYear(YEARS.min);
+  playEl.innerHTML = "&#10074;&#10074;"; playEl.setAttribute("aria-label", "Stop");
+  playing = setInterval(() => { if (year >= YEARS.max) { stopPlaying(); return; } setYear(year + 1); }, 1000);
+});
 
 // ── the globe ─────────────────────────────────────────────────────────────────────────────────
 const canvas = $("globe"), ctx = canvas.getContext("2d");
@@ -779,7 +867,7 @@ function move(e) {
     const n = counts.byId[id] || 0;
     /* Both facts in one line, in the order they matter: the shortage is why the ward exists, the
        patient is what it is doing about it. */
-    tip.innerHTML = escapeHtml(hoverText(nameOf[id], seriesOfId(id), n, layers));
+    tip.innerHTML = escapeHtml(hoverText(nameOf[id], seriesOfId(id), n, layers, year));
     tip.style.left = p[0] + "px"; tip.style.top = p[1] + "px"; tip.hidden = false;
   } else tip.hidden = true;
 }
@@ -802,7 +890,7 @@ function tick(t) {
   requestAnimationFrame(tick);
 }
 window.addEventListener("resize", resize);
-resize(); load(); requestAnimationFrame(tick);
+resize(); setYear(YEARS.max); load(); requestAnimationFrame(tick);   // the year last, once the canvas exists
 setInterval(load, 30000);   // the ward changes without a reload — and the poll outlives a dropped stream
 // Pushed as well as polled: the ward's stream carries the same payload the moment it changes.
 const es = new EventSource("/api/ward/stream"); es.addEventListener("ward", e => { try { render(JSON.parse(e.data)); } catch {} });

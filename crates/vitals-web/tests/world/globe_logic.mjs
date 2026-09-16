@@ -40,10 +40,12 @@ const sandbox = [grabConst('ALPHA3'), grabConst('SLOT_MS'), grabConst('STATE_LAB
   grab('stateOf'), grab('onBoard'), grab('paintOf'), grab('hoverText'), grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
   grab('peoplePerDoctor'), grab('latestOf'), grab('tenYearTrend'), grab('fmtTrend'), grab('fmtPeople'), grab('doctorLine'),
   grab('worldAverage'), grab('missionLine'), grab('doctorBin'),
-  'return { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin };'].join('\n');
+  grab('yearValue'), grab('yearRange'), grab('doctorLineAt'), grab('worldAverageAt'), grab('missionLineAt'),
+  'return { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt };'].join('\n');
 const { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine,
   stateOf, onBoard, paintOf, hoverText, STATE_LABEL,
-  DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin } = new Function(sandbox)();
+  DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin,
+  yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt } = new Function(sandbox)();
 
 // ── countryId ────────────────────────────────────────────────────────────────
 // world-atlas 110m keys its shapes by ISO numeric, as strings ("764"); the ward sends alpha-3.
@@ -274,6 +276,50 @@ assert.match(html, /id="mission"/, 'the mission line has its place under the hea
 assert.match(html, /data-layer="doctors"/, 'the layer toggle is on the page');
 assert.match(html, /people per doctor · World Bank\/WHO, latest year/, 'the legend says what the colours are and whose numbers');
 assert.match(html, /population per physician/, 'and says once that it is population per physician, not patients');
+
+// ── the year ─────────────────────────────────────────────────────────────────
+// A slider from 2000 to the latest year in the file, with ▶ stepping a year a second. Everything
+// the doctors layer shows follows the chosen year: the choropleth, the hover figure, the panel's
+// highlighted point, the mission line's world average. A country with no value in that year uses
+// its latest earlier value and says "(value from YEAR)"; with no earlier value it is hatched. The
+// ward's ring and badges are today's whatever the year, and the legend says so. Default: latest.
+const S = [[2001, 0.298], [2004, 0.289], [2010, 0.383], [2021, 0.541]];
+assert.deepEqual(yearValue(S, 2010), { year: 2010, per_1000: 0.383, exact: true }, 'a year with a value');
+assert.deepEqual(yearValue(S, 2015), { year: 2010, per_1000: 0.383, exact: false }, 'no value in 2015: the latest earlier one, and it says which');
+assert.deepEqual(yearValue(S, 2023), { year: 2021, per_1000: 0.541, exact: false }, 'past the end: the latest');
+assert.deepEqual(yearValue(S, 2021), { year: 2021, per_1000: 0.541, exact: true });
+assert.equal(yearValue(S, 2000), null, 'before the first value: nothing, never a later value read backwards');
+assert.equal(yearValue([], 2010), null);
+assert.equal(yearValue(null, 2010), null);
+assert.equal(yearValue([[2010, 0]], 2010), null, 'a zero is not a value');
+assert.deepEqual(yearValue([[2021, 0.541], [2001, 0.298]], 2005), { year: 2001, per_1000: 0.298, exact: false }, 'in any order');
+
+assert.deepEqual(yearRange(WORLD), { min: 2000, max: 2022 }, 'from 2000 to the latest year any country has');
+assert.deepEqual(yearRange({ countries: { X: { series: [[2003, 1]] }, Y: { series: [[2019, 1]] } } }), { min: 2000, max: 2019 });
+assert.deepEqual(yearRange({ countries: {} }), { min: 2000, max: 2000 }, 'no data is a one-year range, not a crash');
+
+assert.equal(doctorLineAt('Kenya', [[2019, 0.15], [2020, 0.159]], 2020), 'Kenya · 1 doctor per 6,290 people (2020)');
+assert.equal(doctorLineAt('Kenya', [[2019, 0.15], [2020, 0.159]], 2023), 'Kenya · 1 doctor per 6,290 people (value from 2020)', 'a fallback says which year it is from');
+assert.equal(doctorLineAt('Kenya', [[2019, 0.15], [2020, 0.159]], 2005), 'Kenya · no data for 2005', 'nothing earlier: no data, with the year');
+assert.equal(doctorLineAt('Hong Kong', null, 2020), 'Hong Kong · no data for 2020');
+assert.equal(doctorLineAt('Kenya', [[2019, 0.15], [2020, 0.159]], 2020), doctorLine('Kenya', [[2019, 0.15], [2020, 0.159]]), 'at the latest year the two lines agree');
+
+assert.deepEqual(worldAverageAt(WORLD, 2022), { people: 540, year: 2022, exact: true });
+assert.deepEqual(worldAverageAt(WORLD, 2005), { people: 660, year: 2000, exact: false }, '1000 / 1.523 = 656.6 → 660, from 2000');
+assert.deepEqual(worldAverageAt(WORLD, 2015), { people: 670, year: 2010, exact: false }, '1000 / 1.491 = 670.7');
+assert.equal(worldAverageAt(WORLD, 1999), null);
+assert.equal(worldAverageAt({ countries: {} }, 2010), null);
+assert.deepEqual(worldAverageAt(WORLD, 2022), { ...worldAverage(WORLD), exact: true }, 'at the latest year the two agree');
+assert.equal(missionLineAt(WORLD, 2005),
+  'One doctor for every 660 people, world average (World Bank, 2000). We exist to bring that number down by 1% a year.',
+  'the sentence names the year the value is from, never the year on the slider');
+assert.equal(missionLineAt(WORLD, 2022), missionLine(WORLD));
+assert.equal(missionLineAt(WORLD, 1999), null, 'no world figure, no sentence');
+
+assert.match(html, /<input[^>]*type="range"[^>]*id="year"/, 'the year slider');
+assert.match(html, /id="play"/, 'and its ▶');
+assert.match(html, /ward[^<]{0,80}(today|now)[^<]{0,80}whatever the year|whatever the year[^<]{0,80}ward/i, 'the legend says the ward does not follow the year');
+assert.ok(!/<input[^>]*id="year"[^>]*value="20(0\d|1\d)"/.test(html), 'the slider does not start in the past: the page sets it to the latest year');
 
 console.log('globe_logic: ok');
 
