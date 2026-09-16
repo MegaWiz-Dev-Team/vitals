@@ -390,14 +390,14 @@ fn the_queue_keeps_each_patient_once_and_says_what_it_refused() {
     assert_eq!(first.rejected.len(), 1, "and the one it would not take");
     assert!(first.rejected[0].contains("dengue"), "named, so the factory can fix it: {:?}",
             first.rejected);
-    assert_eq!(first.depth, 2, "the depth is what the factory tops up against");
+    assert_eq!(first.depth, Some(2), "the depth is what the factory tops up against");
 
     // The same page again, in full. Nothing is added and nothing is lost.
     let again = enqueue(&store, vec![a_pack(), other]);
     assert_eq!(again.queued, 0);
     assert_eq!(again.duplicates, 2);
-    assert_eq!(again.depth, 2);
-    assert_eq!(queue_depth(&store), 2);
+    assert_eq!(again.depth, Some(2));
+    assert_eq!(queue_depth(&store), Ok(2));
 
     let _ = std::fs::remove_dir_all(&root);
 }

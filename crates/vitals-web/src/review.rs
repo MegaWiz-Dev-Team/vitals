@@ -290,7 +290,13 @@ impl Submission {
         // Keys first, records second. This runs on a public endpoint on every submission, and a
         // review can be a fifth of a megabyte; only the one key that could be a resend is read.
         let mine = format!("-{}", self.fingerprint());
-        for key in store.keys(KIND).into_iter().filter(|k| k.ends_with(&mine)) {
+        // A store that cannot be listed is not a store with no earlier submission in it. Refuse
+        // rather than file a second copy of a review somebody already sent: a duplicate is a
+        // reviewer's words counted twice, and the caller can ask them to try again.
+        let keys = store
+            .keys(KIND)
+            .map_err(|e| std::io::Error::other(format!("the review store could not be read: {e}")))?;
+        for key in keys.into_iter().filter(|k| k.ends_with(&mine)) {
             match store.get::<Submission>(KIND, &key) {
                 Some(prev) if prev.says_the_same_as(self) => {
                     out.id = key;
@@ -543,7 +549,7 @@ mod tests {
         let doc = one("physician");
         let stu = one("student");
         assert_ne!(doc.id, stu.id, "one key for two reviewers");
-        assert_eq!(store.keys(KIND).len(), 2, "the second submission erased the first");
+        assert_eq!(store.keys(KIND).expect("a disk store lists").len(), 2, "the second submission erased the first");
 
         // Both are still readable, and each still says who wrote it.
         let a: Submission = store.get(KIND, &doc.id).expect("the physician's record");
@@ -583,7 +589,7 @@ mod tests {
         );
         assert_eq!(again.id, first.id, "the resend was filed under a second key");
         assert_eq!(again.at, first.at, "the resend restamped when the review arrived");
-        assert_eq!(store.keys(KIND).len(), 1, "one review, two records");
+        assert_eq!(store.keys(KIND).expect("a disk store lists").len(), 1, "one review, two records");
     }
 
     /// Replaced, not skipped. A physician who resends after ticking *do not name me* changed
@@ -597,7 +603,7 @@ mod tests {
             .unwrap()
             .file(&store)
             .unwrap();
-        assert_eq!(store.keys(KIND).len(), 1);
+        assert_eq!(store.keys(KIND).expect("a disk store lists").len(), 1);
         let stored: Submission = store.get(KIND, &second.id).expect("the record");
         assert!(stored.anonymous, "the reviewer's second thoughts were dropped");
         assert_eq!(stored.at, 10, "the record forgot when the review arrived");
@@ -609,6 +615,6 @@ mod tests {
         let store = tmp("distinct");
         Submission::from_json(&body(r#","notes":"หนึ่ง""#), 42).unwrap().file(&store).unwrap();
         Submission::from_json(&body(r#","notes":"สอง""#), 42).unwrap().file(&store).unwrap();
-        assert_eq!(store.keys(KIND).len(), 2, "a second review overwrote the first");
+        assert_eq!(store.keys(KIND).expect("a disk store lists").len(), 2, "a second review overwrote the first");
     }
 }

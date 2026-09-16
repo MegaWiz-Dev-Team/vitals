@@ -417,8 +417,12 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
     });
     // How many patients are waiting, which is the number the factory tops up against and the one
     // a reader of the board uses to tell "nobody is playing" from "nobody is left to play".
+    let waiting = queue_depth(store);
     v["queue"] = serde_json::json!({
-        "waiting": queue_depth(store),
+        // Null, never zero, when the store cannot be listed — "nobody is waiting" and "we could
+        // not look" are opposite facts and this endpoint has one rule about those.
+        "waiting": waiting.as_ref().ok(),
+        "waiting_unknown_because": waiting.as_ref().err(),
         "beds": crate::ward::BEDS,
         // Published, because "the queue is empty" and "the door is shut" look identical from
         // outside and mean opposite things about whether anybody should be doing anything.
@@ -854,12 +858,21 @@ pub struct Queued {
     pub queued: usize,
     pub duplicates: usize,
     pub rejected: Vec<String>,
-    pub depth: usize,
+    /// How many are waiting, or **null** when the store could not be listed.
+    ///
+    /// Null rather than zero, because the factory tops the queue up against this number: a zero it
+    /// cannot distinguish from "we could not look" is a factory that rebuilds the pool until it
+    /// runs out of people. That is not a hypothetical — it is what the first real tick would have
+    /// done.
+    pub depth: Option<usize>,
+    /// Why the depth is unknown, when it is.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depth_error: Option<String>,
 }
 
 /// How many packs are waiting for a bed.
-pub fn queue_depth(store: &crate::store::Store) -> usize {
-    store.keys(QUEUE_STORE).len()
+pub fn queue_depth(store: &crate::store::Store) -> Result<usize, String> {
+    store.keys(QUEUE_STORE).map(|k| k.len())
 }
 
 /// Take a page of packs from the factory, keep the ones this ward can serve, and say what happened.
@@ -886,7 +899,10 @@ pub fn enqueue(store: &crate::store::Store, packs: Vec<crate::ward::Pack>) -> Qu
             Err(e) => out.rejected.push(format!("could not queue {id}: {e}")),
         }
     }
-    out.depth = queue_depth(store);
+    match queue_depth(store) {
+        Ok(n) => out.depth = Some(n),
+        Err(e) => out.depth_error = Some(e),
+    }
     out
 }
 
@@ -971,7 +987,8 @@ pub struct Ticked {
     /// ward nobody is playing.
     pub notes: Vec<String>,
     pub open: usize,
-    pub depth: usize,
+    /// How many are waiting, or null when the store could not be listed.
+    pub depth: Option<usize>,
 }
 
 /// One tick: free beds, and fill them from the queue.
@@ -1011,9 +1028,20 @@ pub fn tick(
         .collect();
 
     out.open = patients.iter().filter(|p| p.state == OPEN).count();
-    out.depth = queue_depth(store);
+    let depth = match queue_depth(store) {
+        Ok(n) => {
+            out.depth = Some(n);
+            n
+        }
+        Err(e) => {
+            // Nobody is admitted against a queue we could not read. Admitting from a list we
+            // cannot see is how one pack becomes two patients.
+            out.notes.push(format!("the queue could not be read, so nobody was admitted: {e}"));
+            return out;
+        }
+    };
 
-    for _ in 0..to_admit(out.open, BEDS, out.depth) {
+    for _ in 0..to_admit(out.open, BEDS, depth) {
         let queue = store.list::<crate::ward::Pack>(QUEUE_STORE);
         let Some(id) = choose_next(&queue, &on_ward_cases) else {
             out.notes.push(
@@ -1055,7 +1083,12 @@ pub fn tick(
         }
     }
 
-    out.depth = queue_depth(store);
+    // Read again at the end: the tick just took packs out of it, and the number the factory tops
+    // up against should be the one after this tick rather than before it.
+    match queue_depth(store) {
+        Ok(n) => out.depth = Some(n),
+        Err(e) => out.notes.push(format!("the queue's depth could not be read: {e}")),
+    }
     out
 }
 

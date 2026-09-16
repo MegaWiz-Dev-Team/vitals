@@ -320,20 +320,27 @@ impl Store {
     /// at boot and the wrong one for a question that is only about keys. A public endpoint that
     /// has to ask "is this already filed?" on every request should not pay to parse every
     /// document beside it — and on this store a review can be a fifth of a megabyte.
-    pub fn keys(&self, kind: &str) -> Vec<String> {
+    pub fn keys(&self, kind: &str) -> Result<Vec<String>, String> {
         if let Backend::Firestore { base } = &self.backend {
-            let Ok(tok) = self.token() else { return Vec::new() };
+            let tok = self.token().map_err(|e| format!("no token for the store: {e}"))?;
             let mut out = Vec::new();
             let mut page = String::new();
             loop {
-                // `mask.fieldPaths=` asks Firestore for no fields at all, so a page of keys costs
-                // a page of names rather than a page of records.
-                let url = format!("{base}/{kind}?pageSize=300&mask.fieldPaths={page}");
-                let Ok(r) = ureq::get(&url).set("Authorization", &format!("Bearer {tok}")).call()
-                else {
-                    break;
-                };
-                let Ok(v): Result<serde_json::Value, _> = r.into_json() else { break };
+                // `mask.fieldPaths=__name__` asks Firestore for the document names and no fields,
+                // so a page of keys costs a page of names rather than a page of records.
+                //
+                // It read `mask.fieldPaths=` — no path at all — until 16 ก.ย., and Firestore
+                // answers that with 400 "Invalid empty property path string". The call has always
+                // been wrong; what made it invisible was this function returning an empty list
+                // for it, which is why the signature changed at the same time as the token.
+                let url = format!("{base}/{kind}?pageSize=300&mask.fieldPaths=__name__{page}");
+                let r = ureq::get(&url)
+                    .set("Authorization", &format!("Bearer {tok}"))
+                    .call()
+                    .map_err(|e| format!("listing {kind}: {e}"))?;
+                let v: serde_json::Value = r
+                    .into_json()
+                    .map_err(|e| format!("listing {kind}: the answer was not JSON: {e}"))?;
                 for d in v["documents"].as_array().unwrap_or(&Vec::new()) {
                     if let Some(name) = d["name"].as_str().and_then(|n| n.rsplit('/').next()) {
                         out.push(name.to_string());
@@ -344,13 +351,21 @@ impl Store {
                     None => break,
                 }
             }
-            return out;
+            return Ok(out);
         }
-        let Ok(rd) = std::fs::read_dir(self.dir(kind)) else { return Vec::new() };
-        rd.flatten()
+        // A directory that does not exist yet is an empty collection, and that is a fact rather
+        // than a failure: nothing has been written under this kind. Anything else — a permission,
+        // a broken disk — is reported.
+        let rd = match std::fs::read_dir(self.dir(kind)) {
+            Ok(rd) => rd,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(format!("listing {kind}: {e}")),
+        };
+        Ok(rd
+            .flatten()
             .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("json"))
             .filter_map(|e| e.path().file_stem().and_then(|s| s.to_str()).map(str::to_string))
-            .collect()
+            .collect())
     }
 
     fn list_disk<T: DeserializeOwned>(&self, kind: &str) -> Vec<(String, T)> {
@@ -469,10 +484,10 @@ mod tests {
         s.put("sess", "two", &8u8).unwrap();
         std::fs::write(s.dir("sess").join("broken.json"), b"{not json").unwrap();
         std::fs::write(s.dir("sess").join("notes.txt"), b"ignored").unwrap();
-        let mut got = s.keys("sess");
+        let mut got = s.keys("sess").expect("a disk store lists");
         got.sort();
         assert_eq!(got, vec!["broken", "one", "two"]);
-        assert!(s.keys("nothing-here").is_empty());
+        assert!(s.keys("nothing-here").expect("a kind never written is empty, not broken").is_empty());
     }
 
     #[test]
