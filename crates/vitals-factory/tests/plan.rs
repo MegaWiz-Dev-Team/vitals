@@ -123,8 +123,10 @@ fn nobody_is_on_the_ward_twice() {
     ward.patients.push(on_board(2, "went_home", person(&pool, "IDN-1"), "osce-b", 25));
     let mut ledger = Ledger::default();
     ledger.sent.insert("deadbeef".into(), Sent::new("osce-a", anan, 70, false, None, 1, "test"));
-    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, want: 40, seed: 3 });
+    // More wanted than there are people, so everyone who is free is drawn exactly once.
+    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, want: 61, seed: 3 });
     let keys: Vec<&str> = p.packs.iter().map(|pl| pl.person.as_str()).collect();
+    assert_eq!(keys.len(), 58, "sixty people, two of them busy");
     assert!(!keys.contains(&"THA-0"), "Ploy is in a bed");
     assert!(!keys.contains(&"THA-1"), "Anan is queued and unseen");
     assert!(keys.contains(&"IDN-1"), "Budi went home, so his face is free again");
@@ -230,10 +232,16 @@ fn endemic_is_true_only_when_the_list_pairs_her_country_with_her_case() {
     for seed in 0..40 {
         let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), want: 12, seed });
         for pl in &p.packs {
-            validate_pack(&pl.pack).unwrap_or_else(|why| panic!("{why}"));
             if pl.pack.endemic {
+                // The door checks the tag against the list baked into the ward — empty today — so
+                // a pack tagged from this test's list is checked here against this test's list.
                 endemic_seen += 1;
                 assert!(endemic[&pl.pack.persona.country].contains(&pl.pack.case), "{:?}", pl.pack);
+                let mut plain = pl.pack.clone();
+                plain.endemic = false;
+                validate_pack(&plain).unwrap_or_else(|why| panic!("{why}"));
+            } else {
+                validate_pack(&pl.pack).unwrap_or_else(|why| panic!("{why}"));
             }
         }
     }
