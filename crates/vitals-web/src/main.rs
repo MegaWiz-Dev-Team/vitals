@@ -2956,13 +2956,16 @@ fn main() {
             // bug this split exists for, and a fallback is how it would come back.
             let Some(want) = door_token.clone() else {
                 let _ = req.respond(json_code(serde_json::json!({
-                    "error": "this ward has no VITALS_DOOR_TOKEN, so the factory's doors are shut.                               They take their own secret and never the page's — the page's is                               printed into bay.js for every visitor"
+                    "error": "this ward has no VITALS_DOOR_TOKEN, so the factory's doors are \
+                              shut. They take their own secret and never the page's — the page's \
+                              is printed into bay.js for every visitor"
                 }), 503));
                 continue;
             };
             if !bearer_ok(&req, &Some(want)) {
                 let _ = req.respond(json_code(serde_json::json!({
-                    "error": "unauthorised — the factory's doors take VITALS_DOOR_TOKEN, which is                               not the token the page carries"
+                    "error": "unauthorised — the factory's doors take VITALS_DOOR_TOKEN, which \
+                              is not the token the page carries"
                 }), 401));
                 continue;
             }
