@@ -515,3 +515,40 @@ fn the_catalogue_says_what_kind_of_case_it_is() {
     let s = validate_case(&a_pack()).expect("a pack");
     assert_eq!(s.archetype, "haemorrhagic_shock");
 }
+
+/// **The catalogue says who each case is written about.**
+///
+/// The pack carries `patient{age, sex}` — the malaria case is a man of 34 — and the patient
+/// factory needs both to place somebody on it: the persona's sex must match what the dialogue and
+/// the examination were written for, and her age should sit near the one the case assumes. Without
+/// them in the catalogue every draw against the real sixty-six came back "no case_id", because the
+/// chooser had nothing to match on.
+///
+/// Passed through as the compiler spells it — `male` and `female`, which is what its sixty-six say
+/// — rather than translated into the ward's own single letter. Two vocabularies for one fact is
+/// how a chooser silently matches nothing.
+#[test]
+fn the_catalogue_says_who_the_case_is_written_about() {
+    let s = validate_case(&a_pack()).expect("a pack");
+    assert_eq!(s.patient_age, Some(62));
+    assert_eq!(s.patient_sex.as_deref(), Some("male"));
+
+    // Absent rather than guessed: a case with no patient block says so, and the factory can tell
+    // "this case is about a man" from "nobody wrote it down".
+    let mut p = a_pack();
+    p["patient"] = Value::Null;
+    let s = validate_case(&p).expect("still a playable case");
+    assert_eq!(s.patient_age, None);
+    assert_eq!(s.patient_sex, None);
+}
+
+/// And it reaches the wire, which is where the factory reads it.
+#[test]
+fn the_catalogue_carries_the_patient_on_the_wire() {
+    let s = Server::start();
+    assert_eq!(s.post("/api/ward/case", &a_pack()).0, 200);
+    let (_, list) = s.get("/api/ward/cases");
+    let row = &list["cases"][0];
+    assert_eq!(row["patient"]["age"], 62);
+    assert_eq!(row["patient"]["sex"], "male");
+}
