@@ -6,7 +6,7 @@
 //! |--------------------------|------------------------------------------|------------------------------------------|
 //! | `WARD`                   | *(required)*                             | the ward's origin, `https://…run.app`    |
 //! | `QUEUE_DEPTH`            | 20                                       | keep at least this many packs waiting    |
-//! | `BASES_PER_TICK`         | 3                                        | faces made with mflux per tick           |
+//! | `BASES_PER_TICK`         | 2                                        | faces made with mflux per tick (≈ 3 min each on the mini, measured 16 Sep) |
 //! | `VITALS_REPO`            | the checkout this binary was built from  | scenarios, persona files, pool, endemic  |
 //! | `VITALS_WORLD_DIR`       | `~/.vitals/world`                        | the manifest, the ledger, the faces      |
 //! | `VITALS_GCP_PROJECT`     | *(required)*                             | the ward's project, where its `vitals-token` secret lives (`vitals-academy-dev` for staging, `vitals-academy` for production) |
@@ -115,7 +115,7 @@ fn config(dry_run: bool) -> Result<Config, String> {
     Ok(Config {
         ward: ward.trim_end_matches('/').to_string(),
         queue_depth: env_num("QUEUE_DEPTH", 20)? as usize,
-        bases_per_tick: env_num("BASES_PER_TICK", 3)? as usize,
+        bases_per_tick: env_num("BASES_PER_TICK", 2)? as usize,
         repo: default_repo(),
         world_dir,
         secret_project: std::env::var("VITALS_GCP_PROJECT").ok().filter(|v| !v.trim().is_empty()).ok_or_else(|| {

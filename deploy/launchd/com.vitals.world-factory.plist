@@ -36,7 +36,7 @@
     <key>QUEUE_DEPTH</key>
     <string>20</string>
     <key>BASES_PER_TICK</key>
-    <string>3</string>
+    <string>2</string>
     <key>VITALS_REPO</key>
     <string>/Users/mimir/Developer/vitals</string>
     <key>VITALS_WORLD_DIR</key>
