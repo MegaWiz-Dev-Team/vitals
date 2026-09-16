@@ -105,6 +105,28 @@ const MAX_DEVICES: usize = 20_000;
 /// the device counts down with it, because they live in the same document.
 const MAX_CASES: usize = 64;
 
+/// The channels we hand links out through.
+///
+/// **A closed set, and that is the point.** `?src=` is a thing a stranger can type, so an open set
+/// would make our own published statistics a writable surface — a screenshot of the funnel would
+/// be whatever the last visitor felt like typing. Everything outside this list counts as an
+/// arrival with no channel, which is true and is all we know.
+///
+/// Adding a channel is adding a line here, deliberately, at the moment somebody decides to hand
+/// links out through it.
+pub const CHANNELS: [&str; 5] = ["superteam-th", "medtwitter", "reddit", "embla", "techsauce"];
+
+/// The channel a `?src=` names, or `None` for anything we did not hand out.
+///
+/// Returns **our** string rather than the caller's bytes, which is what makes the tally
+/// un-writable rather than merely filtered. Trimmed and lower-cased first, because a link pasted
+/// into a tweet comes back with whatever capitalisation and spaces the paste added, and losing
+/// that count would teach us the channel does not work.
+pub fn channel(raw: &str) -> Option<&'static str> {
+    let want = raw.trim().to_ascii_lowercase();
+    CHANNELS.iter().find(|c| **c == want).copied()
+}
+
 #[derive(Default, Serialize, Deserialize, Clone, Copy)]
 struct Day {
     started: u64,
@@ -152,6 +174,14 @@ struct Rec {
     /// A record that has no day older than this has no seam, and then nothing is said about one.
     #[serde(default)]
     ict_since: Option<String>,
+    /// Arrivals on the ward's front page, by the channel the link carried. Only [`CHANNELS`] can
+    /// appear here — see [`channel`].
+    #[serde(default)]
+    by_src: BTreeMap<String, u64>,
+    /// Every arrival, including the ones that carried no channel at all. Published beside the
+    /// split so nobody reads the channels as though they were the whole of it.
+    #[serde(default)]
+    arrivals: u64,
 }
 
 pub struct Usage {
@@ -191,6 +221,33 @@ impl Usage {
         }
         self.prune();
         self.persist(store);
+    }
+
+    /// Somebody opened the ward's front page.
+    ///
+    /// `src` is already one of ours or `None`; this counts what arrived and, when there is one,
+    /// which channel brought it. Nothing about the person reaches here, because nothing about the
+    /// person is read anywhere on the way.
+    pub fn arrived(&mut self, src: Option<&'static str>, store: &Store) {
+        let (day, _) = self.stamp();
+        self.rec.since.get_or_insert(day);
+        self.rec.arrivals += 1;
+        if let Some(c) = src {
+            *self.rec.by_src.entry(c.to_string()).or_default() += 1;
+        }
+        self.persist(store);
+    }
+
+    /// The arrivals, as the ward publishes them.
+    pub fn arrivals(&self) -> serde_json::Value {
+        serde_json::json!({
+            "total": self.rec.arrivals,
+            "by_src": self.rec.by_src,
+            "derivation": "the ward's front page, counted per visit. `src` is a string we chose \
+                           and handed out on a link, never a fact about the person holding it — \
+                           no cookie, no user agent, no address. A src we did not hand out is \
+                           counted in the total and in no channel",
+        })
     }
 
     /// A run reached a terminal state. `outcome` is the case's own outcome id.

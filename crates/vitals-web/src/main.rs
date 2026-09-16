@@ -2523,6 +2523,12 @@ fn main() {
 
         let resp = match (req.method(), path.as_str()) {
             (Method::Get, "/") => {
+                // Where the people on the ward came from, on the ward host only. A `src` is a
+                // string we handed out on a link, and the tally holds our own string or nothing —
+                // see `usage::channel`. Nothing about the person is read on the way here.
+                if ward_mode() {
+                    usage.arrived(param(&url, "src").as_deref().and_then(usage::channel), &store);
+                }
                 let _ = req.respond(html(if ward_mode() { WORLD } else { LANDING }));
                 continue;
             }
@@ -3425,9 +3431,13 @@ fn main() {
                 // that has not opened — a number that is true elsewhere is still a wrong answer
                 // here. Say so, and point at where the real one lives.
                 if ward_mode() {
+                    // The bay's own play numbers are not this host's to publish, and that has not
+                    // changed. What is this host's is who arrived at it, so that is published and
+                    // nothing else is.
                     let _ = req.respond(json(serde_json::json!({
                         "ward": "not open yet",
                         "opens": "week 2 of Crypto World's Fair, 21-27 Sep 2026",
+                        "arrivals": usage.arrivals(),
                         "usage_for_the_eternal_entry": "https://vitals.academy/api/usage"
                     })));
                     continue;
