@@ -571,12 +571,21 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
         "as_of_slot": as_of_slot,
         "source": source,
         "census": six(&all),
+        // Beside the census and never inside it: the census is what the chain says, and this is
+        // what the ward can actually hand to a stranger. A rail that published only the first
+        // would be telling somebody six when three of those six cannot be treated by anybody.
+        "in_beds": beds_taken(patients, packs),
+        "beds": BEDS,
         "week": w,
         "patients": board,
         "readable": true,
         "policy": policy(),
         "derivations": {
             "admitted": "patient accounts on chain, counted by admitted_slot",
+            "in_beds": "open patients the ward holds a pack for, counted at this read. The \
+                        difference from `on_ward` is patients that reached the chain some other \
+                        way: they are on it, and the ward has no case for them, so nobody can take \
+                        a shift on them and they hold no bed",
             "on_ward": "admitted - went_home - died, floored at zero — never a separate tally",
             "went_home": "patient accounts whose state is discharged, counted by closed_slot",
             "died": "patient accounts whose state is died, counted by closed_slot",
