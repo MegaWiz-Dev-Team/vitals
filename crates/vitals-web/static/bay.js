@@ -3138,10 +3138,16 @@ function bootMonitor(){
   let raf=null,ended=false;
   const fin=()=>{ if(ended)return; ended=true; cancelAnimationFrame(raf); INFLIGHT.delete(fin);
     const target=BOOTING; BOOTING=null;
+    if(!target)return;
     for(const s of VITALSEL){ const el=$(s); if(el)el.textContent=target[s]; } };
   INFLIGHT.add(fin);
   const frame=()=>{
-    if(ended)return;
+    /* `BOOTING` is cleared by whoever finishes first, and a frame already queued can run after
+       that — two boots in quick succession is all it takes, which a restart during the monitor's
+       count-up does. It threw "Cannot read properties of null" on the Eternal bay under a driven
+       restart; the code predates the bay being split out, so what changed is how reliably the
+       race is hit, not the race. */
+    if(ended||!BOOTING)return;
     const k=Math.min(1,(performance.now()-t0)/MS), e=1-Math.pow(1-k,3);
     for(const s of VITALSEL){ const el=$(s); if(el)el.textContent=countTo(BOOTING[s],e); }
     if(k>=1)return fin();
