@@ -308,47 +308,73 @@ fn arrests_at(sce: &str) -> Option<u32> {
     None
 }
 
-/// **The ward does not kill patients nobody visited.**
+/// **The ward kills patients nobody visits** — and the record has to be able to say so.
 ///
-/// The idle clock is what makes an unwatched bed a ward rather than a save file, and the cap is
-/// what keeps it a ward rather than a mortuary: it is set below the fastest untreated arrest in
-/// the catalogue, so a gap — however long — can only ever deteriorate her. Death then happens
-/// only inside a shift, which is what "the record says who did it" has to mean. A key's actions
-/// or inaction during their own shift is the whole claim; a patient dying of a gap nobody chose
-/// would have the harm on nobody's record at all.
+/// This test asserted the opposite until 16 ก.ย. The idle clock had a cap set below the fastest
+/// untreated arrest in the catalogue, so a gap could deteriorate a patient and never finish her,
+/// and the argument for it was about the record: death only inside a shift means every death on
+/// this ward is attributable to what a key did or failed to do while holding her.
 ///
-/// This walks every case the ward can admit, because the guarantee is about the catalogue and not
-/// about one case. A new case that arrests faster than the cap fails here, which is the point:
-/// the constant then has to be revisited rather than quietly becoming false.
+/// The founder overruled it the same day. At 1:60 a patient nobody visits deteriorates as the
+/// engine says and can arrest and die unattended, because the alternative is a ward where being
+/// abandoned is survivable — which is the one thing a ward is not. The record still says who and
+/// when: `ward_chain`'s ticker closes her rather than a stranger, with an empty tape and the idle
+/// span, so the chain reads "died, nobody on shift" and no stranger ever opens a corpse believing
+/// she is alive.
+///
+/// So the guarantee this file holds is now the reverse one, and it is held over the whole
+/// catalogue rather than one case: a gap long enough must reach the same death an untended bedside
+/// would, through the idle path, at the scenario's own grain.
 #[test]
-fn no_case_in_the_catalogue_dies_of_the_idle_clock_alone() {
-    let mut killed = Vec::new();
-    let mut fastest: Option<(String, u32)> = None;
+fn an_unattended_patient_dies_when_the_engine_says_she_does() {
+    use vitals_replay::{IDLE_SIM_PER_REAL, SLOT_SECONDS};
 
+    // The founder's figure is that fourteen of the sixteen arrest within 3–14 real hours. The gap
+    // tested with is fifteen, one clear hour past the slowest of them (osce-c3, at exactly 14.0),
+    // so this asserts the deaths rather than the arithmetic of a boundary.
+    let real_hours = 15.0;
+    let gap_slots = (real_hours * 3600.0 / SLOT_SECONDS) as u64;
+
+    let mut table: Vec<(String, Option<f64>, bool)> = Vec::new();
     for id in CATALOGUE {
         let p = sce_path(id);
         let sce = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
 
-        if let Some(t) = arrests_at(&sce) {
-            if fastest.as_ref().is_none_or(|(_, best)| t < *best) {
-                fastest = Some((id.to_string(), t));
-            }
-        }
+        // When the engine finishes her, untended from the first second — in simulated seconds,
+        // which the ratio turns into the real hours a bed would have stood empty.
+        let arrest_real_hours =
+            arrests_at(&sce).map(|sim| sim as f64 * IDLE_SIM_PER_REAL.recip() / 3600.0);
 
-        // The longest gap the chain can express. The cap is the only thing between it and her.
+        // And what the ward's own idle path does with a gap of that length. This is the half that
+        // matters: `shift` is what the server calls, and a clock that kills only when a test ticks
+        // it by hand would be a promise about nothing.
         let (mut st, _) = resume(&sce, &[]).expect("scenario loads");
-        shift(&mut st, &[], u64::MAX);
-        if let Some(o) = st.outcome() {
-            killed.push(format!("{id}: {o:?} at {:.0} s", st.t_sec()));
-        }
+        shift(&mut st, &[], gap_slots);
+        table.push((id.to_string(), arrest_real_hours, st.outcome().is_some()));
     }
 
-    assert!(killed.is_empty(),
-            "the idle clock killed {} of {} catalogue patients with nobody in the room — the cap \
-             has to sit below the fastest untreated arrest ({}), and these died: {}",
-            killed.len(), CATALOGUE.len(),
-            fastest.map(|(id, t)| format!("{id} at {t} s")).unwrap_or_else(|| "none".into()),
-            killed.join(" · "));
+    let died: Vec<&(String, Option<f64>, bool)> = table.iter().filter(|(_, _, d)| *d).collect();
+    let rendered = table
+        .iter()
+        .map(|(id, h, d)| match h {
+            Some(h) => format!("{id}: arrests at {h:.1} real h{}", if *d { "" } else { " (but survived the gap!)" }),
+            None => format!("{id}: never arrests untended"),
+        })
+        .collect::<Vec<_>>()
+        .join(" · ");
+
+    assert!(died.len() >= 14,
+            "fourteen of the sixteen must be finished by {real_hours:.0} real hours alone — the \
+             founder's own figure, and the plan quotes it. {} died. {rendered}", died.len());
+
+    for (id, hours, _) in table.iter().filter(|(_, h, _)| h.is_some()) {
+        let h = hours.unwrap();
+        assert!((3.0..=14.0).contains(&h),
+                "{id} arrests at {h:.1} real hours, outside the 3–14 the plan states. A case that \
+                 finishes in under three real hours is a bed that empties before a stranger can \
+                 reach it; one past fourteen is a promise the board's figures no longer keep. \
+                 Re-measure and move the plan, or move the case. {rendered}");
+    }
 }
 
 /// **A stay is three cases**, and the endpoint says so rather than leaving it to be inferred.

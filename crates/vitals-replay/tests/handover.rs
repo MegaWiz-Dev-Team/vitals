@@ -112,7 +112,7 @@ fn the_verifier_still_sees_one_tape() {
 
 // ── the idle clock ──────────────────────────────────────────────────────────
 
-use vitals_replay::{idle_seconds, pass_idle, IDLE_CAP_SIM_SECONDS, IDLE_SIM_PER_REAL, SLOT_SECONDS};
+use vitals_replay::{idle_seconds, pass_idle, IDLE_SIM_PER_REAL, SLOT_SECONDS};
 
 /// A patient nobody visits is not the patient you left.
 ///
@@ -136,8 +136,17 @@ fn a_gap_between_shifts_changes_her_and_a_short_one_does_not() {
             "and the difference is time she spent untreated");
 }
 
+/// **The cap is gone** (founder, 16 ก.ย. 11:30). A gap is worth exactly what it lasted.
+///
+/// It used to stop at two simulated minutes, set below the fastest untreated arrest so that time
+/// alone could deteriorate a patient and never kill one. The founder removed it: at 1:60 a patient
+/// nobody visits deteriorates as the engine says, and can arrest and die with nobody in the room.
+///
+/// So the only thing left to pin is that the clock is linear and derivable from two numbers on the
+/// chain — the gap in slots and the ratio — because that is what lets a stranger with the chain
+/// and no account re-derive the same patient we did.
 #[test]
-fn the_idle_clock_is_slow_bounded_and_derivable() {
+fn the_idle_clock_is_slow_linear_and_derivable() {
     assert_eq!(idle_seconds(0), 0.0, "a handover with no gap adds nothing");
 
     // sixty real minutes of slots → one simulated minute
@@ -146,20 +155,20 @@ fn the_idle_clock_is_slow_bounded_and_derivable() {
             "the stated ratio is one simulated minute per sixty real ones");
     assert!((IDLE_SIM_PER_REAL - 1.0 / 60.0).abs() < 1e-9);
 
-    // a weekend alone is the same two minutes two real hours buys
+    // No ceiling: a weekend alone is a weekend alone, and how long we were away is exactly what
+    // it costs her. Three days at 1:60 is seventy-two simulated minutes.
     let three_days = (3.0 * 24.0 * 3600.0 / SLOT_SECONDS) as u64;
     let two_hours = (7200.0 / SLOT_SECONDS) as u64;
-    assert_eq!(idle_seconds(three_days), IDLE_CAP_SIM_SECONDS,
-               "a long weekend alone must leave her where two real hours leaves her — nothing \
-                about an abandoned patient may depend on how long we were away");
-    assert_eq!(idle_seconds(two_hours), IDLE_CAP_SIM_SECONDS,
-               "at this ratio the cap is reached after two real hours, and every longer gap is \
-                that same gap");
-    assert_eq!(IDLE_CAP_SIM_SECONDS, 120.0,
-               "two simulated minutes, set below the fastest untreated arrest in the catalogue \
-                (ep5 at 186 s) so a gap can only ever deteriorate her — vitals-web's \
-                no_case_in_the_catalogue_dies_of_the_idle_clock_alone is what holds that against \
-                all sixteen cases");
+    assert!((idle_seconds(three_days) - 72.0 * 60.0).abs() < 1.0,
+            "three days away is seventy-two simulated minutes, not a ceiling: {}",
+            idle_seconds(three_days));
+    assert!((idle_seconds(two_hours) - 120.0).abs() < 1.0,
+            "and two real hours is two simulated minutes — the number the old cap froze at, which \
+             is now a point on the line rather than the end of it: {}",
+            idle_seconds(two_hours));
+    assert!(idle_seconds(three_days) > idle_seconds(two_hours) * 30.0,
+            "strictly longer gaps must cost strictly more, or 'she was alone all weekend' means \
+             nothing the record can show");
 }
 
 #[test]
@@ -199,11 +208,11 @@ fn idle_time_passes_the_way_time_on_shift_passes() {
                 runs the engine coarsely it is a second physiology, and the chart a stranger \
                 re-derives is not the patient in the bed");
 
-    // Tested on the mechanism rather than through `shift`, deliberately. The cap is two simulated
-    // minutes and no catalogue case tells a single tick of that from two minutes of ticks, so the
-    // same assertion written through `shift` would pass with the bug back in and guard nothing.
-    // Raise the cap past ep5's 186 s and it would start guarding again; the grain rule holds at
-    // every cap, so it is pinned where it does not depend on one.
+    // Tested on the mechanism rather than through `shift`, deliberately. This is the one rule on
+    // the ward that must hold whatever the ratio and whatever the gap — there is one physiology,
+    // and time nobody watched runs the same engine as time somebody did. Pinned at `pass_idle` so
+    // it cannot come to depend on a constant somebody is entitled to move, and the founder moved
+    // two of them in one day.
     let (coarse, _) = resume(&sce, &[Step::Tick(3600.0)]).expect("one jump");
     assert_ne!(seen(&coarse), seen(&played),
                "this test is worthless unless one big tick actually differs from an hour of ticks \
@@ -215,8 +224,8 @@ fn idle_time_passes_the_way_time_on_shift_passes() {
 ///
 /// Slower than the first setting by six times, and the reason is the ward rather than the
 /// physiology: a patient who drifts slowly is a patient several strangers can still meet, and the
-/// ward turns its beds over slowly enough that the queue is not eaten by time passing. The cap is
-/// unchanged, so it is now reached after **two real hours** rather than twenty real minutes.
+/// ward turns its beds over slowly enough that the queue is not eaten by time passing. There is no
+/// longer a ceiling over it: the founder removed the cap the same day, so the line runs on.
 ///
 /// Pinned as two numbers a stranger can check with a calculator, because this is the constant most
 /// likely to be moved again and the plan quotes these exact figures.
@@ -228,10 +237,12 @@ fn an_hour_away_costs_her_a_minute() {
              1:60 written where a reader can divide it themselves");
 
     let ten_real_hours = (10.0 * 3600.0 / SLOT_SECONDS) as u64;
-    assert_eq!(idle_seconds(ten_real_hours), IDLE_CAP_SIM_SECONDS,
-               "and ten hours away is the cap, which is two simulated minutes");
+    assert!((idle_seconds(ten_real_hours) - 600.0).abs() < 1e-3,
+            "ten hours away is ten simulated minutes — and ten simulated minutes is past the \
+             arrest of most of the catalogue, which is the founder's ruling of 16 ก.ย. and not a \
+             side effect: a patient nobody visits can die of being nobody's patient");
 
     let two_real_hours = (2.0 * 3600.0 / SLOT_SECONDS) as u64;
-    assert_eq!(idle_seconds(two_real_hours), IDLE_CAP_SIM_SECONDS,
-               "the cap is reached at two real hours: 120 simulated seconds at one per sixty");
+    assert!((idle_seconds(two_real_hours) - 120.0).abs() < 1e-3,
+            "two real hours is two simulated minutes: 1:60, written where a reader can divide it");
 }
