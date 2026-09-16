@@ -33,9 +33,9 @@ function grab(name) {
   throw new Error(`${name} is not in the page any more — renamed, or deleted with its test left behind`);
 }
 
-const { takeFirst, wardWho, wardAged, stateSentence } = new Function(
-  [grab('takeFirst'), grab('wardWho'), grab('wardAged'), grab('stateSentence'),
-   'return { takeFirst, wardWho, wardAged, stateSentence };'].join('\n'))();
+const { takeFirst, wardAged, stateSentence } = new Function(
+  [grab('takeFirst'), grab('wardAged'), grab('stateSentence'),
+   'return { takeFirst, wardAged, stateSentence };'].join('\n'))();
 
 // ── the sentence, and when there is one ──────────────────────────────────────
 assert.equal(takeFirst(null, null, 'her'), null, 'the Eternal bay is not a ward and is never gated');
@@ -49,15 +49,11 @@ assert.equal(takeFirst('1789528326', null, null), 'take the shift to treat the p
 assert.equal(takeFirst('1789528326', 'run-7', 'her'), null,
              'and once the head is theirs the page gets out of the way');
 
-// ── whose age is on the card ─────────────────────────────────────────────────
-// The door refuses a pack whose sex or band contradicts the case, so only the number moves.
-assert.equal(wardWho('Fon · F 6', 'Park Ji-woo', 8), 'Park Ji-woo · F 8',
-             'the person in the bed is the ward’s, and so is her age');
-assert.equal(wardWho('Somchai · M 71', 'Rafael Moreira', 63), 'Rafael Moreira · M 63');
-assert.equal(wardWho('Fon · F 6', 'Park Ji-woo', null), 'Park Ji-woo · F 6',
-             'a ward that does not know her age leaves the case’s alone rather than inventing one');
-assert.equal(wardWho('Fon · F 6', null, 8), 'Fon · F 8');
-assert.equal(wardWho('', 'Park Ji-woo', 8), 'Park Ji-woo', 'no case line, no invented one');
+// ── whose age is on the card ─────────────────────────────────────────
+// `wardWho` — which retold a season card's "Fon · F 6" as "Park Ji-woo · F 8" — is gone with the
+// last thing that drew a season card on the ward. The card is the payload's now and says who is in
+// the bed outright (`case_view`'s `who`, from the persona), so there is nothing left to retell:
+// see `wardCard` below. What remains is the authored *title*, which carries an age too.
 
 // ── and in the authored title, which carries it too ──────────────────────────
 assert.equal(wardAged('Barking cough and drooling, worse at night — F 6', 8),

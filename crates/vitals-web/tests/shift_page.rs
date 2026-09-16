@@ -172,7 +172,9 @@ fn the_wards_own_sentences_take_the_patients_pronoun() {
     // `fire` is on the list because it is the sentence a stranger reads on *every* press before
     // the head is taken — the most-read line on the page, and it said "her" over a man until the
     // director caught it in review. The rule was right and the list was short.
-    for name in ["wardBar", "openShift", "takeShift", "handBack", "handOver", "handOverInner", "fire"] {
+    // `stemHtml` joined the list when the ward started drawing its own sheet: its footer told every
+    // stranger that "what you do is on her chart" and that "she stays", over whoever was in the bed.
+    for name in ["wardBar", "openShift", "takeShift", "handBack", "handOver", "handOverInner", "fire", "stemHtml"] {
         // Comments first: they are prose about the code, they are allowed to name a woman, and an
         // apostrophe in one ("the case's own patient") would otherwise be read as a quote and
         // shift every literal after it by one.

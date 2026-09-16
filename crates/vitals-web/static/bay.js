@@ -25,6 +25,12 @@ const WARD=(location.pathname.match(/^\/ward\/(\d+)\/?$/)||[])[1]||null;
    its first call is a dead zone the page dies in, silently, with the markup looking perfectly
    fine. Read in `paintStill`, written in `paint` — the only two places a picture and a view meet. */
 let WARDFACE='';
+/* The case this shift is, as the payload described it — the card the page draws, the tray it
+   draws, and the label each button in that tray wears. Declared up here with `WARD` and
+   `WARDFACE` for the same reason they are: `ep()` reads the card and runs long before the ward's
+   own code, and a `let` in its temporal dead zone takes the whole page down silently.
+   Written in one place (`openShift`, off the payload) and nowhere else. */
+let WARDCARD=null, WARDCHIPS=null, WARDLABEL={};
 /* On a shift page the season does not exist. Not hidden after it renders — never rendered: a
    stranger who came from the globe to treat somebody must not land in the single-player product,
    and must find nothing here that leads into it. The class goes on before anything paints, and
@@ -298,7 +304,15 @@ const SEASON=[
   place:'Resus · mass casualty',
   d:'Everyone you have met, in one room, on the worst night of the year.'},
 ];
-const ep=()=>SEASON.find(e=>e.id===$('#ep').value)||SEASON[0];
+/* Which case the page is drawing, answered in one place.
+   On the shelf an unknown id falls through to the first entry, which is right for a shelf: a
+   stranger arriving with a stale link gets the season's opener rather than a blank screen. On a
+   bed it is catastrophic, and it is what the founder was shown — a World-case patient wearing
+   EP1's name, EP1's questions and EP1's pronouns, because a compiled case id is not in a table of
+   the season's sixteen. `bay.js` ships to both hosts, so the table is here on the ward too; the
+   rule is that a shift never asks it. The ward's card comes off the wire. */
+function epOf(card, shelfId){ return card||SEASON.find(e=>e.id===shelfId)||SEASON[0]; }
+const ep=()=>epOf(WARD?WARDCARD:null, $('#ep').value);
 
 /* An entry's art as a <picture>: a phone takes the 3:2 crop and never downloads the 16:9
    billboard, and an entry with only one file still works because <source> is optional.
@@ -562,7 +576,10 @@ const bedOf=e=>{
              : p.includes('resus')  ? 'RESUS'
              : p.includes('opd')||p.includes('clinic') ? 'OPD'
              : 'ER';
-  return (e.station ? (e.n||'OSCE') : 'BED 3')+' · '+unit;
+  /* On the ward it is a ward bed. Which number is the board's to say and the payload does not
+     carry it yet; "BED 3" over every patient on a public ward is the hard-coded lie this whole
+     function exists to undo. */
+  return (WARD ? 'WARD' : e.station ? (e.n||'OSCE') : 'BED 3')+' · '+unit;
 };
 /* `{s}` subject, `{o}` object, `{p}` possessive. A line with no placeholder is a line that never
    needed one — "the reaction comes back" is true whoever it comes back in. */
@@ -1086,8 +1103,13 @@ function direct(newBeats,outcome){
     if(b==='status:Critical')  return playCut('deteriorate');
   }
 }
+/* The season's six rows are the season's: every one of its cases has drugs, labs, a procedure and
+   a differential, so the kit draws all six. A compiled case has what its author wrote and no more,
+   and a row with nothing in it is an empty shelf a stranger opens looking for the thing to reach
+   for. So on a shift the kit is the rows this case actually has. */
+const modeRows=()=>WARD&&WARDCHIPS?MODES.filter(m=>(WARDCHIPS[m.id]||[]).length):MODES;
 function renderModes(){
-  $('#modes').innerHTML=MODES.map(m=>`<button class="btn${m.id===mode?' on':''}" data-m="${m.id}" data-ga="mode:${m.id}">${m.icon} ${m.label}</button>`).join('');
+  $('#modes').innerHTML=modeRows().map(m=>`<button class="btn${m.id===mode?' on':''}" data-m="${m.id}" data-ga="mode:${m.id}">${m.icon} ${m.label}</button>`).join('');
   $('#modes').querySelectorAll('button').forEach(b=>b.onclick=()=>{mode=b.dataset.m;renderModes();renderChips();});
   document.querySelector('.acts').classList.toggle('order-mode', mode!=='ask');
 }
@@ -1110,9 +1132,16 @@ const shuffled=(list,seed)=>{const a=list.slice();let s=seed||1;
    Only the `ask` row translates. The drugs, the labs, the procedures and the differential stay in
    professional English because that is the language the order is written in and the language the
    rubric pays for — you ask the patient in her language and you write the chart in yours. */
-const chipLabel=x=>PACK.asks[x]||x;
+/* A World case brings its own labels: `PACK.asks` is the season's phrasebook, keyed by the
+   season's own question strings, and a compiled case's `ask_` id is not in it. The case author's
+   label wins where there is one — the words that case was written in — and the rule underneath is
+   unchanged: the label is a coat over the button and `data-x` is what fires. */
+const chipLabel=x=>WARDLABEL[x]||PACK.asks[x]||x;
+/* The tray, from the case in front of this shift or from the season's table. Same reason as
+   `epOf`: on the ward the table is the wrong sixteen questions about the wrong patient. */
+const chipRows=()=>(WARD&&WARDCHIPS)||CHIPS[ep().id]||{};
 function renderChips(){
-  const c0=(CHIPS[ep().id]||{})[mode]||[];
+  const c0=chipRows()[mode]||[];
   const c=examMode()?shuffled(c0,seedOf((id||'')+':'+ep().id+':'+mode)):c0;
   const m=mode;
   $('#chips').innerHTML=c.map(x=>`<button class="btn" data-x="${x}" data-ga="chip:${x}">${chipLabel(x)}</button>`).join('');
@@ -1403,7 +1432,7 @@ function stemHtml(e){
   /* Same two authorities, same precedence as the shelf card: the server's set table
      names the stem, the band and the tier, and the SEASON entry is the copy that paints
      before it arrives. A station whose table entry has not landed still gets a full sheet. */
-  const info=memberOf(e.id);
+  const info=WARD?null:memberOf(e.id);
   /* A station's title is the manifest's and carries the case's own age — "…worse at night — F 6"
      over the ward's eight-year-old. Retold here rather than written back into the manifest: the
      manifest is the authored case and stays what its author wrote. */
@@ -1415,9 +1444,12 @@ function stemHtml(e){
      so the prefix comes off and what is left is what the row is actually for: who else is
      in there with you. A place that is not a station's keeps every word. */
   const room=String(e.place||'').replace(/^OSCE station · /,'');
+  /* The band and the level are said once. On a station they ride the header beside the station's
+     letter; on the ward there is no letter, the line below carries them, and a header that said
+     them too printed "ER · intern" twice on one sheet. */
   return `<div class="stem-h"><b>${WARD?'on the ward':'OSCE station '+e.n.replace(/^OSCE /,'')}</b>`
       +'<span class="sp"></span>'
-      +`<span>${specShort(band)}${tier?' · '+tier:''}</span></div>`
+      +`<span>${WARD?'':specShort(band)+(tier?' · '+tier:'')}</span></div>`
     +`<h3 class="stem-t">${title}</h3>`
     /* The case, said once, quietly, on a shift — the header above it now names the person. */
     /* The band and the level, and not the station's letter: "station A2" is the season's own
@@ -1440,8 +1472,8 @@ function stemHtml(e){
        claim this page is otherwise careful about. */
     +(WARD
       ? '<p class="stem-f"><b>★ on the ward</b> — this shift is declared on chain before it is '
-        +'played, and what you do is on her chart under your key. Hand over when you are done: '
-        +'she stays, and the next stranger starts where you left her.</p>'
+        +'played, and what you do is on '+pro(e).p+' chart under your key. Hand over when you are '
+        +'done: '+pro(e).s+' stays, and the next stranger starts where you left '+pro(e).o+'.</p>'
       : '<p class="stem-f"><b>★ exam conditions</b> — this attempt is declared on chain before '
         +'it is played, and the score is derived from the tape afterwards. The harm sentences '
         +'and the mark sheet stay sealed until the bell.</p>');
@@ -1449,8 +1481,10 @@ function stemHtml(e){
 function renderStage(){
   const E=ep(), art=document.querySelector('.pt-art');
   /* An episode's frame is the film's, exactly as it was: nothing here paints over it,
-     and the place tag goes back where the Director left it. */
-  if(!E.station){
+     and the place tag goes back where the Director left it. A shift is not an episode and has no
+     film: what a stranger at a bed reads before the first order is the sheet, which is why the
+     ward comes down the same path a station does without being one. */
+  if(!E.station&&!WARD){
     art.classList.remove('doc','film');
     $('#stem').classList.add('hide'); $('#filmv').classList.add('hide');
     $('#sgt').classList.add('hide'); $('#place').classList.remove('hide');
@@ -3741,11 +3775,58 @@ function wardAged(text, age){
   return String(text).replace(/\b([MF])\s*\d{1,3}\b/g, (m,sex)=>sex+' '+age);
 }
 
-/* Who is in the bed: the ward's name, the case's sex, the ward's age. */
-function wardWho(caseWho, name, age){
-  const rest=String(caseWho||'').split('·').slice(1).join('·').trim();
-  if(!name)return wardAged(caseWho||'', age);
-  return name+(rest?' · '+wardAged(rest, age):'');
+/* The case in front of this shift, turned into the card the bay already knows how to draw.
+   Everything in it is the payload's: the title is the case's own headline, `line` is its presenting
+   line (which `stemHtml` prints as PRESENTS, the last thing read before the clock starts), `who` is
+   the person actually in the bed, and the tray is the case's own interventions.
+   `null` when the payload carried no case content — the page says so rather than drawing whatever
+   the page's own table answers, which was EP1's patient over everybody. */
+function wardCard(content){
+  if(!content||!content.case_id)return null;
+  /* The compiler's vocabulary on the left, the kit's rows on the right: `ix_` is an investigation
+     and the tray calls that row labs, `tx_` is a treatment and the tray calls it drugs. Nothing is
+     renamed on the wire — what fires, lands on the tape and is marked is the intervention id. */
+  const ROWS={ask:'ask',exam:'exam',lab:'lab',treat:'drug',dx:'dx'};
+  const chips={}, labels={};
+  for(const row of Object.keys(ROWS)){
+    const ids=[];
+    for(const item of ((content.chips||{})[row]||[])){
+      if(!item||!item.id)continue;
+      ids.push(item.id);
+      if(item.label)labels[item.id]=item.label;
+    }
+    if(ids.length)chips[ROWS[row]]=ids;
+  }
+  /* No `station` on this card, whatever it looks like on screen. `station` is the season's word
+     for an exam: it shuffles the tray, seals the marks, and turns the ask bar from a conversation
+     into an order column — `askHer` is reached only when `!ep().station` — so a ward card that
+     claimed to be one would take away the thing the founder asked for by name ("ทำไมกด chat
+     ไม่ได้"). The sheet a station also draws is `renderStage`'s to give the ward directly. */
+  const entry={
+    id:content.case_id,
+    n:'the ward', sn:'the ward',
+    t:content.title||'',
+    who:content.who||'',
+    line:content.presents||'',
+    d:content.story||'',
+    place:content.setting||content.care_setting||'',
+    /* Where the patient presented, never the case's specialty: SURGERY over a three-week fever
+       answers the question the diagnosis chips are asking. The season took the organ specialty off
+       this sheet for that reason (`bandOf`), and the payload does not carry it. */
+    spec:content.care_setting||'',
+    tier:content.difficulty||'',
+  };
+  return {entry, chips, labels};
+}
+
+/* A page where the bay would be: the ward has something to say and nothing to play.
+   `#game` ships hidden and the bay unhides it as a run starts, so writing a sentence into it
+   without this was a blank screen with the words in it — which is what the "Not this bed" page
+   was until this line existed. `plain` turns the bay's grid back into a page. */
+function wardPage(html){
+  const g=$('#game');
+  g.classList.remove('hide'); g.classList.add('plain');
+  g.innerHTML='<div class="wardpage">'+html+'<p><a href="/">← the globe</a></p></div>';
 }
 
 /* Every control that treats her, opened or closed in one place.
@@ -3808,42 +3889,42 @@ async function openShift(){
       const her=(w.patients||[]).find(p=>String(p.patient_id)===String(WARD));
       if(her&&her.bed)bed='bed '+her.bed+' · ';
     }catch(e){ /* the board is not needed to say what happened */ }
-    $('#game').innerHTML='<div class="wardpage">'
-      +'<p class="bed">'+bed+'patient '+esc(WARD)+'</p>'
-      +'<h1>Not this bed</h1><p>'+esc(r.error)+'</p>'
-      +'<p><a href="/">← the globe</a></p></div>';
+    wardPage('<p class="bed">'+bed+'patient '+esc(WARD)+'</p>'
+      +'<h1>Not this bed</h1><p>'+esc(r.error)+'</p>');
     return;
   }
+  /* The case, built from what the payload said about it and from nothing else on this page.
+     A payload that could not describe the case is a sentence and no controls: a stranger who is
+     told the truth walks away, and a stranger shown another patient's name treats the wrong one. */
+  const built=wardCard(r.ward.content);
+  if(!built){
+    wardPage('<p class="bed">patient '+esc(WARD)+'</p>'
+      +'<h1>Not on this page yet</h1>'
+      +'<p>This patient’s case is not on this page yet. The chart is on chain and the bed is on '
+      +'the board — there is nothing here yet that can draw the case.</p>');
+    return;
+  }
+  WARDCARD=built.entry; WARDCHIPS=built.chips; WARDLABEL=built.labels;
   WARDPENDING=r.id; WARDSHIFT=r.ward;
   $('#wardwho').textContent=(r.ward.name||('patient '+WARD))+' · '+(r.ward.country||'—');
   /* The frame is about to hold her face, so what a screen reader is told about it is her name. */
   $('#fallback').alt=r.ward.name||'the patient';
   $('#lobby').classList.add('hide'); $('#game').classList.remove('hide');
-  /* The page is the bay, so it has to be the bay *for her case* — the header, the stage, the
-     still, the kit and the chips are all derived from the episode select, and a ward shift that
-     left it alone wore EP1's title and EP1's key art over another patient's chart. A screenshot
-     of that is the product contradicting itself in the place a judge looks first. */
-  /* The ward page carries an empty select — the season's list is exactly what must not be on it —
-     so her case is added as its only option before anything reads it. */
+  /* The select is the bay's own record of which case is running — `markSeen`, the star, the
+     author line and the analytics event all read it — so the case is added as its only option.
+     Nothing about the case is *looked up* from it any more: `epOf` answers that off the card. */
   const sel=$('#ep');
   if(sel&&!sel.querySelector('option[value="'+r.ward.case+'"]')){
     sel.add(new Option(r.ward.case, r.ward.case));
   }
   $('#ep').value=r.ward.case;
-  /* The station card names the case's own patient — "Pranom · F 72" — and on the ward the person
-     in that bed is somebody else. Her name and her age are the ward's; her sex is the case's,
-     because the door refuses a pack that disagrees with it. Written into the season entry rather
-     than special-cased in the card, so every place the page reads "who" says the same person —
-     including `ageOf`, which parses this string and is what tells NEWS2 she is a child. The shelf
-     that entry also feeds is not reachable on the ward host, where the front page is the globe. */
-  const card=SEASON.find(x=>x.id===r.ward.case);
-  if(card){
-    card.who=wardWho(card.who, r.ward.name, r.ward.age);
-    /* The title is authored and carries her age too — "Barking cough and drooling, worse at night
-       — F 6" over an eight-year-old, which the board and the rail both contradicted on screen. */
-    if(card.t)card.t=wardAged(card.t, r.ward.age);
-  }
   SHOWN=[]; STAGE=openStage(r.ward.case); stageKey='';
+  /* The kit opens on a row this case actually has. `ask` for almost every case, and the one that
+     has no questions opens on whatever it does have rather than on an empty shelf. */
+  if(!(built.chips[mode]||[]).length){
+    const first=MODES.find(m=>(built.chips[m.id]||[]).length);
+    if(first)mode=first.id;
+  }
   renderModes(); renderChips();
   paint(r.view);
   bootMonitor();

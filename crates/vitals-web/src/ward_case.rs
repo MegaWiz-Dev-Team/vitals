@@ -492,11 +492,21 @@ pub fn case_view(pack: &Value, who: &crate::ward::Persona) -> Value {
 
     serde_json::json!({
         "case_id": pack.get("case_id").and_then(Value::as_str).unwrap_or_default(),
+        // Who is in the bed, in the one string the page reads three ways: the bed label prints it,
+        // `ageOf` parses the number for the monitor's alarm limits, and `pro()` takes the
+        // patient's pronoun out of it. On a station the case's author writes it; here the person
+        // is the ward's, and a card carrying the author's patient gets all three wrong.
+        "who": format!("{} · {} {}", who.name, who.sex.to_ascii_uppercase(), who.age),
         "title": say(pack.get("title")).unwrap_or_default(),
         "presents": presentation.and_then(|p| say(p.get("chief_complaint"))).unwrap_or_default(),
         "story": presentation.and_then(|p| say(p.get("hpi"))).unwrap_or_default(),
         "setting": presentation.and_then(|p| say(p.get("setting"))),
-        "specialty": pack.get("specialty").and_then(Value::as_str),
+        // The care setting and *not* the specialty. "eir-surgery" printed over a three-week fever
+        // with sudden abdominal pain tells a candidate it is not the heart, which is the question
+        // this case is asking — the season took the organ specialty off the endpoint that feeds
+        // the sheet for exactly that reason (bay.js `bandOf`), and a public ward that marks a
+        // diagnosis is no different. Where the patient presented leaks nothing: everybody arrives
+        // somewhere.
         "care_setting": pack.get("care_setting").and_then(Value::as_str),
         "difficulty": pack.get("difficulty").and_then(Value::as_str).unwrap_or_default(),
         "archetype": pack.get("archetype_label").and_then(Value::as_str),
