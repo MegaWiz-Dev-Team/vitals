@@ -1244,3 +1244,90 @@ fn the_board_says_which_case_each_patient_is_on_and_how_hard_it_is() {
     assert_eq!(row(2)["case"], "osce-c");
     assert_eq!(row(2)["difficulty"], "resident");
 }
+
+/// **The policy block says what this ward actually does.**
+///
+/// `/api/ward` publishes the rules beside the numbers, because a census nobody can check is a
+/// claim. Three of those rules stopped being true the day the ward started playing what the case
+/// factory compiles, and they were the three most specific ones:
+///
+///   * `catalogue` listed the season's sixteen ids — `ep2`, `osce-d4` — on a ward that refuses
+///     every one of them at its own door;
+///   * `difficulty` counted those sixteen into bands, so a reader filtering for a student case was
+///     told there are two, from a table with nothing in it any more;
+///   * `draw` said cases are drawn uniformly from that catalogue, which was never how the queue
+///     works and is not how a bed is filled.
+///
+/// A wrong rule published beside a right number is worse than no rule: the number is checkable and
+/// the sentence is what a reader uses to decide whether checking is worth their time.
+#[test]
+fn the_policy_says_what_this_ward_actually_does() {
+    use vitals_web::ward_case::CaseSummary;
+
+    let case = |id: &str, level: &str, provisional: bool| CaseSummary {
+        case_id: id.into(),
+        archetype: "septic_shock".into(),
+        patient_age: Some(40),
+        patient_sex: Some("female".into()),
+        country: Some("BGD".into()),
+        difficulty: level.into(),
+        endemic: false,
+        provisional,
+        version: "0.1.0".into(),
+        title: "a compiled case".into(),
+    };
+    let held = vec![
+        case("embla-typhoid-1", "intern", true),
+        case("embla-dengue-1", "intern", false),
+        case("embla-malaria-1", "resident", true),
+        case("embla-croup-1", "student", true),
+    ];
+
+    let patients = vec![patient(1, OPEN, 0, 10, 0)];
+    let packs = nobody();
+    let mut r = read(&patients, &[], &packs, None, 100);
+    r.cases = &held;
+    let v = ward_payload(&r);
+    let policy = &v["policy"];
+
+    // What the catalogue is, and how much of it there is at this read.
+    let cat = &policy["catalogue"];
+    assert_eq!(cat["held"], 4, "the cases the ward is holding, counted at this read");
+    assert_eq!(cat["provisional"], 3, "compiled, not clinically reviewed");
+    assert_eq!(cat["reviewed"], 1);
+    let where_from = cat["from"].as_str().unwrap_or_default();
+    assert!(where_from.contains("case factory") && where_from.contains("embla-cases"),
+            "and where they come from: {where_from:?}");
+    let placed = cat["placed_by"].as_str().unwrap_or_default();
+    assert!(placed.contains("sex") && placed.contains("age"),
+            "a patient is placed on a case written about somebody like her: {placed:?}");
+
+    // The levels, as the packs themselves carry them.
+    assert_eq!(policy["difficulty"]["student"], 1);
+    assert_eq!(policy["difficulty"]["intern"], 2);
+    assert_eq!(policy["difficulty"]["resident"], 1);
+
+    // How a bed is actually filled.
+    let draw = policy["draw"].as_str().unwrap_or_default();
+    assert!(draw.contains("queue"), "a bed is filled from the queue: {draw:?}");
+    assert!(!draw.contains("uniformly"), "and not uniformly from a catalogue: {draw:?}");
+
+    // And nothing in the whole block names one of the season's sixteen.
+    let said = policy.to_string();
+    for season in ["ep1", "ep2", "ep5", "osce-a", "osce-d4"] {
+        assert!(!said.contains(season),
+                "the policy still names {season:?}, which this ward refuses at its own door: {said}");
+    }
+}
+
+/// A ward that cannot read its chain still knows its own rules — and does not invent a count it
+/// could not take. `held: null` is "we did not look", which is a different fact from "none".
+#[test]
+fn the_policy_survives_a_chain_it_cannot_read() {
+    let v = vitals_web::ward::ward_unavailable("devnet:ABC", "the RPC timed out");
+    assert_eq!(v["readable"], false);
+    let cat = &v["policy"]["catalogue"];
+    assert!(cat["from"].as_str().is_some_and(|s| s.contains("case factory")),
+            "the rule is still true when the chain is down");
+    assert!(cat["held"].is_null(), "and a number nobody took is null, never zero: {cat}");
+}
