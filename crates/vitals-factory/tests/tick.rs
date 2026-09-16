@@ -11,7 +11,7 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use vitals_factory::door::{Door, FillReply, Filled, Pushed, Queued, Token, WardView};
+use vitals_factory::door::{parse_cases, Door, FillReply, Filled, Outbound, Pushed, Queued, Token, WardCase, WardView};
 use vitals_factory::ledger::Ledger;
 use vitals_factory::manifest::{batch_age, Manifest};
 use vitals_factory::pool::{read_pool, Person};
@@ -22,6 +22,7 @@ use vitals_web::ward_chain::{pack_id, validate_pack, PORTRAITS};
 
 const POOL: &str = include_str!("../../vitals-web/data/personas.json");
 const STAGING: &str = include_str!("fixtures/ward-staging-2026-09-16.json");
+const CASES: &str = include_str!("fixtures/ward-cases-2026-09-16.json");
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -86,6 +87,10 @@ struct FakeDoor {
     /// not yet, 16 Sep); a door that does not refuses a pack whole and a fill entry by entry.
     takes_256: bool,
     queue: RefCell<BTreeMap<String, Pack>>,
+    /// The case door's list; empty for a ward built before it.
+    cases: RefCell<Vec<WardCase>>,
+    /// What each pushed pack said beside the pack itself: `(case_id, difficulty)`, by pack id.
+    chosen: RefCell<BTreeMap<String, (Option<String>, Option<String>)>>,
     pushes: RefCell<Vec<usize>>,
     fills: RefCell<Vec<(u64, BTreeMap<String, String>)>>,
     replaces: RefCell<Vec<(String, BTreeMap<String, String>)>>,
@@ -96,8 +101,15 @@ impl FakeDoor {
     fn new(ward: WardView) -> FakeDoor {
         FakeDoor {
             ward: RefCell::new(ward), open: true, takes_256: true, queue: RefCell::new(BTreeMap::new()),
+            cases: RefCell::new(vec![]), chosen: RefCell::new(BTreeMap::new()),
             pushes: RefCell::new(vec![]), fills: RefCell::new(vec![]), replaces: RefCell::new(vec![]), tokens_seen: RefCell::new(vec![]),
         }
+    }
+    /// The same door with the case door open on the 16 Sep list.
+    fn with_cases(ward: WardView) -> FakeDoor {
+        let d = FakeDoor::new(ward);
+        *d.cases.borrow_mut() = parse_cases(CASES).unwrap();
+        d
     }
 }
 
@@ -105,7 +117,10 @@ impl Door for FakeDoor {
     fn read_ward(&self) -> Result<WardView, String> {
         Ok(self.ward.borrow().clone())
     }
-    fn push(&self, token: &Token, packs: &[Pack]) -> Result<Pushed, String> {
+    fn read_cases(&self) -> Result<Vec<WardCase>, String> {
+        Ok(self.cases.borrow().clone())
+    }
+    fn push(&self, token: &Token, packs: &[Outbound]) -> Result<Pushed, String> {
         self.tokens_seen.borrow_mut().push(token.bearer());
         self.pushes.borrow_mut().push(packs.len());
         if !self.open {
@@ -113,7 +128,9 @@ impl Door for FakeDoor {
         }
         let mut q = self.queue.borrow_mut();
         let mut out = Queued { queued: 0, duplicates: 0, rejected: vec![], depth: 0 };
-        for p in packs {
+        for o in packs {
+            let p = &o.pack;
+            self.chosen.borrow_mut().insert(pack_id(p), (o.case_id.clone(), o.difficulty.clone()));
             let mut plain = p.clone();
             plain.portrait.retain(|k, _| !k.ends_with("_256"));
             if !self.takes_256 {
@@ -510,6 +527,162 @@ fn a_dry_run_prints_the_next_twenty_draws_with_country_and_region() {
     assert!(spread.contains(&format!("{} countries", distinct.len())) && spread.contains(&format!("{} regions", regions.len())), "{spread}");
     // Still a dry run: nothing pushed, no token, no file.
     assert!(door.pushes.borrow().is_empty() && *tools.token_fetches.borrow() == 0 && !dir.join("factory-ledger.json").exists());
+}
+
+// ── the case door ────────────────────────────────────────────────────────────
+// 7b's `GET /api/ward/cases` lists the cases the ward holds, and the queue door is about to read
+// an optional `case_id` and `difficulty` on a pack. The factory chooses one per pack from that
+// list (tests/cases.rs holds the rule), carries it on the wire, records it in the ledger so a
+// re-send says the same, and prints it in the log and the dry run.
+
+/// Every pack built against a ward with a case door goes out with a case_id and a difficulty
+/// from the ward's own list, fitting her age and sex, never an endemic case of another country;
+/// the ledger remembers both; the log says which.
+#[test]
+fn every_pack_built_carries_a_case_id_and_difficulty_from_the_wards_list() {
+    let dir = world("cases");
+    let pool = read_pool(POOL).unwrap();
+    seed_manifest(&dir, &pool);
+    let door = FakeDoor::with_cases(WardView::parse(STAGING).unwrap());
+    let tools = FakeTools::default();
+    let r = tick(&config(&dir, 6, 2), &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let listed = parse_cases(CASES).unwrap();
+    let q = door.queue.borrow();
+    assert!(!q.is_empty());
+    for (id, pack) in q.iter() {
+        let (case_id, difficulty) = door.chosen.borrow()[id].clone();
+        let case_id = case_id.unwrap_or_else(|| panic!("{}: no case_id", pack.persona.name));
+        let w = listed.iter().find(|c| c.case_id == case_id).unwrap_or_else(|| panic!("{case_id} is not on the ward's list"));
+        assert_eq!(difficulty.as_deref(), Some(w.difficulty.as_str()), "{case_id}");
+        assert!(w.country.is_none() || w.country.as_deref() == Some(pack.persona.country.as_str()), "{case_id} is another country's endemic case on {}", pack.persona.name);
+        // Her age and sex fit the chosen case as the factory knows it.
+        let theirs = vitals_web::ward::case_patient(&case_id).unwrap_or_else(|| panic!("{case_id}: a station the factory has a file for"));
+        assert_eq!(theirs.sex.to_lowercase(), pack.persona.sex, "{case_id} on {}", pack.persona.name);
+        assert!(vitals_web::ward::age_band(theirs.age).contains(&pack.persona.age), "{case_id} at {}", pack.persona.age);
+    }
+    let ledger = Ledger::load(&dir.join("factory-ledger.json")).unwrap();
+    for (id, s) in &ledger.sent {
+        assert_eq!(s.case_id, door.chosen.borrow()[id].0, "the ledger remembers the case the pack went out with");
+        assert!(s.difficulty.is_some());
+    }
+    let text = r.lines.join("\n");
+    assert!(text.lines().filter(|l| l.starts_with("queued")).all(|l| l.contains("case_id ")), "every queued line names the case_id:\n{text}");
+}
+
+/// A ward with no case door yet (an older build, or the door answering nothing): the packs go
+/// out exactly as before — no case fields on the wire, none in the ledger — and the tick says so
+/// once rather than failing.
+#[test]
+fn a_ward_without_a_case_door_gets_packs_without_case_fields() {
+    let dir = world("no-cases");
+    let pool = read_pool(POOL).unwrap();
+    seed_manifest(&dir, &pool);
+    let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
+    let tools = FakeTools::default();
+    let r = tick(&config(&dir, 4, 2), &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert!(!door.queue.borrow().is_empty());
+    assert!(door.chosen.borrow().values().all(|(c, d)| c.is_none() && d.is_none()), "{:?}", door.chosen.borrow());
+    let ledger = Ledger::load(&dir.join("factory-ledger.json")).unwrap();
+    assert!(ledger.sent.values().all(|s| s.case_id.is_none()));
+    assert!(r.lines.iter().any(|l| l.contains("no case") && l.contains("case_id")), "{:?}", r.lines);
+}
+
+/// A pack sent before the case door existed is re-sent with a case_id chosen now and recorded,
+/// so the pack the ward admits and the ledger agree from then on.
+#[test]
+fn a_waiting_pack_from_before_the_case_door_gets_a_case_id_when_it_is_re_sent() {
+    let dir = world("resend-cases");
+    let pool = read_pool(POOL).unwrap();
+    seed_manifest(&dir, &pool);
+    let tools = FakeTools::default();
+    // Yesterday: no case door.
+    let r = tick(&config(&dir, 3, 2), &FakeDoor::new(WardView::parse(STAGING).unwrap()), &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let before = Ledger::load(&dir.join("factory-ledger.json")).unwrap();
+    assert_eq!(before.sent.len(), 3);
+    assert!(before.sent.values().all(|s| s.case_id.is_none()));
+    // Today: the case door is open, the ward's queue lost the packs (a new fake door), and the
+    // three are re-sent — each now with a case_id.
+    let door = FakeDoor::with_cases(WardView::parse(STAGING).unwrap());
+    let r = tick(&config(&dir, 3, 2), &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let after = Ledger::load(&dir.join("factory-ledger.json")).unwrap();
+    assert_eq!(after.sent.len(), 3, "the same three, put back, nothing new built");
+    for (id, s) in &after.sent {
+        assert!(s.case_id.is_some(), "{}: chosen at the re-send", s.name);
+        assert_eq!(door.chosen.borrow()[id].0, s.case_id, "the wire and the ledger agree");
+    }
+    assert!(r.lines.iter().any(|l| l.contains("case_id") && l.contains("re-sent") || l.contains("resent")), "{:?}", r.lines);
+}
+
+/// Never the same case on the board twice: a case in a bed is not chosen for any pack built or
+/// re-sent while it is there (the board says `case` today and will say `case_id` once 7b's build
+/// lands; either is read).
+#[test]
+fn a_case_in_a_bed_is_not_chosen_for_a_pack() {
+    let dir = world("bed-case");
+    let pool = read_pool(POOL).unwrap();
+    seed_manifest(&dir, &pool);
+    let mut ward = WardView::parse(STAGING).unwrap();
+    // The three in beds: osce-a2 by `case`, osce-c2 by `case_id`, osce-d4 by both.
+    ward.patients[0].case = Some("osce-a2".into());
+    ward.patients[1].case_id = Some("osce-c2".into());
+    ward.patients[2].case = Some("osce-d4".into());
+    ward.patients[2].case_id = Some("osce-d4".into());
+    let door = FakeDoor::with_cases(ward);
+    let tools = FakeTools::default();
+    let r = tick(&config(&dir, 12, 3), &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert!(door.queue.borrow().len() >= 6, "{}", door.queue.borrow().len());
+    for (id, pack) in door.queue.borrow().iter() {
+        let (case_id, _) = door.chosen.borrow()[id].clone();
+        if let Some(c) = &case_id {
+            assert!(!["osce-a2", "osce-c2", "osce-d4"].contains(&c.as_str()), "{c} is in a bed, chosen for {}", pack.persona.name);
+        }
+    }
+    // Women of 62–74 fit only osce-a2 and osce-d4 among the stations, both in beds: such a pack
+    // goes out without a case_id rather than with a duplicate, and the log says so.
+    let text = r.lines.join("\n");
+    assert!(text.contains("no case fits") || door.chosen.borrow().values().all(|(c, _)| c.is_some()), "{text}");
+}
+
+/// The dry run prints the case_id chosen for every draw it lists, both in the build list and in
+/// the twenty ahead, so the founder sees the case beside the country.
+#[test]
+fn a_dry_run_prints_the_case_id_chosen_for_each_draw() {
+    let dir = world("dry-cases");
+    let pool = read_pool(POOL).unwrap();
+    seed_manifest(&dir, &pool);
+    let door = FakeDoor::with_cases(WardView::parse(STAGING).unwrap());
+    let tools = FakeTools::default();
+    let cfg = Config { dry_run: true, ..config(&dir, 6, 2) };
+    let r = tick(&cfg, &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let listed = parse_cases(CASES).unwrap();
+    let start = r.lines.iter().position(|l| l.starts_with("next 20 draws")).unwrap();
+    let draws: Vec<&String> = r.lines[start + 1..].iter().take_while(|l| l.starts_with("  ")).collect();
+    assert_eq!(draws.len(), 20);
+    for line in &draws {
+        // "  1. ETH · Sub-Saharan Africa · Tigist Alemu · case_id osce-a2 (student)"
+        let cells: Vec<&str> = line.trim().split(" · ").collect();
+        assert_eq!(cells.len(), 4, "{line}");
+        let tail = cells[3];
+        if tail == "no case_id" {
+            continue;
+        }
+        let (word, rest) = tail.split_once(' ').unwrap_or_else(|| panic!("{line}"));
+        assert_eq!(word, "case_id", "{line}");
+        let (case_id, difficulty) = rest.split_once(" (").unwrap_or_else(|| panic!("{line}"));
+        let difficulty = difficulty.trim_end_matches(')');
+        let w = listed.iter().find(|c| c.case_id == case_id).unwrap_or_else(|| panic!("{case_id} in {line} is not on the list"));
+        assert_eq!(w.difficulty, difficulty, "{line}");
+    }
+    assert!(draws.iter().filter(|l| l.contains("case_id ")).count() >= 15, "most draws find a case:\n{}", draws.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n"));
+    let build: Vec<&String> = r.lines.iter().filter(|l| l.starts_with("  osce-")).collect();
+    assert!(!build.is_empty() && build.iter().all(|l| l.contains("case_id")), "the build list too:\n{}", build.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n"));
+    assert!(door.pushes.borrow().is_empty() && !dir.join("factory-ledger.json").exists(), "still a dry run");
 }
 
 /// Every face is judged before it is recorded or uploaded; the question is the one the brief

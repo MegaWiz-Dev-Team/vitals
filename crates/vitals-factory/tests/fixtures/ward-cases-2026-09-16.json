@@ -1,0 +1,149 @@
+{
+ "_note": "A snapshot of the ward's case door, GET /api/ward/cases, as 7b described it on 16 Sep 2026 before it landed: every case the ward holds, with its country (alpha-3, or null for the common draw), difficulty, whether it is an endemic case, whether it is provisional, and its version. The two community cases are invented for the tests; the sixteen are the ward's catalogue.",
+ "cases": [
+  {
+   "case_id": "osce-a",
+   "country": null,
+   "difficulty": "student",
+   "endemic": false,
+   "provisional": false,
+   "version": 1
+  },
+  {
+   "case_id": "osce-a2",
+   "country": null,
+   "difficulty": "student",
+   "endemic": false,
+   "provisional": false,
+   "version": 1
+  },
+  {
+   "case_id": "osce-b",
+   "country": null,
+   "difficulty": "intern",
+   "endemic": false,
+   "provisional": false,
+   "version": 1
+  },
+  {
+   "case_id": "osce-b2",
+   "country": null,
+   "difficulty": "intern",
+   "endemic": false,
+   "provisional": false,
+   "version": 1
+  },
+  {
+   "case_id": "osce-b3",
+   "country": null,
+   "difficulty": "intern",
+   "endemic": false,
+   "provisional": false,
+   "version": 1
+  },
+  {
+   "case_id": "osce-c2",
+   "country": null,
+   "difficulty": "intern",
+   "endemic": false,
+   "provisional": false,
+   "version": 1
+  },
+  {
+   "case_id": "osce-c3",
+   "country": null,
+   "difficulty": "intern",
+   "endemic": false,
+   "provisional": false,
+   "version": 1
+  },
+  {
+   "case_id": "osce-d",
+   "country": null,
+   "difficulty": "intern",
+   "endemic": false,
+   "provisional": false,
+   "version": 1
+  },
+  {
+   "case_id": "osce-d3",
+   "country": null,
+   "difficulty": "intern",
+   "endemic": false,
+   "provisional": false,
+   "version": 1
+  },
+  {
+   "case_id": "osce-c",
+   "country": null,
+   "difficulty": "resident",
+   "endemic": false,
+   "provisional": false,
+   "version": 1
+  },
+  {
+   "case_id": "osce-d2",
+   "country": null,
+   "difficulty": "resident",
+   "endemic": false,
+   "provisional": false,
+   "version": 1
+  },
+  {
+   "case_id": "osce-d4",
+   "country": null,
+   "difficulty": "resident",
+   "endemic": false,
+   "provisional": false,
+   "version": 1
+  },
+  {
+   "case_id": "ep2",
+   "country": null,
+   "difficulty": "intern",
+   "endemic": false,
+   "provisional": false,
+   "version": 1
+  },
+  {
+   "case_id": "ep3",
+   "country": null,
+   "difficulty": "resident",
+   "endemic": false,
+   "provisional": false,
+   "version": 1
+  },
+  {
+   "case_id": "ep4",
+   "country": null,
+   "difficulty": "resident",
+   "endemic": false,
+   "provisional": false,
+   "version": 1
+  },
+  {
+   "case_id": "ep5",
+   "country": null,
+   "difficulty": "resident",
+   "endemic": false,
+   "provisional": false,
+   "version": 1
+  },
+  {
+   "case_id": "cmty-th-dengue-01",
+   "country": "THA",
+   "difficulty": "intern",
+   "endemic": true,
+   "provisional": true,
+   "version": 3
+  },
+  {
+   "case_id": "cmty-np-altitude-01",
+   "country": "NPL",
+   "difficulty": "resident",
+   "endemic": true,
+   "provisional": true,
+   "version": 1
+  }
+ ]
+}
