@@ -38,13 +38,14 @@ is 128 is refused with the sentence *not forced*, never compiled.
 | `cardiogenic_shock` | 11 min | inotrope + vasopressor (+ reperfusion, + specific therapy); a fluid bolus harms |
 | `neuromuscular_respiratory_failure` | 9 min | airway taken over + the antidote; a sedative before the airway harms |
 | `cns_depression_hypoglycaemia` | 14 min | dextrose + the specific therapy; the airway follows the consciousness |
-| `paediatric_compensated_shock` | 12 min | measured fluid, reassessed; the pulse pressure narrows first; overload harms |
-| `hypoxic_respiratory_failure` | 10 min | oxygen + whichever specific therapy the plan names (bronchodilator, drain, anticoagulant, antibiotics, diuretic) |
+| `paediatric_compensated_shock` | 12 min | measured fluid, reassessed — and the glucose and the antibiotics when the plan names them (a malnourished or a cholera child); the pulse pressure narrows first; overload harms |
+| `hypoxic_respiratory_failure` | 10 min | oxygen + whichever therapy the plan names (bronchodilator, drain, anticoagulant, antibiotics, diuretic, **the specific therapy** such as an antitoxin, **a transfusion**); the airway is critical for an upper-airway diagnosis (diphtheria, epiglottitis, croup, laryngospasm); **isolation is a gate** when the plan names it |
 | `anaphylaxis` | 8 min | adrenaline IM inside the window; the antihistamine-first reflex and an IV push of adrenaline are the harms |
 | `acls_cardiac_arrest` | 4 min (no-flow) | the algorithm: compressions, shock for a shockable rhythm, adrenaline, amiodarone, the two-minute rhythm check, to ROSC |
 | `acls_tachycardia_svt` | 13 min | vagal → adenosine; synchronised cardioversion when unstable; untreated it destabilises, arrests in VF, dies |
 | `acls_tachycardia_af` | 13 min | rate control + anticoagulation; cardioversion when unstable; adenosine is the wrong drug |
 | `acls_bradycardia` | 12 min | atropine, then pacing or a chronotrope; untreated it arrests in PEA |
+| `hypovolaemic_shock` (adult) | 12 min | rapid intravenous rehydration, then the second phase and ongoing losses; the salts; an antibiotic as adjunct; oral rehydration once perfusing (before the drip it is harm); an antimotility drug is harm |
 
 Every archetype outside the ACLS family writes the same two-state scenario: `presenting` (deteriorating, with a
 `critical` band halfway to death) → `stabilising` (improving) once **every critical role the plan
@@ -56,7 +57,13 @@ shift and one sim minute per real hour between shifts, so these sit inside the r
 sixteen cases already span (3 to 14 sim minutes).
 
 The **management plan** is read against the archetype's role table. A step that names a role's
-keywords (in English or Thai) becomes a `tx_<role>` intervention; a step that forbids something
+keywords (in English or Thai) becomes a `tx_<role>` intervention. **Keywords match whole words**,
+case-folded and Unicode-aware, and a multi-word keyword is a phrase: `stopped` does not contain
+the protective equipment, `nebulised` is not a nebuliser, a surgical mask is not surgery. Where a
+stem is meant the table says so with a star (`transfus*` takes `transfusion`, `*stemi` takes
+`nstemi`); a keyword in a script without word spaces (Thai) matches as a substring. The
+scenario's own matcher keeps the engine's substring rule for what a learner types, with the
+stars stripped; a step that forbids something
 (*do not*, *avoid*, *no …*, *ห้าม*) becomes a harmful intervention with a `harm` sentence; a step
 the compiler cannot place is still listed in the pack, with an empty mapping, so nothing the plan
 says disappears silently. If the plan names no critical role at all, the case is refused: nothing
