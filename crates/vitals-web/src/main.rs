@@ -1804,6 +1804,18 @@ struct WardRebuild {
     admitted_slot: u64,
 }
 
+/// What this server last anchored, per patient: how long her chain then was, and when.
+///
+/// Kept because a read taken in the seconds after an anchor comes back before the transaction is
+/// finalized, and a page that opens her then is handed a chart one shift short of the truth. This
+/// is not a cache of the chain — nothing is served *from* it. It is only ever a reason to wait.
+fn heads() -> &'static std::sync::Mutex<std::collections::HashMap<u64, (u32, std::time::Instant)>> {
+    static HEADS: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<u64, (u32, std::time::Instant)>>,
+    > = std::sync::OnceLock::new();
+    HEADS.get_or_init(Default::default)
+}
+
 /// Read the chain's account of one patient, for a run being restored after a restart.
 ///
 /// `None` when the chain cannot be read or she is not there — and the caller drops the run rather
@@ -1836,8 +1848,16 @@ fn open_shift(
     let now_slot = chain.slot().map_err(|e| format!("the chain would not say what slot it is: {e}"))?;
     let her = chain
         .patient(patient_id)
-        .map_err(|e| format!("her chart could not be read: {e}"))?
+        .map_err(|e| format!("this chart could not be read: {e}"))?
         .ok_or_else(|| format!("no patient {patient_id} has been admitted here"))?;
+    // Not behind what this server itself wrote. A chart one shift short, opened seconds after
+    // somebody finished a shift, is the page contradicting the record it is made of.
+    if let Some(wait) = ward::behind_the_head(
+        her.shifts,
+        heads().lock().unwrap().get(&patient_id).map(|(n, at)| (*n, at.elapsed())),
+    ) {
+        return Err(wait);
+    }
     if her.state != ward::OPEN {
         return Err(format!(
             "patient {patient_id} has left the ward — {}, and a stay that ended is not one \
@@ -4503,11 +4523,17 @@ fn main() {
                     }
                     (WardWork::Anchor { session, patient_id }, Ok(sig)) => {
                         let mut map = sessions.lock().unwrap();
+                        let now_long = map.get(session).and_then(|s| s.ward.as_ref()).map(|w| w.index + 1);
                         if let Some(s) = map.get_mut(session) {
                             s.anchored = true;
                             persist(&store, session, s, true);
                         }
                         drop(map);
+                        // How long her chain is now, from the shift that just landed rather than
+                        // from a read that may not see it yet. `open_shift` waits on this.
+                        if let Some(n) = now_long {
+                            heads().lock().unwrap().insert(*patient_id, (n, std::time::Instant::now()));
+                        }
                         let her = chain.patient(*patient_id).ok().flatten();
                         json(serde_json::json!({
                             "anchored": true,

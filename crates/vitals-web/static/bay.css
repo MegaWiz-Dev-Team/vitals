@@ -1372,6 +1372,14 @@ a.give:hover{filter:brightness(1.06)}
      transcript gives it up: before the head is taken the transcript is empty, and the sheet is
      the thing a stranger is actually reading. */
   html.is-ward .stage .pt{flex:3.4 1 0}
+  /* While the sheet is up it *is* the patient block: the frame takes the sheet's own height and
+     the sheet sits in the flow, so nothing is cut off and the face follows below it. Inside a
+     fixed frame it was a box too short for its text, and the founder read a PRESENTS line that
+     stopped mid-word under a 128 px face (16 ก.ย., 1460×900). After the first order the sheet
+     goes and the frame is a frame again. */
+  html.is-ward .stage .pt:has(.stem:not(.hide)){flex:0 0 auto}
+  html.is-ward .pt-art:has(> .stem:not(.hide)){flex:0 0 auto;height:auto;min-height:0;aspect-ratio:auto}
+  html.is-ward .pt-art > .stem:not(.hide){position:relative;inset:auto;overflow:visible}
   .stage{min-height:0;overflow-y:auto;overscroll-behavior:contain;gap:.6rem}
   .pt{display:flex;flex-direction:column;min-height:0;flex:2.2 1 0;padding-bottom:.55rem}
   .pt-art{aspect-ratio:auto;flex:1 1 auto;min-height:7rem}

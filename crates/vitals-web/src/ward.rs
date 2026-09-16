@@ -354,6 +354,31 @@ pub fn may_step(on_the_ward: bool, declared: bool, handed_over: bool) -> Result<
         .into())
 }
 
+/// Is this read of the chain behind a shift this server just anchored?
+///
+/// `Some(sentence)` when it is, and the sentence is what the person waiting should be told. A read
+/// taken in the seconds after an anchor comes back before the transaction is finalized: the count
+/// is one short, and the page then says *shift 1 · 0 anchored shifts* over a patient who has just
+/// been treated. On a page whose whole claim is that the chart is the chain, a stale chart is the
+/// worst thing to show — worse than a wait.
+///
+/// `remembered` is what this server last anchored for this patient and how long ago. **After a
+/// minute it stops mattering**: the chain is the authority, whatever we think we wrote, and a
+/// server that argued with it for ever would be a server with an opinion of the record.
+pub fn behind_the_head(
+    chain_shifts: u32,
+    remembered: Option<(u32, std::time::Duration)>,
+) -> Option<String> {
+    let (wrote, ago) = remembered?;
+    if ago > std::time::Duration::from_secs(60) || chain_shifts >= wrote {
+        return None;
+    }
+    Some(format!(
+        "the last shift on this patient is still landing on chain — {chain_shifts} of {wrote} \
+         anchored so far. A few seconds, then open the page again"
+    ))
+}
+
 /// One person the factory can make a patient of.
 ///
 /// No age: the case carries the band and the factory picks inside it, so an age here would be one
