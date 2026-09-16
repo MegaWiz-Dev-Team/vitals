@@ -600,6 +600,8 @@ struct Gap {
     from_manifest: BTreeMap<String, String>,
     /// Not on file: make these.
     to_make: Vec<&'static str>,
+    /// Her age on the board, for the choice of wording: a child's states are asked for gently.
+    age: Option<u16>,
     /// Whether the manifest entry under `key` holds the very face the board shows. When a face was
     /// remade after she was admitted the board keeps the old one (add only), the states are edited
     /// from the board's face, and recording them under the new face's entry would file one
@@ -648,7 +650,7 @@ fn gaps(ward: &WardView, pool: &[Person], manifest: &Manifest, r: &mut Report) -
         if from_manifest.is_empty() && to_make.is_empty() {
             continue;
         }
-        out.push(Gap { patient_id: p.patient_id, who: who.clone(), key, stable, from_manifest, to_make, record });
+        out.push(Gap { patient_id: p.patient_id, who: who.clone(), key, stable, from_manifest, to_make, age: p.age, record });
     }
     out
 }
@@ -730,7 +732,8 @@ fn make_states(cfg: &Config, tools: &dyn Tools, g: &Gap, manifest: &mut Manifest
     let mime = if base.starts_with(b"RIFF") { "image/webp" } else { "image/png" };
     for st in &g.to_make {
         let one = || -> Result<String, String> {
-            let prompt = prompts::state(st, g.who.sex).ok_or_else(|| format!("no prompt for {st}"))?;
+            let child = g.age.is_some_and(|a| a < prompts::CHILD_UNDER);
+            let prompt = prompts::state_for(st, g.who.sex, child).ok_or_else(|| format!("no prompt for {st}"))?;
             let png = tools.edit(&cfg.vertex_project, &cfg.model, &base, mime, &prompt)?;
             let webp = tools.webp(&png, WEBP_QUALITY)?;
             publish(cfg, tools, &webp)

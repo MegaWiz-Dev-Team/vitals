@@ -82,12 +82,34 @@ and the same hospital bed, gown, lighting and framing. No text, no logos, no pri
 /// is never made.
 pub const STATES: [&str; 5] = ["recovered", "improving", "deteriorating", "critical", "arrest"];
 
-/// The edit for one state, with her pronoun.
+/// The edit for one state, with her pronoun — the founder's wording for an adult, and for a child
+/// the gentle wording below.
 pub fn state(state: &str, sex: Sex) -> Option<String> {
+    state_for(state, sex, false)
+}
+
+/// A child's worse states, asked for in clinical but gentle words: a mask, a cannula, eyes closed,
+/// the blanket — never the colour of skin or lips. The image editor refused the adult wording of
+/// "deteriorating" for a child as prohibited content (16 Sep 2026, IMAGE_PROHIBITED_CONTENT);
+/// tried once per state on one child, these three were drawn and kept her face. The ruling
+/// (developer-16 under the founder's go): gentle wording that still names the state, never a
+/// wording that hides the subject and never another model to get around the filter.
+pub fn state_for(state: &str, sex: Sex, child: bool) -> Option<String> {
     let she = match sex {
         Sex::F => "She",
         Sex::M => "He",
     };
+    if child {
+        let body = match state {
+            "improving" => "{She} is improving: eyes open and clear, a small calm smile, the oxygen mask gone, a little plaster on the back of the hand, propped a little higher on the pillow.",
+            "deteriorating" => "{She} is looking unwell: an oxygen mask over the nose and mouth, eyes half closed, tired, propped a little higher on the pillow.",
+            "critical" => "{She} is asleep and pale, a nasal cannula, the blanket drawn up to the chest, dimmer light, lying still.",
+            "arrest" => "{She} is lying very still with eyes closed, no mask, the blanket flat to the chest, dim quiet light.",
+            "recovered" => "{She} has recovered: sitting up in the bed, a relaxed relieved expression, no mask, only a small clear plaster on the back of the hand, the same plain pale-green gown with no print, badge or logo.",
+            _ => return None,
+        };
+        return Some(format!("{KEEP}{}", body.replace("{She}", she)));
+    }
     let body = match state {
         "improving" => "{She} is improving: colour returning to the face, eyes open and clear, a faint calm expression, the oxygen mask gone, IV cannula still taped on the hand, propped a little higher on the pillow.",
         "deteriorating" => "{She} is deteriorating: an oxygen mask over nose and mouth, eyes half closed, grey-pale sweaty skin, lips slightly dusky, head tilted back, visibly struggling to breathe.",
