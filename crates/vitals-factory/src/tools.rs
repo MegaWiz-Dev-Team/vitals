@@ -103,7 +103,8 @@ impl Tools for Shell {
                     .map_err(|e| format!("Vertex image is not base64: {e}"));
             }
         }
-        Err("Vertex returned text and no image".into())
+        let said: String = parts.iter().filter_map(|p| p.get("text").and_then(|t| t.as_str())).collect::<Vec<_>>().join(" ");
+        Err(format!("Vertex returned text and no image: {}", said.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(200).collect::<String>()))
     }
 
     fn ask(&self, project: &str, model: &str, image: &[u8], mime: &str, question: &str) -> Result<String, String> {
