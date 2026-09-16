@@ -286,10 +286,17 @@ fn over_two_hundred_draws_need_sets_the_shares_and_the_spread_holds() {
     }
     assert!(!redrawn.is_empty() && redrawn.iter().all(|r| r.drawn != r.took && !r.why.is_empty()), "{redrawn:?}");
     // The greatest need is due nearly twice in every twenty, so the cap does meet it now and
-    // then; each time the plan says so and the draw goes to the next need instead.
-    for r in redrawn.iter().filter(|r| r.drawn == top) {
-        assert!(r.why.contains("queue cap"), "{r:?}");
-    }
+    // then — and the floors too; each time the plan says which, and the draw goes to the next
+    // need instead.
+    let cap_hits = redrawn.iter().filter(|r| r.drawn == top && r.why.contains("queue cap")).count();
+    assert!(cap_hits >= 1, "{:?}", redrawn.iter().filter(|r| r.drawn == top).collect::<Vec<_>>());
+    eprintln!(
+        "SIM {top}: drawn {} of 200 (share {:.1}), {cap_hits} cap redraws, {} floor redraws; {} redraws in all",
+        t[top.as_str()],
+        w.of(&top) / total * 200.0,
+        redrawn.iter().filter(|r| r.drawn == top).count() - cap_hits,
+        redrawn.len()
+    );
 }
 
 /// The bed rule and the queue rule together on a real board: three in beds, sixteen waiting, four

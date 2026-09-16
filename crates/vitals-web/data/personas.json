@@ -6,7 +6,7 @@
     "No ages. The case carries the band; the factory picks inside it.",
     "Alpha-3 codes only, and only codes the globe's own table can place and physicians.json has a row for (the factory's tests/world.rs holds the file to both).",
     "`local` is the name as it is written at home, where this file is confident of the script. It is what a name looks like to the person who has it; the romanised `name` is what the ward renders. Where the script was not certain (Kazakh, Uzbek, Amharic, the Indic scripts) `local` is left out rather than guessed.",
-    "Sixty countries in ten regions since 16 Sep 2026 (founder: \"ควรมีคนไข้จากทั่วโลกนะ\" — patients from the whole world). The first twenty were a starting spread with no Europe, Middle East, Central Asia, Oceania or Caribbean; the forty added were chosen so every region is present and none is thin — Europe west/north/east/south (11), Middle East and North Africa (7 with Egypt), Sub-Saharan Africa west/east/central/south (12 with Nigeria, Kenya, Ethiopia), Central Asia and the Caucasus (3), South Asia (4), Southeast Asia (6), East Asia (3), Oceania and the Pacific (3, Fiji the island state), Latin America and the Caribbean (9 with Brazil and Mexico; Haiti and Jamaica the Caribbean), North America (2) — and, within a region, for the range of naming traditions and of need. No country added carries more people per doctor than Ethiopia, so the greatest need in the pool is still the one the founder saw first. The region of each code is the factory's `region.rs`.",
+    "Seventy-four countries in ten regions since 16 Sep 2026 (founder: \"ควรมีคนไข้จากทั่วโลกนะ\" — patients from the whole world). The first twenty were a starting spread with no Europe, Middle East, Central Asia, Oceania or Caribbean; forty were added so every region is present and none is thin — Europe west/north/east/south (11), Middle East and North Africa (7 with Egypt), Sub-Saharan Africa west/east/central/south (12 with Nigeria, Kenya, Ethiopia), Central Asia and the Caucasus (3), South Asia (4), Southeast Asia (6), East Asia (3), Oceania and the Pacific (3, Fiji the island state), Latin America and the Caribbean (9 with Brazil and Mexico; Haiti and Jamaica the Caribbean), North America (2) — and, within a region, for the range of naming traditions and of need. Then, the same day, the fourteen countries with the worst shortage of doctors in the series — Niger, South Sudan, Somalia, Malawi, Papua New Guinea, Burundi, Chad, Rwanda, Yemen, Senegal, Sierra Leone, Tanzania, Cameroon, Zimbabwe — because the mission is to bring that number down and a pool that left them out to keep the greatest need familiar would be the test bending the world. Niger (1:26,320) is now the largest weight, nearly four times Ethiopia; the queue cap of two in twenty and the board rule bound it like everyone else. The region of each code is the factory's `region.rs`.",
     "Depth. The first twenty keep the depth they had (nine for the five with most people per doctor among them, six for the next five, three for the rest); each country added carries four to six. New people and new countries are appended, never inserted, because the portrait manifest keys on position."
   ],
   "countries": [
@@ -392,6 +392,97 @@
       { "name": "Olivier Gagnon", "sex": "m" },
       { "name": "Sophie Lavoie", "sex": "f" },
       { "name": "Ethan Macdonald", "sex": "m" },
-      { "name": "Ava Sinclair", "sex": "f" } ] }
+      { "name": "Ava Sinclair", "sex": "f" } ] },
+    { "country": "NER", "place": "Niger", "personas": [
+      { "name": "Hadiza Moussa", "sex": "f" },
+      { "name": "Abdou Maiga", "local": "Abdou Maïga", "sex": "m" },
+      { "name": "Aichatou Soumana", "sex": "f" },
+      { "name": "Ousmane Garba", "sex": "m" },
+      { "name": "Ramatou Idrissa", "sex": "f" },
+      { "name": "Souleymane Adamou", "sex": "m" } ] },
+    { "country": "SSD", "place": "South Sudan", "personas": [
+      { "name": "Achol Deng", "sex": "f" },
+      { "name": "Mading Alier", "sex": "m" },
+      { "name": "Nyagoah Gatluak", "sex": "f" },
+      { "name": "Kuol Mayen", "sex": "m" },
+      { "name": "Adut Bol", "sex": "f" } ] },
+    { "country": "SOM", "place": "Somalia", "personas": [
+      { "name": "Hodan Warsame", "sex": "f" },
+      { "name": "Abdirahman Yusuf", "sex": "m" },
+      { "name": "Fadumo Jama", "sex": "f" },
+      { "name": "Liban Farah", "sex": "m" },
+      { "name": "Sagal Abdi", "sex": "f" },
+      { "name": "Guled Osman", "sex": "m" } ] },
+    { "country": "TCD", "place": "Chad", "personas": [
+      { "name": "Fatime Mahamat", "local": "Fatimé Mahamat", "sex": "f" },
+      { "name": "Abakar Saleh", "sex": "m" },
+      { "name": "Achta Oumar", "sex": "f" },
+      { "name": "Djimet Ngarbaye", "sex": "m" },
+      { "name": "Khadidja Brahim", "sex": "f" } ] },
+    { "country": "MWI", "place": "Malawi", "personas": [
+      { "name": "Chisomo Mwale", "sex": "f" },
+      { "name": "Limbani Chirwa", "sex": "m" },
+      { "name": "Tamanda Kamanga", "sex": "f" },
+      { "name": "Yamikani Gondwe", "sex": "m" },
+      { "name": "Thokozani Msiska", "sex": "f" } ] },
+    { "country": "BDI", "place": "Burundi", "personas": [
+      { "name": "Aline Niyonzima", "sex": "f" },
+      { "name": "Egide Nduwimana", "local": "Égide Nduwimana", "sex": "m" },
+      { "name": "Divine Irakoze", "sex": "f" },
+      { "name": "Fabrice Ndayishimiye", "sex": "m" },
+      { "name": "Claudine Nizigiyimana", "sex": "f" },
+      { "name": "Jean-Claude Bigirimana", "sex": "m" } ] },
+    { "country": "SLE", "place": "Sierra Leone", "personas": [
+      { "name": "Fatmata Kamara", "sex": "f" },
+      { "name": "Mohamed Sesay", "sex": "m" },
+      { "name": "Isatu Conteh", "sex": "f" },
+      { "name": "Sorie Bangura", "sex": "m" },
+      { "name": "Mariama Turay", "sex": "f" } ] },
+    { "country": "TZA", "place": "Tanzania", "personas": [
+      { "name": "Neema Kimaro", "sex": "f" },
+      { "name": "Juma Shabani", "sex": "m" },
+      { "name": "Zawadi Mushi", "sex": "f" },
+      { "name": "Emmanuel Mkude", "sex": "m" },
+      { "name": "Rehema Ndosi", "sex": "f" },
+      { "name": "Godfrey Kessy", "sex": "m" } ] },
+    { "country": "CMR", "place": "Cameroon", "personas": [
+      { "name": "Solange Fotso", "sex": "f" },
+      { "name": "Achille Ondoua", "sex": "m" },
+      { "name": "Brigitte Kamga", "sex": "f" },
+      { "name": "Cyrille Essomba", "sex": "m" },
+      { "name": "Vanessa Tagne", "sex": "f" },
+      { "name": "Kelvin Tanyi", "sex": "m" } ] },
+    { "country": "ZWE", "place": "Zimbabwe", "personas": [
+      { "name": "Rudo Moyo", "sex": "f" },
+      { "name": "Tendai Mhlanga", "sex": "m" },
+      { "name": "Chipo Ncube", "sex": "f" },
+      { "name": "Farai Dube", "sex": "m" },
+      { "name": "Nyasha Makoni", "sex": "f" },
+      { "name": "Tatenda Sibanda", "sex": "m" } ] },
+    { "country": "SEN", "place": "Senegal", "personas": [
+      { "name": "Khady Ndiaye", "sex": "f" },
+      { "name": "Mamadou Sow", "sex": "m" },
+      { "name": "Fatou Diop", "sex": "f" },
+      { "name": "Cheikh Faye", "sex": "m" },
+      { "name": "Ndeye Sarr", "local": "Ndèye Sarr", "sex": "f" },
+      { "name": "Ibrahima Gueye", "local": "Ibrahima Guèye", "sex": "m" } ] },
+    { "country": "RWA", "place": "Rwanda", "personas": [
+      { "name": "Clementine Uwase", "local": "Clémentine Uwase", "sex": "f" },
+      { "name": "Eric Habimana", "sex": "m" },
+      { "name": "Josiane Mukamana", "sex": "f" },
+      { "name": "Jean-Baptiste Nsengiyumva", "sex": "m" },
+      { "name": "Diane Ingabire", "sex": "f" } ] },
+    { "country": "PNG", "place": "Papua New Guinea", "personas": [
+      { "name": "Rose Kaupa", "sex": "f" },
+      { "name": "Peter Wari", "sex": "m" },
+      { "name": "Martha Aihi", "sex": "f" },
+      { "name": "Nelson Tau", "sex": "m" },
+      { "name": "Betty Gima", "sex": "f" } ] },
+    { "country": "YEM", "place": "Yemen", "personas": [
+      { "name": "Samira Al-Hamdani", "local": "سميرة الهمداني", "sex": "f" },
+      { "name": "Yahya Al-Shami", "local": "يحيى الشامي", "sex": "m" },
+      { "name": "Bushra Al-Ahdal", "local": "بشرى الأهدل", "sex": "f" },
+      { "name": "Waleed Al-Sanabani", "local": "وليد الصنباني", "sex": "m" },
+      { "name": "Huda Al-Maqtari", "local": "هدى المقطري", "sex": "f" } ] }
   ]
 }

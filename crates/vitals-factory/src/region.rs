@@ -11,7 +11,7 @@
 //! use. A country in the pool that this table cannot place fails `tests/world.rs`, so adding a
 //! country is adding a line here as well as people there. Two placements were a decision rather
 //! than a fact: Türkiye is read as Middle East and North Africa (Anatolia is Western Asia), and
-//! Egypt likewise, with the rest of Africa south of the Sahara.
+//! Egypt and Yemen likewise, with the rest of Africa south of the Sahara.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Region {
@@ -75,25 +75,38 @@ pub const TABLE: &[(&str, Region)] = &[
     ("GRC", Region::Europe),
     // Middle East and North Africa.
     ("EGY", Region::MiddleEastNorthAfrica),
+    ("YEM", Region::MiddleEastNorthAfrica),
     ("MAR", Region::MiddleEastNorthAfrica),
     ("TUN", Region::MiddleEastNorthAfrica),
     ("IRQ", Region::MiddleEastNorthAfrica),
     ("IRN", Region::MiddleEastNorthAfrica),
     ("SAU", Region::MiddleEastNorthAfrica),
     ("TUR", Region::MiddleEastNorthAfrica),
-    // Sub-Saharan Africa: west, east, central, south.
+    // Sub-Saharan Africa: west, east, central, south — the fourteen worst shortages among them.
     ("NGA", Region::SubSaharanAfrica),
     ("GHA", Region::SubSaharanAfrica),
     ("MLI", Region::SubSaharanAfrica),
+    ("NER", Region::SubSaharanAfrica),
+    ("SEN", Region::SubSaharanAfrica),
+    ("SLE", Region::SubSaharanAfrica),
     ("KEN", Region::SubSaharanAfrica),
     ("ETH", Region::SubSaharanAfrica),
     ("UGA", Region::SubSaharanAfrica),
     ("MOZ", Region::SubSaharanAfrica),
     ("MDG", Region::SubSaharanAfrica),
+    ("SSD", Region::SubSaharanAfrica),
+    ("SOM", Region::SubSaharanAfrica),
+    ("TZA", Region::SubSaharanAfrica),
+    ("RWA", Region::SubSaharanAfrica),
+    ("BDI", Region::SubSaharanAfrica),
     ("COD", Region::SubSaharanAfrica),
     ("AGO", Region::SubSaharanAfrica),
+    ("CMR", Region::SubSaharanAfrica),
+    ("TCD", Region::SubSaharanAfrica),
     ("ZAF", Region::SubSaharanAfrica),
     ("ZMB", Region::SubSaharanAfrica),
+    ("ZWE", Region::SubSaharanAfrica),
+    ("MWI", Region::SubSaharanAfrica),
     // Central Asia and the Caucasus.
     ("KAZ", Region::CentralAsiaCaucasus),
     ("UZB", Region::CentralAsiaCaucasus),
@@ -118,6 +131,7 @@ pub const TABLE: &[(&str, Region)] = &[
     ("AUS", Region::OceaniaPacific),
     ("NZL", Region::OceaniaPacific),
     ("FJI", Region::OceaniaPacific),
+    ("PNG", Region::OceaniaPacific),
     // Latin America and the Caribbean.
     ("BRA", Region::LatinAmericaCaribbean),
     ("MEX", Region::LatinAmericaCaribbean),
