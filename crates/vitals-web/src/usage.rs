@@ -114,7 +114,20 @@ const MAX_CASES: usize = 64;
 ///
 /// Adding a channel is adding a line here, deliberately, at the moment somebody decides to hand
 /// links out through it.
-pub const CHANNELS: [&str; 5] = ["superteam-th", "medtwitter", "reddit", "embla", "techsauce"];
+pub const CHANNELS: [&str; 10] = [
+    "superteam-th",
+    "medtwitter",
+    "reddit",
+    "embla",
+    "techsauce",
+    // Added 16 ก.ย. for the Crypto World's Fair: the five the links are being handed out on the
+    // night the ward opens. `x` rather than `twitter` because that is what the link says.
+    "colosseum",
+    "x",
+    "linkedin",
+    "facebook",
+    "discord",
+];
 
 /// The channel a `?src=` names, or `None` for anything we did not hand out.
 ///
