@@ -139,3 +139,31 @@ fn nothing_is_written_to_her_chart_before_the_head_is_taken() {
             "fire() routes every press and is the one place that can refuse one before the head \
              is taken. It does not ask: {fire}");
 }
+
+/// **The ward's patients are not all women.**
+///
+/// Driving a real shift on Rafael Moreira on 16 ก.ย. put this on screen: *"shift 1 of her stay"*,
+/// *"Her chart is the chain"*, *"hand her back"* — over a man. The bay has had a pronoun table
+/// since the season (`pro()`, read off the same `who` string the bed label prints, defaulting to
+/// neither), and the ward's own strip predates none of it; it was simply written in one voice.
+///
+/// So the rule is that the strip has no gendered word of its own: every one comes from `pro()` at
+/// the moment it is said. Asserted over the string literals in the ward's own functions, because
+/// the words are the bug and a test of the code around them would not see it.
+#[test]
+fn the_wards_own_sentences_take_the_patients_pronoun() {
+    let js = bay_js();
+    for name in ["wardBar", "openShift", "takeShift", "handBack", "handOver"] {
+        let body = body_of(&js, name);
+        for literal in body.split('\'').skip(1).step_by(2) {
+            for word in ["her", "she", "Her", "She", "his", "him", "he", "His"] {
+                let bare = literal
+                    .split(|c: char| !c.is_ascii_alphabetic())
+                    .any(|w| w == word);
+                assert!(!bare,
+                        "{name} says {word:?} in its own words — the ward admits men and women and \
+                         the pronoun belongs to the patient, not to the sentence: {literal:?}");
+            }
+        }
+    }
+}
