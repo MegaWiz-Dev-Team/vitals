@@ -350,9 +350,12 @@ fn the_control_that_ends_an_attempt_is_not_in_the_row_with_restart() {
     assert!(rail < dispo && dispo < end, "the finish control moved out from under the disposition");
 
     // And it arms rather than fires: the handler adds a class on the first press and only calls
-    // the endpoint on the second.
+    // the endpoint on the second. The ward has one stated exception inside the same handler — a
+    // shift the engine has already ended goes straight through, because there is nothing left to
+    // lose and a confirm step is one more chance to walk away from a patient nobody else can
+    // close — so the window read here is the whole handler rather than its first few lines.
     let h = html.find("$('#endrun').onclick").expect("nothing is bound to the finish control");
-    let body = &html[h..h + 400];
+    let body = &html[h..html[h..].find("\n};").map(|e| h + e).unwrap_or(html.len())];
     assert!(body.contains("armed"), "the finish control fires on one press");
     assert!(html.contains("/api/finish"), "the page never asks the server to finish anything");
 }

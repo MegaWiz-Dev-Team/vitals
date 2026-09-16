@@ -87,10 +87,29 @@ fn the_shift_page_shares_the_bay_and_carries_none_of_the_season() {
     assert!(markup.contains("<div id=\"lobby\" class=\"hide\"></div>"),
             "the shift page's lobby must be empty: the script hides and shows it by name, and what \
              it holds on the entry is exactly what must not exist here");
-    // And its case select holds no list. The season is not browsable from a bed.
-    let sel = markup.find("<select id=\"ep\"").expect("the shift page has the case holder");
-    let after = &markup[sel..(sel + 200).min(markup.len())];
+    // And the case holder it is served with holds no list. The season is not browsable from a
+    // bed. The holder comes from the shared surface now, with the season's options composed out
+    // by the server, so the question is asked of the composition rather than of this file: it is
+    // what the browser is sent either way, and a second empty holder here was a duplicate id with
+    // the first of them silently winning.
+    let surface = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/bay-surface.html"),
+    )
+    .expect("the shared surface");
+    let mut served = String::new();
+    let mut rest = surface.as_str();
+    while let Some(i) = rest.find("<!--SEASON-->") {
+        served.push_str(&rest[..i]);
+        let after = &rest[i + "<!--SEASON-->".len()..];
+        rest = match after.find("<!--/SEASON-->") {
+            Some(e) => &after[e + "<!--/SEASON-->".len()..],
+            None => "",
+        };
+    }
+    served.push_str(rest);
+    let sel = served.find("<select id=\"ep\"").expect("the ward is served the case holder");
+    let after = &served[sel..(sel + 200).min(served.len())];
     assert!(!after.contains("<option"),
-            "the shift page's case holder ships with options — hers is added when the ward says \
-             who she is, and a list here is the season by another name");
+            "the ward's case holder ships with options — hers is added when the ward says who she \
+             is, and a list here is the season by another name");
 }

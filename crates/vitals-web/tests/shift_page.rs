@@ -490,12 +490,10 @@ fn the_bay_parses_as_one_script() {
 #[test]
 fn a_finished_shift_can_still_be_handed_over() {
     let js = bay_js();
-    for name in ["endRun"] {
-        let body = without_comments(&body_of(&js, name));
-        assert!(!body.contains("if(!id||over)return;"),
-                "{name} refuses a finished shift, and on the ward the finished shift is exactly \
-                 the one with something left to do: {body}");
-    }
+    let run = without_comments(&body_of(&js, "endRun"));
+    assert!(!run.contains("if(!id||over)return;"),
+            "endRun refuses a finished shift, and on the ward the finished shift is exactly the \
+             one with something left to do: {run}");
     // The guard that remains has to let the ward through, and the season's bay keep its own
     // behaviour — a finished station is finished, and its button is disabled anyway.
     let end = without_comments(&body_of(&js, "endRun"));

@@ -1040,6 +1040,12 @@ $('#fallback').addEventListener('error',()=>{
 function show(status,kit){
   lastShown=(status||'stable').toLowerCase();
   const E=ep();
+  /* No film on the ward. The clips are the season's — shot for the season's patients, named for
+     the season's cases — and `/clip/osce-a2_state_improving.mp4` over Salma Gaber is somebody
+     else's face in motion. It 404s on the ward host, so nothing played and the still stayed; what
+     the founder saw ("อยู่ๆ ตัดไป clip แพ้อาหาร") was the sheet, but the request was real and the
+     day that volume is mounted there it would not be. The frame is her portrait, full stop. */
+  if(WARD){ $('#loop').classList.remove('on'); paintStill(E); return; }
   // Film where there is film, stills everywhere else. A deploy without the clips must degrade
   // to the stills, not to a black frame, which is what it did on Cloud Run.
   if(!film){ $('#loop').classList.remove('on'); paintStill(E); return; }
@@ -1061,7 +1067,8 @@ $('#cut').addEventListener('error',()=>{ film=false;
   $('#cut').classList.remove('on'); $('#cut-tag').classList.remove('on'); cutting=false; });
 /* Play a cutscene over the loop, then hand the frame back. */
 function playCut(key){
-  const asset=CUT[key]; if(!asset||ep().id!=='ep1'||cutting||!film)return;
+  /* EP1's cutscenes, and the ward has no episodes at all. */
+  const asset=CUT[key]; if(WARD||!asset||ep().id!=='ep1'||cutting||!film)return;
   cutting=true;
   const c=$('#cut'); c.src='/clip/'+asset+'.mp4';
   c.muted=!sound; c.currentTime=0; c.classList.add('on'); $('#cut-tag').classList.add('on');
@@ -1413,7 +1420,9 @@ function stemHtml(e){
       +`<span>${specShort(band)}${tier?' · '+tier:''}</span></div>`
     +`<h3 class="stem-t">${title}</h3>`
     /* The case, said once, quietly, on a shift — the header above it now names the person. */
-    + (WARD?`<p class="stem-case" style="color:var(--ink-3,#7b8a86);margin:-.2rem 0 .6rem">${specShort(band)}${tier?' · '+tier:''} · station ${e.n.replace(/^OSCE /,'')}</p>`:'')
+    /* The band and the level, and not the station's letter: "station A2" is the season's own
+       shelf label, and a stranger at a bed on a public ward has no shelf to place it on. */
+    + (WARD?`<p class="stem-case" style="color:var(--ink-3,#7b8a86);margin:-.2rem 0 .6rem">${specShort(band)}${tier?' · '+tier:''}</p>`:'')
     +'<dl class="stem-g">'
       +`<dt>patient</dt><dd>${e.who||''}</dd>`
       +`<dt>presents</dt><dd>${e.line||''}</dd>`
@@ -1619,7 +1628,7 @@ function finish(v){
   /* Kept for the debrief's payout line, which asks about this run's own leaf. */
   window.LASTLEAF=v.leaf||'';
   $('#verdict').innerHTML=''; $('#anchor').textContent='anchor this run on chain'; $('#anchor').disabled=false;
-  ['#c1','#c2','#c3','#c4'].forEach(s=>$(s).disabled=true);
+  ['#c1','#c2','#c3','#c4'].forEach(s=>onLobby(s,'disabled',true));
   $('#cmd').disabled=true; $('#send').disabled=true; $('#pause').disabled=true; $('#endrun').disabled=true;
   if(win){ const c=cleared(), e=$('#ep').value;
     if(!c.includes(e)){c.push(e);localStorage.setItem('vitals.cleared',JSON.stringify(c));} }
@@ -1765,10 +1774,15 @@ function disarmEnd(){
   $('#endnote').textContent=PACK.ui.end_note||'Ends the attempt. The case plays out from here and the marks are computed.';
 }
 async function endRun(){
-  if(!id||over)return;
+  if(!id)return;
   /* On the ward the end of a shift is not the end of her stay: she is handed to whoever comes
-     next, and whether the stay ends is the engine's to decide and the chain's to record. */
+     next, and whether the stay ends is the engine's to decide and the chain's to record.
+     Checked before `over`, deliberately. `over` means the engine has finished with her — she is
+     ready to go home, or she has died — and that is precisely the shift with something left to
+     do: hand it over so the chain carries it. Guarding hand-over behind `over` closed the whole
+     discharge path on the ward, so only the ticker's deaths ever ended a stay. */
   if(WARD)return handOver();
+  if(over)return;
   disarmEnd();
   $('#endrun').disabled=true;
   ev('note','·',PACK.ui.time_called||'time — the station ends');
@@ -1778,8 +1792,13 @@ async function endRun(){
   paint(v);
 }
 $('#endrun').onclick=()=>{
-  if(!id||over)return;
+  if(!id)return;
   const b=$('#endrun');
+  /* A shift the engine has already ended goes straight through: there is nothing left to lose,
+     and asking a stranger to press twice to confirm is one more chance to press once and walk
+     away from a patient who cannot be closed by anybody else. */
+  if(WARD&&over)return endRun();
+  if(over)return;
   if(b.classList.contains('armed'))return endRun();
   b.classList.add('armed');
   b.textContent=PACK.ui.end_confirm||'press again to end';
@@ -1958,13 +1977,19 @@ onLobby('#anchor','onclick',async()=>{
       +`${nextLine(r.det.score,r.det.max,true)}</span>`;
   }
   refreshStars();
-  $('#anchor').textContent='anchored'; ['#c1','#c2','#c3','#c4'].forEach(s=>$(s).disabled=false); chainState();
+  onLobby('#anchor','textContent','anchored');
+  ['#c1','#c2','#c3','#c4'].forEach(s=>onLobby(s,'disabled',false));
+  chainState();
 });
+/* The four claim buttons live in the season's result panel, which the ward host does not compose —
+   so they bind where they exist, like every other control that differs by host. A real browser
+   found this one: `$(sel).onclick` on a null threw while the script was still setting itself up,
+   and every handler after it never bound. */
 [['#c4',4],['#c3',3],['#c2',2],['#c1',1]].forEach(([sel,lv])=>{
-  $(sel).onclick=async()=>{ const r=await chainDo('/api/claim?level='+lv);
+  onLobby(sel,'onclick',async()=>{ const r=await chainDo('/api/claim?level='+lv);
     $('#verdict').innerHTML += r.granted?`<span class="g">✓ ${r.message}</span>`:`<span class="r">✗ ${r.message}</span>`;
     /* The wallet button's level is the thing a grant just changed — say so without a reload. */
-    if(r.granted) refreshRecord(); };
+    if(r.granted) refreshRecord(); });
 });
 /* The score says what happened. This says why — and every line of it is a time or an ordering
    taken from the tape, so the person reading it could check it themselves. */
@@ -2132,10 +2157,10 @@ function showProvenance(m){
 /* Straight back into the same case, in the mode it was just sat in — the same entrance the
    up-next card uses, so the recap and title card behave identically whichever door you came
    through. A station is an exam by definition; an episode keeps whatever this run declared. */
-$('#runback').onclick=()=>{ cineHide(); enterEpisode($('#ep').value, EXAMRUN); };
+onLobby('#runback','onclick',()=>{ cineHide(); enterEpisode($('#ep').value, EXAMRUN); });
 
-$('#copy').onclick=async()=>{ const t=await (await fetch('/api/tape?id='+id+asMe())).json();
-  await navigator.clipboard.writeText(JSON.stringify(t,null,1)); $('#copy').textContent='tape copied'; };
+onLobby('#copy','onclick',async()=>{ const t=await (await fetch('/api/tape?id='+id+asMe())).json();
+  await navigator.clipboard.writeText(JSON.stringify(t,null,1)); $('#copy').textContent='tape copied'; });
 
 /* ─── lobby ────────────────────────────────────────────────────────────────── */
 const cleared=()=>JSON.parse(localStorage.getItem('vitals.cleared')||'[]');
@@ -3879,6 +3904,7 @@ function wardFinish(v){
   if(mic)mic.disabled=true;
   $('#chips').querySelectorAll('button').forEach(b=>{ b.disabled=true; b.title='this shift is finished — hand over'; });
   $('#pause').disabled=true;
+  disarmEnd();
   $('#endrun').disabled=false; $('#endrun').textContent='hand over';
   armTheExit();
   wardSay(died

@@ -1378,8 +1378,19 @@ a.give:hover{filter:brightness(1.06)}
      stopped mid-word under a 128 px face (16 ก.ย., 1460×900). After the first order the sheet
      goes and the frame is a frame again. */
   html.is-ward .stage .pt:has(.stem:not(.hide)){flex:0 0 auto}
+  /* Before the head is taken the transcript is empty, and its six-rem floor is six rem of nothing
+     between the sheet and the ask bar — which is what pushed the bar off the bottom again once the
+     sheet was given its own height. It gets the floor back the moment there is a shift to record
+     in it. */
+  html.is-ward.untaken .chat{min-height:0;flex:0 1 auto}
   html.is-ward .pt-art:has(> .stem:not(.hide)){flex:0 0 auto;height:auto;min-height:0;aspect-ratio:auto}
-  html.is-ward .pt-art > .stem:not(.hide){position:relative;inset:auto;overflow:visible}
+  html.is-ward .pt-art > .stem:not(.hide){position:relative;inset:auto;overflow:visible;
+    /* The 2.5rem foot is scroll room for a sheet that fills a frame. In the flow it is dead
+       space between the last line and her face. */
+    padding-bottom:.7rem}
+  /* The line under her name is the sheet's PRESENTS row, two rows apart and word for word. While
+     the sheet is up it is the sheet's; the name and the live status word stay. */
+  html.is-ward .stage .pt:has(.stem:not(.hide)) .pt-line{display:none}
   .stage{min-height:0;overflow-y:auto;overscroll-behavior:contain;gap:.6rem}
   .pt{display:flex;flex-direction:column;min-height:0;flex:2.2 1 0;padding-bottom:.55rem}
   .pt-art{aspect-ratio:auto;flex:1 1 auto;min-height:7rem}
