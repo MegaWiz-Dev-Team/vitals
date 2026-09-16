@@ -138,10 +138,11 @@ fn main() {
         eprintln!("{t} ERROR {e}");
     }
     println!(
-        "{t} tick done: {} queued, {} duplicates, {} rejected, depth {}, {} faces made of {} painted, {} states made, {} error(s)",
+        "{t} tick done: {} queued, {} duplicates, {} state(s) refused by the judge, {} refused by the door, depth {}, {} faces made of {} painted, {} states made, {} error(s)",
         report.queued,
         report.duplicates,
         report.rejected,
+        report.door_rejected,
         report.depth.map_or("?".to_string(), |d| d.to_string()),
         report.faces_made,
         report.faces_tried,
