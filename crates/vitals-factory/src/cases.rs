@@ -10,11 +10,17 @@
 //!      intern and resident stay about 1:1:1 across the board and the queue (the founder's rule:
 //!      difficulty levels exist so a stranger can choose); among those, the one least often in
 //!      the queue already, then her own case (the one her age was drawn inside), then the seed;
-//!   3. **never** an endemic case of another country; **never** a case a bed holds (the board says
-//!      `case` today, `case_id` once 7b's build lands; either is read); **never** a case whose
-//!      band the factory does not know — the four episodes and any community case without a
-//!      persona file — because "her age fits" is a claim the factory can only make about a case
-//!      it has.
+//!   3. **never** an endemic case of another country (the case's tag is the case door's, not the
+//!      bed's `endemic`, which says the patient was drawn from her country's list); **never** a
+//!      case a bed holds (`patients[].case` on the board, the World case id since the ward's
+//!      0543ed7); **never** a case whose band the factory does not know — the four episodes and
+//!      any community case without a persona file — because "her age fits" is a claim the
+//!      factory can only make about a case it has.
+//!
+//! The mix the difficulty is balanced against is counted from what the factory knows, not from
+//! the board's own `difficulty` (null for patients admitted before 0543ed7): a bed's level is the
+//! case door's level for the case it holds, else the catalogue's, else unknown and not counted;
+//! the queue's levels are the ledger's own.
 //!
 //! When nothing fits, the choice is `None` and the pack goes out without a case_id rather than
 //! with a wrong one. The ward's default applies, and the tick says so.

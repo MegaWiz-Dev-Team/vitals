@@ -67,12 +67,13 @@ pub struct BoardPatient {
     pub age: Option<u16>,
     #[serde(default)]
     pub country: Option<String>,
+    /// The case the bed holds — since the ward's 0543ed7 the World case id once she was admitted
+    /// from the catalogue. This is the field the case rules read; the board publishes no other
+    /// name for it.
     #[serde(default)]
     pub case: Option<String>,
-    /// The case she presents, as the ward's case door names it. Published per bed once 7b's
-    /// build lands; until then `case` is what the board says, and the factory reads either.
-    #[serde(default)]
-    pub case_id: Option<String>,
+    /// True when she was drawn from her country's endemic list — a fact about the draw, not a
+    /// tag on the case. Whether a case is endemic is the case door's to say (`GET /api/ward/cases`).
     #[serde(default)]
     pub endemic: bool,
     /// The one picture to draw now, as the board publishes it.
@@ -88,9 +89,9 @@ impl BoardPatient {
     pub fn is_open(&self) -> bool {
         matches!(self.state.as_str(), "on_ward" | "on_shift")
     }
-    /// The case the bed holds, by whichever name the board gives it.
+    /// The case the bed holds: `case`, the one name the board gives it.
     pub fn case_held(&self) -> Option<&str> {
-        self.case_id.as_deref().or(self.case.as_deref())
+        self.case.as_deref()
     }
 }
 

@@ -621,19 +621,19 @@ fn a_waiting_pack_from_before_the_case_door_gets_a_case_id_when_it_is_re_sent() 
 }
 
 /// Never the same case on the board twice: a case in a bed is not chosen for any pack built or
-/// re-sent while it is there (the board says `case` today and will say `case_id` once 7b's build
-/// lands; either is read).
+/// re-sent while it is there. The bed's case is `patients[].case` — the World case id since the
+/// ward's 0543ed7 — and the bed's `endemic` is about the draw, not the case, so it is not read.
 #[test]
 fn a_case_in_a_bed_is_not_chosen_for_a_pack() {
     let dir = world("bed-case");
     let pool = read_pool(POOL).unwrap();
     seed_manifest(&dir, &pool);
     let mut ward = WardView::parse(STAGING).unwrap();
-    // The three in beds: osce-a2 by `case`, osce-c2 by `case_id`, osce-d4 by both.
+    // The three in beds, by `case`; one of them drawn from an endemic list, which changes nothing here.
     ward.patients[0].case = Some("osce-a2".into());
-    ward.patients[1].case_id = Some("osce-c2".into());
+    ward.patients[1].case = Some("osce-c2".into());
+    ward.patients[1].endemic = true;
     ward.patients[2].case = Some("osce-d4".into());
-    ward.patients[2].case_id = Some("osce-d4".into());
     let door = FakeDoor::with_cases(ward);
     let tools = FakeTools::default();
     let r = tick(&config(&dir, 12, 3), &door, &tools);

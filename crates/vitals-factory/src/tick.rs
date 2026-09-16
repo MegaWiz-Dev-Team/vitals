@@ -342,6 +342,9 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
     let case_door = CaseDoor { list: cases, in_beds: in_beds_cases };
     let cases = &case_door.list;
     let in_beds_cases = &case_door.in_beds;
+    // The level mix, from what the factory knows — the case door's level for a bed's case, else
+    // the catalogue's, else unknown and not counted; never the board's own `difficulty`, which is
+    // null for patients admitted before the ward's 0543ed7 — and the ledger's own for the queue.
     let mut mix = Mix::default();
     for p in ward.open() {
         if let Some(c) = p.case_held() {
