@@ -305,18 +305,23 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
         return r;
     }
 
-    // Waiting packs that name a case the ward no longer lists — a season id from before 0543ed7 —
-    // are re-sent as they were: the door refuses them in its own words and the ledger drops them,
-    // which frees the face.
-    let stale: Vec<String> = ledger.unseen().into_iter().filter(|(_, s)| !cases.iter().any(|w| w.case_id == s.case)).map(|(_, s)| format!("{} ({})", s.name, s.case)).collect();
-    if !stale.is_empty() {
-        r.say(format!("{} waiting pack(s) name a case the ward does not list and will be refused at the re-send and dropped: {}", stale.len(), stale.join(", ")));
+    // Waiting packs that name a case the ward does not list — a season id from before 0543ed7 —
+    // are already queued at the ward, whose ticker places such a pack by the patient's country
+    // and then by anything it holds, so they are admitted with World cases as beds free. They are
+    // left exactly as they are: not re-sent, not refused, not dropped, the face still reserved.
+    let listed = |case: &str| cases.iter().any(|w| w.case_id == case);
+    let placed_by_ward: Vec<String> = ledger.unseen().into_iter().filter(|(_, s)| !listed(&s.case)).map(|(_, s)| format!("{} ({})", s.name, s.case)).collect();
+    if !placed_by_ward.is_empty() {
+        r.say(format!("{} waiting pack(s) name a case the ward does not list and are placed by the ward as beds free — left as they are, not re-sent: {}", placed_by_ward.len(), placed_by_ward.join(", ")));
     }
 
     // ── the plan, before anything is touched ──
-    let resend: Vec<(String, Outbound)> = ledger.unseen().into_iter().map(|(id, s)| (id.clone(), s.to_outbound())).collect();
-    let known_depth = ward.queue.as_ref().map(|q| q.waiting).unwrap_or(resend.len());
-    let want_guess = cfg.queue_depth.saturating_sub(known_depth.max(resend.len()));
+    let resend: Vec<(String, Outbound)> = ledger.unseen().into_iter().filter(|(_, s)| listed(&s.case)).map(|(id, s)| (id.clone(), s.to_outbound())).collect();
+    // The depth the ward says, or, on a build with no queue block, everything this ledger has
+    // waiting — the packs re-sent and the ones left to the ward alike.
+    let waiting_here = ledger.unseen().len();
+    let known_depth = ward.queue.as_ref().map(|q| q.waiting).unwrap_or(waiting_here);
+    let want_guess = cfg.queue_depth.saturating_sub(known_depth.max(waiting_here));
     r.say(need.table());
     r.say(format!(
         "spread: no country in more than {} of {} beds at once; among the last {QUEUE_WINDOW} packs no country more than {QUEUE_CAP} times, at least {MIN_COUNTRIES} countries and {MIN_REGIONS} of {} regions; every region within {} draws",
