@@ -7694,6 +7694,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "vitals-factory"
+version = "0.9.4"
+dependencies = [
+ "base64 0.22.1",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "ureq",
+ "vitals-web",
+]
+
+[[package]]
 name = "vitals-osce"
 version = "0.9.4"
 dependencies = [

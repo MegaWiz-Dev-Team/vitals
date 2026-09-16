@@ -1,0 +1,558 @@
+//! One tick of the factory: read the ward, top the queue up, complete one patient's faces.
+//!
+//! The order is the order of what can go wrong. The ward is read first, and a ward that cannot be
+//! read ends the tick with nothing built — a factory that pushed against a board it had not seen
+//! would be guessing who is in the beds. The ledger is reconciled with the board second, so every
+//! later decision about who is busy is about *this* board. The unseen packs are resent third,
+//! one by one, which is both the recovery from a queue the door lost and the probe that tells us
+//! the real depth. Only then is anything new built, and only as much as the queue is short.
+//!
+//! **Every write lands as soon as it is true.** A face is recorded in the manifest the moment it
+//! is uploaded and a pack in the ledger the moment the door says queued, so a crash between two
+//! steps costs a minute of work and never a second copy of anything: the door is content-addressed
+//! and the ledger is keyed by the door's own id.
+//!
+//! **Dry run** reads and plans and stops before the token: no secret is fetched, no request is
+//! sent, no file is written. What it prints is what the real run would do from the same state.
+
+use crate::catalogue::read_catalogue;
+use crate::door::{Door, FillReply, Pushed, Token, WardView};
+use crate::ledger::{Ledger, Sent};
+use crate::manifest::Manifest;
+use crate::plan::{plan, Base, Inputs, NEAR_FACE};
+use crate::pool::{person_for, read_endemic, read_pool, Person};
+use crate::prompts;
+use crate::tools::{sha256_hex, Tools};
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use vitals_web::ward::Pack;
+use vitals_web::ward_chain::{pack_id, PORTRAITS};
+
+/// webp quality, as the batch used.
+pub const WEBP_QUALITY: u8 = 86;
+
+#[derive(Debug, Clone)]
+pub struct Config {
+    /// The ward's origin, e.g. `https://vitals-world-….run.app`.
+    pub ward: String,
+    /// Keep the queue at least this deep.
+    pub queue_depth: usize,
+    /// Faces made with mflux per tick, so a tick stays under the interval. Packs past this wait.
+    pub bases_per_tick: usize,
+    /// The checkout: the scenarios, the persona files, the pool and the endemic list.
+    pub repo: PathBuf,
+    /// `~/.vitals/world`: the manifest, the ledger, the faces.
+    pub world_dir: PathBuf,
+    /// The GCP project the token and the image editor live in.
+    pub project: String,
+    pub bucket: String,
+    pub model: String,
+    pub dry_run: bool,
+    pub seed: u64,
+    /// Unix seconds, for the ledger.
+    pub now: u64,
+}
+
+impl Config {
+    pub fn manifest_path(&self) -> PathBuf {
+        self.world_dir.join("portraits.json")
+    }
+    pub fn ledger_path(&self) -> PathBuf {
+        self.world_dir.join("factory-ledger.json")
+    }
+    /// Where a face's bytes are kept locally, under the same name as in the bucket.
+    pub fn face_path(&self, sha: &str) -> PathBuf {
+        self.world_dir.join("portraits").join(format!("{sha}.webp"))
+    }
+}
+
+/// What a tick did, in words and in numbers.
+#[derive(Debug, Default)]
+pub struct Report {
+    pub lines: Vec<String>,
+    /// Anything a person should look at. A rejected pack is one; a closed door is not.
+    pub errors: Vec<String>,
+    pub queued: usize,
+    pub duplicates: usize,
+    pub rejected: usize,
+    /// The queue's depth as the door last reported it.
+    pub depth: Option<usize>,
+    pub faces_made: usize,
+    pub states_made: usize,
+}
+
+impl Report {
+    fn say(&mut self, line: impl Into<String>) {
+        self.lines.push(line.into());
+    }
+    fn fail(&mut self, line: impl Into<String>) {
+        let line = line.into();
+        self.lines.push(format!("ERROR {line}"));
+        self.errors.push(line);
+    }
+}
+
+/// The url a face has once it is in the bucket.
+fn face_url(sha: &str) -> String {
+    format!("{PORTRAITS}/{sha}.webp")
+}
+
+/// Write a face locally and put it in the bucket; the url is content-addressed either way.
+fn publish(cfg: &Config, tools: &dyn Tools, webp: &[u8]) -> Result<String, String> {
+    let sha = sha256_hex(webp);
+    let path = cfg.face_path(&sha);
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    }
+    if !path.exists() {
+        std::fs::write(&path, webp).map_err(|e| format!("{}: {e}", path.display()))?;
+    }
+    tools.upload(&path, &format!("{sha}.webp"))?;
+    Ok(face_url(&sha))
+}
+
+pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
+    let mut r = Report::default();
+    if cfg.dry_run {
+        r.say("dry run: nothing is fetched, sent or written");
+    }
+
+    // ── what the factory holds ──
+    let catalogue = read_catalogue(&cfg.repo);
+    for u in &catalogue.unbuildable {
+        r.say(format!("not built: {} — {}", u.id, u.why));
+    }
+    if catalogue.cases.is_empty() {
+        r.fail(format!("no case can be built from {}", cfg.repo.display()));
+        return r;
+    }
+    let pool = match std::fs::read_to_string(cfg.repo.join("crates/vitals-web/data/personas.json")).map_err(|e| e.to_string()).and_then(|s| read_pool(&s)) {
+        Ok(p) => p,
+        Err(e) => {
+            r.fail(format!("the pool could not be read: {e}"));
+            return r;
+        }
+    };
+    let endemic = match std::fs::read_to_string(cfg.repo.join("crates/vitals-web/data/endemic.json")).map_err(|e| e.to_string()).and_then(|s| read_endemic(&s)) {
+        Ok(e) => e,
+        Err(e) => {
+            r.fail(format!("the endemic list could not be read: {e}"));
+            return r;
+        }
+    };
+    let mut manifest = match Manifest::load(&cfg.manifest_path()) {
+        Ok(m) => m,
+        Err(e) => {
+            r.fail(e);
+            return r;
+        }
+    };
+    let mut ledger = match Ledger::load(&cfg.ledger_path()) {
+        Ok(l) => l,
+        Err(e) => {
+            r.fail(e);
+            return r;
+        }
+    };
+    if let Some(other) = ledger.sent.values().map(|s| &s.ward).find(|w| *w != &cfg.ward) {
+        r.fail(format!(
+            "the ledger at {} belongs to {other}, and this run targets {} — one world directory per ward, \
+             or the same face ends up on two boards",
+            cfg.ledger_path().display(),
+            cfg.ward
+        ));
+        return r;
+    }
+    r.say(format!(
+        "holding {} buildable cases, {} people, {} faces on file, {} packs in the ledger",
+        catalogue.cases.len(),
+        pool.len(),
+        manifest.entries.len(),
+        ledger.sent.len()
+    ));
+
+    // ── the ward ──
+    let ward = match door.read_ward() {
+        Ok(w) => w,
+        Err(e) => {
+            r.fail(format!("the ward could not be read, so nothing was built: {e}"));
+            return r;
+        }
+    };
+    if !ward.readable {
+        r.say(format!("the ward is not readable right now ({}), so nothing was built", ward.why.as_deref().unwrap_or("no reason given")));
+        return r;
+    }
+    let open = ward.open().count();
+    match &ward.queue {
+        Some(q) => r.say(format!("ward {}: {open} in beds of {}, {} waiting, door {}", ward.source, q.beds, q.waiting, q.door)),
+        None => r.say(format!("ward {}: {open} in beds of {}; this build publishes no queue block, the door's answer will say the depth", ward.source, ward.beds)),
+    }
+    for note in ledger.reconcile(&ward) {
+        r.say(note);
+    }
+    if ward.queue.as_ref().is_some_and(|q| q.door != "open") {
+        r.say("the door is closed — the ward opens when the founder says so; nothing to do until then");
+        if !cfg.dry_run {
+            if let Err(e) = ledger.save(&cfg.ledger_path()) {
+                r.fail(e);
+            }
+        }
+        return r;
+    }
+
+    // ── the plan, before anything is touched ──
+    let resend: Vec<(String, Pack)> = ledger.unseen().into_iter().map(|(id, s)| (id.clone(), s.to_pack())).collect();
+    let known_depth = ward.queue.as_ref().map(|q| q.waiting).unwrap_or(resend.len());
+    let want_guess = cfg.queue_depth.saturating_sub(known_depth.max(resend.len()));
+    let planned = plan(&Inputs {
+        catalogue: &catalogue, pool: &pool, endemic: &endemic, manifest: &manifest, ward: &ward, ledger: &ledger,
+        want: want_guess, seed: cfg.seed,
+    });
+    for n in &planned.notes {
+        r.say(n.clone());
+    }
+
+    if cfg.dry_run {
+        r.say(format!("would resend {} unseen pack(s) first, one by one, and read the depth off the last answer", resend.len()));
+        r.say(format!("would then build {} pack(s) to bring the queue to {} (assuming depth {known_depth}):", planned.packs.len(), cfg.queue_depth));
+        let mut to_make = 0;
+        for pl in &planned.packs {
+            let face = match &pl.base {
+                Base::Have { age, .. } => format!("face on file (made at {age})"),
+                Base::Make { key, age } => {
+                    to_make += 1;
+                    if to_make <= cfg.bases_per_tick { format!("would make a face for {key} at {age} with mflux") } else { format!("face for {key} at {age} deferred (cap {} per tick)", cfg.bases_per_tick) }
+                }
+            };
+            r.say(format!(
+                "  {} — {} {} {} from {}{} · {}",
+                pl.pack.case, pl.pack.persona.name, pl.sex.letter().to_uppercase(), pl.pack.persona.age, pl.pack.persona.country,
+                if pl.pack.endemic { " (endemic)" } else { "" }, face
+            ));
+        }
+        dry_run_faces(cfg, &mut r, &ward, &pool, &manifest);
+        return r;
+    }
+
+    // ── the token, once ──
+    let token = match tools.secret_token(&cfg.project) {
+        Ok(t) => t,
+        Err(e) => {
+            r.fail(e);
+            return r;
+        }
+    };
+
+    // ── resend what the board has not shown yet: recovery and probe in one ──
+    let mut depth: Option<usize> = None;
+    let mut lost = 0;
+    for (id, pack) in &resend {
+        match door.push(&token, std::slice::from_ref(pack)) {
+            Ok(Pushed::Queued(q)) => {
+                depth = Some(q.depth);
+                r.queued += q.queued;
+                r.duplicates += q.duplicates;
+                lost += q.queued;
+                if let Some(why) = q.rejected.first() {
+                    r.rejected += 1;
+                    r.fail(format!("the door now refuses {} ({}, sent earlier): {why} — dropped from the ledger", pack.persona.name, pack.case));
+                    ledger.sent.remove(id);
+                }
+            }
+            Ok(Pushed::Closed { why }) => {
+                r.say(format!("door closed: {why}"));
+                save_ledger(cfg, &ledger, &mut r);
+                return r;
+            }
+            Ok(Pushed::Refused { error }) => {
+                r.fail(format!("the door refused the page: {error}"));
+                save_ledger(cfg, &ledger, &mut r);
+                return r;
+            }
+            Err(e) => {
+                r.fail(format!("push failed: {e}"));
+                save_ledger(cfg, &ledger, &mut r);
+                return r;
+            }
+        }
+    }
+    if !resend.is_empty() {
+        r.say(format!("resent {} unseen pack(s): {} still queued, {} put back, depth {}", resend.len(), r.duplicates, lost, depth.map_or("?".to_string(), |d| d.to_string())));
+    }
+    // With nothing to resend the depth is the ward's word, or unknown; an empty page asks the door.
+    if depth.is_none() {
+        match door.push(&token, &[]) {
+            Ok(Pushed::Queued(q)) => depth = Some(q.depth),
+            Ok(Pushed::Closed { why }) => {
+                r.say(format!("door closed: {why}"));
+                save_ledger(cfg, &ledger, &mut r);
+                return r;
+            }
+            Ok(Pushed::Refused { error }) => {
+                r.fail(format!("the door refused an empty page: {error}"));
+                save_ledger(cfg, &ledger, &mut r);
+                return r;
+            }
+            Err(e) => {
+                r.fail(format!("push failed: {e}"));
+                save_ledger(cfg, &ledger, &mut r);
+                return r;
+            }
+        }
+    }
+    let depth_now = depth.unwrap_or(0);
+    r.depth = Some(depth_now);
+
+    // ── build what the queue is short ──
+    let want = cfg.queue_depth.saturating_sub(depth_now);
+    let planned = if want == want_guess {
+        planned
+    } else {
+        plan(&Inputs { catalogue: &catalogue, pool: &pool, endemic: &endemic, manifest: &manifest, ward: &ward, ledger: &ledger, want, seed: cfg.seed })
+    };
+    r.say(format!("queue depth {depth_now}, want {}: building {}", cfg.queue_depth, planned.packs.len()));
+    let mut deferred = 0;
+    for pl in planned.packs {
+        let mut pack = pl.pack;
+        if let Base::Make { key, age } = &pl.base {
+            if r.faces_made >= cfg.bases_per_tick {
+                deferred += 1;
+                continue;
+            }
+            let who = pool.iter().find(|p| &p.key == key).expect("a planned person is in the pool");
+            match make_face(cfg, tools, who, *age, pl.place.as_str()) {
+                Ok(url) => {
+                    manifest.record_base(key, *age, &url, who);
+                    if let Err(e) = manifest.save(&cfg.manifest_path()) {
+                        r.fail(e);
+                        return r;
+                    }
+                    pack.portrait.insert("stable".into(), url);
+                    r.faces_made += 1;
+                    r.say(format!("made a face for {key} at {age}"));
+                }
+                Err(e) => {
+                    r.fail(format!("a face for {key} at {age} could not be made: {e} — her pack waits"));
+                    continue;
+                }
+            }
+        }
+        let who = pool.iter().find(|p| p.key == pl.person).expect("a planned person is in the pool");
+        let id = pack_id(&pack);
+        match door.push(&token, std::slice::from_ref(&pack)) {
+            Ok(Pushed::Queued(q)) => {
+                r.queued += q.queued;
+                r.duplicates += q.duplicates;
+                r.depth = Some(q.depth);
+                if let Some(why) = q.rejected.first() {
+                    r.rejected += 1;
+                    r.fail(format!("rejected {} ({} {} {}): {why}", pack.case, pack.persona.name, pack.persona.age, pack.persona.country));
+                    continue;
+                }
+                let mut sent = Sent::new(&pack.case, who, pack.persona.age, pack.endemic, pack.portrait.get("stable").cloned(), cfg.now, &cfg.ward);
+                sent.sex = pack.persona.sex.clone();
+                ledger.sent.insert(id.clone(), sent);
+                save_ledger(cfg, &ledger, &mut r);
+                r.say(format!(
+                    "{} {} — {} {} {} from {}{} · id {} · depth {}",
+                    if q.queued == 1 { "queued" } else { "already queued" },
+                    pack.case, pack.persona.name, pack.persona.sex.to_uppercase(), pack.persona.age, pack.persona.country,
+                    if pack.endemic { " (endemic)" } else { "" },
+                    &id[..12], q.depth
+                ));
+            }
+            Ok(Pushed::Closed { why }) => {
+                r.say(format!("door closed mid-tick: {why}"));
+                break;
+            }
+            Ok(Pushed::Refused { error }) => {
+                r.fail(format!("the door refused the page: {error}"));
+                break;
+            }
+            Err(e) => {
+                r.fail(format!("push failed: {e}"));
+                break;
+            }
+        }
+    }
+    if deferred > 0 {
+        r.say(format!("{deferred} pack(s) deferred to the next tick: their faces are past the cap of {} per tick", cfg.bases_per_tick));
+    }
+    r.say(format!("pushed: {} queued, {} duplicates, {} rejected, depth {}", r.queued, r.duplicates, r.rejected, r.depth.map_or("?".into(), |d| d.to_string())));
+
+    // ── the rest of one patient's faces ──
+    complete_faces(cfg, door, tools, &token, &ward, &pool, &mut manifest, &mut r);
+    save_ledger(cfg, &ledger, &mut r);
+    r
+}
+
+fn save_ledger(cfg: &Config, ledger: &Ledger, r: &mut Report) {
+    if let Err(e) = ledger.save(&cfg.ledger_path()) {
+        r.fail(e);
+    }
+}
+
+/// A base face: mflux, webp, sha, bucket. The url is the face's address.
+fn make_face(cfg: &Config, tools: &dyn Tools, who: &Person, age: u16, place: &str) -> Result<String, String> {
+    let work = cfg.world_dir.join("work");
+    std::fs::create_dir_all(&work).map_err(|e| format!("{}: {e}", work.display()))?;
+    let png = work.join(format!("{}@{age}.png", who.key));
+    let seed = sha256_hex(format!("{}@{age}", who.key).as_bytes())[..8].chars().fold(0u64, |a, c| a * 16 + c.to_digit(16).unwrap_or(0) as u64);
+    tools.paint(&prompts::base(age, who.sex, place), seed, &png)?;
+    let bytes = std::fs::read(&png).map_err(|e| format!("{}: {e}", png.display()))?;
+    let webp = tools.webp(&bytes, WEBP_QUALITY)?;
+    let url = publish(cfg, tools, &webp)?;
+    let _ = std::fs::remove_file(&png);
+    Ok(url)
+}
+
+/// Which manifest entry a patient on the board was given her face from.
+fn entry_for(manifest: &Manifest, who: &Person, p: &crate::door::BoardPatient) -> Option<String> {
+    let stable = p.portraits.get("stable").or(p.portrait.as_ref());
+    if let Some(url) = stable {
+        if let Some((k, _)) = manifest.entry_with_stable(url) {
+            return Some(k.clone());
+        }
+    }
+    let age = p.age?;
+    manifest.base_for(&who.key, &(age.saturating_sub(NEAR_FACE)..=age.saturating_add(NEAR_FACE))).map(|b| b.key)
+}
+
+/// The states a patient on the board still lacks, and where each would come from.
+struct Gap {
+    patient_id: u64,
+    who: Person,
+    key: String,
+    stable: String,
+    /// On file already: push these.
+    from_manifest: BTreeMap<String, String>,
+    /// Not on file: make these.
+    to_make: Vec<&'static str>,
+}
+
+fn gaps(ward: &WardView, pool: &[Person], manifest: &Manifest, r: &mut Report) -> Vec<Gap> {
+    let mut out = Vec::new();
+    for p in ward.open() {
+        let (Some(name), Some(country)) = (&p.name, &p.country) else {
+            r.say(format!("patient {} has no pack on the board, so there is nobody to put a face on", p.patient_id));
+            continue;
+        };
+        let Some(who) = person_for(pool, name, country) else {
+            r.say(format!("patient {} ({name}, {country}) is nobody in the pool; not this factory's", p.patient_id));
+            continue;
+        };
+        let Some(key) = entry_for(manifest, who, p) else {
+            r.say(format!("patient {} ({name}) has no face on file to make the others from", p.patient_id));
+            continue;
+        };
+        let entry = &manifest.entries[&key];
+        let Some(stable) = p.portraits.get("stable").or(p.portrait.as_ref()).cloned().or_else(|| entry.portrait.get("stable").cloned()) else {
+            continue;
+        };
+        let has = |st: &str| p.portraits.contains_key(st);
+        let mut from_manifest = BTreeMap::new();
+        let mut to_make = Vec::new();
+        for st in prompts::STATES {
+            if has(st) {
+                continue;
+            }
+            match entry.portrait.get(st) {
+                Some(url) => {
+                    from_manifest.insert(st.to_string(), url.clone());
+                }
+                None => to_make.push(st),
+            }
+        }
+        if p.portraits.is_empty() && p.portrait.is_none() {
+            // A build that publishes no set at all: the stable is pushed too, so the board can show her.
+            from_manifest.insert("stable".into(), stable.clone());
+        }
+        if from_manifest.is_empty() && to_make.is_empty() {
+            continue;
+        }
+        out.push(Gap { patient_id: p.patient_id, who: who.clone(), key, stable, from_manifest, to_make });
+    }
+    out
+}
+
+fn dry_run_faces(cfg: &Config, r: &mut Report, ward: &WardView, pool: &[Person], manifest: &Manifest) {
+    let mut made_one = false;
+    for g in gaps(ward, pool, manifest, r) {
+        if !g.from_manifest.is_empty() {
+            r.say(format!("would push {} state(s) on file for patient {} ({}): {:?}", g.from_manifest.len(), g.patient_id, g.who.name, g.from_manifest.keys().collect::<Vec<_>>()));
+        }
+        if !g.to_make.is_empty() {
+            if made_one {
+                r.say(format!("patient {} ({}) also lacks {:?}; would wait for a later tick", g.patient_id, g.who.name, g.to_make));
+            } else {
+                r.say(format!("would make {:?} for patient {} ({}) from {} with {} and push them", g.to_make, g.patient_id, g.who.name, g.stable, cfg.model));
+                made_one = true;
+            }
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn complete_faces(cfg: &Config, door: &dyn Door, tools: &dyn Tools, token: &Token, ward: &WardView, pool: &[Person], manifest: &mut Manifest, r: &mut Report) {
+    let mut made_one = false;
+    let found = gaps(ward, pool, manifest, r);
+    for g in found {
+        let mut set = g.from_manifest.clone();
+        if !g.to_make.is_empty() {
+            if made_one {
+                r.say(format!("patient {} ({}) still lacks {:?}; next tick", g.patient_id, g.who.name, g.to_make));
+            } else {
+                made_one = true;
+                match make_states(cfg, tools, &g, manifest, r) {
+                    Ok(new) => set.extend(new),
+                    Err(e) => r.fail(format!("patient {} ({}): {e}", g.patient_id, g.who.name)),
+                }
+            }
+        }
+        if set.is_empty() {
+            continue;
+        }
+        match door.fill(token, g.patient_id, &set) {
+            Ok(FillReply::Filled(f)) => {
+                r.say(format!("patient {} ({}): {} added, {} kept, now {:?}", g.patient_id, g.who.name, f.added, f.kept, f.states));
+                for why in f.rejected {
+                    r.fail(format!("patient {}: {why}", g.patient_id));
+                }
+            }
+            Ok(FillReply::Closed { why }) => {
+                r.say(format!("door closed: {why}"));
+                return;
+            }
+            Ok(FillReply::Refused { error }) => r.fail(format!("patient {}: {error}", g.patient_id)),
+            Err(e) => r.fail(format!("patient {}: {e}", g.patient_id)),
+        }
+    }
+}
+
+/// The five other states from her base, each recorded the moment it is in the bucket.
+fn make_states(cfg: &Config, tools: &dyn Tools, g: &Gap, manifest: &mut Manifest, r: &mut Report) -> Result<BTreeMap<String, String>, String> {
+    let base = match g.stable.rsplit('/').next().and_then(|n| n.strip_suffix(".webp")) {
+        Some(sha) if cfg.face_path(sha).exists() => std::fs::read(cfg.face_path(sha)).map_err(|e| e.to_string())?,
+        _ => tools.fetch(&g.stable)?,
+    };
+    let mime = if base.starts_with(b"RIFF") { "image/webp" } else { "image/png" };
+    let mut out = BTreeMap::new();
+    for st in &g.to_make {
+        let prompt = prompts::state(st, g.who.sex).ok_or_else(|| format!("no prompt for {st}"))?;
+        let png = tools.edit(&cfg.project, &cfg.model, &base, mime, &prompt)?;
+        let webp = tools.webp(&png, WEBP_QUALITY)?;
+        let url = publish(cfg, tools, &webp)?;
+        manifest.record_state(&g.key, st, &url);
+        manifest.save(&cfg.manifest_path())?;
+        r.states_made += 1;
+        r.say(format!("made {st} for {} ({})", g.who.name, g.key));
+        out.insert(st.to_string(), url);
+    }
+    Ok(out)
+}
+
+/// For the binary: the checkout this binary was built from, when run from anywhere else.
+pub fn default_repo() -> PathBuf {
+    std::env::var_os("VITALS_REPO").map(PathBuf::from).unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").to_path_buf())
+}
