@@ -67,6 +67,7 @@ canvas#globe.dragging{cursor:grabbing}
 .legend .bin{display:inline-flex;align-items:center;gap:.3rem;white-space:nowrap}
 .legend .sw{width:14px;height:10px;border-radius:2px;border:1px solid var(--land-edge);display:inline-block}
 .legend .sw.hatch{background:repeating-linear-gradient(135deg,var(--land) 0 2px,var(--land-edge) 2px 3px)}
+.legend .sw.ring{background:var(--ramp-1);border:2px solid var(--lit-edge)}
 .legend .note{display:block;margin-top:.3rem;color:var(--ink-3)}
 .pdoc{margin:.7rem 0 0;padding:.6rem .7rem;border:1px solid var(--rule-soft);border-radius:.6rem;background:var(--ground)}
 .pdoc[hidden]{display:none}
@@ -134,13 +135,13 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
   </div>
 
   <h1 id="h1">Spin the world. Find a patient. Take a shift.
-      <span class="second" id="h1b">Countries with someone on the ward are lit.</span></h1>
+      <span class="second" id="h1b">Countries with someone on the ward are ringed.</span></h1>
   <p class="mission" id="mission" hidden></p>
-  <p class="sub">Drag the globe, hover a country, click a lit one to see who is waiting there. A shift is a few minutes at her bedside; the next stranger opens her where you stopped.</p>
+  <p class="sub">Drag the globe, hover a country, click a ringed one to see who is waiting there. A shift is a few minutes at her bedside; the next stranger opens her where you stopped.</p>
 
   <div class="stage">
     <div class="globe-wrap">
-      <canvas id="globe" width="900" height="900" aria-label="A globe of the world; lit countries have patients on the ward, or every country coloured by people per doctor"></canvas>
+      <canvas id="globe" width="900" height="900" aria-label="A globe of the world, every country coloured by how many people it has per doctor; a country with somebody on the ward is ringed and carries a count"></canvas>
       <div class="tip" id="tip" hidden></div>
       <div class="filters" id="filters" role="group" aria-label="Show patients by difficulty">
         <span>SHOW</span>
@@ -148,14 +149,20 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
         <button type="button" data-d="intern" aria-pressed="true">intern</button>
         <button type="button" data-d="resident" aria-pressed="true">resident</button>
       </div>
-      <div class="filters" id="layers" role="group" aria-label="Colour the globe by">
-        <span>COLOUR</span>
+      <!-- Two independent switches, both on. They were a radio, which made the two facts
+           alternatives — and they are one sentence: this country is short of doctors, and this
+           country has somebody on the ward right now. A viewer can still isolate either. -->
+      <div class="filters" id="layers" role="group" aria-label="What the globe shows">
+        <span>SHOWING</span>
+        <button type="button" data-layer="doctors" aria-pressed="true">doctors</button>
         <button type="button" data-layer="ward" aria-pressed="true">ward</button>
-        <button type="button" data-layer="doctors" aria-pressed="false">doctors</button>
       </div>
-      <div class="legend" id="legend" hidden>
+      <!-- Visible from the first paint: the doctors layer is on by default, and a ramp with no
+           legend is a picture nobody can read. -->
+      <div class="legend" id="legend">
         <span class="k">people per doctor · World Bank/WHO, latest year</span>
         <div class="bins" id="bins"></div>
+        <div class="bins" id="wardkey"><span class="bin"><i class="sw ring"></i>somebody on the ward, and how many</span></div>
         <span class="note">people per doctor = population per physician, not patients · each country at its own latest year · no value = hatched, never coloured · World Bank SH.MED.PHYS.ZS (WHO data), CC BY 4.0</span>
       </div>
       <p class="hint" id="hint">drag to rotate · scroll or pinch does nothing · idle and it turns on its own</p>
@@ -167,7 +174,7 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
       <span class="k" id="pk">pick a country</span>
       <h2 id="ptitle">Nobody selected</h2>
       <div class="pdoc" id="pdoc" hidden></div>
-      <p class="empty" id="pempty">Click a lit country on the globe. Patients from a country the map cannot place are listed below the globe.</p>
+      <p class="empty" id="pempty">Click a ringed country on the globe. Patients from a country the map cannot place are listed below the globe.</p>
       <ul class="plist" id="plist"></ul>
     </aside>
   </div>
@@ -292,6 +299,36 @@ function doctorLine(name, series) {
   const people = l ? peoplePerDoctor(l[1]) : null;
   return people === null ? `${name} · no data` : `${name} · 1 doctor per ${fmtPeople(people)} people (${l[0]})`;
 }
+/* How one country is drawn, given both layers.
+   The founder's ruling of 16 ก.ย. is that both are on at once, so the two facts have to share a
+   country without fighting over it: the doctors ramp is the base fill, and "somebody is on the
+   ward here" becomes an outline ring rather than a colour that would have to beat the ramp.
+   With the ward layer alone there is no ramp underneath, so lit is a fill again and the ring would
+   say the same thing twice. */
+function paintOf(people, patients, layers) {
+  /* Positional, not destructured. The test harness pulls these functions out of the page by brace
+     matching from the header, so an opening brace in the parameter list is the one it stops at —
+     and a brace inside this very comment would do the same, which is why there is none. The page's
+     own tests reading the page's own source is worth more than a prettier signature. */
+  const ring = !!(layers.ward && patients > 0 && layers.doctors);
+  if (layers.doctors) {
+    const bin = doctorBin(people);
+    return { fill: bin === null ? "hatch" : "ramp", bin, ring };
+  }
+  if (layers.ward) return { fill: patients > 0 ? "lit" : "land", bin: null, ring: false };
+  return { fill: "land", bin: null, ring: false };
+}
+
+/* What the hover says. One line, both facts, in the order they matter: the shortage is why the
+   ward exists, and the patient is what it is doing about it. */
+function hoverText(name, series, patients, layers) {
+  const bits = [];
+  if (layers.doctors) bits.push(doctorLine(name, series));
+  else bits.push(name);
+  if (layers.ward && patients > 0) bits.push(`${patients} on the ward`);
+  return bits.join(" · ");
+}
+
 // The world's own figure, from the WLD aggregate the source publishes — never summed from countries.
 function worldAverage(data) {
   const w = data && data.countries && data.countries.WLD;
@@ -339,7 +376,9 @@ let census = null;
 let beds = null;           // how many of them the ward can actually hand to somebody
 let asOf = { slot: null, at: Date.now() };   // the read's slot, and when it arrived
 let filter = { student: true, intern: true, resident: true };
-let layer = "ward";            // "ward" lights the countries with patients; "doctors" colours every country
+/* Both layers, on, from the first paint (founder, 16 ก.ย.). Independent rather than exclusive:
+   the ramp colours every country, the ward rings the ones with somebody in a bed. */
+let layers = { doctors: true, ward: true };
 let counts = { byId: {}, unknown: 0 };
 let selected = null;       // atlas id
 let hovered = null;
@@ -507,7 +546,9 @@ function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;
 // ward layer the panel is about who is in the beds.
 function renderDoctors(id) {
   const box = $("pdoc");
-  if (layer !== "doctors") { box.hidden = true; return; }
+  /* Shown whenever the doctors layer is on, which is by default — the panel used to be about the
+     beds or about the shortage, and the founder's ruling is that it is about both at once. */
+  if (!layers.doctors) { box.hidden = true; return; }
   const series = seriesOfId(id);
   const l = latestOf(series);
   const people = l ? peoplePerDoctor(l[1]) : null;
@@ -562,7 +603,7 @@ function renderPanel(id) {
 function clearPanel() {
   selected = null;
   $("pk").textContent = "pick a country"; $("ptitle").textContent = "Nobody selected"; $("pdoc").hidden = true;
-  $("pempty").hidden = false; $("pempty").textContent = "Click a lit country on the globe. Patients from a country the map cannot place are listed below the globe.";
+  $("pempty").hidden = false; $("pempty").textContent = "Click a ringed country on the globe. Patients from a country the map cannot place are listed below the globe.";
   $("plist").textContent = ""; $("panel").classList.remove("open"); draw();
 }
 function renderTray() {
@@ -579,10 +620,15 @@ $("filters").addEventListener("click", e => {
   recompute();
 });
 $("layers").addEventListener("click", e => {
-  const b = e.target.closest("button[data-layer]"); if (!b || b.dataset.layer === layer) return;
-  layer = b.dataset.layer;
-  for (const x of $("layers").querySelectorAll("button[data-layer]")) x.setAttribute("aria-pressed", String(x.dataset.layer === layer));
-  $("legend").hidden = layer !== "doctors";
+  const b = e.target.closest("button[data-layer]"); if (!b) return;
+  const k = b.dataset.layer;
+  /* Independent, and never both off: a globe showing neither fact is a grey ball, and a viewer
+     who turned the second one off meant to isolate the first rather than to see nothing. */
+  if (layers[k] && !Object.keys(layers).some(o => o !== k && layers[o])) return;
+  layers[k] = !layers[k];
+  b.setAttribute("aria-pressed", String(layers[k]));
+  $("legend").hidden = !layers.doctors;
+  $("wardkey").hidden = !layers.ward;
   recompute();
 });
 // The legend states the bins exactly as DOCTOR_BINS has them.
@@ -648,22 +694,31 @@ function draw() {
   const lit = css("--lit"), litEdge = css("--lit-edge"), land = css("--land"), landEdge = css("--land-edge"),
         sea = css("--sea"), hover = css("--hover"), ink = css("--ink");
   ctx.beginPath(); path(sphere); ctx.fillStyle = sea; ctx.fill();
-  const hatch = layer === "doctors" ? hatchPattern(land, landEdge) : null;
+  const hatch = layers.doctors ? hatchPattern(land, landEdge) : null;
   for (const f of countries) {
     const id = String(f.id);
     const n = counts.byId[id] || 0;
     ctx.beginPath(); path(f);
-    if (layer === "doctors") {
-      const bin = doctorBin(peopleOfId(id));
-      ctx.fillStyle = bin === null ? hatch : css(`--ramp-${bin}`);
-    } else {
-      ctx.fillStyle = n ? lit : (id === hovered ? hover : land);
-      if (id === selected && n) ctx.fillStyle = litEdge;
-    }
+    /* One decision, made in `paintOf` and tested there: the ramp is the base when the doctors
+       layer is on, the ward becomes a ring over it, and with the ramp off the ward is a fill
+       again because there is nothing underneath for it to fight. */
+    const paint = paintOf(peopleOfId(id), n, layers);
+    if (paint.fill === "ramp") ctx.fillStyle = css(`--ramp-${paint.bin}`);
+    else if (paint.fill === "hatch") ctx.fillStyle = hatch;
+    else if (paint.fill === "lit") ctx.fillStyle = (id === selected ? litEdge : lit);
+    else ctx.fillStyle = (id === hovered ? hover : land);
     ctx.fill();
   }
   ctx.beginPath(); path(borders); ctx.strokeStyle = landEdge; ctx.lineWidth = 0.6; ctx.stroke();
-  if (layer === "doctors") {
+  /* "Somebody is on the ward here", drawn as a ring because the colour underneath is already
+     saying the other thing. This is what "lit" means when both layers are on. */
+  ctx.strokeStyle = litEdge; ctx.lineWidth = 2;
+  for (const f of countries) {
+    const id = String(f.id);
+    if (!paintOf(peopleOfId(id), counts.byId[id] || 0, layers).ring) continue;
+    ctx.beginPath(); path(f); ctx.stroke();
+  }
+  if (layers.doctors) {
     // On the coloured globe a hover or a selection is an outline, so the colour underneath stays
     // readable as the number it is.
     for (const [id, w] of [[hovered, 1.4], [selected, 2.2]]) {
@@ -676,8 +731,8 @@ function draw() {
   // count badges on lit countries that face us
   ctx.font = "600 11px 'IBM Plex Mono', monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
   for (const f of countries) {
-    const id = String(f.id), n = counts.byId[id];
-    if (!n) continue;
+    const id = String(f.id), n = layers.ward ? counts.byId[id] : 0;
+    if (!n) continue;   // and nothing at all when the ward layer is off: the badge IS the ward layer
     const c = d3.geoCentroid(f);
     if (d3.geoDistance(c, [-rotation[0], -rotation[1]]) > Math.PI / 2 - 0.05) continue;   // on the far side
     const [x, y] = projection(c);
@@ -713,8 +768,9 @@ function move(e) {
   const tip = $("tip");
   if (id) {
     const n = counts.byId[id] || 0;
-    tip.innerHTML = (layer === "doctors" ? escapeHtml(doctorLine(nameOf[id], seriesOfId(id))) : escapeHtml(nameOf[id]))
-      + (n ? `<span class="n">${n} on the ward</span>` : "");
+    /* Both facts in one line, in the order they matter: the shortage is why the ward exists, the
+       patient is what it is doing about it. */
+    tip.innerHTML = escapeHtml(hoverText(nameOf[id], seriesOfId(id), n, layers));
     tip.style.left = p[0] + "px"; tip.style.top = p[1] + "px"; tip.hidden = false;
   } else tip.hidden = true;
 }

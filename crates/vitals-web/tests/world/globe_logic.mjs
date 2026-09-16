@@ -37,12 +37,12 @@ const grabConst = (name) => {
 };
 
 const sandbox = [grabConst('ALPHA3'), grabConst('SLOT_MS'), grabConst('STATE_LABEL'), grabConst('DOCTOR_BINS'), grab('countryId'), grab('countryCounts'), grab('visible'),
-  grab('stateOf'), grab('onBoard'), grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
+  grab('stateOf'), grab('onBoard'), grab('paintOf'), grab('hoverText'), grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
   grab('peoplePerDoctor'), grab('latestOf'), grab('tenYearTrend'), grab('fmtTrend'), grab('fmtPeople'), grab('doctorLine'),
   grab('worldAverage'), grab('missionLine'), grab('doctorBin'),
-  'return { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine, stateOf, onBoard, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin };'].join('\n');
+  'return { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin };'].join('\n');
 const { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine,
-  stateOf, onBoard, STATE_LABEL,
+  stateOf, onBoard, paintOf, hoverText, STATE_LABEL,
   DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin } = new Function(sandbox)();
 
 // ── countryId ────────────────────────────────────────────────────────────────
@@ -338,31 +338,31 @@ console.log('globe_logic: ok');
 
   // A country with a shortage figure and somebody on the ward: coloured by the ramp, ringed for
   // the ward.
-  const kenya = paintOf({ people: 3460, patients: 1, layers: both });
+  const kenya = paintOf(3460, 1, both);
   assert.equal(kenya.fill, shortage.fill, "the ramp is the base fill when the doctors layer is on");
   assert.ok(kenya.bin !== null, "and it has a bin to colour with");
   assert.equal(kenya.ring, true, "a country with somebody on the ward is ringed, not filled");
 
   // No shortage figure: hatched, and still ringed if somebody is there.
-  const nodata = paintOf({ people: null, patients: 2, layers: both });
+  const nodata = paintOf(null, 2, both);
   assert.equal(nodata.fill, "hatch", "no figure is hatched rather than coloured as though it were zero");
   assert.equal(nodata.ring, true);
 
   // Ward alone: the old behaviour, a lit fill, because there is no ramp to sit on.
-  const wardOnly = paintOf({ people: 3460, patients: 1, layers: { doctors: false, ward: true } });
+  const wardOnly = paintOf(3460, 1, { doctors: false, ward: true });
   assert.equal(wardOnly.fill, "lit", "with no ramp under it, lit is a fill again");
   assert.equal(wardOnly.ring, false, "and a ring on a lit fill would say the same thing twice");
 
   // Doctors alone: no ring, whoever is on the ward.
-  const docsOnly = paintOf({ people: 3460, patients: 3, layers: { doctors: true, ward: false } });
+  const docsOnly = paintOf(3460, 3, { doctors: true, ward: false });
   assert.equal(docsOnly.ring, false, "the ward layer is off, so the ward is not drawn");
   assert.equal(docsOnly.fill, "ramp");
 
   // Neither: plain land. The page still draws a globe rather than nothing.
-  assert.equal(paintOf({ people: 3460, patients: 1, layers: { doctors: false, ward: false } }).fill, "land");
+  assert.equal(paintOf(3460, 1, { doctors: false, ward: false }).fill, "land");
 
   // The hover says both facts in one line when both are on.
-  const series = [["2023", 0.289]];
+  const series = [[2023, 0.289]];   // years are integers, as the file has them
   const line = hoverText("Kenya", series, 1, both);
   assert.ok(line.includes("1 doctor per"), `the shortage: ${line}`);
   assert.ok(line.includes("1 on the ward"), `and the ward: ${line}`);
