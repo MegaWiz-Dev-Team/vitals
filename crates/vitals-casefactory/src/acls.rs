@@ -53,9 +53,9 @@ pub fn entry(case: &Case, a: Archetype, v: &Vitals0) -> Entry {
                 }
                 h
             };
-            if hay.contains("asystole") {
+            if crate::text::contains_kw(&hay, "asystole") {
                 Entry::Asystole
-            } else if hay.contains("pulseless electrical") || hay.contains("pea") {
+            } else if crate::text::contains_kw(&hay, "pulseless electrical") || crate::text::contains_kw(&hay, "pea") {
                 Entry::Pea
             } else {
                 Entry::Vf

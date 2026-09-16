@@ -63,7 +63,7 @@ fn tx(p: &Present, a: Archetype, mapped: &Mapped) -> Value {
     let role = &p.role;
     let id = p.tx_id();
     // The algorithm's own tools ask which state they are in; everything else is one effect list.
-    let effects: Vec<Value> = match crate::acls::effects(role.id, a, mapped) {
+    let effects: Vec<Value> = match crate::acls::effects(role.id, a, mapped).or_else(|| a.branch_effects(role.id)) {
         Some(e) => e,
         None => {
             let mut effects: Vec<Value> = Vec::new();
@@ -85,9 +85,9 @@ fn tx(p: &Present, a: Archetype, mapped: &Mapped) -> Value {
             effects
         }
     };
-    let mut matcher = json!({ "any_kw": role.kw.iter().map(|k| k.to_string()).collect::<Vec<_>>() });
+    let mut matcher = json!({ "any_kw": role.kw.iter().map(|k| crate::text::matcher_kw(k)).collect::<Vec<_>>() });
     if !role.not_kw.is_empty() {
-        matcher["not_kw"] = json!(role.not_kw.iter().map(|k| k.to_string()).collect::<Vec<_>>());
+        matcher["not_kw"] = json!(role.not_kw.iter().map(|k| crate::text::matcher_kw(k)).collect::<Vec<_>>());
     }
     let mut v = json!({
         "id": id,

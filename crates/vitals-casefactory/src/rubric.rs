@@ -103,7 +103,7 @@ pub fn derive(case: &Case, a: Archetype, mapped: &Mapped, built: &Built, sim: &S
         .map(|(id, display)| {
             let low = crate::interventions::short_display(display).to_lowercase();
             let twins: Vec<String> = mapped.present.iter()
-                .filter(|p| p.role.kind != crate::archetype::Kind::Harmful && p.role.kw.iter().any(|k| low.contains(k)))
+                .filter(|p| p.role.kind != crate::archetype::Kind::Harmful && p.role.kw.iter().any(|k| crate::text::contains_kw(&low, k)))
                 .map(crate::plan::Present::tx_id)
                 .collect();
             if twins.is_empty() {

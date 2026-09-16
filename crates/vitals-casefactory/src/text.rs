@@ -109,9 +109,10 @@ pub fn strings(v: &serde_json::Value, path: &str, out: &mut Vec<(String, String)
                 strings(x, &format!("{path}[{i}]"), out);
             }
         }
+        // Values only: the keys are the engine's vocabulary (`delta`, `flag`, `beat`), not prose,
+        // and a patient who happens to be called Delta must not refuse every pack.
         serde_json::Value::Object(o) => {
             for (k, x) in o {
-                out.push((format!("{path}.{k}"), k.clone()));
                 strings(x, &format!("{path}.{k}"), out);
             }
         }
@@ -369,4 +370,50 @@ pub fn depersonalise(text: &str, age: Option<u32>, sex: Option<&str>) -> String 
 /// What a line of prose still states about the patient's age or sex. Empty means clean.
 pub fn prose_leaks(text: &str, age: Option<u32>, sex: Option<&str>) -> Vec<String> {
     Persona::new(age, sex).leaks(text)
+}
+
+// ── whole-word keyword matching ─────────────────────────────────────────────────────
+//
+// Role and gate keywords match whole words, case-folded, Unicode-aware; a multi-word keyword is
+// a phrase. `stopped` does not contain the protective equipment, `nebulised` is not a
+// nebuliser, a surgical mask is not surgery. Where a stem is meant, the table says so with a
+// star: `transfus*` takes `transfusion` and `transfused`; `*stemi` takes `nstemi`. A keyword in
+// a script without word spaces (Thai) matches as a substring, because there is no boundary to
+// find.
+
+fn is_kw_word_char(c: char) -> bool {
+    c.is_alphanumeric()
+}
+
+/// Does `hay` contain the keyword `kw` as a whole word or phrase (or as the declared stem)?
+pub fn contains_kw(hay: &str, kw: &str) -> bool {
+    let kw = kw.trim();
+    if kw.is_empty() {
+        return false;
+    }
+    let prefix_ok = kw.starts_with('*');
+    let suffix_ok = kw.ends_with('*');
+    let core = kw.trim_matches('*').to_lowercase();
+    if core.is_empty() {
+        return false;
+    }
+    let hay = hay.to_lowercase();
+    // no word spaces to find a boundary at: a substring is the best there is
+    if core.chars().any(|c| c.is_alphabetic() && !c.is_ascii()) {
+        return hay.contains(&core);
+    }
+    for (i, _) in hay.match_indices(&core) {
+        let before_ok = prefix_ok || hay[..i].chars().next_back().is_none_or(|c| !is_kw_word_char(c));
+        let after_ok = suffix_ok || hay[i + core.len()..].chars().next().is_none_or(|c| !is_kw_word_char(c));
+        if before_ok && after_ok {
+            return true;
+        }
+    }
+    false
+}
+
+/// The keyword as the engine's matcher should see it: the stem marks stripped. The engine
+/// matches learner text by substring, which is what a stem wants anyway.
+pub fn matcher_kw(kw: &str) -> String {
+    kw.trim().trim_matches('*').to_string()
 }

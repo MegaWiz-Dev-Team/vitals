@@ -10,6 +10,7 @@
 //! describe.
 
 use crate::embla::{Case, Vitals0};
+use crate::text::contains_kw;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Archetype {
@@ -48,15 +49,20 @@ pub enum Archetype {
     /// Anaphylaxis: adrenaline IM inside the window is the whole case; the antihistamine-first
     /// reflex and an IV push of adrenaline are the harms.
     Anaphylaxis,
+    /// An adult whose volume has run out without bleeding — cholera, severe dehydration: rapid
+    /// fluid in two phases is the therapy, the salts and an antibiotic are adjuncts, the drink
+    /// comes once perfusing.
+    HypovolaemicShock,
 }
 
-pub const ALL: [Archetype; 12] = [
+pub const ALL: [Archetype; 13] = [
     Archetype::AclsCardiacArrest,
     Archetype::AclsTachycardiaSvt,
     Archetype::AclsTachycardiaAf,
     Archetype::AclsBradycardia,
     Archetype::Anaphylaxis,
     Archetype::PaediatricCompensatedShock,
+    Archetype::HypovolaemicShock,
     Archetype::CardiogenicShock,
     Archetype::HaemorrhagicShock,
     Archetype::SepticShock,
@@ -153,25 +159,25 @@ pub const OXYGEN: Role = Role {
 pub const COMMON: &[Role] = &[
     OXYGEN,
     role("admit", "Admit to a monitored bed",
-        &["admit", "icu", "hdu", "intensive care", "high-dependency", "high dependency", "monitored bed", "ccu", "step-down", "รับไว้", "รับนอน", "แอดมิท"],
+        &["admit*", "admission", "icu", "hdu", "intensive care", "high-dependency", "high dependency", "monitored bed", "ccu", "step-down", "รับไว้", "รับนอน", "แอดมิท"],
         Kind::Supportive, "admitted to a monitored bed — the team is told what to watch for", &[]),
     role("monitor", "Monitoring plan",
-        &["monitoring", "monitor ", "reassess", "serial ", "ติดตาม", "เฝ้าระวัง", "ประเมินซ้ำ", "strict fluid balance"],
+        &["monitoring", "monitor", "reassess*", "serial", "ติดตาม", "เฝ้าระวัง", "ประเมินซ้ำ", "strict fluid balance"],
         Kind::Supportive, "continuous monitoring set — the numbers are watched, not assumed", &[]),
     role("explain", "Explain and obtain consent",
-        &["explain", "communicat", "consent", "counsel", "อธิบาย", "ให้ความรู้", "แจ้งญาติ"],
+        &["explain*", "communicat*", "consent", "counsel*", "อธิบาย", "ให้ความรู้", "แจ้งญาติ"],
         Kind::Supportive, "the situation is explained plainly and consent is taken", &[]),
     role("notify", "Notify public health",
-        &["notif", "surveillance", "public-health", "public health", "reportable", "report the case", "แจ้งโรค", "รายงานโรค"],
+        &["notif*", "surveillance", "public-health", "public health", "reportable", "report the case", "แจ้งโรค", "รายงานโรค"],
         Kind::Supportive, "the case is notified — the health authority is told today", &[]),
     role("analgesia", "Analgesia",
-        &["analgesia", "morphine", "fentanyl", "paracetamol", "pain relief", "ยาแก้ปวด"],
+        &["analgesia", "analgesic*", "morphine", "fentanyl", "paracetamol", "pain relief", "ยาแก้ปวด"],
         Kind::Supportive, "analgesia given — pain is treated, not used as a sign", &[]),
     role("antiemetic", "Antiemetic",
-        &["ondansetron", "antiemetic", "metoclopramide", "ยาแก้อาเจียน"],
+        &["ondansetron", "antiemetic*", "metoclopramide", "ยาแก้อาเจียน"],
         Kind::Supportive, "antiemetic in — the vomiting settles", &[]),
     role("catheter", "Urinary catheter and hourly output",
-        &["urinary catheter", "catheter", "urine output", "สายสวน"],
+        &["urinary catheter", "catheter*", "urine output", "สายสวน"],
         Kind::Supportive, "catheter in — urine output is measured by the hour", &[]),
     role("nil_by_mouth", "Nothing by mouth",
         &["nothing by mouth", "nil by mouth", "npo", "nasogastric", "ng tube", "งดน้ำงดอาหาร"],
@@ -185,23 +191,23 @@ pub const COMMON: &[Role] = &[
 /// red flag names one inside a negated sentence.
 pub const NEGATED_HARMS: &[Role] = &[
     harm("nsaid", "Non-steroidal anti-inflammatory",
-        &["nsaid", "ibuprofen", "diclofenac", "mefenamic", "ketorolac", "naproxen"],
+        &["nsaid*", "ibuprofen", "diclofenac", "mefenamic", "ketorolac", "naproxen"],
         "a non-steroidal given where bleeding or the kidney forbids it",
         &[n("sbp", -3.0)]),
     harm("steroids", "Corticosteroid",
-        &["corticosteroid", "steroid", "dexamethasone", "hydrocortisone", "mannitol", "สเตียรอยด์"],
+        &["corticosteroid*", "steroid*", "dexamethasone", "hydrocortisone", "mannitol", "สเตียรอยด์"],
         "a corticosteroid given where the evidence says it harms rather than helps",
         &[n("gcs", -1.0)]),
     harm("im_injection", "Intramuscular injection",
-        &["intramuscular", "im injection"],
+        &["intramuscular", "im injection*"],
         "an intramuscular injection into a bleeding patient — a haematoma and an exposed needle",
         &[n("sbp", -2.0)]),
     harm("fluoroquinolone", "Fluoroquinolone",
-        &["ciprofloxacin", "fluoroquinolone", "levofloxacin"],
+        &["ciprofloxacin", "fluoroquinolone*", "levofloxacin"],
         "a fluoroquinolone where resistance is near-universal — the hour is lost to a drug that will not work",
         &[]),
     harm("oral_only", "Oral-only therapy",
-        &["oral-only", "oral only", "oral antimalarial"],
+        &["oral-only", "oral only", "oral antimalarial*"],
         "oral therapy alone for a patient who is vomiting and obtunded — the drug never arrives",
         &[]),
     harm("prophylactic_anticonvulsant", "Prophylactic phenobarbital",
@@ -212,6 +218,10 @@ pub const NEGATED_HARMS: &[Role] = &[
         &["incision", "cryotherapy", "electric shock", "suction the bite", "ice"],
         "the bite was cut and sucked — nothing gained, a wound made",
         &[]),
+    harm("antimotility", "Antimotility drug",
+        &["loperamide", "antimotility", "anti-motility", "diphenoxylate"],
+        "an antimotility drug for a secretory diarrhoea — the toxin stays in and the gut distends",
+        &[n("sbp", -3.0)]),
     harm("hypotonic_fluid", "Hypotonic or sugar-containing bolus",
         &["hypotonic", "dextrose-containing", "d5w", "5% dextrose", "half-strength", "0.45%"],
         "a hypotonic or sugar-containing bolus for shock — the volume leaves the vessels",
@@ -220,15 +230,15 @@ pub const NEGATED_HARMS: &[Role] = &[
 
 // ── shared role definitions, picked into archetypes below ────────────────────────────
 
-const FLUIDS_KW: &[&str] = &["crystalloid", "ringer", "saline", "fluid", "nss", "ml/kg", "สารน้ำ", "ให้น้ำเกลือ"];
-const ANTIBIOTIC_KW: &[&str] = &["antibiotic", "antimicrobial", "ceftriaxone", "meropenem", "piperacillin", "tazobactam", "cefotaxime", "ceftazidime", "vancomycin", "metronidazole", "ampicillin", "gentamicin", "amikacin", "azithromycin", "ยาปฏิชีวนะ"];
+const FLUIDS_KW: &[&str] = &["crystalloid*", "ringer*", "saline", "fluid*", "nss", "สารน้ำ", "ให้น้ำเกลือ"];
+const ANTIBIOTIC_KW: &[&str] = &["antibiotic*", "antimicrobial*", "ceftriaxone", "meropenem", "piperacillin", "tazobactam", "cefotaxime", "ceftazidime", "vancomycin", "metronidazole", "ampicillin", "amoxicillin", "gentamicin", "amikacin", "azithromycin", "erythromycin", "clindamycin", "doxycycline", "penicillin", "benzylpenicillin", "cloxacillin", "flucloxacillin", "co-trimoxazole", "cotrimoxazole", "trimethoprim", "ยาปฏิชีวนะ"];
 const PRESSOR_KW: &[&str] = &["noradrenaline", "norepinephrine", "vasopressor", "adrenaline infusion", "epinephrine infusion", "dopamine", "vasopressin", "ยากระตุ้นความดัน"];
-const TRANSFUSION_KW: &[&str] = &["transfus", "packed red", "fresh frozen plasma", "ffp", "platelets", "blood products", "whole blood", "ให้เลือด"];
-const SPECIFIC_KW: &[&str] = &["artesunate", "artemether", "quinine", "ribavirin", "antivenom", "anti-snake", "asv", "benznidazole", "nifurtimox", "antitoxin", "aciclovir", "acyclovir", "oseltamivir", "ivig", "immunoglobulin", "plasma exchange", "plasmapheresis", "praziquantel"];
-const AIRWAY_KW: &[&str] = &["intubat", "endotracheal", "secure the airway", "airway", "bag-valve", "ventilat", "ใส่ท่อช่วยหายใจ", "ทางเดินหายใจ"];
-const DEXTROSE_KW: &[&str] = &["dextrose", "d50", "d10", "50% glucose", "glucose 50", "treat hypoglyc", "hypoglycaemia at once", "correct hypoglyc", "กลูโคส"];
-const SOURCE_KW: &[&str] = &["laparotomy", "surgical", "surgery", "source control", "surgical drainage", "percutaneous drainage", "abscess drainage", "debridement", "ercp", "ผ่าตัด", "ศัลย", "ระบายหนอง"];
-const SEDATION_KW: &[&str] = &["sedat", "midazolam", "diazepam", "lorazepam", "benzodiazepine"];
+const TRANSFUSION_KW: &[&str] = &["transfus*", "packed red", "fresh frozen plasma", "ffp", "platelet*", "blood products", "whole blood", "ให้เลือด"];
+const SPECIFIC_KW: &[&str] = &["artesunate", "artemether", "quinine", "ribavirin", "antivenom", "anti-snake", "asv", "benznidazole", "nifurtimox", "antitoxin", "aciclovir", "acyclovir", "oseltamivir", "ivig", "immunoglobulin", "plasma exchange", "plasmapheresis", "praziquantel", "pralidoxime"];
+const AIRWAY_KW: &[&str] = &["intubat*", "endotracheal", "secure the airway", "airway", "bag-valve", "ventilat*", "tracheostomy", "cricothyro*", "ใส่ท่อช่วยหายใจ", "ทางเดินหายใจ"];
+const DEXTROSE_KW: &[&str] = &["dextrose", "d50", "d10", "50% glucose", "10% glucose", "glucose 50", "treat hypoglyc*", "hypoglycaemia at once", "correct hypoglyc*", "กลูโคส"];
+const SOURCE_KW: &[&str] = &["laparotomy", "surgery", "surgeon*", "surgical team", "surgical review", "surgical consult*", "surgical intervention", "surgical exploration", "surgical drainage", "source control", "percutaneous drainage", "abscess drainage", "debridement", "ercp", "theatre", "operation", "evacuation of retained", "ผ่าตัด", "ศัลย", "ระบายหนอง"];
+const SEDATION_KW: &[&str] = &["sedat*", "midazolam", "diazepam", "lorazepam", "benzodiazepine*"];
 const BETA_BLOCKER_KW: &[&str] = &["beta-blocker", "beta blocker", "metoprolol", "propranolol", "bisoprolol", "carvedilol", "verapamil", "diltiazem"];
 
 const FLUIDS: Role = role("fluids", "Crystalloid bolus, reassessed", FLUIDS_KW, Kind::Critical,
@@ -239,7 +249,7 @@ const ANTIBIOTICS: Role = role("antibiotics", "Broad-spectrum antibiotics", ANTI
     "broad-spectrum antibiotic in — after the cultures, inside the hour", &[]);
 const ANTIBIOTICS_SUPPORT: Role = role("antibiotics", "Empirical antibiotics", ANTIBIOTIC_KW, Kind::Supportive,
     "empirical antibiotic in — cover while the cultures cook", &[]);
-const CULTURES: Role = role("cultures", "Blood cultures before antibiotics", &["blood culture", "cultures", "เพาะเชื้อ"], Kind::Supportive,
+const CULTURES: Role = role("cultures", "Blood cultures before antibiotics", &["blood culture*", "culture*", "เพาะเชื้อ"], Kind::Supportive,
     "two sets of blood cultures drawn before the first dose", &[]);
 const PRESSOR: Role = role("vasopressor", "Vasopressor", PRESSOR_KW, Kind::Critical,
     "noradrenaline titrated through a dedicated line — the pressure answers", &[n("sbp", 12.0)]);
@@ -267,19 +277,19 @@ const DEXTROSE: Role = role("dextrose", "Correct the hypoglycaemia", DEXTROSE_KW
     "dextrose through the line — the sugar is corrected and will be rechecked", &[n("gcs", 3.0)]);
 const DEXTROSE_SUPPORT: Role = role("dextrose", "Correct the hypoglycaemia", DEXTROSE_KW, Kind::Supportive,
     "dextrose through the line — the sugar is corrected and will be rechecked", &[n("gcs", 1.0)]);
-const ELECTROLYTES: Role = role("electrolytes", "Correct the electrolytes", &["potassium", "calcium gluconate", "magnesium", "electrolyte", "hyperkalaemia", "hypokalaemia", "hypocalc", "insulin 10 units"], Kind::Supportive,
+const ELECTROLYTES: Role = role("electrolytes", "Correct the electrolytes", &["potassium", "calcium gluconate", "magnesium", "electrolyte*", "hyperkalaemia", "hypokalaemia", "hypocalc*", "insulin 10 units"], Kind::Supportive,
     "electrolytes corrected under ECG monitoring", &[]);
-const ISOLATE: Role = role("isolate", "Isolate and protect staff", &["isolat", "ppe", "personal protective", "precaution", "แยกผู้ป่วย"], Kind::Gate,
+const ISOLATE: Role = role("isolate", "Isolate and protect staff", &["isolat*", "ppe", "personal protective", "precaution*", "แยกผู้ป่วย"], Kind::Gate,
     "isolation room, full protective equipment, a contact log started", &[]);
-const HAEMOSTASIS: Role = role("haemostasis", "Stop the bleeding", &["tranexamic", "endoscop", "egd", "gastroscopy", "banding", "sclerotherapy", "surgical", "surgery", "laparotomy", "uterotonic", "oxytocin", "uterine massage", "balloon", "pressure dressing", "embolis", "ligat", "ผ่าตัด", "ห้ามเลือด", "ส่องกล้อง"], Kind::Critical,
+const HAEMOSTASIS: Role = role("haemostasis", "Stop the bleeding", &["tranexamic", "endoscop*", "egd", "gastroscopy", "banding", "sclerotherapy", "surgery", "surgical haemostasis", "surgical intervention", "laparotomy", "uterotonic*", "oxytocin", "ergometrine", "misoprostol", "uterine massage", "balloon", "pressure dressing*", "embolis*", "ligat*", "ผ่าตัด", "ห้ามเลือด", "ส่องกล้อง"], Kind::Critical,
     "the bleeding point is being dealt with — pressure, drugs, or the theatre", &[n("sbp", 4.0)]);
 const PPI: Role = role("ppi", "Proton-pump inhibitor", &["pantoprazole", "omeprazole", "proton pump", "ppi"], Kind::Supportive,
     "proton-pump inhibitor in", &[]);
-const INOTROPE: Role = role("inotrope", "Inotrope", &["dobutamine", "inotrope", "inotropic", "milrinone", "levosimendan"], Kind::Critical,
+const INOTROPE: Role = role("inotrope", "Inotrope", &["dobutamine", "inotrope*", "inotropic", "milrinone", "levosimendan"], Kind::Critical,
     "dobutamine running — the heart is asked for a little more", &[n("sbp", 8.0), n("spo2", 1.0)]);
-const DIURETIC: Role = role("diuretic", "Diuretic for congestion", &["furosemide", "diuretic", "ยาขับปัสสาวะ"], Kind::Supportive,
+const DIURETIC: Role = role("diuretic", "Diuretic for congestion", &["furosemide", "diuretic*", "ยาขับปัสสาวะ"], Kind::Supportive,
     "furosemide in — the lungs begin to dry", &[n("spo2", 3.0)]);
-const DIURETIC_CRITICAL: Role = role("diuretic", "Diuretic for congestion", &["furosemide", "diuretic", "ยาขับปัสสาวะ"], Kind::Critical,
+const DIURETIC_CRITICAL: Role = role("diuretic", "Diuretic for congestion", &["furosemide", "diuretic*", "ยาขับปัสสาวะ"], Kind::Critical,
     "furosemide in — the lungs begin to dry", &[n("spo2", 4.0)]);
 const NIV: Role = Role {
     id: "niv", label: "Non-invasive ventilation", kw: &["cpap", "niv", "non-invasive", "bipap"], not_kw: &[], kind: Kind::Supportive,
@@ -294,9 +304,9 @@ const ANTIPLATELET: Role = role("antiplatelet", "Antiplatelet", &["aspirin", "cl
     "antiplatelet given", &[]);
 const ANTIARRHYTHMIC: Role = role("antiarrhythmic", "Antiarrhythmic or cardioversion", &["amiodarone", "cardioversion", "adenosine"], Kind::Supportive,
     "the rhythm is treated", &[]);
-const ANTICOAG: Role = role("anticoagulation", "Anticoagulation", &["heparin", "enoxaparin", "anticoag", "thromboprophylaxis", "ยาต้านการแข็งตัว"], Kind::Supportive,
+const ANTICOAG: Role = role("anticoagulation", "Anticoagulation", &["heparin", "enoxaparin", "anticoag*", "thromboprophylaxis", "ยาต้านการแข็งตัว"], Kind::Supportive,
     "anticoagulation started", &[]);
-const ANTICOAG_CRITICAL: Role = role("anticoagulation", "Anticoagulation or lysis", &["heparin", "enoxaparin", "anticoag", "thromboly", "alteplase", "ยาต้านการแข็งตัว"], Kind::Critical,
+const ANTICOAG_CRITICAL: Role = role("anticoagulation", "Anticoagulation or lysis", &["heparin", "enoxaparin", "anticoag*", "thromboly*", "alteplase", "ยาต้านการแข็งตัว"], Kind::Critical,
     "anticoagulation started — the clot stops growing", &[n("spo2", 3.0)]);
 const PERICARDIOCENTESIS: Role = role("pericardiocentesis", "Pericardiocentesis if tamponade", &["pericardiocentesis"], Kind::Supportive,
     "the effusion is watched with the needle ready", &[]);
@@ -308,30 +318,30 @@ const LIGATURE: Role = role("ligature", "Release the ligature safely", &["ligatu
     "the ligature is released slowly, now that the antidote is running", &[]);
 const TETANUS: Role = role("tetanus", "Tetanus toxoid", &["tetanus"], Kind::Supportive,
     "tetanus toxoid given", &[]);
-const ANTICONVULSANT: Role = role("anticonvulsant", "Treat a seizure", &["lorazepam", "diazepam", "phenytoin", "levetiracetam", "anticonvulsant", "seizure treatment", "ยากันชัก"], Kind::Supportive,
+const ANTICONVULSANT: Role = role("anticonvulsant", "Treat a seizure", &["lorazepam", "diazepam", "phenytoin", "levetiracetam", "anticonvulsant*", "seizure treatment", "ยากันชัก"], Kind::Supportive,
     "a benzodiazepine is ready for the next seizure — the sugar was checked first", &[]);
 const LUMBAR_PUNCTURE: Role = role("lumbar_puncture", "Lumbar puncture", &["lumbar puncture", "csf"], Kind::Supportive,
     "lumbar puncture done after the sugar was corrected — meningitis is being excluded", &[]);
-const BRONCHODILATOR: Role = role("bronchodilator", "Bronchodilator", &["salbutamol", "nebul", "bronchodilator", "ipratropium", "saba", "ยาพ่น", "ขยายหลอดลม"], Kind::Critical,
+const BRONCHODILATOR: Role = role("bronchodilator", "Bronchodilator", &["salbutamol", "albuterol", "terbutaline", "bronchodilator*", "ipratropium", "saba", "ยาพ่น", "ขยายหลอดลม"], Kind::Critical,
     "nebuliser hissing — the wheeze loosens", &[n("spo2", 4.0), n("rr", -2.0)]);
-const STEROIDS_SUPPORT: Role = role("steroids", "Systemic corticosteroid", &["prednisolone", "dexamethasone", "hydrocortisone", "corticosteroid", "steroid", "สเตียรอยด์"], Kind::Supportive,
+const STEROIDS_SUPPORT: Role = role("steroids", "Systemic corticosteroid", &["prednisolone", "prednisone", "dexamethasone", "hydrocortisone", "methylprednisolone", "corticosteroid*", "steroid*", "สเตียรอยด์"], Kind::Supportive,
     "steroid given — for the hours ahead, not this minute", &[]);
 const MAGNESIUM: Role = role("magnesium", "Magnesium sulfate", &["magnesium"], Kind::Supportive,
     "magnesium infusing", &[n("spo2", 1.0)]);
-const CHEST_DRAIN: Role = role("chest_drain", "Decompress the chest", &["chest drain", "thoracostomy", "needle decompression", "intercostal", "aspiration of", "ใส่สายระบาย"], Kind::Critical,
+const CHEST_DRAIN: Role = role("chest_drain", "Decompress the chest", &["chest drain*", "thoracostomy", "needle decompression", "intercostal", "aspiration of", "ใส่สายระบาย"], Kind::Critical,
     "the drain goes in and the air hisses out — the lung re-expands", &[n("spo2", 8.0), n("rr", -4.0)]);
 const NITRATE: Role = role("nitrate", "Nitrate", &["nitrate", "nitroglycerin", "gtn", "isosorbide"], Kind::Supportive,
     "nitrate given", &[n("spo2", 1.0)]);
-const ADRENALINE_NEB: Role = role("adrenaline_nebulised", "Nebulised adrenaline", &["nebulised adrenaline", "nebulized adrenaline", "adrenaline nebul", "racemic"], Kind::Supportive,
+const ADRENALINE_NEB: Role = role("adrenaline_nebulised", "Nebulised adrenaline", &["nebulised adrenaline", "nebulized adrenaline", "aerosolised adrenaline", "aerosolized adrenaline", "adrenaline nebul*", "racemic"], Kind::Supportive,
     "nebulised adrenaline — the stridor softens for now", &[n("spo2", 3.0)]);
 const IV_ACCESS: Role = role("iv_access", "Vascular access", &["intraosseous", "iv lines", "iv access", "two large-bore", "large-bore"], Kind::Supportive,
     "two lines in", &[]);
 
 // ── the ACLS family's tools and turns ─────────────────────────────────────────────────
-const CPR: Role = role("cpr", "Chest compressions", &["cpr", "chest compression", "compressions", "ปั๊มหัวใจ", "กดหน้าอก"], Kind::Rescue,
+const CPR: Role = role("cpr", "Chest compressions", &["cpr", "chest compression*", "compressions", "ปั๊มหัวใจ", "กดหน้าอก"], Kind::Rescue,
     "compressions — hard, fast, full recoil; the compressor changes at two minutes", &[]);
 const DEFIBRILLATE: Role = Role {
-    id: "defibrillate", label: "Unsynchronised shock", kw: &["defibrillat", "unsynchronised shock", "unsynchronized shock", "shock 200", "200 j", "360 j", "ช็อกไฟฟ้า"],
+    id: "defibrillate", label: "Unsynchronised shock", kw: &["defibrillat*", "unsynchronised shock", "unsynchronized shock", "shock 200", "200 j", "360 j", "ช็อกไฟฟ้า"],
     not_kw: &["synchron", "cardiovers"], kind: Kind::Rescue,
     beat: "200 J — the trace jolts; compressions resume at once", harm: None, nudges: &[], equipment: None,
 };
@@ -352,7 +362,7 @@ const RATE_CONTROL: Role = role("rate_control", "Rate control", &["rate control"
     "rate control in — the ventricular response slows and the pressure holds", &[n("hr", -20.0)]);
 const RATE_CONTROL_SUPPORT: Role = role("rate_control", "Rate control", &["rate control", "rate-control", "beta-blocker", "beta blocker", "metoprolol", "esmolol", "diltiazem", "verapamil"], Kind::Supportive,
     "a rate-slowing drug — second line behind adenosine", &[n("hr", -15.0)]);
-const ANTICOAG_AF: Role = role("anticoagulation", "Anticoagulation", &["anticoag", "doac", "apixaban", "rivaroxaban", "warfarin", "heparin", "enoxaparin", "ยาต้านการแข็งตัว"], Kind::Critical,
+const ANTICOAG_AF: Role = role("anticoagulation", "Anticoagulation", &["anticoag*", "doac", "apixaban", "rivaroxaban", "warfarin", "heparin", "enoxaparin", "ยาต้านการแข็งตัว"], Kind::Critical,
     "anticoagulation started — the atrium's clot risk is priced in", &[]);
 const ATROPINE: Role = role("atropine", "Atropine", &["atropine", "อะโทรปีน"], Kind::Critical,
     "atropine 1 mg — the rate lifts", &[n("hr", 15.0)]);
@@ -360,7 +370,7 @@ const PACING_BRADY: Role = role("pacing", "Transcutaneous pacing", &["pacing", "
     "pads on, capture at 70 — the pressure follows the rate", &[]);
 const CHRONOTROPE: Role = role("chronotrope", "Chronotrope infusion", &["dopamine", "adrenaline infusion", "epinephrine infusion", "isoprenaline", "isoproterenol"], Kind::Critical,
     "the infusion runs — the rate is held while the pads stand by", &[n("hr", 10.0)]);
-const REVERSIBLE_CAUSES: Role = role("reversible_causes", "Look for the reversible causes", &["reversible cause", "h's and t's", "hs and ts", "h and t", "hypovolaemia", "hypovolemia", "tension pneumothorax", "tamponade", "toxins", "thrombosis"], Kind::Supportive,
+const REVERSIBLE_CAUSES: Role = role("reversible_causes", "Look for the reversible causes", &["reversible cause*", "h's and t's", "hs and ts", "h and t", "hypovolaemia", "hypovolemia", "tension pneumothorax", "tamponade", "toxins", "thrombosis"], Kind::Supportive,
     "the H's and T's run through — the cause is looked for while the algorithm runs", &[]);
 const POST_ROSC: Role = role("post_rosc_care", "Post-arrest care", &["post-cardiac arrest", "post-rosc", "after rosc", "targeted temperature", "12-lead ecg"], Kind::Supportive,
     "post-arrest care — a 12-lead, the cause, the temperature, intensive care", &[]);
@@ -385,18 +395,31 @@ const ADRENALINE_IV_PUSH_HARM: Role = Role {
     harm: Some("adrenaline pushed IV into a patient with a pulse — an arrhythmia on a beating heart"),
     nudges: &[n("hr", 30.0), n("sbp", -10.0)], equipment: None,
 };
-const ANTIHISTAMINE: Role = role("antihistamine", "Antihistamine", &["chlorpheniramine", "antihistamine", "cetirizine", "loratadine", "diphenhydramine", "ยาต้านฮีสตามีน", "ยาต้านฮิสตามีน"], Kind::Supportive,
+const ANTIHISTAMINE: Role = role("antihistamine", "Antihistamine", &["chlorpheniramine", "antihistamine*", "cetirizine", "loratadine", "diphenhydramine", "ยาต้านฮีสตามีน", "ยาต้านฮิสตามีน"], Kind::Supportive,
     "antihistamine for the itch — second line, after the adrenaline", &[]);
-const OBSERVE: Role = role("observe", "Observe for a biphasic reaction", &["observ", "biphasic", "สังเกตอาการ"], Kind::Supportive,
+const OBSERVE: Role = role("observe", "Observe for a biphasic reaction", &["observ*", "biphasic", "สังเกตอาการ"], Kind::Supportive,
     "kept under observation — the second wave, if it comes, finds a monitored bed", &[]);
-const AUTO_INJECTOR: Role = role("auto_injector", "Auto-injector and teaching", &["auto-injector", "autoinjector", "epipen", "prescri", "ให้ความรู้", "แจ้งการแพ้"], Kind::Supportive,
+const AUTO_INJECTOR: Role = role("auto_injector", "Auto-injector and teaching", &["auto-injector", "autoinjector", "epipen", "prescri*", "ให้ความรู้", "แจ้งการแพ้"], Kind::Supportive,
     "an auto-injector is prescribed and the trigger is written on the record", &[]);
 const FLUIDS_SUPPORT: Role = role("fluids", "Crystalloid bolus", FLUIDS_KW, Kind::Supportive,
     "a crystalloid bolus runs — volume for the leak", &[n("sbp", 8.0)]);
-const BRONCHODILATOR_SUPPORT: Role = role("bronchodilator", "Bronchodilator", &["salbutamol", "nebul", "bronchodilator", "ipratropium", "ยาพ่น", "ขยายหลอดลม"], Kind::Supportive,
+const BRONCHODILATOR_SUPPORT: Role = role("bronchodilator", "Bronchodilator", &["salbutamol", "albuterol", "bronchodilator*", "ipratropium", "ยาพ่น", "ขยายหลอดลม"], Kind::Supportive,
     "nebuliser hissing — the wheeze loosens", &[n("spo2", 3.0)]);
 const AVOID_ALLERGEN: Role = role("avoid_allergen", "Remove and avoid the trigger", &["งดสิ่งที่แพ้", "avoid the allergen", "remove the allergen", "stop the infusion"], Kind::Supportive,
     "the trigger is removed and written down", &[]);
+
+// ── hypovolaemic shock: fluid in two phases, the salts, the adjunct, the drink ─────────
+const FLUIDS_RAPID: Role = role("fluids_rapid", "Rapid intravenous rehydration", &["rapid intravenous rehydration", "rapid rehydration", "intravenous rehydration", "iv rehydration", "ringer*", "crystalloid*", "saline", "bolus*", "plan c", "30 ml/kg", "100 ml/kg", "as fast as possible", "iv fluid*", "intravenous fluid*", "สารน้ำ", "ให้น้ำเกลือ"], Kind::Critical,
+    "Ringer's lactate wide open — the pulse fills as the first litre goes in", &[n("sbp", 12.0), n("hr", -10.0)]);
+const FLUIDS_SECOND: Role = role("fluids_second", "Second-phase rehydration and ongoing losses", &["second phase", "70 ml/kg", "over the next", "maintenance fluid*", "ongoing loss*", "replace ongoing", "stool loss*", "volume for volume", "continue the infusion"], Kind::Critical,
+    "the second phase runs — what the stools take is replaced volume for volume", &[n("sbp", 6.0)]);
+const ELECTROLYTES_CRITICAL: Role = role("electrolytes", "Correct the electrolytes", &["potassium", "calcium gluconate", "magnesium", "electrolyte*", "hyperkalaemia", "hypokalaemia", "hypocalc*", "bicarbonate"], Kind::Critical,
+    "potassium in the bag once urine is passed — the acidosis clears with the volume", &[]);
+const ORS: Role = role("ors", "Oral rehydration once able to drink", &["oral rehydration", "ors", "ผงเกลือแร่", "โออาร์เอส"], Kind::Supportive,
+    "oral rehydration started — the drinking continues alongside the drip", &[]);
+const ZINC: Role = role("zinc", "Zinc", &["zinc"], Kind::Supportive, "zinc given", &[]);
+const ANTIMOTILITY_HARM: Role = harm("antimotility", "Antimotility drug", &["loperamide", "antimotility", "anti-motility", "diphenoxylate"],
+    "an antimotility drug for a secretory diarrhoea — the toxin stays in and the gut distends", &[n("sbp", -3.0)]);
 
 // intrinsic harms — present in the archetype whether or not the plan mentions them
 const FLUID_BOLUS_HARM: Role = harm("fluid_bolus", "Fluid bolus", FLUIDS_KW,
@@ -423,6 +446,7 @@ impl Archetype {
             Archetype::AclsTachycardiaAf => "acls_tachycardia_af",
             Archetype::AclsBradycardia => "acls_bradycardia",
             Archetype::Anaphylaxis => "anaphylaxis",
+            Archetype::HypovolaemicShock => "hypovolaemic_shock",
         }
     }
 
@@ -445,6 +469,7 @@ impl Archetype {
             Archetype::AclsTachycardiaAf => "atrial fibrillation with a rapid response (ACLS)",
             Archetype::AclsBradycardia => "symptomatic bradycardia (ACLS)",
             Archetype::Anaphylaxis => "anaphylaxis",
+            Archetype::HypovolaemicShock => "hypovolaemic (non-haemorrhagic) shock",
         }
     }
 
@@ -456,18 +481,19 @@ impl Archetype {
     /// aliases, title) is worth ten and is what makes the shape a candidate at all.
     fn dx_signals(self) -> &'static [&'static str] {
         match self {
-            Archetype::SepticShock => &["septic shock", "sepsis", "urosepsis", "peritonitis", "cholangitis", "necrotising", "necrotizing", "toxic shock", "meningococc", "perforation", "perforated", "multi-organ", "organ failure", "organ dysfunction", "ช็อกจากการติดเชื้อ", "ติดเชื้อในกระแสเลือด"],
-            Archetype::HaemorrhagicShock => &["haemorrhagic shock", "hemorrhagic shock", "haemorrhage", "hemorrhage", "bleeding", "blood loss", "ruptured", "rupture", "ectopic", "variceal", "postpartum", "viral haemorrhagic fever", "vhf", "lassa", "ebola", "exsanguinat", "coagulation", "เลือดออก"],
-            Archetype::CardiogenicShock => &["cardiogenic shock", "myocarditis", "pulmonary oedema", "pulmonary edema", "heart failure", "stemi", "myocardial infarction", "tamponade", "cardiomyopathy"],
-            Archetype::NeuromuscularRespiratoryFailure => &["neurotoxic", "envenom", "krait", "cobra", "guillain", "myasthenia", "botulism", "organophosphate", "periodic paralysis", "งูกัด"],
-            Archetype::CnsDepressionHypoglycaemia => &["cerebral malaria", "status epilepticus", "meningitis", "encephalitis", "encephalopathy", "hypoglycaemia", "hypoglycemia", "coma", "น้ำตาลในเลือดต่ำ", "หมดสติ"],
-            Archetype::PaediatricCompensatedShock => &["dengue shock", "shock", "dehydration", "hypovolaemia", "hypovolemia", "plasma leak", "ช็อก"],
-            Archetype::HypoxicRespiratoryFailure => &["asthma", "copd", "pneumonia", "pulmonary embolism", "pneumothorax", "bronchiolitis", "croup", "epiglottitis", "ards", "bronchospasm", "laryngospasm", "pulmonary oedema", "pulmonary edema", "whooping cough", "pertussis", "pulmonary haemorrhage", "pulmonary hemorrhage", "หอบหืด", "ปอดอักเสบ"],
+            Archetype::SepticShock => &["septic shock", "sepsis", "urosepsis", "peritonitis", "cholangitis", "necrotising", "necrotizing", "toxic shock", "meningococc*", "perforation", "perforated", "multi-organ", "organ failure", "organ dysfunction", "septicaemia", "septicemia", "ช็อกจากการติดเชื้อ", "ติดเชื้อในกระแสเลือด"],
+            Archetype::HaemorrhagicShock => &["haemorrhagic shock", "hemorrhagic shock", "haemorrhage", "hemorrhage", "bleeding", "blood loss", "ruptured", "rupture", "ectopic", "variceal", "postpartum", "viral haemorrhagic fever", "vhf", "lassa", "ebola", "exsanguinat*", "coagulation", "เลือดออก"],
+            Archetype::CardiogenicShock => &["cardiogenic shock", "myocarditis", "pulmonary oedema", "pulmonary edema", "heart failure", "*stemi", "myocardial infarction", "tamponade", "cardiomyopathy", "low output"],
+            Archetype::NeuromuscularRespiratoryFailure => &["neurotoxic", "envenom*", "krait", "cobra", "taipan", "guillain*", "myasthenia", "botulism", "organophosphate", "periodic paralysis", "งูกัด"],
+            Archetype::CnsDepressionHypoglycaemia => &["cerebral malaria", "status epilepticus", "meningitis", "encephalitis", "encephalopathy", "hypoglycaemia", "hypoglycemia", "coma", "comatose", "น้ำตาลในเลือดต่ำ", "หมดสติ"],
+            Archetype::PaediatricCompensatedShock => &["dengue shock", "shock", "dehydration", "hypovolaemia", "hypovolemia", "plasma leak*", "malnutrition", "ช็อก"],
+            Archetype::HypoxicRespiratoryFailure => &["asthma", "copd", "pneumonia", "pulmonary embolism", "pneumothorax", "bronchiolitis", "croup", "epiglottitis", "ards", "bronchospasm", "laryngospasm", "pulmonary oedema", "pulmonary edema", "whooping cough", "pertussis", "pulmonary haemorrhage", "pulmonary hemorrhage", "diphtheria", "measles", "pneumocystis", "acute chest syndrome", "หอบหืด", "ปอดอักเสบ"],
             Archetype::AclsCardiacArrest => &["cardiac arrest", "ventricular fibrillation", "pulseless", "asystole", "pulseless electrical activity", "vf arrest", "pea arrest", "หัวใจหยุดเต้น"],
             Archetype::AclsTachycardiaSvt => &["psvt", "svt", "supraventricular tachycardia", "avnrt", "avrt", "narrow-complex tachycardia", "narrow complex tachycardia"],
             Archetype::AclsTachycardiaAf => &["atrial fibrillation", "atrial flutter", "rapid ventricular response", "af with rvr"],
             Archetype::AclsBradycardia => &["bradycardia", "heart block", "av block", "sick sinus", "หัวใจเต้นช้า"],
-            Archetype::Anaphylaxis => &["anaphyla", "แอนาฟิแล็กซิส", "ภูมิแพ้รุนแรง"],
+            Archetype::Anaphylaxis => &["anaphyla*", "แอนาฟิแล็กซิส", "ภูมิแพ้รุนแรง"],
+            Archetype::HypovolaemicShock => &["cholera", "severe dehydration", "hypovolaemic shock", "hypovolemic shock", "dehydration with shock", "hypovolaemia", "hypovolemia", "gastroenteritis with shock", "อหิวาต์", "ขาดน้ำรุนแรง"],
         }
     }
 
@@ -476,17 +502,18 @@ impl Archetype {
     fn hint_signals(self) -> &'static [&'static str] {
         match self {
             Archetype::SepticShock => &["septic", "lactate", "hypoperfusion", "qsofa"],
-            Archetype::HaemorrhagicShock => &["melaena", "melena", "hematemesis", "haematemesis", "bleed", "petechiae", "coagulopathy"],
-            Archetype::CardiogenicShock => &["low output", "lvef", "congest", "crackles", "gallop"],
+            Archetype::HaemorrhagicShock => &["melaena", "melena", "hematemesis", "haematemesis", "bleed*", "petechiae", "coagulopathy"],
+            Archetype::CardiogenicShock => &["low output", "lvef", "congest*", "crackles", "gallop"],
             Archetype::NeuromuscularRespiratoryFailure => &["neuromuscular", "bulbar", "paralysis", "ptosis", "single-breath", "weakness"],
-            Archetype::CnsDepressionHypoglycaemia => &["impaired consciousness", "reduced consciousness", "unconscious", "altered mental status", "seizure", "gcs", "ซึม"],
+            Archetype::CnsDepressionHypoglycaemia => &["impaired consciousness", "reduced consciousness", "unconscious", "altered mental status", "seizure*", "gcs", "ซึม"],
             Archetype::PaediatricCompensatedShock => &["pulse pressure", "capillary refill", "cold extremities", "child", "paediatric", "pediatric"],
-            Archetype::HypoxicRespiratoryFailure => &["respiratory failure", "hypoxia", "hypoxaemia", "hypoxemia", "airway obstruction", "stridor", "respiratory distress", "wheeze", "หอบ", "หายใจลำบาก"],
-            Archetype::AclsCardiacArrest => &["no pulse", "unresponsive", "cpr", "rosc", "defibrillat"],
+            Archetype::HypoxicRespiratoryFailure => &["respiratory failure", "hypoxia", "hypoxaemia", "hypoxemia", "airway obstruction", "stridor", "respiratory distress", "wheeze*", "หอบ", "หายใจลำบาก"],
+            Archetype::AclsCardiacArrest => &["no pulse", "unresponsive", "cpr", "rosc", "defibrillat*"],
             Archetype::AclsTachycardiaSvt => &["palpitation", "regular", "narrow", "adenosine", "vagal", "ใจสั่น"],
-            Archetype::AclsTachycardiaAf => &["irregular", "rate control", "anticoag", "cha₂ds₂", "cha2ds2", "ใจสั่น"],
+            Archetype::AclsTachycardiaAf => &["irregular", "rate control", "anticoag*", "cha₂ds₂", "cha2ds2", "ใจสั่น"],
             Archetype::AclsBradycardia => &["atropine", "pacing", "syncope", "presyncope", "หน้ามืด"],
-            Archetype::Anaphylaxis => &["urticaria", "angioedema", "wheal", "adrenaline", "epinephrine", "allerg", "แพ้"],
+            Archetype::Anaphylaxis => &["urticaria", "angioedema", "wheal*", "adrenaline", "epinephrine", "allerg*", "แพ้"],
+            Archetype::HypovolaemicShock => &["rice-water", "watery stool*", "skin pinch", "sunken eyes", "cannot drink", "plan c", "diarrhoea", "diarrhea", "ท้องร่วง"],
         }
     }
 
@@ -550,6 +577,14 @@ impl Archetype {
             Archetype::Anaphylaxis => {
                 if v0.sbp <= 100.0 || v0.spo2 <= 94.0 || v0.hr >= 100.0 || v0.rr >= 22.0 { Ok(()) } else { Err(format!("systolic {:.0}, saturation {:.0}, rate {:.0} at presentation show no systemic reaction yet", v0.sbp, v0.spo2, v0.hr)) }
             }
+            // an adult's shape: a child with the same words keeps the paediatric one
+            Archetype::HypovolaemicShock => {
+                let age = case.patient.age.unwrap_or(99);
+                if age < 15 {
+                    return Err("a child — the paediatric shape carries the dehydration".into());
+                }
+                if shock { Ok(()) } else { Err(format!("systolic {:.0} with heart rate {:.0} at presentation is not shock", v0.sbp, v0.hr)) }
+            }
         }
     }
 
@@ -572,8 +607,8 @@ impl Archetype {
         let mut scored: Vec<(u32, Archetype)> = ALL
             .into_iter()
             .map(|a| {
-                let named: u32 = a.dx_signals().iter().map(|k| if dx.contains(k) { 10 } else { 0 }).sum();
-                let hints: u32 = a.hint_signals().iter().chain(a.dx_signals().iter()).map(|k| if rest.contains(k) { 1 } else { 0 }).sum();
+                let named: u32 = a.dx_signals().iter().map(|k| if contains_kw(&dx, k) { 10 } else { 0 }).sum();
+                let hints: u32 = a.hint_signals().iter().chain(a.dx_signals().iter()).map(|k| if contains_kw(&rest, k) { 1 } else { 0 }).sum();
                 (if named > 0 { named + hints } else { 0 }, a)
             })
             .filter(|(s, _)| *s > 0)
@@ -641,13 +676,43 @@ impl Archetype {
             Archetype::CardiogenicShock => &[INOTROPE, PRESSOR, REPERFUSION, SPECIFIC, DIURETIC, NIV, PACING, ANTIPLATELET, ANTIARRHYTHMIC, ANTICOAG, PERICARDIOCENTESIS, ELECTROLYTES, AIRWAY_SUPPORT],
             Archetype::NeuromuscularRespiratoryFailure => &[AIRWAY, SPECIFIC, NEOSTIGMINE, ANAPHYLAXIS_READY, LIGATURE, TETANUS, ELECTROLYTES, IV_ACCESS],
             Archetype::CnsDepressionHypoglycaemia => &[DEXTROSE, SPECIFIC, AIRWAY_SUPPORT, ANTICONVULSANT, FLUIDS_CAUTIOUS, TRANSFUSION_SUPPORT, ANTIBIOTICS_SUPPORT, CULTURES, LUMBAR_PUNCTURE, ELECTROLYTES],
-            Archetype::PaediatricCompensatedShock => &[OVERLOAD_SENTINEL, DEXTROSE_SUPPORT, TRANSFUSION_SUPPORT, ELECTROLYTES, IV_ACCESS, ANTIBIOTICS_SUPPORT, CULTURES],
-            Archetype::HypoxicRespiratoryFailure => &[BRONCHODILATOR, CHEST_DRAIN, ANTICOAG_CRITICAL, ANTIBIOTICS, DIURETIC_CRITICAL, ADRENALINE_NEB, STEROIDS_SUPPORT, MAGNESIUM, NIV, NITRATE, AIRWAY_SUPPORT, CULTURES, IV_ACCESS],
+            // glucose and antibiotics are as critical as the measured fluid when the plan names them (SAM, cholera)
+            Archetype::PaediatricCompensatedShock => &[OVERLOAD_SENTINEL, DEXTROSE, ANTIBIOTICS, TRANSFUSION_SUPPORT, ELECTROLYTES, IV_ACCESS, CULTURES, ORS, ZINC],
+            // the specific therapy (antitoxin), the transfusion (acute chest syndrome) and the isolation gate
+            // (measles, diphtheria) are the roles the authors found missing; the airway turns critical for an
+            // upper-airway diagnosis (see `critical_override`)
+            Archetype::HypoxicRespiratoryFailure => &[ISOLATE, SPECIFIC, TRANSFUSION, BRONCHODILATOR, CHEST_DRAIN, ANTICOAG_CRITICAL, ANTIBIOTICS, DIURETIC_CRITICAL, ADRENALINE_NEB, STEROIDS_SUPPORT, MAGNESIUM, NIV, NITRATE, AIRWAY_SUPPORT, CULTURES, IV_ACCESS],
             Archetype::AclsCardiacArrest => &[AIRWAY_SUPPORT, REVERSIBLE_CAUSES, POST_ROSC, ELECTROLYTES, IV_ACCESS],
             Archetype::AclsTachycardiaSvt => &[VAGAL, ADENOSINE, RATE_CONTROL_SUPPORT, AIRWAY_SUPPORT, IV_ACCESS, ELECTROLYTES],
             Archetype::AclsTachycardiaAf => &[RATE_CONTROL, ANTICOAG_AF, DIURETIC, NIV, THYROID, AIRWAY_SUPPORT, IV_ACCESS, ELECTROLYTES],
             Archetype::AclsBradycardia => &[ATROPINE, PACING_BRADY, CHRONOTROPE, ELECTROLYTES, IV_ACCESS, AIRWAY_SUPPORT],
             Archetype::Anaphylaxis => &[ADRENALINE_IM, FLUIDS_SUPPORT, BRONCHODILATOR_SUPPORT, ANTIHISTAMINE, STEROIDS_SUPPORT, AIRWAY_SUPPORT, OBSERVE, AUTO_INJECTOR, AVOID_ALLERGEN, PRESSOR_SUPPORT, IV_ACCESS],
+            Archetype::HypovolaemicShock => &[FLUIDS_RAPID, FLUIDS_SECOND, ELECTROLYTES_CRITICAL, ANTIBIOTICS_SUPPORT, ORS, ZINC, DEXTROSE_SUPPORT, IV_ACCESS, CULTURES],
+        }
+    }
+
+    /// A role whose kind this case turns: the airway is critical in respiratory failure when the
+    /// diagnosis is an upper-airway obstruction (diphtheria, epiglottitis, croup, laryngospasm).
+    pub fn critical_override(self, case: &Case, role_id: &str) -> Option<Kind> {
+        if self == Archetype::HypoxicRespiratoryFailure && role_id == "airway" {
+            let hay = case.haystack();
+            let upper = ["diphtheria", "epiglottitis", "croup", "laryngospasm", "airway obstruction", "upper airway", "upper-airway", "stridor", "bull neck"];
+            if upper.iter().any(|k| contains_kw(&hay, k)) {
+                return Some(Kind::Critical);
+            }
+        }
+        None
+    }
+
+    /// Effects that ask about the state for roles outside the ACLS family: oral rehydration
+    /// before the drip is in is harm; once perfusing it is right.
+    pub fn branch_effects(self, role_id: &str) -> Option<Vec<serde_json::Value>> {
+        use serde_json::json;
+        match (self, role_id) {
+            (Archetype::HypovolaemicShock, "ors") => Some(vec![json!({ "branch": [
+                { "if": { "flag": "fluids_rapid_given" }, "then": [ { "flag": "ors_given" }, { "beat": "oral rehydration started — the drinking continues alongside the drip" } ] }
+            ], "else": [ { "harm": "oral rehydration for a patient in shock who cannot drink — the volume must go in the vein first" } ] })]),
+            _ => None,
         }
     }
 
@@ -683,6 +748,7 @@ impl Archetype {
             Archetype::CnsDepressionHypoglycaemia => &[SEDATION_HARM],
             Archetype::AclsTachycardiaAf => &[ADENOSINE_IN_AF_HARM],
             Archetype::Anaphylaxis => &[ADRENALINE_IV_PUSH_HARM],
+            Archetype::HypovolaemicShock => &[ANTIMOTILITY_HARM],
             Archetype::SepticShock | Archetype::HaemorrhagicShock | Archetype::PaediatricCompensatedShock
             | Archetype::AclsCardiacArrest | Archetype::AclsTachycardiaSvt | Archetype::AclsBradycardia => &[],
         }
@@ -711,6 +777,7 @@ impl Archetype {
             Archetype::AclsTachycardiaSvt | Archetype::AclsTachycardiaAf => 13.0,
             Archetype::AclsBradycardia => 12.0,
             Archetype::Anaphylaxis => 8.0,
+            Archetype::HypovolaemicShock => 12.0,
         }
     }
 

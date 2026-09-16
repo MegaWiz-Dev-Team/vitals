@@ -27,7 +27,9 @@ fn a_keyword_matches_a_whole_word_or_a_declared_stem() {
     // case-folded, Unicode-aware
     assert!(contains_kw("Give IV Artesunate now", "artesunate"));
     assert!(contains_kw("ให้ยาปฏิชีวนะทางหลอดเลือด", "ยาปฏิชีวนะ"));
-    assert!(!contains_kw("nebulised adrenaline for the stridor", "nebul*") || true, "stems are the author's choice; the bronchodilator no longer declares one");
+    // a stem still takes what it declares — which is why the bronchodilator no longer declares one
+    assert!(contains_kw("nebulised adrenaline for the stridor", "nebul*"));
+    assert!(!contains_kw("nebulised adrenaline for the stridor", "nebuliser"));
 }
 
 fn with_plan(dx: &str, tags: &[&str], vitals: &[(&str, &str)], plan: &[&str]) -> vitals_casefactory::embla::Case {

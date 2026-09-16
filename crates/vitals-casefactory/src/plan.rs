@@ -3,7 +3,7 @@
 
 use crate::archetype::{Archetype, Kind, Role, COMMON, NEGATED_HARMS};
 use crate::embla::Case;
-use crate::text::{fragments, negated, time_named};
+use crate::text::{contains_kw, fragments, negated, time_named};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
@@ -72,11 +72,11 @@ impl Mapped {
 const ALWAYS: &[&str] = &["oxygen", "admit", "monitor", "explain"];
 
 fn positive_hit(role: &Role, sentence: &str) -> bool {
-    fragments(sentence).iter().any(|f| !negated(f) && role.kw.iter().any(|k| f.contains(k)))
+    fragments(sentence).iter().any(|f| !negated(f) && role.kw.iter().any(|k| contains_kw(f, k)))
 }
 
 fn negated_hit(role: &Role, sentence: &str) -> bool {
-    fragments(sentence).iter().any(|f| negated(f) && role.kw.iter().any(|k| f.contains(k)))
+    fragments(sentence).iter().any(|f| negated(f) && role.kw.iter().any(|k| contains_kw(f, k)))
 }
 
 /// Read the plan and the red flags against the archetype.
@@ -95,9 +95,12 @@ pub fn map(case: &Case, archetype: Archetype) -> Mapped {
     // the common set, then the harms. A positive fragment anywhere in the plan places a role.
     for role in archetype.roles().iter().chain(COMMON.iter()) {
         let source = plan.iter().position(|s| positive_hit(role, s));
-        // Oxygen is critical in the shapes where it turns the trajectory.
+        // Oxygen is critical in the shapes where it turns the trajectory; the airway where the
+        // diagnosis is the airway.
         let role = if role.id == "oxygen" && archetype.oxygen_is_critical() {
             Role { kind: Kind::Critical, ..*role }
+        } else if let Some(kind) = archetype.critical_override(case, role.id) {
+            Role { kind, ..*role }
         } else {
             *role
         };
@@ -142,7 +145,7 @@ pub fn map(case: &Case, archetype: Archetype) -> Mapped {
     for s in flags.iter().chain(plan.iter()) {
         let Some(secs) = time_named(s) else { continue };
         for p in present.iter().filter(|p| matches!(p.role.kind, Kind::Critical | Kind::Gate | Kind::Rescue)) {
-            if positive_hit(&p.role, s) || (p.role.kind == Kind::Gate && s.to_lowercase().contains(p.role.kw[0])) {
+            if positive_hit(&p.role, s) || (p.role.kind == Kind::Gate && contains_kw(s, p.role.kw[0])) {
                 let e = timed.entry(p.role.id.to_string()).or_insert(Timed { named_sec: secs, sentence: s.clone() });
                 if secs < e.named_sec {
                     *e = Timed { named_sec: secs, sentence: s.clone() };

@@ -126,6 +126,19 @@ fn shape(a: Archetype, v: &Vitals0) -> Shape {
             variables: vec![],
             primary: "sbp",
         },
+        // The volume has run out: the pressure falls, the heart races, the breathing deepens with
+        // the acidosis; the first litre turns it.
+        Archetype::HypovolaemicShock => Shape {
+            trajs: vec![
+                Traj { var: "sbp", target: 45.0, recover_to: 110.0, stopped_by: None },
+                Traj { var: "hr", target: (v.hr + 35.0).min(170.0), recover_to: 90.0, stopped_by: None },
+                Traj { var: "rr", target: (v.rr + 10.0).min(40.0), recover_to: 18.0, stopped_by: None },
+                Traj { var: "spo2", target: (v.spo2 - 6.0).max(88.0), recover_to: 97.0, stopped_by: None },
+            ],
+            deaths: vec![Death { var: "sbp", below: 50.0 }],
+            variables: vec![],
+            primary: "sbp",
+        },
         // The ACLS family has its own builder; this shape is never read.
         Archetype::AclsCardiacArrest | Archetype::AclsTachycardiaSvt | Archetype::AclsTachycardiaAf | Archetype::AclsBradycardia => Shape {
             trajs: vec![],
