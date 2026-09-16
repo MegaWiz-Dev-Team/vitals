@@ -147,3 +147,57 @@ fn a_read_behind_what_this_server_just_wrote_is_refused() {
     assert!(behind_the_head(2, Some((3, Duration::from_secs(61)))).is_none(),
             "after a minute the chain is what there is, whatever we think we wrote");
 }
+
+/// **A school is one address.**
+///
+/// Opening a run is metered per address at six a minute, which is right for a bay one learner
+/// sits at. On a public ward thirty students behind one NAT are one address: the seventh of them
+/// to open a patient is told "too many new runs from this address", and the Forseti suite's
+/// chained scenarios died of it after a handful of opens.
+///
+/// So on the ward host the meter is keyed by the browser's own key where there is one — every
+/// shift is taken with an Ed25519 key the page already sends — and the address budget behind it is
+/// a classroom's rather than a reader's. The Eternal entry keeps what it has: one learner, one
+/// bay, and a loop hammering "new" there is a bill with no learner attached.
+#[test]
+fn a_classroom_behind_one_address_can_all_open_a_patient() {
+    let s = Server::start(true);
+
+    // Thirty browsers, one address. Each has its own key, as every browser that can take a shift
+    // does, and none of them is refused because of another.
+    for i in 0..30u8 {
+        let key = format!("{}{i:02}", "1".repeat(42));
+        let (code, body) = s.get(&format!("/api/new?patient=1789528326&player={key}"));
+        assert_ne!(code, 429, "browser {i} was refused because of the other twenty-nine: {body}");
+    }
+
+    // And one browser hammering it is still slowed down: the per-key budget is one person's.
+    let key = "9".repeat(44);
+    let mut slowed = false;
+    for _ in 0..40 {
+        if s.get(&format!("/api/new?patient=1789528326&player={key}")).0 == 429 {
+            slowed = true;
+            break;
+        }
+    }
+    assert!(slowed, "one key opening forty runs in a minute is a loop, not a learner");
+}
+
+/// The sentence says what the budget is, because the person reading it is deciding whether to
+/// wait or to call somebody.
+#[test]
+fn the_refusal_names_the_budget_it_is_refusing_against() {
+    let s = Server::start(true);
+    let key = "8".repeat(44);
+    for _ in 0..40 {
+        let (code, body) = s.get(&format!("/api/new?patient=1789528326&player={key}"));
+        if code == 429 {
+            let why = body.to_lowercase();
+            assert!(why.contains("a minute"), "when to come back: {body}");
+            assert!(why.contains("this browser") || why.contains("key"),
+                    "and what was counted — a key, not a building: {body}");
+            return;
+        }
+    }
+    panic!("nothing was refused, so there is no sentence to read");
+}
