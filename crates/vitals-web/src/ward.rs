@@ -642,6 +642,12 @@ pub struct WardRead<'a> {
     pub now_unix: u64,
     /// Which cluster and which program. "The chain says" means nothing until you know which.
     pub source: &'a str,
+    /// The cases this ward holds, as the catalogue reads them.
+    ///
+    /// The board says how hard each patient's case is, and that is the case's own word now rather
+    /// than a lookup in the season's table of sixteen — which answered `null` for every case the
+    /// factory compiles.
+    pub cases: &'a [crate::ward_case::CaseSummary],
     /// Patients whose chain names a shift this ward has no tape for, and the leaf it stopped at.
     ///
     /// They are open on chain and unopenable here, which is a fact about this ward rather than
@@ -751,7 +757,15 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                 "case": pack.map(|k| k.case.clone()),
                 // Null rather than a default: a patient filed under a level somebody chose against
                 // is worse than a patient with no level yet.
-                "difficulty": pack.and_then(|k| difficulty_of(&k.case)),
+                // Her case's own level, and the season's table only for the patients still
+                // mid-stay on a season case.
+                "difficulty": pack.and_then(|k| {
+                    r.cases
+                        .iter()
+                        .find(|c| c.case_id == k.case)
+                        .map(|c| c.difficulty.clone())
+                        .or_else(|| difficulty_of(&k.case).map(str::to_string))
+                }),
                 "endemic": pack.map(|k| k.endemic).unwrap_or(false),
                 // What to draw now, and everything there is to draw. The board gets both so it
                 // can change her picture the moment it learns her status without asking again —
@@ -793,12 +807,13 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
             "patients": "one entry per patient account on chain — id, state, shifts and slots \
                          read from the account. The case, the name and the country are not on \
                          chain at all: they come from the pack that was queued, joined by patient \
-                         id, and are null for a patient no pack describes yet. The difficulty is \
-                         that case's own level in the catalogue, the same one the bay publishes, \
-                         never a second opinion. `on_shift` is the patient's lease standing at \
+                         id, and are null for a patient no pack describes yet. The difficulty is that case's own level, \
+                         read from the pack the case factory sent — and from the season's table \
+                         for the patients still mid-stay on a season case, until the last of them \
+                         goes home. `on_shift` is the patient's lease standing at \
                          this read's slot, and `on_shift_since` is that lease's start carried to \
-                         wall time; `bed` is the number this patient has held since she \
-                         was admitted: the admissions and the closings are walked in slot order \
+                         wall time; `bed` is the number this patient has held since \
+                         admission: the admissions and the closings are walked in slot order \
                          and each arrival takes the lowest free one, so a bed never moves under \
                          somebody because a different patient went home. A patient the ward \
                          cannot describe or cannot rebuild holds none, and says so in its own row. `portraits` is the \
@@ -885,11 +900,11 @@ fn policy() -> serde_json::Value {
                                  shortage sends twice the patients. The weights and their source \
                                  are published by the factory: the ward does not choose countries, \
                                  it admits what the queue holds",
-        "stay": "a stay is one case. The patient arrives with one pack — her scenario, her \
-                 mark sheet and her own words — and it ends when that case's engine ends it: she \
-                 goes home, or she dies. The chain closes her on the first of those it is told \
-                 about, so nothing here can span more than one case without the program changing \
-                 first",
+        "stay": "a stay is one case. The patient arrives with one pack — the scenario, the mark \
+                 sheet and the patient's own words — and it ends when that case's engine ends it: \
+                 the patient goes home, or dies. The chain closes a patient on the first of those \
+                 it is told about, so nothing here can span more than one case without the program \
+                 changing first",
         "catalogue": CATALOGUE,
         // Counted off the catalogue rather than written down, so a case added without a level
         // cannot quietly shrink a band the panel is still offering.

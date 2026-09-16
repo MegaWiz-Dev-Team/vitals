@@ -40,6 +40,10 @@ fn read<'a>(
         // Every tape the chain names is here, which is the ward working. The one test about the
         // other case fills this in itself.
         unrebuildable: nothing_lost(),
+        // No cases through the door: a level then comes from the season's table, which is what
+        // the patients still mid-stay on season cases have. The test about a compiled case fills
+        // this in itself.
+        cases: &[],
     }
 }
 
@@ -565,6 +569,7 @@ fn the_globe_reads_every_field_it_renders() {
 
     let now = 1_760_000_000u64;
     let v = ward_payload(&vitals_web::ward::WardRead {
+        cases: &[],
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 4_000, now_unix: now, source: "devnet:ABC",
         unrebuildable: nothing_lost(),
@@ -614,6 +619,7 @@ fn the_globe_reads_every_field_it_renders() {
     // state an abandoned shift leaves behind, and showing it as "on shift" would tell a stranger
     // the room is taken when it is free for them to walk into.
     let expired = ward_payload(&vitals_web::ward::WardRead {
+        cases: &[],
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: lease_ends + 1, now_unix: now, source: "devnet:ABC",
         unrebuildable: nothing_lost(),
@@ -824,6 +830,7 @@ fn every_time_the_ward_publishes_is_a_slot_or_a_z() {
             patients: &patients, shifts: &[], packs: &packs,
             since: Some(1), as_of_slot: 4_000, now_unix: 1_760_000_000, source: "devnet:ABC",
         unrebuildable: nothing_lost(),
+        cases: &[],
         }),
         ward_unavailable("devnet:ABC", "rpc timed out"),
     ];
@@ -936,6 +943,7 @@ fn a_patient_the_ward_cannot_describe_holds_no_bed() {
                 bed, or they wedge the ward shut against a queue that is full");
 
     let v = ward_payload(&vitals_web::ward::WardRead {
+        cases: &[],
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
         unrebuildable: nothing_lost(),
@@ -988,6 +996,7 @@ fn the_payload_publishes_how_many_are_in_beds_beside_how_many_are_on_the_chain()
     });
 
     let v = ward_payload(&vitals_web::ward::WardRead {
+        cases: &[],
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
         unrebuildable: nothing_lost(),
@@ -1223,7 +1232,11 @@ fn the_board_says_which_case_each_patient_is_on_and_how_hard_it_is() {
 
     assert_eq!(row(1)["case"], "dengue-npl-1", "the case she was admitted onto");
     assert_eq!(row(1)["difficulty"], "intern", "at the level the case factory compiled it for");
-    assert_eq!(row(1)["endemic"], true, "and the ward's own word for why she has it");
+    // `endemic` on a bed stays the word of whoever drew *her*, not the case's own tag. A case can
+    // be endemic in Nepal and ordinary here, so a patient's row says whether she was drawn from
+    // her country's list — and this pack was not, whatever the case is. The case's own tag is in
+    // the catalogue, where it is a fact about the case.
+    assert_eq!(row(1)["endemic"], false, "the drawer's word about her, never the case's about itself");
 
     // The three mid-stay on season cases keep their level from the season's table until they go.
     assert_eq!(row(2)["case"], "osce-c");

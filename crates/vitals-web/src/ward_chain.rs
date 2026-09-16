@@ -493,6 +493,7 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
         patients: &patients,
         shifts: &shifts,
         packs: &packs(store),
+        cases: &crate::ward_case::all(store),
         unrebuildable: &lost,
         since: Some(as_of.saturating_sub(WEEK_SLOTS)),
         as_of_slot: as_of,
