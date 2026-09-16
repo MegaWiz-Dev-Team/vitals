@@ -5559,6 +5559,101 @@ mod tests {
 
     use super::*;
 
+    // ── the face at the bedside ─────────────────────────────────────────────
+
+    /// **"ไม่มีรูปผู้ป่วยหรอ"** — the founder, looking at Park Ji-woo on staging, 16 ก.ย.
+    ///
+    /// The shift page showed no face. The pack had one; `/api/new` even carried it; nothing drew
+    /// it, and nothing would have changed it if it had, because the payload carried her base
+    /// picture and no other.
+    ///
+    /// The rule: the face at the bedside is the face for the state she is in **now**, chosen by
+    /// the server's own ladder and never by a copy of it in the page — so every view a ward
+    /// session paints carries the URL to draw, and the page draws whatever arrives. The Eternal
+    /// bay carries no such field: its stills are the season's, chosen by the Director, and a
+    /// portrait from a ward pack has no business on them.
+    #[test]
+    fn a_ward_view_carries_the_face_for_the_state_she_is_in() {
+        let base = "https://storage.googleapis.com/vitals-world-portraits/";
+        let faces: std::collections::BTreeMap<String, String> = [
+            ("stable", "a"), ("deteriorating", "b"), ("critical", "c"),
+        ]
+        .iter()
+        .map(|(k, n)| (k.to_string(), format!("{base}{}.webp", n.repeat(64))))
+        .collect();
+
+        let mut s = new_session("osce-c").expect("osce-c is in the repository");
+        s.ward = Some(WardShift {
+            patient_id: 1789528326,
+            index: 0,
+            taken_slot: 1,
+            head: "00".repeat(32),
+            faces: faces.clone(),
+        });
+
+        let seen = |s: &Session| {
+            let v = s.view(lang::language(None));
+            (v.status.clone(), v.portrait.clone())
+        };
+        let (status, portrait) = seen(&s);
+        assert_eq!(portrait.as_deref(), ward::portrait_for(&faces, &status),
+                   "the face is the server's own choice for the state it is publishing beside it");
+        assert!(portrait.is_some(), "she has a picture for {status}, so one must be sent");
+
+        // Move her. The picture moves with her, because both come from the same word.
+        let before = seen(&s);
+        for _ in 0..600 {
+            s.state.tick(1.0);
+            if seen(&s).0 != before.0 {
+                break;
+            }
+        }
+        let after = seen(&s);
+        assert_ne!(after.0, before.0, "osce-c left alone must reach another state, or this proves nothing");
+        assert_eq!(after.1.as_deref(), ward::portrait_for(&faces, &after.0),
+                   "and the face follows the state rather than staying at the one she arrived in");
+
+        // The season's bay is untouched: no field, so nothing to draw.
+        let eternal = new_session("ep1").expect("ep1");
+        assert!(eternal.view(lang::language(None)).portrait.is_none(),
+                "the Eternal entry's stills are the Director's and a ward pack has no say in them");
+    }
+
+    /// **The top-left is the way out** (founder, 16 ก.ย.: a logo, and pressing it leaves for the
+    /// globe). On the ward host that is the Vitals World mark and a link to `/`; on vitals.academy
+    /// the bar keeps the Eternal wordmark exactly as it is.
+    ///
+    /// The brand is the one element of the shared surface that differs by host, so the server
+    /// composes it rather than the script toggling a class: the page a visitor gets is already
+    /// right, with nothing to re-render and nothing to get wrong on a slow script.
+    #[test]
+    fn the_ward_host_wears_its_own_mark_and_the_season_keeps_its_wordmark() {
+        let ward = compose_for(SHIFT, true);
+        assert!(ward.contains("Vitals World</a>"),
+                "the ward's bar says which world this is: {}", &ward[..0]);
+        assert!(ward.matches("class=\"brand\"").count() == 1, "one brand in the bar");
+        let brand = ward.split("class=\"brand\"").nth(1).expect("the brand").split("</a>").next().expect("closed");
+        assert!(brand.contains("<svg"), "and it carries the mark, not only the words: {brand}");
+        assert!(ward.contains("href=\"/\" class=\"brand\"") || brand.starts_with(" href=\"/\"")
+                || ward.contains("<a href=\"/\" class=\"brand\""),
+                "pressing it leaves the ward for the globe");
+        assert!(!ward.contains("Vital<span>s</span>"),
+                "and the Eternal wordmark is not on the ward host");
+
+        let eternal = compose_for(PAGE, false);
+        assert!(eternal.contains("Vital<span>s</span>"),
+                "vitals.academy keeps the wordmark a judge has in a tab");
+        assert!(!eternal.contains("Vitals World"),
+                "and the ward's name is not on it");
+    }
+
+    /// Two exits, saying the same thing.
+    #[test]
+    fn the_strip_offers_the_globe_as_well() {
+        assert!(BAY_JS.contains("← the globe"),
+                "the strip's own way back is the globe, in the same words as the mark");
+    }
+
     // ── unwinding a leaf that was never anchored ────────────────────────────
 
     fn leaf_n(n: u8) -> [u8; 32] {
