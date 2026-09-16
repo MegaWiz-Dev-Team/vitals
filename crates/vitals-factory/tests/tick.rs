@@ -43,10 +43,17 @@ fn world(name: &str) -> PathBuf {
 }
 
 /// The seeded manifest: sixty faces at the batch ages.
+/// The seeded manifest as it was made before 16 Sep: sixty faces at the batch ages, each under
+/// `stable` and nothing under `base` — the face itself was the stable then.
 fn seed_manifest(dir: &Path, pool: &[Person]) -> Manifest {
     let mut m = Manifest::default();
     for p in pool {
-        m.record_base(&p.key, batch_age(&p.key).unwrap(), &sha_url(p.key.as_bytes()), p);
+        let e = m.entries.entry(p.key.clone()).or_default();
+        e.name = Some(p.name.clone());
+        e.country = Some(p.country.clone());
+        e.sex = Some(p.sex.letter().to_string());
+        e.age = Some(batch_age(&p.key).unwrap());
+        e.portrait.insert("stable".into(), sha_url(p.key.as_bytes()));
     }
     m.save(&dir.join("portraits.json")).unwrap();
     m
@@ -191,6 +198,9 @@ struct FakeTools {
     /// Scripted answers to the two-picture question ("the same person?"); empty means yes.
     pair_verdicts: RefCell<VecDeque<bool>>,
     paired: RefCell<Vec<String>>,
+    /// Scripted answers to "does this picture show a patient who is …?"; empty means yes. Kept
+    /// apart from `verdicts` (the base gate) so a test of one does not eat the other's answers.
+    state_verdicts: RefCell<VecDeque<bool>>,
     edits: RefCell<Vec<String>>,
     uploads: RefCell<Vec<String>>,
     fetches: RefCell<Vec<String>>,
@@ -209,6 +219,10 @@ impl Tools for FakeTools {
     }
     fn judge(&self, _project: &str, model: &str, image: &[u8], _mime: &str, question: &str) -> Result<(bool, String), String> {
         self.judged.borrow_mut().push(format!("{model}|{question}|{}", image.len()));
+        if question.contains("Does this picture show a patient who is") {
+            let ok = self.state_verdicts.borrow_mut().pop_front().unwrap_or(true);
+            return Ok((ok, if ok { "mask and pallor as described".into() } else { "she looks well".into() }));
+        }
         let ok = self.verdicts.borrow_mut().pop_front().unwrap_or(true);
         Ok((ok, if ok { "natural proportions".into() } else { "oversized eyes".into() }))
     }
@@ -217,7 +231,7 @@ impl Tools for FakeTools {
         if let Some(refused) = self.refuse_edits.borrow().iter().find(|w| prompt.contains(*w)) {
             return Err(format!("Vertex returned no content (finishReason IMAGE_PROHIBITED_CONTENT) for {refused}"));
         }
-        Ok(format!("PNG-EDIT:{prompt}:{}", base.len()).into_bytes())
+        Ok(format!("PNG-EDIT:{prompt}:{}", String::from_utf8_lossy(base)).into_bytes())
     }
     fn judge_pair(&self, _project: &str, model: &str, a: &[u8], _ma: &str, b: &[u8], _mb: &str, question: &str) -> Result<(bool, String), String> {
         self.paired.borrow_mut().push(format!("{model}|{question}|{}|{}", a.len(), b.len()));
@@ -268,10 +282,15 @@ fn a_tick_tops_the_queue_up_to_depth_makes_at_most_so_many_faces_and_says_what_i
     // Faces: at most two made this tick, each uploaded under its sha and recorded at her age.
     let paints = tools.paints.borrow();
     assert!(paints.len() <= 2, "{} faces made, two allowed", paints.len());
-    assert_eq!(tools.uploads.borrow().len(), 2 * paints.len(), "each face and its 256 px sibling");
-    for object in tools.uploads.borrow().iter() {
+    let ups = tools.uploads.borrow();
+    assert!(ups.len() >= 2 * paints.len(), "each face and its 256 px sibling, and each made stable and its sibling: {}", ups.len());
+    for object in ups.iter() {
         assert!((object.len() == 69 || object.len() == 73) && object.ends_with(".webp"), "content-addressed, or the sibling of one: {object}");
+        if object.len() == 69 {
+            assert!(ups.contains(&format!("{}-256.webp", object.trim_end_matches(".webp"))), "{object} has its sibling");
+        }
     }
+    drop(ups);
     let man = Manifest::load(&dir.join("portraits.json")).unwrap();
     let made: Vec<_> = man.entries.iter().filter(|(k, _)| k.contains('@')).collect();
     assert_eq!(made.len(), paints.len(), "each face made is recorded under key@age");
@@ -471,16 +490,23 @@ fn a_face_is_a_photograph_or_it_is_not_a_face() {
     assert_eq!(r.faces_tried, 6);
     assert!(seeds[0] != seeds[1] && seeds[1] != seeds[2], "each try is a new seed");
     assert!(seeds[3] != seeds[4] && seeds[4] != seeds[5]);
-    let judged = tools.judged.borrow();
+    let judged_all = tools.judged.borrow();
+    let judged: Vec<&String> = judged_all.iter().filter(|j| !j.contains("Does this picture show")).collect();
     assert_eq!(judged.len(), 6, "every painted face was judged, none skipped");
-    assert!(judged.iter().all(|j| j.starts_with("gemini-2.5-flash|")), "the judge model from the config, not the image model: {}", judged[0]);
+    assert!(judged_all.iter().all(|j| j.starts_with("gemini-2.5-flash|")), "the judge model from the config, not the image model: {}", judged_all[0]);
     // Not the brief's sentence: that one made the model judge provenance and refuse every face we
     // have. This one judges style — see prompts::PHOTOREAL for the calibration.
     assert!(judged.iter().all(|j| j.contains("exactly ONE person") && j.contains("drawing, anime, cartoon, doll or stylised 3D render") && j.contains("Answer yes or no")), "{}", judged[0]);
-    // Only the face that passed was uploaded and recorded.
-    assert_eq!(tools.uploads.borrow().len(), 2, "one face passed: it and its sibling were uploaded");
+    // Only the face that passed was uploaded and recorded (with its made stable and both siblings;
+    // the packs with faces on file upload their made stables too).
     let man = Manifest::load(&dir.join("portraits.json")).unwrap();
-    assert_eq!(man.entries.iter().filter(|(k, _)| k.contains('@')).count(), 1, "the rejected face is nowhere on file");
+    let made: Vec<(&String, &vitals_factory::manifest::Entry)> = man.entries.iter().filter(|(k, _)| k.contains('@')).collect();
+    assert_eq!(made.len(), 1, "the rejected face is nowhere on file");
+    let base = made[0].1.portrait.get("base").expect("the face that passed, under base");
+    let ups = tools.uploads.borrow();
+    assert!(ups.iter().any(|o| base.ends_with(o)), "the face that passed was uploaded");
+    assert!(ups.iter().filter(|o| o.len() == 69).count() >= 1);
+    drop(ups);
     // The log says so beside each face, and names the person whose face was given up on.
     let text = r.lines.join("\n");
     assert!(text.contains("photorealistic: no") && text.contains("(oversized eyes)"), "the verdict and its why, beside the face: {text}");
@@ -552,7 +578,8 @@ fn a_face_can_be_remade_through_the_gate_and_the_old_one_leaves_the_file() {
     assert!(tools.seeds.borrow()[0] != tools.seeds.borrow()[1]);
     let man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
     let e = &man2.entries["KOR-0@8"];
-    assert_eq!(e.portrait.get("stable"), Some(&url));
+    assert_eq!(e.portrait.get("base"), Some(&url), "the remade face is the reference, under base");
+    assert!(!e.portrait.contains_key("stable"), "her stable is made when a pack needs it, from this base");
     assert!(!e.portrait.contains_key("critical"), "states edited from the refused face go with it");
     assert_eq!(e.age, Some(8));
     assert!(r.lines.iter().any(|l| l.contains("photorealistic: no")) && r.lines.iter().any(|l| l.contains("photorealistic: yes")), "{:?}", r.lines);
@@ -568,25 +595,25 @@ fn a_face_can_be_remade_through_the_gate_and_the_old_one_leaves_the_file() {
     assert_eq!(rep.lines.iter().filter(|l| l.contains("photorealistic: no")).count(), 3);
 }
 
-/// A face remade after her pack was queued reaches the queue: the ledger sees that the manifest's
-/// face for her key and age is no longer the one it sent, replaces it through the pack door, and
-/// records the new address. Once, not every tick; and never for a patient already in a bed, whose
-/// faces are added through her own door and never replaced.
+/// A face remade after her pack was queued reaches the queue: the ledger sees that the made stable
+/// for her key and age is no longer the one it sent, replaces it through the pack door, and
+/// records the new address. Once per face; and never for a patient already in a bed, whose faces
+/// are added through her own door and never replaced.
 #[test]
 fn a_remade_face_replaces_the_one_on_her_waiting_pack_once() {
     let dir = world("replace");
     let pool = read_pool(POOL).unwrap();
     let mut man = seed_manifest(&dir, &pool);
     let kor0 = pool.iter().find(|p| p.key == "KOR-0").unwrap();
-    let old = sha_url(b"a doll");
-    man.record_base("KOR-0", 8, &old, kor0);
+    let doll = sha_url(b"a doll");
+    man.record_base("KOR-0", 8, &doll, kor0);
     man.save(&dir.join("portraits.json")).unwrap();
     let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
     let tools = FakeTools::default();
     let cfg = config(&dir, 0, 0);
 
-    // Her pack goes out with the doll, by hand, as the ledger would have sent it.
-    let mut sent = vitals_factory::ledger::Sent::new("osce-c", kor0, 8, false, Some(old.clone()), cfg.now, &cfg.ward);
+    // Her pack went out with the doll as its stable, as packs were sent before the rule.
+    let mut sent = vitals_factory::ledger::Sent::new("osce-c", kor0, 8, false, Some(doll.clone()), cfg.now, &cfg.ward);
     sent.sex = "f".into();
     let pack = sent.to_pack();
     let id = pack_id(&pack);
@@ -595,40 +622,53 @@ fn a_remade_face_replaces_the_one_on_her_waiting_pack_once() {
     ledger.sent.insert(id.clone(), sent);
     ledger.save(&dir.join("factory-ledger.json")).unwrap();
 
-    // Nothing to do while the manifest and the ledger agree.
+    // First tick: a stable is made from the doll base and replaces the doll on the waiting pack.
     let r = tick(&cfg, &door, &tools);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
-    assert!(door.replaces.borrow().is_empty(), "the face she was sent with is the face on file");
+    let made_from_doll = Manifest::load(&dir.join("portraits.json")).unwrap().entries["KOR-0@8"].made_stable().cloned().expect("a stable was made");
+    assert_eq!(door.replaces.borrow().len(), 1);
+    assert_eq!(door.queue.borrow()[&id].portrait["stable"], made_from_doll);
+    assert_eq!(tools.edits.borrow().len(), 1);
+    let r = tick(&cfg, &door, &tools);
+    assert!(r.errors.is_empty());
+    assert_eq!(door.replaces.borrow().len(), 1, "once: the manifest and the ledger agree");
+    assert_eq!(tools.edits.borrow().len(), 1);
 
-    // The face is remade; the next tick replaces it on the waiting pack, once.
-    let new = sha_url(b"a child, photographed");
-    man.record_base("KOR-0", 8, &new, kor0);
-    man.save(&dir.join("portraits.json")).unwrap();
+    // The base is remade (a person refused the doll): the next tick makes a stable from the new
+    // base and replaces it on the waiting pack, once.
+    let mut man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
+    man2.entries.remove("KOR-0@8");
+    man2.record_base("KOR-0", 8, &sha_url(b"a child, photographed"), kor0);
+    man2.save(&dir.join("portraits.json")).unwrap();
     let r = tick(&cfg, &door, &tools);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let made_from_child = Manifest::load(&dir.join("portraits.json")).unwrap().entries["KOR-0@8"].made_stable().cloned().expect("a new stable");
+    assert_ne!(made_from_child, made_from_doll);
     {
         let reps = door.replaces.borrow();
-        assert_eq!(reps.len(), 1);
-        assert_eq!(reps[0].0, id);
-        assert_eq!(reps[0].1, BTreeMap::from([("stable".to_string(), new.clone())]));
+        assert_eq!(reps.len(), 2);
+        assert_eq!(reps[1].0, id);
+        assert_eq!(reps[1].1.get("stable"), Some(&made_from_child));
+        assert_eq!(reps[1].1.get("stable_256").map(String::as_str), Some(sibling(&made_from_child).as_str()));
     }
-    assert_eq!(door.queue.borrow()[&id].portrait["stable"], new, "the waiting pack carries the new face");
-    assert_eq!(Ledger::load(&dir.join("factory-ledger.json")).unwrap().sent[&id].stable.as_deref(), Some(new.as_str()));
+    assert_eq!(door.queue.borrow()[&id].portrait["stable"], made_from_child, "the waiting pack carries the new face's stable");
+    assert_eq!(Ledger::load(&dir.join("factory-ledger.json")).unwrap().sent[&id].stable.as_deref(), Some(made_from_child.as_str()));
     assert!(r.lines.iter().any(|l| l.contains("replaced") && l.contains("Park Ji-woo")), "{:?}", r.lines);
     let r = tick(&cfg, &door, &tools);
-    assert_eq!(door.replaces.borrow().len(), 1, "once");
+    assert_eq!(door.replaces.borrow().len(), 2, "once");
     assert!(r.errors.is_empty());
 
     // She is admitted (the pack left the queue): the door refuses, the ledger keeps what it has,
     // and the line says why.
-    let newer = sha_url(b"a third face");
-    man.record_base("KOR-0", 8, &newer, kor0);
-    man.save(&dir.join("portraits.json")).unwrap();
+    let mut man3 = Manifest::load(&dir.join("portraits.json")).unwrap();
+    man3.entries.remove("KOR-0@8");
+    man3.record_base("KOR-0", 8, &sha_url(b"a third face"), kor0);
+    man3.save(&dir.join("portraits.json")).unwrap();
     door.queue.borrow_mut().remove(&id);
     let r = tick(&cfg, &door, &tools);
-    assert_eq!(door.replaces.borrow().len(), 2);
+    assert_eq!(door.replaces.borrow().len(), 3);
     assert!(r.lines.iter().any(|l| l.contains("in a bed already") || l.contains("never replaced")), "{:?}", r.lines);
-    assert_eq!(Ledger::load(&dir.join("factory-ledger.json")).unwrap().sent[&id].stable.as_deref(), Some(new.as_str()), "not recorded as replaced");
+    assert_eq!(Ledger::load(&dir.join("factory-ledger.json")).unwrap().sent[&id].stable.as_deref(), Some(made_from_child.as_str()), "not recorded as replaced");
 }
 
 /// A child's face is also asked how old it looks, and only a face inside the door's band for the
@@ -884,7 +924,9 @@ fn the_siblings_of_faces_already_on_file_are_made_once_and_carried_to_the_ward()
     let ploy_fill = fills.iter().find(|(pid, _)| *pid == 1789488342).expect("Ploy's siblings were pushed");
     assert_eq!(ploy_fill.1.keys().cloned().collect::<Vec<_>>(), vec!["arrest_256", "critical_256", "deteriorating_256", "improving_256", "recovered_256", "stable_256"],
         "the siblings she has on file, and the rest made from the pictures the board shows");
-    assert_eq!(door.queue.borrow()[&id].portrait.get("stable_256").map(String::as_str), Some(sibling(&man2.entries["THA-1"].portrait["stable"]).as_str()), "Anan's waiting pack carries his");
+    let man3 = Manifest::load(&dir.join("portraits.json")).unwrap();
+    let anan_stable = man3.entries["THA-1"].made_stable().expect("Anan's stable was made for his waiting pack").clone();
+    assert_eq!(door.queue.borrow()[&id].portrait.get("stable_256").map(String::as_str), Some(sibling(&anan_stable).as_str()), "Anan's waiting pack carries his made stable's sibling");
     assert!(Ledger::load(&dir.join("factory-ledger.json")).unwrap().sent[&id].variants_sent, "and the ledger says so, so it is not sent again");
 }
 
@@ -1093,7 +1135,7 @@ fn every_made_state_is_judged_twice_and_a_refusal_costs_one_re_edit_then_the_sta
     // States are made in ladder order: recovered, improving, deteriorating, critical, arrest.
     // improving: not the same person once, then fine. critical: shows the state? no, twice.
     tools.pair_verdicts.borrow_mut().extend([true, false, true, true, true, true, true]);
-    tools.verdicts.borrow_mut().extend([true, true, true, false, false, true]);
+    tools.state_verdicts.borrow_mut().extend([true, true, true, false, false, true]);
     let r = tick(&cfg, &door, &tools);
     assert!(r.errors.is_empty(), "a refused state is not an error: {:?}", r.errors);
     let edits = tools.edits.borrow();

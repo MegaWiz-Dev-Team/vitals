@@ -112,7 +112,7 @@ impl Manifest {
             .filter(|(k, _)| k.as_str() == key || k.starts_with(&prefix))
             .filter_map(|(k, e)| {
                 let age = Manifest::age_of(k, e)?;
-                let url = e.portrait.get("stable")?;
+                let url = e.base()?;
                 band.contains(&age).then(|| Base { key: k.clone(), age, url: clone(url) })
             })
             .min_by_key(|b| (u32::from(b.age).abs_diff(mid), b.key.clone()))
@@ -131,7 +131,7 @@ impl Manifest {
         e.country.get_or_insert_with(|| who.country.clone());
         e.sex.get_or_insert_with(|| who.sex.letter().to_string());
         e.age = Some(age);
-        e.portrait.insert("stable".into(), url.to_string());
+        e.portrait.insert("base".into(), url.to_string());
     }
 
     /// Add one state's picture to an entry. Add only, like the door.
@@ -154,10 +154,41 @@ impl Manifest {
         true
     }
 
-    /// The entry whose `stable` is this url — how a patient on the board is traced back to the
-    /// face she was given, whichever key it was recorded under.
+    /// The entry whose `stable` or `base` is this url — how a patient on the board is traced back
+    /// to the face she was given, whichever key it was recorded under and whether her stable is
+    /// the made one or (before 16 Sep) the base itself.
     pub fn entry_with_stable(&self, url: &str) -> Option<(&String, &Entry)> {
-        self.entries.iter().find(|(_, e)| e.portrait.get("stable").map(String::as_str) == Some(url))
+        self.entries
+            .iter()
+            .find(|(_, e)| e.portrait.get("stable").map(String::as_str) == Some(url))
+            .or_else(|| self.entries.iter().find(|(_, e)| e.portrait.get("base").map(String::as_str) == Some(url)))
+    }
+
+    /// Record the made stable of an entry, keeping the face it was made from under `base`. Before
+    /// 16 Sep an entry's `stable` was the base itself; that is what moves under `base` here.
+    pub fn record_stable(&mut self, key: &str, stable: &str) {
+        let e = self.entries.entry(key.to_string()).or_default();
+        if !e.portrait.contains_key("base") {
+            if let Some(old) = e.portrait.get("stable").cloned() {
+                e.portrait.insert("base".into(), old);
+            }
+        }
+        e.portrait.insert("stable".into(), stable.into());
+        e.portrait_256.remove("stable");
+    }
+}
+
+impl Entry {
+    /// The face the states are edited from: `base`, or — for an entry from before the rule —
+    /// its `stable`, which then IS the base.
+    pub fn base(&self) -> Option<&String> {
+        self.portrait.get("base").or_else(|| self.portrait.get("stable"))
+    }
+
+    /// The made stable, if one exists distinct from the base.
+    pub fn made_stable(&self) -> Option<&String> {
+        let s = self.portrait.get("stable")?;
+        (Some(s) != self.portrait.get("base") && self.portrait.contains_key("base")).then_some(s)
     }
 }
 

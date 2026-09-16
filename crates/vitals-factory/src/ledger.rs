@@ -42,6 +42,10 @@ pub struct Sent {
     /// Set once her waiting pack carries the 256 px siblings — the door that takes them accepted.
     #[serde(default)]
     pub variants_sent: bool,
+    /// States the judge refused twice and the factory left out — "critical: <why>" — so a person
+    /// can see which pictures the board falls back on, and why.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub refused: Vec<String>,
 }
 
 impl Sent {
@@ -60,6 +64,7 @@ impl Sent {
             patient_id: None,
             closed: false,
             variants_sent: false,
+            refused: Vec::new(),
         }
     }
 

@@ -93,7 +93,10 @@ pub struct Report {
     pub errors: Vec<String>,
     pub queued: usize,
     pub duplicates: usize,
+    /// States the judge refused twice and left out.
     pub rejected: usize,
+    /// Packs the door refused (an ERROR line each).
+    pub door_rejected: usize,
     /// The queue's depth as the door last reported it.
     pub depth: Option<usize>,
     pub faces_made: usize,
@@ -305,7 +308,7 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
     };
 
     // ── a face remade since her pack was sent reaches the pack while it waits ──
-    replace_remade_faces(door, &token, &manifest, &mut ledger, &mut r);
+    replace_remade_faces(cfg, tools, door, &token, &pool, &mut manifest, &mut ledger, &mut r);
     carry_siblings_to_waiting_packs(door, &token, &manifest, &mut ledger, &mut r);
     save_ledger(cfg, &ledger, &mut r);
 
@@ -320,7 +323,7 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
                 r.duplicates += q.duplicates;
                 lost += q.queued;
                 if let Some(why) = q.rejected.first() {
-                    r.rejected += 1;
+                    r.door_rejected += 1;
                     r.fail(format!("the door now refuses {} ({}, sent earlier): {why} — dropped from the ledger", pack.persona.name, pack.case));
                     ledger.sent.remove(id);
                 }
@@ -381,38 +384,47 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
     let mut door_takes_256 = true;
     for pl in planned.packs {
         let mut pack = pl.pack;
-        if let Base::Have { key, .. } = &pl.base {
-            if let Some(v) = manifest.entries.get(key).and_then(|e| e.portrait_256.get("stable")) {
-                pack.portrait.insert("stable_256".into(), v.clone());
-            }
-        }
-        if let Base::Make { key, age } = &pl.base {
-            if r.faces_tried >= cfg.bases_per_tick {
-                deferred += 1;
-                continue;
-            }
-            let who = pool.iter().find(|p| &p.key == key).expect("a planned person is in the pool");
-            match make_face(cfg, tools, who, *age, pl.place.as_str(), &mut r) {
-                Ok(url) => {
-                    manifest.record_base(key, *age, &url, who);
-                    let slot = manifest.entry_with_stable(&url).map(|(k, _)| k.clone()).unwrap_or_else(|| format!("{key}@{age}"));
-                    manifest.record_variant(&slot, "stable", &sibling_url(&url));
-                    if let Err(e) = manifest.save(&cfg.manifest_path()) {
-                        r.fail(e);
-                        return r;
-                    }
-                    pack.portrait.insert("stable_256".into(), sibling_url(&url));
-                    pack.portrait.insert("stable".into(), url);
-                    r.faces_made += 1;
-                    r.say(format!("made a face for {key} at {age}"));
-                }
-                Err(e) => {
-                    r.fail(format!("{e} — no pack for {} this tick", who.name));
+        let who = pool.iter().find(|p| p.key == pl.person).expect("a planned person is in the pool");
+        // The entry her face is filed under: on file, or painted now.
+        let slot = match &pl.base {
+            Base::Have { key, .. } => key.clone(),
+            Base::Make { key, age } => {
+                if r.faces_tried >= cfg.bases_per_tick {
+                    deferred += 1;
                     continue;
                 }
+                match make_face(cfg, tools, who, *age, pl.place.as_str(), &mut r) {
+                    Ok(url) => {
+                        manifest.record_base(key, *age, &url, who);
+                        if let Err(e) = manifest.save(&cfg.manifest_path()) {
+                            r.fail(e);
+                            return r;
+                        }
+                        r.faces_made += 1;
+                        r.say(format!("made a face for {key} at {age}"));
+                        manifest.entry_with_stable(&url).map(|(k, _)| k.clone()).unwrap_or_else(|| format!("{key}@{age}"))
+                    }
+                    Err(e) => {
+                        r.fail(format!("{e} — no pack for {} this tick", who.name));
+                        continue;
+                    }
+                }
+            }
+        };
+        // Her stable: made from the base, judged, never the base itself. A pack whose stable was
+        // refused twice goes out with no picture rather than with the wrong one.
+        pack.portrait.clear();
+        match ensure_stable(cfg, tools, &mut manifest, &slot, who, pack.persona.age, &mut r) {
+            Ok(Some(stable)) => {
+                pack.portrait.insert("stable_256".into(), sibling_url(&stable));
+                pack.portrait.insert("stable".into(), stable);
+            }
+            Ok(None) => r.say(format!("{} goes out without a picture: her stable was refused twice", who.name)),
+            Err(e) => {
+                r.fail(format!("{}'s stable could not be made: {e} — no pack for her this tick", who.name));
+                continue;
             }
         }
-        let who = pool.iter().find(|p| p.key == pl.person).expect("a planned person is in the pool");
         let id = pack_id(&pack);
         if !door_takes_256 {
             pack.portrait.retain(|k, _| !k.ends_with("_256"));
@@ -435,8 +447,8 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
                 r.duplicates += q.duplicates;
                 r.depth = Some(q.depth);
                 if let Some(why) = q.rejected.first() {
-                    r.rejected += 1;
-                    r.fail(format!("rejected {} ({} {} {}): {why}", pack.case, pack.persona.name, pack.persona.age, pack.persona.country));
+                    r.door_rejected += 1;
+                    r.fail(format!("the door rejected {} ({} {} {}): {why}", pack.case, pack.persona.name, pack.persona.age, pack.persona.country));
                     continue;
                 }
                 let mut sent = Sent::new(&pack.case, who, pack.persona.age, pack.endemic, pack.portrait.get("stable").cloned(), cfg.now, &cfg.ward);
@@ -470,10 +482,10 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
     if deferred > 0 {
         r.say(format!("{deferred} pack(s) deferred to the next tick: their faces are past the cap of {} painted per tick", cfg.bases_per_tick));
     }
-    r.say(format!("pushed: {} queued, {} duplicates, {} rejected, depth {} · {} face(s) painted, {} passed", r.queued, r.duplicates, r.rejected, r.depth.map_or("?".into(), |d| d.to_string()), r.faces_tried, r.faces_made));
+    r.say(format!("pushed: {} queued, {} duplicates, {} refused by the door, depth {} · {} face(s) painted, {} passed", r.queued, r.duplicates, r.door_rejected, r.depth.map_or("?".into(), |d| d.to_string()), r.faces_tried, r.faces_made));
 
     // ── the rest of one patient's faces ──
-    complete_faces(cfg, door, tools, &token, &ward, &pool, &mut manifest, &mut r);
+    complete_faces(cfg, door, tools, &token, &ward, &pool, &mut manifest, &mut ledger, &mut r);
     save_ledger(cfg, &ledger, &mut r);
     r
 }
@@ -483,25 +495,51 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
 /// (e56946b) and record the new address, so this happens once. A door that refuses because she is
 /// in a bed already is logged and nothing is recorded: an admitted patient's faces are added
 /// through her own door and never replaced.
-fn replace_remade_faces(door: &dyn Door, token: &Token, manifest: &Manifest, ledger: &mut Ledger, r: &mut Report) {
-    let due: Vec<(String, String)> = ledger
+#[allow(clippy::too_many_arguments)]
+fn replace_remade_faces(cfg: &Config, tools: &dyn Tools, door: &dyn Door, token: &Token, pool: &[Person], manifest: &mut Manifest, ledger: &mut Ledger, r: &mut Report) {
+    // Every waiting pack: the entry her face is filed under (by the address she was sent with,
+    // which is her stable or, before 16 Sep, her base), and the made stable it should carry.
+    let waiting: Vec<(String, String, String, u16)> = ledger
         .sent
         .iter()
         .filter(|(_, s)| s.patient_id.is_none())
         .filter_map(|(id, s)| {
-            let now = manifest.base_for(&s.key, &(s.age..=s.age))?;
-            (s.stable.as_deref() != Some(now.url.as_str())).then(|| (id.clone(), now.url))
+            let slot = match s.stable.as_deref().and_then(|u| manifest.entry_with_stable(u)) {
+                Some((k, _)) => k.clone(),
+                None => manifest.base_for(&s.key, &(s.age..=s.age))?.key,
+            };
+            Some((id.clone(), slot, s.key.clone(), s.age))
         })
         .collect();
-    for (id, url) in due {
-        let set = BTreeMap::from([("stable".to_string(), url.clone())]);
+    for (id, slot, key, age) in waiting {
+        let Some(who) = pool.iter().find(|p| p.key == key) else { continue };
+        let made = match ensure_stable(cfg, tools, manifest, &slot, who, age, r) {
+            Ok(Some(url)) => url,
+            Ok(None) => continue,
+            Err(e) => {
+                r.fail(format!("{}'s stable could not be made for her waiting pack: {e}", who.name));
+                continue;
+            }
+        };
+        if ledger.sent[&id].stable.as_deref() == Some(made.as_str()) {
+            continue;
+        }
+        let url = made;
+        let set = BTreeMap::from([("stable".to_string(), url.clone()), ("stable_256".to_string(), sibling_url(&url))]);
         let name = ledger.sent[&id].name.clone();
         match door.replace(token, &id, &set) {
             Ok(FillReply::Filled(f)) if f.added > 0 && f.rejected.is_empty() => {
                 if let Some(s) = ledger.sent.get_mut(&id) {
                     s.stable = Some(url.clone());
+                    s.variants_sent = true;
                 }
                 r.say(format!("replaced the face of {name} on waiting pack {} with {url}", &id[..12]));
+            }
+            Ok(FillReply::Filled(f)) if f.added > 0 && f.rejected.iter().all(|w| refuses_256(w)) => {
+                if let Some(s) = ledger.sent.get_mut(&id) {
+                    s.stable = Some(url.clone());
+                }
+                r.say(format!("replaced the face of {name} on waiting pack {} with {url}; the door does not take 256 px keys yet", &id[..12]));
             }
             Ok(FillReply::Filled(f)) => {
                 for why in f.rejected {
@@ -672,11 +710,11 @@ fn remake(cfg: &Config, tools: &dyn Tools, spec: &str, r: &mut Report) -> Result
     let slot = format!("{key}@{age}");
     manifest.entries.remove(&slot);
     manifest.record_base(&key, age, &url, who);
-    manifest.record_variant(&slot, "stable", &sibling_url(&url));
     // record_base files a batch-age face under the bare key; a remake is always its own entry.
     if !manifest.entries.contains_key(&slot) {
         if let Some(mut e) = manifest.entries.remove(&key) {
-            e.portrait.retain(|k, _| k == "stable");
+            e.portrait.retain(|k, _| k == "base");
+            e.portrait_256.clear();
             manifest.entries.insert(slot.clone(), e);
         }
     }
@@ -722,7 +760,9 @@ struct Gap {
     patient_id: u64,
     who: Person,
     key: String,
-    stable: String,
+    /// The full-size face the states are edited from and judged against: the entry's base when
+    /// the board shows a face from this entry, else the face the board shows.
+    reference: String,
     /// On file already: push these.
     from_manifest: BTreeMap<String, String>,
     /// Not on file: make these.
@@ -762,7 +802,10 @@ fn gaps(ward: &WardView, pool: &[Person], manifest: &Manifest, r: &mut Report) -
             continue;
         };
         let has = |st: &str| p.portraits.contains_key(st);
-        let record = entry.portrait.get("stable") == Some(&stable);
+        let record = entry.portrait.get("stable") == Some(&stable) || entry.portrait.get("base") == Some(&stable);
+        // The reference is the painted base when the board's face is this entry's; a patient
+        // admitted before the rule shows her base as her stable, and that is her reference too.
+        let reference = if record { entry.base().cloned().unwrap_or_else(|| stable.clone()) } else { stable.clone() };
         let mut from_manifest = BTreeMap::new();
         let mut to_make = Vec::new();
         for st in prompts::STATES {
@@ -805,7 +848,7 @@ fn gaps(ward: &WardView, pool: &[Person], manifest: &Manifest, r: &mut Report) -
         if from_manifest.is_empty() && to_make.is_empty() && siblings_from_board.is_empty() {
             continue;
         }
-        out.push(Gap { patient_id: p.patient_id, who: who.clone(), key, stable, from_manifest, to_make, siblings_from_board, age: p.age, record });
+        out.push(Gap { patient_id: p.patient_id, who: who.clone(), key, reference, from_manifest, to_make, siblings_from_board, age: p.age, record });
     }
     out
 }
@@ -820,7 +863,7 @@ fn dry_run_faces(cfg: &Config, r: &mut Report, ward: &WardView, pool: &[Person],
             if made_one {
                 r.say(format!("patient {} ({}) also lacks {:?}; would wait for a later tick", g.patient_id, g.who.name, g.to_make));
             } else {
-                r.say(format!("would make {:?} for patient {} ({}) from {} with {} and push them", g.to_make, g.patient_id, g.who.name, g.stable, cfg.model));
+                r.say(format!("would make {:?} for patient {} ({}) from {} with {} and push them", g.to_make, g.patient_id, g.who.name, g.reference, cfg.model));
                 made_one = true;
             }
         }
@@ -828,7 +871,7 @@ fn dry_run_faces(cfg: &Config, r: &mut Report, ward: &WardView, pool: &[Person],
 }
 
 #[allow(clippy::too_many_arguments)]
-fn complete_faces(cfg: &Config, door: &dyn Door, tools: &dyn Tools, token: &Token, ward: &WardView, pool: &[Person], manifest: &mut Manifest, r: &mut Report) {
+fn complete_faces(cfg: &Config, door: &dyn Door, tools: &dyn Tools, token: &Token, ward: &WardView, pool: &[Person], manifest: &mut Manifest, ledger: &mut Ledger, r: &mut Report) {
     let mut made_one = false;
     let found = gaps(ward, pool, manifest, r);
     for g in found {
@@ -852,10 +895,15 @@ fn complete_faces(cfg: &Config, door: &dyn Door, tools: &dyn Tools, token: &Toke
                 r.say(format!("patient {} ({}) still lacks {:?}; next tick", g.patient_id, g.who.name, g.to_make));
             } else {
                 made_one = true;
-                let (new, failed) = make_states(cfg, tools, &g, manifest, r);
-                set.extend(new);
-                for (st, e) in failed {
+                let made = make_states(cfg, tools, &g, manifest, r);
+                set.extend(made.set);
+                for (st, e) in made.failed {
                     r.fail(format!("patient {} ({}): {st} could not be made: {e}", g.patient_id, g.who.name));
+                }
+                if !made.refused.is_empty() {
+                    if let Some(sent) = ledger.sent.values_mut().find(|s| s.patient_id == Some(g.patient_id)) {
+                        sent.refused.extend(made.refused);
+                    }
                 }
             }
         }
@@ -892,47 +940,123 @@ fn complete_faces(cfg: &Config, door: &dyn Door, tools: &dyn Tools, token: &Toke
 /// One state failing does not lose the others: the editor refuses some pictures outright (Vertex
 /// filtered a child's "deteriorating" as prohibited content, 16 Sep), and what was made is still
 /// pushed — the board shows the nearest milder state for the rest, which is its own rule.
-fn make_states(cfg: &Config, tools: &dyn Tools, g: &Gap, manifest: &mut Manifest, r: &mut Report) -> (BTreeMap<String, String>, Vec<(&'static str, String)>) {
-    let mut out = BTreeMap::new();
-    let mut failed = Vec::new();
-    let base = match g.stable.rsplit('/').next().and_then(|n| n.strip_suffix(".webp")) {
-        Some(sha) if cfg.face_path(sha).exists() => std::fs::read(cfg.face_path(sha)).map_err(|e| e.to_string()),
-        _ => tools.fetch(&g.stable),
-    };
-    let base = match base {
+/// What making a patient's states came to: the pictures to push, the states that could not be
+/// made (with the error), and the states the judge refused twice (with why).
+#[derive(Default)]
+struct Made {
+    set: BTreeMap<String, String>,
+    failed: Vec<(&'static str, String)>,
+    refused: Vec<String>,
+}
+
+fn make_states(cfg: &Config, tools: &dyn Tools, g: &Gap, manifest: &mut Manifest, r: &mut Report) -> Made {
+    let mut made = Made::default();
+    let reference = match read_face(cfg, tools, &g.reference) {
         Ok(b) => b,
         Err(e) => {
-            failed.push(("stable", format!("her base could not be read: {e}")));
-            return (out, failed);
+            made.failed.push(("stable", format!("her reference face could not be read: {e}")));
+            return made;
         }
     };
-    let mime = if base.starts_with(b"RIFF") { "image/webp" } else { "image/png" };
+    let child = g.age.is_some_and(|a| a < prompts::CHILD_UNDER);
     for st in &g.to_make {
-        let one = || -> Result<String, String> {
-            let child = g.age.is_some_and(|a| a < prompts::CHILD_UNDER);
-            let prompt = prompts::state_for(st, g.who.sex, child).ok_or_else(|| format!("no prompt for {st}"))?;
-            let png = tools.edit(&cfg.vertex_project, &cfg.model, &base, mime, &prompt)?;
-            let webp = tools.webp(&png, WEBP_QUALITY)?;
-            publish(cfg, tools, &webp)
-        };
-        match one() {
-            Ok(url) => {
-                if g.record {
-                    manifest.record_state(&g.key, st, &url);
-                    manifest.record_variant(&g.key, st, &sibling_url(&url));
-                    if let Err(e) = manifest.save(&cfg.manifest_path()) {
-                        r.fail(e);
-                    }
-                }
-                r.states_made += 1;
-                r.say(format!("made {st} for {} ({}){}", g.who.name, g.key, if g.record { "" } else { " — from the face the board shows, which is not the one on file; pushed, not recorded" }));
-                out.insert(format!("{st}_256"), sibling_url(&url));
-                out.insert(st.to_string(), url);
+        let prompt = match prompts::state_for(st, g.who.sex, child) {
+            Some(p) => p,
+            None => {
+                made.failed.push((st, format!("no prompt for {st}")));
+                continue;
             }
-            Err(e) => failed.push((st, e)),
+        };
+        match gated_edit(cfg, tools, &reference, &prompt, st, &g.who.name, r) {
+            Ok(Some(webp)) => match publish(cfg, tools, &webp) {
+                Ok(url) => {
+                    if g.record {
+                        manifest.record_state(&g.key, st, &url);
+                        manifest.record_variant(&g.key, st, &sibling_url(&url));
+                        if let Err(e) = manifest.save(&cfg.manifest_path()) {
+                            r.fail(e);
+                        }
+                    }
+                    r.states_made += 1;
+                    r.say(format!("made {st} for {} ({}){}", g.who.name, g.key, if g.record { "" } else { " — from the face the board shows, which is not the one on file; pushed, not recorded" }));
+                    made.set.insert(format!("{st}_256"), sibling_url(&url));
+                    made.set.insert(st.to_string(), url);
+                }
+                Err(e) => made.failed.push((st, e)),
+            },
+            Ok(None) => {
+                r.rejected += 1;
+                let why = format!("{st}: refused twice by the judge; left out, the board falls back to the nearest milder picture");
+                r.say(format!("{} ({}): {why}", g.who.name, g.key));
+                made.refused.push(why);
+            }
+            Err(e) => made.failed.push((st, e)),
         }
     }
-    (out, failed)
+    made
+}
+
+/// A face's bytes: the local copy when this machine made it, else the bucket.
+fn read_face(cfg: &Config, tools: &dyn Tools, url: &str) -> Result<Vec<u8>, String> {
+    match sha_of(url) {
+        Some(sha) if cfg.face_path(sha).exists() => std::fs::read(cfg.face_path(sha)).map_err(|e| e.to_string()),
+        _ => tools.fetch(url),
+    }
+}
+
+fn mime_of(bytes: &[u8]) -> &'static str {
+    if bytes.starts_with(b"RIFF") { "image/webp" } else { "image/png" }
+}
+
+/// One state, edited from the reference and judged twice — the same person as the reference,
+/// and showing the state's own sentence — with one re-edit on a no. `Ok(None)` is a state refused
+/// twice: left out, never filed, never sent; the ladder shows the nearest milder picture.
+fn gated_edit(cfg: &Config, tools: &dyn Tools, reference: &[u8], prompt: &str, state: &str, name: &str, r: &mut Report) -> Result<Option<Vec<u8>>, String> {
+    let ref_mime = mime_of(reference);
+    let shows = prompts::shows(state).ok_or_else(|| format!("no sentence for {state}"))?;
+    for attempt in 0..2 {
+        let png = tools.edit(&cfg.vertex_project, &cfg.model, reference, ref_mime, prompt)?;
+        let webp = tools.webp(&png, WEBP_QUALITY)?;
+        let (same, why) = tools.judge_pair(&cfg.vertex_project, &cfg.judge_model, reference, ref_mime, &webp, "image/webp", prompts::SAME_PERSON)?;
+        if !same {
+            r.say(format!("{name} {state}{}: not the same person ({why}){}", if attempt == 0 { "" } else { ", re-edit" }, if attempt == 0 { " — one re-edit" } else { "" }));
+            continue;
+        }
+        let (ok, why) = tools.judge(&cfg.vertex_project, &cfg.judge_model, &webp, "image/webp", &shows)?;
+        if ok {
+            r.say(format!("{name} {state}{}: same person, shows the state ({why})", if attempt == 0 { "" } else { ", re-edit" }));
+            return Ok(Some(webp));
+        }
+        r.say(format!("{name} {state}{}: same person but does not show the state ({why}){}", if attempt == 0 { "" } else { ", re-edit" }, if attempt == 0 { " — one re-edit" } else { "" }));
+    }
+    Ok(None)
+}
+
+/// Her stable, made from the base and judged, on file under `stable` with the base under `base`.
+/// `Ok(Some(url))` is the made stable (already on file, or made now); `Ok(None)` is a stable
+/// refused twice — she goes out without a picture rather than with the wrong one.
+fn ensure_stable(cfg: &Config, tools: &dyn Tools, manifest: &mut Manifest, slot: &str, who: &Person, age: u16, r: &mut Report) -> Result<Option<String>, String> {
+    let entry = manifest.entries.get(slot).ok_or_else(|| format!("{slot} is not on file"))?;
+    if let Some(made) = entry.made_stable() {
+        return Ok(Some(made.clone()));
+    }
+    let base_url = entry.base().cloned().ok_or_else(|| format!("{slot} has no face on file"))?;
+    let reference = read_face(cfg, tools, &base_url)?;
+    let prompt = prompts::state_for(prompts::STABLE, who.sex, age < prompts::CHILD_UNDER).ok_or_else(|| "no stable prompt".to_string())?;
+    match gated_edit(cfg, tools, &reference, &prompt, prompts::STABLE, &who.name, r)? {
+        Some(webp) => {
+            let url = publish(cfg, tools, &webp)?;
+            manifest.record_stable(slot, &url);
+            manifest.record_variant(slot, "stable", &sibling_url(&url));
+            manifest.save(&cfg.manifest_path())?;
+            r.say(format!("made stable for {} ({slot}) from the base", who.name));
+            Ok(Some(url))
+        }
+        None => {
+            r.rejected += 1;
+            Ok(None)
+        }
+    }
 }
 
 /// The 256 px siblings of every portrait already on file that has none: fetched from the bucket

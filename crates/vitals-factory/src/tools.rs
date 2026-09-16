@@ -29,6 +29,10 @@ pub trait Tools {
     /// Vertex with the image inline. `true` is yes; the string is the model's one sentence why,
     /// for the log and for whoever reads a refusal.
     fn judge(&self, project: &str, model: &str, image: &[u8], mime: &str, question: &str) -> Result<(bool, String), String>;
+    /// A yes-or-no question about two images at once — "is this the same person as the
+    /// reference picture?" — the reference first, the picture second.
+    #[allow(clippy::too_many_arguments)]
+    fn judge_pair(&self, project: &str, model: &str, a: &[u8], mime_a: &str, b: &[u8], mime_b: &str, question: &str) -> Result<(bool, String), String>;
     /// Any other question about an image, answered in the model's own words — the age question.
     fn ask(&self, project: &str, model: &str, image: &[u8], mime: &str, question: &str) -> Result<String, String>;
     /// PNG bytes to webp bytes at this quality.
@@ -108,17 +112,15 @@ impl Tools for Shell {
         Ok(text.split_whitespace().collect::<Vec<_>>().join(" "))
     }
 
+    fn judge_pair(&self, project: &str, model: &str, a: &[u8], mime_a: &str, b: &[u8], mime_b: &str, question: &str) -> Result<(bool, String), String> {
+        let parts = vertex_generate_parts(project, model, &[(a, mime_a), (b, mime_b)], question, false)?;
+        let text: String = parts.iter().filter_map(|p| p.get("text").and_then(|t| t.as_str())).collect::<Vec<_>>().join(" ");
+        yes_or_no(&text.split_whitespace().collect::<Vec<_>>().join(" "))
+    }
+
     fn judge(&self, project: &str, model: &str, image: &[u8], mime: &str, question: &str) -> Result<(bool, String), String> {
         let text = self.ask(project, model, image, mime, question)?;
-        let word = text.trim_start_matches(|c: char| !c.is_alphanumeric()).to_lowercase();
-        let why = text.split_once(['.', ',']).map(|x| x.1).unwrap_or("").trim().to_string();
-        if word.starts_with("yes") {
-            Ok((true, why))
-        } else if word.starts_with("no") {
-            Ok((false, why))
-        } else {
-            Err(format!("the judge answered neither yes nor no: {}", text.chars().take(120).collect::<String>()))
-        }
+        yes_or_no(&text)
     }
 
     fn webp(&self, png: &[u8], quality: u8) -> Result<Vec<u8>, String> {
@@ -168,10 +170,28 @@ fn cwebp(image: &[u8], args: &[&str]) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+/// "Yes, …" / "No. …" → the verdict and the model's sentence.
+fn yes_or_no(text: &str) -> Result<(bool, String), String> {
+    let word = text.trim_start_matches(|c: char| !c.is_alphanumeric()).to_lowercase();
+    let why = text.split_once(['.', ',']).map(|x| x.1).unwrap_or("").trim().to_string();
+    if word.starts_with("yes") {
+        Ok((true, why))
+    } else if word.starts_with("no") {
+        Ok((false, why))
+    } else {
+        Err(format!("the judge answered neither yes nor no: {}", text.chars().take(120).collect::<String>()))
+    }
+}
+
 /// One `generateContent` call on Vertex's global endpoint with an image inline and a text part,
 /// as `gcloud auth print-access-token`'s user. `want_image` asks for an image back (the editor);
 /// without it the model answers in text (the judge). Returns the first candidate's parts.
 fn vertex_generate(project: &str, model: &str, image: &[u8], mime: &str, text: &str, want_image: bool) -> Result<Vec<serde_json::Value>, String> {
+    vertex_generate_parts(project, model, &[(image, mime)], text, want_image)
+}
+
+/// The same, with any number of images before the text — two for "the same person?".
+fn vertex_generate_parts(project: &str, model: &str, images: &[(&[u8], &str)], text: &str, want_image: bool) -> Result<Vec<serde_json::Value>, String> {
     use base64::Engine;
     let token = Shell::access_token()?;
     let url = format!(
@@ -186,11 +206,13 @@ fn vertex_generate(project: &str, model: &str, image: &[u8], mime: &str, text: &
     } else {
         serde_json::json!({"temperature": 0, "maxOutputTokens": 256})
     };
+    let mut parts: Vec<serde_json::Value> = images
+        .iter()
+        .map(|(bytes, mime)| serde_json::json!({"inlineData": {"mimeType": mime, "data": base64::engine::general_purpose::STANDARD.encode(bytes)}}))
+        .collect();
+    parts.push(serde_json::json!({"text": text}));
     let body = serde_json::json!({
-        "contents": [{"role": "user", "parts": [
-            {"inlineData": {"mimeType": mime, "data": base64::engine::general_purpose::STANDARD.encode(image)}},
-            {"text": text}
-        ]}],
+        "contents": [{"role": "user", "parts": parts}],
         "generationConfig": generation
     });
     let resp = ureq::AgentBuilder::new()

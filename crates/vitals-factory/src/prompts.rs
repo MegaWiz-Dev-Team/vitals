@@ -78,9 +78,46 @@ stylised 3D render? Answer yes or no, then one short sentence why.";
 pub const KEEP: &str = "Edit this photo, keeping exactly the same person — same face, same hair, same skin, same age — \
 and the same hospital bed, gown, lighting and framing. No text, no logos, no printed badge on the gown. ";
 
-/// The five states a picture is made for, in the ladder's order. `stable` is the base and `dead`
-/// is never made.
+/// The five states made after admission, in the ladder's order. `stable` is made too, at pack
+/// time, from the base (see [`STABLE`]); `dead` is never made.
 pub const STATES: [&str; 5] = ["recovered", "improving", "deteriorating", "critical", "arrest"];
+
+/// The key the painted face is filed under. Never sent: the ward's ladder does not know it, and
+/// the founder's rule is that a patient's picture looks like a patient — so the face the painter
+/// made (calm, looking at the camera, often smiling) is the reference the states are edited from
+/// and nothing else.
+pub const BASE: &str = "base";
+
+/// The made stable: admitted and holding, not well. The smile is `recovered`'s.
+pub const STABLE: &str = "stable";
+
+/// What each state should show, in one sentence — the second question the gate asks ("Does this
+/// picture show a patient who is …?"). Written once, beside the edit prompts, so the judge and the
+/// editor are held to the same words.
+pub fn sentence(state: &str) -> Option<&'static str> {
+    Some(match state {
+        "stable" => "unwell and tired but comfortable, lying in a hospital bed, eyes open, not smiling",
+        "improving" => "getting better: colour in the face, eyes open and clear, calm, no oxygen mask",
+        "deteriorating" => "getting worse: an oxygen mask on, eyes half closed, struggling",
+        "critical" => "critically ill: eyes closed, very pale, an oxygen mask with a bag, not moving",
+        "arrest" => "in cardiac arrest: eyes closed, ashen grey, no mask, completely still",
+        "recovered" => "recovered: sitting up, healthy colour, relaxed and relieved, no mask",
+        _ => return None,
+    })
+}
+
+/// The gate's first question, asked with the reference picture first and the made picture second.
+pub const SAME_PERSON: &str = "Both pictures are AI-generated on purpose; do not judge whether they are real photos. The first is \
+the reference. Is this the same person as the reference picture? Judge the face, hair, skin and age only — the state, the \
+expression and the equipment may differ. Answer yes or no, then one short sentence why.";
+
+/// The gate's second question, with the state's own sentence in it.
+pub fn shows(state: &str) -> Option<String> {
+    sentence(state).map(|s| format!(
+        "This picture is AI-generated on purpose; do not judge whether it is a real photo. Does this picture show a patient \
+         who is {s}? Answer yes or no, then one short sentence why."
+    ))
+}
 
 /// The edit for one state, with her pronoun — the founder's wording for an adult, and for a child
 /// the gentle wording below.
@@ -101,6 +138,7 @@ pub fn state_for(state: &str, sex: Sex, child: bool) -> Option<String> {
     };
     if child {
         let body = match state {
+            "stable" => "{She} is unwell and tired but comfortable: lying in the bed, eyes open, no smile, a little pale, a small plaster on the back of the hand, the blanket to the waist. Admitted and holding, not well.",
             "improving" => "{She} is improving: eyes open and clear, a small calm smile, the oxygen mask gone, a little plaster on the back of the hand, propped a little higher on the pillow.",
             "deteriorating" => "{She} is looking unwell: an oxygen mask over the nose and mouth, eyes half closed, tired, propped a little higher on the pillow.",
             "critical" => "{She} is asleep and pale, a nasal cannula, the blanket drawn up to the chest, dimmer light, lying still.",
@@ -111,6 +149,7 @@ pub fn state_for(state: &str, sex: Sex, child: bool) -> Option<String> {
         return Some(format!("{KEEP}{}", body.replace("{She}", she)));
     }
     let body = match state {
+        "stable" => "{She} is unwell and tired but comfortable: lying in the bed, eyes open, no smile, a little pale and drawn, an IV cannula taped on the hand, the blanket to the waist. Admitted and holding, not well.",
         "improving" => "{She} is improving: colour returning to the face, eyes open and clear, a faint calm expression, the oxygen mask gone, IV cannula still taped on the hand, propped a little higher on the pillow.",
         "deteriorating" => "{She} is deteriorating: an oxygen mask over nose and mouth, eyes half closed, grey-pale sweaty skin, lips slightly dusky, head tilted back, visibly struggling to breathe.",
         "critical" => "{She} is critical: eyes closed, very pale, a non-rebreather oxygen mask with the bag, the blanket drawn up to the chest, dimmer light, no movement, no smile. Quiet and clinical, nothing graphic.",
