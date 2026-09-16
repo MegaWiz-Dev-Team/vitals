@@ -266,6 +266,11 @@ fn a_pack() -> Pack {
     }
 }
 
+/// The 256 px sibling of the same picture: same object, same sha, a size in its name.
+fn small_url(n: u8) -> String {
+    portrait_url(n).replace(".webp", "-256.webp")
+}
+
 fn portrait_url(n: u8) -> String {
     format!("https://storage.googleapis.com/vitals-world-portraits/{}.webp",
             format!("{n:02x}").repeat(32))
@@ -971,4 +976,83 @@ fn a_receipt_says_when_its_hash_names_more_than_one_shift() {
     let alone = receipt(&sce, None, &shifts[..1], &shifts[0], &chart, &pack, 1_000_000).unwrap();
     assert_eq!(alone["also_anchored"], 0);
     assert!(alone["also_anchored_note"].is_null());
+}
+
+
+/// **The board loads a thumbnail; the bedside loads the picture.**
+///
+/// Twenty patients on a globe is twenty full-size portraits over a mobile connection for a board
+/// nobody has clicked yet, and the ward pays for every byte of it. The factory now makes a 256 px
+/// sibling of each face — same object, same sha, `-256` in the name — and a pack carries both
+/// under `<state>` and `<state>_256`.
+///
+/// The pairing is checked rather than trusted. A `_256` key holding a full-size address is the
+/// bug this rule exists to stop: it looks right in the JSON, draws correctly on the board, and
+/// quietly undoes the whole change.
+#[test]
+fn a_pack_may_carry_the_small_sibling_of_every_face() {
+    let mut p = a_pack();
+    p.portrait.insert("stable".into(), portrait_url(1));
+    p.portrait.insert("stable_256".into(), small_url(1));
+    p.portrait.insert("critical_256".into(), small_url(2));
+    validate_pack(&p).expect("both sizes of a state the engine reports");
+
+    let mut wrong_size = a_pack();
+    wrong_size.portrait.insert("stable_256".into(), portrait_url(1));
+    assert!(validate_pack(&wrong_size).is_err(),
+            "a _256 key holding a full-size address draws correctly and defeats the whole point");
+
+    let mut wrong_key = a_pack();
+    wrong_key.portrait.insert("stable".into(), small_url(1));
+    assert!(validate_pack(&wrong_key).is_err(),
+            "and the plain key must hold the full-size one, for the same reason in reverse");
+
+    let mut dead = a_pack();
+    dead.portrait.insert("dead_256".into(), small_url(1));
+    assert!(validate_pack(&dead).is_err(),
+            "no picture of a dead patient is made in either size");
+
+    let mut nonsense = a_pack();
+    nonsense.portrait.insert("worse_256".into(), small_url(1));
+    assert!(validate_pack(&nonsense).is_err(), "and the state still has to be one the engine reports");
+
+    // The address shape, at the door that decides what a page may load.
+    use vitals_web::ward_chain::is_portrait_url;
+    assert!(is_portrait_url(&small_url(1)), "the sibling is a portrait this ward publishes");
+    for wrong in [
+        portrait_url(1).replace(".webp", "-512.webp"),
+        portrait_url(1).replace(".webp", "-256.png"),
+        portrait_url(1).replace(".webp", "-256"),
+        portrait_url(1).replace(".webp", "-0256.webp"),
+    ] {
+        assert!(!is_portrait_url(&wrong), "{wrong} is not one of the two shapes the ward publishes");
+    }
+}
+
+/// The small ones arrive through the same door, under the same add-only rule.
+#[test]
+fn the_small_siblings_are_added_to_a_patient_like_any_other_face() {
+    use std::collections::BTreeMap;
+    use vitals_web::store::Store;
+    use vitals_web::ward_chain::{fill_portraits, PERSONA_STORE};
+
+    let dir = std::env::temp_dir().join(format!("vitals-small-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store = Store::open(dir.clone()).expect("a store");
+    let mut pack = a_pack();
+    pack.portrait.insert("stable".into(), portrait_url(1));
+    store.put(PERSONA_STORE, "p7", &pack).expect("admit her");
+
+    let mut add = BTreeMap::new();
+    add.insert("stable_256".to_string(), small_url(1));
+    add.insert("critical_256".to_string(), small_url(2));
+    let filled = fill_portraits(&store, 7, add);
+    assert_eq!(filled.added, 2, "both siblings land: {:?}", filled.rejected);
+    assert!(filled.rejected.is_empty(), "{:?}", filled.rejected);
+
+    let mut bad = BTreeMap::new();
+    bad.insert("stable_256".to_string(), portrait_url(1));
+    assert_eq!(fill_portraits(&store, 7, bad).added, 0,
+               "a full-size address under a _256 key is refused here too, not only at the queue");
+    let _ = std::fs::remove_dir_all(&dir);
 }

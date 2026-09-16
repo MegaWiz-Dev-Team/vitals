@@ -998,3 +998,39 @@ fn the_payload_publishes_how_many_are_in_beds_beside_how_many_are_on_the_chain()
     let how = v["derivations"]["in_beds"].as_str().expect("it says how it was counted");
     assert!(how.contains("pack"), "in the terms that explain the gap: {how}");
 }
+
+
+/// **The board draws the small one when there is one.**
+///
+/// `portrait` is what to draw now and `portraits` is everything there is to draw. The board is a
+/// globe of up to twenty faces and the bedside is one face at full size, so the board's `portrait`
+/// takes the 256 px sibling when the factory has made it and the full-size picture when it has
+/// not — never a broken image, and never a thumbnail at the bedside.
+#[test]
+fn the_board_takes_the_small_face_and_the_bedside_the_full_one() {
+    use vitals_web::ward::{portrait_for, portrait_small_for};
+
+    let base = "https://storage.googleapis.com/vitals-world-portraits/".to_string();
+    let full = format!("{base}{}.webp", "a".repeat(64));
+    let small = format!("{base}{}-256.webp", "a".repeat(64));
+    let worse = format!("{base}{}.webp", "b".repeat(64));
+
+    let mut set = std::collections::BTreeMap::new();
+    set.insert("stable".to_string(), full.clone());
+    set.insert("stable_256".to_string(), small.clone());
+    set.insert("critical".to_string(), worse.clone());
+
+    assert_eq!(portrait_small_for(&set, "stable"), Some(small.as_str()),
+               "the board asks for a thumbnail and gets one");
+    assert_eq!(portrait_for(&set, "stable"), Some(full.as_str()),
+               "the bedside asks for her picture and gets the picture");
+
+    assert_eq!(portrait_small_for(&set, "critical"), Some(worse.as_str()),
+               "no sibling for this state yet, so the board draws the full one rather than nothing");
+
+    // And the milder-state rule is the same rule: it picks the state first, then the size.
+    assert_eq!(portrait_small_for(&set, "arrest"), Some(worse.as_str()),
+               "arrest has no picture, so the nearest milder state's does — and its size follows it");
+    assert_eq!(portrait_small_for(&set, "recovered"), None,
+               "a patient who went home has no picture until one of her leaving is made");
+}
