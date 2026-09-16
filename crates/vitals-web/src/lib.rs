@@ -23,4 +23,5 @@ pub mod review;
 pub mod store;
 pub mod usage;
 pub mod ward;
+pub mod ward_case;
 pub mod ward_chain;

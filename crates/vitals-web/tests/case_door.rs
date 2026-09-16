@@ -36,10 +36,10 @@ fn a_pack() -> Value {
             "setting": "ER",
             "initial_state": "presenting",
             "vitals0": { "hr": 110.0, "sbp": 90.0, "dbp": 60.0, "spo2": 97.0, "rr": 18.0, "temp": 37.0, "gcs": 15 },
-            "variables": [],
+            "variables": {},
             "states": [
-                { "id": "presenting", "bands": [], "dynamics": [] },
-                { "id": "stabilising", "bands": [], "dynamics": [] }
+                { "id": "presenting", "status": "critical", "bands": [], "dynamics": [], "transitions": [] },
+                { "id": "stabilising", "status": "improving", "bands": [], "dynamics": [], "transitions": [] }
             ],
             "interventions": [
                 { "id": "tx_fluids", "label": "Crystalloid bolus", "match": { "any_kw": ["fluids"] },
@@ -140,7 +140,7 @@ fn a_pack_carrying_the_seasons_names_is_refused() {
 /// **A case id is a store key and a page string**, so it is the narrow shape both can carry.
 #[test]
 fn the_case_id_is_one_plain_token() {
-    for bad in ["", "Auth Demo", "auth/demo", "../etc", "auth.demo", &"a".repeat(80)] {
+    for bad in ["", "Auth Demo", "auth/demo", "../etc", "auth.demo", &"a".repeat(200)] {
         let mut p = a_pack();
         p["case_id"] = json!(bad);
         assert!(validate_case(&p).is_err(), "{bad:?} is not a case id");
@@ -186,4 +186,141 @@ fn the_compilers_own_packs_are_admitted() {
         seen += 1;
     }
     assert!(seen > 0, "the directory is there and holds no packs: {}", dir.display());
+}
+
+// ── the door itself ─────────────────────────────────────────────────────────
+
+use std::io::{BufRead, BufReader};
+use std::process::{Child, Command, Stdio};
+
+struct Server {
+    child: Child,
+    port: u16,
+    _state: std::path::PathBuf,
+}
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        let _ = std::fs::remove_dir_all(&self._state);
+    }
+}
+
+impl Server {
+    fn start() -> Server {
+        static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let state = std::env::temp_dir().join(format!("vitals-cases-{}-{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&state);
+        let mut child = Command::new(env!("CARGO_BIN_EXE_vitals-web"))
+            .env("VITALS_WEB_BIND", "127.0.0.1:0")
+            .env("VITALS_STATE_DIR", &state)
+            .env("VITALS_WORLD", "1")
+            .env("VITALS_WARD_DOOR", "open")
+            .env("VITALS_DOOR_TOKEN", "the-door-token")
+            .env_remove("VITALS_PROGRAM_ID")
+            .env_remove("VITALS_TOKEN")
+            .env_remove("HEIMDALL_API_KEY")
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("start vitals-web");
+        let out = child.stdout.take().expect("stdout");
+        let mut me = Server { child, port: 0, _state: state };
+        for line in BufReader::new(out).lines().map_while(Result::ok) {
+            if let Some(a) = line.split("http://").nth(1) {
+                me.port = a.trim().rsplit(':').next().and_then(|p| p.parse().ok()).unwrap_or(0);
+                break;
+            }
+        }
+        assert!(me.port > 0, "server never said what port it took");
+        me
+    }
+
+    fn post(&self, path: &str, body: &Value) -> (u16, Value) {
+        let url = format!("http://127.0.0.1:{}{path}", self.port);
+        let r = ureq::post(&url)
+            .set("Authorization", "Bearer the-door-token")
+            .set("Content-Type", "application/json")
+            .send_string(&body.to_string());
+        match r {
+            Ok(res) => (res.status(), res.into_json().unwrap_or(Value::Null)),
+            Err(ureq::Error::Status(c, res)) => (c, res.into_json().unwrap_or(Value::Null)),
+            Err(e) => panic!("{url}: {e}"),
+        }
+    }
+
+    fn get(&self, path: &str) -> (u16, Value) {
+        let url = format!("http://127.0.0.1:{}{path}", self.port);
+        match ureq::get(&url).call() {
+            Ok(res) => (res.status(), res.into_json().unwrap_or(Value::Null)),
+            Err(ureq::Error::Status(c, res)) => (c, res.into_json().unwrap_or(Value::Null)),
+            Err(e) => panic!("{url}: {e}"),
+        }
+    }
+}
+
+/// **A compiled case arrives, and the ward can say what it is holding.**
+#[test]
+fn a_case_comes_in_through_the_door_and_the_ward_lists_it() {
+    let s = Server::start();
+    let (code, body) = s.post("/api/ward/case", &a_pack());
+    assert_eq!(code, 200, "{body}");
+    assert_eq!(body["stored"], "auth-demo-1");
+
+    let (code, list) = s.get("/api/ward/cases");
+    assert_eq!(code, 200);
+    let cases = list["cases"].as_array().expect("a list of cases");
+    assert_eq!(cases.len(), 1);
+    assert_eq!(cases[0]["case_id"], "auth-demo-1");
+    assert_eq!(cases[0]["country"], "THA");
+    assert_eq!(cases[0]["difficulty"], "resident");
+    assert_eq!(cases[0]["provisional"], true);
+    assert_eq!(cases[0]["version"], "0.1.0");
+    // The list is a catalogue, not the catalogue's contents: a pack is 20 KB of scenario and
+    // nobody browsing the ward's cases needs it.
+    assert!(cases[0].get("sce").is_none(), "the list does not carry the scenarios");
+}
+
+/// **Provisional means it can be recompiled. Reviewed means it cannot.**
+///
+/// A case somebody has already played is a case the chain carries shifts against, and replacing
+/// it under the same id would rewrite what those shifts were about. So the moment a pack says it
+/// has been reviewed, the door stops taking a second one.
+#[test]
+fn a_provisional_case_may_be_replaced_and_a_reviewed_one_may_not() {
+    let s = Server::start();
+    assert_eq!(s.post("/api/ward/case", &a_pack()).0, 200);
+
+    let mut newer = a_pack();
+    newer["version"] = json!("0.2.0");
+    let (code, body) = s.post("/api/ward/case", &newer);
+    assert_eq!(code, 200, "a provisional case is recompiled all day: {body}");
+    assert_eq!(s.get("/api/ward/cases").1["cases"][0]["version"], "0.2.0");
+
+    let mut reviewed = a_pack();
+    reviewed["provisional"] = json!(false);
+    reviewed["version"] = json!("1.0.0");
+    assert_eq!(s.post("/api/ward/case", &reviewed).0, 200, "review lands like any other version");
+
+    let mut after = a_pack();
+    after["version"] = json!("1.0.1");
+    let (code, body) = s.post("/api/ward/case", &after);
+    assert_eq!(code, 409, "and nothing lands on top of it: {body}");
+    let why = body["refused"].as_str().unwrap_or_default();
+    assert!(why.contains("reviewed"), "the sentence says why: {why}");
+    assert_eq!(s.get("/api/ward/cases").1["cases"][0]["version"], "1.0.0", "the reviewed one stands");
+}
+
+/// A pack the door refuses is named and the reason is the compiler's to act on.
+#[test]
+fn a_pack_the_ward_cannot_play_is_refused_with_the_reason() {
+    let s = Server::start();
+    let mut bad = a_pack();
+    bad["sce"]["outcomes"] = json!([{ "id": "win_discharge", "kind": "win", "label": "lived" }]);
+    let (code, body) = s.post("/api/ward/case", &bad);
+    assert_eq!(code, 422, "{body}");
+    assert!(body["refused"].as_str().unwrap_or_default().contains("die"), "{body}");
+    assert_eq!(s.get("/api/ward/cases").1["cases"].as_array().map(Vec::len), Some(0),
+               "and nothing was stored");
 }
