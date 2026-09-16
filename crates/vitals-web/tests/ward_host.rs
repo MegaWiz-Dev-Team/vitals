@@ -107,10 +107,10 @@ fn a_patient_id_that_is_not_a_number_is_not_an_episode() {
 #[test]
 fn a_ward_session_may_not_be_played_before_it_is_declared() {
     use vitals_web::ward::may_step;
-    assert!(may_step(false, true).is_ok(), "the Eternal bay has no head to take");
-    assert!(may_step(false, false).is_ok(), "nor does a practice run");
-    assert!(may_step(true, true).is_ok(), "a declared shift plays");
-    let refused = may_step(true, false).expect_err("an undeclared shift must not");
+    assert!(may_step(false, true, false).is_ok(), "the Eternal bay has no head to take");
+    assert!(may_step(false, false, false).is_ok(), "nor does a practice run");
+    assert!(may_step(true, true, false).is_ok(), "a declared shift plays");
+    let refused = may_step(true, false, false).expect_err("an undeclared shift must not");
     assert!(refused.contains("take"),
             "and the refusal is a sentence the person at her bed can act on: {refused}");
 }

@@ -18,6 +18,21 @@ fn literals(src: &str) -> Vec<String> {
     let code = without_comments(src);
     let mut chars = code.chars();
     while let Some(c) = chars.next() {
+        // A char literal can hold a quote — `'"' => break` is three characters of code and not the
+        // start of a string. Reading it as one desynchronises the scanner for the rest of the
+        // file, which is how this test first "found" a literal made of forty lines of Rust.
+        if c == '\'' {
+            while let Some(c) = chars.next() {
+                match c {
+                    '\\' => {
+                        chars.next();
+                    }
+                    '\'' => break,
+                    _ => {}
+                }
+            }
+            continue;
+        }
         if c != '"' {
             continue;
         }

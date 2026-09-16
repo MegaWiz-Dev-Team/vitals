@@ -3914,6 +3914,12 @@ async function handOverInner(){
   wardSay('reducing your shift…');
   const over_=await (await fetch('/api/handover?id='+id+asMe())).json();
   if(over_.error)return wardSay(esc(over_.error));
+  /* The tape has been reduced and the leaf named, so the clock stops here. It used to keep
+     ticking through the anchor — each tick another step posted to /api/step — and the anchor then
+     reduced a longer tape than the one the hand-over had filed: two hashes for one shift, and the
+     chain took the one nobody kept. The server refuses those steps now; this is the page not
+     making them. */
+  stop();
   wardSay('anchoring '+over_.shift.beats+' beat'+(over_.shift.beats===1?'':'s')+' onto '+pro().p+' chain…');
   const a=await wardDo('/api/ward/anchor?id='+id);
   if(a.refused){

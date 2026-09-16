@@ -246,6 +246,13 @@ struct Session {
     saved_at: Option<std::time::Instant>,
     /// Which shift on the ward this run is, when it is one. `None` is the Eternal bay, unchanged.
     ward: Option<WardShift>,
+    /// Handed over: reduced, named and finished. Nothing more goes on this tape.
+    ///
+    /// Set when `/api/handover` has computed the leaf, because that is the moment a tape stops
+    /// being a thing in progress and becomes a thing with a name. A step after it lands on a tape
+    /// that has already been counted — which on 16 ก.ย. put one hash on chain and another in the
+    /// store, and left a patient nobody could open.
+    handed_over: bool,
 }
 
 /// One shift on the ward: whose, which link in her chain, and the head it must extend.
@@ -298,6 +305,9 @@ struct Saved {
     /// existed reads back as what it was: a run in the bay.
     #[serde(default)]
     ward: Option<WardShift>,
+    /// Handed over, so a restart cannot un-finish a shift.
+    #[serde(default)]
+    handed_over: bool,
 }
 
 const SESSIONS: &str = "sessions";
@@ -345,6 +355,7 @@ impl Session {
             commit: self.commit,
             exam_mode: self.exam_mode,
             ward: self.ward.clone(),
+            handed_over: self.handed_over,
         }
     }
 
@@ -404,6 +415,7 @@ impl Session {
             said: saved.said,
             saved_at: Some(std::time::Instant::now()),
             ward: saved.ward,
+            handed_over: saved.handed_over,
         })
     }
 }
@@ -1779,6 +1791,7 @@ fn new_session(ep: &str) -> Result<Session, String> {
         commit: None,
         exam_mode: false,
         ward: None,
+        handed_over: false,
         })
 }
 
@@ -1909,6 +1922,7 @@ fn open_shift(
             commit: None,
             exam_mode: false,
             ward: Some(shift),
+            handed_over: false,
         },
         ward_view,
     ))
@@ -2675,7 +2689,18 @@ fn main() {
                 std::thread::sleep(WARD_TICK);
                 match ward_chain::WardChain::connect() {
                     Ok(chain) => {
-                        let t = ward_chain::tick(&chain, &store, &root, now_secs());
+                        // What this server still holds, for the repair: every stored run's
+                        // scenario and tape. A leaf the chain names whose tape is lost is
+                        // recoverable only from here, and only while these are still on disk.
+                        let held: Vec<(String, Vec<Step>)> = store
+                            .list::<Saved>(SESSIONS)
+                            .into_iter()
+                            .filter_map(|(_, sv)| {
+                                let p = scenario_path(&sv.ep);
+                                std::fs::read_to_string(p).ok().map(|sce| (sce, sv.tape))
+                            })
+                            .collect();
+                        let t = ward_chain::tick(&chain, &store, &root, now_secs(), &held);
                         for note in &t.notes {
                             println!("ward       {note}");
                         }
@@ -3155,8 +3180,9 @@ fn main() {
                     // A shift nobody has taken is a chart you may read and not a patient you may
                     // treat. The page has refused this since the morning of 16 ก.ย.; this is the
                     // server refusing it, which is the half a scripted client cannot skip.
-                    Some(s) if ward::may_step(s.ward.is_some(), s.commit.is_some()).is_err() => {
-                        let why = ward::may_step(s.ward.is_some(), s.commit.is_some()).unwrap_err();
+                    Some(s) if ward::may_step(s.ward.is_some(), s.commit.is_some(), s.handed_over).is_err() => {
+                        let why = ward::may_step(s.ward.is_some(), s.commit.is_some(), s.handed_over)
+                            .unwrap_err();
                         drop(map);
                         let _ = req.respond(json_code(serde_json::json!({ "error": why }), 409));
                         continue;
@@ -4312,13 +4338,26 @@ fn main() {
                                 let sce = sce_hash(&s.sce_json);
                                 match record_for(who.to_bytes(), sce, sce, s.difficulty,
                                                  s.exam_mode, &s.tape, &r, chash, cslot) {
-                                    Ok(rec) => Ok((
-                                        ward_chain::anchor_shift_ix(
-                                            chain.program_id(), &chain.operator(), &who,
-                                            w.patient_id, ward_chain::WARD_TREE,
-                                            ward_chain::wire(&rec), prev_head),
-                                        WardWork::Anchor { session: id.clone(), patient_id: w.patient_id },
-                                    )),
+                                    // The tape is filed under this record's own run hash, here,
+                                    // before the instruction exists. The hand-over files one too,
+                                    // and on 16 ก.ย. the two disagreed — the page's clock kept
+                                    // ticking between them — so the chain took this hash and the
+                                    // store held the other, and the patient could not be rebuilt
+                                    // by anybody. A leaf on chain whose tape was never kept is
+                                    // worse than a shift that did not anchor, so a failure here
+                                    // refuses the instruction rather than going ahead.
+                                    Ok(rec) => match ward_chain::keep_for_anchor(
+                                        &store, w.patient_id, &rec, &s.tape,
+                                    ) {
+                                        Err(e) => Err(e),
+                                        Ok(_) => Ok((
+                                            ward_chain::anchor_shift_ix(
+                                                chain.program_id(), &chain.operator(), &who,
+                                                w.patient_id, ward_chain::WARD_TREE,
+                                                ward_chain::wire(&rec), prev_head),
+                                            WardWork::Anchor { session: id.clone(), patient_id: w.patient_id },
+                                        )),
+                                    },
                                     Err(e) => Err(e),
                                 }
                             }
@@ -4503,8 +4542,16 @@ fn main() {
                     run_hash: run_hash.clone(),
                     steps: s.tape.clone(),
                 });
+                // Frozen from here. The tape has been reduced and the leaf named; anything more
+                // would be a step onto a tape that has already been counted.
+                s.handed_over = true;
+                persist(&store, &id, s, true);
                 let out = serde_json::json!({
                     "patient_id": w.patient_id,
+                    // Said in the payload rather than inferred by the page from a field's absence:
+                    // the page has to stop its own clock on this, and a flag it has to guess at is
+                    // a clock that keeps running.
+                    "handed_over": true,
                     // What the anchor must name, and what it must extend. Both go on chain; the
                     // program refuses a reveal that does not extend the head it was told.
                     "run_hash": run_hash,

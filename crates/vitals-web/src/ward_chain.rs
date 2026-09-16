@@ -783,12 +783,12 @@ impl WardChain {
         if !self.has_account(&me) {
             if let Err(e) = self.now(open_account_ix(&self.program_id, &self.operator, &me)) {
                 if !e.to_lowercase().contains("already") {
-                    return Err(format!("the ward has no account of its own to close her with: {e}"));
+                    return Err(format!("the ward has no account of its own to close this patient with: {e}"));
                 }
             }
         }
         self.now(take_shift_ix(&self.program_id, &self.operator, &me, patient_id))
-            .map_err(|e| format!("the ward could not take her head to close her: {e}"))?;
+            .map_err(|e| format!("the ward could not take the head to close this patient: {e}"))?;
 
         // Declared before it is anchored, like every other shift. There is nothing to hide in a
         // shift nobody played, and the point is that the program's one path is the path.
@@ -796,7 +796,7 @@ impl WardChain {
         let sce = vitals_replay::sce_hash(sce_json);
         let hash = vitals_progress::record::commitment_hash(&sce, &me.to_bytes(), &nonce, 0);
         self.now(commit_ix(&self.program_id, &self.operator, &me, hash))
-            .map_err(|e| format!("the ward could not declare her closing shift: {e}"))?;
+            .map_err(|e| format!("the ward could not declare the closing shift: {e}"))?;
         let slot = self
             .commitment(&me)
             .map(|c| c.slot)
@@ -808,7 +808,7 @@ impl WardChain {
         self.now(anchor_shift_ix(
             &self.program_id, &self.operator, &me, patient_id, WARD_TREE, wire(&rec), prev_head,
         ))
-        .map_err(|e| format!("her closing shift would not anchor: {e}"))
+        .map_err(|e| format!("the closing shift would not anchor: {e}"))
     }
 
     /// One instruction, signed here and sent now. The host's key is funder and device both, which
@@ -884,7 +884,7 @@ pub fn validate_pack(p: &crate::ward::Pack) -> Result<(), String> {
     use crate::ward::CATALOGUE;
     if !CATALOGUE.contains(&p.case.as_str()) {
         return Err(format!(
-            "{} is not a case this ward serves — queueing her would put a patient on the board \
+            "{} is not a case this ward serves — queueing it would put a patient on the board \
              that no shift can open",
             p.case
         ));
@@ -979,7 +979,7 @@ pub fn portrait_entry(state: &str, src: &str) -> Result<(String, bool), String> 
         None => (state, false),
     };
     if at == "dead" {
-        return Err("no picture of a dead patient is made — the board shows her last living \
+        return Err("no picture of a dead patient is made — the board shows the last living \
                     state and says died in words"
             .into());
     }
@@ -1188,6 +1188,59 @@ pub fn scenario_hash(root: &std::path::Path, case: &str) -> Result<[u8; 32], Str
     Ok(vitals_replay::sce_hash(&text))
 }
 
+/// Put back a tape the chain names and this ward has lost.
+///
+/// It happened on 16 ก.ย.: an anchor reduced a tape two ticks longer than the one the hand-over
+/// had filed, so the chain carried a leaf whose tape was nowhere, and a bed sat on the board that
+/// no stranger could take. `keep_for_anchor` is what stops it recurring; this is what repairs the
+/// patients it already happened to.
+///
+/// `held` is every session this server still has. A tape that reduces to the missing leaf **is**
+/// that shift — a leaf commits to the scenario, the steps and the reduction together — so filing
+/// it is recovery rather than a guess. Nothing that reduces to it means the shift is gone, and the
+/// note says so; `read_ward` then marks her unrebuildable on the board rather than offering a bed
+/// nobody can take.
+fn repair(
+    chain: &WardChain,
+    store: &crate::store::Store,
+    patients: &[crate::ward::PatientOnChain],
+    packs_now: &std::collections::BTreeMap<u64, crate::ward::Pack>,
+    held: &[(String, Vec<vitals_replay::Step>)],
+    out: &mut Ticked,
+) {
+    use crate::ward::OPEN;
+    for p in patients.iter().filter(|p| p.state == OPEN) {
+        if !packs_now.contains_key(&p.patient_id) {
+            continue;
+        }
+        let key = format!("p{}", p.patient_id);
+        let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
+        if chain.refresh(p.patient_id, &mut seen).is_err() {
+            continue;
+        }
+        for shift in seen.shifts() {
+            let hash = hex32(&shift.run_hash);
+            if tape_by_hash(store, &hash).is_some() {
+                continue;
+            }
+            match recover_tape(store, p.patient_id, &hash, held) {
+                Some(t) => out.notes.push(format!(
+                    "patient {}: the tape for {hash} was missing and has been put back from a \
+                     session still held here — {} steps",
+                    p.patient_id,
+                    t.len()
+                )),
+                None => out.notes.push(format!(
+                    "patient {}: the chain names a shift at slot {} with run hash {hash} and no \
+                     tape here reduces to it. That chart cannot be rebuilt, so the patient is off \
+                     the board rather than in a bed nobody can take",
+                    p.patient_id, shift.slot
+                )),
+            }
+        }
+    }
+}
+
 /// Close every open patient the engine has already finished.
 ///
 /// Read, decide, write — and every step says why it stopped when it stops. A patient the ward
@@ -1220,7 +1273,7 @@ fn reap(
         let path = case_path(root, &pack.case);
         let Ok(sce) = std::fs::read_to_string(&path) else {
             out.notes.push(format!(
-                "patient {} plays {}, which is not on this host, so her chart cannot be read",
+                "patient {} plays {}, which is not on this host, so the chart cannot be read",
                 p.patient_id, pack.case
             ));
             continue;
@@ -1241,11 +1294,11 @@ fn reap(
             p.admitted_slot,
             now_slot,
         );
-        let her = match found {
+        let closing = match found {
             Ok(Some(u)) => u,
             Ok(None) => continue,
             Err(e) => {
-                out.notes.push(format!("patient {} could not be rebuilt, so she was left as she is: {e}", p.patient_id));
+                out.notes.push(format!("patient {} could not be rebuilt and was left as found: {e}", p.patient_id));
                 continue;
             }
         };
@@ -1265,18 +1318,18 @@ fn reap(
             Some("intern") => vitals_progress::Difficulty::Intern,
             _ => vitals_progress::Difficulty::Student,
         };
-        match chain.close_unattended(p.patient_id, &sce, difficulty, &her.replay, head) {
+        match chain.close_unattended(p.patient_id, &sce, difficulty, &closing.replay, head) {
             Ok(sig) => {
                 out.closed.push(p.patient_id);
                 out.notes.push(format!(
                     "patient {} died with nobody on shift — {} after {} slots alone, closed by the \
                      ward — {sig}",
-                    p.patient_id, her.outcome, her.idle_slots
+                    p.patient_id, closing.outcome, closing.idle_slots
                 ));
             }
             Err(e) => out.notes.push(format!(
-                "patient {} is finished and would not close: {e}. She stays on the board until the \
-                 next tick, which is the honest state — the chain has not been told yet",
+                "patient {} is finished and would not close: {e}. That bed stays on the board until \
+                 the next tick, which is the honest state — the chain has not been told yet",
                 p.patient_id
             )),
         }
@@ -1316,6 +1369,7 @@ pub fn tick(
     store: &crate::store::Store,
     root: &std::path::Path,
     now_unix: u64,
+    held: &[(String, Vec<vitals_replay::Step>)],
 ) -> Ticked {
     use crate::ward::{to_admit, BEDS, OPEN};
     let mut out = Ticked::default();
@@ -1345,6 +1399,9 @@ pub fn tick(
     // the top of this function, where she is still open — so the board carries her last state and
     // the sentence for one minute before the queue takes the bed. That minute is the only time
     // anybody sees that somebody died there, and it is the ward the founder chose.
+    // Before anything else: a leaf on chain whose tape this ward has lost. She cannot be opened,
+    // rebuilt or closed until it is back, so the repair runs ahead of the reaping that needs it.
+    repair(chain, store, &patients, &packs_now, held, &mut out);
     reap(chain, store, root, &patients, &packs_now, &mut out);
 
     // Beds, not chain rows: a patient the ward cannot describe holds none (`beds_taken`), so she
@@ -1378,7 +1435,7 @@ pub fn tick(
         let hash = match scenario_hash(root, &pack.case) {
             Ok(h) => h,
             Err(e) => {
-                out.notes.push(format!("{} has no scenario here, so she was dropped: {e}", pack.case));
+                out.notes.push(format!("{} has no scenario here, so that pack was dropped: {e}", pack.case));
                 store.del(QUEUE_STORE, &id);
                 continue;
             }
@@ -1399,7 +1456,7 @@ pub fn tick(
             }
             Err(e) => {
                 out.notes.push(format!(
-                    "admitting {patient_id} failed, and her pack is spent: {e}"
+                    "admitting {patient_id} failed, and that pack is spent: {e}"
                 ));
                 break;
             }
@@ -1443,8 +1500,8 @@ pub fn replace_queued_portraits(
     let mut out = Filled::default();
     let Some(mut pack) = store.get::<crate::ward::Pack>(QUEUE_STORE, pack_id) else {
         out.rejected.push(format!(
-            "no pack {pack_id} is waiting — she may be in a bed already, and a patient's faces are \
-             added through her own door and never replaced"
+            "no pack {pack_id} is waiting — that patient may be in a bed already, and an \
+             admitted patient's faces are added through their own door and never replaced"
         ));
         return out;
     };
@@ -1574,7 +1631,7 @@ pub fn resumed(
         let hash = hex32(&s.run_hash);
         let steps = tape_of(&hash).ok_or_else(|| {
             format!(
-                "her chart cannot be rebuilt: the chain says a shift anchored at slot {} with run \
+                "this chart cannot be rebuilt: the chain says a shift anchored at slot {} with run \
                  hash {hash}, and that tape is not here. Nothing is shown rather than a patient \
                  nobody can check",
                 s.slot
@@ -1670,7 +1727,58 @@ pub fn tape_by_hash(
 pub fn keep_tape(store: &crate::store::Store, tape: &StoredTape) -> Result<(), String> {
     store
         .put(TAPE_STORE, &tape.run_hash, tape)
-        .map_err(|e| format!("her tape could not be kept, so the shift is unrebuildable: {e}"))
+        .map_err(|e| format!("the tape could not be kept, so the shift is unrebuildable: {e}"))
+}
+
+/// File the tape under the hash the instruction is about to put on chain.
+///
+/// **One reduction, one hash.** The hand-over reduces the shift and files the tape under the leaf
+/// it computed; the anchor reduces it again to build the record. On 16 ก.ย. those two disagreed —
+/// the page's clock kept posting ticks between them — and the chain took the anchor's hash while
+/// the store held the hand-over's, leaving a patient nobody could rebuild. So the anchor files it
+/// too, under `rec.run_hash` itself rather than under anything computed a second time, and the
+/// caller refuses to build the instruction if this fails: a leaf on chain whose tape was never
+/// kept is worse than a shift that did not anchor.
+pub fn keep_for_anchor(
+    store: &crate::store::Store,
+    patient_id: u64,
+    rec: &vitals_progress::record::AttemptRecord,
+    tape: &[vitals_replay::Step],
+) -> Result<String, String> {
+    let run_hash = hex32(&rec.run_hash);
+    keep_tape(store, &StoredTape { patient_id, run_hash: run_hash.clone(), steps: tape.to_vec() })?;
+    Ok(run_hash)
+}
+
+/// Find the tape behind a leaf the chain carries and this ward has lost.
+///
+/// `held` is what the server still has in memory or on disk: each entry a scenario and a tape. A
+/// tape that reduces to the missing leaf **is** that shift — the leaf commits to the scenario, the
+/// steps and the reduction, so nothing else can produce it — and filing it makes the patient
+/// openable again. A tape that reduces to some other leaf is somebody else's shift and is left
+/// alone; `None` then, and the board says she cannot be rebuilt rather than this filing a guess
+/// under her name.
+pub fn recover_tape(
+    store: &crate::store::Store,
+    patient_id: u64,
+    leaf_hex: &str,
+    held: &[(String, Vec<vitals_replay::Step>)],
+) -> Option<Vec<vitals_replay::Step>> {
+    for (sce_json, tape) in held {
+        let Ok(r) = vitals_replay::replay(sce_json, tape) else { continue };
+        let leaf = vitals_replay::leaf(&vitals_replay::sce_hash(sce_json), tape, &r);
+        if hex32(&leaf) != leaf_hex {
+            continue;
+        }
+        keep_tape(store, &StoredTape {
+            patient_id,
+            run_hash: leaf_hex.to_string(),
+            steps: tape.clone(),
+        })
+        .ok()?;
+        return Some(tape.clone());
+    }
+    None
 }
 
 /// The ward's leaf list on chain.
@@ -1754,12 +1862,12 @@ pub fn refusal(err: &str) -> Option<&'static str> {
     let code = err.split("custom program error: 0x").nth(1)?;
     let code: String = code.chars().take_while(|c| c.is_ascii_hexdigit()).collect();
     Some(match u32::from_str_radix(&code, 16).ok()? {
-        16 => "her chart moved while you were with her: somebody else anchored a shift on the head \
+        16 => "this chart moved while you were at the bedside: somebody else anchored a shift on the head \
                you were extending. Your work is still on your tape — open her again and it will be \
                played on the patient as she is now",
         17 => "someone is already in the room with her. A shift is held until it is anchored or \
                its time runs out, and then the head is free for anybody",
-        18 => "she has left the ward — a stay that ended is not one anybody can add to",
+        18 => "this patient has left the ward — a stay that ended is not one anybody can add to",
         19 => "the head is not yours to give back: somebody else holds this shift",
         _ => return None,
     })
@@ -1839,7 +1947,7 @@ pub fn receipt(
         "tape": format!("/api/tape/{hash}"),
         "derivations": {
             "player": "the key that signed this shift's AnchorShift transaction",
-            "did": "this tape replayed on the patient the chain says she was — the beats and the \
+            "did": "this tape replayed on the patient the chain says was in that bed — the beats and the \
                     harm are this shift's own, never what it walked into",
             "det": "the case's rubric, recomputed from the tape by the same code the anchor used. \
                     Absent when the case has no rubric — absent rather than zero, because zero is \

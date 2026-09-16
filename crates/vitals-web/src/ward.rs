@@ -336,11 +336,20 @@ pub fn portrait_small_for<'a>(
 /// The gate is **the declaration**, not a flag of our own: it is the thing the chain stamps, and
 /// the server only prepares one for a player the chain says is holding her head. A run that is not
 /// a shift is not gated at all — there is no head to take in the season's bay.
-pub fn may_step(on_the_ward: bool, declared: bool) -> Result<(), String> {
-    if !on_the_ward || declared {
+pub fn may_step(on_the_ward: bool, declared: bool, handed_over: bool) -> Result<(), String> {
+    if !on_the_ward {
         return Ok(());
     }
-    Err("take the shift first — her chart is the chain, and nothing you do is on it until the \
+    // The other end of the same shift. The hand-over reduces the tape and names the leaf that is
+    // about to go on chain; a step after it lands on a tape that has already been counted, and
+    // that is how a patient came to have two hashes for one shift and be openable by nobody.
+    if handed_over {
+        return Err("this shift has been handed over — nothing more goes on this tape".into());
+    }
+    if declared {
+        return Ok(());
+    }
+    Err("take the shift first — the chart is the chain, and nothing you do is on it until the \
          head is yours"
         .into())
 }
@@ -579,8 +588,8 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                          else if on_shift { "on_shift" }
                          else { state_word(p.state) },
                 "note": adrift.then_some(
-                    "admitted outside the ward · no bed — she is on the chain and the ward has no \
-                     pack for her, so there is no case to open and no bed she holds"),
+                    "admitted outside the ward · no bed — this patient is on the chain and the ward \
+                     has no pack, so there is no case to open and no bed held"),
                 // When the person in the room with her started, as a time a browser can render.
                 // Derived: the lease ends a known number of slots after it is taken, so the start
                 // is the end minus that, carried back to wall time through this read's own slot.
@@ -635,21 +644,21 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
             "died": "patient accounts whose state is died, counted by closed_slot",
             "shifts": "anchored leaves, one per shift",
             "patients": "one entry per patient account on chain — id, state, shifts and slots \
-                         read from the account. Her case, her name and her country are not on \
-                         chain at all: they come from the pack that was queued for her, joined by \
-                         patient id, and are null for a patient no pack describes yet. The \
-                         difficulty is that case's own level in the catalogue, the same one the \
-                         bay publishes, never a second opinion. `on_shift` is the patient's lease \
-                         standing at this read's slot, and `on_shift_since` is that lease's start \
-                         carried to wall time; `bed` is her place among the open patients in \
-                         admission order **among the patients the ward can describe**; one it \
-                         cannot has no case to open and holds no bed, and says so in her own row. \
-                         `portraits` is her whole set and `portrait` is the one to draw now — the \
-                         nearest picture no worse than the state she is in, at 256 px when that \
-                         sibling exists (`<state>_256` in the set) and full size when it does \
-                         not. The bedside asks for the full one; this is a board. Her physiological \
-                         status is not derived here yet, so a patient on the ward is drawn with \
-                         her base picture and only the endings are exact",
+                         read from the account. The case, the name and the country are not on \
+                         chain at all: they come from the pack that was queued, joined by patient \
+                         id, and are null for a patient no pack describes yet. The difficulty is \
+                         that case's own level in the catalogue, the same one the bay publishes, \
+                         never a second opinion. `on_shift` is the patient's lease standing at \
+                         this read's slot, and `on_shift_since` is that lease's start carried to \
+                         wall time; `bed` is a place among the open patients in admission order \
+                         **among the patients the ward can describe**; one it cannot has no case \
+                         to open and holds no bed, and says so in its own row. `portraits` is the \
+                         whole set and `portrait` is the one to draw now — the nearest picture no \
+                         worse than the state reported, at 256 px when that sibling exists \
+                         (`<state>_256` in the set) and full size when it does not. The bedside \
+                         asks for the full one; this is a board. Physiological status is not \
+                         derived here yet, so a patient on the ward is drawn with the base \
+                         picture and only the endings are exact",
             "keys": "distinct signers of AnchorShift transactions on the ward's patient accounts, \
                      read from transaction history and cached; repeatable with \
                      getSignaturesForAddress. Keys, not humans: there is no signup, so one holder \
@@ -806,7 +815,7 @@ fn policy() -> serde_json::Value {
             "resident": CATALOGUE.iter().filter(|c| difficulty_of(c) == Some("resident")).count(),
         }),
         "endemic": format!(
-            "where a patient is from never selects her disease. A country with an endemic list \
+            "where a patient is from never selects the disease. A country with an endemic list \
              contributes one draw in {ENDEMIC_IN} for patients from it — dengue is about \
              mosquitoes and thalassemia about carrier frequency, which is epidemiology and not a \
              claim about people. The list is reviewed data and may only name cases the ward can \
