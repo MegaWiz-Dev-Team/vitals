@@ -2224,12 +2224,24 @@ fn percent_decode(s: &str) -> String {
 /// Playing is open because a kiosk should just work. Signing a transaction on request is not,
 /// and "whoever can reach the port" is not an authorisation model.
 fn guarded(path: &str) -> bool {
-    // The factory's two doors write to the ward — the patients strangers will be handed, and the
-    // faces on them — from a job on another machine. Guarded for the same reason the signing
-    // routes are: without a token, anybody could fill the beds with patients of their own, or put
-    // a picture of their choosing on somebody else's patient.
-    matches!(path, "/api/anchor" | "/api/claim" | "/api/commit" | "/api/say" | "/api/ward/queue")
-        || path.starts_with("/api/ward/pack/")
+    // The player's own routes: this server signing with its own key, on its own sessions, for the
+    // page it is showing. The page has to be able to call them, so they answer to the page's
+    // token — which is printed into `bay.js` and is therefore public by design.
+    matches!(path, "/api/anchor" | "/api/claim" | "/api/commit" | "/api/say")
+}
+
+/// The factory's two doors: the patients strangers will be handed, and the faces on them.
+///
+/// **They take their own secret** (`VITALS_DOOR_TOKEN`) and never the page's. Until 16 ก.ย. they
+/// took `VITALS_TOKEN`, which `bay.js` prints for every visitor — so the key to the ward's write
+/// side was on a public page, and anybody who opened a shift could fill the beds with patients of
+/// their own or put a picture of their choosing on somebody else's patient.
+///
+/// A secret printed into a page cannot also be a secret that lets somebody write. That is the rule
+/// the split exists for, and it is why there is no fallback below: a ward with no door token opens
+/// no doors at all, rather than quietly opening them to the token everybody has.
+fn door(path: &str) -> bool {
+    path == "/api/ward/queue" || path.starts_with("/api/ward/pack/")
 }
 
 fn bearer_ok(req: &tiny_http::Request, token: &Option<String>) -> bool {
@@ -2294,6 +2306,9 @@ fn main() {
         std::env::var("VITALS_WEB_BIND").ok().as_deref(),
     );
     let token = std::env::var("VITALS_TOKEN").ok().filter(|s| !s.is_empty());
+    // The factory's own key. Deliberately a second variable rather than a second use of the first:
+    // the page's token is printed into `bay.js` and this one must never be.
+    let door_token = std::env::var("VITALS_DOOR_TOKEN").ok().filter(|s| !s.is_empty());
     let loopback = addr.starts_with("127.") || addr.starts_with("localhost");
     if !loopback && token.is_none() {
         // Refusing to start is the only honest option. Bound to a public interface with no token,
@@ -2612,6 +2627,22 @@ fn main() {
                     .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap()),
             );
             continue;
+        }
+        if door(&path) {
+            // No secret of their own, no doors. Never the page's token as a fallback: that is the
+            // bug this split exists for, and a fallback is how it would come back.
+            let Some(want) = door_token.clone() else {
+                let _ = req.respond(json_code(serde_json::json!({
+                    "error": "this ward has no VITALS_DOOR_TOKEN, so the factory's doors are shut.                               They take their own secret and never the page's — the page's is                               printed into bay.js for every visitor"
+                }), 503));
+                continue;
+            };
+            if !bearer_ok(&req, &Some(want)) {
+                let _ = req.respond(json_code(serde_json::json!({
+                    "error": "unauthorised — the factory's doors take VITALS_DOOR_TOKEN, which is                               not the token the page carries"
+                }), 401));
+                continue;
+            }
         }
         // ── the reviewer's answers: the one route in this server that reads a body ──────────
         //
@@ -5873,12 +5904,14 @@ mod tests {
         for p in ["/api/anchor", "/api/claim", "/api/commit", "/api/say"] {
             assert!(guarded(p), "{p} makes the server sign or spend");
         }
-        assert!(guarded("/api/ward/queue"),
-                "the factory's door writes the patients strangers are handed — ungated, anyone \
-                 could fill the ward with their own");
-        assert!(guarded("/api/ward/pack/42"),
-                "and the other door puts faces on them — ungated, anyone could put a picture of \
-                 their choosing on a patient strangers are treating");
+        // The factory's two doors are on the other guard, and deliberately not on this one: this
+        // one's token is printed into `bay.js` for every visitor.
+        for p in ["/api/ward/queue", "/api/ward/pack/42"] {
+            assert!(door(p), "{p} writes to the ward and takes the ward's own secret");
+            assert!(!guarded(p),
+                    "{p} must not answer to the page's token — it is on a public page, and this \
+                     is the bug of 16 ก.ย.");
+        }
         for p in ["/", "/play", "/api/new", "/api/step", "/api/finish", "/api/kit", "/api/tape", "/api/chain",
                   "/api/meter", "/api/fuel", "/api/stars", "/api/lang", "/api/usage", "/donate",
                   // The ward's census. The endpoint is the source the weekly card photographs
@@ -5904,6 +5937,7 @@ mod tests {
                   // "re-derivable by anyone we gave a token to", which is not the claim.
                   "/api/sce/0000000000000000000000000000000000000000000000000000000000000000"] {
             assert!(!guarded(p), "{p} is play, and a kiosk must not need a token to play");
+            assert!(!door(p), "{p} is play, and the factory's key opens the factory's doors only");
         }
     }
 
