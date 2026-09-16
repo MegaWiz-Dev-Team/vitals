@@ -399,3 +399,72 @@ fn a_patient_is_given_a_case_from_the_wards_own_catalogue() {
     assert_eq!(choose_case(&cases, None, "THA", None).map(|c| c.case_id.clone()),
                Some("ugib-2".into()), "newest version, whatever level it was written for");
 }
+
+// ── the patient door, now that cases have one of their own ──────────────────
+
+/// **A patient pack names a case the ward holds, or none at all.**
+///
+/// The factory built her for a case, or it did not and the ward will choose. What it may not do
+/// any more is name one of the season's sixteen: those are vitals.academy's and the ward plays
+/// what comes through `/api/ward/case`.
+///
+/// The check that the case *is held* belongs at the queue door rather than in the pack's own
+/// shape, because it is a question about this ward at this moment — the same pack is valid the
+/// minute after the compiler sends the case.
+#[test]
+fn a_patient_pack_names_a_case_this_ward_holds_or_none() {
+    use vitals_web::store::Store;
+    use vitals_web::ward::{Pack, Persona};
+    use vitals_web::ward_case::CASE_STORE;
+    use vitals_web::ward_chain::enqueue;
+
+    let dir = std::env::temp_dir().join(format!("vitals-patient-door-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store = Store::open(dir.clone()).expect("a store");
+    store.put(CASE_STORE, "auth-demo-1", &a_pack()).expect("a case the ward holds");
+
+    let her = |case: &str| Pack {
+        case: case.to_string(),
+        difficulty: None,
+        persona: Persona { name: "Anita Shrestha".into(), country: "NPL".into(), age: 34, sex: "f".into() },
+        portrait: Default::default(),
+        endemic: false,
+    };
+
+    let ok = enqueue(&store, vec![her("auth-demo-1")]);
+    assert_eq!(ok.queued, 1, "{:?}", ok.rejected);
+
+    let none = enqueue(&store, vec![her("")]);
+    assert_eq!(none.queued, 1, "a pack with no case at all is the ward's to place: {:?}", none.rejected);
+
+    let season = enqueue(&store, vec![her("osce-a2")]);
+    assert_eq!(season.queued, 0, "the season's sixteen are refused at this door now");
+    let why = season.rejected.first().cloned().unwrap_or_default();
+    assert!(why.contains("/api/ward/case"), "and the sentence says where cases come from: {why}");
+
+    let absent = enqueue(&store, vec![her("auth-demo-never-sent")]);
+    assert_eq!(absent.queued, 0, "a case this ward does not hold is a patient nobody could open");
+    let why = absent.rejected.first().cloned().unwrap_or_default();
+    assert!(why.contains("auth-demo-never-sent"), "named: {why}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// And the level she was built for, when the factory knows it.
+#[test]
+fn a_patient_pack_may_say_which_level_she_was_built_for() {
+    use vitals_web::ward::{Pack, Persona};
+
+    let p = Pack {
+        case: String::new(),
+        difficulty: Some("intern".into()),
+        persona: Persona { name: "Anita".into(), country: "NPL".into(), age: 34, sex: "f".into() },
+        portrait: Default::default(),
+        endemic: false,
+    };
+    assert!(vitals_web::ward_chain::validate_pack(&p).is_ok());
+
+    let bad = Pack { difficulty: Some("consultant".into()), ..p.clone() };
+    let why = vitals_web::ward_chain::validate_pack(&bad).expect_err("refused");
+    assert!(why.contains("consultant"), "named: {why}");
+}
