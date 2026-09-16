@@ -603,3 +603,60 @@ fn the_wards_first_paint_carries_no_patient() {
                 "and the bay keeps its own first paint — this is composed per host, not deleted");
     }
 }
+
+/// **The words a learner works in are big enough to work in.**
+///
+/// From the first user test by a medical student, 16 ก.ย.: *"น่าใช้งานดี อยากให้ตัวอักษรใหญ่กว่านี้
+/// จะดีมากค่า"* — it is nice to use, the letters should be bigger. Measured in a browser at
+/// 1460×900 afterwards, the text she was working in was: the question chips 11.8 px, the kit's mode
+/// buttons 11.5 px, the ask bar 12.8 px, and the sheet's own labels — PATIENT, PRESENTS — 9.1 px.
+///
+/// Those are the three surfaces somebody actually reads while treating a patient: what they can
+/// ask, what they can type, and the sheet they read before the clock starts. A headline at 22 px
+/// over a tray at 11.8 px is a page that looks designed and reads badly.
+///
+/// So this is a floor rather than a type scale: the chips, the kit, the ask bar and the sheet's
+/// labels do not go below it. Asserted in the stylesheet rather than in a browser because it is the
+/// stylesheet that decides — and because `rem` here is 16 px, set on `:root` and unchanged.
+#[test]
+fn the_words_a_learner_reads_are_big_enough() {
+    let css = bay_css();
+    // The font-size a selector sets, in px, reading `rem` as 16 and taking the rule's own value.
+    let size = |selector: &str| -> f64 {
+        let rule = css
+            .split(&format!("{selector}{{"))
+            .nth(1)
+            .unwrap_or_else(|| panic!("{selector} has no rule of its own any more"))
+            .split('}')
+            .next()
+            .unwrap_or("")
+            .to_string();
+        let raw = rule
+            .split("font-size:")
+            .nth(1)
+            .unwrap_or_else(|| panic!("{selector} sets no font-size: {rule}"));
+        let digits: String = raw.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+        let n: f64 = digits.parse().unwrap_or_else(|_| panic!("{selector}: {raw}"));
+        // `.74rem` is 11.84 px and `.74` of nothing is not a size — the unit is read off the source
+        // rather than assumed, because assuming px here would have passed this test on a page that
+        // sets rem.
+        if raw[digits.len()..].starts_with("rem") { n * 16.0 } else { n }
+    };
+
+    for (selector, floor, what) in [
+        (".chips .btn", 13.5, "the questions, the drugs and the differential — the tray"),
+        (".acts.order-mode .chips .btn", 13.0, "the same tray in order mode"),
+        (".modes .btn", 13.0, "the kit's own rows"),
+        ("#cmd", 14.0, "the line a stranger types into"),
+        (".stem-g dt", 10.5, "PATIENT, PRESENTS — the sheet's labels"),
+        (".stem-f", 10.5, "the note at the foot of the sheet"),
+    ] {
+        let px = size(selector);
+        assert!(px >= floor,
+                "{selector} is {px}px — {what}, and a learner said these were too small to work in");
+    }
+
+    // And the sheet stays a sheet: the headline is still the biggest thing on it, so raising the
+    // floor has not flattened the page into one size.
+    assert!(size(".stem-t") > size(".stem-g dd"), "the headline leads the sheet");
+}
