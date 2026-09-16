@@ -1164,3 +1164,55 @@ fn the_bedside_never_shows_an_empty_frame() {
     assert_eq!(portrait_at_the_bedside(&Default::default(), "stable"), None,
                "a patient with no pictures at all still has none");
 }
+
+/// **A bed is a number a patient keeps for her whole stay.**
+///
+/// It was her position among the open patients, so when Salma left bed 2 the man in bed 3 became
+/// the man in bed 2 — while the founder was being told "Yonas เตียง 3". A bed that renumbers
+/// itself when somebody else goes home is not a bed; it is an index.
+///
+/// Still derived, and still from the chain alone: walk the admissions and the closings in slot
+/// order, give each arrival the lowest free number, and hand it back when she leaves. Two readers
+/// of the same chain get the same beds, and nobody has to keep a note.
+#[test]
+fn a_bed_is_kept_for_the_whole_stay() {
+    use std::collections::BTreeMap;
+    use vitals_web::ward::{beds_of, Pack, Persona};
+
+    let pack = |name: &str| Pack {
+        case: "osce-c".into(),
+        persona: Persona { name: name.into(), country: "THA".into(), age: 6, sex: "f".into() },
+        portrait: Default::default(),
+        endemic: false,
+    };
+    let packs: BTreeMap<u64, Pack> =
+        [(1, pack("Anita")), (2, pack("Salma")), (3, pack("Yonas"))].into_iter().collect();
+
+    // Three admitted in order; nobody has left.
+    let three = vec![patient(1, OPEN, 0, 10, 0), patient(2, OPEN, 0, 20, 0), patient(3, OPEN, 0, 30, 0)];
+    let beds = beds_of(&three, &packs, &Default::default());
+    assert_eq!((beds[&1], beds[&2], beds[&3]), (1, 2, 3), "in the order they arrived");
+
+    // Salma goes home. Yonas keeps bed 3 — he was told it, and nothing about him changed.
+    let after = vec![patient(1, OPEN, 0, 10, 0), patient(2, DISCHARGED, 1, 20, 40), patient(3, OPEN, 0, 30, 0)];
+    let beds = beds_of(&after, &packs, &Default::default());
+    assert_eq!(beds.get(&2), None, "a patient who left holds no bed");
+    assert_eq!((beds[&1], beds[&3]), (1, 3), "and nobody else moves");
+
+    // The next admission takes the bed that was freed, which is the lowest free one.
+    let next = vec![
+        patient(1, OPEN, 0, 10, 0), patient(2, DISCHARGED, 1, 20, 40),
+        patient(3, OPEN, 0, 30, 0), patient(4, OPEN, 0, 50, 0),
+    ];
+    let mut packs4 = packs.clone();
+    packs4.insert(4, pack("Kwame"));
+    let beds = beds_of(&next, &packs4, &Default::default());
+    assert_eq!(beds[&4], 2, "the freed bed is the one the ticker fills");
+    assert_eq!((beds[&1], beds[&3]), (1, 3), "and the other two are where they were");
+
+    // A patient the ward cannot describe or cannot rebuild holds no bed, as before.
+    let lost: BTreeMap<u64, String> = [(3u64, "9".repeat(64))].into_iter().collect();
+    let beds = beds_of(&next, &packs4, &lost);
+    assert_eq!(beds.get(&3), None, "unrebuildable holds nothing");
+    assert_eq!(beds[&4], 2, "and the numbers of the others do not move because of it");
+}

@@ -33,9 +33,9 @@ function grab(name) {
   throw new Error(`${name} is not in the page any more — renamed, or deleted with its test left behind`);
 }
 
-const { takeFirst, wardWho, wardAged } = new Function(
-  [grab('takeFirst'), grab('wardWho'), grab('wardAged'),
-   'return { takeFirst, wardWho, wardAged };'].join('\n'))();
+const { takeFirst, wardWho, wardAged, stateSentence } = new Function(
+  [grab('takeFirst'), grab('wardWho'), grab('wardAged'), grab('stateSentence'),
+   'return { takeFirst, wardWho, wardAged, stateSentence };'].join('\n'))();
 
 // ── the sentence, and when there is one ──────────────────────────────────────
 assert.equal(takeFirst(null, null, 'her'), null, 'the Eternal bay is not a ward and is never gated');
@@ -70,3 +70,19 @@ assert.equal(wardAged('Fever 39 for 2 days', 8), 'Fever 39 for 2 days',
              'a number that is not an age is not touched');
 
 console.log('shift_logic: ok');
+
+// ── what the chain says happened to her, in a sentence ───────────────────────
+// "handed over. her chain is 2 shifts long and she is went home." The state is a word from the
+// chain — went_home, died, on_ward — and a sentence needs the verb that word already contains.
+const her = { s: 'she', o: 'her', p: 'her' };
+const him = { s: 'he', o: 'him', p: 'his' };
+assert.equal(stateSentence('went_home', her), 'she went home');
+assert.equal(stateSentence('died', him), 'he died');
+assert.equal(stateSentence('on_ward', her), 'she is on the ward',
+             'still here is a state rather than an ending, and reads like one');
+assert.equal(stateSentence('', her), 'she is on the ward',
+             'an unknown word is not an ending either — the chain says what it says and the page \
+does not invent a verb for it');
+assert.equal(stateSentence('unrebuildable', him), 'he is on the ward');
+
+console.log('shift_logic: ok (sentences too)');
