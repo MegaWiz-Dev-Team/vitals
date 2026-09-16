@@ -917,6 +917,34 @@ fn every_time_the_ward_publishes_is_a_slot_or_a_z() {
     assert_eq!(payloads[0]["week"]["basis"], "UTC");
 }
 
+/// **And no page on the ward has a zone of its own.**
+///
+/// The other half of the founder's question. The payload carries slots, unix seconds and Z-suffixed
+/// instants; the pages turn those into the viewer's own local time with the browser's own
+/// formatter, and that is the only place a zone exists. A hard-coded offset or a named zone
+/// anywhere in the ward's pages would be Bangkok's clock rendered for a reader in Nairobi, quietly.
+#[test]
+fn no_page_on_the_ward_carries_a_time_zone() {
+    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static");
+    for file in ["world/index.html", "world/shift.html", "bay.js", "bay-surface.html"] {
+        let src = std::fs::read_to_string(dir.join(file)).unwrap_or_else(|e| panic!("{file}: {e}"));
+        // A named zone, an offset written out, or a formatter told which zone to use. The viewer's
+        // own is the only correct answer and it is the browser's default.
+        for banned in ["Asia/", "America/", "Europe/", "timeZone:", "timeZone =", "GMT+", "UTC+", "+07:00", "+0700"] {
+            assert!(!src.contains(banned),
+                    "{file} names a time zone ({banned:?}) — the ward has none, and the viewer's \
+                     is the browser's to supply");
+        }
+        // And nothing parses a bare datetime: a string with no Z is a moment nobody can place, and
+        // the globe already refuses one rather than guessing (`whenMs`).
+        assert!(!src.contains("new Date(\""), "{file} builds a date from a literal string");
+    }
+
+    // The globe says so in its own words, where the next person to touch it will read it.
+    let globe = std::fs::read_to_string(dir.join("world/index.html")).expect("the globe");
+    assert!(globe.contains("a zone is the"), "the rule is written where the code that keeps it is");
+}
+
 /// **A bed is a patient the ward can describe.**
 ///
 /// Founder, 16 ก.ย., on three test patients wedging staging shut: "แก้ไขระยะยาวเลย" — the long-term
