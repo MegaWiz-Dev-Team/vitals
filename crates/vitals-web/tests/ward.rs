@@ -583,10 +583,14 @@ fn the_globe_reads_every_field_it_renders() {
 
     let ploy = by_id(7);
     assert_eq!(ploy["state"], "on_shift", "somebody is in the room with her and the lease stands");
-    let since = ploy["on_shift_since"].as_u64().expect("on shift since, in unix seconds");
-    assert!(since < now && now - since < 2 * 60 * 60,
+    // An instant, not a bare number: the page renders it in the reader's own zone and the string
+    // means one moment to everybody. Checked against the clock the payload was built with.
+    let since = ploy["on_shift_since"].as_str().expect("on shift since, as a UTC instant");
+    assert!(since.ends_with('Z'), "{since}");
+    assert!(since < vitals_web::ward::utc_iso(now).as_str()
+                && since > vitals_web::ward::utc_iso(now - 2 * 60 * 60).as_str(),
             "her shift started a plausible time ago, derived from the lease rather than from a \
-             note this server kept: {since} against {now}");
+             note this server kept: {since} against {}", vitals_web::ward::utc_iso(now));
     assert_eq!(ploy["bed"], 1, "first of the open patients by admission");
     assert_eq!(ploy["age"], 34);
     assert_eq!(ploy["endemic"], true, "drawn from her country's list, and the pack says so");

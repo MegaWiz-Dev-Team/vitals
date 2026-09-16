@@ -167,6 +167,27 @@ pub fn difficulty_of(case: &str) -> Option<&'static str> {
     })
 }
 
+/// A unix instant as ISO 8601 in UTC, with the Z that says so.
+///
+/// The ward computes in no other zone and stores nobody's. A browser renders this in the reader's
+/// own zone with `Intl`, which needs no question asked and nothing kept — and the string itself
+/// means exactly one moment to every reader, which a bare local time does not.
+pub fn utc_iso(secs: u64) -> String {
+    let (days, rem) = ((secs / 86_400) as i64, secs % 86_400);
+    // Days-from-civil, the same arithmetic `usage::day_key` uses; one algorithm for dates, so the
+    // funnel's days and the ward's instants can never disagree about which day it is.
+    let z = days + 719_468;
+    let era = z / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", rem / 3600, (rem % 3600) / 60, rem % 60)
+}
+
 /// The case's persona with the ward's patient in it: her name, her age, nothing else.
 ///
 /// The voice is built from the case's persona file, and on the ward the person in the bed is not
@@ -457,6 +478,9 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
         Some(s) => serde_json::json!(s),
         None => serde_json::Value::Null,
     };
+    // Said, because a week is a different week in Bangkok and somebody comparing two screenshots
+    // has no other way to know which one we counted.
+    w["basis"] = serde_json::json!("UTC");
     // Which bed each open patient is in. Not on chain — the program knows patients, not furniture
     // — so it is derived the one way that is stable between two reads: open patients in the order
     // they were admitted. A patient who leaves frees her number for the next admission, which is
@@ -483,7 +507,7 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                 "on_shift_since": on_shift.then(|| {
                     let took = p.lease_until_slot.saturating_sub(LEASE_SLOTS);
                     let ago = as_of_slot.saturating_sub(took) as f64 * SLOT_SECONDS;
-                    r.now_unix.saturating_sub(ago as u64)
+                    utc_iso(r.now_unix.saturating_sub(ago as u64))
                 }),
                 "bed": bed_of(p.patient_id),
                 "shifts": p.shifts,
