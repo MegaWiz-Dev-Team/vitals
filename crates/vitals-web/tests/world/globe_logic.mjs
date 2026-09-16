@@ -36,8 +36,8 @@ const grabConst = (name) => {
   return `${m[1]} ${name} = ${m[2]};`;
 };
 
-const sandbox = [grabConst('ALPHA3'), grabConst('SLOT_MS'), grab('countryId'), grab('countryCounts'), grab('visible'),
-  grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
+const sandbox = [grabConst('ALPHA3'), grabConst('SLOT_MS'), grabConst('STATE_LABEL'), grab('countryId'), grab('countryCounts'), grab('visible'),
+  grab('stateOf'), grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
   'return { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine };'].join('\n');
 const { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine } = new Function(sandbox)();
 
@@ -142,7 +142,7 @@ assert.equal(waiting.title, `admitted ${absolute(NOW - 3 * 86_400_000)}`);
 const home = line({ state: 'went_home', admitted_slot: AS_OF - 900_000, closed_slot: AS_OF - 6 * 9000 });
 assert.equal(home.text, 'went home · 6 h ago');
 assert.equal(home.title, `left ${absolute(NOW - 6 * 3_600_000)}`);
-const died = line({ state: 'died', admitted_slot: AS_OF - 900_000, closed_slot: AS_OF - 150 });
+const died = line({ state: 'died', admitted_slot: AS_OF - 900_000, closed_slot: AS_OF - 50 });   // 50 slots = 20 s
 assert.equal(died.text, 'died · just now');
 const bare = line({ state: 'on_ward' });
 assert.equal(bare.text, 'on the ward', 'no time in the payload, no time on the page');
