@@ -1,0 +1,82 @@
+{
+  "meta": {
+    "id": "synthetic-septic-shock-test",
+    "title": "Synthetic test case: three days of fever, now cold and confused",
+    "specialty": "eir-emergency",
+    "difficulty": "intern",
+    "clinical_tier": 5,
+    "care_setting": "ER",
+    "language": "en",
+    "source": "authored",
+    "version": "0.0.1",
+    "country": "ZZZ",
+    "search_tags": ["synthetic", "sepsis", "septic shock", "test"]
+  },
+  "patient": {
+    "name": "Alpha Testperson",
+    "age": 41,
+    "sex": "F",
+    "persona": { "affect": "drowsy", "personality": "cooperative", "health_literacy": "low", "verbosity": "terse", "hidden_agenda": "none", "evasiveness": "none" }
+  },
+  "presentation": {
+    "chief_complaint": "Fever for three days, now cold hands and confusion.",
+    "hpi": "Synthetic history for a test. Nothing here is a real person.",
+    "pmh": [], "medications": [], "allergies": [], "social": "none", "family": "none"
+  },
+  "symptom_script": [
+    { "finding": { "display": "Fever with rigors for 3 days" }, "present": true, "reveal": "volunteered", "patient_words": "I have been shaking with fever for three days." },
+    { "finding": { "display": "Dysuria" }, "present": true, "reveal": "on_ask", "patient_words": "It burns when I pass water." },
+    { "finding": { "display": "Recent antibiotic course stopped early" }, "present": true, "reveal": "on_direct_ask", "patient_words": "I stopped the tablets after two days because I felt better. I did not want to say." },
+    { "finding": { "display": "Cough" }, "present": false, "reveal": "on_ask", "patient_words": "No cough." }
+  ],
+  "exam_findings": [
+    { "system": "vitals", "finding": { "display": "Blood pressure" }, "value": "82/50 mmHg (MAP 61)" },
+    { "system": "vitals", "finding": { "display": "Heart rate" }, "value": "130/min, regular, thready" },
+    { "system": "vitals", "finding": { "display": "Respiratory rate" }, "value": "28/min" },
+    { "system": "vitals", "finding": { "display": "Oxygen saturation (SpO2)" }, "value": "94% on room air" },
+    { "system": "vitals", "finding": { "display": "Temperature" }, "value": "38.9 °C" },
+    { "system": "general", "finding": { "display": "General appearance" }, "value": "Pale, sweaty; cold clammy peripheries, capillary refill 4 seconds; drowsy but rousable (GCS 14, E3 V5 M6)" },
+    { "system": "abdomen", "finding": { "display": "Abdominal examination" }, "value": "Right loin tenderness; no peritonism" }
+  ],
+  "investigations": [
+    { "order": { "display": "Lactate and blood gas" }, "result": { "value": "lactate 5.2 mmol/L, pH 7.28", "flag": "critical" } },
+    { "order": { "display": "Blood cultures x 2" }, "result": { "value": "Sent; result pending", "flag": "normal" } },
+    { "order": { "display": "Complete blood count" }, "result": { "value": "WBC 22, Hb 11, Plt 150", "flag": "abnormal" } },
+    { "order": { "display": "Urinalysis" }, "result": { "value": "Leucocytes 3+, nitrite positive", "flag": "abnormal" } }
+  ],
+  "hidden": {
+    "correct_diagnosis": { "display": "Septic shock from an ascending urinary tract infection", "aliases": ["urosepsis", "septic shock"] },
+    "differential": [ { "dx": { "display": "Pyelonephritis without shock" }, "probability": 0.2 } ],
+    "expected_workup": [
+      { "display": "Lactate and blood gas" },
+      { "display": "Blood cultures x 2" },
+      { "display": "Complete blood count" },
+      { "display": "Urinalysis" }
+    ],
+    "red_flags": [
+      "SBP 82, lactate 5.2, CRT 4 s and new confusion = septic shock — antibiotics within 1 hour after cultures",
+      "Do not give NSAIDs with an acute kidney injury"
+    ],
+    "management_plan": [
+      "Recognise septic shock: two blood cultures, then broad-spectrum IV antibiotics (ceftriaxone 2 g) within the first hour",
+      "Fluids: 30 mL/kg balanced crystalloid in boluses of 500 mL with reassessment after each",
+      "Start noradrenaline if MAP stays below 65 mmHg after fluids",
+      "Oxygen to keep SpO2 at or above 94%",
+      "Do not give NSAIDs; paracetamol for fever",
+      "Admit to ICU or a high-dependency unit",
+      "Explain to the patient what is happening and obtain consent"
+    ],
+    "rubric": {
+      "pass_mark": 60,
+      "dimensions": [
+        { "key": "history_completeness", "label": "History", "weight": 15, "scoring": "checklist", "criteria": ["fever duration", "urinary symptoms", "antibiotic course"] },
+        { "key": "communication", "label": "Communication", "weight": 10, "scoring": "llm_judge" },
+        { "key": "examination", "label": "Examination", "weight": 10, "scoring": "checklist", "criteria": ["perfusion", "abdomen"] },
+        { "key": "investigation_choice", "label": "Investigations", "weight": 15, "scoring": "checklist", "criteria": ["lactate", "cultures"] },
+        { "key": "diagnostic_accuracy", "label": "Diagnosis", "weight": 25, "scoring": "snomed_graded" },
+        { "key": "management_safety", "label": "Management", "weight": 15, "scoring": "llm_judge" },
+        { "key": "red_flag_recognition", "label": "Red flags", "weight": 10, "scoring": "llm_judge" }
+      ]
+    }
+  }
+}
