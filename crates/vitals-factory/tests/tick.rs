@@ -103,12 +103,12 @@ impl Door for FakeDoor {
                 out.rejected.push(why);
                 continue;
             }
-            let id = pack_id(p);
-            if q.contains_key(&id) {
-                out.duplicates += 1;
-            } else {
-                q.insert(id, p.clone());
-                out.queued += 1;
+            match q.entry(pack_id(p)) {
+                std::collections::btree_map::Entry::Occupied(_) => out.duplicates += 1,
+                std::collections::btree_map::Entry::Vacant(v) => {
+                    v.insert(p.clone());
+                    out.queued += 1;
+                }
             }
         }
         out.depth = q.len();
