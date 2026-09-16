@@ -75,12 +75,12 @@ fn a_stations_sex_and_band_are_the_doors_own() {
 /// reads its own — so if one appears for an episode, she is read the same way the stations are.
 #[test]
 fn a_persona_file_the_door_has_not_baked_in_is_read_the_way_the_door_reads_them() {
-    assert!(case_patient("ep2-stemi").is_none(), "this test is about the gap");
-    let c = read_case("ep2-stemi", BARE_SCENARIO, Some(&persona("M", 58))).expect("the file builds him");
+    assert!(case_patient("ep2").is_none(), "this test is about the gap");
+    let c = read_case("ep2", BARE_SCENARIO, Some(&persona("M", 58))).expect("the file builds him");
     assert_eq!(c.sex, Sex::M);
     assert_eq!(c.band, age_band(58));
-    assert!(c.source.contains("demo/personas/ep2-stemi.json"), "{}", c.source);
-    let why = read_case("ep2-stemi", BARE_SCENARIO, Some(&persona("x", 40))).expect_err("x is nobody").why;
+    assert!(c.source.contains("demo/personas/ep2.json"), "{}", c.source);
+    let why = read_case("ep2", BARE_SCENARIO, Some(&persona("x", 40))).expect_err("x is nobody").why;
     assert!(why.contains("sex"), "{why}");
 }
 
@@ -90,27 +90,27 @@ fn a_persona_file_the_door_has_not_baked_in_is_read_the_way_the_door_reads_them(
 #[test]
 fn a_ward_block_in_the_scenario_serves_a_case_with_no_persona_file() {
     let sce = r#"{"_note":"MOCK","ward":{"sex":"f","age":[30,40]},"setting":"ED"}"#;
-    let c = read_case("ep4-pulmonary-embolism", sce, None).expect("the block builds her");
+    let c = read_case("ep4", sce, None).expect("the block builds her");
     assert_eq!(c.sex, Sex::F);
     assert_eq!(c.band, 30..=40);
     assert!(c.source.contains("ward"), "source names the block: {}", c.source);
 
     // A single number is widened the way the door widens an authored age.
     let sce = r#"{"ward":{"sex":"m","age":9}}"#;
-    let c = read_case("ep3-epiglottitis", sce, None).expect("a number is an authored age");
+    let c = read_case("ep3", sce, None).expect("a number is an authored age");
     assert_eq!(c.band, age_band(9));
 
     // Against a persona file, the file wins — it is what the door checks.
-    let c = read_case("ep2-stemi", sce, Some(&persona("F", 40))).expect("builds");
+    let c = read_case("ep2", sce, Some(&persona("F", 40))).expect("builds");
     assert_eq!((c.sex, c.band.clone()), (Sex::F, age_band(40)));
 }
 
 /// No block, no persona file: not built, and the reason names what is missing.
 #[test]
 fn a_case_no_file_describes_is_not_built() {
-    let why = read_case("ep2-stemi", BARE_SCENARIO, None).expect_err("nothing states her sex or age").why;
+    let why = read_case("ep2", BARE_SCENARIO, None).expect_err("nothing states her sex or age").why;
     assert!(why.contains("sex") && why.contains("age"), "says what is missing: {why}");
-    assert!(why.contains("demo/personas/ep2-stemi.json"), "and where it would be read from: {why}");
+    assert!(why.contains("demo/personas/ep2.json"), "and where it would be read from: {why}");
 }
 
 /// The practice case has no level on the ward, so it has no place in a pack.

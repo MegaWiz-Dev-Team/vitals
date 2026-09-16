@@ -95,6 +95,6 @@ fn a_dry_run_reads_a_real_socket_and_writes_nothing() {
     assert!(stdout.contains("dry run"), "{stdout}");
     assert!(stdout.contains("would then build 3 pack(s)"), "{stdout}");
     assert!(stdout.contains("this build publishes no queue block"), "read the real fixture over the socket: {stdout}");
-    assert!(stdout.contains("not built: ep2-stemi"), "says which cases it will not build: {stdout}");
+    assert!(stdout.contains("not built: ep2"), "says which cases it will not build: {stdout}");
     assert!(!world.exists(), "a dry run creates nothing, not even the world directory");
 }
