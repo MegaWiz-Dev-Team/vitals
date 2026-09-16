@@ -10,4 +10,5 @@
 //! A case the archetype library cannot honestly model is **refused with a reason**, never forced.
 #![forbid(unsafe_code)]
 
+pub mod archetype;
 pub mod embla;
