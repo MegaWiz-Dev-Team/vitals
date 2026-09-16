@@ -210,3 +210,41 @@ assert.equal(shiftLine(2, 4, 1, him),
   'one shift is one shift, and the patient is a man');
 
 console.log('shift_logic: ok (and the strip says which bed)');
+
+// ── the one button that ends a shift ─────────────────────────────────────────
+//
+// On the ward it says "hand over" in the markup, and then the bay's own code renames it. Press it
+// once: it arms, and the line under it becomes "The case plays out from where you leave it" — the
+// season's warning, about a station, on a public ward. Six seconds later `disarmEnd` puts back what
+// it thinks the label is, and the button reads "I have finished", which is not a thing a stranger
+// at a bed has done or can do.
+//
+// The line under it was worse: served in the markup as "writes it to her chain. She stays on the
+// ward" — over whoever is actually in the bed.
+const { endWords } = new Function([grab('endWords'), 'return { endWords };'].join('\n'))();
+
+assert.equal(endWords(null, false, her), null, 'in the bay the words are the pack’s, untouched');
+assert.equal(endWords(null, true, her), null);
+
+const rest = endWords('1789554596', false, her);
+assert.equal(rest.label, 'hand over');
+assert.match(rest.note, /writes it to her chain/, 'the patient’s own pronoun, not the sentence’s');
+assert.match(rest.note, /^Ends your shift/);
+assert.match(rest.note, /She stays on the ward/, 'and capitalised where the sentence starts');
+assert.equal(rest.note.includes('I have finished'), false);
+
+const armed = endWords('1789554596', true, him);
+assert.match(armed.label, /hand over/, 'the second press is the same act, said again');
+assert.equal(armed.label.includes('end'), false, '"end" is the station’s word: a stay does not end here');
+assert.match(armed.note, /his chain/);
+assert.equal(armed.note.includes('her'), false, 'the ward admits men');
+
+// Nothing of the station in either.
+for (const w of [rest, armed]) {
+  for (const season of ['the attempt', 'the case plays out', 'marks are computed', 'station']) {
+    assert.equal(w.note.toLowerCase().includes(season), false,
+                 `the ward's own button says ${season!==undefined?JSON.stringify(season):''}: ${w.note}`);
+  }
+}
+
+console.log('shift_logic: ok (and the hand-over button is the ward’s own)');
