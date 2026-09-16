@@ -45,7 +45,7 @@
     { "order": { "display": "Urinalysis" }, "result": { "value": "Leucocytes 3+, nitrite positive", "flag": "abnormal" } }
   ],
   "hidden": {
-    "correct_diagnosis": { "display": "Septic shock from an ascending urinary tract infection", "aliases": ["urosepsis", "septic shock"] },
+    "correct_diagnosis": { "display": "Septic shock from an ascending urinary tract infection", "aliases": ["septic shock", "urosepsis"] },
     "differential": [ { "dx": { "display": "Pyelonephritis without shock" }, "probability": 0.2 } ],
     "expected_workup": [
       { "display": "Lactate and blood gas" },
