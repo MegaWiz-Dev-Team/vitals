@@ -215,6 +215,7 @@ const placed = p => { const id = countryId(p.country); return id !== null && DRA
 
 let patients = [];         // from /api/ward
 let census = null;
+let asOf = { slot: null, at: Date.now() };   // the read's slot, and when it arrived
 let filter = { student: true, intern: true, resident: true };
 let counts = { byId: {}, unknown: 0 };
 let selected = null;       // atlas id
@@ -227,16 +228,13 @@ function recompute() {
   draw();
 }
 
-async function load() {
-  try {
-    const r = await fetch("/api/ward", { cache: "no-store" });
-    if (!r.ok) throw new Error(String(r.status));
-    const j = await r.json();
-    patients = Array.isArray(j.patients) ? j.patients : [];
-    census = j.census || j;   // the census keys may sit at the top level or under `census`
-  } catch (e) {
-    patients = []; census = null;
-  }
+// One consumer for the board, whatever carried it: the fetch below, or the stream's `ward`
+// event, which is the same payload pushed. `asOf` anchors the read's slot to the moment it
+// arrived, which is what every slot on the board is measured against.
+function render(j) {
+  patients = j && Array.isArray(j.patients) ? j.patients : [];
+  census = j ? (j.census || j) : null;   // the census keys may sit at the top level or under `census`
+  asOf = j && typeof j.as_of_slot === "number" ? { slot: j.as_of_slot, at: Date.now() } : { slot: null, at: Date.now() };
   const open = patients.length > 0;
   $("holding").hidden = open;
   if (!open) {
@@ -245,6 +243,18 @@ async function load() {
   }
   renderCensus();
   recompute();
+}
+
+async function load() {
+  let j = null;
+  try {
+    const r = await fetch("/api/ward", { cache: "no-store" });
+    if (!r.ok) throw new Error(String(r.status));
+    j = await r.json();
+  } catch (e) {
+    j = null;
+  }
+  render(j);
 }
 
 function renderCensus() {
@@ -264,11 +274,61 @@ function stateOf(p) {
   if (s === "2") return "died";
   return STATE_LABEL[s] ? s : "on_ward";
 }
-function since(p) {
-  const t = p.on_shift_since || p.shift_since;
-  if (!t) return "";
-  const d = new Date(typeof t === "number" ? t * 1000 : t);
-  return isNaN(d) ? "" : "since " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+// ── time ──────────────────────────────────────────────────────────────────────────────────────
+// Every timestamp on the board comes from the payload as a slot (measured against the read's own
+// `as_of_slot`), unix seconds, or a Z-suffixed UTC string. The page shows the distance from now
+// first and keeps the absolute moment, in the viewer's own zone, behind it as a title. There is
+// no server-side local time anywhere in this: the server's clock is a slot, and a zone is the
+// viewer's to have.
+// vitals_replay::SLOT_SECONDS: 0.4 s a slot.
+const SLOT_MS = 400;
+function whenMs(v, asOfSlot, nowMs) {
+  if (!v) return null;
+  if (typeof v.iso === "string") {
+    if (!/[Zz]$/.test(v.iso)) return null;      // a time with no zone is not a time to guess at
+    const t = Date.parse(v.iso);
+    return isNaN(t) ? null : t;
+  }
+  if (typeof v.unix === "number" && v.unix > 0) return v.unix * 1000;   // 0 is the program's "never"
+  if (typeof v.slot === "number" && v.slot > 0) {
+    if (typeof asOfSlot !== "number") return null;
+    return nowMs - Math.max(0, asOfSlot - v.slot) * SLOT_MS;   // a slot past the read is now
+  }
+  return null;
+}
+function relative(ms, nowMs) {
+  const s = Math.max(0, (nowMs - ms) / 1000);
+  if (s < 45) return "just now";
+  const m = Math.round(s / 60);
+  if (m < 90) return `${m} min`;
+  const h = Math.round(s / 3600);
+  if (h < 36) return `${h} h`;
+  return `${Math.round(s / 86400)} days`;
+}
+function absolute(ms) {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(ms));
+}
+// The words under a patient, and the title behind them. A payload that carries no time for her
+// state gets the state alone: no time on the page that is not in the payload.
+function stateLine(p, asOfSlot, nowMs) {
+  const st = stateOf(p);
+  const label = STATE_LABEL[st];
+  const when = v => whenMs(v, asOfSlot, nowMs);
+  const any = v => typeof v === "string" ? when({ iso: v }) : when({ unix: v });
+  const ago = r => r === "just now" ? r : `${r} ago`;
+  if (st === "on_shift") {
+    const t = any(p.on_shift_since);
+    if (t !== null) return { text: `${label} · ${relative(t, nowMs)}`, title: `since ${absolute(t)}` };
+  } else if (st === "went_home" || st === "died") {
+    const t = when({ slot: p.closed_slot });
+    if (t !== null) return { text: `${label} · ${ago(relative(t, nowMs))}`, title: `left ${absolute(t)}` };
+  } else {
+    const h = any(p.handed_over);
+    if (h !== null) return { text: `${label} · handed over ${ago(relative(h, nowMs))}`, title: `handed over ${absolute(h)}` };
+    const a = when({ slot: p.admitted_slot });
+    if (a !== null) return { text: `${label} · admitted ${ago(relative(a, nowMs))}`, title: `admitted ${absolute(a)}` };
+  }
+  return { text: label, title: "" };
 }
 function row(p, showCountry) {
   const li = document.createElement("li"); li.className = "prow";
@@ -281,8 +341,9 @@ function row(p, showCountry) {
   const diff = p.difficulty ? `<span class="tag">${p.difficulty}</span>` : "";
   const end = p.endemic ? `<span class="tag endemic">endemic</span>` : "";
   const canTake = st === "on_ward";
+  const line = stateLine(p, asOf.slot, Date.now());
   li.innerHTML = `${img}<div><b>${escapeHtml(p.name || ("patient " + p.patient_id))}${age}</b>
-    <div class="meta">${where}${bed}<span class="state ${st}">${STATE_LABEL[st]}${st === "on_shift" ? " · " + since(p) : ""}</span>${diff}${end}</div></div>
+    <div class="meta">${where}${bed}<span class="state ${st}" title="${escapeHtml(line.title)}">${escapeHtml(line.text)}</span>${diff}${end}</div></div>
     <a class="take" href="/ward/${encodeURIComponent(p.patient_id)}" aria-disabled="${!canTake}">${canTake ? "take a shift" : "view"}</a>`;
   return li;
 }
@@ -428,6 +489,8 @@ function tick(t) {
 }
 window.addEventListener("resize", resize);
 resize(); load(); requestAnimationFrame(tick);
-setInterval(load, 30000);   // the ward changes without a reload
+setInterval(load, 30000);   // the ward changes without a reload — and the poll outlives a dropped stream
+// Pushed as well as polled: the ward's stream carries the same payload the moment it changes.
+const es = new EventSource("/api/ward/stream"); es.addEventListener("ward", e => { try { render(JSON.parse(e.data)); } catch {} });
 </script>
 </html>
