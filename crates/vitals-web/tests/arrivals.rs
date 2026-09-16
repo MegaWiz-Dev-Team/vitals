@@ -124,3 +124,32 @@ fn the_ward_counts_arrivals_per_channel_and_knows_nothing_more() {
     assert_eq!(u["ward"], "not open yet");
     assert_eq!(u["usage_for_the_eternal_entry"], "https://vitals.academy/api/usage");
 }
+
+/// **The channels the founder is actually posting through tonight.**
+///
+/// `?src=` is a closed set on purpose — an open one would make our own published funnel a writable
+/// surface, whatever the last visitor felt like typing — and the cost of that choice is that a
+/// channel nobody added is counted as an arrival with no channel at all. The links going out
+/// tonight are to Colosseum, X, LinkedIn, Facebook and Discord; without these five lines every one
+/// of those arrivals lands in the same anonymous bucket, and the one question the founder will ask
+/// tomorrow — where did the people come from — has no answer for the night that mattered.
+#[test]
+fn the_channels_the_links_are_going_out_through_tonight_are_counted() {
+    use vitals_web::usage::channel;
+
+    for ours in ["colosseum", "x", "linkedin", "facebook", "discord"] {
+        assert_eq!(channel(ours), Some(ours), "{ours} is a channel links are being handed out on");
+    }
+
+    // The ones that were already here keep working.
+    for kept in ["superteam-th", "medtwitter", "reddit", "embla", "techsauce"] {
+        assert_eq!(channel(kept), Some(kept));
+    }
+
+    // Still a closed set, and still our own string: a near miss counts as an arrival with no
+    // channel rather than inventing one.
+    for not_ours in ["twitter", "x.com", "linked-in", "fb", "colosseum.org", "discord.gg"] {
+        assert_eq!(channel(not_ours), None, "{not_ours:?} is not one of ours");
+    }
+    assert_eq!(channel(" X "), Some("x"), "however the paste capitalised it");
+}
