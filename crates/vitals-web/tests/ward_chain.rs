@@ -1056,3 +1056,69 @@ fn the_small_siblings_are_added_to_a_patient_like_any_other_face() {
                "a full-size address under a _256 key is refused here too, not only at the queue");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ── the patient nobody came back to ─────────────────────────────────────────
+
+/// **Somebody has to close her, and it must not be the next stranger.**
+///
+/// The founder removed the idle cap on 16 ก.ย.: a patient nobody visits deteriorates as the engine
+/// says, and can arrest and die with nobody in the room. That leaves a question the ward has to
+/// answer rather than discover — *when is a death that happened in an idle span written down?*
+///
+/// His ruling: the ticker, never a stranger. It replays idle time for every open bed each minute
+/// and, when the engine has reached death, anchors a closing shift with an empty tape and the idle
+/// span, so the chain reads *died, nobody on shift* — and the next person to open her page finds a
+/// closed patient rather than a corpse the board still calls alive.
+///
+/// This is the decision half: pure, chain-derived, and the same arithmetic a stranger would do.
+#[test]
+fn a_patient_nobody_came_back_to_is_closed_by_the_ward_and_not_by_the_next_stranger() {
+    use vitals_web::ward_chain::died_unattended;
+
+    let sce = ep1();
+    let chart = |_: &str| Some(Vec::<Step>::new());
+
+    // Admitted, never visited, and long enough ago that the engine has finished her. EP1 arrests
+    // at 518 simulated seconds untended, which at 1:60 is a little under nine real hours.
+    let admitted = 1_000_000u64;
+    let nine_hours = (9.0 * 3600.0 / vitals_replay::SLOT_SECONDS) as u64;
+    let closed = died_unattended(&sce, &[], &chart, admitted, admitted + nine_hours)
+        .expect("the chain reads")
+        .expect("nine hours alone finishes EP1 — the whole point of the founder's ruling");
+    assert!(closed.outcome.to_lowercase().contains("death"),
+            "the engine's own word for it, carried rather than restated: {}", closed.outcome);
+    assert_eq!(closed.idle_slots, nine_hours,
+               "the span is the chain's arithmetic: admission to now, in slots");
+    assert_eq!(closed.since_slot, admitted,
+               "and it runs from her admission, because no shift has been anchored on her");
+    assert!(closed.replay.steps == 0,
+            "an empty tape — nobody did anything to her, and the record must not imply otherwise");
+
+    // An hour is an hour. She is worse, and she is alive, and the ticker leaves her alone.
+    let one_hour = (3600.0 / vitals_replay::SLOT_SECONDS) as u64;
+    assert!(died_unattended(&sce, &[], &chart, admitted, admitted + one_hour)
+                .expect("the chain reads")
+                .is_none(),
+            "a patient who is merely deteriorating is not a patient to close");
+
+    // The span runs from the last anchor, not from admission: somebody was with her at the end of
+    // it, and the time before that is already on her chart.
+    let recent = anchored("one", admitted + nine_hours);
+    let after = died_unattended(&sce, &[recent.clone()], &chart, admitted, admitted + nine_hours + one_hour)
+        .expect("the chain reads");
+    assert!(after.is_none(),
+            "an hour after a shift is an hour, however long she had been admitted before it");
+
+    let long_after = died_unattended(&sce, &[recent], &chart, admitted, admitted + nine_hours * 2)
+        .expect("the chain reads")
+        .expect("nine hours after the last shift is nine hours");
+    assert_eq!(long_after.since_slot, admitted + nine_hours, "measured from the last anchor");
+    assert_eq!(long_after.idle_slots, nine_hours);
+
+    // A tape the chain names and we have lost stops the reading. The alternative is closing a
+    // patient on a chart nobody can rebuild, which is the one thing the ward may not do.
+    let missing = anchored("never-stored", admitted + one_hour);
+    let err = died_unattended(&sce, &[missing], &|_| None, admitted, admitted + nine_hours * 2);
+    assert!(err.is_err(),
+            "her chart cannot be rebuilt, so the ward says so rather than closing her on a guess");
+}
