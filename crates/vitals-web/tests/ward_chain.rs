@@ -1106,7 +1106,7 @@ fn a_patient_nobody_came_back_to_is_closed_by_the_ward_and_not_by_the_next_stran
     // what moves is where the *next* span is measured from.
     let seen_at = admitted + one_hour;
     let recent = anchored("one", seen_at);
-    let after = died_unattended(&sce, &[recent.clone()], &chart, admitted, seen_at + one_hour)
+    let after = died_unattended(&sce, std::slice::from_ref(&recent), &chart, admitted, seen_at + one_hour)
         .expect("the chain reads");
     assert!(after.is_none(), "an hour after a shift is an hour — two real hours has not killed her");
 
