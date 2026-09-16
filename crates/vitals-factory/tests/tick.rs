@@ -695,3 +695,48 @@ fn a_state_the_editor_refuses_costs_only_that_state() {
     let man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
     assert_eq!(man2.entries["KOR-0"].portrait.len(), 4, "the three made are on file with the base; the refused two are not");
 }
+
+/// A child's worse states are asked for in clinical but gentle words — a mask, a cannula, eyes
+/// closed, the blanket — and never with the colour of skin or lips: the image editor refused the
+/// adult wording for a child as prohibited content (16 Sep), and the gentle wording, tried once
+/// per state on one child, was drawn. Adults keep the words the founder's first nine sets used.
+#[test]
+fn a_childs_worse_states_are_asked_for_gently_and_an_adults_as_before() {
+    let dir = world("gentle");
+    let pool = read_pool(POOL).unwrap();
+    let man = seed_manifest(&dir, &pool);
+    let kor0 = pool.iter().find(|p| p.key == "KOR-0").unwrap();
+    let mut ward = WardView::parse(STAGING).unwrap();
+    let put = |p: &mut vitals_factory::door::BoardPatient, who: &Person, case: &str, age: u16, stable: String| {
+        p.name = Some(who.name.clone()); p.country = Some(who.country.clone()); p.case = Some(case.into()); p.age = Some(age);
+        p.portrait = Some(stable.clone()); p.portraits = BTreeMap::from([("stable".to_string(), stable)]);
+    };
+    put(&mut ward.patients[0], kor0, "osce-c", 8, man.entries["KOR-0"].portrait["stable"].clone());
+    let door = FakeDoor::new(ward);
+    let tools = FakeTools::default();
+    let r = tick(&config(&dir, 0, 0), &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let edits = tools.edits.borrow();
+    assert_eq!(edits.len(), 5);
+    for e in edits.iter() {
+        assert!(e.starts_with("Edit this photo, keeping exactly the same person"), "identity first, always: {e}");
+        for word in ["grey", "dusky", "ashen", "blue", "sweaty", "cardiac arrest"] {
+            assert!(!e.contains(word), "a child's state carries no {word}: {e}");
+        }
+    }
+    assert!(edits.iter().any(|e| e.contains("oxygen mask")) && edits.iter().any(|e| e.contains("nasal cannula")), "{edits:?}");
+    drop(edits);
+
+    // An adult on the same tick path keeps the founder's wording.
+    let dir2 = world("gentle-adult");
+    let man2 = seed_manifest(&dir2, &pool);
+    let pak1 = pool.iter().find(|p| p.key == "PAK-1").unwrap();
+    let mut ward2 = WardView::parse(STAGING).unwrap();
+    put(&mut ward2.patients[0], pak1, "osce-d", 62, man2.entries["PAK-1"].portrait["stable"].clone());
+    let door2 = FakeDoor::new(ward2);
+    let tools2 = FakeTools::default();
+    let r = tick(&config(&dir2, 0, 0), &door2, &tools2);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let edits = tools2.edits.borrow();
+    assert!(edits.iter().any(|e| e.contains("ashen grey skin")) && edits.iter().any(|e| e.contains("cardiac arrest")), "{edits:?}");
+}
