@@ -346,6 +346,57 @@ pub fn choose_case<'a>(
     any.first().copied()
 }
 
+/// How a case describes its own patient, in words a refusal can be read in: "a 62-year-old man",
+/// "a 7-year-old girl". `None` when the case does not say.
+pub fn case_patient_words(c: &CaseSummary) -> Option<String> {
+    let (age, sex) = (c.patient_age?, c.patient_sex.as_deref()?);
+    let child = age < 16;
+    let word = match sex.to_ascii_lowercase().as_str() {
+        "male" | "m" => if child { "boy" } else { "man" },
+        "female" | "f" => if child { "girl" } else { "woman" },
+        _ => "patient",
+    };
+    Some(format!("a {age}-year-old {word}"))
+}
+
+/// The same, for the person in the pack.
+pub fn persona_words(who: &crate::ward::Persona) -> String {
+    let child = who.age < 16;
+    let word = match who.sex.to_ascii_lowercase().as_str() {
+        "m" | "male" => if child { "boy" } else { "man" },
+        "f" | "female" => if child { "girl" } else { "woman" },
+        _ => "patient",
+    };
+    format!("a {}-year-old {word}", who.age)
+}
+
+/// Does this case say something about its own patient that this person contradicts?
+///
+/// The door's question, and not quite placement's. Placement asks "is this case written about
+/// somebody like her" and answers `false` for a case that says nothing, because the ward has no
+/// grounds to *choose* it for anybody. A factory naming that same case outright is taking a
+/// decision the ward has no grounds to overrule either, so what the door refuses is a case whose
+/// own patient the pack contradicts — and every compiled pack says who its patient is.
+///
+/// `Some(sentence)` is the refusal, written for whoever runs the compiler, because they are the
+/// only person who can fix it.
+pub fn contradicts(c: &CaseSummary, who: &crate::ward::Persona) -> Option<String> {
+    let (Some(_), Some(_)) = (c.patient_age, c.patient_sex.as_deref()) else {
+        return None;
+    };
+    if fits_patient(c, who) {
+        return None;
+    }
+    Some(format!(
+        "{} is written about {} and this pack is for {} — a patient is placed on a case written \
+         about somebody of the same sex and near the same age, a child only on a child's case. \
+         Leave the pack's case empty and let the ward choose one",
+        c.case_id,
+        case_patient_words(c).unwrap_or_else(|| "somebody else".into()),
+        persona_words(who),
+    ))
+}
+
 /// Is this case written about somebody like her?
 ///
 /// The sex is the dialogue's, the examination's and the differential's, so it has to match. The

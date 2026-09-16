@@ -484,10 +484,14 @@ fn a_patient_pack_names_a_case_this_ward_holds_or_none() {
     let store = Store::open(dir.clone()).expect("a store");
     store.put(CASE_STORE, "auth-demo-1", &a_pack()).expect("a case the ward holds");
 
+    // Somebody the fixture case is written about — it is a 62-year-old man's — because a pack that
+    // contradicts the case it names is refused at this same door, which is
+    // `a_patient_is_queued_only_onto_a_case_written_about_somebody_like_her` below. This test is
+    // about whether the ward *holds* the case, and its packs must not fail for the other reason.
     let her = |case: &str| Pack {
         case: case.to_string(),
         difficulty: None,
-        persona: Persona { name: "Anita Shrestha".into(), country: "NPL".into(), age: 34, sex: "f".into() },
+        persona: Persona { name: "Anan Thepwong".into(), country: "NPL".into(), age: 60, sex: "m".into() },
         portrait: Default::default(),
         endemic: false,
     };

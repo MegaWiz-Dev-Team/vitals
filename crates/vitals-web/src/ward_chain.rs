@@ -1135,6 +1135,16 @@ pub fn enqueue(store: &crate::store::Store, packs: Vec<crate::ward::Pack>) -> Qu
         // own shape because it is a question about this ward at this moment: the same pack is good
         // the minute after the compiler sends that case, which is why the packs already waiting
         // are left alone rather than deleted.
+        // The rule the ward places by, applied to the case the factory named. It held for the
+        // patients the ward placed and not for the ones the factory placed, which is the half the
+        // factory uses — and a person on a case written about somebody else is a page telling a
+        // stranger they are treating a child while the board beside it says sixty-six.
+        if let Some(named) = held.iter().find(|c| c.case_id == pack.case) {
+            if let Some(why) = crate::ward_case::contradicts(named, &pack.persona) {
+                out.rejected.push(why);
+                continue;
+            }
+        }
         if !pack.case.is_empty() && !held.iter().any(|c| c.case_id == pack.case) {
             out.rejected.push(format!(
                 "{} is not a case this ward holds — send it through /api/ward/case first, or \
