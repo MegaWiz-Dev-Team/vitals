@@ -666,3 +666,68 @@ fn the_chain_decides_what_happened_to_her_and_in_what_order() {
                "a patient nobody came to for ten hours after she was admitted is not the patient \
                 the first stranger would have found at once");
 }
+
+// ── what the chain says no to ───────────────────────────────────────────────
+
+use vitals_web::ward_chain::{commit_ix, open_account_ix, refusal};
+
+/// A refusal is a sentence, not an error code.
+///
+/// Every one of these is a thing that happens on a working ward with strangers in it: somebody
+/// worked from a state that moved, somebody walked into a room that is taken, somebody came to a
+/// patient who went home last night. The program refuses each by its own code, and a person
+/// standing at a bed cannot read `custom program error: 0x10`.
+///
+/// This is also the demo. The refusal is the part of the ward that proves the chain is deciding
+/// rather than the server, so it has to be legible when it happens.
+#[test]
+fn a_refusal_is_a_sentence_a_person_can_act_on() {
+    let stale = refusal("Error processing Instruction 0: custom program error: 0x10")
+        .expect("StaleHead is 16");
+    assert!(stale.contains("moved") || stale.contains("somebody else"),
+            "it has to say what happened to her, not what the program is called: {stale}");
+
+    let held = refusal("… custom program error: 0x11").expect("LeaseHeld is 17");
+    assert!(held.to_lowercase().contains("someone") || held.to_lowercase().contains("somebody"),
+            "somebody is already in the room: {held}");
+
+    let closed = refusal("… custom program error: 0x12").expect("PatientClosed is 18");
+    assert!(closed.contains("left the ward") || closed.contains("stay"), "{closed}");
+
+    let not_holder = refusal("… custom program error: 0x13").expect("NotLeaseHolder is 19");
+    assert!(!not_holder.is_empty());
+
+    assert!(refusal("connection refused").is_none(),
+            "an outage is not the program refusing anything, and calling it one would tell a \
+             stranger their work was rejected when it was never sent");
+    assert!(refusal("custom program error: 0x1").is_none(),
+            "a code this ward does not know stays unexplained rather than guessed at");
+}
+
+/// The two instructions a browser needs before it can play, built the program's way.
+#[test]
+fn a_stranger_opens_an_account_and_declares_before_playing() {
+    let program = Pubkey::new_unique();
+    let operator = Pubkey::new_unique();
+    let player = Pubkey::new_unique();
+
+    let open = open_account_ix(&program, &operator, &player);
+    assert_eq!(open.program_id, program);
+    assert!(matches!(Instruction::deserialize(&mut &open.data[..]), Ok(Instruction::OpenAccount)));
+    assert_eq!(open.accounts[0].pubkey, operator, "the relay pays for the account");
+    assert!(open.accounts[0].is_signer);
+    assert_eq!(open.accounts[1].pubkey, player, "and the key that will play signs for itself");
+    assert!(open.accounts[1].is_signer);
+
+    let hash = [7u8; 32];
+    let declare = commit_ix(&program, &operator, &player, hash);
+    match Instruction::deserialize(&mut &declare.data[..]).expect("decodes") {
+        Instruction::Commit { hash: h } => assert_eq!(h, hash,
+            "the declaration binds the case before the outcome is known — that is what makes it a \
+             declaration rather than a claim"),
+        other => panic!("declaring must be Commit, not {other:?}"),
+    }
+    assert_eq!(declare.accounts.len(), 5, "the program's own five");
+    assert!(declare.accounts[0].is_signer && declare.accounts[1].is_signer,
+            "the relay pays and the player declares");
+}
