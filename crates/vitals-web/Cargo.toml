@@ -8,6 +8,9 @@ license.workspace = true
 
 [dependencies]
 tiny_http = "0.12"
+# gzip on the wire. Already in the tree through another crate, and the ward serves 620 KB of text
+# to a first visitor on a service that scales to zero.
+flate2 = "1"
 ureq = { version = "2", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

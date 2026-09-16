@@ -7761,6 +7761,7 @@ name = "vitals-web"
 version = "0.9.4"
 dependencies = [
  "borsh 1.8.0",
+ "flate2",
  "serde",
  "serde_json",
  "sha2 0.10.9",
