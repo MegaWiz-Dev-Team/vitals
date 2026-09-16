@@ -139,6 +139,11 @@ pub fn compile(case_json: &str, source: Source) -> Result<Pack, Refusal> {
         return Err(refuse(&id, "no management_plan — nothing to compile into interventions"));
     }
 
+    // Words first, then vitals: a clinic case with no blood pressure is refused as the stable
+    // presentation it is, not for the number it never needed.
+    if Archetype::candidates(&case).is_empty() {
+        return Err(refuse(&id, Archetype::none_fits(&case)));
+    }
     let v0 = case.vitals0().map_err(|e| refuse(&id, e))?;
     let a = Archetype::detect(&case, &v0).map_err(|e| refuse(&id, e))?;
     let mapped = plan::map(&case, a);

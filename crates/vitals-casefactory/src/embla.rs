@@ -213,12 +213,13 @@ fn first_bp(s: &str) -> Option<(f64, f64)> {
     let c = r.captures(s)?;
     Some((c[1].parse().ok()?, c[2].parse().ok()?))
 }
+/// The first whole number that stands on its own — not the `2` of `SpO2` or the `12` of `12-lead`.
 fn first_int(s: &str) -> Option<f64> {
-    let r = re(r"(\d{1,3})", &RE_INT);
+    let r = re(r"(?:^|[^A-Za-z0-9])(\d{1,3})(?:[^0-9.]|$)", &RE_INT);
     r.captures(s)?[1].parse().ok()
 }
 fn first_dec(s: &str) -> Option<f64> {
-    let r = re(r"(\d{2,3}(?:\.\d+)?)", &RE_DEC);
+    let r = re(r"(?:^|[^A-Za-z0-9])(\d{2,3}(?:\.\d+)?)", &RE_DEC);
     r.captures(s)?[1].parse().ok()
 }
 
@@ -277,8 +278,9 @@ impl Case {
             }
         }
 
-        // Second pass: the combined line, or a value that names its own vitals.
-        let all: String = rows.iter().map(|(d, v)| format!("{d}: {v}")).collect::<Vec<_>>().join(" | ");
+        // Second pass: the combined line, or a value that names its own vitals — across every
+        // examination row, because a heart rate sometimes lives under `cardiovascular`.
+        let all: String = self.exam_findings.iter().map(|f| format!("{}: {}", f.finding.display, f.value_text())).collect::<Vec<_>>().join(" | ");
         if bp.is_none() {
             let r = re(r"(?i)\bBP\b\D{0,12}(\d{2,3})\s*/\s*(\d{2,3})", &RE_TOK_BP);
             if let Some(c) = r.captures(&all) {
@@ -304,12 +306,14 @@ impl Case {
 
         let (sbp, dbp) = bp.ok_or_else(|| "no blood pressure in exam_findings — a monitor cannot start without one".to_string())?;
         let hr = hr.ok_or_else(|| "no heart rate in exam_findings".to_string())?;
-        let rr = rr.ok_or_else(|| "no respiratory rate in exam_findings".to_string())?;
         if sbp <= dbp || !(40.0..=300.0).contains(&sbp) {
             return Err(format!("blood pressure {sbp:.0}/{dbp:.0} is not a blood pressure"));
         }
 
         let mut assumed = Vec::new();
+        // The respiratory rate is the vital the library most often leaves out. A resting 18 is
+        // assumed and written down; the heart rate and the pressure are never assumed.
+        let rr = rr.unwrap_or_else(|| { assumed.push("rr".into()); 18.0 });
         let spo2 = spo2.unwrap_or_else(|| { assumed.push("spo2".into()); 97.0 });
         let temp = temp.unwrap_or_else(|| { assumed.push("temp".into()); 37.0 });
         let gcs = self.gcs().unwrap_or_else(|| { assumed.push("gcs".into()); 15 });

@@ -62,3 +62,17 @@ fn a_fahrenheit_temperature_is_read_in_celsius() {
     let v = case.vitals0().unwrap();
     assert!((v.temp - 38.9).abs() < 0.05, "{}", v.temp);
 }
+
+#[test]
+fn the_two_of_spo2_is_not_a_saturation() {
+    let mut case: serde_json::Value = serde_json::from_str(SYNTHETIC).unwrap();
+    case["exam_findings"] = serde_json::json!([
+        { "system": "vitals", "finding": { "display": "Hypotension" }, "value": "BP 80/50 mmHg" },
+        { "system": "vitals", "finding": { "display": "Tachycardia" }, "value": "HR 120 bpm" },
+        { "system": "vitals", "finding": { "display": "Hypoxia" }, "value": "SpO2 85% on room air" }
+    ]);
+    let case = parse_case(&case.to_string()).unwrap();
+    let v = case.vitals0().unwrap();
+    assert_eq!((v.sbp, v.hr, v.spo2), (80.0, 120.0, 85.0));
+    assert_eq!(v.assumed, vec!["rr", "temp", "gcs"]);
+}

@@ -112,8 +112,16 @@ fn unique(id: String, taken: &mut BTreeSet<String>) -> String {
     }
 }
 
+/// The part of a display name an id is made from: before any parenthesis or dash, at most five
+/// words — `CT abdomen only if stable and the diagnosis is unclear (must not delay laparotomy)`
+/// becomes `ct_abdomen_only_if_stable`.
+pub fn short_display(display: &str) -> String {
+    let head = display.split([ '(', '—', ':' ]).next().unwrap_or(display);
+    head.split_whitespace().take(5).collect::<Vec<_>>().join(" ")
+}
+
 fn id_for(prefix: &str, display: &str, n: usize, taken: &mut BTreeSet<String>) -> String {
-    let s = slug(display);
+    let s = slug(&short_display(display));
     let base = if s.is_empty() { format!("{prefix}_{n}") } else { format!("{prefix}_{s}") };
     unique(base, taken)
 }
@@ -242,11 +250,30 @@ pub fn build(case: &Case, mapped: &Mapped) -> Built {
         asks.push(Ask { id, present: line.present, reveal });
     }
 
+    // A single word is a keyword only where it is distinctive — named by exactly one of the
+    // displays the case defines. `abdominal` on both an X-ray and an examination would hand
+    // whichever is listed first to a learner who meant the other; the phrase still matches
+    // either, and the id always does.
+    let mut word_count: BTreeMap<String, usize> = BTreeMap::new();
+    for iv in &out {
+        let id = iv["id"].as_str().unwrap_or_default();
+        if id.starts_with("tx_") {
+            continue;
+        }
+        if let Some(a) = iv["match"]["any_kw"].as_array() {
+            for k in a.iter().filter_map(|k| k.as_str()) {
+                if !k.contains(' ') {
+                    *word_count.entry(k.to_string()).or_default() += 1;
+                }
+            }
+        }
+    }
     // keywords already claimed by an earlier intervention can never fire on a later one: drop
     // them there, and give every intervention its own id as a keyword of last resort
     let mut claimed: BTreeSet<String> = BTreeSet::new();
     for iv in &mut out {
         let id = iv["id"].as_str().unwrap_or_default().to_string();
+        let is_tx = id.starts_with("tx_");
         let kws: Vec<String> = iv["match"]["any_kw"]
             .as_array()
             .map(|a| a.iter().filter_map(|k| k.as_str().map(str::to_string)).collect())
@@ -254,6 +281,9 @@ pub fn build(case: &Case, mapped: &Mapped) -> Built {
         let mut kept: Vec<String> = Vec::new();
         for k in kws {
             if claimed.iter().any(|c| c == &k || k.contains(c.as_str())) {
+                continue;
+            }
+            if !is_tx && !k.contains(' ') && word_count.get(&k).copied().unwrap_or(0) > 1 {
                 continue;
             }
             kept.push(k);

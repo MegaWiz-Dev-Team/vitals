@@ -266,7 +266,8 @@ pub fn build(case: &Case, a: Archetype, v: &Vitals0, mapped: &Mapped, built: &Bu
     for p in mapped.critical() {
         let Some(t) = mapped.timed.get(p.role.id) else { continue };
         let by = by_sec(a, t.named_sec);
-        let text = format!("{} delayed past the window it had to happen in", p.role.label.to_lowercase());
+        let short = p.role.label.split(',').next().unwrap_or(p.role.label).to_lowercase();
+        let text = format!("{short} was not given by {}:{:02} — the window closed", (by as u32) / 60, (by as u32) % 60);
         // The record is the harm; the physiology is the state's own rate. Late penalties that
         // also moved the vitals, stacked on three or four timed orders, halved the untreated
         // time the archetype promises — so a late order costs marks, not a second physiology.
@@ -291,7 +292,8 @@ pub fn build(case: &Case, a: Archetype, v: &Vitals0, mapped: &Mapped, built: &Bu
         if hands_on.is_empty() {
             continue;
         }
-        let text = format!("hands-on care before {} — staff exposed", g.role.label.to_lowercase());
+        let noun = if g.role.id == "isolate" { "isolation".to_string() } else { g.role.label.to_lowercase() };
+        let text = format!("hands-on care before {noun} — staff exposed");
         triggers.push(json!({
             "id": format!("skipped_{}", g.role.id),
             "once": true,

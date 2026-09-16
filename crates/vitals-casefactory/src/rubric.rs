@@ -95,9 +95,25 @@ pub fn derive(case: &Case, a: Archetype, mapped: &Mapped, built: &Built, sim: &S
     }
 
     // ── investigations: the first four of the expected workup ────────────────────
+    // An investigation the plan also names as a treatment step (cultures before antibiotics)
+    // is credited by either id, so the learner who says "blood cultures" and lands the
+    // treatment-side intervention is not marked as having skipped the workup.
     let workup_n = case.hidden.expected_workup.len().min(built.ix.len());
     let ix: Vec<Value> = built.ix.iter().take(workup_n).take(4)
-        .map(|(id, display)| json!({ "label": format!("Ordered: {display}"), "type": "action", "needle": id }))
+        .map(|(id, display)| {
+            let low = crate::interventions::short_display(display).to_lowercase();
+            let twins: Vec<String> = mapped.present.iter()
+                .filter(|p| p.role.kind != crate::archetype::Kind::Harmful && p.role.kw.iter().any(|k| low.contains(k)))
+                .map(crate::plan::Present::tx_id)
+                .collect();
+            if twins.is_empty() {
+                json!({ "label": format!("Ordered: {display}"), "type": "action", "needle": id })
+            } else {
+                let mut any_of = vec![id.clone()];
+                any_of.extend(twins);
+                json!({ "label": format!("Ordered: {display}"), "type": "action_any", "any_of": any_of })
+            }
+        })
         .collect();
 
     // ── diagnosis ────────────────────────────────────────────────────────────────
@@ -121,14 +137,27 @@ pub fn derive(case: &Case, a: Archetype, mapped: &Mapped, built: &Built, sim: &S
             no_harm.push(json!({ "label": format!("Did not give: {}", p.role.label.to_lowercase()), "type": "no_harm", "needle": h }));
         }
     }
-    for (_, text) in &sim.trigger_harms {
+    // The clock's harms come after the case's own, and at most two of them: the timed
+    // `action_by` items already score timeliness, so these are the reminder, not the mark.
+    let mut late_items = 0;
+    for (id, text) in &sim.trigger_harms {
+        if id.starts_with("late_") {
+            late_items += 1;
+            if late_items > 2 {
+                continue;
+            }
+        }
         no_harm.push(json!({ "label": format!("Avoided: {}", text.split(" — ").next().unwrap_or(text)), "type": "no_harm", "needle": text }));
     }
     no_harm.truncate(6);
 
     // ── points ───────────────────────────────────────────────────────────────────
-    // Weights come from the case's own dimensions; `communication` is a judged dimension with
-    // no deterministic evidence and is dropped, its weight redistributed by the split.
+    // Forty, split across the buckets by the case's own dimension weights first (largest
+    // remainder), then across a bucket's items evenly. A bucket with more items than points
+    // keeps its first items — they are listed in priority order — and drops the rest, so every
+    // item on the sheet is worth at least one whole point. `communication` is a judged
+    // dimension with no deterministic evidence and is not a bucket; its weight is simply absent
+    // from the sum, which is how it is redistributed.
     let buckets = [
         Bucket { weight: weight(case, "history_completeness", 15.0), items: history },
         Bucket { weight: weight(case, "examination", 10.0), items: exam },
@@ -139,22 +168,19 @@ pub fn derive(case: &Case, a: Archetype, mapped: &Mapped, built: &Built, sim: &S
         Bucket { weight: weight(case, "red_flag_recognition", 10.0), items: no_harm },
     ];
     let weights: Vec<f64> = buckets.iter().map(|b| if b.items.is_empty() { 0.0 } else { b.weight }).collect();
-    let mins: Vec<u32> = buckets.iter().map(|b| b.items.len() as u32).collect();
-    // every item is worth at least one point: reserve one per item, split the rest by weight
-    let reserved: u32 = mins.iter().sum();
     let total: u32 = 40;
-    let pool = total.saturating_sub(reserved);
-    let extra = split(pool, &weights, 0);
+    let bucket_points = split(total, &weights, 1);
 
     let mut items: Vec<Value> = Vec::new();
     for (i, b) in buckets.into_iter().enumerate() {
-        if b.items.is_empty() {
+        if b.items.is_empty() || bucket_points[i] == 0 {
             continue;
         }
-        let per: Vec<f64> = b.items.iter().map(|_| 1.0).collect();
-        let shares = split(extra[i], &per, 0);
-        for (j, mut it) in b.items.into_iter().enumerate() {
-            it["points"] = json!(1 + shares[j]);
+        let keep = (bucket_points[i] as usize).min(b.items.len());
+        let per: Vec<f64> = vec![1.0; keep];
+        let shares = split(bucket_points[i], &per, 1);
+        for (j, mut it) in b.items.into_iter().take(keep).enumerate() {
+            it["points"] = json!(shares[j]);
             items.push(it);
         }
     }

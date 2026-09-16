@@ -155,6 +155,13 @@ pub fn validate(
     }
 
     let untreated_death_sec = run_untreated(&sce, a.death_bound_sec())?;
+    // Too early is as wrong as too late: a patient who dies in the first minute untreated was
+    // dead on arrival as far as the shape is concerned — the starting vitals are already past a
+    // threshold, or were misread — and no stranger could reach such a bed in time.
+    let floor = a.death_minutes() * 60.0 / 2.0;
+    if untreated_death_sec < floor {
+        return Err(format!("untreated, the patient dies at {untreated_death_sec} s — under the archetype's floor of {floor} s; the starting vitals are already past a death threshold or were misread"));
+    }
 
     let (st, win_sec) = run_path(&sce, path, a.death_bound_sec() + 30.0 * 60.0)?;
     let win_outcome = match st.outcome_id() {

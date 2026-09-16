@@ -200,7 +200,7 @@ const TRANSFUSION_KW: &[&str] = &["transfus", "packed red", "fresh frozen plasma
 const SPECIFIC_KW: &[&str] = &["artesunate", "artemether", "quinine", "ribavirin", "antivenom", "anti-snake", "asv", "benznidazole", "nifurtimox", "antitoxin", "aciclovir", "acyclovir", "oseltamivir", "ivig", "immunoglobulin", "plasma exchange", "plasmapheresis", "praziquantel"];
 const AIRWAY_KW: &[&str] = &["intubat", "endotracheal", "secure the airway", "airway", "bag-valve", "ventilat", "ใส่ท่อช่วยหายใจ", "ทางเดินหายใจ"];
 const DEXTROSE_KW: &[&str] = &["dextrose", "d50", "d10", "50% glucose", "glucose 50", "treat hypoglyc", "hypoglycaemia at once", "correct hypoglyc", "กลูโคส"];
-const SOURCE_KW: &[&str] = &["laparotomy", "surgical", "surgery", "source control", "drainage", "debridement", "ercp", "percutaneous", "ผ่าตัด", "ศัลย", "ระบายหนอง"];
+const SOURCE_KW: &[&str] = &["laparotomy", "surgical", "surgery", "source control", "surgical drainage", "percutaneous drainage", "abscess drainage", "debridement", "ercp", "ผ่าตัด", "ศัลย", "ระบายหนอง"];
 const SEDATION_KW: &[&str] = &["sedat", "midazolam", "diazepam", "lorazepam", "benzodiazepine"];
 const BETA_BLOCKER_KW: &[&str] = &["beta-blocker", "beta blocker", "metoprolol", "propranolol", "bisoprolol", "carvedilol", "verapamil", "diltiazem"];
 
@@ -355,10 +355,12 @@ impl Archetype {
 
     /// Does the presentation actually look like this shape? Words alone never compile a case.
     fn gate(self, case: &Case, v0: &Vitals0) -> Result<(), String> {
-        let shock = v0.sbp <= 95.0;
+        // Shock is a systolic of 95 or less — or a compensated shock the heart rate gives away:
+        // a shock index (HR/SBP) of 1.0 or more with the systolic already at or under 110.
+        let shock = v0.sbp <= 95.0 || (v0.sbp <= 110.0 && v0.hr / v0.sbp >= 1.0);
         match self {
             Archetype::SepticShock | Archetype::HaemorrhagicShock | Archetype::CardiogenicShock => {
-                if shock { Ok(()) } else { Err(format!("systolic {:.0} at presentation is not shock", v0.sbp)) }
+                if shock { Ok(()) } else { Err(format!("systolic {:.0} with heart rate {:.0} at presentation is not shock", v0.sbp, v0.hr)) }
             }
             Archetype::PaediatricCompensatedShock => {
                 let age = case.patient.age.unwrap_or(99);
@@ -381,14 +383,10 @@ impl Archetype {
         }
     }
 
-    /// Pick the archetype for a case, or say why none fits.
-    ///
-    /// Score every shape by its words — a hit in the diagnosis itself counts ten, a hit anywhere
-    /// else counts one — then walk the candidates from the best down and take the first whose
-    /// physiological gate the starting vitals pass. No words at all: refused, naming the
-    /// diagnosis. Words but no gate: refused, naming what the words suggested and what the
-    /// vitals said, so the reviewer sees the case was **not forced**.
-    pub fn detect(case: &Case, v0: &Vitals0) -> Result<Archetype, String> {
+    /// Every shape whose words this case carries, best first. Empty means no archetype fits —
+    /// a stable presentation the ward has no shape for — and that is decided before the vitals
+    /// are even read, so a clinic case without a blood pressure is refused for the right reason.
+    pub fn candidates(case: &Case) -> Vec<(u32, Archetype)> {
         let dx = {
             let d = &case.hidden.correct_diagnosis;
             let mut s = d.display.to_lowercase();
@@ -412,13 +410,30 @@ impl Archetype {
         // Stable: ties keep ALL's order, which is the clinical priority (a child's shock before
         // an adult's, a failing pump before a leaking vessel before an infection).
         scored.sort_by(|a, b| b.0.cmp(&a.0));
+        scored
+    }
+
+    /// The refusal for a case whose words fit no shape.
+    pub fn none_fits(case: &Case) -> String {
+        format!(
+            "no archetype fits: '{}' names no deterioration this library models (stable presentation, {} tier {})",
+            case.hidden.correct_diagnosis.display,
+            case.meta.care_setting.as_deref().unwrap_or("?"),
+            case.meta.clinical_tier.map_or("?".to_string(), |t| t.to_string()),
+        )
+    }
+
+    /// Pick the archetype for a case, or say why none fits.
+    ///
+    /// Score every shape by its words — a hit in the diagnosis itself counts ten, a hit anywhere
+    /// else counts one — then walk the candidates from the best down and take the first whose
+    /// physiological gate the starting vitals pass. No words at all: refused, naming the
+    /// diagnosis. Words but no gate: refused, naming what the words suggested and what the
+    /// vitals said, so the reviewer sees the case was **not forced**.
+    pub fn detect(case: &Case, v0: &Vitals0) -> Result<Archetype, String> {
+        let scored = Self::candidates(case);
         if scored.is_empty() {
-            return Err(format!(
-                "no archetype fits: '{}' names no deterioration this library models (stable presentation, {} tier {})",
-                case.hidden.correct_diagnosis.display,
-                case.meta.care_setting.as_deref().unwrap_or("?"),
-                case.meta.clinical_tier.map_or("?".to_string(), |t| t.to_string()),
-            ));
+            return Err(Self::none_fits(case));
         }
         let mut why = Vec::new();
         for (_, a) in &scored {
