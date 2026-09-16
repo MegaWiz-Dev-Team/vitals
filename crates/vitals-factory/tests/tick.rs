@@ -8,13 +8,14 @@
 //! tick; a dry run touches nothing; and the token appears in no line of the report.
 
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use vitals_factory::door::{Door, FillReply, Filled, Pushed, Queued, Token, WardView};
 use vitals_factory::ledger::Ledger;
 use vitals_factory::manifest::{batch_age, Manifest};
 use vitals_factory::pool::{read_pool, Person};
-use vitals_factory::tick::{tick, Config};
+use vitals_factory::tick::{remake_face, tick, Config, FACE_ATTEMPTS};
 use vitals_factory::tools::Tools;
 use vitals_web::ward::Pack;
 use vitals_web::ward_chain::{pack_id, validate_pack, PORTRAITS};
@@ -62,6 +63,7 @@ fn config(dir: &Path, depth: usize, bases: usize) -> Config {
         vertex_project: "vitals-academy".into(),
         bucket: "vitals-world-portraits".into(),
         model: "gemini-2.5-flash-image".into(),
+        judge_model: "gemini-3.1-flash-lite".into(),
         dry_run: false,
         seed: 11,
         now: 1_789_500_000,
@@ -139,6 +141,11 @@ impl Door for FakeDoor {
 struct FakeTools {
     token_fetches: RefCell<usize>,
     paints: RefCell<Vec<(String, PathBuf)>>,
+    /// Seeds the painter was asked for, in order.
+    seeds: RefCell<Vec<u64>>,
+    /// Scripted answers to the photorealism question; empty means "yes".
+    verdicts: RefCell<VecDeque<bool>>,
+    judged: RefCell<Vec<String>>,
     edits: RefCell<Vec<String>>,
     uploads: RefCell<Vec<String>>,
     fetches: RefCell<Vec<String>>,
@@ -149,10 +156,15 @@ impl Tools for FakeTools {
         *self.token_fetches.borrow_mut() += 1;
         Ok(Token::new("sekrit-token-value".into()))
     }
-    fn paint(&self, prompt: &str, _seed: u64, out_png: &Path) -> Result<(), String> {
-        std::fs::write(out_png, format!("PNG:{prompt}")).unwrap();
+    fn paint(&self, prompt: &str, seed: u64, out_png: &Path) -> Result<(), String> {
+        std::fs::write(out_png, format!("PNG:{prompt}:{seed}")).unwrap();
         self.paints.borrow_mut().push((prompt.to_string(), out_png.to_path_buf()));
+        self.seeds.borrow_mut().push(seed);
         Ok(())
+    }
+    fn judge(&self, _project: &str, model: &str, image: &[u8], _mime: &str, question: &str) -> Result<bool, String> {
+        self.judged.borrow_mut().push(format!("{model}|{question}|{}", image.len()));
+        Ok(self.verdicts.borrow_mut().pop_front().unwrap_or(true))
     }
     fn edit(&self, _project: &str, _model: &str, base: &[u8], _mime: &str, prompt: &str) -> Result<Vec<u8>, String> {
         self.edits.borrow_mut().push(prompt.to_string());
@@ -363,4 +375,102 @@ fn a_dry_run_reads_and_plans_and_touches_nothing() {
     assert!(text.contains("would"), "{text}");
     assert!(text.contains("osce-"), "names the cases it would build: {text}");
     assert!(text.contains("dry run"), "{text}");
+}
+
+/// Every face is judged before it is recorded or uploaded; the question is the one the brief
+/// wrote, asked of the text model on Vertex with the image inline; a "no" is a new seed, up to
+/// three; and a person whose three faces all failed gets no pack this tick — a pack is never built
+/// on a rejected face.
+#[test]
+fn a_face_is_a_photograph_or_it_is_not_a_face() {
+    let dir = world("gate");
+    let pool = read_pool(POOL).unwrap();
+    seed_manifest(&dir, &pool);
+    let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
+    let tools = FakeTools::default();
+    // The first face: no, no, yes. The second face: no, no, no.
+    tools.verdicts.borrow_mut().extend([false, false, true, false, false, false]);
+    let cfg = config(&dir, 20, 2);
+    let r = tick(&cfg, &door, &tools);
+
+    assert_eq!(FACE_ATTEMPTS, 3);
+    let seeds = tools.seeds.borrow();
+    assert_eq!(seeds.len(), 6, "three tries for each of the two faces: {seeds:?}");
+    assert!(seeds[0] != seeds[1] && seeds[1] != seeds[2], "each try is a new seed");
+    assert!(seeds[3] != seeds[4] && seeds[4] != seeds[5]);
+    let judged = tools.judged.borrow();
+    assert_eq!(judged.len(), 6, "every painted face was judged, none skipped");
+    assert!(judged.iter().all(|j| j.starts_with("gemini-3.1-flash-lite|")), "the text model, not the image model: {}", judged[0]);
+    assert!(judged.iter().all(|j| j.contains("photorealistic photograph-style image of one real-looking human patient") && j.contains("Answer yes or no")), "{}", judged[0]);
+    // Only the face that passed was uploaded and recorded.
+    assert_eq!(tools.uploads.borrow().len(), 1, "one face passed, one was uploaded");
+    let man = Manifest::load(&dir.join("portraits.json")).unwrap();
+    assert_eq!(man.entries.iter().filter(|(k, _)| k.contains('@')).count(), 1, "the rejected face is nowhere on file");
+    // The log says so beside each face, and names the person whose face was given up on.
+    let text = r.lines.join("\n");
+    assert!(text.contains("photorealistic: no"), "{text}");
+    assert!(text.contains("photorealistic: yes"), "{text}");
+    assert_eq!(r.errors.len(), 1, "{:?}", r.errors);
+    assert!(r.errors[0].contains("three faces") && r.errors[0].contains("no pack"), "{}", r.errors[0]);
+    // Her pack was not pushed, and she is not in the ledger.
+    let ledger = Ledger::load(&dir.join("factory-ledger.json")).unwrap();
+    let q = door.queue.borrow();
+    for (_, s) in &ledger.sent {
+        assert!(q.values().any(|p| p.persona.name == s.name), "ledger and queue agree");
+    }
+    let rejected_name = r.errors[0].clone();
+    assert!(!q.values().any(|p| rejected_name.contains(&p.persona.name)), "no pack on a rejected face");
+    assert_eq!(r.faces_made, 1);
+}
+
+/// A child's face asks for a child, in words the painter is known to need.
+#[test]
+fn a_childs_face_is_asked_for_as_a_photograph_of_a_child() {
+    let dir = world("child");
+    let pool = read_pool(POOL).unwrap();
+    seed_manifest(&dir, &pool);
+    let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
+    let tools = FakeTools::default();
+    let r = tick(&config(&dir, 20, 4), &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let paints = tools.paints.borrow();
+    let ages: Vec<u16> = paints.iter().map(|(p, _)| p.split("-year-old").next().unwrap().rsplit(' ').next().unwrap().parse().unwrap()).collect();
+    assert!(ages.iter().any(|a| *a < 16) && ages.iter().any(|a| *a >= 16), "the draw made both a child and an adult: {ages:?}");
+    for (prompt, _) in paints.iter() {
+        let age: u16 = prompt.split("-year-old").next().unwrap().rsplit(' ').next().unwrap().parse().unwrap();
+        let child_words = prompt.contains("photorealistic, natural child proportions, documentary style; not a drawing, not anime, not a doll");
+        assert_eq!(child_words, age < 16, "{age}: {prompt}");
+    }
+}
+
+/// One face, remade on request through the same gate — for a face already on file that a person
+/// looked at and refused. The old picture leaves the manifest; the new sha is what is printed.
+#[test]
+fn a_face_can_be_remade_through_the_gate_and_the_old_one_leaves_the_file() {
+    let dir = world("remake");
+    let pool = read_pool(POOL).unwrap();
+    let mut man = seed_manifest(&dir, &pool);
+    let kor0 = pool.iter().find(|p| p.key == "KOR-0").unwrap();
+    man.record_base("KOR-0", 8, &sha_url(b"a doll"), kor0);
+    man.record_state("KOR-0@8", "critical", &sha_url(b"a doll, worse"));
+    man.save(&dir.join("portraits.json")).unwrap();
+    let tools = FakeTools::default();
+    tools.verdicts.borrow_mut().extend([false, true]);
+    let cfg = config(&dir, 20, 2);
+
+    let (url, r) = remake_face(&cfg, &tools, "KOR-0@8").expect("remade");
+    assert!(url.starts_with(PORTRAITS) && url.ends_with(".webp") && url != sha_url(b"a doll"));
+    assert_eq!(tools.seeds.borrow().len(), 2, "one refusal, one pass");
+    assert!(tools.seeds.borrow()[0] != tools.seeds.borrow()[1]);
+    let man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
+    let e = &man2.entries["KOR-0@8"];
+    assert_eq!(e.portrait.get("stable"), Some(&url));
+    assert!(!e.portrait.contains_key("critical"), "states edited from the refused face go with it");
+    assert_eq!(e.age, Some(8));
+    assert!(r.lines.iter().any(|l| l.contains("photorealistic: no")) && r.lines.iter().any(|l| l.contains("photorealistic: yes")), "{:?}", r.lines);
+    assert!(r.lines.iter().any(|l| l.contains("natural child proportions")) == false, "the prompt itself is not logged");
+    assert_eq!(tools.uploads.borrow().len(), 1);
+
+    assert!(remake_face(&cfg, &tools, "XXX-9@40").is_err(), "nobody by that key");
+    assert!(remake_face(&cfg, &tools, "KOR-0").is_err(), "a face has an age");
 }
