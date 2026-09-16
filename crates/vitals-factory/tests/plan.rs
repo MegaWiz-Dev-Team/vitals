@@ -307,6 +307,17 @@ fn the_ledger_learns_from_the_board_who_was_admitted_and_who_has_left() {
     assert!(ledger.sent[&id].closed);
     assert!(!ledger.busy_keys(&ward, &pool).contains("THA-0"), "she went home; the face is free");
 
+    // A sentence about a patient takes the patient's pronoun from the pack's sex: a man who has
+    // left is "his face is free", never "her".
+    let budi = person(&pool, "IDN-1");
+    let sent_m = Sent::new("osce-b", budi, 25, false, None, 100, "https://ward");
+    let id_m = pack_id(&sent_m.to_pack());
+    ledger.sent.insert(id_m.clone(), sent_m);
+    ward.patients.push(on_board(5150, "died", budi, "osce-b", 25));
+    let notes = ledger.reconcile(&ward);
+    assert!(notes.iter().any(|n| n.contains("Budi Santoso (5150) has left — died; his face is free")), "{notes:?}");
+    assert!(notes.iter().all(|n| !n.contains("her face") || n.contains("Ploy")), "{notes:?}");
+
     // Somebody on the board this ledger never sent (another factory, a hand push) is busy too.
     ward.patients.push(on_board(7, "on_shift", person(&pool, "NGA-2"), "osce-d4", 70));
     assert!(ledger.busy_keys(&ward, &pool).contains("NGA-2"));
@@ -452,4 +463,46 @@ fn the_draw_follows_the_world_bank_weights_from_the_file() {
     assert_eq!(count["ETH"], 5, "Ethiopia, a quarter of the need, a quarter of the packs");
     assert!(count.get("USA").copied().unwrap_or(0) <= 1, "the floored United States, at most once in twenty");
     assert!(count["ETH"] >= count["KEN"] && count["KEN"] >= count["NGA"], "{count:?}");
+}
+
+/// No sentence in the crate about a patient carries a fixed pronoun: the pack's sex chooses it,
+/// or the sentence says "the face" / "the stable". prompts.rs builds pronouns and is the one
+/// file allowed the words; the rest of the crate is held to it here, the way a grep would.
+#[test]
+fn no_sentence_about_a_patient_carries_a_fixed_pronoun() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let re_literal = |line: &str| -> Vec<String> {
+        let mut out = Vec::new();
+        let mut rest = line;
+        while let Some(i) = rest.find('"') {
+            let after = &rest[i + 1..];
+            let Some(j) = after.find('"') else { break };
+            out.push(after[..j].to_string());
+            rest = &after[j + 1..];
+        }
+        out
+    };
+    let pronoun = |lit: &str| {
+        let words: Vec<&str> = lit.split(|c: char| !c.is_alphabetic()).collect();
+        words.iter().any(|w| matches!(*w, "her" | "she" | "hers" | "his" | "him"))
+    };
+    let mut hits = Vec::new();
+    for entry in std::fs::read_dir(&root).unwrap() {
+        let path = entry.unwrap().path();
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        if name == "prompts.rs" {
+            continue;
+        }
+        for (n, line) in std::fs::read_to_string(&path).unwrap().lines().enumerate() {
+            if line.trim_start().starts_with("//") {
+                continue;
+            }
+            for lit in re_literal(line) {
+                if pronoun(&lit) {
+                    hits.push(format!("{name}:{}: {lit}", n + 1));
+                }
+            }
+        }
+    }
+    assert!(hits.is_empty(), "sentences with a fixed pronoun about a patient:\n{}", hits.join("\n"));
 }
