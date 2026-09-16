@@ -1207,6 +1207,58 @@ pub struct Filled {
     pub states: Vec<String>,
 }
 
+/// Replace pictures on a pack that is still waiting for a bed.
+///
+/// **Replace, not add** — and only here. While she is in the queue nobody has seen her, so a face
+/// that came out wrong can simply be fixed. The moment she is admitted, [`fill_portraits`] is the
+/// only door and its rule is add-only: a face the board has shown is one strangers have been
+/// treating, and changing it underneath them is exactly what that rule exists to prevent.
+///
+/// Her address does not move when a portrait does. Portraits are deliberately outside the content
+/// hash, so fixing a face is not a different patient queued twice.
+pub fn replace_queued_portraits(
+    store: &crate::store::Store,
+    pack_id: &str,
+    portraits: std::collections::BTreeMap<String, String>,
+) -> Filled {
+    let mut out = Filled::default();
+    let Some(mut pack) = store.get::<crate::ward::Pack>(QUEUE_STORE, pack_id) else {
+        out.rejected.push(format!(
+            "no pack {pack_id} is waiting — she may be in a bed already, and a patient's faces are \
+             added through her own door and never replaced"
+        ));
+        return out;
+    };
+
+    for (state, src) in portraits {
+        if state == "dead" {
+            out.rejected.push(
+                "no picture of a dead patient is made — the board shows her last living state".into(),
+            );
+            continue;
+        }
+        if !crate::ward::PORTRAIT_LADDER.contains(&state.as_str()) {
+            out.rejected.push(format!("{state} is not a state the engine reports"));
+            continue;
+        }
+        if !is_portrait_url(&src) {
+            out.rejected.push(format!("{state}: a portrait must be {PORTRAITS}/<sha256>.webp"));
+            continue;
+        }
+        pack.portrait.insert(state, src);
+        out.added += 1;
+    }
+
+    if out.added > 0 {
+        if let Err(e) = store.put(QUEUE_STORE, pack_id, &pack) {
+            out.rejected.push(format!("pack {pack_id} could not be written: {e}"));
+            out.added = 0;
+        }
+    }
+    out.states = pack.portrait.keys().cloned().collect();
+    out
+}
+
 /// Add pictures to a patient the ward has already admitted.
 ///
 /// **Add only.** A portrait already on a patient is one the board may have shown, and a factory

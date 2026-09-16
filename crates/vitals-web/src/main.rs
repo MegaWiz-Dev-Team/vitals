@@ -4185,17 +4185,27 @@ fn main() {
                     );
                     continue;
                 }
-                let Some(patient_id) = p
-                    .strip_prefix("/api/ward/pack/")
-                    .filter(|r| !r.is_empty() && r.bytes().all(|b| b.is_ascii_digit()))
-                    .and_then(|r| r.parse::<u64>().ok())
-                else {
+                // Two kinds of address arrive here, and they carry different rules. A patient id
+                // is digits and her faces are add-only — the board has shown them. A pack id is a
+                // content address and hers may be replaced, because nobody has seen her yet.
+                let who = p.strip_prefix("/api/ward/pack/").unwrap_or("");
+                let patient_id = who
+                    .bytes()
+                    .all(|b| b.is_ascii_digit())
+                    .then(|| who.parse::<u64>().ok())
+                    .flatten();
+                let queued = (who.len() == 64
+                    && who.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)))
+                    .then_some(who);
+                if patient_id.is_none() && queued.is_none() {
                     let _ = req.respond(
-                        json(serde_json::json!({ "error": "that is not a patient id" }))
-                            .with_status_code(404),
+                        json(serde_json::json!({
+                            "error": "that is neither a patient id nor a pack id"
+                        }))
+                        .with_status_code(404),
                     );
                     continue;
-                };
+                }
                 let body = match read_body(&mut req, QUEUE_MAX) {
                     Ok(b) => b,
                     Err(_) => {
@@ -4211,7 +4221,13 @@ fn main() {
                 }
                 match serde_json::from_str::<Fill>(&body) {
                     Ok(fill) => {
-                        let r = ward_chain::fill_portraits(&store, patient_id, fill.portrait);
+                        let r = match (patient_id, queued) {
+                            (Some(id), _) => ward_chain::fill_portraits(&store, id, fill.portrait),
+                            (None, Some(pack)) => {
+                                ward_chain::replace_queued_portraits(&store, pack, fill.portrait)
+                            }
+                            _ => unreachable!("one of the two was matched above"),
+                        };
                         let _ = req.respond(json(r));
                     }
                     Err(e) => {
