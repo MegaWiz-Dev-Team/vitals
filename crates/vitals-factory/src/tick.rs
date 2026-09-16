@@ -462,7 +462,10 @@ fn make_face(cfg: &Config, tools: &dyn Tools, who: &Person, age: u16, place: &st
     let work = cfg.world_dir.join("work");
     std::fs::create_dir_all(&work).map_err(|e| format!("{}: {e}", work.display()))?;
     let png = work.join(format!("{}@{age}.png", who.key));
-    let base_seed = sha256_hex(format!("{}@{age}", who.key).as_bytes())[..8].chars().fold(0u64, |a, c| a * 16 + c.to_digit(16).unwrap_or(0) as u64);
+    // The face's seed is the person, her age and this run's seed — so a tick (seeded by the clock
+    // unless FACTORY_SEED says otherwise) never repeats a refused face, and a `--face` rerun with
+    // another FACTORY_SEED tries three new ones rather than the same three.
+    let base_seed = sha256_hex(format!("{}@{age}/{}", who.key, cfg.seed).as_bytes())[..8].chars().fold(0u64, |a, c| a * 16 + c.to_digit(16).unwrap_or(0) as u64);
     let prompt = prompts::base(age, who.sex, place);
     for attempt in 0..FACE_ATTEMPTS {
         let seed = base_seed.wrapping_add(u64::from(attempt) * 7919);
