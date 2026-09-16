@@ -401,6 +401,14 @@ anything.
       separate tally; distinct keys from the **leaf signers**. If the endpoint and the chain ever
       disagree, the weekly video says they disagree — it does not pick one and it does not wait for
       the next deploy to mention it.
+- [ ] **A receipt is one shift, so it is addressed by the leaf.** `/shift/<run_hash>` is the
+      *tape's* page and stays one: a run hash is the hash of the bytes somebody played, and two
+      strangers who do the same things to the same case produce the same hash — it already says how
+      many shifts share it. But a receipt at that address is a claim about bytes rather than about
+      a person's work, and the thing a stranger wants to check is the second. So the leaf comes out
+      of the `AnchorShift` record into what the census reads, and `/shift/<leaf>` becomes the
+      shift's own page: one leaf, one player, one declaration, one shift. Founder's standing rule,
+      root cause over workaround.
 - [ ] Shift receipt at a QR: the browser re-derives that shift from the tape and the chain, shows
       the deterministic 40 and the judged 60 as two numbers, and offers **download every tape of
       this patient** so a stranger can mirror her and check us without asking.
