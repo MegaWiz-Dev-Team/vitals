@@ -144,6 +144,38 @@ impl Seen {
         self.until.clone()
     }
 
+    /// Walk a page of her history from the oldest entry forward, stopping at the first one that
+    /// cannot be read.
+    ///
+    /// `page` is newest-first, as `getSignaturesForAddress` answers. Returns what was read, the
+    /// cursor to stop at next time, and the trouble that stopped it.
+    ///
+    /// **Stopping rather than skipping is the whole point.** A skipped entry would take the cursor
+    /// past it, and the shift underneath — anchored, paid for, on chain — would never be read
+    /// again: absent from the census for ever, silently. Stopping costs one re-read of a handful
+    /// of transactions and loses nothing.
+    pub fn walk(
+        page: Vec<(String, u64)>,
+        mut read: impl FnMut(&str, u64) -> Result<Vec<crate::ward::ShiftOnChain>, String>,
+    ) -> (Vec<crate::ward::ShiftOnChain>, Option<(String, u64)>, Option<String>) {
+        let mut got = Vec::new();
+        let mut cursor = None;
+        for (sig, slot) in page.into_iter().rev() {
+            match read(&sig, slot) {
+                Ok(shifts) => {
+                    got.extend(shifts);
+                    // Past entries that held no shift as well: taking the head is a transaction
+                    // too, and a cursor made only of shifts re-fetches every lease for ever.
+                    cursor = Some((sig, slot));
+                }
+                Err(e) => {
+                    return (got, cursor, Some(format!("stopped at {sig}: {e}")));
+                }
+            }
+        }
+        (got, cursor, None)
+    }
+
     pub fn shifts(&self) -> Vec<ShiftOnChain> {
         self.shifts.iter().map(|s| s.shift).collect()
     }
@@ -152,22 +184,41 @@ impl Seen {
     ///
     /// Idempotent by signature, because every reason this is called twice is ordinary: a retry, a
     /// restart, two instances ticking at once, a page that overlaps the last one.
-    pub fn absorb(&mut self, page: Vec<SeenShift>) -> usize {
+    pub fn absorb(
+        &mut self,
+        page: Vec<(crate::ward::ShiftOnChain, String)>,
+        cursor: Option<(String, u64)>,
+    ) -> usize {
         let mut added = 0;
-        for entry in page {
-            if entry.shift.slot > self.until_slot || self.until.is_none() {
-                self.until_slot = entry.shift.slot;
-                self.until = Some(entry.signature.clone());
-            }
-            if self.shifts.iter().any(|s| s.signature == entry.signature) {
+        for (shift, signature) in page {
+            if self.shifts.iter().any(|s| s.signature == signature && s.shift == shift) {
                 continue;
             }
-            self.shifts.push(entry);
+            self.shifts.push(SeenShift { signature, shift });
             added += 1;
         }
         self.shifts.sort_by_key(|s| s.shift.slot);
+        // The cursor is the walk's, not this function's. Deriving it from the shifts would put it
+        // past an entry the walk deliberately stopped before.
+        if let Some((sig, slot)) = cursor {
+            if slot >= self.until_slot || self.until.is_none() {
+                self.until_slot = slot;
+                self.until = Some(sig);
+            }
+        }
         added
     }
+}
+
+/// Walk a page of a patient's history, oldest first, stopping where it cannot read.
+///
+/// The free-standing name for [`Seen::walk`], which is what the reader calls and what the test
+/// drives with a page carrying a null.
+pub fn walk_history(
+    page: Vec<(String, u64)>,
+    read: impl FnMut(&str, u64) -> Result<Vec<crate::ward::ShiftOnChain>, String>,
+) -> (Vec<crate::ward::ShiftOnChain>, Option<(String, u64)>, Option<String>) {
+    Seen::walk(page, read)
 }
 
 /// The chain, as the ward reads it.
@@ -280,9 +331,7 @@ impl WardChain {
     /// happen — which is precisely the refusal the ward is proud of.
     pub fn refresh(&self, patient_id: u64, seen: &mut Seen) -> Result<usize, String> {
         let pda = self.patient_pda(patient_id);
-        let until = seen
-            .until()
-            .and_then(|s| Signature::from_str(&s).ok());
+        let until = seen.until().and_then(|s| Signature::from_str(&s).ok());
         let sigs = self
             .rpc
             .get_signatures_for_address_with_config(
@@ -295,19 +344,30 @@ impl WardChain {
             )
             .map_err(why)?;
 
-        let mut page = Vec::new();
-        for s in sigs {
-            if s.err.is_some() {
-                continue;
-            }
-            let Ok(sig) = Signature::from_str(&s.signature) else { continue };
+        // A failed transaction is not a shift: the program refused it, so nothing was anchored,
+        // and counting it would publish work the chain says did not happen. Dropped here rather
+        // than in the walk, because a refusal is a thing we read successfully.
+        let page: Vec<(String, u64)> = sigs
+            .into_iter()
+            .filter(|s| s.err.is_none())
+            .map(|s| (s.signature, s.slot))
+            .collect();
+
+        let mut signatures: std::collections::BTreeMap<u64, String> = Default::default();
+        let (shifts, cursor, trouble) = Seen::walk(page, |sig, slot| {
+            let parsed = Signature::from_str(sig).map_err(|e| format!("{sig} is not a signature: {e}"))?;
             let tx = self
                 .rpc
-                .get_transaction(&sig, UiTransactionEncoding::Base64)
+                .get_transaction(&parsed, UiTransactionEncoding::Base64)
                 .map_err(why)?;
-            let slot = tx.slot;
-            let Some(decoded) = tx.transaction.transaction.decode() else { continue };
+            signatures.insert(slot, sig.to_string());
+            let Some(decoded) = tx.transaction.transaction.decode() else {
+                // Read, and not a transaction we can decode. Not a failure of the walk: it held no
+                // shift, and the cursor may pass it.
+                return Ok(Vec::new());
+            };
             let keys = decoded.message.static_account_keys().to_vec();
+            let mut here = Vec::new();
             for ix in decoded.message.instructions() {
                 let Some(program) = keys.get(ix.program_id_index as usize) else { continue };
                 let accounts: Vec<Pubkey> = ix
@@ -320,12 +380,28 @@ impl WardChain {
                     // shift the account order and credit the wrong key.
                     continue;
                 }
-                if let Some(shift) = shift_in(program, &self.program_id, &ix.data, &accounts, slot) {
-                    page.push(SeenShift { signature: s.signature.clone(), shift });
+                if let Some(shift) = shift_in(program, &self.program_id, &ix.data, &accounts, tx.slot) {
+                    here.push(shift);
                 }
             }
+            Ok(here)
+        });
+
+        let named: Vec<(crate::ward::ShiftOnChain, String)> = shifts
+            .into_iter()
+            .map(|sh| {
+                let sig = signatures.get(&sh.slot).cloned().unwrap_or_default();
+                (sh, sig)
+            })
+            .collect();
+        let added = seen.absorb(named, cursor);
+
+        // A page that stopped early is not an error: what was read is kept, the cursor stops at
+        // it, and the next read begins there. The ward stays readable and loses nothing.
+        if let Some(why) = trouble {
+            eprintln!("ward       patient {patient_id}'s history was read as far as it could be — {why}");
         }
-        Ok(seen.absorb(page))
+        Ok(added)
     }
 }
 

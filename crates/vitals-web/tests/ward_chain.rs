@@ -113,23 +113,24 @@ fn the_cache_reads_only_what_is_new_and_counts_no_shift_twice() {
     let mut seen = Seen::default();
     assert!(seen.until().is_none(), "the first read has nothing to stop at");
 
-    let page = |sig: &str, id: u64, signer: u8, slot: u64| SeenShift {
-        signature: sig.to_string(),
-        shift: ShiftOnChain { patient_id: id, signer: [signer; 32], slot, run_hash: [0; 32] },
+    let page = |sig: &str, id: u64, signer: u8, slot: u64| {
+        (ShiftOnChain { patient_id: id, signer: [signer; 32], slot, run_hash: [0; 32] },
+         sig.to_string())
     };
+    let at = |sig: &str, slot: u64| Some((sig.to_string(), slot));
 
-    // Newest first, the way getSignaturesForAddress answers.
+    // What a walk hands back: the shifts it read, and the newest entry it got all the way through.
     seen.absorb(vec![page("sig3", 42, 0xB2, 300), page("sig2", 42, 0xA1, 200),
-                     page("sig1", 42, 0xA1, 100)]);
+                     page("sig1", 42, 0xA1, 100)], at("sig3", 300));
     assert_eq!(seen.shifts().len(), 3);
     assert_eq!(seen.until().as_deref(), Some("sig3"),
                "the next read stops at the newest signature already read, so history is walked once");
 
     // The same page again — a retry, a restart, two instances. It must change nothing.
-    seen.absorb(vec![page("sig3", 42, 0xB2, 300), page("sig2", 42, 0xA1, 200)]);
+    seen.absorb(vec![page("sig3", 42, 0xB2, 300), page("sig2", 42, 0xA1, 200)], at("sig3", 300));
     assert_eq!(seen.shifts().len(), 3, "a signature already read is not a new shift");
 
-    seen.absorb(vec![page("sig5", 42, 0xC3, 500), page("sig4", 42, 0xA1, 400)]);
+    seen.absorb(vec![page("sig5", 42, 0xC3, 500), page("sig4", 42, 0xA1, 400)], at("sig5", 500));
     assert_eq!(seen.shifts().len(), 5);
     assert_eq!(seen.until().as_deref(), Some("sig5"));
 
