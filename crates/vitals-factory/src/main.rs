@@ -14,6 +14,7 @@
 //! | `VITALS_PORTRAIT_BUCKET` | `vitals-world-portraits`                 | where faces are published                |
 //! | `VITALS_IMAGE_MODEL`     | `gemini-2.5-flash-image`                 | the state editor                         |
 //! | `VITALS_JUDGE_MODEL`     | `gemini-2.5-flash`                       | the model that judges each face (11/11 on the 16 Sep calibration; gemini-3.1-flash-lite was 10/11 and is the fallback when 2.5 retires) |
+//! | `EDITS_PER_DAY`          | 40                                       | image edits allowed per UTC day, across ticks (≈ 0.039 USD each at list price); bases are local and free |
 //! | `FACTORY_SEED`           | the clock                                | the draw; set it to repeat a run         |
 //!
 //! `--dry-run` reads the ward and prints what a tick would do, fetching no secret, sending no
@@ -138,7 +139,7 @@ fn main() {
         eprintln!("{t} ERROR {e}");
     }
     println!(
-        "{t} tick done: {} queued, {} duplicates, {} state(s) refused by the judge, {} refused by the door, depth {}, {} faces made of {} painted, {} states made, {} error(s)",
+        "{t} tick done: {} queued, {} duplicates, {} state(s) refused by the judge, {} refused by the door, depth {}, {} faces made of {} painted, {} states made, {} edit(s) + {} judge call(s) ≈ {:.3} USD estimated from list price, {} state(s) deferred: budget, {} error(s)",
         report.queued,
         report.duplicates,
         report.rejected,
@@ -147,6 +148,10 @@ fn main() {
         report.faces_made,
         report.faces_tried,
         report.states_made,
+        report.edits,
+        report.judge_calls,
+        vitals_factory::tick::estimate_usd(report.edits, report.judge_calls),
+        report.deferred_budget,
         report.errors.len()
     );
     if !report.errors.is_empty() {
@@ -180,6 +185,7 @@ fn config(dry_run: bool) -> Result<Config, String> {
         bucket: env_or("VITALS_PORTRAIT_BUCKET", "vitals-world-portraits"),
         model: env_or("VITALS_IMAGE_MODEL", "gemini-2.5-flash-image"),
         judge_model: env_or("VITALS_JUDGE_MODEL", "gemini-2.5-flash"),
+        edits_per_day: env_num("EDITS_PER_DAY", 40)? as usize,
         dry_run,
         seed,
         now: now(),

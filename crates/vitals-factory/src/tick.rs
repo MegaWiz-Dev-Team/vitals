@@ -37,6 +37,17 @@ pub const WEBP_QUALITY: u8 = 86;
 pub const VARIANT_PX: u32 = 256;
 pub const VARIANT_QUALITY: u8 = 80;
 
+/// List price of one image edit (gemini-2.5-flash-image, image out) and of one judge call
+/// (gemini-2.5-flash, a short text answer with two small images in) — for the estimate in the
+/// tick line and the ledger. Estimated from list price, never measured.
+pub const EDIT_USD: f64 = 0.039;
+pub const JUDGE_USD: f64 = 0.0005;
+
+/// The estimate, in USD.
+pub fn estimate_usd(edits: usize, judge_calls: usize) -> f64 {
+    edits as f64 * EDIT_USD + judge_calls as f64 * JUDGE_USD
+}
+
 /// How many faces the painter may try for one person before the factory gives up on her this
 /// tick. Each try is a new seed and each is judged; a pack is never built on a rejected face.
 pub const FACE_ATTEMPTS: u32 = 3;
@@ -66,6 +77,9 @@ pub struct Config {
     pub model: String,
     /// The text model that judges whether a face is a photograph of a person.
     pub judge_model: String,
+    /// Image edits allowed per UTC day, counted from the ledger across ticks. Bases are painted
+    /// locally and are not counted; when the budget is spent, states wait for tomorrow.
+    pub edits_per_day: usize,
     pub dry_run: bool,
     pub seed: u64,
     /// Unix seconds, for the ledger.
@@ -103,6 +117,21 @@ pub struct Report {
     /// Faces painted, passed or refused — what the per-tick cap counts.
     pub faces_tried: usize,
     pub states_made: usize,
+    /// Image edits made this tick.
+    pub edits: usize,
+    /// Edits already made today by earlier ticks, from the ledger, so the budget spans ticks.
+    pub edits_before: usize,
+    /// Judge calls made this tick (every question, every gate).
+    pub judge_calls: usize,
+    /// States left for tomorrow because the edit budget was spent.
+    pub deferred_budget: usize,
+}
+
+impl Report {
+    /// Edits left in today's budget.
+    fn edits_left(&self, cfg: &Config) -> usize {
+        cfg.edits_per_day.saturating_sub(self.edits_before + self.edits)
+    }
 }
 
 impl Report {
@@ -214,6 +243,7 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
             return r;
         }
     };
+    r.edits_before = ledger.spend.get(&crate::ledger::utc_day(cfg.now)).map_or(0, |s| s.edits);
     if let Some(other) = ledger.sent.values().map(|s| &s.ward).find(|w| *w != &cfg.ward) {
         r.fail(format!(
             "the ledger at {} belongs to {other}, and this run targets {} — one world directory per ward, \
@@ -419,7 +449,7 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
                 pack.portrait.insert("stable_256".into(), sibling_url(&stable));
                 pack.portrait.insert("stable".into(), stable);
             }
-            Ok(None) => r.say(format!("{} goes out without a picture: her stable was refused twice", who.name)),
+            Ok(None) => r.say(format!("{} goes out without a picture: her stable was refused twice, or waits for tomorrow's edit budget", who.name)),
             Err(e) => {
                 r.fail(format!("{}'s stable could not be made: {e} — no pack for her this tick", who.name));
                 continue;
@@ -486,8 +516,24 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
 
     // ── the rest of one patient's faces ──
     complete_faces(cfg, door, tools, &token, &ward, &pool, &mut manifest, &mut ledger, &mut r);
+    record_spend(cfg, &mut ledger, &mut r);
     save_ledger(cfg, &ledger, &mut r);
     r
+}
+
+/// Today's spend into the ledger, and the cost line — estimated from list price, never measured.
+fn record_spend(cfg: &Config, ledger: &mut Ledger, r: &mut Report) {
+    let day = crate::ledger::utc_day(cfg.now);
+    let s = ledger.spend.entry(day.clone()).or_default();
+    s.edits += r.edits;
+    s.judge_calls += r.judge_calls;
+    s.deferred += r.deferred_budget;
+    s.usd = estimate_usd(s.edits, s.judge_calls);
+    r.say(format!(
+        "cost, estimated from list price (edits × {EDIT_USD} USD + judge calls × {JUDGE_USD} USD): this tick {} edit(s) + {} judge call(s) ≈ {:.3} USD · today {day}: {} of {} edits used, {} judge call(s), {} state(s) deferred: budget ≈ {:.3} USD",
+        r.edits, r.judge_calls, estimate_usd(r.edits, r.judge_calls),
+        s.edits, cfg.edits_per_day, s.judge_calls, s.deferred, s.usd
+    ));
 }
 
 /// For every pack still waiting: if the manifest's face for her key and age is no longer the one
@@ -632,11 +678,13 @@ fn make_face(cfg: &Config, tools: &dyn Tools, who: &Person, age: u16, place: &st
         let _ = std::fs::remove_file(&png);
         let webp = tools.webp(&bytes, WEBP_QUALITY)?;
         let (ok, why) = tools.judge(&cfg.vertex_project, &cfg.judge_model, &webp, "image/webp", prompts::PHOTOREAL)?;
+        r.judge_calls += 1;
         // A child's face is also asked how old it looks; only an answer inside the door's band
         // for the drawn age passes, because the painter renders "eight" as four unless told
         // otherwise and the door's band at eight is 6–10.
         let looks = if ok && age < prompts::CHILD_UNDER {
             let answer = tools.ask(&cfg.vertex_project, &cfg.judge_model, &webp, "image/webp", prompts::AGE)?;
+            r.judge_calls += 1;
             let n = first_number(&answer);
             let band = vitals_web::ward::age_band(age);
             let fits = n.is_some_and(|n| band.contains(&n));
@@ -968,7 +1016,8 @@ fn make_states(cfg: &Config, tools: &dyn Tools, g: &Gap, manifest: &mut Manifest
             }
         };
         match gated_edit(cfg, tools, &reference, &prompt, st, &g.who.name, r) {
-            Ok(Some(webp)) => match publish(cfg, tools, &webp) {
+            Ok(Gate::Budget) => continue,
+            Ok(Gate::Made(webp)) => match publish(cfg, tools, &webp) {
                 Ok(url) => {
                     if g.record {
                         manifest.record_state(&g.key, st, &url);
@@ -984,7 +1033,7 @@ fn make_states(cfg: &Config, tools: &dyn Tools, g: &Gap, manifest: &mut Manifest
                 }
                 Err(e) => made.failed.push((st, e)),
             },
-            Ok(None) => {
+            Ok(Gate::Refused) => {
                 r.rejected += 1;
                 let why = format!("{st}: refused twice by the judge; left out, the board falls back to the nearest milder picture");
                 r.say(format!("{} ({}): {why}", g.who.name, g.key));
@@ -1008,28 +1057,45 @@ fn mime_of(bytes: &[u8]) -> &'static str {
     if bytes.starts_with(b"RIFF") { "image/webp" } else { "image/png" }
 }
 
+/// What one gated edit came to.
+enum Gate {
+    /// The picture, judged the same person and showing the state.
+    Made(Vec<u8>),
+    /// Refused twice: left out, never filed, never sent; the ladder shows the nearest milder one.
+    Refused,
+    /// Today's edit budget is spent: not tried; waits for tomorrow.
+    Budget,
+}
+
 /// One state, edited from the reference and judged twice — the same person as the reference,
-/// and showing the state's own sentence — with one re-edit on a no. `Ok(None)` is a state refused
-/// twice: left out, never filed, never sent; the ladder shows the nearest milder picture.
-fn gated_edit(cfg: &Config, tools: &dyn Tools, reference: &[u8], prompt: &str, state: &str, name: &str, r: &mut Report) -> Result<Option<Vec<u8>>, String> {
+/// and showing the state's own feature — with one re-edit on a no, inside today's edit budget.
+fn gated_edit(cfg: &Config, tools: &dyn Tools, reference: &[u8], prompt: &str, state: &str, name: &str, r: &mut Report) -> Result<Gate, String> {
     let ref_mime = mime_of(reference);
     let shows = prompts::shows(state).ok_or_else(|| format!("no sentence for {state}"))?;
     for attempt in 0..2 {
+        if r.edits_left(cfg) == 0 {
+            r.deferred_budget += 1;
+            r.say(format!("{name} {state}: deferred: budget ({} of {} edits used today)", r.edits_before + r.edits, cfg.edits_per_day));
+            return Ok(Gate::Budget);
+        }
         let png = tools.edit(&cfg.vertex_project, &cfg.model, reference, ref_mime, prompt)?;
+        r.edits += 1;
         let webp = tools.webp(&png, WEBP_QUALITY)?;
         let (same, why) = tools.judge_pair(&cfg.vertex_project, &cfg.judge_model, reference, ref_mime, &webp, "image/webp", prompts::SAME_PERSON)?;
+        r.judge_calls += 1;
         if !same {
             r.say(format!("{name} {state}{}: not the same person ({why}){}", if attempt == 0 { "" } else { ", re-edit" }, if attempt == 0 { " — one re-edit" } else { "" }));
             continue;
         }
         let (ok, why) = tools.judge(&cfg.vertex_project, &cfg.judge_model, &webp, "image/webp", &shows)?;
+        r.judge_calls += 1;
         if ok {
             r.say(format!("{name} {state}{}: same person, shows the state ({why})", if attempt == 0 { "" } else { ", re-edit" }));
-            return Ok(Some(webp));
+            return Ok(Gate::Made(webp));
         }
         r.say(format!("{name} {state}{}: same person but does not show the state ({why}){}", if attempt == 0 { "" } else { ", re-edit" }, if attempt == 0 { " — one re-edit" } else { "" }));
     }
-    Ok(None)
+    Ok(Gate::Refused)
 }
 
 /// Her stable, made from the base and judged, on file under `stable` with the base under `base`.
@@ -1044,7 +1110,8 @@ fn ensure_stable(cfg: &Config, tools: &dyn Tools, manifest: &mut Manifest, slot:
     let reference = read_face(cfg, tools, &base_url)?;
     let prompt = prompts::state_for(prompts::STABLE, who.sex, age < prompts::CHILD_UNDER).ok_or_else(|| "no stable prompt".to_string())?;
     match gated_edit(cfg, tools, &reference, &prompt, prompts::STABLE, &who.name, r)? {
-        Some(webp) => {
+        Gate::Budget => Ok(None),
+        Gate::Made(webp) => {
             let url = publish(cfg, tools, &webp)?;
             manifest.record_stable(slot, &url);
             manifest.record_variant(slot, "stable", &sibling_url(&url));
@@ -1052,7 +1119,7 @@ fn ensure_stable(cfg: &Config, tools: &dyn Tools, manifest: &mut Manifest, slot:
             r.say(format!("made stable for {} ({slot}) from the base", who.name));
             Ok(Some(url))
         }
-        None => {
+        Gate::Refused => {
             r.rejected += 1;
             Ok(None)
         }

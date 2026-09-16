@@ -48,6 +48,8 @@
     <string>vitals-academy</string>
     <key>VITALS_JUDGE_MODEL</key>
     <string>gemini-2.5-flash</string>
+    <key>EDITS_PER_DAY</key>
+    <string>40</string>
     <key>PATH</key>
     <string>/Users/mimir/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
   </dict>

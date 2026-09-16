@@ -91,25 +91,36 @@ pub const BASE: &str = "base";
 /// The made stable: admitted and holding, not well. The smile is `recovered`'s.
 pub const STABLE: &str = "stable";
 
-/// What each state should show, in one sentence — the second question the gate asks ("Does this
-/// picture show a patient who is …?"). Written once, beside the edit prompts, so the judge and the
-/// editor are held to the same words.
-pub fn sentence(state: &str) -> Option<&'static str> {
+/// The one observable thing each state shows — read by the editor and the judge alike.
+///
+/// The judge reads a sentence literally and the editor renders what it is told, so both read one
+/// text: the edit prompt is [`KEEP`] + "She is now <feature>." and the gate's second question
+/// carries the same words. One feature, no interpretive words ("critically ill", "struggling")
+/// and no colour of skin or lips: the first run of the gate (16 Sep, Salma Gaber) refused four of
+/// five states on props and adjectives the editor had not rendered, and the identity question
+/// failed on arrest, where colour words change the face most. Stable's stays as it was.
+pub fn feature(state: &str) -> Option<&'static str> {
     Some(match state {
         "stable" => "unwell and tired but comfortable, lying in a hospital bed, eyes open, not smiling",
-        "improving" => "getting better: colour in the face, eyes open and clear, calm, no oxygen mask",
-        "deteriorating" => "getting worse: an oxygen mask on, eyes half closed, struggling",
-        "critical" => "critically ill: eyes closed, very pale, an oxygen mask with a bag, not moving",
-        "arrest" => "in cardiac arrest: eyes closed, ashen grey, no mask, completely still",
-        "recovered" => "recovered: sitting up, healthy colour, relaxed and relieved, no mask",
+        "improving" => "propped up a little on the pillow, eyes open and clear, no oxygen mask, a small plaster on the back of the hand",
+        "deteriorating" => "wearing an oxygen mask over the nose and mouth, eyes half closed",
+        "critical" => "eyes closed, an oxygen mask on, the blanket drawn up to the chest",
+        "arrest" => "eyes closed, no mask, lying completely still, the blanket flat to the chest",
+        "recovered" => "sitting up in the bed with no oxygen mask, looking well",
         _ => return None,
     })
 }
 
+/// What the judge is asked to see: the feature, verbatim.
+pub fn sentence(state: &str) -> Option<&'static str> {
+    feature(state)
+}
+
 /// The gate's first question, asked with the reference picture first and the made picture second.
 pub const SAME_PERSON: &str = "Both pictures are AI-generated on purpose; do not judge whether they are real photos. The first is \
-the reference. Is this the same person as the reference picture? Judge the face, hair, skin and age only — the state, the \
-expression and the equipment may differ. Answer yes or no, then one short sentence why.";
+the reference. Is this the same person as the reference picture? Judge the shape of the face and the features, the hair \
+and the age only — the state, the expression, the equipment, and the skin colour and tone may differ. Answer yes or no, \
+then one short sentence why.";
 
 /// The gate's second question, with the state's own sentence in it.
 pub fn shows(state: &str) -> Option<String> {
@@ -125,37 +136,17 @@ pub fn state(state: &str, sex: Sex) -> Option<String> {
     state_for(state, sex, false)
 }
 
-/// A child's worse states, asked for in clinical but gentle words: a mask, a cannula, eyes closed,
-/// the blanket — never the colour of skin or lips. The image editor refused the adult wording of
-/// "deteriorating" for a child as prohibited content (16 Sep 2026, IMAGE_PROHIBITED_CONTENT);
-/// tried once per state on one child, these three were drawn and kept her face. The ruling
-/// (developer-16 under the founder's go): gentle wording that still names the state, never a
-/// wording that hides the subject and never another model to get around the filter.
+/// The edit for one state: [`KEEP`], then "She is now <feature>." — the same words the judge is
+/// given. A child's states were once asked for in gentler words than an adult's (the image editor
+/// refused the adult wording of "deteriorating" for a child as prohibited content, 16 Sep); the
+/// features carry no colour of skin or lips for anyone now, so one text serves both, and `child`
+/// is kept so the wording can part again without changing a caller.
 pub fn state_for(state: &str, sex: Sex, child: bool) -> Option<String> {
+    let _ = child;
     let she = match sex {
         Sex::F => "She",
         Sex::M => "He",
     };
-    if child {
-        let body = match state {
-            "stable" => "{She} is unwell and tired but comfortable: lying in the bed, eyes open, no smile, a little pale, a small plaster on the back of the hand, the blanket to the waist. Admitted and holding, not well.",
-            "improving" => "{She} is improving: eyes open and clear, a small calm smile, the oxygen mask gone, a little plaster on the back of the hand, propped a little higher on the pillow.",
-            "deteriorating" => "{She} is looking unwell: an oxygen mask over the nose and mouth, eyes half closed, tired, propped a little higher on the pillow.",
-            "critical" => "{She} is asleep and pale, a nasal cannula, the blanket drawn up to the chest, dimmer light, lying still.",
-            "arrest" => "{She} is lying very still with eyes closed, no mask, the blanket flat to the chest, dim quiet light.",
-            "recovered" => "{She} has recovered: sitting up in the bed, a relaxed relieved expression, no mask, only a small clear plaster on the back of the hand, the same plain pale-green gown with no print, badge or logo.",
-            _ => return None,
-        };
-        return Some(format!("{KEEP}{}", body.replace("{She}", she)));
-    }
-    let body = match state {
-        "stable" => "{She} is unwell and tired but comfortable: lying in the bed, eyes open, no smile, a little pale and drawn, an IV cannula taped on the hand, the blanket to the waist. Admitted and holding, not well.",
-        "improving" => "{She} is improving: colour returning to the face, eyes open and clear, a faint calm expression, the oxygen mask gone, IV cannula still taped on the hand, propped a little higher on the pillow.",
-        "deteriorating" => "{She} is deteriorating: an oxygen mask over nose and mouth, eyes half closed, grey-pale sweaty skin, lips slightly dusky, head tilted back, visibly struggling to breathe.",
-        "critical" => "{She} is critical: eyes closed, very pale, a non-rebreather oxygen mask with the bag, the blanket drawn up to the chest, dimmer light, no movement, no smile. Quiet and clinical, nothing graphic.",
-        "arrest" => "{She} is in cardiac arrest: eyes closed, ashen grey skin, lips blue-grey, no oxygen mask at all, nothing on the face, the blanket flat to the chest, dim light. Still, quiet and clinical — no hands, no equipment, nothing graphic.",
-        "recovered" => "{She} has recovered: sitting up in the bed, healthy colour in the face, relaxed relieved expression, no mask, no ECG leads, only a small clear plaster on the back of the hand, the same plain pale-green gown with no print, badge or logo.",
-        _ => return None,
-    };
-    Some(format!("{KEEP}{}", body.replace("{She}", she)))
+    let f = feature(state)?;
+    Some(format!("{KEEP}{she} is now {f}."))
 }
