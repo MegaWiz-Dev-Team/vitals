@@ -93,3 +93,72 @@ fn the_voiced_count_is_the_personas_plus_ep1() {
         );
     }
 }
+
+/// Everything the crate bakes in has to be in the **build** stage's context.
+///
+/// The neighbour above is about files the server reads at runtime. This is the other half, and it
+/// failed the first time it could: `ward::case_patient` include_str!s the twelve persona files, the
+/// crate compiled here, and Cloud Build answered with twelve `couldn't read` errors — because the
+/// build stage copies `Cargo.toml`, `Cargo.lock`, `crates/` and `pitch/`, and `demo/` arrives only
+/// in the runtime stage, long after rustc has finished.
+///
+/// It is the same class of mistake as the runtime one and it deserves the same kind of test: not
+/// "is demo/personas copied" but "is every path this crate bakes in copied", because the next one
+/// added will be forgotten the same way.
+#[test]
+fn the_build_stage_copies_everything_the_crate_bakes_in() {
+    let dockerfile = std::fs::read_to_string(repo().join("Dockerfile")).expect("a Dockerfile");
+
+    // The build stage is what rustc sees: from its FROM to the next one.
+    let build_stage: String = dockerfile
+        .split("\nFROM ")
+        .find(|s| s.starts_with("rust:"))
+        .expect("a build stage on a rust base")
+        .to_string();
+    let copied: Vec<String> = build_stage
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("COPY "))
+        .flat_map(|rest| {
+            let mut parts: Vec<&str> = rest.split_whitespace().collect();
+            parts.pop(); // the destination
+            parts.into_iter().map(|p| p.trim_start_matches("./").to_string()).collect::<Vec<_>>()
+        })
+        .collect();
+    assert!(copied.iter().any(|c| c == "crates"), "the build stage must copy the crates: {copied:?}");
+
+    // Every include_str! in the crate, resolved against the file that wrote it.
+    let mut baked: Vec<(PathBuf, String)> = Vec::new();
+    let mut stack = vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src")];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).expect("a source directory").flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            let src = std::fs::read_to_string(&path).expect("a source file");
+            for piece in src.split("include_str!(\"").skip(1) {
+                let Some(rel) = piece.split('"').next() else { continue };
+                baked.push((path.clone(), rel.to_string()));
+            }
+        }
+    }
+    assert!(baked.len() >= 12, "the crate bakes in more than this test found: {}", baked.len());
+
+    let repo_root = repo().canonicalize().expect("the repository");
+    for (from, rel) in baked {
+        let resolved = from.parent().expect("a directory").join(&rel);
+        let resolved = resolved.canonicalize()
+            .unwrap_or_else(|e| panic!("{} bakes in {rel}, which is not there: {e}", from.display()));
+        let inside = resolved.strip_prefix(&repo_root)
+            .unwrap_or_else(|_| panic!("{rel} resolves outside the repository"));
+        let inside = inside.to_string_lossy().replace('\\', "/");
+        assert!(copied.iter().any(|c| inside == *c || inside.starts_with(&format!("{c}/"))),
+                "{} bakes in {inside}, and the build stage copies {copied:?} — rustc will not \
+                 find it, and the failure arrives twenty minutes into a build rather than here",
+                from.display());
+    }
+}
