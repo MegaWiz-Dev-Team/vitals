@@ -809,3 +809,60 @@ fn the_head_can_be_handed_back_by_the_person_holding_it() {
     assert!(!ix.accounts.iter().any(|a| a.pubkey == operator),
             "the relay pays for this and takes no part in it — the same bargain as taking it");
 }
+
+/// A face may be fixed while she is waiting, and never once she is in a bed.
+///
+/// Producer's ruling from the factory's second tick: a base portrait came back wrong — a doll
+/// rather than a person — on a pack still in the queue. While she is waiting, nobody has seen her,
+/// so any key may be replaced. The moment she is admitted the add-only rule holds: a face the
+/// board has shown is one strangers have been treating, and changing it underneath them is the
+/// thing add-only exists to prevent.
+///
+/// The pack's address does not move when a portrait does, which is what makes this safe: portraits
+/// were deliberately left out of the content hash, so fixing a face is not a different patient.
+#[test]
+fn a_queued_face_may_be_replaced_and_an_admitted_one_may_not() {
+    use vitals_web::store::Store;
+    use vitals_web::ward_chain::{enqueue, pack_id, replace_queued_portraits, QUEUE_STORE};
+
+    let root = std::env::temp_dir().join(format!("vitals-face-{}-{:?}", std::process::id(),
+                                                 std::thread::current().id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let store = Store::open(root.clone()).expect("a store");
+
+    let mut pack = a_pack();
+    pack.portrait.insert("stable".into(), portrait_url(1));
+    let id = pack_id(&pack);
+    assert_eq!(enqueue(&store, vec![pack.clone()]).queued, 1);
+
+    // The doll is replaced while she waits.
+    let fixed = replace_queued_portraits(
+        &store, &id,
+        [("stable".to_string(), portrait_url(2))].into_iter().collect());
+    assert_eq!(fixed.added, 1, "a key that was there is replaced rather than kept");
+    assert!(fixed.rejected.is_empty());
+    let back: Pack = store.get(QUEUE_STORE, &id).expect("still queued");
+    assert_eq!(back.portrait.get("stable"), Some(&portrait_url(2)));
+    assert_eq!(pack_id(&back), id,
+               "and she is the same patient — a portrait is not part of what names a pack, which \
+                is what makes fixing one safe");
+
+    // The same validation. A key the engine cannot report, or a url from anywhere else, is refused.
+    let bad = replace_queued_portraits(
+        &store, &id,
+        [("worse".to_string(), portrait_url(3)),
+         ("critical".to_string(), "https://example.invalid/x.jpg".into())].into_iter().collect());
+    assert_eq!(bad.added, 0);
+    assert_eq!(bad.rejected.len(), 2);
+
+    // Nobody by that address is waiting — she may have been admitted since.
+    let gone = replace_queued_portraits(
+        &store, &"f".repeat(64),
+        [("stable".to_string(), portrait_url(1))].into_iter().collect());
+    assert_eq!(gone.added, 0);
+    assert!(gone.rejected[0].contains("waiting"),
+            "the refusal says she is not in the queue, so the factory knows to use the patient \
+             route and that the rule there is add-only: {:?}", gone.rejected);
+
+    let _ = std::fs::remove_dir_all(&root);
+}
