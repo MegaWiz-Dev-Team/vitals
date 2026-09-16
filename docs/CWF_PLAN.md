@@ -197,13 +197,20 @@ we authored a new disease course this month.
    more existing cases, never new clinical writing.** The point of automatic release is that the
    ward keeps running while we are asleep, and after 12 Oct.
 
-   **A stay is three cases** (producer, 16 ก.ย., under the founder's go) — **three cases, not
-   three people: one person may carry her all the way home** (ruling 4). A patient's chain is three
-   existing cases joined mechanically — acute, observation, ward-to-home — drawn by the same
-   no-repeat rule, so one patient spans at least three shifts. That is what makes the ward turn
-   over slowly: a stranger arriving at noon meets a patient other strangers have already treated
-   rather than a fresh admission nobody has touched, and three beds do not eat the catalogue in an
-   afternoon. `STAY_CASES` in `vitals-web`, published in `/api/ward`'s `policy`.
+   **A stay is one case — corrected 16 ก.ย., the same day it was written.** The line above said
+   three: acute, observation, ward-to-home, joined mechanically, so one patient would span at
+   least three shifts. None of it was ever wired. `Stay::advance` was called nowhere, `resumed()`
+   replays one scenario, and the program closes a patient the first time its engine reaches a
+   discharge — so `/api/ward` published "a stay is 3 cases" on the endpoint a judge is invited to
+   re-derive, and the chain said otherwise. `STAY_CASES`, `Stay` and the unused in-memory `Queue`
+   are deleted rather than left as a promise in the code; `policy.stay` says what a pack means:
+   **one pack is one case is one stay, and it ends when that case's engine ends it — she goes home
+   or she dies.**
+
+   The three-case stay is a **program change**, not a server one: `AdmitPatient` would carry the
+   stay's case hashes, the program would close only at the last of them, and `resumed()` would
+   join cases at the scenario boundary. It is the founder's to ask for, after 26 Sep, and it stays
+   out of the sprint until he does.
 
    **The ward never holds a bed for a patient it cannot describe** (founder, 16 ก.ย.:
    *"แก้ไขระยะยาวเลย"* — the long-term fix). A bed is an open patient the ward has a pack for. One

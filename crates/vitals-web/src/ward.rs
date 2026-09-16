@@ -35,14 +35,16 @@ pub const CATALOGUE: [&str; 16] = [
     "osce-c2", "osce-c3", "osce-d", "osce-d2", "osce-d3", "osce-d4",
 ];
 
-/// How many cases one patient's stay is made of.
-///
-/// A stay is a chain of cases that already exist, joined mechanically: an acute presentation, then
-/// observation, then the ward and home (CWF_PLAN.md ruling 1 — the joins are state handoff, never
-/// new clinical writing). Three is the founder's turnover rather than a clinical claim: it means
-/// one patient spans at least three shifts, so a stranger arriving at noon meets a patient other
-/// strangers have already treated, and three beds do not eat the catalogue in an afternoon.
-pub const STAY_CASES: usize = 3;
+// A stay was going to be three cases joined end to end — acute, observation, ward and home — and
+// `STAY_CASES`, `Stay` and an in-memory `Queue` were written for it. None of it was ever wired up:
+// `Stay::advance` was called nowhere, the program closes a patient on the first discharge its
+// engine reaches, and the ticker admits from Firestore. The policy sentence said three anyway,
+// which is the worst kind of sentence for a judge to read — a promise the chain contradicts.
+//
+// Deleted rather than left as a promise in the code. A stay is one case: the patient arrives with
+// one pack, and she goes home or dies when that case's engine says so. The three-case stay is a
+// program change (AdmitPatient carrying the stay's case hashes, a close only at the last one) and
+// it is the founder's to ask for after 26 Sep — CWF_PLAN.md ruling 1 carries that.
 
 pub const OPEN: u8 = 0;
 pub const DISCHARGED: u8 = 1;
@@ -801,77 +803,10 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
     })
 }
 
-use std::collections::VecDeque;
-
-/// One patient's stay: the chain of cases she will be taken through.
-///
-/// A stay is made of cases that already exist, and the joins between them are mechanical — the
-/// state one case ends in is the state the next begins from (`vitals_replay::shift`). Nothing here
-/// writes medicine, and a longer queue is more of the cases we have rather than new ones.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Stay {
-    pub patient_id: u64,
-    pub cases: Vec<String>,
-    at: usize,
-}
-
-impl Stay {
-    pub fn new(patient_id: u64, cases: Vec<String>) -> Stay {
-        Stay { patient_id, cases, at: 0 }
-    }
-
-    /// The case being played now, or `None` once the chain has run out.
-    pub fn current(&self) -> Option<&str> {
-        self.cases.get(self.at).map(String::as_str)
-    }
-
-    /// Move to the next case in the chain and return it.
-    pub fn advance(&mut self) -> Option<&str> {
-        self.at += 1;
-        self.current()
-    }
-
-    /// Nothing left to hand over. The stay ends here whatever the ward does next — a terminal
-    /// outcome closes a patient earlier, and that is the program's decision, not this one's.
-    pub fn finished(&self) -> bool {
-        self.at >= self.cases.len()
-    }
-}
-
-/// Patients waiting for a bed.
-///
-/// `admit` is the whole automatic-release rule: it needs no argument but the state of the ward, so
-/// the server can call it on a timer and nobody has to be awake for a bed to refill.
-#[derive(Debug, Clone, Default)]
-pub struct Queue {
-    waiting: VecDeque<Vec<String>>,
-    next_id: u64,
-}
-
-impl Queue {
-    /// Build the queue from chains of existing case ids. `first_id` is where patient ids start:
-    /// the program seeds a patient PDA on it, so it must never repeat for one operator.
-    pub fn from_catalogue(catalogue: Vec<Vec<String>>, first_id: u64) -> Queue {
-        Queue { waiting: catalogue.into_iter().collect(), next_id: first_id }
-    }
-
-    pub fn waiting(&self) -> usize {
-        self.waiting.len()
-    }
-
-    /// Release as many patients as there are free beds and patients to fill them.
-    pub fn admit(&mut self, open: usize, beds: usize) -> Vec<Stay> {
-        (0..to_admit(open, beds, self.waiting.len()))
-            .filter_map(|_| {
-                let cases = self.waiting.pop_front()?;
-                let id = self.next_id;
-                self.next_id += 1;
-                Some(Stay::new(id, cases))
-            })
-            .collect()
-    }
-}
-
+// The in-memory `Queue` stood here, and it went with `Stay` for the same reason: nothing called
+// it. The ward's queue is the store's — the factory writes packs into it through a door and the
+// ticker admits from it every minute — and two queues, one of them unreachable, is one queue and
+// a decoy. `to_admit` above is the rule both of them used and the only part worth keeping.
 
 /// The patient id in `/ward/<id>`, or `None` if that is not what this path is.
 ///
@@ -937,9 +872,11 @@ fn policy() -> serde_json::Value {
                                  shortage sends twice the patients. The weights and their source \
                                  are published by the factory: the ward does not choose countries, \
                                  it admits what the queue holds",
-        "stay": format!("a stay is {STAY_CASES} cases, joined mechanically — the state one case \
-                         ends in is the state the next begins from — so one patient spans at \
-                         least {STAY_CASES} shifts and no case is authored for the ward"),
+        "stay": "a stay is one case. The patient arrives with one pack — her scenario, her \
+                 mark sheet and her own words — and it ends when that case's engine ends it: she \
+                 goes home, or she dies. The chain closes her on the first of those it is told \
+                 about, so nothing here can span more than one case without the program changing \
+                 first",
         "catalogue": CATALOGUE,
         // Counted off the catalogue rather than written down, so a case added without a level
         // cannot quietly shrink a band the panel is still offering.
