@@ -159,7 +159,7 @@ pub const OXYGEN: Role = Role {
 pub const COMMON: &[Role] = &[
     OXYGEN,
     role("admit", "Admit to a monitored bed",
-        &["admit*", "admission", "icu", "hdu", "intensive care", "high-dependency", "high dependency", "monitored bed", "ccu", "step-down", "รับไว้", "รับนอน", "แอดมิท"],
+        &["admit*", "icu", "hdu", "intensive care", "high-dependency", "high dependency", "monitored bed", "ccu", "step-down", "รับไว้", "รับนอน", "แอดมิท"],
         Kind::Supportive, "admitted to a monitored bed — the team is told what to watch for", &[]),
     role("monitor", "Monitoring plan",
         &["monitoring", "monitor", "reassess*", "serial", "ติดตาม", "เฝ้าระวัง", "ประเมินซ้ำ", "strict fluid balance"],
@@ -232,14 +232,17 @@ pub const NEGATED_HARMS: &[Role] = &[
 
 const FLUIDS_KW: &[&str] = &["crystalloid*", "ringer*", "saline", "fluid*", "nss", "สารน้ำ", "ให้น้ำเกลือ"];
 const ANTIBIOTIC_KW: &[&str] = &["antibiotic*", "antimicrobial*", "ceftriaxone", "meropenem", "piperacillin", "tazobactam", "cefotaxime", "ceftazidime", "vancomycin", "metronidazole", "ampicillin", "amoxicillin", "gentamicin", "amikacin", "azithromycin", "erythromycin", "clindamycin", "doxycycline", "penicillin", "benzylpenicillin", "cloxacillin", "flucloxacillin", "co-trimoxazole", "cotrimoxazole", "trimethoprim", "ยาปฏิชีวนะ"];
-const PRESSOR_KW: &[&str] = &["noradrenaline", "norepinephrine", "vasopressor", "adrenaline infusion", "epinephrine infusion", "dopamine", "vasopressin", "ยากระตุ้นความดัน"];
+const PRESSOR_KW: &[&str] = &["noradrenaline", "norepinephrine", "vasopressor*", "adrenaline infusion", "epinephrine infusion", "dopamine", "vasopressin", "ยากระตุ้นความดัน"];
 const TRANSFUSION_KW: &[&str] = &["transfus*", "packed red", "fresh frozen plasma", "ffp", "platelet*", "blood products", "whole blood", "ให้เลือด"];
-const SPECIFIC_KW: &[&str] = &["artesunate", "artemether", "quinine", "ribavirin", "antivenom", "anti-snake", "asv", "benznidazole", "nifurtimox", "antitoxin", "aciclovir", "acyclovir", "oseltamivir", "ivig", "immunoglobulin", "plasma exchange", "plasmapheresis", "praziquantel", "pralidoxime"];
+const SPECIFIC_KW: &[&str] = &["artesunate", "artemether", "quinine", "ribavirin", "antivenom", "anti-snake", "asv", "benznidazole", "nifurtimox", "antitoxin", "ivig", "immunoglobulin", "plasma exchange", "plasmapheresis", "praziquantel", "pralidoxime"];
+/// Antivirals ride as support: an influenza cover "in season" must not become the turn of an
+/// acute chest syndrome.
+const ANTIVIRAL_KW: &[&str] = &["aciclovir", "acyclovir", "oseltamivir", "ganciclovir", "antiviral*"];
 const AIRWAY_KW: &[&str] = &["intubat*", "endotracheal", "secure the airway", "airway", "bag-valve", "ventilat*", "tracheostomy", "cricothyro*", "ใส่ท่อช่วยหายใจ", "ทางเดินหายใจ"];
 const DEXTROSE_KW: &[&str] = &["dextrose", "d50", "d10", "50% glucose", "10% glucose", "glucose 50", "treat hypoglyc*", "hypoglycaemia at once", "correct hypoglyc*", "กลูโคส"];
-const SOURCE_KW: &[&str] = &["laparotomy", "surgery", "surgeon*", "surgical team", "surgical review", "surgical consult*", "surgical intervention", "surgical exploration", "surgical drainage", "source control", "percutaneous drainage", "abscess drainage", "debridement", "ercp", "theatre", "operation", "evacuation of retained", "ผ่าตัด", "ศัลย", "ระบายหนอง"];
+const SOURCE_KW: &[&str] = &["laparotomy", "surgery", "surgeon*", "surgical team", "surgical review", "surgical consult*", "surgical intervention", "surgical exploration", "surgical drainage", "source control", "percutaneous drainage", "abscess drainage", "debridement", "ercp", "to theatre", "for theatre", "operation cannot wait", "emergency operation", "evacuation of retained", "ผ่าตัด", "ศัลย", "ระบายหนอง"];
 const SEDATION_KW: &[&str] = &["sedat*", "midazolam", "diazepam", "lorazepam", "benzodiazepine*"];
-const BETA_BLOCKER_KW: &[&str] = &["beta-blocker", "beta blocker", "metoprolol", "propranolol", "bisoprolol", "carvedilol", "verapamil", "diltiazem"];
+const BETA_BLOCKER_KW: &[&str] = &["beta-blocker*", "beta blocker*", "calcium-channel blocker*", "calcium channel blocker*", "metoprolol", "propranolol", "bisoprolol", "carvedilol", "verapamil", "diltiazem"];
 
 const FLUIDS: Role = role("fluids", "Crystalloid bolus, reassessed", FLUIDS_KW, Kind::Critical,
     "crystalloid running — perfusion reassessed after each bolus", &[n("sbp", 8.0)]);
@@ -249,7 +252,7 @@ const ANTIBIOTICS: Role = role("antibiotics", "Broad-spectrum antibiotics", ANTI
     "broad-spectrum antibiotic in — after the cultures, inside the hour", &[]);
 const ANTIBIOTICS_SUPPORT: Role = role("antibiotics", "Empirical antibiotics", ANTIBIOTIC_KW, Kind::Supportive,
     "empirical antibiotic in — cover while the cultures cook", &[]);
-const CULTURES: Role = role("cultures", "Blood cultures before antibiotics", &["blood culture*", "culture*", "เพาะเชื้อ"], Kind::Supportive,
+const CULTURES: Role = role("cultures", "Blood cultures before antibiotics", &["blood culture*", "blood and urine culture*", "cultures", "เพาะเชื้อ"], Kind::Supportive,
     "two sets of blood cultures drawn before the first dose", &[]);
 const PRESSOR: Role = role("vasopressor", "Vasopressor", PRESSOR_KW, Kind::Critical,
     "noradrenaline titrated through a dedicated line — the pressure answers", &[n("sbp", 12.0)]);
@@ -281,8 +284,10 @@ const ELECTROLYTES: Role = role("electrolytes", "Correct the electrolytes", &["p
     "electrolytes corrected under ECG monitoring", &[]);
 const ISOLATE: Role = role("isolate", "Isolate and protect staff", &["isolat*", "ppe", "personal protective", "precaution*", "แยกผู้ป่วย"], Kind::Gate,
     "isolation room, full protective equipment, a contact log started", &[]);
-const HAEMOSTASIS: Role = role("haemostasis", "Stop the bleeding", &["tranexamic", "endoscop*", "egd", "gastroscopy", "banding", "sclerotherapy", "surgery", "surgical haemostasis", "surgical intervention", "laparotomy", "uterotonic*", "oxytocin", "ergometrine", "misoprostol", "uterine massage", "balloon", "pressure dressing*", "embolis*", "ligat*", "ผ่าตัด", "ห้ามเลือด", "ส่องกล้อง"], Kind::Critical,
+const HAEMOSTASIS: Role = role("haemostasis", "Stop the bleeding", &["tranexamic", "endoscop*", "egd", "gastroscopy", "banding", "sclerotherapy", "surgery", "surgical haemostasis", "surgical intervention", "surgical consult*", "source control", "laparotomy", "uterotonic*", "oxytocin", "ergometrine", "misoprostol", "uterine massage", "balloon", "pressure dressing*", "embolis*", "ligat*", "ผ่าตัด", "ห้ามเลือด", "ส่องกล้อง"], Kind::Critical,
     "the bleeding point is being dealt with — pressure, drugs, or the theatre", &[n("sbp", 4.0)]);
+const ANTIVIRAL: Role = role("antiviral", "Antiviral", ANTIVIRAL_KW, Kind::Supportive,
+    "antiviral given", &[]);
 const PPI: Role = role("ppi", "Proton-pump inhibitor", &["pantoprazole", "omeprazole", "proton pump", "ppi"], Kind::Supportive,
     "proton-pump inhibitor in", &[]);
 const INOTROPE: Role = role("inotrope", "Inotrope", &["dobutamine", "inotrope*", "inotropic", "milrinone", "levosimendan"], Kind::Critical,
@@ -358,9 +363,9 @@ const VAGAL: Role = role("vagal", "Vagal manoeuvre", &["vagal", "valsalva", "car
     "a modified Valsalva — legs up, bear down; the monitor is watched", &[]);
 const ADENOSINE: Role = role("adenosine", "Adenosine", &["adenosine", "อะดีโนซีน"], Kind::Critical,
     "adenosine 6 mg, rapid flush — a pause on the monitor, then the rhythm breaks", &[]);
-const RATE_CONTROL: Role = role("rate_control", "Rate control", &["rate control", "rate-control", "rate-limiting", "beta-blocker", "beta blocker", "metoprolol", "esmolol", "diltiazem", "verapamil", "digoxin", "ควบคุมอัตรา", "ยาลดอัตราการเต้น"], Kind::Critical,
+const RATE_CONTROL: Role = role("rate_control", "Rate control", &["rate control", "rate-control", "rate-limiting", "beta-blocker*", "beta blocker*", "metoprolol", "esmolol", "diltiazem", "verapamil", "digoxin", "ควบคุมอัตรา", "ยาลดอัตราการเต้น"], Kind::Critical,
     "rate control in — the ventricular response slows and the pressure holds", &[n("hr", -20.0)]);
-const RATE_CONTROL_SUPPORT: Role = role("rate_control", "Rate control", &["rate control", "rate-control", "beta-blocker", "beta blocker", "metoprolol", "esmolol", "diltiazem", "verapamil"], Kind::Supportive,
+const RATE_CONTROL_SUPPORT: Role = role("rate_control", "Rate control", &["rate control", "rate-control", "beta-blocker*", "beta blocker*", "metoprolol", "esmolol", "diltiazem", "verapamil"], Kind::Supportive,
     "a rate-slowing drug — second line behind adenosine", &[n("hr", -15.0)]);
 const ANTICOAG_AF: Role = role("anticoagulation", "Anticoagulation", &["anticoag*", "doac", "apixaban", "rivaroxaban", "warfarin", "heparin", "enoxaparin", "ยาต้านการแข็งตัว"], Kind::Critical,
     "anticoagulation started — the atrium's clot risk is priced in", &[]);
@@ -374,7 +379,7 @@ const REVERSIBLE_CAUSES: Role = role("reversible_causes", "Look for the reversib
     "the H's and T's run through — the cause is looked for while the algorithm runs", &[]);
 const POST_ROSC: Role = role("post_rosc_care", "Post-arrest care", &["post-cardiac arrest", "post-rosc", "after rosc", "targeted temperature", "12-lead ecg"], Kind::Supportive,
     "post-arrest care — a 12-lead, the cause, the temperature, intensive care", &[]);
-const THYROID: Role = role("thyroid", "Treat the thyroid trigger", &["methimazole", "propylthiouracil", "thyroid"], Kind::Supportive,
+const THYROID: Role = role("thyroid", "Treat the thyroid trigger", &["methimazole", "propylthiouracil", "*thyroid*"], Kind::Supportive,
     "the thyroid trigger is treated alongside the rhythm", &[]);
 const ADENOSINE_IN_AF_HARM: Role = harm("adenosine", "Adenosine", &["adenosine"],
     "adenosine given to an irregular tachycardia — it cannot convert atrial fibrillation and in a wide-complex rhythm it can be lethal", &[n("sbp", -6.0)]);
@@ -671,17 +676,17 @@ impl Archetype {
     /// listed in the scenario and the order the golden path gives them.
     pub fn roles(self) -> &'static [Role] {
         match self {
-            Archetype::SepticShock => &[FLUIDS, ANTIBIOTICS, PRESSOR, SOURCE_CONTROL, CULTURES, TRANSFUSION_SUPPORT, ELECTROLYTES, DEXTROSE_SUPPORT, STEROIDS_SUPPORT, ANTICOAG, PPI, IV_ACCESS],
+            Archetype::SepticShock => &[FLUIDS, ANTIBIOTICS, PRESSOR, SOURCE_CONTROL, CULTURES, TRANSFUSION_SUPPORT, ELECTROLYTES, DEXTROSE_SUPPORT, STEROIDS_SUPPORT, ANTICOAG, PPI, ANTIVIRAL, IV_ACCESS],
             Archetype::HaemorrhagicShock => &[ISOLATE, FLUIDS, TRANSFUSION, HAEMOSTASIS, SPECIFIC, PRESSOR_SUPPORT, ANTIBIOTICS_SUPPORT, CULTURES, ELECTROLYTES, PPI, IV_ACCESS],
             Archetype::CardiogenicShock => &[INOTROPE, PRESSOR, REPERFUSION, SPECIFIC, DIURETIC, NIV, PACING, ANTIPLATELET, ANTIARRHYTHMIC, ANTICOAG, PERICARDIOCENTESIS, ELECTROLYTES, AIRWAY_SUPPORT],
             Archetype::NeuromuscularRespiratoryFailure => &[AIRWAY, SPECIFIC, NEOSTIGMINE, ANAPHYLAXIS_READY, LIGATURE, TETANUS, ELECTROLYTES, IV_ACCESS],
-            Archetype::CnsDepressionHypoglycaemia => &[DEXTROSE, SPECIFIC, AIRWAY_SUPPORT, ANTICONVULSANT, FLUIDS_CAUTIOUS, TRANSFUSION_SUPPORT, ANTIBIOTICS_SUPPORT, CULTURES, LUMBAR_PUNCTURE, ELECTROLYTES],
+            Archetype::CnsDepressionHypoglycaemia => &[DEXTROSE, SPECIFIC, AIRWAY_SUPPORT, ANTICONVULSANT, FLUIDS_CAUTIOUS, TRANSFUSION_SUPPORT, ANTIBIOTICS_SUPPORT, ANTIVIRAL, CULTURES, LUMBAR_PUNCTURE, ELECTROLYTES],
             // glucose and antibiotics are as critical as the measured fluid when the plan names them (SAM, cholera)
             Archetype::PaediatricCompensatedShock => &[OVERLOAD_SENTINEL, DEXTROSE, ANTIBIOTICS, TRANSFUSION_SUPPORT, ELECTROLYTES, IV_ACCESS, CULTURES, ORS, ZINC],
             // the specific therapy (antitoxin), the transfusion (acute chest syndrome) and the isolation gate
             // (measles, diphtheria) are the roles the authors found missing; the airway turns critical for an
             // upper-airway diagnosis (see `critical_override`)
-            Archetype::HypoxicRespiratoryFailure => &[ISOLATE, SPECIFIC, TRANSFUSION, BRONCHODILATOR, CHEST_DRAIN, ANTICOAG_CRITICAL, ANTIBIOTICS, DIURETIC_CRITICAL, ADRENALINE_NEB, STEROIDS_SUPPORT, MAGNESIUM, NIV, NITRATE, AIRWAY_SUPPORT, CULTURES, IV_ACCESS],
+            Archetype::HypoxicRespiratoryFailure => &[ISOLATE, SPECIFIC, TRANSFUSION, BRONCHODILATOR, CHEST_DRAIN, ANTICOAG_CRITICAL, ANTIBIOTICS, DIURETIC_CRITICAL, ADRENALINE_NEB, STEROIDS_SUPPORT, ANTIVIRAL, MAGNESIUM, NIV, NITRATE, AIRWAY_SUPPORT, CULTURES, IV_ACCESS],
             Archetype::AclsCardiacArrest => &[AIRWAY_SUPPORT, REVERSIBLE_CAUSES, POST_ROSC, ELECTROLYTES, IV_ACCESS],
             Archetype::AclsTachycardiaSvt => &[VAGAL, ADENOSINE, RATE_CONTROL_SUPPORT, AIRWAY_SUPPORT, IV_ACCESS, ELECTROLYTES],
             Archetype::AclsTachycardiaAf => &[RATE_CONTROL, ANTICOAG_AF, DIURETIC, NIV, THYROID, AIRWAY_SUPPORT, IV_ACCESS, ELECTROLYTES],
