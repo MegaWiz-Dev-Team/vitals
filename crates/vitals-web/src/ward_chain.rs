@@ -144,6 +144,38 @@ impl Seen {
         self.until.clone()
     }
 
+    /// Walk a page of her history from the oldest entry forward, stopping at the first one that
+    /// cannot be read.
+    ///
+    /// `page` is newest-first, as `getSignaturesForAddress` answers. Returns what was read, the
+    /// cursor to stop at next time, and the trouble that stopped it.
+    ///
+    /// **Stopping rather than skipping is the whole point.** A skipped entry would take the cursor
+    /// past it, and the shift underneath — anchored, paid for, on chain — would never be read
+    /// again: absent from the census for ever, silently. Stopping costs one re-read of a handful
+    /// of transactions and loses nothing.
+    pub fn walk(
+        page: Vec<(String, u64)>,
+        mut read: impl FnMut(&str, u64) -> Result<Vec<crate::ward::ShiftOnChain>, String>,
+    ) -> (Vec<crate::ward::ShiftOnChain>, Option<(String, u64)>, Option<String>) {
+        let mut got = Vec::new();
+        let mut cursor = None;
+        for (sig, slot) in page.into_iter().rev() {
+            match read(&sig, slot) {
+                Ok(shifts) => {
+                    got.extend(shifts);
+                    // Past entries that held no shift as well: taking the head is a transaction
+                    // too, and a cursor made only of shifts re-fetches every lease for ever.
+                    cursor = Some((sig, slot));
+                }
+                Err(e) => {
+                    return (got, cursor, Some(format!("stopped at {sig}: {e}")));
+                }
+            }
+        }
+        (got, cursor, None)
+    }
+
     pub fn shifts(&self) -> Vec<ShiftOnChain> {
         self.shifts.iter().map(|s| s.shift).collect()
     }
@@ -152,22 +184,41 @@ impl Seen {
     ///
     /// Idempotent by signature, because every reason this is called twice is ordinary: a retry, a
     /// restart, two instances ticking at once, a page that overlaps the last one.
-    pub fn absorb(&mut self, page: Vec<SeenShift>) -> usize {
+    pub fn absorb(
+        &mut self,
+        page: Vec<(crate::ward::ShiftOnChain, String)>,
+        cursor: Option<(String, u64)>,
+    ) -> usize {
         let mut added = 0;
-        for entry in page {
-            if entry.shift.slot > self.until_slot || self.until.is_none() {
-                self.until_slot = entry.shift.slot;
-                self.until = Some(entry.signature.clone());
-            }
-            if self.shifts.iter().any(|s| s.signature == entry.signature) {
+        for (shift, signature) in page {
+            if self.shifts.iter().any(|s| s.signature == signature && s.shift == shift) {
                 continue;
             }
-            self.shifts.push(entry);
+            self.shifts.push(SeenShift { signature, shift });
             added += 1;
         }
         self.shifts.sort_by_key(|s| s.shift.slot);
+        // The cursor is the walk's, not this function's. Deriving it from the shifts would put it
+        // past an entry the walk deliberately stopped before.
+        if let Some((sig, slot)) = cursor {
+            if slot >= self.until_slot || self.until.is_none() {
+                self.until_slot = slot;
+                self.until = Some(sig);
+            }
+        }
         added
     }
+}
+
+/// Walk a page of a patient's history, oldest first, stopping where it cannot read.
+///
+/// The free-standing name for [`Seen::walk`], which is what the reader calls and what the test
+/// drives with a page carrying a null.
+pub fn walk_history(
+    page: Vec<(String, u64)>,
+    read: impl FnMut(&str, u64) -> Result<Vec<crate::ward::ShiftOnChain>, String>,
+) -> (Vec<crate::ward::ShiftOnChain>, Option<(String, u64)>, Option<String>) {
+    Seen::walk(page, read)
 }
 
 /// The chain, as the ward reads it.
@@ -280,9 +331,7 @@ impl WardChain {
     /// happen — which is precisely the refusal the ward is proud of.
     pub fn refresh(&self, patient_id: u64, seen: &mut Seen) -> Result<usize, String> {
         let pda = self.patient_pda(patient_id);
-        let until = seen
-            .until()
-            .and_then(|s| Signature::from_str(&s).ok());
+        let until = seen.until().and_then(|s| Signature::from_str(&s).ok());
         let sigs = self
             .rpc
             .get_signatures_for_address_with_config(
@@ -295,19 +344,30 @@ impl WardChain {
             )
             .map_err(why)?;
 
-        let mut page = Vec::new();
-        for s in sigs {
-            if s.err.is_some() {
-                continue;
-            }
-            let Ok(sig) = Signature::from_str(&s.signature) else { continue };
+        // A failed transaction is not a shift: the program refused it, so nothing was anchored,
+        // and counting it would publish work the chain says did not happen. Dropped here rather
+        // than in the walk, because a refusal is a thing we read successfully.
+        let page: Vec<(String, u64)> = sigs
+            .into_iter()
+            .filter(|s| s.err.is_none())
+            .map(|s| (s.signature, s.slot))
+            .collect();
+
+        let mut signatures: std::collections::BTreeMap<u64, String> = Default::default();
+        let (shifts, cursor, trouble) = Seen::walk(page, |sig, slot| {
+            let parsed = Signature::from_str(sig).map_err(|e| format!("{sig} is not a signature: {e}"))?;
             let tx = self
                 .rpc
-                .get_transaction(&sig, UiTransactionEncoding::Base64)
+                .get_transaction(&parsed, UiTransactionEncoding::Base64)
                 .map_err(why)?;
-            let slot = tx.slot;
-            let Some(decoded) = tx.transaction.transaction.decode() else { continue };
+            signatures.insert(slot, sig.to_string());
+            let Some(decoded) = tx.transaction.transaction.decode() else {
+                // Read, and not a transaction we can decode. Not a failure of the walk: it held no
+                // shift, and the cursor may pass it.
+                return Ok(Vec::new());
+            };
             let keys = decoded.message.static_account_keys().to_vec();
+            let mut here = Vec::new();
             for ix in decoded.message.instructions() {
                 let Some(program) = keys.get(ix.program_id_index as usize) else { continue };
                 let accounts: Vec<Pubkey> = ix
@@ -320,12 +380,28 @@ impl WardChain {
                     // shift the account order and credit the wrong key.
                     continue;
                 }
-                if let Some(shift) = shift_in(program, &self.program_id, &ix.data, &accounts, slot) {
-                    page.push(SeenShift { signature: s.signature.clone(), shift });
+                if let Some(shift) = shift_in(program, &self.program_id, &ix.data, &accounts, tx.slot) {
+                    here.push(shift);
                 }
             }
+            Ok(here)
+        });
+
+        let named: Vec<(crate::ward::ShiftOnChain, String)> = shifts
+            .into_iter()
+            .map(|sh| {
+                let sig = signatures.get(&sh.slot).cloned().unwrap_or_default();
+                (sh, sig)
+            })
+            .collect();
+        let added = seen.absorb(named, cursor);
+
+        // A page that stopped early is not an error: what was read is kept, the cursor stops at
+        // it, and the next read begins there. The ward stays readable and loses nothing.
+        if let Some(why) = trouble {
+            eprintln!("ward       patient {patient_id}'s history was read as far as it could be — {why}");
         }
-        Ok(seen.absorb(page))
+        Ok(added)
     }
 }
 
@@ -417,8 +493,12 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
     });
     // How many patients are waiting, which is the number the factory tops up against and the one
     // a reader of the board uses to tell "nobody is playing" from "nobody is left to play".
+    let waiting = queue_depth(store);
     v["queue"] = serde_json::json!({
-        "waiting": queue_depth(store),
+        // Null, never zero, when the store cannot be listed — "nobody is waiting" and "we could
+        // not look" are opposite facts and this endpoint has one rule about those.
+        "waiting": waiting.as_ref().ok(),
+        "waiting_unknown_because": waiting.as_ref().err(),
         "beds": crate::ward::BEDS,
         // Published, because "the queue is empty" and "the door is shut" look identical from
         // outside and mean opposite things about whether anybody should be doing anything.
@@ -453,6 +533,34 @@ pub fn take_shift_ix(
     SolInstruction::new_with_borsh(
         *program_id,
         &Instruction::TakeShift { patient_id },
+        vec![
+            AccountMeta::new_readonly(*player, true),
+            AccountMeta::new_readonly(account_pda(program_id, player), false),
+            AccountMeta::new(patient_pda(program_id, operator, patient_id).0, false),
+        ],
+    )
+}
+
+/// Put the head down without anchoring anything.
+///
+/// The same three accounts taking it names, and the same absence: the relay pays for the
+/// transaction and is not in it. While a lease stands only its holder may release it — the program
+/// checks that — and once it has expired anybody may clear it, which is what stops a stranger who
+/// closed their laptop from holding a bed until somebody with the right key comes back, who is
+/// nobody.
+///
+/// **Nothing is recorded by this.** The shift's tape is discarded and her chart is untouched: the
+/// next person gets her exactly as this one found her. That is the honest meaning of walking away,
+/// and it is why the page says it in those words.
+pub fn release_shift_ix(
+    program_id: &Pubkey,
+    operator: &Pubkey,
+    player: &Pubkey,
+    patient_id: u64,
+) -> SolInstruction {
+    SolInstruction::new_with_borsh(
+        *program_id,
+        &Instruction::ReleaseShift { patient_id },
         vec![
             AccountMeta::new_readonly(*player, true),
             AccountMeta::new_readonly(account_pda(program_id, player), false),
@@ -854,12 +962,21 @@ pub struct Queued {
     pub queued: usize,
     pub duplicates: usize,
     pub rejected: Vec<String>,
-    pub depth: usize,
+    /// How many are waiting, or **null** when the store could not be listed.
+    ///
+    /// Null rather than zero, because the factory tops the queue up against this number: a zero it
+    /// cannot distinguish from "we could not look" is a factory that rebuilds the pool until it
+    /// runs out of people. That is not a hypothetical — it is what the first real tick would have
+    /// done.
+    pub depth: Option<usize>,
+    /// Why the depth is unknown, when it is.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depth_error: Option<String>,
 }
 
 /// How many packs are waiting for a bed.
-pub fn queue_depth(store: &crate::store::Store) -> usize {
-    store.keys(QUEUE_STORE).len()
+pub fn queue_depth(store: &crate::store::Store) -> Result<usize, String> {
+    store.keys(QUEUE_STORE).map(|k| k.len())
 }
 
 /// Take a page of packs from the factory, keep the ones this ward can serve, and say what happened.
@@ -886,7 +1003,10 @@ pub fn enqueue(store: &crate::store::Store, packs: Vec<crate::ward::Pack>) -> Qu
             Err(e) => out.rejected.push(format!("could not queue {id}: {e}")),
         }
     }
-    out.depth = queue_depth(store);
+    match queue_depth(store) {
+        Ok(n) => out.depth = Some(n),
+        Err(e) => out.depth_error = Some(e),
+    }
     out
 }
 
@@ -971,7 +1091,8 @@ pub struct Ticked {
     /// ward nobody is playing.
     pub notes: Vec<String>,
     pub open: usize,
-    pub depth: usize,
+    /// How many are waiting, or null when the store could not be listed.
+    pub depth: Option<usize>,
 }
 
 /// One tick: free beds, and fill them from the queue.
@@ -1003,17 +1124,31 @@ pub fn tick(
         }
     };
     let mut taken: Vec<u64> = patients.iter().map(|p| p.patient_id).collect();
-    let packs = packs(store);
+    let packs_now = packs(store);
     let mut on_ward_cases: Vec<String> = patients
         .iter()
         .filter(|p| p.state == OPEN)
-        .filter_map(|p| packs.get(&p.patient_id).map(|k| k.case.clone()))
+        .filter_map(|p| packs_now.get(&p.patient_id).map(|k| k.case.clone()))
         .collect();
 
-    out.open = patients.iter().filter(|p| p.state == OPEN).count();
-    out.depth = queue_depth(store);
+    // Beds, not chain rows: a patient the ward cannot describe holds none (`beds_taken`), so she
+    // blocks no admission. Three test patients that reached the chain outside the queue wedged
+    // staging shut against a full queue on 16 ก.ย., and this is the rule that unwedges it.
+    out.open = crate::ward::beds_taken(&patients, &packs_now);
+    let depth = match queue_depth(store) {
+        Ok(n) => {
+            out.depth = Some(n);
+            n
+        }
+        Err(e) => {
+            // Nobody is admitted against a queue we could not read. Admitting from a list we
+            // cannot see is how one pack becomes two patients.
+            out.notes.push(format!("the queue could not be read, so nobody was admitted: {e}"));
+            return out;
+        }
+    };
 
-    for _ in 0..to_admit(out.open, BEDS, out.depth) {
+    for _ in 0..to_admit(out.open, BEDS, depth) {
         let queue = store.list::<crate::ward::Pack>(QUEUE_STORE);
         let Some(id) = choose_next(&queue, &on_ward_cases) else {
             out.notes.push(
@@ -1055,7 +1190,12 @@ pub fn tick(
         }
     }
 
-    out.depth = queue_depth(store);
+    // Read again at the end: the tick just took packs out of it, and the number the factory tops
+    // up against should be the one after this tick rather than before it.
+    match queue_depth(store) {
+        Ok(n) => out.depth = Some(n),
+        Err(e) => out.notes.push(format!("the queue's depth could not be read: {e}")),
+    }
     out
 }
 
@@ -1068,6 +1208,58 @@ pub struct Filled {
     pub rejected: Vec<String>,
     /// Every state she has a picture for after this push.
     pub states: Vec<String>,
+}
+
+/// Replace pictures on a pack that is still waiting for a bed.
+///
+/// **Replace, not add** — and only here. While she is in the queue nobody has seen her, so a face
+/// that came out wrong can simply be fixed. The moment she is admitted, [`fill_portraits`] is the
+/// only door and its rule is add-only: a face the board has shown is one strangers have been
+/// treating, and changing it underneath them is exactly what that rule exists to prevent.
+///
+/// Her address does not move when a portrait does. Portraits are deliberately outside the content
+/// hash, so fixing a face is not a different patient queued twice.
+pub fn replace_queued_portraits(
+    store: &crate::store::Store,
+    pack_id: &str,
+    portraits: std::collections::BTreeMap<String, String>,
+) -> Filled {
+    let mut out = Filled::default();
+    let Some(mut pack) = store.get::<crate::ward::Pack>(QUEUE_STORE, pack_id) else {
+        out.rejected.push(format!(
+            "no pack {pack_id} is waiting — she may be in a bed already, and a patient's faces are \
+             added through her own door and never replaced"
+        ));
+        return out;
+    };
+
+    for (state, src) in portraits {
+        if state == "dead" {
+            out.rejected.push(
+                "no picture of a dead patient is made — the board shows her last living state".into(),
+            );
+            continue;
+        }
+        if !crate::ward::PORTRAIT_LADDER.contains(&state.as_str()) {
+            out.rejected.push(format!("{state} is not a state the engine reports"));
+            continue;
+        }
+        if !is_portrait_url(&src) {
+            out.rejected.push(format!("{state}: a portrait must be {PORTRAITS}/<sha256>.webp"));
+            continue;
+        }
+        pack.portrait.insert(state, src);
+        out.added += 1;
+    }
+
+    if out.added > 0 {
+        if let Err(e) = store.put(QUEUE_STORE, pack_id, &pack) {
+            out.rejected.push(format!("pack {pack_id} could not be written: {e}"));
+            out.added = 0;
+        }
+    }
+    out.states = pack.portrait.keys().cloned().collect();
+    out
 }
 
 /// Add pictures to a patient the ward has already admitted.
@@ -1316,4 +1508,126 @@ pub fn refusal(err: &str) -> Option<&'static str> {
         19 => "the head is not yours to give back: somebody else holds this shift",
         _ => return None,
     })
+}
+
+/// What one shift was, for somebody who never played it.
+///
+/// Everything here is either on the chain or recomputed in front of the reader from bytes the
+/// chain committed to. `rubric` is the case's mark sheet when it has one; without it the
+/// deterministic score is absent rather than zero, because zero is a claim and absence is a fact.
+///
+/// **No judged score.** The judged sixty belongs to a finished case; a shift is a few minutes in
+/// the middle of a stay, and a number that cannot mean what a reader assumes is worse than no
+/// number. The receipt says that in words rather than leaving a hole.
+///
+/// **The harm is this shift's own.** `vitals_replay::shift` reports only what this tape added, so
+/// a stranger who walked into a patient somebody else hurt is answerable for what they did and
+/// nothing else.
+pub fn receipt(
+    sce_json: &str,
+    rubric_json: Option<&str>,
+    shifts: &[crate::ward::ShiftOnChain],
+    this: &crate::ward::ShiftOnChain,
+    tape_of: &dyn Fn(&str) -> Option<Vec<vitals_replay::Step>>,
+    pack: &crate::ward::Pack,
+    admitted_slot: u64,
+) -> Result<serde_json::Value, String> {
+    let hash = hex32(&this.run_hash);
+    let tape = tape_of(&hash).ok_or_else(|| {
+        format!("the tape for {hash} is not here, so this shift cannot be shown at all — a receipt \
+                 nobody can check is not a receipt")
+    })?;
+
+    // The patient as she was when this stranger arrived: every shift the chain anchored before
+    // this one, and the idle time between them.
+    let before: Vec<crate::ward::ShiftOnChain> =
+        shifts.iter().filter(|s| s.slot < this.slot).copied().collect();
+    let (mut st, played) = resumed(sce_json, &before, tape_of, admitted_slot, this.slot)?;
+    let r = vitals_replay::shift(&mut st, &tape, 0);
+
+    let det = rubric_json.and_then(|rj| vitals_osce::det_for_run(sce_json, &tape, rj).ok());
+
+    // The same bytes can be anchored more than once: a run hash is the hash of the tape, and two
+    // strangers who did exactly the same things to the same case produce the same one. Their
+    // leaves differ — a leaf carries the player and the commitment — so those are different shifts
+    // wearing one address, and a receipt that showed the first and said nothing would read as
+    // "this is the shift" when the truth is "this is one of three".
+    let sharing = shifts.iter().filter(|s| s.run_hash == this.run_hash).count().saturating_sub(1);
+
+    Ok(serde_json::json!({
+        "patient_id": this.patient_id,
+        "name": pack.persona.name,
+        "case": pack.case,
+        "shift": played + 1,
+        "run_hash": hash,
+        "slot": this.slot,
+        "player": bs58(&this.signer),
+        "did": {
+            "beats": r.beats.len(),
+            "steps": r.steps,
+            "sim_seconds": r.sim_seconds,
+            "harm": r.harm_events,
+            "outcome": r.outcome,
+        },
+        "det": det.map(|(earned, max, _)| serde_json::json!({ "earned": earned, "max": max })),
+        "judged": serde_json::Value::Null,
+        "judged_omitted": "a judged score belongs to a finished case. This is one shift in the \
+                           middle of her stay, and a number that cannot mean what a reader assumes \
+                           is worse than no number",
+        "also_anchored": sharing,
+        "also_anchored_note": (sharing > 0).then(|| format!(
+            "{sharing} other shift{} on this ward anchored the same tape — the same bytes, played \
+             again. They are different shifts: each leaf carries its own player and its own \
+             declaration, and only the tape's hash is shared",
+            if sharing == 1 { "" } else { "s" }
+        )),
+        "tape": format!("/api/tape/{hash}"),
+        "derivations": {
+            "player": "the key that signed this shift's AnchorShift transaction",
+            "did": "this tape replayed on the patient the chain says she was — the beats and the \
+                    harm are this shift's own, never what it walked into",
+            "det": "the case's rubric, recomputed from the tape by the same code the anchor used. \
+                    Absent when the case has no rubric — absent rather than zero, because zero is \
+                    a claim",
+            "run_hash": "the hash this shift's leaf commits to on chain; the tape below hashes to it",
+        },
+    }))
+}
+
+/// A public key as base58, for a receipt a person reads.
+fn bs58(bytes: &[u8; 32]) -> String {
+    Pubkey::new_from_array(*bytes).to_string()
+}
+
+/// Find the shift a run hash names: which patient, and where in her chain.
+///
+/// Reads the caches first and refreshes only if the hash is not in them, so the ordinary case —
+/// somebody opening a receipt for a shift the board has already seen — costs no chain read at all.
+/// A hash that is nowhere is reported as such: it may never have anchored, or it may belong to
+/// another ward, and this one does not guess between them.
+pub fn find_shift(
+    chain: &WardChain,
+    store: &crate::store::Store,
+    run_hash: &str,
+) -> Result<Option<(u64, Vec<crate::ward::ShiftOnChain>, crate::ward::ShiftOnChain)>, String> {
+    let patients = chain.patients()?;
+    for refreshing in [false, true] {
+        for p in &patients {
+            let key = format!("p{}", p.patient_id);
+            let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
+            if refreshing && chain.refresh(p.patient_id, &mut seen).is_ok() {
+                let _ = store.put(SHIFT_CACHE, &key, &seen);
+            }
+            let all = seen.shifts();
+            if let Some(this) = all.iter().find(|s| hex32(&s.run_hash) == run_hash) {
+                return Ok(Some((p.patient_id, all.clone(), *this)));
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// The rubric a case is marked against, when it has one.
+pub fn rubric_of(root: &std::path::Path, case: &str) -> Option<String> {
+    std::fs::read_to_string(root.join("demo/rubrics").join(format!("{case}.json"))).ok()
 }

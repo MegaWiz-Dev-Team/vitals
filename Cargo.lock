@@ -7685,6 +7685,7 @@ dependencies = [
  "serde_json",
  "solana-rpc-client",
  "solana-sdk",
+ "ureq",
  "vitals-osce",
  "vitals-program",
  "vitals-progress",

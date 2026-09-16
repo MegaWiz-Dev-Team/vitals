@@ -153,6 +153,25 @@ we authored a new disease course this month.
    rather than a fresh admission nobody has touched, and three beds do not eat the catalogue in an
    afternoon. `STAY_CASES` in `vitals-web`, published in `/api/ward`'s `policy`.
 
+   **The ward never holds a bed for a patient it cannot describe** (founder, 16 ก.ย.:
+   *"แก้ไขระยะยาวเลย"* — the long-term fix). A bed is an open patient the ward has a pack for. One
+   that reached the chain some other way is counted by the census, because she is on the chain, and
+   holds no bed, blocks no admission and is listed in her own row as *admitted outside the ward ·
+   no bed*. Three test patients admitted straight from a proof tool filled staging's beds this
+   morning: nobody could take a shift on a patient with no case, so nobody could discharge them, so
+   fourteen packs waited behind them for ever.
+
+   **The ward's patients follow the world's need** (founder, 16 ก.ย.). The factory draws countries
+   weighted by each country's people per doctor (World Bank/WHO, latest year), floor and cap
+   included, so a country with twice the shortage sends twice the patients. **The ward does no
+   arithmetic about countries**: it admits what the queue holds, and `/api/ward`'s policy says who
+   does and where the weights are published. That separation is the point — the board can be
+   checked against the factory's own numbers rather than taking either's word.
+
+   **Admission has one path: the ticker, from a queued pack.** The server exposes no raw admit and
+   the proof tools go through the queue like everybody else. **On production the door opens only
+   once the queue is full**, so the case above cannot arise there.
+
    **The rate is published, not promised.** A bed frees on discharge or death and on nothing else,
    so admissions per day is *as many as leave* — a consequence of how the ward is played rather
    than a number we choose, and readable off the census by anyone. Cases are drawn uniformly from
@@ -222,6 +241,44 @@ we authored a new disease course this month.
     and no socket to keep alive. Ruling 2's idle clock is the other half of the same sentence: the
     board is live because the ward is, and the patient's body between shifts is what makes that
     more than an animation.
+
+13. **The shift page is the ward's own page, and the bay underneath it is one bay** (founder,
+    16 ก.ย., on seeing the Eternal shelf over a ward URL: *"ทำให้แยกกันเลยสิ"*).
+    `/ward/<patient_id>` serves `static/world/shift.html`: the ward's header, the patient, the play
+    surface and nothing of the season — no hero, no shelf, no episode list, no stars, nothing a
+    stranger can click that leads into the single-player story. The bay itself is **not** forked:
+    `bay.css`, `bay.js` and `bay-surface.html` are one copy each, served as files and composed into
+    both pages, so the patient, the monitor and the tape are the same in both. One engine, one
+    surface, two pages. `bay_unchanged.rs` pins the Eternal entry's behaviour and
+    `eternal_page.rs` pins its markup byte for byte.
+
+    **Step two, due in the quiet window once Eternal's review is out of our hands (from 26 Sep):**
+    the season's *code* still ships inside the shared script — the shelf, the hero and the record
+    are drawn by it — so the ward page carries code it never runs. Splitting that into a shelf
+    script only the entry loads is what finishes the founder's "separate". It is a day's work on a
+    live page, which is why it waits for a window rather than being half-kept.
+
+    The argument for doing it at all is what step one cost: the shared script bound handlers to the
+    lobby's own elements at the top level, and the first one missing stopped the whole script
+    before the ward's own code was reached — **the page rendered and did nothing, silently**. That
+    failure is available to any future edit as long as one script serves two pages with different
+    markup, and the only structural cure is that each page loads the code it actually uses.
+
+    **Opening her page takes nothing.** The head is taken when a stranger presses *take this
+    shift*, never on load, and until then `id` is unset — every control in that page already
+    guards on it, so a patient you have opened is a chart you can read and not a patient you can
+    treat. That is the honest state and it needs no second flag. It also closes a hole worth
+    naming: a page that took the head on load would let one crawler lock every bed for the length
+    of a lease.
+
+    **The idle clock is measured anchor to anchor**, which over-counts by the length of the shift
+    itself. Deliberate: the alternative is a take-slot only our store knows, and a number nobody
+    can check is worth less than one that is slightly generous. The cap bounds it either way.
+
+    **The ward has no time zone** (founder's question, 16 ก.ย.). Every time it publishes is a slot
+    or a UTC instant with a Z; the server computes in no other zone and stores nobody's. A browser
+    renders them in the reader's own zone, which needs no question asked and nothing kept. The
+    ward's day and its week are UTC, and `/api/ward` says so beside `since_slot`.
 
 13. **The front page is a globe** (founder, 15 ก.ย. 23:15). You spin it, you find a patient by
     country, you click her. developer-4d built it on `cwf/globe` and it is merged into `cwf/ward`:
@@ -351,6 +408,14 @@ anything.
       separate tally; distinct keys from the **leaf signers**. If the endpoint and the chain ever
       disagree, the weekly video says they disagree — it does not pick one and it does not wait for
       the next deploy to mention it.
+- [ ] **A receipt is one shift, so it is addressed by the leaf.** `/shift/<run_hash>` is the
+      *tape's* page and stays one: a run hash is the hash of the bytes somebody played, and two
+      strangers who do the same things to the same case produce the same hash — it already says how
+      many shifts share it. But a receipt at that address is a claim about bytes rather than about
+      a person's work, and the thing a stranger wants to check is the second. So the leaf comes out
+      of the `AnchorShift` record into what the census reads, and `/shift/<leaf>` becomes the
+      shift's own page: one leaf, one player, one declaration, one shift. Founder's standing rule,
+      root cause over workaround.
 - [ ] Shift receipt at a QR: the browser re-derives that shift from the tape and the chain, shows
       the deterministic 40 and the judged 60 as two numbers, and offers **download every tape of
       this patient** so a stranger can mirror her and check us without asking.

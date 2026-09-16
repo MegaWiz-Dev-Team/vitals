@@ -19,10 +19,12 @@ import { readFileSync } from 'node:fs';
 const [pagePath, runPath, mode] = process.argv.slice(2);
 const EXAM = mode !== 'practice';   // a station is an exam by definition; an episode is not
 const html = readFileSync(pagePath, 'utf8');
-// The page opens with a small boot block; the feed lives in the second and much larger one.
-// Taking the longest rather than the first, so a third block added tomorrow changes nothing.
-const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
-  .map(m => m[1]).sort((a, b) => b.length - a.length)[0];
+// A page or a script, whichever it is handed. The bay lived inside index.html until 16 ก.ย. and
+// is now `bay.js`, shared with the ward's shift page — so a file with no script tags in it is the
+// script. When it is a page, the small boot block is not the one wanted: take the longest, so a
+// third block added tomorrow changes nothing.
+const blocks = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+const script = blocks.length ? blocks.sort((a, b) => b.length - a.length)[0] : html;
 
 // ── pulling a function out of the page ──────────────────────────────────────
 // Brace matching from the header, so what runs here is the source that ships. A rename or a

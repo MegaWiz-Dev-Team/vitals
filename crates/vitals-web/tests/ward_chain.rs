@@ -17,7 +17,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_sdk::pubkey::Pubkey;
 use vitals_program::{Instruction, PatientAccount, RecordWire, PATIENT_DIED, PATIENT_OPEN};
 use vitals_web::ward::{DIED, OPEN};
-use vitals_web::ward_chain::{decode_patient, shift_in, Seen, SeenShift};
+use vitals_web::ward_chain::{decode_patient, shift_in, Seen};
 
 fn a_patient(id: u64, state: u8, shifts: u32, admitted: u64, closed: u64) -> Vec<u8> {
     let p = PatientAccount {
@@ -113,23 +113,24 @@ fn the_cache_reads_only_what_is_new_and_counts_no_shift_twice() {
     let mut seen = Seen::default();
     assert!(seen.until().is_none(), "the first read has nothing to stop at");
 
-    let page = |sig: &str, id: u64, signer: u8, slot: u64| SeenShift {
-        signature: sig.to_string(),
-        shift: ShiftOnChain { patient_id: id, signer: [signer; 32], slot, run_hash: [0; 32] },
+    let page = |sig: &str, id: u64, signer: u8, slot: u64| {
+        (ShiftOnChain { patient_id: id, signer: [signer; 32], slot, run_hash: [0; 32] },
+         sig.to_string())
     };
+    let at = |sig: &str, slot: u64| Some((sig.to_string(), slot));
 
-    // Newest first, the way getSignaturesForAddress answers.
+    // What a walk hands back: the shifts it read, and the newest entry it got all the way through.
     seen.absorb(vec![page("sig3", 42, 0xB2, 300), page("sig2", 42, 0xA1, 200),
-                     page("sig1", 42, 0xA1, 100)]);
+                     page("sig1", 42, 0xA1, 100)], at("sig3", 300));
     assert_eq!(seen.shifts().len(), 3);
     assert_eq!(seen.until().as_deref(), Some("sig3"),
                "the next read stops at the newest signature already read, so history is walked once");
 
     // The same page again — a retry, a restart, two instances. It must change nothing.
-    seen.absorb(vec![page("sig3", 42, 0xB2, 300), page("sig2", 42, 0xA1, 200)]);
+    seen.absorb(vec![page("sig3", 42, 0xB2, 300), page("sig2", 42, 0xA1, 200)], at("sig3", 300));
     assert_eq!(seen.shifts().len(), 3, "a signature already read is not a new shift");
 
-    seen.absorb(vec![page("sig5", 42, 0xC3, 500), page("sig4", 42, 0xA1, 400)]);
+    seen.absorb(vec![page("sig5", 42, 0xC3, 500), page("sig4", 42, 0xA1, 400)], at("sig5", 500));
     assert_eq!(seen.shifts().len(), 5);
     assert_eq!(seen.until().as_deref(), Some("sig5"));
 
@@ -390,14 +391,14 @@ fn the_queue_keeps_each_patient_once_and_says_what_it_refused() {
     assert_eq!(first.rejected.len(), 1, "and the one it would not take");
     assert!(first.rejected[0].contains("dengue"), "named, so the factory can fix it: {:?}",
             first.rejected);
-    assert_eq!(first.depth, 2, "the depth is what the factory tops up against");
+    assert_eq!(first.depth, Some(2), "the depth is what the factory tops up against");
 
     // The same page again, in full. Nothing is added and nothing is lost.
     let again = enqueue(&store, vec![a_pack(), other]);
     assert_eq!(again.queued, 0);
     assert_eq!(again.duplicates, 2);
-    assert_eq!(again.depth, 2);
-    assert_eq!(queue_depth(&store), 2);
+    assert_eq!(again.depth, Some(2));
+    assert_eq!(queue_depth(&store), Ok(2));
 
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -730,4 +731,244 @@ fn a_stranger_opens_an_account_and_declares_before_playing() {
     assert_eq!(declare.accounts.len(), 5, "the program's own five");
     assert!(declare.accounts[0].is_signer && declare.accounts[1].is_signer,
             "the relay pays and the player declares");
+}
+
+/// One unreadable entry in her history must not blind the ward — and must not be skipped past.
+///
+/// Devnet handed back a null where a transaction should have been, and the read failed whole:
+/// "patient 1789490621's history could not be read". The next read was fine, so the ward was
+/// briefly unreadable for a hiccup — but the fix has to be careful in a way the bug was not.
+///
+/// History arrives newest-first. If a null in the middle were simply skipped, the cursor would
+/// move past it and the shift underneath it would never be read again: a shift that happened,
+/// paid for, anchored on chain, and absent from the census for ever. So the page is walked
+/// **oldest-first and stops at the first entry it cannot read**: everything before it is kept, the
+/// cursor stops there, and the next read starts again from exactly that point.
+#[test]
+fn an_unreadable_entry_stops_the_walk_rather_than_being_skipped() {
+    use vitals_web::ward::ShiftOnChain;
+    use vitals_web::ward_chain::{walk_history, Seen};
+
+    // Newest first, the way getSignaturesForAddress answers.
+    let page = vec![("s5".to_string(), 500u64), ("s4".into(), 400), ("s3".into(), 300),
+                    ("s2".into(), 200), ("s1".into(), 100)];
+    let shift_at = |slot: u64| ShiftOnChain {
+        patient_id: 42, signer: [1; 32], slot, run_hash: [slot as u8; 32],
+    };
+
+    // s3 is the null. s1 and s2 are read; s4 and s5 are not reached.
+    let read = |sig: &str, slot: u64| -> Result<Vec<ShiftOnChain>, String> {
+        match sig {
+            "s3" => Err("invalid type: null, expected struct".into()),
+            // Not every signature is a shift — taking the head is a transaction too.
+            "s2" => Ok(vec![]),
+            _ => Ok(vec![shift_at(slot)]),
+        }
+    };
+    let (got, cursor, trouble) = walk_history(page.clone(), read);
+
+    assert_eq!(got.len(), 1, "only s1 produced a shift, and s2 produced none");
+    assert_eq!(cursor.as_ref().map(|(s, _)| s.as_str()), Some("s2"),
+               "the cursor stops at the newest entry that was fully read — including one that was \
+                read and held no shift, or every lease would be re-fetched for ever");
+    let trouble = trouble.expect("the walk says why it stopped");
+    assert!(trouble.contains("s3"), "and names the entry it stopped at: {trouble}");
+
+    // Absorbing keeps the cursor the walk chose, rather than deriving it from the shifts.
+    let mut seen = Seen::default();
+    seen.absorb(got.into_iter().map(|s| (s, "sig".to_string())).collect(), cursor);
+    assert_eq!(seen.until().as_deref(), Some("s2"),
+               "so the next read begins at s3 again and the shift under it is not lost");
+}
+
+/// Putting a shift down is a thing a stranger must be able to do.
+///
+/// Producer's ruling, 16 ก.ย., after I kept holding beds open by walking away from my own tests:
+/// there has to be a way to hand her back. "I have to go" happens more often on a public ward
+/// than "I have finished", and without it one closed laptop holds a bed for the length of a lease.
+///
+/// Only the holder may put it down while it stands — otherwise anyone could clear anyone's shift
+/// — and the relay is not in the instruction at all, exactly as taking it is not.
+#[test]
+fn the_head_can_be_handed_back_by_the_person_holding_it() {
+    use vitals_web::ward_chain::release_shift_ix;
+
+    let program = Pubkey::new_unique();
+    let operator = Pubkey::new_unique();
+    let player = Pubkey::new_unique();
+
+    let ix = release_shift_ix(&program, &operator, &player, 42);
+    match Instruction::deserialize(&mut &ix.data[..]).expect("decodes") {
+        Instruction::ReleaseShift { patient_id } => assert_eq!(patient_id, 42),
+        other => panic!("handing her back must be ReleaseShift, not {other:?}"),
+    }
+    assert_eq!(ix.accounts.len(), 3, "the player, who they are, and the patient");
+    assert_eq!(ix.accounts[0].pubkey, player);
+    assert!(ix.accounts[0].is_signer, "only the person holding it may put it down");
+    assert!(ix.accounts[2].is_writable, "the lease is written on her");
+    assert!(!ix.accounts.iter().any(|a| a.pubkey == operator),
+            "the relay pays for this and takes no part in it — the same bargain as taking it");
+}
+
+/// A face may be fixed while she is waiting, and never once she is in a bed.
+///
+/// Producer's ruling from the factory's second tick: a base portrait came back wrong — a doll
+/// rather than a person — on a pack still in the queue. While she is waiting, nobody has seen her,
+/// so any key may be replaced. The moment she is admitted the add-only rule holds: a face the
+/// board has shown is one strangers have been treating, and changing it underneath them is the
+/// thing add-only exists to prevent.
+///
+/// The pack's address does not move when a portrait does, which is what makes this safe: portraits
+/// were deliberately left out of the content hash, so fixing a face is not a different patient.
+#[test]
+fn a_queued_face_may_be_replaced_and_an_admitted_one_may_not() {
+    use vitals_web::store::Store;
+    use vitals_web::ward_chain::{enqueue, pack_id, replace_queued_portraits, QUEUE_STORE};
+
+    let root = std::env::temp_dir().join(format!("vitals-face-{}-{:?}", std::process::id(),
+                                                 std::thread::current().id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let store = Store::open(root.clone()).expect("a store");
+
+    let mut pack = a_pack();
+    pack.portrait.insert("stable".into(), portrait_url(1));
+    let id = pack_id(&pack);
+    assert_eq!(enqueue(&store, vec![pack.clone()]).queued, 1);
+
+    // The doll is replaced while she waits.
+    let fixed = replace_queued_portraits(
+        &store, &id,
+        [("stable".to_string(), portrait_url(2))].into_iter().collect());
+    assert_eq!(fixed.added, 1, "a key that was there is replaced rather than kept");
+    assert!(fixed.rejected.is_empty());
+    let back: Pack = store.get(QUEUE_STORE, &id).expect("still queued");
+    assert_eq!(back.portrait.get("stable"), Some(&portrait_url(2)));
+    assert_eq!(pack_id(&back), id,
+               "and she is the same patient — a portrait is not part of what names a pack, which \
+                is what makes fixing one safe");
+
+    // The same validation. A key the engine cannot report, or a url from anywhere else, is refused.
+    let bad = replace_queued_portraits(
+        &store, &id,
+        [("worse".to_string(), portrait_url(3)),
+         ("critical".to_string(), "https://example.invalid/x.jpg".into())].into_iter().collect());
+    assert_eq!(bad.added, 0);
+    assert_eq!(bad.rejected.len(), 2);
+
+    // Nobody by that address is waiting — she may have been admitted since.
+    let gone = replace_queued_portraits(
+        &store, &"f".repeat(64),
+        [("stable".to_string(), portrait_url(1))].into_iter().collect());
+    assert_eq!(gone.added, 0);
+    assert!(gone.rejected[0].contains("waiting"),
+            "the refusal says she is not in the queue, so the factory knows to use the patient \
+             route and that the rule there is add-only: {:?}", gone.rejected);
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+// ── the shift receipt ───────────────────────────────────────────────────────
+
+use vitals_web::ward::Pack as WardPack;
+use vitals_web::ward_chain::receipt;
+
+/// **A shift can be checked by somebody who never played it.**
+///
+/// The receipt is the ward's answer to "why should anyone believe you". It carries what the chain
+/// holds — whose key, which patient, which head it extended, at which slot — and what anybody can
+/// recompute from the tape: the beats, the harm this shift added, and the deterministic score for
+/// this shift's own actions.
+///
+/// **The judged 60 is not on it, and the page says why.** A judged score belongs to a finished
+/// case; a shift is a few minutes in the middle of somebody's stay. Publishing a number that
+/// cannot mean what a reader assumes is the failure this product exists not to commit.
+///
+/// The harm is this shift's own, never what it inherited — a stranger is answerable for what they
+/// did, not for what they walked into.
+#[test]
+fn a_shift_receipt_carries_what_the_chain_holds_and_what_anybody_can_recompute() {
+    let sce = ep1();
+    let before = vec![Step::Tick(30.0), Step::Do("stand her up".into()), Step::Tick(30.0)];
+    let mine = vec![Step::Tick(20.0), Step::Do("oxygen".into()), Step::Tick(40.0)];
+
+    let mut tapes: BTreeMap<String, Vec<Step>> = BTreeMap::new();
+    tapes.insert(hex_of("first"), before.clone());
+    tapes.insert(hex_of("mine"), mine.clone());
+    let chart = |h: &str| tapes.get(h).cloned();
+
+    let pack = WardPack {
+        case: "ep1".into(),
+        persona: Persona { name: "Ing".into(), country: "THA".into(), age: 19, sex: "f".into() },
+        portrait: Default::default(),
+        endemic: false,
+    };
+    let shifts = [anchored("first", 1_000_010), anchored("mine", 1_000_020)];
+
+    let r = receipt(&sce, None, &shifts, &shifts[1], &chart, &pack, 1_000_000)
+        .expect("a receipt for a shift the chain names");
+
+    assert_eq!(r["patient_id"], 42);
+    assert_eq!(r["shift"], 2, "the second link in her chain");
+    assert_eq!(r["run_hash"], hex_of("mine"));
+    assert_eq!(r["slot"], 1_000_020, "when the chain says it landed");
+    assert!(r["player"].as_str().is_some_and(|s| !s.is_empty()), "whose key played it");
+
+    let did = &r["did"];
+    assert!(did["beats"].as_u64().is_some());
+    assert_eq!(did["steps"], mine.len());
+    assert_eq!(did["harm"].as_array().map(|h| h.len()).unwrap_or(9), 0,
+               "standing her up was the shift before this one, and this stranger did not do it");
+
+    assert!(r["judged"].is_null(), "no judged score on a shift");
+    let why = r["judged_omitted"].as_str().expect("and it says why rather than leaving a hole");
+    assert!(why.contains("finished case") || why.contains("whole case"),
+            "the reason has to be the reason: {why}");
+
+    // The tape is offered, addressed by the hash the leaf commits to, so a stranger can replay it
+    // without asking us for anything.
+    assert_eq!(r["tape"], format!("/api/tape/{}", hex_of("mine")));
+    let how = r["derivations"]["det"].as_str().expect("the score says how it was got");
+    assert!(how.contains("rubric") || how.contains("recompute"), "{how}");
+}
+
+/// A receipt says so when its hash names more than one shift.
+///
+/// A run hash is the hash of the **tape**, and two strangers who did exactly the same things to
+/// the same case produce the same bytes — I watched it happen the first time two of my own test
+/// shifts played the same three orders. Their leaves differ, because a leaf carries the player and
+/// the commitment; the tape hash does not.
+///
+/// So a receipt addressed by tape hash can name several shifts, and one that showed the first and
+/// said nothing would be telling a reader "this is the shift" when the truth is "this is one of
+/// three". The number is on the receipt, and so is where the others are.
+#[test]
+fn a_receipt_says_when_its_hash_names_more_than_one_shift() {
+    let sce = ep1();
+    let same = vec![Step::Tick(20.0), Step::Do("oxygen".into()), Step::Tick(40.0)];
+    let mut tapes: BTreeMap<String, Vec<Step>> = BTreeMap::new();
+    tapes.insert(hex_of("same"), same);
+    let chart = |h: &str| tapes.get(h).cloned();
+
+    let pack = WardPack {
+        case: "ep1".into(),
+        persona: Persona { name: "Ing".into(), country: "THA".into(), age: 19, sex: "f".into() },
+        portrait: Default::default(),
+        endemic: false,
+    };
+    // Two shifts, different keys, the same bytes.
+    let mut second = anchored("same", 1_000_030);
+    second.signer = [9; 32];
+    let shifts = [anchored("same", 1_000_010), second];
+
+    let r = receipt(&sce, None, &shifts, &shifts[0], &chart, &pack, 1_000_000).expect("a receipt");
+    assert_eq!(r["also_anchored"], 1,
+               "one other shift on this ward has the same tape, and the receipt says so rather \
+                than presenting itself as the only one");
+    let note = r["also_anchored_note"].as_str().expect("and says what that means");
+    assert!(note.contains("same tape") || note.contains("same bytes"), "{note}");
+
+    // A hash that names exactly one shift says nothing, because there is nothing to say.
+    let alone = receipt(&sce, None, &shifts[..1], &shifts[0], &chart, &pack, 1_000_000).unwrap();
+    assert_eq!(alone["also_anchored"], 0);
+    assert!(alone["also_anchored_note"].is_null());
 }

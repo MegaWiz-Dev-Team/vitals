@@ -184,10 +184,12 @@ fn the_mark_sheet_stays_shut_until_the_case_is_over() {
 /// and the file anyone can read is the one that gets edited.
 #[test]
 fn the_page_only_asks_for_the_sheet_once_the_run_is_over() {
+    // The bay's script, which is where the fetch lives since the bay was pulled out of the page
+    // so the ward's shift page could share it. Read as served: the seal is about what runs.
     let page = std::fs::read_to_string(
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/index.html"),
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/bay.js"),
     )
-    .expect("the page");
+    .expect("the bay's script");
     // Exactly one call site, and it is inside showMarks(). (Prose mentions of the endpoint are
     // not call sites, so the count is of the fetch itself.)
     assert_eq!(

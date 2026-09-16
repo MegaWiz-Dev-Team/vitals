@@ -147,9 +147,18 @@ fn page(name: &str) -> String {
     std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
 }
 
+/// The bay as a browser gets it: the page, the play surface composed into it, and the script.
+///
+/// The three were one file until 16 ก.ย., when the bay was pulled out so the ward's shift page
+/// could share it and carry none of the season. These tests are about what is drawn on a monitor
+/// somebody is watching, so they read the whole of what is served rather than the shell.
+fn bay() -> String {
+    [page("index.html"), page("bay-surface.html"), page("bay.js")].concat()
+}
+
 #[test]
 fn the_rail_prints_dashes_rather_than_the_word_null() {
-    let html = page("index.html");
+    let html = bay();
     assert!(
         !html.contains("setVital('#m-spo2',v.spo2+'%')"),
         "the rail concatenates the saturation again — an arrest renders as \"null%\""
@@ -179,7 +188,7 @@ fn the_device_never_caches_a_cuff_reading_that_did_not_happen() {
 
 #[test]
 fn the_rail_draws_a_different_trace_for_every_rhythm_the_engine_can_declare() {
-    let html = page("index.html");
+    let html = bay();
     assert!(html.contains("const TRACES={"), "the rail has no rhythm table");
     // Every rhythm `Rhythm::as_str` can produce needs a shape, or it silently falls back to
     // sinus and the bug is back for that rhythm only.
@@ -198,7 +207,7 @@ fn the_rail_draws_a_different_trace_for_every_rhythm_the_engine_can_declare() {
 
 #[test]
 fn asystole_is_a_straight_line() {
-    let html = page("index.html");
+    let html = bay();
     assert!(
         html.contains("asystole:'M0 28 H300'"),
         "asystole draws something other than a flat line on the rail"
@@ -207,7 +216,7 @@ fn asystole_is_a_straight_line() {
 
 #[test]
 fn the_rail_names_the_rhythm_it_is_drawing() {
-    let html = page("index.html");
+    let html = bay();
     assert!(
         html.contains("v.rhythm!=='sinus'?' · '+v.rhythm.toUpperCase()"),
         "the strip changes shape without saying which rhythm it changed to"

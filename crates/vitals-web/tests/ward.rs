@@ -555,6 +555,14 @@ fn the_globe_reads_every_field_it_renders() {
         patient(9, DISCHARGED, 3, 5, 900),
     ];
     let mut packs = BTreeMap::new();
+    // Both open patients are the ward's own. A bed is a patient the ward can describe, so a
+    // test about beds describes them; an undescribed one is the other rule's subject.
+    packs.insert(8u64, Pack {
+        case: "osce-c".into(),
+        persona: Persona { name: "Fon".into(), country: "THA".into(), age: 6, sex: "f".into() },
+        portrait: Default::default(),
+        endemic: false,
+    });
     packs.insert(7u64, Pack {
         case: "ep2".into(),
         persona: Persona { name: "Ploy".into(), country: "THA".into(), age: 34, sex: "f".into() },
@@ -808,6 +816,14 @@ fn every_time_the_ward_publishes_is_a_slot_or_a_z() {
         portrait: Default::default(),
         endemic: false,
     });
+    // Both of them are the ward's own patients: a bed is a patient the ward can describe, and a
+    // test about beds has to describe them or it is testing the other rule.
+    packs.insert(9u64, Pack {
+        case: "osce-c".into(),
+        persona: Persona { name: "Fon".into(), country: "THA".into(), age: 6, sex: "f".into() },
+        portrait: Default::default(),
+        endemic: false,
+    });
 
     let payloads = [
         ward_payload(&vitals_web::ward::WardRead {
@@ -860,4 +876,99 @@ fn every_time_the_ward_publishes_is_a_slot_or_a_z() {
 
     // And the window says which day it counts by, because a week is a different week in Bangkok.
     assert_eq!(payloads[0]["week"]["basis"], "UTC");
+}
+
+/// **A bed is a patient the ward can describe.**
+///
+/// Founder, 16 ก.ย., on three test patients wedging staging shut: "แก้ไขระยะยาวเลย" — the long-term
+/// fix. Those three reached the chain without passing the queue, so the ward could not say who
+/// they were; they filled every bed, nobody could take a shift on a patient with no case, nobody
+/// could discharge them, and fourteen packs waited behind them for ever.
+///
+/// The census still counts them — they are on the chain, and `on_ward` is chain truth. What
+/// changes is what a bed means: a patient the ward cannot describe holds no bed, blocks no
+/// admission, and appears in her own row saying what she is, rather than as one of the three.
+#[test]
+fn a_patient_the_ward_cannot_describe_holds_no_bed() {
+    use std::collections::BTreeMap;
+    use vitals_web::ward::{beds_taken, Pack, Persona};
+
+    let patients = vec![
+        patient(1, OPEN, 0, 10, 0),   // admitted outside the ward — no pack
+        patient(2, OPEN, 0, 20, 0),   // the same
+        patient(3, OPEN, 2, 30, 0),   // hers is queued and described
+        patient(4, DISCHARGED, 4, 5, 90),
+    ];
+    let mut packs = BTreeMap::new();
+    packs.insert(3u64, Pack {
+        case: "osce-a".into(),
+        persona: Persona { name: "Anan Thepwong".into(), country: "THA".into(), age: 69, sex: "m".into() },
+        portrait: Default::default(),
+        endemic: false,
+    });
+
+    assert_eq!(beds_taken(&patients, &packs), 1,
+               "one bed is taken — the two the ward cannot describe are on the chain and not in a \
+                bed, or they wedge the ward shut against a queue that is full");
+
+    let v = ward_payload(&vitals_web::ward::WardRead {
+        patients: &patients, shifts: &[], packs: &packs,
+        since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
+    });
+
+    assert_eq!(v["census"]["on_ward"], 3,
+               "the census does not look away from them: they are on the chain and the chain is \
+                what the census counts");
+
+    let by_id = |id: u64| v["patients"].as_array().unwrap().iter()
+        .find(|p| p["patient_id"] == id).cloned().expect("listed");
+
+    assert!(by_id(1)["bed"].is_null(), "she is in no bed");
+    assert_eq!(by_id(1)["state"], "off_ward",
+               "and the board says what she is rather than calling her one of the three");
+    let adrift = by_id(1);
+    let note = adrift["note"].as_str().expect("her row says why");
+    assert!(note.contains("outside the ward"), "in words a stranger can read: {note}");
+
+    assert_eq!(by_id(3)["bed"], 1, "the described patient has the first bed, not the third");
+    assert!(by_id(3)["note"].is_null(), "and needs no explanation");
+    assert!(by_id(4)["bed"].is_null(), "somebody who went home is in nobody's bed");
+}
+
+/// The rail must not lie by omission: six on the ward, three in beds.
+///
+/// `on_ward` is chain truth and stays so — she is on the chain. But a stranger reading "on the
+/// ward 6" beside three patients has been told a number that means something other than what it
+/// looks like, and the difference is the thing they would most want explained: three of those six
+/// cannot be treated by anybody.
+///
+/// So the payload publishes both, with the sentence that separates them.
+#[test]
+fn the_payload_publishes_how_many_are_in_beds_beside_how_many_are_on_the_chain() {
+    use std::collections::BTreeMap;
+    use vitals_web::ward::{Pack, Persona};
+
+    let patients = vec![
+        patient(1, OPEN, 0, 10, 0),
+        patient(2, OPEN, 0, 20, 0),
+        patient(3, OPEN, 2, 30, 0),
+    ];
+    let mut packs = BTreeMap::new();
+    packs.insert(3u64, Pack {
+        case: "osce-a".into(),
+        persona: Persona { name: "Anan".into(), country: "THA".into(), age: 69, sex: "m".into() },
+        portrait: Default::default(),
+        endemic: false,
+    });
+
+    let v = ward_payload(&vitals_web::ward::WardRead {
+        patients: &patients, shifts: &[], packs: &packs,
+        since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
+    });
+
+    assert_eq!(v["census"]["on_ward"], 3, "the census is what the chain says, unchanged");
+    assert_eq!(v["in_beds"], 1, "and the beds are what the ward can actually hand to a stranger");
+
+    let how = v["derivations"]["in_beds"].as_str().expect("it says how it was counted");
+    assert!(how.contains("pack"), "in the terms that explain the gap: {how}");
 }

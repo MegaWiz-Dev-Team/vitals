@@ -1,0 +1,1378 @@
+/* The bay's stylesheet, shared by the Eternal entry and the ward's shift page.
+   Cut verbatim out of index.html on 16 ก.ย. — one stylesheet, because two products drawing
+   the same monitor from two copies is two monitors that drift. */
+
+/* ─── scene select — Embla's language: mint over navy, chunky buttons, locked tiles ─── */
+:root{ --mint:#26c0a5; --mint-d:#1f9d86; --navy:#0f2d3a; --lb-bg:#eef4f4;
+       --gold:#ffc83d; --lock:#9aa7ad; --border:#e2e8e8 }
+.hide{display:none !important}
+
+/* ── the depth of the shelf (CEO, 27 Aug) ────────────────────────────────────
+   A card is an object on a surface, not a rectangle printed on one. Two layers
+   every time: a sharp contact shadow that says the card is touching, and a soft
+   one that says how far above the shelf it is. The light is overhead, so both
+   fall downward — a shadow spread evenly around a card is a glow, and a glow is
+   a different, wrong statement about the object.
+   Locked cards sit lower and flatter, because something you cannot reach yet
+   should not look like it is already in your hand. Stations sit between the two:
+   an episode outranks its interludes, and the eye should be told that without
+   reading a word. On a dark surface a black shadow does nothing at all, so the
+   whole set is restated as a hairline ring plus a deeper drop.
+   Every one of these lives on an element that also transforms, so the browser
+   promotes it once and the scroll stays smooth. */
+:root{
+  --ease:cubic-bezier(.22,.61,.36,1);
+  --sh-rest:0 1px 2px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.10);
+  --sh-lift:0 2px 4px rgba(0,0,0,.07), 0 16px 40px rgba(0,0,0,.18);
+  --sh-lock:0 1px 2px rgba(0,0,0,.05), 0 6px 16px rgba(0,0,0,.06);
+  --sh-st:0 1px 2px rgba(0,0,0,.05), 0 6px 18px rgba(15,45,58,.09);
+  --sh-st-lift:0 2px 4px rgba(0,0,0,.06), 0 14px 32px rgba(15,45,58,.16);
+  --sh-hero:0 2px 4px rgba(0,0,0,.08), 0 18px 44px rgba(15,45,58,.30);
+  --sh-hero-lift:0 3px 6px rgba(0,0,0,.10), 0 26px 56px rgba(15,45,58,.38);
+  --sh-chip:0 1px 2px rgba(0,0,0,.05), 0 4px 12px rgba(15,45,58,.07);
+}
+/* A dark room takes the same set restated: the ring carries the edge that the
+   black shadow can no longer draw, and the drop goes deeper to compensate. */
+@media (prefers-color-scheme:dark){
+  :root{
+    --sh-rest:0 0 0 1px rgba(255,255,255,.06), 0 12px 32px rgba(0,0,0,.5);
+    --sh-lift:0 0 0 1px rgba(255,255,255,.12), 0 20px 44px rgba(0,0,0,.6);
+    --sh-lock:0 0 0 1px rgba(255,255,255,.04), 0 8px 20px rgba(0,0,0,.4);
+    --sh-st:0 0 0 1px rgba(255,255,255,.05), 0 10px 26px rgba(0,0,0,.45);
+    --sh-st-lift:0 0 0 1px rgba(255,255,255,.10), 0 16px 36px rgba(0,0,0,.55);
+    --sh-hero:0 0 0 1px rgba(255,255,255,.08), 0 22px 50px rgba(0,0,0,.62);
+    --sh-hero-lift:0 0 0 1px rgba(255,255,255,.14), 0 28px 60px rgba(0,0,0,.7);
+    --sh-chip:0 0 0 1px rgba(255,255,255,.05), 0 8px 20px rgba(0,0,0,.42);
+  }
+}
+#lobby{min-height:100vh;background:radial-gradient(1200px 520px at 50% -12%, #d6f3ec 0%, var(--lb-bg) 58%) fixed}
+.lb-bar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:.7rem;
+  background:linear-gradient(100deg,var(--navy),var(--mint-d));color:#fff;padding:.65rem 1rem;
+  box-shadow:0 2px 14px rgba(15,45,58,.25)}
+/* At 390px the wordmark, the subtitle and four pills are wider than the phone, and a
+   sticky bar that overflows takes the whole page sideways with it — the shelf scrolled
+   horizontally under the thumb before this. It wraps to a second line instead, the
+   subtitle steps aside where there is no room for it, and the two pills whose text
+   arrives from the network are allowed to truncate: a cluster name is a detail, and a
+   page that scrolls sideways on a phone is not. */
+.lb-bar{flex-wrap:wrap}
+#lb-chain{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.me{min-width:0;max-width:100%}
+.me-t{min-width:0}
+.me-t b{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:640px){ .lb-sub{display:none} }
+.lb-bar b{font-size:1.15rem;letter-spacing:.14em;font-family:Archivo,sans-serif}
+.lb-sub{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;opacity:.75}
+.lb-bar .sp{margin-left:auto}
+.coin{background:rgba(255,255,255,.18);padding:.25rem .65rem;border-radius:999px;
+  font-family:"IBM Plex Mono",monospace;font-size:.72rem;font-weight:600}
+/* ── the language the patient speaks ──────────────────────────────────────────
+   A pill in the bar, not a settings page: it is the first decision a learner in Bangkok or
+   Jakarta makes and the last one anybody else thinks about, so it sits where the eye already
+   goes and takes up the room of one word. It reads light-on-dark in the lobby and picks up the
+   bay's own control styling in the game — the two bars are different rooms and it belongs to
+   whichever one it is standing in. */
+.langpill{display:inline-flex;align-items:center;gap:.3rem;background:rgba(255,255,255,.18);
+  border-radius:999px;padding:.1rem .5rem .1rem .55rem;font-size:.72rem}
+.langpill select{background:transparent;border:0;color:#fff;font-family:"IBM Plex Mono",monospace;
+  font-size:.72rem;font-weight:600;padding:.15rem .1rem;cursor:pointer}
+.langpill select option{color:var(--ink);background:var(--card)}
+.bar .langpill{background:var(--card-2);border:1px solid var(--line);border-radius:7px;
+  padding:.1rem .45rem}
+.bar .langpill select{color:var(--ink)}
+.lb-wrap{max-width:66rem;margin:0 auto;padding:2rem 1.1rem 4rem}
+.lb-eyebrow{font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--mint-d);font-weight:600}
+
+/* ── A1 · the billboard ───────────────────────────────────────────────────────
+   The top of the shelf is your next episode, the way a streaming home screen leads
+   with the thing you were watching. One button, full-bleed art, the progress bar
+   where the thumb expects it. */
+.hero{display:block;width:100%;border:0;padding:0;margin:0 0 1.7rem;cursor:pointer;text-align:left;
+  border-radius:18px;overflow:hidden;position:relative;background:var(--navy);color:#fff;
+  box-shadow:var(--sh-hero);font-family:inherit;
+  transition:transform 180ms var(--ease),box-shadow 180ms var(--ease)}
+.hero:hover,.hero:focus-visible{transform:translateY(-6px);box-shadow:var(--sh-hero-lift)}
+.hero:focus-visible{outline:3px solid var(--mint);outline-offset:2px}
+.hero-art{position:absolute;inset:0;overflow:hidden}
+.hero-art img{width:100%;height:100%;object-fit:cover;display:block}
+/* The art is wrapped in a <picture> so a narrow screen takes the 3:2 crop instead of the
+   16:9 billboard. <picture> is an inline box by default, and an inline box has no height for
+   the img's `height:100%` to resolve against — which collapsed the art to nothing. It is a
+   block that fills its frame, and then the img rule above applies exactly as it did. */
+.hero-art picture,.tile .art picture{display:block;width:100%;height:100%}
+.hero-void{width:100%;height:100%;display:grid;place-items:center;
+  background:linear-gradient(150deg,#0f2d3a,#1f9d86)}
+.hero-void span{font-family:Archivo,sans-serif;font-weight:800;font-size:clamp(3rem,15vw,6rem);
+  color:rgba(255,255,255,.13);letter-spacing:-.04em;white-space:nowrap}
+.hero-shade{position:absolute;inset:0;
+  background:linear-gradient(to top,rgba(6,18,22,.93) 0%,rgba(6,18,22,.5) 45%,rgba(6,18,22,.06) 78%)}
+.hero-txt{position:relative;padding:5.5rem 1.15rem 1.2rem;max-width:36rem}
+@media(min-width:640px){.hero-txt{padding:8rem 1.6rem 1.5rem}}
+.hero-eye{font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.18em;
+  text-transform:uppercase;color:#7fe7d2;font-weight:600}
+.hero-txt h1{font-family:Archivo,sans-serif;font-size:clamp(1.5rem,5.4vw,2.5rem);font-weight:800;
+  letter-spacing:-.03em;line-height:1.08;margin:.4rem 0 .45rem;text-wrap:balance}
+.hero-txt p{margin:0 0 .85rem;font-size:.9rem;color:rgba(255,255,255,.82);max-width:36em}
+.hero-act{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap}
+.hero-play{display:inline-block;background:#fff;color:#0f2d3a;font-weight:700;font-size:.9rem;
+  padding:.55rem 1.1rem;border-radius:10px;font-family:Archivo,sans-serif}
+.hero:hover .hero-play{background:var(--mint);color:#06231d}
+.hero-rt{font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.1em;
+  text-transform:uppercase;color:rgba(255,255,255,.65)}
+.hero-prog{margin-top:.85rem;height:.28rem;border-radius:999px;background:rgba(255,255,255,.25);
+  overflow:hidden;max-width:22rem}
+.hero-prog i{display:block;height:100%;background:var(--mint)}
+
+/* ── A2 · the shelf, turned (CEO, 27 Aug) ─────────────────────────────────────
+   One season, one shelf — and a shelf is a thing you turn, not a strip you drag
+   sideways past your own thumb. The row is a coverflow now: the card in front of
+   you faces you square, its neighbours lean away on the Y axis and step back in
+   Z, and each card's place is one transform derived from how far it sits from
+   the middle. Nothing in this stylesheet counts cards, so seventeen of them cost
+   exactly what four did.
+
+   Held wide, on purpose. The landing page's deck runs at .39 of a card between
+   centres and reads as a fan of edges — right for four posters glimpsed once by a
+   buyer. This shelf is a room a player works in, so the gap is .95 of a card:
+   at that spacing a neighbour's inner edge lands just clear of the middle card's
+   outer one, so there is air between them and the lean is what says depth, not
+   the overlap. A side card stays a card — whole, readable, one click from the
+   middle — because on this shelf it is also a door, a lock and a star count. */
+.row-h{display:flex;align-items:flex-end;gap:.8rem;margin:0 0 .7rem}
+.row-t h2{font-family:Archivo,sans-serif;font-size:1.3rem;font-weight:800;letter-spacing:-.02em;
+  margin:.15rem 0 0;color:#12262c}
+/* The deck owns the perspective and the clipping, and keeps the row's old bleed to
+   the screen edge — on a phone the neighbours run off the sides the way a shelf
+   does. `touch-action:pan-y` leaves the vertical flick to the page: the deck only
+   ever claims the sideways one. Its height is set from the tallest card by JS; the
+   value here is the placeholder for the frame before that happens. */
+.lb-row{--cf-w:clamp(12rem,58vw,16rem);
+  position:relative;height:23rem;margin:-.7rem -1.1rem .2rem;
+  perspective:1150px;perspective-origin:50% 46%;
+  overflow:hidden;touch-action:pan-y;
+  user-select:none;-webkit-user-select:none;cursor:grab}
+.lb-row.dragging{cursor:grabbing}
+.lb-row:focus-visible{outline:3px solid var(--mint);outline-offset:-3px;border-radius:14px}
+/* Every card is the same slot now — an episode and a station are the same rectangle,
+   and the rank between them is carried by scale and edge instead of width. `top:50%`
+   plus the translateY(-50%) JS puts at the head of every transform centres a card of
+   any height, so the long sentence on the first shut door is never cropped to fit a
+   fixed box. */
+.lb-row .tile{position:absolute;top:50%;left:50%;width:var(--cf-w);
+  margin-left:calc(var(--cf-w) / -2);
+  transition:transform 460ms var(--ease),opacity 460ms ease,box-shadow 200ms var(--ease)}
+.lb-row .tile img,.lb-row .tile picture{-webkit-user-drag:none}
+/* The card in front is the one you can act on, and it is the only one that says so:
+   it carries the lift, and the buttons behind it are dimmed rather than taken away —
+   a side card still has to read as a station you sit rather than an episode you
+   enter, and a shut door still has to name its price. */
+.lb-row .tile[aria-current]{box-shadow:var(--sh-lift)}
+.lb-row .tile[aria-current].st{box-shadow:var(--sh-st-lift)}
+.lb-row .tile[aria-current].lock,.lb-row .tile[aria-current].cs{box-shadow:var(--sh-lock)}
+.lb-row .tile:not([aria-current]) .go{opacity:.52}
+/* the turned-away edge falls into shadow — the outer one on both sides. */
+.lb-row .tile::after{content:"";position:absolute;inset:0;z-index:3;pointer-events:none;
+  opacity:var(--cf-shade,0);transition:opacity 460ms ease;
+  background:linear-gradient(to left,rgba(6,20,24,.9),rgba(6,20,24,0) 86%)}
+.lb-row .tile[data-side="r"]::after{
+  background:linear-gradient(to right,rgba(6,20,24,.9),rgba(6,20,24,0) 86%)}
+/* A3 · the interlude tile: the OSCE stations sit on the same deck but are not
+   episodes — scrub-green edge, wearing their own banner, and standing a little
+   smaller in the slot (JS multiplies their scale) so an episode still outranks the
+   interludes that open its door. Station Sets v2: the face is a clinic card, Embla's
+   language — real case name, specialty chip, the two-tier star. */
+.lb-row .tile.st{border:2px solid var(--mint-d);box-shadow:var(--sh-st)}
+/* A station keeps its own drop when it is picked up, rather than borrowing the
+   episode's — the rank between the two is the point of having two shadows. */
+.lb-row .tile.st:hover:not(.lock):not(.cs),.lb-row .tile.st:focus-visible:not(.lock):not(.cs){
+  box-shadow:var(--sh-st-lift)}
+.lb-row .tile.st.lock,.lb-row .tile.st.cs{box-shadow:var(--sh-lock)}
+/* A door that opens on the deck may not animate its own transform: JS owns that
+   property now, and a keyframe outranks an inline style, so the old one threw the
+   card out of its slot for half a second on the happiest moment in the game. It
+   comes up out of its blur and glows in place instead. */
+.lb-row .tile.just-open{animation:dooropen-cf 500ms var(--ease) both,doorglow 900ms ease-out both}
+@keyframes dooropen-cf{from{opacity:.35;filter:blur(6px)}
+  62%{opacity:1;filter:blur(0)}to{opacity:1;filter:blur(0)}}
+
+/* ── A2b · finding yourself among seventeen ───────────────────────────────────
+   Dots do not survive this shelf. Seventeen of them is seventeen six-pixel targets
+   on a phone, and nobody counts to "which one is lit" at a glance anyway — the dot
+   row would be a decoration that answers no question. So the readout says it in
+   words, "3 of 17 · OSCE A2" and the case name under it, and the rail draws the
+   season's rhythm rather than its inventory: a tall mark for each episode, a short
+   one for each station standing between them. The five tall marks are buttons,
+   because an episode door is the only landmark anyone aims for by name; the
+   stations are the ground you cover with the arrows, the drag, or the keys. */
+.cf-nav{display:flex;align-items:center;justify-content:center;gap:.8rem;margin:.2rem 0 0}
+.cf-btn{width:2.6rem;height:2.6rem;flex:none;display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--border);border-radius:12px;background:#fff;color:var(--navy);
+  font:800 1.25rem/1 Archivo,sans-serif;cursor:pointer;box-shadow:var(--sh-chip);
+  transition:transform 120ms var(--ease),box-shadow 120ms var(--ease),color 120ms linear}
+.cf-btn:hover:not(:disabled){border-color:var(--mint-d);color:var(--mint-d);transform:translateY(-2px)}
+.cf-btn:disabled{opacity:.32;cursor:default;box-shadow:none}
+.cf-where{flex:1 1 auto;min-width:0;text-align:center;margin:0;
+  font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.12em;
+  text-transform:uppercase;color:#5b6b70;line-height:1.6}
+.cf-where b{display:block;font-family:Archivo,sans-serif;font-size:.92rem;font-weight:700;
+  letter-spacing:-.01em;text-transform:none;color:#12262c;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cf-rail{display:flex;align-items:center;justify-content:center;gap:.2rem;
+  height:1.7rem;margin:.3rem 0 .2rem}
+.cf-tick{flex:none;border:0;padding:0;background:none;height:1.7rem;
+  display:flex;align-items:center;justify-content:center}
+.cf-tick::before{content:"";display:block;width:.3rem;height:.5rem;border-radius:999px;
+  background:#cfdcdc;transition:background 160ms linear,height 160ms var(--ease),width 160ms var(--ease)}
+.cf-tick.tk-st{width:.6rem}
+.cf-tick.tk-ep{width:1.5rem;cursor:pointer}
+.cf-tick.tk-ep::before{width:.42rem;height:1.05rem;background:#8aa0a4}
+.cf-tick.lk::before{opacity:.4}
+/* Where you are stands up out of the rail — but not all the way up to an episode's
+   height, or the mark would claim to be a door every time you stopped on a station. */
+.cf-tick.at::before{width:.42rem;background:var(--mint-d);opacity:1;
+  box-shadow:0 0 0 3px rgba(38,192,165,.22)}
+.cf-tick.tk-st.at::before{height:.8rem}
+.cf-btn:focus-visible,.cf-tick:focus-visible{outline:3px solid var(--mint);outline-offset:2px;
+  border-radius:8px}
+@media (max-width:560px){.cf-where{font-size:.6rem;letter-spacing:.08em}
+  .cf-where b{font-size:.82rem}}
+/* Reduced motion takes the travel, not the shelf: every step still lands, it just
+   lands at once. */
+@media (prefers-reduced-motion:reduce){
+  .lb-row .tile,.lb-row .tile::after,.cf-btn,.cf-tick::before{transition:none}}
+.tile.st .art{aspect-ratio:16/9}
+/* The provenance banner that used to run across the top of this art is gone — a player has
+   never heard of the case bank, and the credit now sits under the score instead (.prov). With
+   the banner went the 1.65rem the number pill was pushed down to clear it: it sits where every
+   other card's does again. */
+/* the case's stars, worn on the art: ☆☆ / ★☆ / ★★ — the best this account has proven */
+.st-stars{position:absolute;bottom:.5rem;right:.55rem;z-index:1;font-size:.86rem;
+  letter-spacing:.08em;color:var(--gold);background:rgba(6,20,24,.62);border-radius:999px;
+  padding:.14rem .5rem;backdrop-filter:blur(4px)}
+/* the clinic art: no drama still — the specialty, set in big quiet type on scrubs green */
+.art-cl{background:linear-gradient(155deg,#0e3230 0%,#0f2d3a 82%)}
+.art-cl span{font-family:Archivo,sans-serif;font-weight:800;font-size:1.05rem;
+  letter-spacing:.3em;color:rgba(127,231,210,.32)}
+.chiprow{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;margin:0 0 .15rem}
+.spec{font-family:"IBM Plex Mono",monospace;font-size:.58rem;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--mint-d);background:#e4f5f0;border-radius:999px;
+  padding:.16rem .5rem;font-weight:600}
+.chiprow .rt{margin:0}
+/* a declared member whose files are still being fitted: a quieter card, never an error */
+.tile.cs{cursor:default;border-style:dashed;opacity:.85}
+.tile.cs .go{background:#fff;color:var(--lock);border:1px solid var(--border);
+  box-shadow:0 3px 0 #cfdcdc;cursor:default}
+.tile .rt{display:block;font-family:"IBM Plex Mono",monospace;font-size:.62rem;letter-spacing:.1em;
+  text-transform:uppercase;color:#8aa0a4;margin:0 0 .15rem}
+.prog{position:absolute;left:0;right:0;bottom:0;height:.26rem;background:rgba(6,20,24,.5)}
+.prog i{display:block;height:100%;background:var(--mint)}
+
+/* ── C10 · the season ring ── how far through the season, and the stars that open
+   its doors, in one glance beside the season title. */
+.ring{display:flex;align-items:center;gap:.5rem;margin-left:auto;flex:none}
+.ring svg{width:2.6rem;height:2.6rem;transform:rotate(-90deg)}
+.ring-bg{fill:none;stroke:#d7e2e1;stroke-width:3}
+.ring-fg{fill:none;stroke:var(--mint-d);stroke-width:3;stroke-linecap:round}
+.ring-n{transform:rotate(90deg);transform-origin:18px 18px;font-family:Archivo,sans-serif;
+  font-size:.72rem;font-weight:800;fill:#12262c;text-anchor:middle}
+.ring-t{font-family:"IBM Plex Mono",monospace;font-size:.6rem;line-height:1.55;color:#5b6b70;
+  letter-spacing:.06em;text-transform:uppercase}
+.ring-t b{color:#12262c}
+.tile{background:#fff;border:1px solid var(--border);border-radius:16px;overflow:hidden;
+  box-shadow:var(--sh-rest);cursor:pointer;text-align:left;padding:0;
+  display:flex;flex-direction:column;
+  transition:transform 180ms var(--ease),box-shadow 180ms var(--ease)}
+/* Picked up, not nudged: six pixels of lift and a deeper drop, so the card that is
+   about to be chosen is visibly off the shelf. */
+.tile:hover:not(.lock):not(.cs),.tile:focus-visible:not(.lock):not(.cs){
+  transform:translateY(-6px);box-shadow:var(--sh-lift)}
+.tile:focus-visible{outline:3px solid var(--mint);outline-offset:2px}
+/* Out of reach reads flatter, and does not rise to meet the cursor. */
+.tile.lock,.tile.cs{box-shadow:var(--sh-lock)}
+.tile .art{aspect-ratio:16/10;position:relative;background:linear-gradient(150deg,var(--navy),var(--mint-d))}
+.tile .art img{width:100%;height:100%;object-fit:cover;display:block}
+.tile .no{position:absolute;top:.55rem;left:.6rem;font-family:"IBM Plex Mono",monospace;
+  font-size:.64rem;letter-spacing:.14em;color:#fff;background:rgba(6,20,24,.55);
+  padding:.15rem .5rem;border-radius:999px;backdrop-filter:blur(4px)}
+.tile .tier{position:absolute;bottom:.55rem;right:.6rem;font-family:"IBM Plex Mono",monospace;
+  font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:#0f2d3a;background:rgba(255,255,255,.86);
+  padding:.15rem .5rem;border-radius:999px}
+.tile .body{padding:.85rem .9rem 1rem;display:flex;flex-direction:column;gap:.3rem;flex:1}
+/* Attribution. Quiet on purpose: a fact about the case, not a claim on the reader's
+   attention — and absent entirely when there is nothing to say. */
+.byline{display:block;font-size:.72rem;color:var(--ink-3);letter-spacing:.01em}
+.byline .mono{font-family:"IBM Plex Mono",ui-monospace,monospace;color:var(--ink-2)}
+.tile h3{font-family:Archivo,sans-serif;font-size:1.02rem;font-weight:700;margin:0;color:#12262c}
+.tile p{margin:0;font-size:.84rem;color:#5b6b70;flex:1}
+.tile .go{margin-top:.6rem;align-self:flex-start;border:0;border-radius:12px;padding:.5rem .9rem;
+  font-weight:700;font-size:.82rem;color:#fff;background:linear-gradient(180deg,#2ed3b4,#1fa78f);
+  box-shadow:0 4px 0 #178b76;transition:transform .06s,box-shadow .06s}
+.tile:active .go{transform:translateY(3px);box-shadow:0 1px 0 #178b76}
+.tile .go.exam{background:linear-gradient(180deg,#ffd766,#f0b429);box-shadow:0 4px 0 #c68f1f;color:#4a3403;margin-left:.45rem}
+/* ── A3+A5 · a locked episode is a teaser, not a wall ─────────────────────────
+   The art stays, blurred; the price is named in stars on the art; and when a teaser
+   clip exists on the volume the trailer door appears — absent asset, absent button. */
+.tile.lock{cursor:default}
+.tile.lock .art img{filter:blur(7px) saturate(.7) brightness(.82);transform:scale(1.08)}
+.tile.lock .art-ph{filter:blur(2px);opacity:.55}
+.tile.lock h3{color:#3d5257}
+.tile.lock p{color:#7c8f93}
+.tile.lock .go{background:#fff;color:var(--lock);border:1px solid var(--border);box-shadow:0 3px 0 #cfdcdc}
+.tease{position:absolute;left:.6rem;bottom:.55rem;z-index:1;font-family:"IBM Plex Mono",monospace;
+  font-size:.62rem;letter-spacing:.1em;color:#fff;background:rgba(6,20,24,.72);
+  padding:.2rem .55rem;border-radius:999px;backdrop-filter:blur(4px)}
+.tile .go.trail{background:linear-gradient(180deg,#3a5560,#22333b);color:#fff;border:0;
+  box-shadow:0 4px 0 #101b20;cursor:pointer;font-family:inherit;margin-left:.45rem}
+
+/* ── A4 · motion ──────────────────────────────────────────────────────────────
+   Hover (or first touch) puts a card in motion: the episode's clip, streamed from
+   /clip/ where the volume serves it, else a CSS-only Ken Burns drift on the still.
+   Nothing is embedded — the clip streams or the still simply moves. */
+.pv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+@keyframes kburns{from{transform:scale(1.02)}to{transform:scale(1.14) translate(-2.2%,-1.4%)}}
+.art img.kb{animation:kburns 6.5s ease-in-out infinite alternate}
+.hero-art img{animation:kburns 14s ease-in-out infinite alternate}
+@media (prefers-reduced-motion:reduce){.art img.kb,.hero-art img{animation:none}}
+.art-ph{position:absolute;inset:0;display:grid;place-items:center;color:rgba(255,255,255,.5);
+  font-family:"IBM Plex Mono",monospace;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase}
+/* An episode still nobody has shot yet is not an empty black box: each unphotographed
+   episode wears its own gradient and its title set with intent, until the real art lands. */
+.art-ph.ph-t-wrap{display:flex;flex-direction:column;justify-content:center;align-items:flex-start;
+  padding:1.6rem 3.4rem .65rem .7rem;text-align:left}
+.ph-t{font-family:Archivo,sans-serif;font-weight:800;font-size:1.06rem;line-height:1.04;
+  letter-spacing:-.02em;color:rgba(255,255,255,.94);text-transform:none;text-wrap:balance}
+.ph-ep2{background:linear-gradient(160deg,#4a1220 0%,#251031 55%,#0f2d3a 100%)}
+.ph-ep3{background:linear-gradient(160deg,#0e3a33 0%,#122c3c 60%,#0a1a26 100%)}
+.ph-ep4{background:linear-gradient(160deg,#33204c 0%,#1c2547 55%,#0f2d3a 100%)}
+.ph-ep5{background:radial-gradient(1px 1px at 18% 22%,rgba(255,200,61,.9) 50%,transparent 51%),
+  radial-gradient(1px 1px at 62% 12%,rgba(255,200,61,.7) 50%,transparent 51%),
+  radial-gradient(1.5px 1.5px at 83% 34%,rgba(255,220,120,.8) 50%,transparent 51%),
+  radial-gradient(1px 1px at 38% 45%,rgba(255,200,61,.5) 50%,transparent 51%),
+  linear-gradient(160deg,#132c46 0%,#0a1726 55%,#05090f 100%)}
+/* ── the set strip ── one chip per station set: what the door costs, what the set is
+   worth, and how far along this account is. The shelf shows a station's own star; this
+   is the only place the *set* total is legible, which is the number a door is priced in. */
+.sets{display:flex;flex-wrap:wrap;gap:.5rem;margin:.9rem 0 0}
+.setchip{flex:1 1 10rem;background:#fff;border:1px solid var(--border);border-radius:12px;
+  padding:.55rem .7rem;display:flex;flex-direction:column;gap:.3rem;
+  box-shadow:var(--sh-chip)}
+.setchip.done{border-color:var(--mint-d);box-shadow:var(--sh-chip)}
+.sc-h{display:flex;align-items:baseline;justify-content:space-between;gap:.5rem}
+.sc-g{font-family:"IBM Plex Mono",monospace;font-size:.6rem;letter-spacing:.1em;
+  text-transform:uppercase;color:#8aa0a4}
+.sc-n{font-family:Archivo,sans-serif;font-size:.86rem;font-weight:700;color:#12262c;white-space:nowrap}
+.sc-n b{color:var(--mint-d)}
+.setchip.done .sc-n b{color:var(--act)}
+.sc-b{display:block;height:.3rem;border-radius:999px;background:#e3ecea;overflow:hidden;position:relative}
+/* the door's price, marked on the bar itself — a target you can see is a target you aim at */
+.sc-b i{display:block;height:100%;background:var(--mint);border-radius:999px}
+.sc-b u{position:absolute;top:-2px;bottom:-2px;width:2px;background:#0f2d3a;opacity:.55}
+.sc-d{font-size:.68rem;color:#6b7d82}
+.sc-rule{flex-basis:100%;text-align:center;font-family:"IBM Plex Mono",monospace;
+  font-size:.62rem;letter-spacing:.06em;color:#8aa0a4;margin:.15rem 0 0}
+.lb-foot{margin-top:1.6rem;text-align:center;font-size:.82rem;color:#6b7d82;max-width:44em;
+  margin-left:auto;margin-right:auto}
+.backbtn{font-family:"IBM Plex Mono",monospace;font-size:.7rem}
+
+/* ── the wallet button ────────────────────────────────────────────────────────
+   Identity sits in the bar where it always is, the way My Profile or a wallet
+   does. Two lines: what you have earned, and who you are — enough to recognise
+   yourself without opening anything. */
+.me{display:flex;align-items:center;gap:.5rem;background:rgba(255,255,255,.14);
+  border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:.28rem .7rem .28rem .6rem;
+  color:#fff;cursor:pointer;font-family:inherit;transition:background .12s,border-color .12s}
+.me:hover{background:rgba(255,255,255,.24);border-color:rgba(255,255,255,.4)}
+.me:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+.me-dot{width:.44rem;height:.44rem;border-radius:999px;background:var(--mint);flex:none}
+.me[data-state="watch"] .me-dot{background:var(--gold)}
+.me[data-state="none"] .me-dot{background:var(--lock)}
+.me-t{display:flex;flex-direction:column;align-items:flex-start;line-height:1.15}
+.me-t b{font-size:.78rem;font-weight:600;letter-spacing:0}
+.me-t em{font-style:normal;font-family:"IBM Plex Mono",monospace;font-size:.62rem;opacity:.72}
+@media (max-width:640px){ .me-t em{display:none} }
+
+/* carrying a record between machines — the lobby's own vocabulary: white card, 16px,
+   Archivo headings, mono for anything that is a token rather than a word */
+.rec{max-width:38rem;margin:2.4rem auto 0;background:#fff;border:1px solid var(--border);
+  border-radius:16px;box-shadow:0 6px 20px rgba(15,45,58,.07);padding:1.15rem 1.25rem 1.25rem;
+  text-align:left}
+.pill{font-family:"IBM Plex Mono",monospace;font-size:.64rem;letter-spacing:.1em;
+  text-transform:uppercase;padding:.2rem .6rem;border-radius:999px;white-space:nowrap}
+.pill.here{background:#e4f5f0;color:var(--mint-d)}
+.pill.view{background:#f1f3f3;color:var(--lock)}
+.pill.none{background:#fdf3dd;color:#8a6300}
+
+.rec-level{font-family:Archivo,sans-serif;font-size:1.5rem;font-weight:800;letter-spacing:-.02em;
+  color:#12262c;margin:0;line-height:1.15}
+.rec-sub{font-family:"IBM Plex Mono",monospace;font-size:.78rem;color:#5b6b70;margin:.25rem 0 0}
+
+.rec-list{margin:1.05rem 0 0;border-top:1px solid var(--border);padding-top:.85rem}
+.rec-list h4{font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--lock);margin:0 0 .5rem;font-weight:600}
+.dev{display:flex;align-items:center;gap:.55rem;padding:.3rem 0;font-size:.85rem;color:#37474c}
+.dev .dot{width:.5rem;height:.5rem;border-radius:999px;background:var(--mint);flex:none}
+.dev .dot.off{background:#d3dbdb}
+.dev .k{font-family:"IBM Plex Mono",monospace;font-size:.76rem;color:#5b6b70;margin-left:auto}
+
+.rec-acts{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1rem}
+.rbtn{font-family:"IBM Plex Sans",sans-serif;font-size:.82rem;font-weight:500;
+  padding:.48rem .9rem;border:1px solid var(--border);border-radius:999px;background:#fff;
+  color:#12262c;cursor:pointer;transition:background .12s,border-color .12s}
+.rbtn:hover{background:#f4f8f7;border-color:#cfdad9}
+.rbtn.go{background:var(--mint-d);border-color:transparent;color:#fff}
+.rbtn.go:hover{background:#1a8b76}
+.rbtn:focus-visible{outline:3px solid var(--mint);outline-offset:2px}
+
+/* a key is a token you move, not text you read: short by default, whole on copy */
+.tok{display:inline-flex;align-items:center;gap:.5rem;background:#f4f8f7;border:1px solid var(--border);
+  border-radius:999px;padding:.28rem .35rem .28rem .7rem;font-family:"IBM Plex Mono",monospace;
+  font-size:.78rem;color:#37474c;max-width:100%}
+.tok button{font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.08em;
+  text-transform:uppercase;border:0;border-radius:999px;background:var(--navy);color:#fff;
+  padding:.22rem .6rem;cursor:pointer}
+.tok button:hover{background:#1b4250}
+
+.steps{margin:.9rem 0 0;padding:.85rem .95rem;background:#f7faf9;border:1px solid var(--border);
+  border-radius:12px}
+.steps ol{margin:0;padding-left:1.15rem;display:flex;flex-direction:column;gap:.6rem}
+.steps li{font-size:.85rem;color:#37474c;line-height:1.45}
+.steps li::marker{font-family:"IBM Plex Mono",monospace;font-size:.75rem;color:var(--mint-d);font-weight:600}
+.steps .row{display:flex;gap:.45rem;margin-top:.4rem;flex-wrap:wrap}
+.steps input{font-family:"IBM Plex Mono",monospace;font-size:.78rem;padding:.42rem .6rem;
+  border:1px solid var(--border);border-radius:999px;flex:1;min-width:11rem;background:#fff}
+.steps input:focus-visible{outline:3px solid var(--mint);outline-offset:1px}
+.rec-msg{font-size:.82rem;color:#5b6b70;margin:.85rem 0 0;line-height:1.5}
+.rec-msg .ok{color:var(--mint-d);font-weight:600}
+.rec-msg .bad{color:#c6362e;font-weight:600}
+.rec-hint{font-size:.82rem;color:#5b6b70;margin:.9rem 0 0;line-height:1.5}
+
+/* ─────────────────────────────────────────────────────────────
+   The bay: patient card and conversation on the left, the devices
+   and the record on the right. The room is lit; the devices are the
+   dark objects in it.
+   ───────────────────────────────────────────────────────────── */
+:root{
+  --room:#EFF3F2; --card:#FFFFFF; --card-2:#F6F9F8;
+  --ink:#0E1719; --ink-2:#4A5B5E; --ink-3:#849698; --line:#DDE5E4;
+  --act:#0B6E58; --act-soft:#E3F0EC;
+  --warn:#B4590F; --warn-soft:#FBEDE1;
+  --alarm:#C6362E; --alarm-soft:#FBE8E6;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--room);color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+.app{max-width:96rem;margin:0 auto;padding:.9rem 1rem 3rem;display:grid;gap:.9rem;
+  grid-template-columns:1fr}
+@media(min-width:69rem){.app{grid-template-columns:minmax(0,1.55fr) minmax(20rem,.82fr);align-items:start}}
+
+.bar{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.5rem .7rem;align-items:center;
+  background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.55rem .8rem}
+.brand{font-family:Archivo,sans-serif;font-weight:800;font-size:1.02rem;letter-spacing:-.02em}
+.brand span{color:var(--act)}
+.ep{font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-3)}
+/* ── B9 · the player bar ── while the case runs the header reads as a broadcast:
+   S1:E2 · Time Is Muscle · LIVE. The scenario hash still travels, in the tooltip,
+   which is where a verifier goes looking for it. */
+.live{display:inline-block;font-weight:700;color:#fff;background:var(--alarm);border-radius:4px;
+  padding:.05rem .4rem;letter-spacing:.14em}
+.live::before{content:'●';margin-right:.3rem;animation:pulse 1.6s ease-in-out infinite}
+.live.end{background:var(--ink-3)}
+.live.end::before{animation:none}
+.live.exam{background:#c68f1f}
+.live.exam::before{content:'\2605';animation:none}
+@keyframes pulse{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.live::before{animation:none}}
+.spacer{margin-left:auto}
+select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.71rem;background:var(--card-2);
+  color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:.4rem .65rem;cursor:pointer;
+  transition:border-color .12s,background .12s,transform .06s}
+.btn:hover:not(:disabled){border-color:var(--act);background:var(--act-soft)}
+.btn:active:not(:disabled){transform:translateY(1px)}
+.btn:disabled{opacity:.38;cursor:not-allowed}
+.btn.go{background:var(--act);color:#fff;border-color:var(--act);font-weight:600}
+.btn.on{background:var(--act);color:#fff;border-color:var(--act)}
+
+/* ── stage ── */
+.stage{display:flex;flex-direction:column;gap:.75rem;min-width:0}
+.pt{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;
+  text-align:center;padding-bottom:.7rem}
+.pt-art{position:relative;aspect-ratio:16/9;background:#0b1312}
+/* Direct children only. The frame now holds a document and a film of its own, and an
+   `img` anywhere inside it used to inherit "absolute, inset 0, cover, opacity 0" — which
+   is a chest radiograph, invisible, stretched over the whole panel. */
+.pt-art>video,.pt-art>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  opacity:0;transition:opacity .45s ease}
+.pt-art>video.on,.pt-art>img.on{opacity:1}
+/* A cutscene cuts, it does not dissolve — the Director hands it the whole frame. */
+#cut{opacity:0;transition:opacity .18s ease;z-index:2;background:#000}
+#cut.on{opacity:1}
+.cut-tag{position:absolute;top:.55rem;right:.55rem;z-index:3;font-family:"IBM Plex Mono",monospace;
+  font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:#E7EFEE;
+  background:rgba(6,14,14,.62);padding:.2rem .5rem;border-radius:6px;opacity:0;transition:opacity .2s}
+.cut-tag.on{opacity:1}
+.place{position:absolute;left:.55rem;bottom:.55rem;font-family:"IBM Plex Mono",monospace;
+  font-size:.6rem;letter-spacing:.06em;color:#E7EFEE;background:rgba(6,14,14,.6);
+  padding:.2rem .5rem;border-radius:6px;backdrop-filter:blur(5px)}
+
+/* ── the still ────────────────────────────────────────────────────────────────
+   EP1 was shot: it has a loop for every state its patient can be in and a cutscene on
+   every beat, and none of what follows touches it. EP2 to EP5 have not been shot, and
+   what they had in the biggest panel on the screen was the same black rectangle a
+   station used to have — for twelve to eighteen minutes, over the whole episode.
+
+   Each of them does have one frame of its own: the key art, which is not a poster.
+   There is no title on it, no billing, no cast — it is a photograph of that patient in
+   this bay, lit by the same ceiling. So the frame hangs it where the film would have
+   been, and grades it to be in the room instead of on a wall:
+
+     * cover, not the fit's letterbox. The crop is 16:9 and the frame is 16:9, so on a
+       phone nothing is lost at all; in the desktop cockpit, where the row hands out
+       whatever height is left over, a few pixels off the ceiling is the honest trade
+       against two black bars, which is the thing that reads as a poster in a dark room.
+       `38%` because every face in the season sits above the middle of its own frame.
+     * dimmed and pulled off full saturation, because key art is lit for a shelf card
+       and the bay is a dark room.
+     * the scrim: a fall-off at the edges and a floor at the bottom, so the place tag
+       lands on a surface rather than on somebody's shoulder.
+
+   And the frame is the one thing on this stage that cannot move with her. EP1 answers
+   that by swapping the still per status; here there is one shot, so the grade carries
+   it — the room goes down as she does, and out when she arrests. It says nothing the
+   status line under the frame has not already said in words, so it leaks nothing into
+   an exam that the bay was not already showing. */
+.scrim{position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity .45s ease;
+  background:radial-gradient(118% 88% at 50% 40%,rgba(0,0,0,0) 44%,rgba(3,9,9,.58) 100%),
+    linear-gradient(to top,rgba(3,9,9,.66) 0,rgba(3,9,9,0) 32%)}
+.pt-art.still>.scrim{opacity:1}
+/* The grade is graded into, not cut to: the room going down is a light on a dimmer, and a
+   colour fade is not motion, so it stands under prefers-reduced-motion as it is. */
+.pt-art.still>img{object-fit:cover;object-position:50% 38%;
+  filter:saturate(.88) contrast(1.04) brightness(.84);
+  transition:opacity .45s ease,filter .8s ease}
+.pt-art.still[data-st="worse"]>img{filter:saturate(.72) contrast(1.06) brightness(.72)}
+.pt-art.still[data-st="gone"]>img{filter:saturate(.3) contrast(1.08) brightness(.56)}
+
+/* ── the stage ────────────────────────────────────────────────────────────────
+   The biggest panel in the bay is a video frame, and a station has no video: it was
+   a black rectangle over half the screen for the whole exam, which reads as broken
+   rather than as empty. So the frame carries what a station actually has.
+
+   Before the first order it is the stem — the sheet pinned to the door of a real OSCE
+   station: who walks in, what you can see from the doorway, the room, the clock. Paper
+   on the dark frame, because that is what it is. It says nothing the mark sheet marks
+   (no diagnosis, no drug, no plan) — the same rule the card and the player bar keep.
+
+   Order an investigation that has a picture and the picture takes the frame at the size
+   a film is actually read at, with the caption beside it and the licence under that. A
+   corner strip switches between the stem and each film; the light box is still one tap
+   away for the full screen.
+
+   An episode with real film keeps every one of its own behaviours: none of this paints
+   unless the entry is a station. */
+.stem{position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;gap:.45rem;
+  background:#FBFAF7;color:var(--ink);text-align:left;overflow:auto;
+  box-shadow:inset 0 -1px 0 var(--line);
+  padding:clamp(.7rem,2.4vh,1.15rem) clamp(.9rem,2.6vw,1.8rem) 2.5rem}
+.stem-h{display:flex;align-items:baseline;gap:.5rem;flex-wrap:wrap;flex:none;
+  font-family:"IBM Plex Mono",monospace;font-size:.6rem;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ink-3);border-bottom:1px solid var(--line);
+  padding-bottom:.4rem}
+.stem-h b{color:var(--act);font-weight:700}
+.stem-h .sp{margin-left:auto}
+.stem-t{font-family:Archivo,sans-serif;font-weight:700;letter-spacing:-.01em;margin:.1rem 0 0;
+  font-size:clamp(1rem,2.6vh,1.42rem);line-height:1.2;flex:none}
+/* dt/dd straight into the grid: label column, value column, no wrapper divs. */
+.stem-g{margin:.15rem 0 0;display:grid;grid-template-columns:auto minmax(0,1fr);
+  gap:.28rem .9rem;align-items:baseline;flex:none;font-size:clamp(.78rem,1.9vh,.92rem)}
+.stem-g dt{font-family:"IBM Plex Mono",monospace;font-size:.57rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-3);white-space:nowrap;padding-top:.15rem}
+.stem-g dd{margin:0;color:var(--ink-2);line-height:1.4}
+.stem-task{margin:.35rem 0 0;flex:none;font-size:clamp(.82rem,2vh,1rem);font-weight:600}
+.stem-f{margin:auto 0 0;flex:none;font-family:"IBM Plex Mono",monospace;font-size:.57rem;
+  letter-spacing:.05em;line-height:1.7;color:var(--ink-3);border-top:1px solid var(--line);
+  padding-top:.4rem}
+.stem-f b{color:#c68f1f;letter-spacing:.14em;text-transform:uppercase}
+
+.filmv{position:absolute;inset:0;z-index:1;margin:0;display:flex;background:#0b1312}
+/* The corner strip is cleared with a gutter on the left, not with margin at the bottom.
+   Every film in the bank is square or taller, so on this wide frame the height is what
+   limits how big a 12-lead can be drawn and the width is not: giving the strip a lane
+   down the left costs the film nothing, while reserving the same space under it would
+   cost a tenth of the only dimension that matters. The phone layout, where the read is
+   under the film instead of beside it, clears the strip with the caption. */
+.fv-i{flex:1 1 auto;min-width:0;min-height:0;display:flex;align-items:center;
+  justify-content:center;padding:.45rem .45rem .45rem 8.6rem;background:none;border:0;
+  cursor:zoom-in;transition:none}
+.fv-i img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;
+  display:block;border-radius:3px}
+.fv-i:focus-visible{outline:2px solid #7fe7d2;outline-offset:-4px}
+/* `safe center` because the credit is a licence condition, not a caption: in a short frame —
+   after the bell, when the debrief has taken the height back — plain `center` overflows both
+   ends of the column and the top and bottom lines become unreachable. Safe centring falls
+   back to start-aligned, and the column scrolls, so all four things CC-BY asks for stay
+   readable at every height this frame can be. */
+.fv-c{flex:0 0 clamp(9.5rem,24%,16rem);min-width:0;display:flex;flex-direction:column;
+  gap:.35rem;justify-content:center;justify-content:safe center;overflow:auto;
+  padding:.7rem .9rem .7rem .2rem;text-align:left}
+.fv-c>*{flex:none}
+.fv-who{font-family:"IBM Plex Mono",monospace;font-size:.57rem;letter-spacing:.16em;
+  text-transform:uppercase;color:#7fe7d2}
+.fv-cap{font-size:.83rem;line-height:1.45;color:#eaf4f1;font-weight:600}
+.fv-cr{font-family:"IBM Plex Mono",monospace;font-size:.55rem;line-height:1.6;color:#8fa8ab}
+.fv-cr a{color:#7fe7d2}
+.fv-z{font-family:"IBM Plex Mono",monospace;font-size:.55rem;letter-spacing:.1em;
+  text-transform:uppercase;color:#6f8a8d}
+/* On a phone the frame is too narrow to give a column away: the read goes under the film. */
+@media(max-width:34rem){
+  .filmv{flex-direction:column}
+  .fv-i{padding:.4rem .4rem .2rem .4rem}
+  .fv-c{flex:none;justify-content:flex-start;text-align:left;
+    padding:.5rem .8rem 2.3rem;border-top:1px solid rgba(255,255,255,.08)}
+}
+
+/* the switch strip, in the corner the place tag had — a station folds the room into
+   the stem, so the two never want that corner at the same time */
+.sgt{position:absolute;left:.5rem;bottom:.5rem;z-index:3;display:flex;gap:.2rem;
+  background:rgba(6,14,14,.74);border-radius:8px;padding:3px;backdrop-filter:blur(5px)}
+.sgt button{font-family:"IBM Plex Mono",monospace;font-size:.58rem;letter-spacing:.12em;
+  text-transform:uppercase;color:#cfe0dd;background:none;border:0;border-radius:6px;
+  padding:.24rem .5rem;cursor:pointer;transition:background .12s,color .12s}
+.sgt button:hover{background:rgba(255,255,255,.12);color:#fff}
+.sgt button.on{background:var(--act);color:#fff}
+.sgt button:focus-visible{outline:2px solid #7fe7d2;outline-offset:1px}
+/* A document is not a 16:9 frame. Where the page still scrolls (phones, short windows)
+   the frame takes the height the sheet needs; inside the one-viewport fit below, the
+   flex row hands it out instead and this floor comes back off. */
+.pt-art.doc{aspect-ratio:auto;min-height:clamp(19rem,46vh,26rem)}
+/* A film wants more of a phone than a sheet does: stacked under its read, the frame has
+   to be tall enough for the trace to reach the full width of the screen before it stops
+   growing. Below that it is the height, not the width, that decides how big a 12-lead is. */
+.pt-art.doc.film{min-height:clamp(23rem,58vh,33rem)}
+.pt-name{font-family:Archivo,sans-serif;font-weight:700;font-size:1.02rem;margin-top:.6rem}
+.pt-status{font-family:"IBM Plex Mono",monospace;font-size:.76rem;font-weight:600;letter-spacing:.06em}
+.pt-status.Deteriorating,.pt-status.Critical{color:var(--warn)}
+.pt-status.Arrest,.pt-status.Dead{color:var(--alarm)}
+.pt-status.Improving,.pt-status.Recovered{color:var(--act)}
+.pt-line{font-size:.83rem;color:var(--ink-3)}
+
+.chat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:.9rem 1rem;
+  min-height:17rem;max-height:30rem;overflow:auto;display:flex;flex-direction:column;gap:.5rem}
+.chat.empty{align-items:center;justify-content:center;text-align:center}
+
+/* An encounter is a conversation with a chart running through it. Speech gets a bubble;
+   an order or an event gets a ruled line with a time on it, because that is what it is. */
+.turn{max-width:76%;display:flex;flex-direction:column;gap:.18rem}
+.turn .who{font-size:.64rem;color:var(--ink-3);padding:0 .3rem}
+.turn .say{padding:.55rem .75rem;border-radius:13px;font-size:.92rem;line-height:1.45}
+.turn.her{align-self:flex-start}
+.turn.her .say{background:#EDF1F1;border-bottom-left-radius:4px}
+.turn.her.think .say{color:var(--ink-3);font-style:italic}
+.turn.you{align-self:flex-end;align-items:flex-end}
+.turn.you .say{background:var(--act);color:#fff;border-bottom-right-radius:4px}
+
+/* the chart line */
+.ev{display:flex;align-items:baseline;gap:.6rem;font-family:"IBM Plex Mono",monospace;
+  font-size:.74rem;color:var(--ink-2);padding:.1rem 0}
+.ev .t{color:var(--ink-3);font-size:.66rem;font-variant-numeric:tabular-nums;flex:none;width:2.7rem;
+  text-align:right}
+.ev .ic{flex:none;opacity:.75}
+.ev .tx{flex:1;min-width:0}
+.ev .rule{flex:1;height:1px;background:var(--line);margin-left:.3rem}
+.ev.order{color:var(--act)} .ev.order .rule{background:#CFE4DC}
+.ev.beat{color:var(--ink-2)}
+.ev.harm{color:var(--warn);font-weight:600} .ev.harm .rule{background:#EBD6C4}
+.ev.end{color:var(--alarm);font-weight:700} .ev.end .rule{background:#F0CFCB}
+.ev.note{color:var(--ink-3);font-style:italic;font-family:"IBM Plex Sans",sans-serif;font-size:.8rem}
+
+.empty-in{max-width:24em;color:var(--ink-3)}
+.empty-in b{display:block;color:var(--ink-2);font-family:Archivo,sans-serif;font-size:1rem;
+  margin-bottom:.25rem}
+
+.acts{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:.7rem .8rem;
+  display:flex;flex-direction:column;gap:.55rem}
+.modes{display:inline-flex;flex-wrap:wrap;gap:2px;background:var(--card-2);border:1px solid var(--line);
+  border-radius:9px;padding:2px;align-self:flex-start}
+.modes .btn{border:0;background:none;border-radius:7px;padding:.35rem .6rem;font-size:.72rem;color:var(--ink-2)}
+.modes .btn:hover{background:#fff;color:var(--ink)}
+.modes .btn.on{background:var(--act);color:#fff}
+.chips{display:flex;flex-wrap:wrap;gap:.35rem;min-height:1.9rem}
+/* A question is something you say; an order is something you write down. They should not
+   look like the same control. */
+.chips .btn{font-size:.74rem;border-radius:999px;font-family:"IBM Plex Sans",sans-serif}
+.acts.order-mode .chips .btn{border-radius:7px;font-family:"IBM Plex Mono",monospace;font-size:.71rem}
+.acts.order-mode #cmd{border-color:#CFE4DC}
+#cmdf{display:flex;gap:.45rem}
+#cmd{flex:1;min-width:0;font-family:"IBM Plex Mono",monospace;font-size:.8rem;background:var(--card-2);
+  color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:.55rem .7rem}
+#cmd:focus{outline:2px solid var(--act);outline-offset:1px;background:#fff}
+.mic{padding:.4rem .6rem}
+
+/* ── rail ── */
+.rail{display:flex;flex-direction:column;gap:.7rem;min-width:0}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:.75rem .8rem}
+.k{font-family:"IBM Plex Mono",monospace;font-size:.6rem;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ink-3);margin-bottom:.5rem}
+.muted{color:var(--ink-3);font-size:.8rem}
+
+.mini{background:#070F0E;border:1px solid #1E2E2A;border-radius:11px;padding:.6rem .7rem;color:#E6EFEE}
+.mini-h{display:flex;justify-content:space-between;font-family:"IBM Plex Mono",monospace;
+  font-size:.6rem;letter-spacing:.16em;color:#5C716C;margin-bottom:.35rem}
+.mini-h span:last-child{color:#FBBF24}
+.mini-g{display:grid;grid-template-columns:1fr 1fr;gap:.35rem .6rem}
+.mini-g i{font-style:normal;font-family:"IBM Plex Mono",monospace;font-size:.58rem;color:#5C716C;display:block}
+.mini-g b{font-family:"IBM Plex Mono",monospace;font-size:1.15rem;font-variant-numeric:tabular-nums}
+.mini-g div:nth-child(1) b{color:#4ADE80} .mini-g div:nth-child(2) b{color:#38BDF8}
+.mini-g div:nth-child(3) b{color:#F87171} .mini-g div:nth-child(4) b{color:#FBBF24}
+
+.devtabs{display:flex;gap:.35rem}
+.devtabs .btn{flex:1;text-align:center}
+.device{display:block;width:100%;height:15rem;border:1px solid #1E2E2A;border-radius:11px;
+  overflow:hidden;background:#04070a}
+
+.nudge{font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--alarm);margin-bottom:.45rem;
+  min-height:1rem}
+.nudge:empty{display:none}
+/* ── what is on the patient ───────────────────────────────────────────────────
+   A tray, not a row of tags: the thing, its setting, and how long it has been on.
+   Tabular figures because the numbers are read down a column, not across. */
+.tray{display:flex;flex-direction:column;gap:.1rem;margin-bottom:.55rem}
+.t-row{display:flex;align-items:center;gap:.5rem;padding:.3rem .1rem;
+  border-bottom:1px solid var(--line);font-size:.78rem}
+.t-row:last-child{border-bottom:0}
+.t-dot{width:.42rem;height:.42rem;border-radius:999px;background:var(--act);flex:none}
+.t-n{color:var(--ink);flex:1;min-width:0}
+.t-v{font-family:"IBM Plex Mono",monospace;font-size:.74rem;font-weight:600;color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.t-t{font-family:"IBM Plex Mono",monospace;font-size:.68rem;color:var(--ink-3);
+  font-variant-numeric:tabular-nums;flex:none}
+.t-x{border:0;background:none;font-family:"IBM Plex Mono",monospace;font-size:.62rem;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);cursor:pointer;padding:.1rem .2rem}
+.t-x:hover{color:var(--alarm)}
+.setrow{display:flex;flex-wrap:wrap;gap:.25rem;margin:.35rem 0 .5rem}
+.setrow .btn{font-size:.66rem;padding:.25rem .5rem}
+
+/* ── disposition ──────────────────────────────────────────────────────────────
+   A decision about where the patient goes, which is not a preference and does not
+   belong in a row with the mute button. */
+.dispo{display:flex;flex-direction:column;gap:.5rem}
+.dispo-opts{display:flex;flex-wrap:wrap;gap:.3rem}
+.dispo-opts .btn{font-size:.74rem;padding:.35rem .5rem}
+.dispo-why{font-style:normal;font-size:.74rem;color:var(--ink-3)}
+.dispo-why:empty{display:none}
+
+/* ── the chart ────────────────────────────────────────────────────────────────
+   Orders and events are different kinds of fact. The tag says which; the rule down
+   the left carries it without being read. */
+.chart{display:flex;flex-direction:column;gap:.1rem;max-height:11rem;overflow:auto;
+  font-family:"IBM Plex Mono",monospace;font-size:.68rem}
+.chart .c{display:flex;gap:.5rem;align-items:baseline;padding:.16rem 0 .16rem .5rem;
+  border-left:2px solid var(--line)}
+.chart .c .t{color:var(--ink-3);flex:none;width:2.6rem;font-variant-numeric:tabular-nums}
+.chart .c-k{flex:none;width:4.2rem;font-size:.58rem;letter-spacing:.1em;color:var(--ink-3)}
+.chart .c-x{flex:1;min-width:0;color:var(--ink-2)}
+.chart .c.action{border-left-color:var(--act)}
+.chart .c.action .c-k{color:var(--act)}
+.chart .c.equipment{border-left-color:#9fc4bb}
+/* An order the case turned down. It happened — the phone was picked up — and it is not an
+   order that landed, so it wears neither the action rule nor the harm one. */
+.chart .c.action_refused{border-left-color:var(--ink-3)}
+.chart .c.action_refused .c-k,.chart .c.action_refused .c-x{color:var(--ink-3)}
+.chart .c.shock{border-left-color:var(--act)}
+.chart .c.shock .c-k{color:var(--act)}
+.chart .c.harm{border-left-color:var(--warn)}
+.chart .c.harm .c-k,.chart .c.harm .c-x{color:var(--warn)}
+.chart .c.outcome{border-left-color:var(--alarm)}
+.chart .c.outcome .c-k,.chart .c.outcome .c-x{color:var(--alarm);font-weight:600}
+
+/* ── NEWS2 ────────────────────────────────────────────────────────────────────
+   A total out of 20, not a percentage. It fills as she worsens, which is the right
+   way round: more bar is more trouble. */
+.news{display:flex;align-items:center;gap:.85rem}
+.news-l{text-align:left;flex:none}
+.news-n{font-family:Archivo,sans-serif;font-size:2rem;font-weight:800;line-height:1;
+  letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:var(--act)}
+.news-r{flex:1;min-width:0}
+.news-band{font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--act);font-weight:600}
+.news-do{font-size:.74rem;color:var(--ink-3);margin:.05rem 0 .3rem}
+.news-bar{display:flex;gap:2px}
+.news-bar i{flex:1;height:.42rem;border-radius:1px;background:#E4EBEA}
+.news-bar i.on{background:var(--act)}
+.news[data-band="medium"] .news-n,.news[data-band="medium"] .news-band{color:var(--warn)}
+.news[data-band="medium"] .news-bar i.on{background:var(--warn)}
+.news[data-band="high"] .news-n,.news[data-band="high"] .news-band{color:var(--alarm)}
+.news[data-band="high"] .news-bar i.on{background:var(--alarm)}
+/* She has died: the score is withheld rather than shown as zero, because zero is a reading and
+   this is the absence of one. */
+.news[data-band="none"] .news-n{color:var(--ink-3)}
+.news[data-band="none"] .news-band{color:var(--alarm)}
+/* She is a child, and NEWS2 is not validated under 16 — the server sends the panel with no
+   score in it and the sentence to print instead. Neither of the two colours above is right:
+   the red belongs to a patient who has died, and the green of a low band is the reassurance
+   the whole thing exists to refuse. The caution colour, and a rail that is one hatched bar
+   rather than twenty unlit ticks — twenty unlit ticks are a picture of a NEWS2 of zero, which
+   is the best score there is and the exact wrong thing to draw under "not scored". */
+.news[data-band="na"] .news-n{color:var(--ink-3);font-size:1.5rem}
+.news[data-band="na"] .news-band{color:var(--warn)}
+.news[data-band="na"] .news-bar i{background:repeating-linear-gradient(115deg,
+  rgba(180,89,15,.32) 0 4px,transparent 4px 9px)}
+.clock2{font-family:"IBM Plex Mono",monospace;font-size:.78rem;font-variant-numeric:tabular-nums;
+  color:var(--ink-2);flex:none}
+
+/* ── the debrief ──────────────────────────────────────────────────────────────
+   The score is the verdict; this is the reasoning. Every line is a time or an
+   ordering taken from the tape, so it is evidence rather than commentary. */
+.db{margin:1rem 0 0;text-align:left;display:flex;flex-direction:column;gap:.9rem}
+.db h4{font-family:"IBM Plex Mono",monospace;font-size:.62rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-3);margin:0 0 .4rem;font-weight:600}
+.db-r{display:flex;gap:.6rem;align-items:baseline;padding:.32rem 0;border-bottom:1px solid var(--line)}
+.db-r:last-child{border-bottom:0}
+.db-n{flex:1;min-width:0;font-size:.86rem;color:var(--ink)}
+.db-w{font-family:"IBM Plex Mono",monospace;font-size:.76rem;font-variant-numeric:tabular-nums;
+  flex:none;text-align:right}
+.db-w.ok{color:var(--act)} .db-w.late{color:var(--warn)} .db-w.never{color:var(--alarm)}
+.db-y{display:block;font-size:.76rem;color:var(--ink-3);margin-top:.15rem;line-height:1.45}
+.db-h{border-left:2px solid var(--alarm);padding:.4rem 0 .4rem .6rem}
+.db-h b{color:var(--alarm);font-weight:600;font-size:.86rem}
+.db-h .src{font-family:"IBM Plex Mono",monospace;font-size:.74rem;color:var(--ink-2);display:block;margin-top:.1rem}
+
+/* ── the device picker ────────────────────────────────────────────────────────
+   Two steps, the way the reference does it: choose the device, then set it. Grouped
+   A / B / C because that is the order a resuscitation is taught, and a picker that
+   sorts alphabetically quietly teaches against it. */
+.veil{position:fixed;inset:0;background:rgba(10,22,24,.45);backdrop-filter:blur(3px);
+  display:grid;place-items:center;z-index:50;padding:1rem}
+.veil[hidden]{display:none}
+.sheet{background:var(--card);border:1px solid var(--line);border-radius:14px;width:min(23rem,100%);
+  max-height:min(34rem,86vh);display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 24px 60px -20px rgba(10,22,24,.5)}
+.sheet-h{display:flex;align-items:center;gap:.6rem;padding:.85rem 1rem;border-bottom:1px solid var(--line)}
+.sheet-h b{font-family:Archivo,sans-serif;font-size:.98rem;font-weight:700}
+
+/* The record's own sheet. It has to come after `.sheet` rather than before it: same specificity,
+   so the later rule wins, and written earlier it lost its own width silently — the sheet stayed
+   at the picker's 23rem while claiming 34.
+   Wider than the picker because that is a list of five short things and this is a record. */
+.sheet-rec{width:min(34rem,100%);max-width:34rem}
+/* The header is inset 1rem; the body has to match it or the text runs to the border while the
+   title does not, which is what it was doing. Bottom padding included — a sheet that ends flush
+   against its last button reads as cut off. */
+.sheet-rec .rec{margin:0;border:0;border-radius:0;box-shadow:none;
+  padding:1.05rem 1rem 1.1rem;overflow:auto}
+.sheet-h .sp{margin-left:auto}
+.sheet-b{padding:.9rem 1rem;overflow:auto;display:flex;flex-direction:column;gap:1rem}
+.grp-h{font-family:"IBM Plex Mono",monospace;font-size:.6rem;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--ink-3);margin-bottom:.4rem}
+.dev-row{width:100%;display:flex;align-items:center;gap:.7rem;text-align:left;background:var(--card-2);
+  border:1px solid var(--line);border-radius:9px;padding:.6rem .75rem;cursor:pointer;margin-bottom:.35rem;
+  font:inherit;color:inherit}
+.dev-row:hover{border-color:var(--act);background:var(--act-soft)}
+.dev-row .n{font-size:.9rem;font-weight:500;display:block}
+.dev-row .d{font-size:.72rem;color:var(--ink-3);display:block}
+.dev-row .on{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:.65rem;color:var(--act);
+  white-space:nowrap}
+/* Scoped to the device sheet: a bare `.art` here used to reach across the page and shrink
+   every shelf card's art to an 88px kit-icon box — the crowded headers and the "empty black
+   box" the CEO called out were this one selector leaking. */
+.set-top .art{width:5.5rem;height:6.2rem;flex:none;background:var(--card-2);border:1px solid var(--line);
+  border-radius:9px;display:grid;place-items:center}
+.set-top .art svg{width:100%;height:100%}
+.set-top{display:flex;gap:.85rem;align-items:flex-start}
+.set-top .meta .n{font-family:Archivo,sans-serif;font-weight:700;font-size:1rem}
+.set-top .meta .d{font-size:.78rem;color:var(--ink-3)}
+.set-top .meta .since{font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--act);margin-top:.3rem}
+.presets{display:flex;flex-wrap:wrap;gap:.35rem}
+.presets .btn{font-size:.78rem;padding:.45rem .75rem}
+.sheet-f{display:flex;gap:.5rem;padding:.8rem 1rem;border-top:1px solid var(--line)}
+.sheet-f .sp{margin-left:auto}
+.btn.danger{color:var(--alarm);border-color:#EFD3D0}
+.btn.danger:hover{background:var(--alarm-soft);border-color:var(--alarm)}
+/* The finish control. Wider than anything else in the column and the only thing on the page
+   wearing the alarm colour as an outline, so it reads as the one irreversible act in the bay
+   rather than as another order. Armed it fills in, which is the whole of the second press's
+   warning — a button that has changed colour under the finger is not a button anybody presses
+   twice by accident. */
+.endp{display:grid;gap:.4rem}
+.btn.end{width:100%;border-color:var(--alarm);color:var(--alarm);font-weight:700}
+.btn.end:hover:not(:disabled){background:var(--alarm-soft);border-color:var(--alarm)}
+.btn.end.armed{background:var(--alarm);border-color:var(--alarm);color:#fff}
+.btn.end.armed:hover{background:var(--alarm);color:#fff}
+.endnote{color:var(--ink-2);font-size:.76rem;line-height:1.35;font-style:normal}
+.endnote a{color:var(--act)}
+
+/* ── outcome ── */
+.result{grid-column:1/-1;display:none;background:var(--card);border:1px solid var(--line);
+  border-left:4px solid var(--act);border-radius:11px;padding:1rem 1.1rem}
+.result.lose{border-left-color:var(--alarm)}
+/* Time called. Neither of the other two: nothing is claimed about how she ended up, because
+   nothing is known — the marks below are the whole of what this run says. */
+.result.called{border-left-color:var(--ink-2)}
+.result h2{margin:0 0 .15rem;font-family:Archivo,sans-serif;font-size:1.3rem;font-weight:800}
+.result.win h2{color:var(--act)} .result.lose h2{color:var(--alarm)}
+.result.called h2{color:var(--ink-2)}
+.result .sub{color:var(--ink-2);font-size:.88rem}
+.leaf{font-family:"IBM Plex Mono",monospace;font-size:.65rem;color:var(--ink-2);word-break:break-all;
+  background:var(--card-2);border:1px solid var(--line);padding:.5rem .6rem;border-radius:6px;margin:.6rem 0}
+.chainrow{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center}
+.verdict{margin-top:.55rem;display:flex;flex-direction:column;gap:.25rem;
+  font-family:"IBM Plex Mono",monospace;font-size:.71rem}
+.verdict .g{color:var(--act)} .verdict .r{color:var(--warn)} .verdict .n{color:var(--ink-3)}
+.hint{font-size:.77rem;color:var(--ink-3)}
+/* ── the mark sheet ───────────────────────────────────────────────────────────
+   The half of the mastery loop that was missing: a run that failed said "Death ·
+   arrest" and nothing about which of the ten items it dropped. Every row is one
+   rubric item — a glyph for how it went, the label, the seconds it turned on for
+   a timed one, and what it paid out of what it was worth. Worst first, because
+   the top of this list is what to practise. One column on a phone; the points
+   column never wraps, so the sheet still reads as a column of numbers. */
+.marks{margin:.9rem 0 0;display:flex;flex-direction:column;gap:.35rem;text-align:left}
+.marks:empty{display:none}
+.mk-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:.4rem .55rem;
+  padding-bottom:.5rem;border-bottom:1px solid var(--line);margin-bottom:.2rem}
+.mk-h .mk-star{color:var(--gold);letter-spacing:.06em;font-size:.95rem}
+.mk-h b{font-family:Archivo,sans-serif;font-size:1.02rem;font-weight:800}
+.mk-pct{font-family:"IBM Plex Mono",monospace;font-size:.76rem;color:var(--ink-2)}
+.mk-next{flex:1 0 100%;font-size:.79rem;color:var(--ink-2);line-height:1.45}
+.mk-k{font-family:"IBM Plex Mono",monospace;font-size:.62rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-3)}
+.mk-r{display:flex;gap:.5rem;align-items:baseline;padding:.34rem 0;border-bottom:1px solid var(--line)}
+.mk-r:last-child{border-bottom:0}
+.mk-i{flex:none;width:1rem;text-align:center;font-size:.82rem;color:var(--ink-3)}
+.mk-r.hit .mk-i{color:var(--act)}
+.mk-r.partial .mk-i{color:var(--warn)}
+.mk-r.miss .mk-i{color:var(--alarm)}
+.mk-n{flex:1;min-width:0;font-size:.86rem;color:var(--ink)}
+.mk-r.miss .mk-n,.mk-r.partial .mk-n{font-weight:600}
+.mk-r.hit .mk-n{color:var(--ink-2)}
+.mk-y{display:block;margin-top:.15rem;font-family:"IBM Plex Mono",monospace;
+  font-size:.72rem;color:var(--ink-3);line-height:1.5}
+.mk-r.miss .mk-y,.mk-r.partial .mk-y{color:var(--warn)}
+.mk-p{flex:none;font-family:"IBM Plex Mono",monospace;font-size:.75rem;
+  font-variant-numeric:tabular-nums;color:var(--ink-3)}
+.mk-r.hit .mk-p{color:var(--act)}
+.mk-r.partial .mk-p{color:var(--warn)}
+.mk-r.miss .mk-p{color:var(--alarm)}
+/* The way back in, sized like a decision rather than like a link. */
+.runback{display:flex;margin-top:.9rem}
+.runback .btn{flex:1;text-align:center;font-family:Archivo,sans-serif;
+  font-weight:700;font-size:.95rem;padding:.65rem 1rem}
+/* where the case came from — a footnote under the score, not a badge on the shelf */
+.prov{margin-top:.35rem;font-family:"IBM Plex Mono",monospace;font-size:.67rem;color:var(--ink-3)}
+.prov:empty{display:none}
+/* The answer, after the bell. It sits above provenance and reads louder than it, because this
+   is the line the candidate came back to the debrief for. */
+.reveal{margin-top:.6rem;font-family:Archivo,sans-serif;font-weight:700;font-size:.92rem;
+  color:var(--mint-d);border-left:3px solid var(--mint);padding-left:.55rem}
+.reveal:empty{display:none}
+
+/* ── the meter and the ceiling ────────────────────────────────────────────────
+   The bay is free and the compute is donated, so the constraint is shown rather than hidden:
+   a pill that counts the month down in the open, and a card — not a bare 429 — when the month
+   is spent, saying what the money did and where more comes from. */
+a.give{text-decoration:none;background:var(--gold);color:#0f2d3a;font-weight:700}
+a.give:hover{filter:brightness(1.06)}
+.ceiling{position:fixed;left:50%;transform:translateX(-50%);bottom:1.1rem;z-index:60;
+  width:min(34rem,calc(100vw - 2rem));background:linear-gradient(115deg,var(--navy),var(--mint-d));
+  color:#fff;border-radius:14px;padding:1rem 1.15rem;box-shadow:0 18px 44px rgba(15,45,58,.45);
+  display:flex;flex-direction:column;gap:.45rem;font-size:.9rem}
+.ceiling b{font-family:Archivo,sans-serif;font-size:1.05rem}
+.ceiling .cl-give{align-self:flex-start;background:var(--gold);color:#0f2d3a;font-weight:700;
+  text-decoration:none;border-radius:999px;padding:.45rem .9rem;margin-top:.2rem}
+.ceiling .cl-count{font-family:"IBM Plex Mono",monospace;font-size:.7rem;opacity:.85}
+
+/* ── B6-B8 · the cinema layer ─────────────────────────────────────────────────
+   Everything between scenes happens on one black surface: the recap, the title
+   card, the stinger, the up-next card, a trailer. Fullscreen because a title card
+   half the size of the page is a toast, not a title card. */
+.cine{position:fixed;inset:0;z-index:80;background:#000;color:#fff;display:flex;
+  align-items:center;justify-content:center;text-align:center;cursor:pointer;padding:1.2rem}
+.cine[data-skip="no"]{cursor:default}
+.cine-skip{position:absolute;right:1rem;bottom:.9rem;font-family:"IBM Plex Mono",monospace;
+  font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.45)}
+@keyframes cinein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.tc{animation:cinein .5s ease}
+.tc-k{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.3em;
+  text-transform:uppercase;color:#7fe7d2;margin-bottom:.7rem}
+.tc-t{font-family:Archivo,sans-serif;font-weight:800;font-size:clamp(1.6rem,7vw,3.4rem);
+  letter-spacing:.02em;text-transform:uppercase;line-height:1.1;text-wrap:balance}
+.tc-prev{font-family:Archivo,sans-serif;font-size:clamp(1.2rem,5vw,2rem);font-weight:600;color:#cfe4de}
+.tc-prev b{color:#fff;letter-spacing:.1em}
+.rc-still{position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:center;
+  animation:cinein .45s ease}
+.rc-still img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.55}
+.rc-void{position:absolute;inset:0;
+  background:radial-gradient(700px 420px at 50% 30%,#14323d 0%,#050b0d 70%)}
+.rc-line{position:relative;margin:0 auto 4.2rem;padding:0 1.4rem;max-width:34em;
+  font-family:Archivo,sans-serif;font-size:clamp(1rem,4vw,1.5rem);font-weight:600;line-height:1.35;
+  color:#fff;text-shadow:0 2px 18px rgba(0,0,0,.8);text-wrap:balance}
+.sting{max-width:30em;font-family:Archivo,sans-serif;font-size:clamp(1.05rem,4.4vw,1.7rem);
+  font-weight:600;line-height:1.45;color:#e7efee;animation:cinein 1.1s ease;text-wrap:balance}
+.un{cursor:default;max-width:24rem;width:100%;animation:cinein .4s ease}
+/* ── the up-next card on a phone ──────────────────────────────────────────────
+   Every other step on this layer arrives *between* scenes and has the screen to itself
+   by right: a title card half the size of the page is a toast. This one arrives after
+   the bell, on top of a result panel that has just been filled in — and at 390×844 the
+   curtain was `position:fixed` over the whole viewport with `#marks` at y 2321, which
+   made the mark sheet not merely hidden but unreachable: scrolling moved the document
+   under a fixed layer and rendered byte-identically, so the end of a run on a phone was
+   a black screen with two buttons on it and no way to see what you had scored.
+
+   So below the phone break this one step is a sheet at the foot of the screen rather
+   than a curtain over it. The card keeps its own ground and its buttons stay exactly
+   where the thumb already expects them; above it the scrim thins out to nothing and the
+   sheet the player just earned is simply there, and scrollable — the layer takes no
+   pointer events, only the card does, so a swipe goes to the debrief behind it.
+   Everything else on this layer, on every screen, is still a full black curtain. */
+@media (max-width:640px){
+  /* The layer keeps its place and its z-index and stops being a surface: the ground is on
+     the card below, which is sized by its own content, so a card that grows an exam note or
+     loses its countdown never crops itself against a fixed stop. */
+  .cine.at-foot{align-items:flex-end;padding:0;pointer-events:none;
+    background:linear-gradient(180deg,rgba(3,8,10,0) 0,rgba(3,8,10,.32) 55%,rgba(3,8,10,.75) 100%)}
+  .cine.at-foot>*{pointer-events:auto}
+  .cine.at-foot .un{max-width:none;background:#03080a;border-top:1px solid #1e3238;
+    border-radius:16px 16px 0 0;box-shadow:0 -20px 44px -14px rgba(0,0,0,.92);
+    padding:.95rem .8rem calc(.95rem + env(safe-area-inset-bottom,0px))}
+  .cine.at-foot .un-k{margin-bottom:.6rem}
+  .cine.at-foot .un-count{margin-top:.55rem}
+}
+.un-k{font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.26em;
+  text-transform:uppercase;color:#7fe7d2;margin-bottom:.8rem}
+/* This card is always on black, so it never gets the black shadow — it gets the
+   dark-room statement of it: a hairline ring for the edge, a deep drop for the height. */
+.un-card{display:flex;gap:.8rem;align-items:center;background:#0d1a1e;border:1px solid #1e3238;
+  border-radius:14px;padding:.8rem;text-align:left;margin-bottom:.9rem;
+  box-shadow:0 0 0 1px rgba(255,255,255,.06), 0 12px 32px rgba(0,0,0,.5)}
+.un-card img,.un-ph{width:6.4rem;aspect-ratio:16/10;border-radius:8px;object-fit:cover;flex:none;
+  background:linear-gradient(150deg,#0f2d3a,#1f9d86)}
+.un-n{font-family:"IBM Plex Mono",monospace;font-size:.6rem;letter-spacing:.14em;
+  color:#7fe7d2;text-transform:uppercase}
+.un-t{font-family:Archivo,sans-serif;font-weight:700;font-size:1.05rem;margin:.15rem 0}
+.un-rt{font-family:"IBM Plex Mono",monospace;font-size:.6rem;letter-spacing:.1em;
+  color:#8aa0a4;text-transform:uppercase}
+.un-note{font-size:.8rem;color:#ffd766;margin:0 0 .8rem}
+.un-acts{display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap}
+.un-count{margin-top:.8rem;font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:#8aa0a4}
+.trailer{cursor:default;width:min(38rem,94vw);display:flex;flex-direction:column;gap:.7rem;align-items:center}
+.trailer video{width:100%;border-radius:10px;background:#000;max-height:70vh}
+.tr-h{font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.2em;color:#7fe7d2;text-transform:uppercase}
+/* ── the season 1 epilogue ── paper on black, because a transfer order is a prop.
+   The wrinkle card borrows .sting; only the letter and the season-2 title are new. */
+.epi{cursor:default;max-width:26rem;width:100%;animation:cinein .8s ease}
+.epi-k{font-family:"IBM Plex Mono",monospace;font-size:.66rem;letter-spacing:.26em;
+  text-transform:uppercase;color:#7fe7d2;margin-bottom:1rem}
+.epi .sting{margin:0 auto}
+.epi-letter{background:#f2eee2;color:#22302f;text-align:left;border-radius:3px;
+  padding:1.2rem 1.3rem;font-family:"IBM Plex Mono",monospace;font-size:.76rem;line-height:1.65;
+  box-shadow:0 24px 70px rgba(0,0,0,.65);transform:rotate(-.4deg)}
+.epi-letter p{margin:.7rem 0 0}
+.epi-lh{font-size:.62rem;letter-spacing:.18em;text-transform:uppercase;color:#5d6a66;
+  border-bottom:1px solid #d8d2bf;padding-bottom:.55rem}
+.epi-punch{margin-top:1.3rem;font-family:Archivo,sans-serif;font-weight:600;
+  font-size:clamp(.95rem,3.8vw,1.25rem);line-height:1.5;color:#e7efee;text-wrap:balance}
+.epi-punch b{color:#fff;font-weight:800}
+.epi-ret{font-family:Archivo,sans-serif;font-size:.95rem;color:#cfe4de;margin:.2rem 0 .9rem}
+.epi-s2{font-family:Archivo,sans-serif;font-weight:800;text-transform:uppercase;line-height:1.1;
+  font-size:clamp(1rem,4.2vw,1.4rem);letter-spacing:.14em;color:#8aa0a4;margin-bottom:1.1rem}
+.epi-s2 span{display:block;font-size:clamp(1.7rem,7vw,2.7rem);letter-spacing:.04em;color:#fff;margin-top:.15rem}
+
+/* ── the films ────────────────────────────────────────────────────────────────
+   An investigation you ordered comes back as a picture, and it goes on the stage —
+   the frame that was black for the whole station — at the size a film is read at.
+   See `.stem` and `.filmv` above for that frame; this is the light box it opens into
+   for the full screen.
+
+   The credit is not decoration. Both ECGs are PTB-XL under CC-BY 4.0, whose §3(a)
+   asks for the creator, the licence, its URI and a statement that the work was
+   modified — ours is modified twice, rendered then re-encoded. A viewer who never
+   opens the repository still has to be able to read all four, so every film carries
+   the line on the stage *and* in the light box, and the shelf carries "image credits"
+   for anyone who never orders one. */
+/* Centred by `margin:auto` on the child rather than by `align-items:center` on the box: a
+   centred flex item taller than its container is clipped at the top with no way to scroll to
+   it, and a portrait chest film on a short window is exactly that case. */
+.lightbox{position:fixed;inset:0;z-index:60;background:rgba(4,12,15,.95);
+  backdrop-filter:blur(9px);display:flex;padding:1.1rem;overflow:auto}
+.lb-fig{max-width:min(58rem,100%);margin:auto;text-align:center}
+.lb-fig img{max-width:100%;max-height:66vh;border-radius:8px;background:#000;display:block;margin:0 auto}
+.lb-cap{font-size:.92rem;line-height:1.45;color:#eaf4f1;font-weight:600;margin:.8rem auto .45rem;max-width:44rem}
+.lb-who{font-family:"IBM Plex Mono",monospace;font-size:.6rem;letter-spacing:.14em;
+  text-transform:uppercase;color:#7fe7d2}
+.lb-cr{font-family:"IBM Plex Mono",monospace;font-size:.6rem;line-height:1.65;color:#8fa8ab;
+  max-width:44rem;margin:.55rem auto 0}
+.lb-cr a{color:#7fe7d2}
+.lb-x{position:fixed;top:.7rem;right:.9rem;background:rgba(255,255,255,.1);color:#fff;border:0;
+  border-radius:999px;width:2.1rem;height:2.1rem;font-size:1.05rem;cursor:pointer;font-family:inherit}
+.lb-hint{font-family:"IBM Plex Mono",monospace;font-size:.55rem;letter-spacing:.12em;
+  text-transform:uppercase;color:#5d7376;margin-top:.9rem}
+/* The shelf's own credit door, for the card crops — the lobby has no light box of its own. */
+.credit-link{background:none;border:0;padding:0;font:inherit;color:#3d7d6d;text-decoration:underline;
+  text-underline-offset:2px;cursor:pointer}
+
+/* ══ MOTION ══════════════════════════════════════════════════════════════════
+   The room's own vocabulary, not a library's: a trace sweeping a screen, a monitor
+   waking up, an alarm border, a line going flat. Four rules govern every one of
+   them and none of them bends.
+
+   1. Anything you can start, you can end — one tap, anywhere. The finishers live
+      in a set the page can drain on any pointerdown (see `skipMotion`).
+   2. `prefers-reduced-motion` is not a softer version of this; it is a 120ms
+      cross-fade instead of it, everywhere.
+   3. Nothing here runs on the patient's clock. Every step is either before
+      /api/new or after the outcome, because seconds in the bay are the score.
+   4. transform / opacity / clip-path. The one exception is the title card, which
+      the brief asks for in blur and letter-spacing by name — one short line of
+      text, once per episode, and it is marked `will-change` so the browser knows.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── the sweep · the signature ────────────────────────────────────────────────
+   A heartbeat trace crosses the screen left to right and the new scene is what it
+   leaves behind. It is one panel exactly a screen wide with the trace riding its
+   leading edge: 260ms to cover, the scene is swapped underneath at that instant,
+   260ms to clear off the right. Nothing but a translate, so it composites.
+   Used for every move that goes *forward* — shelf to episode, case to verdict,
+   episode to the next one. Going back is a fade; a sweep backwards is a lie about
+   which way the story is running. */
+.sweep{position:fixed;inset:0;z-index:90;overflow:hidden;cursor:pointer}
+.sw-panel{position:absolute;top:0;left:0;width:100%;height:100%;background:#050b0d;
+  transform:translate3d(-100%,0,0);will-change:transform;
+  transition:transform 260ms var(--ease)}
+.sweep.a .sw-panel{transform:translate3d(0,0,0)}
+.sweep.b .sw-panel{transform:translate3d(100%,0,0)}
+/* the wash off the leading edge, so the boundary is a light source and not a cut */
+.sw-panel::after{content:'';position:absolute;top:0;bottom:0;right:0;width:8rem;
+  background:linear-gradient(to left,rgba(62,224,192,.17),transparent);pointer-events:none}
+.sweep.b .sw-panel::after{right:auto;left:0;
+  background:linear-gradient(to right,rgba(62,224,192,.17),transparent)}
+/* The trace itself: a vertical baseline with four QRS complexes deflecting into the
+   part of the screen it has not taken yet. It hangs off the panel's leading edge, so
+   it travels the full width of the screen exactly once per phase. */
+.sw-edge{position:absolute;top:-2%;height:104%;width:4.6rem;right:-2.3rem;overflow:visible;
+  fill:none;stroke:#3ee0c0;stroke-width:2.4;stroke-linejoin:round;stroke-linecap:round;
+  vector-effect:non-scaling-stroke;filter:drop-shadow(0 0 9px rgba(62,224,192,.8))}
+.sweep.b .sw-edge{right:auto;left:-2.3rem;transform:scaleX(-1)}
+/* Reduced motion: the same beat, told as a 120ms cross-fade. Written after the
+   phase rules on purpose — equal specificity, so the later one wins. */
+.sweep.x .sw-panel{transform:none;opacity:0;transition:opacity 100ms linear}
+.sweep.x.a .sw-panel{opacity:1}
+.sweep.x .sw-edge,.sweep.x .sw-panel::after{display:none}
+
+/* ── the shared element ───────────────────────────────────────────────────────
+   The card you pressed is the thing that becomes the screen — the move every
+   streaming shelf makes, and the reason a cut felt like a different app opening.
+   The clone starts at the card's own rectangle (measured, not guessed) and grows
+   to the viewport in 320ms while its art dims toward the black the title card
+   arrives on. Uniform scale, so the art inside is never stretched on the way. */
+.shel{position:fixed;inset:0;z-index:88;border-radius:16px;overflow:hidden;
+  background:#050b0d;transform-origin:50% 50%;will-change:transform;pointer-events:none;
+  transition:transform 320ms var(--ease)}
+.shel-in{position:absolute;inset:0;opacity:1;transition:opacity 300ms ease-in}
+.shel-in>*{display:block;width:100%;height:100%}
+.shel-in img{width:100%;height:100%;object-fit:cover;display:block}
+.shel-in picture{display:block;width:100%;height:100%}
+.shel.go .shel-in{opacity:.22}
+
+/* ── the cinema bars ──────────────────────────────────────────────────────────
+   They slide in over the recap and the stinger and slide out again, which is the
+   cheapest honest signal that what you are looking at is footage rather than UI. */
+.cbars{position:fixed;inset:0;z-index:82;pointer-events:none}
+.cbars i{position:absolute;left:0;right:0;height:8.5vh;background:#000;
+  transition:transform 320ms var(--ease)}
+.cbars i:first-child{top:0;transform:translate3d(0,-101%,0)}
+.cbars i:last-child{bottom:0;transform:translate3d(0,101%,0)}
+.cbars.on i{transform:translate3d(0,0,0)}
+
+/* ── the alarm border ─────────────────────────────────────────────────────────
+   She is getting worse. A status word changing colour is a fact; the room going
+   red twice is an event, and an event is what a deteriorating patient is. Two
+   beats, opacity only, and it never eats a click. */
+.alarmv{position:fixed;inset:0;z-index:70;pointer-events:none;opacity:0;
+  box-shadow:inset 0 0 100px 26px rgba(198,54,46,.55)}
+.alarmv.on{animation:alarmbeat 1.1s ease-out both}
+.alarmv.on.quick{animation:alarmquick .12s ease both}
+@keyframes alarmbeat{0%{opacity:0}14%{opacity:1}34%{opacity:0}52%{opacity:.92}74%{opacity:0}100%{opacity:0}}
+@keyframes alarmquick{0%{opacity:0}45%{opacity:.7}100%{opacity:0}}
+
+/* ── the vignette ─────────────────────────────────────────────────────────────
+   The dark that closes in from the edges when she dies. A ring of black scaled
+   down over the frame — one transform, no repaint. */
+.vig{position:fixed;inset:0;z-index:71;pointer-events:none;opacity:0;
+  display:grid;place-items:center;overflow:hidden}
+.vig i{display:block;width:260vmax;height:260vmax;border-radius:50%;
+  background:radial-gradient(circle,rgba(0,0,0,0) 34%,rgba(2,6,8,.72) 58%,#020608 76%);
+  transform:scale(1.9);will-change:transform}
+.vig.on{opacity:1;transition:opacity 260ms ease}
+.vig.on i{transform:scale(.42);transition:transform 900ms cubic-bezier(.4,0,.5,1)}
+
+/* the white cut before SEASON 2 — a splice, not a fade */
+.flash{position:fixed;inset:0;z-index:95;background:#fff;opacity:0;pointer-events:none}
+.flash.on{animation:flashcut 400ms ease-out both}
+@keyframes flashcut{0%{opacity:0}11%{opacity:1}100%{opacity:0}}
+
+/* ── the monitor's trace ──────────────────────────────────────────────────────
+   The rail's monitor gets the line it was always missing. It boots in from the
+   right when a case opens, it settles when she turns the corner, and it goes flat
+   when she does not — the flat line eating the wave from the left, which is the
+   direction a real strip runs. `non-scaling-stroke` keeps the stroke honest under
+   the non-uniform stretch this viewBox takes. */
+.mini-tr{height:1.75rem;margin:.1rem 0 .5rem;overflow:hidden}
+.mini-tr svg{display:block;width:100%;height:100%}
+.mini-tr path{fill:none;stroke-width:1.7;vector-effect:non-scaling-stroke;
+  stroke-linejoin:round;stroke-linecap:round}
+.tr-w{stroke:#4ADE80;clip-path:inset(0 0 0 0);transform-box:fill-box;transform-origin:50% 50%;
+  transition:transform 600ms var(--ease)}
+.tr-f{stroke:#F87171;clip-path:inset(0 100% 0 0)}
+.mini-tr.boot .tr-w{animation:trboot 500ms var(--ease) both}
+@keyframes trboot{from{clip-path:inset(0 0 0 100%)}to{clip-path:inset(0 0 0 0)}}
+.mini-tr.flat .tr-w{animation:trwgo 900ms linear both}
+.mini-tr.flat .tr-f{animation:trfgo 900ms linear both}
+@keyframes trwgo{from{clip-path:inset(0 0 0 0)}to{clip-path:inset(0 0 0 100%)}}
+@keyframes trfgo{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+/* she turned the corner — the trace stops shouting */
+.mini.calm .tr-w{transform:scaleY(.42)}
+
+/* ── the title card ───────────────────────────────────────────────────────────
+   Out of focus and spread wide, pulling into focus and closing up over 600ms, then
+   it holds — and the sweep is what takes it away. blur and letter-spacing are the
+   two properties the brief names, and they are the two that are not composited; it
+   is one line of text once per entrance, and it says so to the compositor. */
+.tc{animation:none}
+.tc-k{animation:cinein 460ms ease both}
+.tc-t{animation:tcin 600ms var(--ease) both;will-change:filter,letter-spacing,opacity}
+@keyframes tcin{
+  from{opacity:0;filter:blur(16px);letter-spacing:.5em;transform:scale(1.03)}
+  55%{opacity:1}
+  to{opacity:1;filter:blur(0);letter-spacing:.02em;transform:none}}
+.tc-prev{animation:cinein 460ms ease both}
+
+/* ── previously on… ───────────────────────────────────────────────────────────
+   Ken Burns on every frame, and the frames dissolve through each other rather than
+   through black: cineNext keeps the outgoing still underneath for a quarter second
+   while the new one comes up over it. */
+.rc-still{animation:rcin 250ms ease both}
+@keyframes rcin{from{opacity:0}to{opacity:1}}
+.rc-still.rc-out{animation:rcout 250ms linear both;z-index:0}
+@keyframes rcout{from{opacity:1}to{opacity:0}}
+.rc-still img{animation:rcken 3.6s ease-out both}
+@keyframes rcken{from{transform:scale(1.05)}to{transform:scale(1.17) translate(-1.6%,-1.2%)}}
+.rc-line{animation:cinein 420ms var(--ease) both;animation-delay:110ms}
+
+/* the stinger: one line, up from eight pixels, and gone */
+.sting{animation:cinein 420ms var(--ease) both}
+
+/* ── up next ──────────────────────────────────────────────────────────────────
+   The countdown was a digit ticking down; it is a ring walking backwards now, with
+   the digit still inside it for anyone who wants the number rather than the feel. */
+.un{animation:cinein 380ms var(--ease) both}
+.un-k{animation:cinein 380ms var(--ease) both}
+.un-count{display:flex;align-items:center;justify-content:center;gap:.5rem}
+.un-dial{position:relative;display:inline-grid;place-items:center;width:2.4rem;height:2.4rem;flex:none}
+.un-dial svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+.un-dial circle{fill:none;stroke:rgba(255,255,255,.15);stroke-width:2.6}
+.un-dial .un-arc{stroke:#7fe7d2;stroke-linecap:round;stroke-dasharray:97.4;
+  animation:uncount 5s linear both}
+@keyframes uncount{from{stroke-dashoffset:0}to{stroke-dashoffset:97.4}}
+.un-dial b{font-family:"IBM Plex Mono",monospace;font-size:.78rem;color:#fff;
+  font-variant-numeric:tabular-nums}
+
+/* ── the epilogue ─────────────────────────────────────────────────────────────
+   The paper rides up slowly and the letter sets itself a line at a time — the one
+   place in the game where slow is the point, because it is the last thing you read
+   before a season ends. */
+.epi{animation:none}
+.epi-k{animation:cinein 420ms ease both}
+.epi-letter{animation:epipaper 900ms var(--ease) both}
+@keyframes epipaper{from{opacity:0;transform:translateY(26px) rotate(-.4deg)}
+  to{opacity:1;transform:translateY(0) rotate(-.4deg)}}
+.epi-lh{animation:cinein 380ms ease both;animation-delay:220ms}
+.epi-letter p{animation:cinein 380ms ease both}
+.epi-letter p:nth-of-type(1){animation-delay:460ms}
+.epi-letter p:nth-of-type(2){animation-delay:700ms}
+.epi-punch{animation:cinein 420ms var(--ease) both;animation-delay:940ms}
+
+/* ── the stars, and the door they open ────────────────────────────────────────
+   A star that arrives is worth a beat of its own, so they land one at a time; and a
+   door that opens after five shut ones must not open in silence — the card comes up
+   out of its own blur, lifts eight pixels, and carries a glow for a moment before
+   settling into the shelf's ordinary shadow. */
+.sg{font-style:normal;display:inline-block}
+.sg.pop{animation:starpop 280ms cubic-bezier(.34,1.56,.64,1) both;
+  animation-delay:calc(var(--i) * 120ms)}
+@keyframes starpop{from{transform:scale(.2);opacity:0}
+  60%{transform:scale(1.35);opacity:1}to{transform:scale(1);opacity:1}}
+.tile.just-open{animation:dooropen 500ms var(--ease) both,doorglow 900ms ease-out both}
+@keyframes dooropen{from{opacity:.35;filter:blur(6px);transform:translateY(8px)}
+  62%{opacity:1;filter:blur(0)}to{opacity:1;filter:blur(0);transform:translateY(0)}}
+@keyframes doorglow{from{box-shadow:0 0 0 2px rgba(38,192,165,.6),0 18px 44px rgba(31,157,134,.4)}
+  to{box-shadow:var(--sh-rest)}}
+
+/* ── accessibility is not a setting we get to weigh ───────────────────────────
+   Everything above becomes the same 120ms cross-fade. The JS halves its own
+   durations from the same media query, so the two can never disagree. */
+@media (prefers-reduced-motion:reduce){
+  .sw-panel,.shel,.cbars i,.tr-w{transition-duration:60ms !important}
+  .tc-t,.tc-k,.tc-prev,.rc-still,.rc-still img,.rc-line,.sting,.un,.un-k,
+  .epi-k,.epi-letter,.epi-lh,.epi-letter p,.epi-punch,.sg.pop,.tile.just-open,
+  .alarmv.on,.flash.on{
+    animation-duration:120ms !important;animation-delay:0ms !important}
+  .tc-t{animation-name:cinein}
+  .tile.just-open{animation-name:rcin}
+  .vig.on i{transition-duration:120ms !important}
+  .un-dial .un-arc{animation:none;stroke-dashoffset:0}
+  .tile:hover:not(.lock):not(.cs),.tile:focus-visible:not(.lock):not(.cs),
+  .hero:hover,.hero:focus-visible{transform:none}
+  .rc-still img{animation:none}
+}
+
+/* ── the fit ──────────────────────────────────────────────────────────────────
+   On a desktop the bay is a cockpit, not a page: one viewport, no page scroll
+   while a case runs. The film gives up height first — letterboxed whole rather
+   than cropped, because a cutscene with the heads cut off is not a cutscene.
+   The transcript and the rail each scroll inside themselves; the monitor's
+   numbers get bigger, not smaller, because they are what the room is watching.
+   Below this width or height, the stacked scrolling layout above still stands.
+   The gate matches the two-column breakpoint on purpose: a single column can
+   never fit a viewport, so the fit and the columns arrive together. */
+@media (min-width:69rem) and (min-height:40rem){
+  body:has(#game:not(.hide)){overflow:hidden}
+  .app{height:100vh;height:100dvh;overflow:hidden;padding:.7rem 1rem;
+    grid-template-rows:auto minmax(0,1fr);gap:.7rem .9rem;align-items:stretch}
+  .stage{min-height:0;overflow-y:auto;overscroll-behavior:contain;gap:.6rem}
+  .pt{display:flex;flex-direction:column;min-height:0;flex:2.2 1 0;padding-bottom:.55rem}
+  .pt-art{aspect-ratio:auto;flex:1 1 auto;min-height:7rem}
+  /* Those floors are for the scrolling layout; here the row gives out the height, and a
+     floor taller than the row's share is what pushes a bay off the bottom of the screen. */
+  .pt-art.doc,.pt-art.doc.film{min-height:7rem}
+  /* A film on the stage is the thing being read, and a 12-lead is nearly square: on a
+     wide short frame its height is what limits it, so the frame takes height off the
+     transcript for as long as the film is up and hands it straight back after. The
+     transcript keeps its floor, so it can never be squeezed out of existence. */
+  .stage:has(.pt-art.film) .pt{flex:4.2 1 0}
+  .pt-art>video,.pt-art>img{object-fit:contain}
+  .pt-name,.pt-status,.pt-line{flex:none}
+  .pt-name{margin-top:.4rem}
+  .chat{flex:1 1 0;min-height:6rem;max-height:none;overscroll-behavior:contain}
+  .acts{flex:none}
+  .rail{min-height:0;overflow-y:auto;overscroll-behavior:contain;gap:.55rem}
+  .panel{padding:.6rem .7rem}
+  .device{height:12.5rem}
+  .mini-g b{font-size:1.3rem}
+  .chart{max-height:8.5rem}
+  /* The debrief joins the same screen when the run ends: capped and scrolling
+     inside itself, so the verdict never pushes the bay off the bottom. */
+  .result{max-height:34vh;overflow:auto}
+}
+/* The ward host's shift page. Everything that belongs to the single-player season is gone rather
+   than hidden late: the lobby with its hero and shelf, the restart and the way back to the
+   episodes, and the account's own tally — none of which means anything to a stranger who came to
+   treat one patient. */
+html.is-ward #lobby,
+html.is-ward #back,
+html.is-ward #start,
+html.is-ward #tally{display:none!important}
+html.is-ward .wardpage{max-width:34rem;margin:4rem auto;padding:0 1.2rem;line-height:1.6}
+html.is-ward .wardpage h1{font-size:1.5rem;margin:0 0 .4rem}
+html.is-ward .wardpage .bed{color:var(--ink-3,#7b8a86);font:600 .85rem/1.6 ui-monospace,monospace;
+  letter-spacing:.06em;text-transform:uppercase}

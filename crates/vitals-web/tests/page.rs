@@ -19,8 +19,16 @@ fn static_page(name: &str) -> String {
     std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
 }
 
+/// The bay as a browser gets it.
+///
+/// The page, the play surface the server composes into it, and the script — one file until
+/// 16 ก.ย., when the bay was pulled out so the ward's shift page could share it and carry none of
+/// the season. Every check below is about what a browser parses, so it reads what a browser gets:
+/// a `const` shadowed across the two halves, or a handler bound to an id that lives in the other
+/// file, is exactly the failure this file exists to catch, and splitting the read would have
+/// stopped catching it.
 fn page() -> String {
-    static_page("index.html")
+    [static_page("index.html"), static_page("bay-surface.html"), static_page("bay.js")].concat()
 }
 
 /// The reviewer's form. Hand-written HTML and JavaScript like the bay's, served by the same
@@ -861,8 +869,10 @@ fn the_anchor_control_states_what_anchoring_does_and_the_link_resolves() {
 fn the_policy_names_every_key_the_pages_keep_in_a_browser() {
     let policy = static_page("privacy.html");
     let mut found: Vec<String> = Vec::new();
-    for name in ["index.html", "landing.html", "donate.html", "present.html", "review.html",
-                 "terms.html", "privacy.html"] {
+    // Every file a browser is served that can touch storage — `bay.js` is on the list because the
+    // bay's script is where most of these keys are read and written, since it left the page.
+    for name in ["index.html", "bay.js", "world/shift.html", "landing.html", "donate.html",
+                 "present.html", "review.html", "terms.html", "privacy.html"] {
         let src = static_page(name);
         // `localStorage.getItem('vitals.x')` and its set/remove siblings, quoted either way.
         for (at, _) in src.match_indices("localStorage.") {

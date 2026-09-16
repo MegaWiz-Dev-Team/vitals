@@ -192,6 +192,20 @@ fn vent_reads() -> Vec<String> {
 /// chart are withheld by — decides whether they are sent. Sealed means the key is absent.
 ///
 /// Everything below is asserted against the bytes, because the bytes are what a `curl` gets.
+/// The bay as a browser gets it: the page, the play surface the server composes into it, and the
+/// script.
+///
+/// One file until 16 ก.ย., when the bay was pulled out so the ward's shift page could share it
+/// and carry none of the season. Every assertion below is about what a candidate is shown, so it
+/// reads what is served rather than the shell that frames it.
+fn served_bay() -> String {
+    let at = |n: &str| {
+        let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static").join(n);
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
+    };
+    [at("index.html"), at("bay-surface.html"), at("bay.js")].concat()
+}
+
 #[test]
 fn a_sealed_station_is_never_handed_the_ventilator_read() {
     let s = Server::start();
@@ -340,10 +354,7 @@ fn provenance_arrives_with_the_mark_sheet_and_not_before() {
 /// it is inside the mark-sheet fetch.
 #[test]
 fn the_page_prints_provenance_from_the_sealed_sheet() {
-    let page = std::fs::read_to_string(
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/index.html"),
-    )
-    .expect("the page");
+    let page = served_bay();
     assert!(
         page.contains("function showProvenance(m)"),
         "showProvenance no longer takes the sealed payload"
@@ -705,10 +716,7 @@ fn a_practice_episode_still_charts_its_harm_while_it_plays() {
 /// only branch that ever read a harm row was the one printing the sealed token into it.
 #[test]
 fn the_page_no_longer_needs_a_sealed_harm_row_to_render() {
-    let page = std::fs::read_to_string(
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/index.html"),
-    )
-    .expect("the page");
+    let page = served_bay();
     // The chart renderer never indexes; it maps whatever rows arrive. An empty chart already
     // had its own branch long before this, for a run where nothing has been ordered yet.
     assert!(
@@ -832,10 +840,7 @@ fn the_lines_the_engine_writes_as_prose_survive_the_translation() {
 /// choosing how much of the mark sheet is reachable — after the run was declared to the chain.
 #[test]
 fn a_station_has_no_hold_button_and_no_speed_dial() {
-    let page = std::fs::read_to_string(
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/index.html"),
-    )
-    .expect("the page");
+    let page = served_bay();
 
     // One place decides, and it hides both.
     let at = page.find("function examControls()").expect("examControls is gone");

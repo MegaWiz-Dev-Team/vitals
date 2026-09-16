@@ -24,6 +24,18 @@ use vitals_replay::{hex, leaf, record_for, replay, resume, sce_hash, Step};
 use vitals_sce::{render_beat, Sce, SceState};
 
 const PAGE: &str = include_str!("../static/index.html");
+/// The play surface — the bar, the patient, the monitor, the kit, the log — composed into both
+/// pages at their `<!--BAY-->` marker.
+///
+/// One copy, because two products drawing the same monitor from two copies of the markup is two
+/// monitors that drift. The Eternal entry wraps it in the season; the ward's shift page wraps it
+/// in a patient and nothing else.
+const SURFACE: &str = include_str!("../static/bay-surface.html");
+/// The bay's stylesheet and the bay's script, shared by both pages and served as files.
+const BAY_CSS: &str = include_str!("../static/bay.css");
+const BAY_JS: &str = include_str!("../static/bay.js");
+/// The ward's own shift page: the same surface, none of the season.
+const SHIFT: &str = include_str!("../static/world/shift.html");
 /// The front door. The product page lives at `/` and the game one click behind it at `/play`,
 /// because the first visitor a public URL meets is as likely to be a reviewer deciding what this
 /// company is as a learner deciding whether to press play — and the bay answers only the second.
@@ -1788,8 +1800,9 @@ fn open_shift(
     let pack = ward_chain::packs(store)
         .remove(&patient_id)
         .ok_or_else(|| format!(
-            "no pack describes patient {patient_id}, so the ward does not know which case she is. \
-             She was admitted before the factory described her"
+            "we do not know who patient {patient_id} is yet — she reached a bed before her details \
+             did, and nobody can be treated by a chart with no name on it. Another bed will have \
+             somebody in it"
         ))?;
 
     let sce_json = std::fs::read_to_string(scenario_path(&pack.case))
@@ -1822,6 +1835,14 @@ fn open_shift(
         "case": pack.case,
         "name": pack.persona.name,
         "country": pack.persona.country,
+        // The name of the place, from the pool that already holds it. The page says "from
+        // Nigeria" rather than "NGA": a code is for matching a map, not for reading aloud.
+        "country_name": ward::persona_pool()
+            .into_iter()
+            .find(|c| c.country == pack.persona.country)
+            .map(|c| c.place)
+            .filter(|p| !p.is_empty())
+            .unwrap_or_else(|| pack.persona.country.clone()),
         "age": pack.persona.age,
         // What this shift must extend. Named before the work, because the program refuses a
         // reveal that does not extend the head it was told — and that refusal is the mechanic.
@@ -1868,6 +1889,9 @@ enum WardWork {
     Declare { session: String, hash: [u8; 32], nonce: [u8; 32] },
     /// Append this shift's leaf to her chain, extending the head it named.
     Anchor { session: String, patient_id: u64 },
+    /// Put the head down with nothing anchored. Her chart is untouched and this shift's tape is
+    /// discarded — the next person gets her as this one found her.
+    Release { session: String },
 }
 
 /// A half-signed ward transaction, waiting for the browser that must finish it.
@@ -1892,6 +1916,130 @@ impl Drop for WatcherLeaves {
     }
 }
 
+/// A page, with the surface composed in and the build stamped.
+///
+/// Both pages go through here. The token is not injected into the markup at all any more — it
+/// lives in the script, which is served separately — so a page is the same bytes for everybody
+/// and only `/bay.js` carries anything that depends on this deployment.
+fn compose(page: &str) -> String {
+    page.replace("<!--BAY-->", SURFACE).replace(BUILD_STAMP, BUILD)
+}
+
+/// One shift's receipt, or the reason there is none.
+fn ward_receipt(store: &store::Store, run_hash: &str) -> serde_json::Value {
+    let bad = |why: &str| serde_json::json!({ "error": why });
+    if run_hash.len() != 64 || !run_hash.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+        return bad("that is not a run hash");
+    }
+    let chain = match ward_chain::WardChain::connect() {
+        Ok(c) => c,
+        Err(e) => return bad(&e),
+    };
+    let found = match ward_chain::find_shift(&chain, store, run_hash) {
+        Ok(Some(f)) => f,
+        Ok(None) => {
+            return bad(
+                "no shift on this ward has that hash. It may never have been anchored, or it may \
+                 belong to another ward — this one does not guess between them",
+            )
+        }
+        Err(e) => return bad(&e),
+    };
+    let (patient_id, shifts, this) = found;
+    let Some(pack) = ward_chain::packs(store).remove(&patient_id) else {
+        return bad("the ward has no pack for that patient, so it cannot say which case this shift was");
+    };
+    let root = scenario_root();
+    let Ok(sce_json) = std::fs::read_to_string(scenario_path(&pack.case)) else {
+        return bad("this server does not hold that case");
+    };
+    let admitted = chain.patient(patient_id).ok().flatten().map(|p| p.admitted_slot).unwrap_or(0);
+    match ward_chain::receipt(
+        &sce_json,
+        ward_chain::rubric_of(&root, &pack.case).as_deref(),
+        &shifts,
+        &this,
+        &|h| ward_chain::tape_by_hash(store, h),
+        &pack,
+        admitted,
+    ) {
+        Ok(v) => v,
+        Err(e) => bad(&e),
+    }
+}
+
+/// The receipt as a page. Plain on purpose: it is a record, and a record that needs decoration to
+/// be believed is not one.
+fn receipt_page(r: &serde_json::Value) -> String {
+    let esc = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+    if let Some(why) = r["error"].as_str() {
+        return format!(
+            "<!doctype html><meta charset=utf-8><title>No such shift — Vitals World</title>\
+             <meta name=viewport content='width=device-width,initial-scale=1'>\
+             <style>body{{font:16px/1.6 ui-sans-serif,system-ui,sans-serif;max-width:34rem;\
+             margin:4rem auto;padding:0 1.2rem;color:#16302b;background:#fbfaf7}}a{{color:#0f6e5c}}\
+             </style><h1>No such shift</h1><p>{}</p><p><a href=/>← the ward</a></p>",
+            esc(why)
+        );
+    }
+    let row = |k: &str, v: String| format!("<tr><th>{k}</th><td>{v}</td></tr>");
+    let did = &r["did"];
+    let harm = did["harm"].as_array().map(|h| h.len()).unwrap_or(0);
+    let det = match (&r["det"]["earned"], &r["det"]["max"]) {
+        (serde_json::Value::Number(e), serde_json::Value::Number(m)) => format!("{e} of {m}"),
+        _ => "not scored — this case has no rubric".to_string(),
+    };
+    format!(
+        "<!doctype html><meta charset=utf-8><title>One shift — Vitals World</title>\
+         <meta name=viewport content='width=device-width,initial-scale=1'>\
+         <style>body{{font:16px/1.6 ui-sans-serif,system-ui,sans-serif;max-width:40rem;\
+         margin:3rem auto;padding:0 1.2rem;color:#16302b;background:#fbfaf7}}\
+         h1{{font-size:1.4rem;margin:0 0 .2rem}}a{{color:#0f6e5c}}\
+         .k{{color:#5d6f6d;font:600 .78rem/1.6 ui-monospace,monospace;letter-spacing:.08em;\
+         text-transform:uppercase}}table{{border-collapse:collapse;margin:1.2rem 0;width:100%}}\
+         th{{text-align:left;font-weight:600;color:#5d6f6d;padding:.3rem 1rem .3rem 0;\
+         white-space:nowrap;vertical-align:top;width:11rem}}td{{padding:.3rem 0}}\
+         code{{font-size:.85rem;word-break:break-all}}p.note{{color:#5d6f6d}}</style>\
+         <p class=k>shift {shift} · patient {pid}</p>\
+         <h1>{name} · {case}</h1>\
+         <p class=note>Everything below is on the chain or recomputed from the tape in front of \
+         you. Nothing here is this server's word for it.</p>\
+         <table>{rows}</table>\
+         <p class=note>{omitted}</p>\
+         <p><a href=\"{tape}\">download this shift's tape</a> — replay it against the case with \
+         vitals-replay and the leaf must come out as the hash above.</p>\
+         <p><a href=/ward/{pid}>← her bed</a> · <a href=/>the ward</a></p>",
+        shift = r["shift"],
+        pid = r["patient_id"],
+        name = esc(r["name"].as_str().unwrap_or("a patient")),
+        case = esc(r["case"].as_str().unwrap_or("")),
+        omitted = esc(r["judged_omitted"].as_str().unwrap_or("")),
+        tape = esc(r["tape"].as_str().unwrap_or("#")),
+        rows = [
+            row("played by", format!("<code>{}</code>", esc(r["player"].as_str().unwrap_or("")))),
+            row("anchored at slot", r["slot"].to_string()),
+            row("run hash", format!("<code>{}</code>", esc(r["run_hash"].as_str().unwrap_or("")))),
+            row("what she did", format!("{} orders · {} beats", did["steps"], did["beats"])),
+            row("harm this shift added", if harm == 0 {
+                "none".to_string()
+            } else {
+                did["harm"].as_array().unwrap().iter()
+                    .map(|h| esc(h.as_str().unwrap_or("")))
+                    .collect::<Vec<_>>().join("<br>")
+            }),
+            row("deterministic score", esc(&det)),
+            match r["also_anchored_note"].as_str() {
+                Some(n) => row("also on this ward", esc(n)),
+                None => String::new(),
+            },
+            row("outcome", match r["did"]["outcome"].as_str() {
+                Some(o) => esc(o),
+                None => "she was handed on, still on the ward".to_string(),
+            }),
+        ].concat(),
+    )
+}
+
 /// The ward as it stands, from the held read — one source for the endpoint and the patient page,
 /// so a judge who opens both in one minute cannot be shown two different wards.
 fn ward_now(held: &WardView, store: &store::Store) -> serde_json::Value {
@@ -1907,61 +2055,6 @@ fn ward_now(held: &WardView, store: &store::Store) -> serde_json::Value {
             v
         }
     }
-}
-
-/// One patient's page: what the chain says about her, and what cannot be done here yet.
-///
-/// Deliberately plain, and deliberately not a bay. The shift itself — take the head, play, anchor
-/// — is week 2, and a page that looked like a bay and did nothing would be the worst version of
-/// this. Every field shown is from `/api/ward`, so anyone can check the page against the endpoint
-/// and the endpoint against the chain.
-fn ward_patient_page(p: &serde_json::Value) -> String {
-    let esc = |v: &serde_json::Value| match v.as_str() {
-        Some(s) => s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;"),
-        None => v.to_string(),
-    };
-    let field = |label: &str, v: &serde_json::Value| {
-        if v.is_null() {
-            String::new()
-        } else {
-            format!("<tr><th>{label}</th><td>{}</td></tr>", esc(v))
-        }
-    };
-    let name = p["name"].as_str().map(str::to_string)
-        .unwrap_or_else(|| format!("Patient {}", p["patient_id"]));
-    format!(
-        "<!doctype html><meta charset=utf-8><title>{name} — Vitals World</title>\
-         <meta name=viewport content='width=device-width,initial-scale=1'>\
-         <style>body{{font:16px/1.6 ui-sans-serif,system-ui,sans-serif;max-width:34rem;\
-         margin:4rem auto;padding:0 1.2rem;color:#16302b;background:#fbfaf7}}\
-         h1{{font-size:1.5rem;margin:0 0 .2rem}}a{{color:#0f6e5c}}\
-         table{{border-collapse:collapse;margin:1.4rem 0;width:100%}}\
-         th{{text-align:left;font-weight:600;color:#5d6f6d;padding:.35rem 1rem .35rem 0;\
-         white-space:nowrap;vertical-align:top}}td{{padding:.35rem 0}}\
-         p.note{{color:#5d6f6d}}</style>\
-         <h1>{name}</h1><p class=note>Her chart is the chain. Everything below is read from it.</p>\
-         <table>{id}{state}{bed}{shifts}{country}{age}{case}{difficulty}{since}</table>\
-         <p>Taking a shift opens in week 2 of the sprint. Until then this page shows what anyone \
-         can read for themselves at <a href=/api/ward>/api/ward</a>.</p>\
-         <p><a href=/>← the ward</a></p>",
-        name = esc(&serde_json::Value::String(name.clone())),
-        id = field("patient", &p["patient_id"]),
-        // The endpoint's words are for a renderer; this page is read by a person.
-        state = field("state", &serde_json::json!(match p["state"].as_str() {
-            Some("on_ward") => "on the ward",
-            Some("on_shift") => "on shift now",
-            Some("went_home") => "went home",
-            Some("died") => "died",
-            other => other.unwrap_or("unknown"),
-        })),
-        bed = field("bed", &p["bed"]),
-        shifts = field("shifts anchored", &p["shifts"]),
-        country = field("country", &p["country"]),
-        age = field("age", &p["age"]),
-        case = field("case", &p["case"]),
-        difficulty = field("level", &p["difficulty"]),
-        since = field("on shift since", &p["on_shift_since"]),
-    )
 }
 
 /// No such patient, or no readable chain — said in a sentence rather than as a status code alone.
@@ -2610,11 +2703,9 @@ fn main() {
             }
             (Method::Get, "/play") => {
                 // The page is served by the same process that holds the token, so handing it over
-                // does not widen anything: reaching the page and reaching the API are one boundary.
-                let page = match &token {
-                    Some(tk) => PAGE.replace("__VITALS_TOKEN__", tk),
-                    None => PAGE.replace("__VITALS_TOKEN__", ""),
-                };
+                // does not widen anything: reaching the page and reaching the API are one
+                // boundary. The token itself now rides on /bay.js, which this same process serves.
+                let page = compose(PAGE);
                 let _ = req.respond(
                     Response::from_string(page).with_header(
                         Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
@@ -3387,20 +3478,20 @@ fn main() {
             // her opens in week 2; until then this answers with what the chain says about her,
             // which is more than a 404 and is true today.
             (Method::Get, p) if ward_mode() && p.starts_with("/ward/") => {
+                // Her page is **the bay** (producer's ruling, 16 ก.ย.): one page, one engine, one
+                // tape, with a start-state parameter. The page reads the id out of its own path,
+                // rebuilds her from the chain and shows a strip saying whose shift this is.
+                //
+                // Every refusal a patient can carry — she went home, no pack describes her, the
+                // chain cannot be read — arrives through `/api/new` and is shown on that strip, so
+                // there is one place a stranger reads bad news rather than two pages that disagree
+                // about which of them is the ward.
                 let body = match ward::patient_id_in_path(p) {
+                    // The ward's own page (founder, 16 ก.ย.: "ทำให้แยกกันเลยสิ"). The same play
+                    // surface as the Eternal entry, composed from the same file, and none of the
+                    // season around it.
+                    Some(_) => compose(SHIFT),
                     None => ward_page_missing("that is not a patient id"),
-                    Some(id) => {
-                        let v = ward_now(&ward_view, &store);
-                        match v["patients"].as_array().and_then(|list| {
-                            list.iter().find(|q| q["patient_id"] == id).cloned()
-                        }) {
-                            Some(who) => ward_patient_page(&who),
-                            None if v["readable"] == false => ward_page_missing(
-                                v["why"].as_str().unwrap_or("the chain could not be read"),
-                            ),
-                            None => ward_page_missing("no patient by that number has been admitted"),
-                        }
-                    }
                 };
                 let _ = req.respond(html(&body));
                 continue;
@@ -3891,7 +3982,7 @@ fn main() {
             // different map, a different submit (ruling 7).
             (Method::Get, p) if ward_mode() && p.starts_with("/api/ward/")
                 && matches!(p, "/api/ward/open" | "/api/ward/take" | "/api/ward/declare"
-                               | "/api/ward/anchor") =>
+                               | "/api/ward/anchor" | "/api/ward/release") =>
             {
                 let Some(who) = param(&url, "player").and_then(|k| pubkey(&k)) else {
                     let _ = req.respond(json_code(serde_json::json!({
@@ -3917,11 +4008,17 @@ fn main() {
                 } else {
                     let id = param(&url, "id").unwrap_or_default();
                     let map = sessions.lock().unwrap();
-                    match map.get(&id).filter(|s| s.answers_to(Some(&who.to_string()))
-                                                  || s.owner.is_none()) {
+                    // The same rule the rest of the bay uses: an owned run answers to its owner
+                    // and an anonymous one to whoever holds the id.
+                    match map.get(&id).filter(|s| s.answers_to(Some(&who.to_string()))) {
                         None => Err("no such session".to_string()),
                         Some(s) => match (&s.ward, p) {
                             (None, _) => Err("this run is not a shift on the ward".into()),
+                            (Some(w), "/api/ward/release") => Ok((
+                                ward_chain::release_shift_ix(
+                                    chain.program_id(), &chain.operator(), &who, w.patient_id),
+                                WardWork::Release { session: id.clone() },
+                            )),
                             (Some(w), "/api/ward/take") => Ok((
                                 ward_chain::take_shift_ix(
                                     chain.program_id(), &chain.operator(), &who, w.patient_id),
@@ -4085,6 +4182,23 @@ fn main() {
                             }), 503),
                         }
                     }
+                    (WardWork::Release { session }, Ok(sig)) => {
+                        // The tape goes with it. A shift that was put down is not a shift that
+                        // happened, and a tape left lying about could be anchored later onto a
+                        // patient somebody else has since moved.
+                        let mut map = sessions.lock().unwrap();
+                        if let Some(s) = map.get_mut(session) {
+                            s.tape.clear();
+                            s.beats.clear();
+                            persist(&store, session, s, true);
+                        }
+                        drop(map);
+                        json(serde_json::json!({
+                            "released": true,
+                            "tx": sig,
+                            "recorded": "nothing — the head is back and her chart is as you found it"
+                        }))
+                    }
                     (WardWork::Anchor { session, patient_id }, Ok(sig)) => {
                         let mut map = sessions.lock().unwrap();
                         if let Some(s) = map.get_mut(session) {
@@ -4208,17 +4322,27 @@ fn main() {
                     );
                     continue;
                 }
-                let Some(patient_id) = p
-                    .strip_prefix("/api/ward/pack/")
-                    .filter(|r| !r.is_empty() && r.bytes().all(|b| b.is_ascii_digit()))
-                    .and_then(|r| r.parse::<u64>().ok())
-                else {
+                // Two kinds of address arrive here, and they carry different rules. A patient id
+                // is digits and her faces are add-only — the board has shown them. A pack id is a
+                // content address and hers may be replaced, because nobody has seen her yet.
+                let who = p.strip_prefix("/api/ward/pack/").unwrap_or("");
+                let patient_id = who
+                    .bytes()
+                    .all(|b| b.is_ascii_digit())
+                    .then(|| who.parse::<u64>().ok())
+                    .flatten();
+                let queued = (who.len() == 64
+                    && who.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)))
+                    .then_some(who);
+                if patient_id.is_none() && queued.is_none() {
                     let _ = req.respond(
-                        json(serde_json::json!({ "error": "that is not a patient id" }))
-                            .with_status_code(404),
+                        json(serde_json::json!({
+                            "error": "that is neither a patient id nor a pack id"
+                        }))
+                        .with_status_code(404),
                     );
                     continue;
-                };
+                }
                 let body = match read_body(&mut req, QUEUE_MAX) {
                     Ok(b) => b,
                     Err(_) => {
@@ -4234,7 +4358,13 @@ fn main() {
                 }
                 match serde_json::from_str::<Fill>(&body) {
                     Ok(fill) => {
-                        let r = ward_chain::fill_portraits(&store, patient_id, fill.portrait);
+                        let r = match (patient_id, queued) {
+                            (Some(id), _) => ward_chain::fill_portraits(&store, id, fill.portrait),
+                            (None, Some(pack)) => {
+                                ward_chain::replace_queued_portraits(&store, pack, fill.portrait)
+                            }
+                            _ => unreachable!("one of the two was matched above"),
+                        };
                         let _ = req.respond(json(r));
                     }
                     Err(e) => {
@@ -4247,6 +4377,67 @@ fn main() {
                         })));
                     }
                 }
+                continue;
+            }
+            // The bay's own two files, shared by the Eternal entry and the ward's shift page.
+            // Served by the same process that holds the token, for the same reason the page is:
+            // reaching the script and reaching the API are one boundary.
+            (Method::Get, p) if p == "/bay.css" || p.starts_with("/bay.css?") => {
+                let _ = req.respond(
+                    Response::from_string(BAY_CSS.replace(BUILD_STAMP, BUILD)).with_header(
+                        Header::from_bytes(&b"Content-Type"[..], &b"text/css; charset=utf-8"[..])
+                            .unwrap(),
+                    ),
+                );
+                continue;
+            }
+            (Method::Get, p) if p == "/bay.js" || p.starts_with("/bay.js?") => {
+                let js = BAY_JS
+                    .replace("__VITALS_TOKEN__", token.as_deref().unwrap_or(""))
+                    .replace(BUILD_STAMP, BUILD);
+                let _ = req.respond(
+                    Response::from_string(js).with_header(
+                        Header::from_bytes(
+                            &b"Content-Type"[..],
+                            &b"application/javascript; charset=utf-8"[..],
+                        )
+                        .unwrap(),
+                    ),
+                );
+                continue;
+            }
+            // One shift, for somebody who never played it. Public and unguarded: a receipt only
+            // the people we hand a token to can read is not a receipt, it is a claim.
+            (Method::Get, p) if ward_mode() && p.starts_with("/api/shift/") => {
+                let hash = p.trim_start_matches("/api/shift/");
+                let _ = req.respond(json(ward_receipt(&store, hash)));
+                continue;
+            }
+            // The tape itself, by the hash its leaf commits to. This is what makes the rest
+            // checkable rather than merely readable: a stranger replays these bytes against the
+            // pinned engine and arrives at the same numbers, or we are wrong.
+            (Method::Get, p) if ward_mode() && p.starts_with("/api/tape/") => {
+                let hash = p.trim_start_matches("/api/tape/");
+                match ward_chain::tape_by_hash(&store, hash) {
+                    Some(steps) => {
+                        let _ = req.respond(json(serde_json::json!({
+                            "run_hash": hash,
+                            "steps": steps,
+                            "how_to_check": "replay these steps against the case's scenario with \
+                                             vitals-replay and the leaf must come out as this hash",
+                        })));
+                    }
+                    None => {
+                        let _ = req.respond(json_code(serde_json::json!({
+                            "error": "this ward does not hold that tape"
+                        }), 404));
+                    }
+                }
+                continue;
+            }
+            (Method::Get, p) if ward_mode() && p.starts_with("/shift/") => {
+                let hash = p.trim_start_matches("/shift/").to_string();
+                let _ = req.respond(html(&receipt_page(&ward_receipt(&store, &hash))));
                 continue;
             }
             // The ward's census. Public, and every figure on it carries where it came from —
@@ -5280,6 +5471,16 @@ fn settle(
 
 #[cfg(test)]
 mod tests {
+    /// The page as a browser gets it: the markup, the play surface composed into it, and the
+    /// script.
+    ///
+    /// It was one file until 16 ก.ย., when the bay's surface, stylesheet and script were pulled
+    /// out so the ward's shift page could share them and carry none of the season. These tests ask
+    /// what a *player* is shown, so they ask the composition rather than the shell.
+    fn served() -> String {
+        [PAGE, SURFACE, BAY_JS].concat()
+    }
+
     use super::*;
 
     // ── unwinding a leaf that was never anchored ────────────────────────────
@@ -5639,6 +5840,10 @@ mod tests {
                   // and the thing a judge is invited to re-derive; a token on it would mean
                   // "checkable by anyone we gave a token to", which is not the claim.
                   "/api/ward", "/api/ward/stream",
+                  // One shift, and the tape it is checked against. A receipt only the people we
+                  // hand a token to can read is not a receipt, it is a claim.
+                  "/api/shift/0000000000000000000000000000000000000000000000000000000000000000",
+                  "/api/tape/0000000000000000000000000000000000000000000000000000000000000000",
                   // Who wrote what, and how often it has been proven. A ledger nobody can read
                   // is not one anybody can check, and checkable is the entire claim.
                   "/api/authors", "/api/payout",
@@ -5758,7 +5963,8 @@ mod tests {
     fn the_shelf_card_and_the_server_agree_about_the_clock() {
         // The array itself, and not the rest of the file after it: `{id:'…'` occurs elsewhere,
         // and a count taken over the tail would be counting something else.
-        let season = PAGE
+        let page = served();
+        let season = page
             .split_once("const SEASON=[")
             .map(|(_, rest)| rest)
             .and_then(|rest| rest.split_once("\n];"))
@@ -5925,7 +6131,8 @@ mod tests {
     fn the_shelf_card_and_the_server_print_the_same_stem() {
         // The one table in the page that carries a station card. Anchored so a stray `{id:'…'`
         // somewhere else in the file can never be read as the shelf.
-        let season = PAGE
+        let page = served();
+        let season = page
             .split_once("const SEASON=[")
             .map(|(_, rest)| rest)
             .expect("SEASON is gone from the page");
@@ -5983,8 +6190,9 @@ mod tests {
         // bay caption, or a comment quoting one. Read from the marker to the end of whatever is
         // holding it and fail on a second separator.
         let ends = |c: char| c == '\'' || c == '"' || c == '<' || c == '\n';
-        for (i, _) in PAGE.match_indices("· M").chain(PAGE.match_indices("· F")) {
-            let rest = &PAGE[i..];
+        let page = served();
+        for (i, _) in page.match_indices("· M").chain(page.match_indices("· F")) {
+            let rest = &page[i..];
             let field = &rest[..rest.find(ends).unwrap_or(rest.len())];
             assert_eq!(
                 field.matches('·').count(),
@@ -5994,8 +6202,9 @@ mod tests {
             );
         }
         // And no body weight, in any of them or anywhere else.
-        for (i, _) in PAGE.match_indices("kg") {
-            let head = PAGE[..i].trim_end_matches(' ');
+        let page = served();
+        for (i, _) in page.match_indices("kg") {
+            let head = page[..i].trim_end_matches(' ');
             if !head.ends_with(|c: char| c.is_ascii_digit()) {
                 continue; // `mg/kg`, `ml/kg`, `20 ml/kg` — a rate per kilo, not a weight.
             }
@@ -6055,7 +6264,7 @@ mod tests {
         // And the bay does not offer one either — the parameter is gone from the URL it builds,
         // so there is nothing for a pane to start reading again.
         assert!(
-            !PAGE.contains("&exam=1"),
+            !served().contains("&exam=1"),
             "the page still hangs an exam flag on a device URL"
         );
     }
