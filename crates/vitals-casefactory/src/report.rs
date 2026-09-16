@@ -19,6 +19,8 @@ pub fn reason_family(reason: &str) -> String {
     let r = reason;
     if r.starts_with("season source") {
         "season source (the season's content, excluded by rule)".into()
+    } else if r.starts_with("the prose still states") {
+        "prose still states the patient's age or sex (placeholder pass missed it)".into()
     } else if r.starts_with("no archetype fits: ") && !r.contains("names no deterioration") {
         // a diagnosis the library knows it cannot model yet — keep the shape's name
         let why = r.trim_start_matches("no archetype fits: ");
@@ -58,6 +60,15 @@ pub fn render(results: &[(String, Outcome)], library: &str, git_ref: &str, commi
     s.push_str("# Case factory report\n\n");
     s.push_str(&format!("Library: `{library}` at `{git_ref}`{}\n\n", commit.map(|c| format!(" (commit `{c}`)")).unwrap_or_default()));
     s.push_str(&format!("**Totals:** {} cases — compiled {} · refused {}\n\n", results.len(), compiled.len(), refused.len()));
+
+    // the persona placeholders: what was written, and whether anything got past the scan
+    let age_ph: usize = compiled.iter().map(|(_, p)| p.placeholders.age).sum();
+    let sex_ph: usize = compiled.iter().map(|(_, p)| p.placeholders.sex).sum();
+    let prose_refused = refused.iter().filter(|(_, r)| r.reason.starts_with("the prose still states")).count();
+    s.push_str(&format!(
+        "**Persona placeholders:** `{{age}}` written {age_ph} times and sex placeholders {sex_ph} times across {} packs; {prose_refused} pack(s) refused because prose still stated the patient's age or sex.\n\n",
+        compiled.len()
+    ));
 
     // archetype coverage
     let mut by_arch: BTreeMap<&str, Vec<&Pack>> = BTreeMap::new();

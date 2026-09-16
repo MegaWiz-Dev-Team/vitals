@@ -15,6 +15,7 @@ pub mod archetype;
 pub mod embla;
 pub mod interventions;
 pub mod plan;
+pub mod prose;
 pub mod report;
 pub mod rubric;
 pub mod scenario;
@@ -70,6 +71,15 @@ pub struct TimedRole {
     pub sentence: String,
 }
 
+/// How many placeholders the compiler wrote into the prose — the count the report shows.
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+pub struct Placeholders {
+    /// `{age}` occurrences.
+    pub age: usize,
+    /// `{sex_word}`, `{he_she}`, `{his_her}`, `{him_her}`, `{himself_herself}` occurrences, any case.
+    pub sex: usize,
+}
+
 /// One case, compiled: everything the ward's door needs to admit the patient.
 #[derive(Debug, Clone, Serialize)]
 pub struct Pack {
@@ -111,6 +121,10 @@ pub struct Pack {
     pub timed: BTreeMap<String, TimedRole>,
     /// Vital signs the case did not give, filled with resting defaults.
     pub vitals_assumed: Vec<String>,
+    /// Placeholders written into the prose in place of the patient's stated age and sex. The
+    /// ward's renderer fills them from the persona it assigns; `patient{age,sex}` is what the
+    /// persona is fitted to.
+    pub placeholders: Placeholders,
     /// What the replays proved.
     pub replay: validate::Proof,
     pub compiler: Compiler,
@@ -232,6 +246,34 @@ pub fn compile(case_json: &str, source: Source) -> Result<Pack, Refusal> {
 
     let endemic = case.meta.search_tags.iter().any(|t| t.eq_ignore_ascii_case("endemic"));
 
+    // ── the persona is the ward's: the patient's age and sex leave the prose ─────────
+    let age = case.patient.age;
+    let sex = case.sex();
+    let persona = text::Persona::new(age, sex.as_deref());
+    let dp = |t: &str| persona.depersonalise(&text::scrub(t, &case.patient.name));
+    let mut sce_value = sim.sce.clone();
+    prose::rewrite(&mut sce_value, &dp);
+    let mut rubric_value = rubric.clone();
+    prose::rewrite(&mut rubric_value, &dp);
+    let voice: BTreeMap<String, interventions::VoiceLine> = built
+        .voice
+        .iter()
+        .map(|(k, v)| (k.clone(), interventions::VoiceLine { finding: dp(&v.finding), present: v.present, reveal: v.reveal.clone(), words: dp(&v.words) }))
+        .collect();
+    let title = dp(&case.meta.title);
+    let presentation = embla::Presentation {
+        chief_complaint: dp(&case.presentation.chief_complaint),
+        hpi: dp(&case.presentation.hpi),
+        setting: case.presentation.setting.as_deref().map(dp),
+    };
+    let placeholders = prose::count(&[
+        serde_json::Value::String(title.clone()),
+        serde_json::to_value(&presentation).unwrap_or_default(),
+        serde_json::to_value(&voice).unwrap_or_default(),
+        sce_value.clone(),
+        rubric_value.clone(),
+    ]);
+
     // a first pack without the proof, so the scans see every string the final one will carry
     let proof_placeholder = validate::Proof {
         untreated_death_sec: 0.0,
@@ -243,7 +285,7 @@ pub fn compile(case_json: &str, source: Source) -> Result<Pack, Refusal> {
     let mut pack = Pack {
         case_id: id.clone(),
         source,
-        title: case.meta.title.clone(),
+        title,
         country: case.meta.country.clone().filter(|c| c.len() == 3),
         difficulty: difficulty.to_string(),
         clinical_tier: case.meta.clinical_tier,
@@ -256,25 +298,26 @@ pub fn compile(case_json: &str, source: Source) -> Result<Pack, Refusal> {
         version: case.meta.version.clone().unwrap_or_else(|| "0.0.0".into()),
         archetype: a.id().to_string(),
         archetype_label: a.label().to_string(),
-        patient: PackPatient { age: case.patient.age, sex: case.sex() },
-        presentation: embla::Presentation {
-            chief_complaint: text::scrub(&case.presentation.chief_complaint, &case.patient.name),
-            hpi: text::scrub(&case.presentation.hpi, &case.patient.name),
-            setting: case.presentation.setting.as_deref().map(|s| text::scrub(s, &case.patient.name)),
-        },
-        sce: sim.sce.clone(),
-        rubric: rubric.clone(),
-        voice: built.voice.clone(),
+        patient: PackPatient { age, sex: sex.clone() },
+        presentation,
+        sce: sce_value.clone(),
+        rubric: rubric_value.clone(),
+        voice,
         management: mapped.steps.clone(),
         timed,
         vitals_assumed: v0.assumed.clone(),
+        placeholders,
         replay: proof_placeholder,
         compiler: COMPILER,
     };
 
     let as_json = serde_json::to_value(&pack).map_err(|e| refuse(&id, format!("pack does not serialise: {e}")))?;
-    let proof = validate::validate(&as_json, &sim.sce.to_string(), &rubric.to_string(), a, &case.patient.name, &path)
+    let proof = validate::validate(&as_json, &sce_value.to_string(), &rubric_value.to_string(), a, &case.patient.name, &path)
         .map_err(|e| refuse(&id, e))?;
+    let leaks = prose::scan(&as_json, &persona);
+    if !leaks.is_empty() {
+        return Err(refuse(&id, format!("the prose still states the patient's age or sex: {}", leaks.join("; "))));
+    }
     pack.replay = proof;
     Ok(pack)
 }

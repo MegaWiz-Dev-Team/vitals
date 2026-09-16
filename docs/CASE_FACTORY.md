@@ -96,6 +96,42 @@ for the ward's owner, not the compiler's.
 88 a minute with a normal pressure) is refused as *not forced* and is never handed to another
 archetype — the rhythm is the diagnosis.
 
+## The persona is the ward's — placeholders in the prose
+
+The ward assigns its own persona to every compiled case: a name, an age within twelve years of
+the case's patient, the same sex. So the pack's prose never states the Embla patient's age or sex
+as facts. `patient{age,sex}` stays as the source of truth the persona is fitted to; in the
+**title**, the **presentation** (chief complaint, history, setting), every **beat**, **label** and
+**harm** sentence in the scenario and the rubric, and every **voice** line, the compiler writes
+placeholders the ward's renderer fills — exactly these:
+
+| placeholder | replaces | filled with |
+|---|---|---|
+| `{age}` | the patient's stated age — `26-year-old`, `aged 26`, `26 years old`, `อายุ 26 ปี` | the persona's age |
+| `{sex_word}` | man / woman / boy / girl / male / female / gentleman / lady; Thai `ผู้ชาย`, `ผู้หญิง`, `ผู้ป่วยชาย/หญิง`, `เด็กชาย/หญิง`, `ชายวัย…`, `หญิงอายุ…` | the persona's word for itself |
+| `{he_she}` | he / she | the persona's subject pronoun |
+| `{his_her}` | his / her (possessive) / hers | the persona's possessive |
+| `{him_her}` | him / her (object) | the persona's object pronoun |
+| `{himself_herself}` | himself / herself | the persona's reflexive |
+
+A placeholder whose first letter is a capital — `{He_she}`, `{Sex_word}`, `{His_her}` — stood
+at the start of a sentence and asks for a capitalised fill. Everything else is left as the case
+wrote it, and two rules keep the honesty:
+
+- **Only the patient's own words are replaced.** For a male patient, `she` in the text is somebody
+  else and stays; for a female patient, `he` stays. A same-sex third party ("one of the boys in my
+  room… he got better") is replaced too — a deterministic tool cannot tell the roommate from the
+  patient, and with a same-sex persona the fill reads the same. Only the patient's own age is
+  replaced; a "4-year-old son" keeps his age. Thai politeness particles (`ครับ`/`ค่ะ`) are left
+  alone because the persona keeps the sex.
+- **The body stays clinical.** `pregnant`, `testicular`, `menstrual` and the like are not sex words
+  and are never touched; such cases are one sex by `patient.sex`.
+
+The gate refuses a pack whose prose still carries the patient's age pattern or a sex word of the
+patient's sex outside a placeholder (`REPORT.md` counts the placeholders written and the packs
+refused). The plan steps and the timed sentences are quoted verbatim for the reviewer under
+`management` and `timed` and are not prose the ward renders.
+
 ## What else the pack carries
 
 - `ask_*` — one intervention per `symptom_script` line. The engine's beat is neutral
@@ -153,7 +189,8 @@ written into the pack under `replay`.
 ```text
 case_id, source{repo, ref, sha256}, title, country (ISO3 | null), difficulty (student|intern|resident),
 clinical_tier, specialty, care_setting, language, tags[], endemic, provisional (always true),
-version, archetype, archetype_label, patient{age, sex}, presentation{chief_complaint, hpi, setting},
+version, archetype, archetype_label, patient{age, sex}, presentation{chief_complaint, hpi, setting} (placeholders),
+placeholders{age, sex} (counts written),
 sce{…vitals-sce scenario…}, rubric{case, pass_bps, status, items[]},
 voice{ask_id → {finding, present, reveal, words}},
 management[{step, interventions[]}], timed{role → {named_sec, by_sec, sentence}},
