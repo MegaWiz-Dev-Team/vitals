@@ -10,6 +10,7 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::Command;
+use vitals_factory::tools::DOOR_SECRET;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -27,6 +28,10 @@ fn the_launchd_job_is_the_one_the_brief_names_and_carries_no_secret() {
     assert!(flat.contains("vitals-factory</string>"), "runs this binary");
     assert!(flat.contains("<key>WARD</key>"), "says which ward");
     assert!(!text.contains("VITALS_TOKEN"), "the token is read from Secret Manager at run time, never written here");
+    // The door's own secret, since the Forseti sweep found the doors' old token injected into the
+    // public /bay.js: `vitals-door-token`, in both projects, and nothing else by that name.
+    assert_eq!(DOOR_SECRET, "vitals-door-token");
+    assert!(text.contains("vitals-door-token") && !text.contains("vitals-token secret"), "the plist names the secret the factory reads");
     assert!(flat.contains("<key>PATH</key>"), "mflux-generate, gcloud and cwebp are on the user's path, not launchd's");
     // macOS's own linter, when this runs on a Mac.
     if let Ok(out) = Command::new("plutil").args(["-lint", "-s"]).arg(&path).output() {
