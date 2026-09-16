@@ -80,7 +80,7 @@ fn person<'a>(pool: &'a [Person], key: &str) -> &'a Person {
 #[test]
 fn the_pool_and_the_endemic_list_read_from_the_wards_own_files() {
     let pool = read_pool(POOL).expect("the pool parses");
-    assert_eq!(pool.len(), 60);
+    assert_eq!(pool.len(), 105, "sixty at first, and deeper where the need is since 16 Sep");
     let ploy = person(&pool, "THA-0");
     assert_eq!((ploy.name.as_str(), ploy.sex, ploy.country.as_str(), ploy.place.as_str()), ("Ploy Siriwattana", Sex::F, "THA", "Thailand"));
     assert_eq!(person(&pool, "IDN-2").name, "Agus Pratama");
@@ -132,9 +132,9 @@ fn nobody_is_on_the_ward_twice() {
     ledger.sent.insert("deadbeef".into(), Sent::new("osce-a", anan, 70, false, None, 1, "test"));
     // More wanted than there are people, so everyone who is free is drawn exactly once (sixty
     // beds, so the bed cap plays no part here).
-    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &flat(&pool), beds: 60, want: 61, seed: 3 });
+    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &flat(&pool), beds: 60, want: 200, seed: 3 });
     let keys: Vec<&str> = p.packs.iter().map(|pl| pl.person.as_str()).collect();
-    assert_eq!(keys.len(), 58, "sixty people, two of them busy");
+    assert_eq!(keys.len(), pool.len() - 2, "everyone but the two who are busy");
     assert!(!keys.contains(&"THA-0"), "Ploy is in a bed");
     assert!(!keys.contains(&"THA-1"), "Anan is queued and unseen");
     assert!(keys.contains(&"IDN-1"), "Budi went home, so his face is free again");
@@ -177,7 +177,8 @@ fn a_face_already_made_is_used_and_a_missing_one_is_made_at_her_age() {
         assert_eq!(pl.pack.portrait.get("stable"), Some(url));
         assert!(*age == 63, "the face that fits is the 63-year-old's");
         assert!((pl.pack.persona.age as i32 - 63).abs() <= 3, "her age stays near the face's: {}", pl.pack.persona.age);
-        assert!(pl.person.ends_with("-2"), "index 2 is the 63-year-old of each country: {}", pl.person);
+        let idx: usize = pl.person.rsplit('-').next().unwrap().parse().unwrap();
+        assert_eq!(idx % 3, 2, "every third person's face is the 63-year-old's in this manifest: {}", pl.person);
     }
     // osce-b is written for a man of 25 (23–27): no batch face fits, so one is to be made at the
     // age drawn, and the pack goes out without a picture rather than with a wrong one.

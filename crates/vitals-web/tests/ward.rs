@@ -681,7 +681,10 @@ fn the_persona_pool_can_actually_fill_the_catalogue() {
         assert!(globe.contains(&format!("\"{}\":", country.country)),
                 "the globe's own table cannot place {} — a patient from there would sit in the \
                  Unknown tray for ever", country.country);
-        assert_eq!(country.personas.len(), 3, "{} must carry three people", country.country);
+        // Three at least; deeper where the need is (founder, 16 Sep 2026: nine for the five
+        // countries with most people per doctor, six for the next five — the factory computes
+        // which from physicians.json and holds the file to it in its own tests).
+        assert!(country.personas.len() >= 3, "{} must carry at least three people", country.country);
 
         let sexes: HashSet<&str> = country.personas.iter().map(|p| p.sex.as_str()).collect();
         assert!(sexes.contains("f") && sexes.contains("m"),
