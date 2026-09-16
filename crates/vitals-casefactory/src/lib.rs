@@ -14,8 +14,10 @@ pub mod archetype;
 pub mod embla;
 pub mod interventions;
 pub mod plan;
+pub mod report;
 pub mod rubric;
 pub mod scenario;
+pub mod source;
 pub mod text;
 pub mod validate;
 
