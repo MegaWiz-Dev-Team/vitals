@@ -184,3 +184,44 @@ fn the_repair_offers_every_stored_tape_before_any_session_is_dropped() {
     assert_eq!(found.as_deref(), Some(&played[..]), "offered, and taken");
     assert!(missing_tapes(&st, &shifts).is_empty(), "and nothing is missing afterwards");
 }
+
+/// **A shift's own name on chain is its leaf, so that is an address for its receipt.**
+///
+/// `/shift/<run hash>` is the tape's hash: two strangers who did exactly the same things to the
+/// same case share it, and the receipt says so. The **leaf** is this shift and no other — it binds
+/// the player, the declaration and the tape together, it is what the tree holds, and it is what a
+/// judge reads off the patient's account as her head. It belongs in the address bar.
+///
+/// It cannot be recomputed from the instruction: `RecordWire` deliberately carries no commitment,
+/// because the program reads that from the account and a field the caller fills in proves nothing.
+/// So the server writes the pairing down at the moment it builds the record — the one moment it
+/// legitimately knows both.
+#[test]
+fn a_shift_can_be_found_by_the_name_the_chain_knows_it_by() {
+    use vitals_web::ward_chain::{keep_for_anchor, run_hash_of_leaf};
+
+    let sce = ep1();
+    let tape = vec![Step::Do("oxygen".into()), Step::Tick(30.0)];
+    let r = vitals_replay::replay(&sce, &tape).expect("replay");
+    let rec = vitals_replay::record_for(
+        [7u8; 32],
+        vitals_replay::sce_hash(&sce),
+        vitals_replay::sce_hash(&sce),
+        vitals_progress::Difficulty::Intern,
+        false,
+        &tape,
+        &r,
+        [9u8; 32],
+        42,
+    )
+    .expect("a record");
+
+    let st = store("leaf");
+    let run_hash = keep_for_anchor(&st, 1789538329, &rec, &tape).expect("kept");
+    let leaf = vitals_web::ward_chain::hex32(&rec.leaf());
+    assert_ne!(leaf, run_hash, "the leaf is not the tape's hash — it carries the player and the declaration");
+
+    assert_eq!(run_hash_of_leaf(&st, &leaf).as_deref(), Some(run_hash.as_str()),
+               "the leaf is an address for this shift's receipt");
+    assert!(run_hash_of_leaf(&st, &"b".repeat(64)).is_none(), "and only for shifts we anchored");
+}
