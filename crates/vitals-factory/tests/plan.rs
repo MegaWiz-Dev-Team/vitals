@@ -388,3 +388,37 @@ fn no_country_takes_more_than_its_share_of_the_beds() {
     assert_ne!(p.packs[0].pack.persona.country, "ETH");
     assert!(p.packs.iter().any(|pl| pl.pack.persona.country == "ETH"), "{:?}", p.packs.iter().map(|x| x.pack.persona.country.clone()).collect::<Vec<_>>());
 }
+
+/// The pool grows where the need is: nine people for the five highest-weighted countries, six for
+/// the next five, three for the rest — computed from the weights, not from a list — with both
+/// sexes everywhere, full invented names, and no name twice.
+#[test]
+fn the_pool_is_deeper_where_the_need_is() {
+    let pool = read_pool(POOL).unwrap();
+    let w = weights(PHYSICIANS, &pool).unwrap();
+    let ranked = w.ranked();
+    let mut per_country: BTreeMap<&str, Vec<&Person>> = BTreeMap::new();
+    for p in &pool {
+        per_country.entry(p.country.as_str()).or_default().push(p);
+    }
+    for (rank, (country, _)) in ranked.iter().enumerate() {
+        let want = if rank < 5 { 9 } else if rank < 10 { 6 } else { 3 };
+        let people = &per_country[country.as_str()];
+        assert_eq!(people.len(), want, "{country} is ranked {} and should carry {want}", rank + 1);
+        assert!(people.iter().any(|p| p.sex == Sex::F) && people.iter().any(|p| p.sex == Sex::M), "{country}: both sexes");
+        for p in people {
+            assert!(p.name.contains(' '), "{}: a chart carries a full name", p.name);
+        }
+    }
+    let mut names: Vec<&str> = pool.iter().map(|p| p.name.as_str()).collect();
+    let n = names.len();
+    names.sort_unstable();
+    names.dedup();
+    assert_eq!(names.len(), n, "no name twice in the pool");
+    assert_eq!(pool.len(), 5 * 9 + 5 * 6 + 10 * 3, "one hundred and five people");
+    // The first three of every country are the sixty the faces were made for, in their order:
+    // the manifest keys on the position in the file.
+    assert_eq!(person(&pool, "THA-0").name, "Ploy Siriwattana");
+    assert_eq!(person(&pool, "ETH-2").name, "Hanan Mohammed");
+    assert_eq!(person(&pool, "USA-2").name, "Emily Novak");
+}
