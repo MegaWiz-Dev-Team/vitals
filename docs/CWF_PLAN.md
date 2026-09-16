@@ -251,6 +251,12 @@ we authored a new disease course this month.
     script only the entry loads is what finishes the founder's "separate". It is a day's work on a
     live page, which is why it waits for a window rather than being half-kept.
 
+    The argument for doing it at all is what step one cost: the shared script bound handlers to the
+    lobby's own elements at the top level, and the first one missing stopped the whole script
+    before the ward's own code was reached — **the page rendered and did nothing, silently**. That
+    failure is available to any future edit as long as one script serves two pages with different
+    markup, and the only structural cure is that each page loads the code it actually uses.
+
     **Opening her page takes nothing.** The head is taken when a stranger presses *take this
     shift*, never on load, and until then `id` is unset — every control in that page already
     guards on it, so a patient you have opened is a chart you can read and not a patient you can
