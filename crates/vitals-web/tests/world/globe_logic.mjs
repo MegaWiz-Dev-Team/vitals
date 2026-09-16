@@ -36,10 +36,13 @@ const grabConst = (name) => {
   return `${m[1]} ${name} = ${m[2]};`;
 };
 
-const sandbox = [grabConst('ALPHA3'), grabConst('SLOT_MS'), grabConst('STATE_LABEL'), grab('countryId'), grab('countryCounts'), grab('visible'),
+const sandbox = [grabConst('ALPHA3'), grabConst('SLOT_MS'), grabConst('STATE_LABEL'), grabConst('DOCTOR_BINS'), grab('countryId'), grab('countryCounts'), grab('visible'),
   grab('stateOf'), grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
-  'return { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine };'].join('\n');
-const { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine } = new Function(sandbox)();
+  grab('peoplePerDoctor'), grab('latestOf'), grab('tenYearTrend'), grab('fmtTrend'), grab('fmtPeople'), grab('doctorLine'),
+  grab('worldAverage'), grab('missionLine'), grab('doctorBin'),
+  'return { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin };'].join('\n');
+const { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine,
+  DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin } = new Function(sandbox)();
 
 // ── countryId ────────────────────────────────────────────────────────────────
 // world-atlas 110m keys its shapes by ISO numeric, as strings ("764"); the ward sends alpha-3.
@@ -158,5 +161,117 @@ assert.match(script, /new EventSource\("\/api\/ward\/stream"\)/, 'the stream is 
 assert.match(script, /addEventListener\("ward", /, 'and its ward event is listened for');
 assert.match(script, /function render\(j\)/, 'one consumer, render(j), for both the fetch and the stream');
 assert.ok(!/toLocaleTimeString|toLocaleDateString|toLocaleString/.test(script), 'every absolute time goes through Intl.DateTimeFormat');
+
+// ── doctors ──────────────────────────────────────────────────────────────────
+// The globe's second layer: people per doctor, from one open series (World Bank SH.MED.PHYS.ZS,
+// physicians per 1,000 people, WHO's numbers republished, CC BY 4.0). Every figure the page shows
+// is a conversion of that series and nothing else: no value means "no data", never a guess.
+assert.equal(peoplePerDoctor(0.159), 6290, '1000 / 0.159 = 6289.3, to the nearest ten');
+assert.equal(peoplePerDoctor(3.681), 270, '271.7 → 270');
+assert.equal(peoplePerDoctor(1.8609), 540, 'the world, 2022');
+assert.equal(peoplePerDoctor(0.541), 1850, 'Thailand 2021 by this series — the deck\'s MOPH 1:1,487 is another source, and the page says which it uses');
+assert.equal(peoplePerDoctor(0), null, 'zero physicians is not a number of people per doctor');
+assert.equal(peoplePerDoctor(null), null);
+assert.equal(peoplePerDoctor(undefined), null);
+assert.equal(peoplePerDoctor(-1), null);
+
+assert.deepEqual(latestOf([[2000, 1.0], [2010, 1.2], [2021, 0.541]]), [2021, 0.541]);
+assert.deepEqual(latestOf([[2021, 0.541], [2000, 1.0]]), [2021, 0.541], 'sorted, whatever order it came in');
+assert.equal(latestOf([]), null);
+assert.equal(latestOf(null), null);
+assert.equal(latestOf([[2020, 0]]), null, 'a zero is not a value');
+
+// The ~10-year change, as % per year of PEOPLE PER DOCTOR (down is the mission's direction), between
+// the latest value and the value nearest to ten years before it — whichever year exists, provided one
+// exists at least eight years back. Years differ by country (Myanmar 2019, India 2020, Ethiopia
+// 2023), so every figure carries its own years, and a short series is "too short", not a trend.
+let t = tenYearTrend([[2011, 0.4], [2016, 0.45], [2021, 0.541]]);
+assert.deepEqual([t.from, t.to, t.years], [[2011, 0.4], [2021, 0.541], 10]);
+assert.equal(t.pct_per_year.toFixed(2), '-2.97', 'people per doctor fell from 2,500 to 1,850 over ten years');
+t = tenYearTrend([[2005, 0.3], [2014, 0.35], [2023, 0.5]]);
+assert.deepEqual([t.from, t.to, t.years], [[2014, 0.35], [2023, 0.5], 9], 'uneven: 2014 is nearer to 2013 than 2005 is');
+assert.equal(t.pct_per_year.toFixed(2), '-3.89');
+t = tenYearTrend([[2008, 0.5], [2015, 0.5], [2023, 0.5]]);
+assert.deepEqual([t.from, t.years], [[2015, 0.5], 8], '2013 is nearer to 2015 (two years) than to 2008 (five); eight years back is the floor, and it counts');
+assert.equal(t.pct_per_year, 0);
+t = tenYearTrend([[2011, 0.5], [2015, 0.5], [2023, 0.5]]);
+assert.deepEqual(t.from, [2011, 0.5], 'a tie (2011 and 2015 both two years from 2013) goes to the earlier year');
+assert.equal(tenYearTrend([[2020, 1.0], [2023, 1.1]]), null, 'three years of history is a series too short for a trend');
+assert.equal(tenYearTrend([[2016, 1.0], [2023, 1.1]]), null, 'seven years back is still too short');
+assert.equal(tenYearTrend([[2021, 0.5]]), null, 'one point is not a trend');
+assert.equal(tenYearTrend([]), null);
+assert.equal(tenYearTrend(null), null);
+t = tenYearTrend([[2000, 2.0], [2010, 1.0]]);
+assert.equal(t.pct_per_year.toFixed(2), '7.18', 'fewer doctors → more people per doctor → positive');
+
+assert.equal(fmtTrend(-1.234), '\u22121.2%/yr', 'a real minus sign');
+assert.equal(fmtTrend(0.8), '+0.8%/yr');
+assert.equal(fmtTrend(0), '0.0%/yr');
+assert.equal(fmtTrend(-0.04), '0.0%/yr', 'what rounds to nothing is nothing, not "−0.0"');
+assert.equal(fmtTrend(null), 'trend: series too short', 'and no trend says why');
+assert.equal(fmtPeople(6290), '6,290');
+assert.equal(fmtPeople(540), '540');
+assert.equal(fmtPeople(12345), '12,345');
+
+assert.equal(doctorLine('Kenya', [[2019, 0.15], [2020, 0.159]]), 'Kenya · 1 doctor per 6,290 people (2020)');
+assert.equal(doctorLine('Hong Kong', []), 'Hong Kong · no data');
+assert.equal(doctorLine('Hong Kong', null), 'Hong Kong · no data');
+assert.equal(doctorLine('Nowhere', [[2020, 0]]), 'Nowhere · no data');
+
+const WORLD = { source: 's', licence: 'CC BY 4.0', fetched: '2026-09-16', indicator: 'SH.MED.PHYS.ZS — Physicians (per 1,000 people)', note: '',
+  countries: { WLD: { name: 'World', series: [[2000, 1.523], [2010, 1.491], [2022, 1.861]] },
+               THA: { name: 'Thailand', series: [[2021, 0.541]] } } };
+assert.deepEqual(worldAverage(WORLD), { people: 540, year: 2022 }, '1000 / 1.861 = 537.3, to the nearest ten like every other figure');
+assert.equal(worldAverage({ countries: { THA: WORLD.countries.THA } }), null, 'no WLD, no average — never computed from the countries');
+assert.equal(worldAverage(null), null);
+assert.equal(missionLine(WORLD),
+  'One doctor for every 540 people, world average (World Bank, 2022). We exist to bring that number down by 1% a year.',
+  'the founder\'s sentence, exactly, with the two numbers from the series');
+assert.equal(missionLine({ countries: { THA: WORLD.countries.THA } }), null, 'no world figure, no sentence — never a guess');
+
+// The colour bins are a log-ish ladder, stated in the legend as they are here, spanning the series'
+// extremes (Cuba 1:105 in 2021, Niger 1:26,316 in 2023).
+assert.deepEqual(DOCTOR_BINS, [250, 500, 1000, 2000, 5000, 10000]);
+assert.equal(doctorBin(105), 0);
+assert.equal(doctorBin(249), 0);
+assert.equal(doctorBin(250), 1);
+assert.equal(doctorBin(540), 2);
+assert.equal(doctorBin(1850), 3);
+assert.equal(doctorBin(6290), 5);
+assert.equal(doctorBin(10000), 6);
+assert.equal(doctorBin(26320), 6);
+assert.equal(doctorBin(null), null, 'no data is not a bin');
+
+// The data the page ships: the fetch script's output, committed, and inlined into the page so
+// it stays one file. Both are read here and held equal.
+const dataPath = new URL('../../data/physicians.json', new URL('file://' + process.argv[2].replace(/^(?!\/)/, process.cwd() + '/'))).pathname.replace('/static/world/../../data', '/data');
+const data = JSON.parse(readFileSync(dataPath, 'utf8'));
+for (const k of ['indicator', 'source', 'licence', 'fetched', 'note']) assert.equal(typeof data[k], 'string', `${k} is stated`);
+assert.match(data.indicator, /^SH\.MED\.PHYS\.ZS/);
+assert.equal(data.licence, 'CC BY 4.0');
+assert.match(data.fetched, /^\d{4}-\d{2}-\d{2}$/);
+assert.deepEqual(Object.keys(data).sort(), ['countries', 'fetched', 'indicator', 'licence', 'note', 'source'], 'the reference shape, nothing else at the top');
+const codes = Object.keys(data.countries);
+assert.ok(codes.length >= 150, `enough countries to colour a globe: ${codes.length}`);
+assert.ok(codes.every(c => /^[A-Z]{3}$/.test(c)), 'World Bank codes, three upper-case letters');
+assert.ok(codes.includes('WLD') && codes.includes('THA') && codes.includes('KEN'));
+assert.equal(data.countries.THA.name, 'Thailand');
+for (const c of codes) {
+  const s = data.countries[c].series;
+  assert.ok(Array.isArray(s) && s.length > 0, `${c}: a series with values`);
+  for (let i = 0; i < s.length; i++) {
+    assert.ok(Number.isInteger(s[i][0]) && s[i][0] >= 2000 && s[i][0] <= 2024, `${c}: years in range`);
+    assert.ok(typeof s[i][1] === 'number' && s[i][1] > 0, `${c}: values only, never null`);
+    if (i) assert.ok(s[i][0] > s[i - 1][0], `${c}: ascending by year, one value per year`);
+  }
+}
+const inlined = html.match(/<script id="physicians" type="application\/json">([\s\S]*?)<\/script>/);
+assert.ok(inlined, 'the series is inlined into the page like the atlas');
+assert.deepEqual(JSON.parse(inlined[1]), data, 'and it is the same data as the committed file — regenerate both with scripts/fetch-physicians.py');
+assert.notEqual(worldAverage(data), null, 'the real series has a world average');
+assert.match(html, /id="mission"/, 'the mission line has its place under the headline');
+assert.match(html, /data-layer="doctors"/, 'the layer toggle is on the page');
+assert.match(html, /people per doctor · World Bank\/WHO, latest year/, 'the legend says what the colours are and whose numbers');
+assert.match(html, /population per physician/, 'and says once that it is population per physician, not patients');
 
 console.log('globe_logic: ok');
