@@ -1138,7 +1138,7 @@ pub fn enqueue(store: &crate::store::Store, packs: Vec<crate::ward::Pack>) -> Qu
         if !pack.case.is_empty() && !held.iter().any(|c| c.case_id == pack.case) {
             out.rejected.push(format!(
                 "{} is not a case this ward holds — send it through /api/ward/case first, or \
-                 leave the pack's case empty and the ward will place her",
+                 leave the pack's case empty and let the ward choose one",
                 pack.case
             ));
             continue;
@@ -1600,7 +1600,7 @@ pub fn tick(
             _ => {
                 out.notes.push(format!(
                     "no case in this ward's catalogue is written about somebody like {} ({}, {}, \
-                     {}), so the bed waits rather than putting her on a case about somebody else. \
+                     {}), so the bed waits rather than opening a case about somebody else. \
                      The case factory fills it through /api/ward/case",
                     pack.persona.name, pack.persona.country, pack.persona.age, pack.persona.sex
                 ));
@@ -2060,9 +2060,9 @@ pub fn refusal(err: &str) -> Option<&'static str> {
     let code: String = code.chars().take_while(|c| c.is_ascii_hexdigit()).collect();
     Some(match u32::from_str_radix(&code, 16).ok()? {
         16 => "this chart moved while you were at the bedside: somebody else anchored a shift on the head \
-               you were extending. Your work is still on your tape — open her again and it will be \
-               played on the patient as she is now",
-        17 => "someone is already in the room with her. A shift is held until it is anchored or \
+               you were extending. Your work is still on your tape — open the patient again and it will be \
+               played on the chart as it is now",
+        17 => "someone is already in the room with this patient. A shift is held until it is anchored or \
                its time runs out, and then the head is free for anybody",
         18 => "this patient has left the ward — a stay that ended is not one anybody can add to",
         19 => "the head is not yours to give back: somebody else holds this shift",
@@ -2132,7 +2132,7 @@ pub fn receipt(
         "det": det.map(|(earned, max, _)| serde_json::json!({ "earned": earned, "max": max })),
         "judged": serde_json::Value::Null,
         "judged_omitted": "a judged score belongs to a finished case. This is one shift in the \
-                           middle of her stay, and a number that cannot mean what a reader assumes \
+                           middle of a stay, and a number that cannot mean what a reader assumes \
                            is worse than no number",
         "also_anchored": sharing,
         "also_anchored_note": (sharing > 0).then(|| format!(

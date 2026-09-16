@@ -12,58 +12,117 @@
 
 use std::path::PathBuf;
 
-/// Every string literal in a source file, with the prose stripped out first.
+/// Every string literal in a source file.
+///
+/// One pass, because the two-pass version was wrong in a way that hid exactly what this file looks
+/// for. Stripping comments first means stripping from every `//` — including the one inside
+/// `"https://storage.googleapis.com/…"`, which takes the rest of that line and the string's own
+/// closing quote with it. From there the scanner is out of phase: code reads as string content and
+/// strings read as code, so every sentence after the first URL in the file is invisible. That is
+/// how `ward_chain.rs` came to tell whoever queued a patient that "the ward will place her" with
+/// this test passing on the file.
+///
+/// So: one walk, each thing recognised where it starts.
+///   * `//` and `/* */` outside a string are comments, and block comments nest in Rust.
+///   * `"…"` is a string and `\` escapes the next character; `r"…"` and `r#"…"#` escape nothing.
+///   * `'x'` and `'\n'` are char literals — `'"'` is three characters of code, and reading it as a
+///     string once made this test find a literal forty lines long. `'a` in `&'a str` is a lifetime,
+///     an apostrophe with no partner, and skipping to the next one swallows the rest of the file.
 fn literals(src: &str) -> Vec<String> {
+    let c: Vec<char> = src.chars().collect();
+    let at = |i: usize| c.get(i).copied();
     let mut out = Vec::new();
-    let code = without_comments(src);
-    let mut chars = code.chars();
-    while let Some(c) = chars.next() {
-        // A char literal can hold a quote — `'"' => break` is three characters of code and not the
-        // start of a string. Reading it as one desynchronises the scanner for the rest of the
-        // file, which is how this test first "found" a literal made of forty lines of Rust.
-        if c == '\'' {
-            while let Some(c) = chars.next() {
-                match c {
-                    '\\' => {
-                        chars.next();
-                    }
-                    '\'' => break,
-                    _ => {}
+    let mut i = 0usize;
+    while i < c.len() {
+        // ── comments ────────────────────────────────────────────────────────
+        if at(i) == Some('/') && at(i + 1) == Some('/') {
+            while i < c.len() && c[i] != '\n' {
+                i += 1;
+            }
+            continue;
+        }
+        if at(i) == Some('/') && at(i + 1) == Some('*') {
+            let mut depth = 1;
+            i += 2;
+            while i < c.len() && depth > 0 {
+                if at(i) == Some('/') && at(i + 1) == Some('*') {
+                    depth += 1;
+                    i += 2;
+                } else if at(i) == Some('*') && at(i + 1) == Some('/') {
+                    depth -= 1;
+                    i += 2;
+                } else {
+                    i += 1;
                 }
             }
             continue;
         }
-        if c != '"' {
+        // ── raw strings: r"…", r#"…"#, br##"…"## ────────────────────────────
+        if at(i) == Some('r') || (at(i) == Some('b') && at(i + 1) == Some('r')) {
+            let mut j = i + if at(i) == Some('b') { 2 } else { 1 };
+            let start = j;
+            while at(j) == Some('#') {
+                j += 1;
+            }
+            let hashes = j - start;
+            if at(j) == Some('"') {
+                j += 1;
+                let close: String =
+                    std::iter::once('"').chain(std::iter::repeat_n('#', hashes)).collect();
+                let mut lit = String::new();
+                while j < c.len() {
+                    if c[j] == '"' && c[j..].iter().take(close.len()).collect::<String>() == close {
+                        j += close.len();
+                        break;
+                    }
+                    lit.push(c[j]);
+                    j += 1;
+                }
+                out.push(lit);
+                i = j;
+                continue;
+            }
+        }
+        // ── a char literal, or a lifetime ───────────────────────────────────
+        if at(i) == Some('\'') {
+            if at(i + 1) == Some('\\') {
+                // `'\n'`, `'\''`, `'\u{2019}'` — to the closing quote, whatever is between.
+                let mut j = i + 2;
+                while j < c.len() && c[j] != '\'' {
+                    j += 1;
+                }
+                i = j + 1;
+            } else if at(i + 2) == Some('\'') {
+                i += 3;
+            } else {
+                // A lifetime. The apostrophe is all there is to skip.
+                i += 1;
+            }
             continue;
         }
+        // ── a string ────────────────────────────────────────────────────────
+        if at(i) != Some('"') {
+            i += 1;
+            continue;
+        }
+        i += 1;
         let mut lit = String::new();
-        while let Some(c) = chars.next() {
-            match c {
-                // An escape and whatever it escapes, neither of which is the end of the literal.
-                '\\' => {
-                    chars.next();
+        while i < c.len() {
+            match c[i] {
+                // An escape and whatever it escapes, neither of which ends the literal.
+                '\\' => i += 2,
+                '"' => {
+                    i += 1;
+                    break;
                 }
-                '"' => break,
-                _ => lit.push(c),
+                ch => {
+                    lit.push(ch);
+                    i += 1;
+                }
             }
         }
         out.push(lit);
     }
-    out
-}
-
-fn without_comments(src: &str) -> String {
-    let mut out = String::with_capacity(src.len());
-    let mut rest = src;
-    while let Some(i) = rest.find("/*").into_iter().chain(rest.find("//")).min() {
-        out.push_str(&rest[..i]);
-        rest = if rest[i..].starts_with("/*") {
-            rest[i..].find("*/").map(|e| &rest[i + e + 2..]).unwrap_or("")
-        } else {
-            rest[i..].find('\n').map(|e| &rest[i + e..]).unwrap_or("")
-        };
-    }
-    out.push_str(rest);
     out
 }
 
