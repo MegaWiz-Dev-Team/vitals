@@ -19,7 +19,8 @@ use crate::catalogue::read_catalogue;
 use crate::door::{Door, FillReply, Pushed, Token, WardView};
 use crate::ledger::{Ledger, Sent};
 use crate::manifest::Manifest;
-use crate::plan::{plan, Base, Inputs, NEAR_FACE};
+use crate::need::{fmt as fmt_weight, weights, Weights};
+use crate::plan::{bed_cap, plan, Base, Inputs, NEAR_FACE};
 use crate::pool::{person_for, read_endemic, read_pool, Person};
 use crate::prompts;
 use crate::tools::{sha256_hex, Tools};
@@ -155,6 +156,13 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
             return r;
         }
     };
+    let need: Weights = match std::fs::read_to_string(cfg.repo.join("crates/vitals-web/data/physicians.json")).map_err(|e| e.to_string()).and_then(|s| weights(&s, &pool)) {
+        Ok(w) => w,
+        Err(e) => {
+            r.fail(format!("the physicians series could not be read, so nothing is weighted and nothing is built: {e}"));
+            return r;
+        }
+    };
     let mut manifest = match Manifest::load(&cfg.manifest_path()) {
         Ok(m) => m,
         Err(e) => {
@@ -220,9 +228,11 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
     let resend: Vec<(String, Pack)> = ledger.unseen().into_iter().map(|(id, s)| (id.clone(), s.to_pack())).collect();
     let known_depth = ward.queue.as_ref().map(|q| q.waiting).unwrap_or(resend.len());
     let want_guess = cfg.queue_depth.saturating_sub(known_depth.max(resend.len()));
+    r.say(need.table());
+    r.say(format!("bed cap: no country in more than {} of {} beds at once", bed_cap(ward.beds), ward.beds));
     let planned = plan(&Inputs {
         catalogue: &catalogue, pool: &pool, endemic: &endemic, manifest: &manifest, ward: &ward, ledger: &ledger,
-        want: want_guess, seed: cfg.seed,
+        weights: &need, beds: ward.beds, want: want_guess, seed: cfg.seed,
     });
     for n in &planned.notes {
         r.say(n.clone());
@@ -241,8 +251,9 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
                 }
             };
             r.say(format!(
-                "  {} — {} {} {} from {}{} · {}",
+                "  {} — {} {} {} from {} (drawn: {}, weight {} people/doctor){} · {}",
                 pl.pack.case, pl.pack.persona.name, pl.sex.letter().to_uppercase(), pl.pack.persona.age, pl.pack.persona.country,
+                pl.pack.persona.country, fmt_weight(pl.weight),
                 if pl.pack.endemic { " (endemic)" } else { "" }, face
             ));
         }
@@ -328,7 +339,7 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
     let planned = if want == want_guess {
         planned
     } else {
-        plan(&Inputs { catalogue: &catalogue, pool: &pool, endemic: &endemic, manifest: &manifest, ward: &ward, ledger: &ledger, want, seed: cfg.seed })
+        plan(&Inputs { catalogue: &catalogue, pool: &pool, endemic: &endemic, manifest: &manifest, ward: &ward, ledger: &ledger, weights: &need, beds: ward.beds, want, seed: cfg.seed })
     };
     r.say(format!("queue depth {depth_now}, want {}: building {}", cfg.queue_depth, planned.packs.len()));
     let mut deferred = 0;
@@ -374,9 +385,10 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
                 ledger.sent.insert(id.clone(), sent);
                 save_ledger(cfg, &ledger, &mut r);
                 r.say(format!(
-                    "{} {} — {} {} {} from {}{} · id {} · depth {}",
+                    "{} {} — {} {} {} from {} (drawn: {}, weight {} people/doctor){} · id {} · depth {}",
                     if q.queued == 1 { "queued" } else { "already queued" },
                     pack.case, pack.persona.name, pack.persona.sex.to_uppercase(), pack.persona.age, pack.persona.country,
+                    pack.persona.country, fmt_weight(pl.weight),
                     if pack.endemic { " (endemic)" } else { "" },
                     &id[..12], q.depth
                 ));

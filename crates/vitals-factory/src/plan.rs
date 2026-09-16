@@ -9,16 +9,20 @@
 //! The rules, in the order they are applied to each pack:
 //!
 //!   1. **a person, once.** Nobody whose face is on the ward or waiting for a bed is drawn again
-//!      ([`crate::ledger::Ledger::busy_keys`]). Countries with fewer people on the ward come
-//!      first, so the globe fills before it repeats.
-//!   2. **her disease is not her origin.** Four draws in five ignore where she is from. One in
+//!      ([`crate::ledger::Ledger::busy_keys`]).
+//!   2. **where the need is.** The country is drawn by weight — people per doctor, from
+//!      [`crate::need`] — by largest deficit against its share of everyone on the ward and
+//!      waiting, so twice the need is twice the patients, exactly, over a run; a country in
+//!      40 % or more of the beds is not drawn until somebody leaves; and "least on the ward
+//!      first" breaks ties within the weighting, never overrides it.
+//!   3. **her disease is not her origin.** Four draws in five ignore where she is from. One in
 //!      [`vitals_web::ward::ENDEMIC_IN`], for a country with an endemic list, takes a case from
 //!      that list — and only then is the pack `endemic`.
-//!   3. **the bands are balanced** against what is in beds and what is waiting: the level with
+//!   4. **the bands are balanced** against what is in beds and what is waiting: the level with
 //!      fewest patients is filled first, and within it the case least used.
-//!   4. **her sex is the case's**, checked before the case is chosen rather than after; a person
+//!   5. **her sex is the case's**, checked before the case is chosen rather than after; a person
 //!      for whom no case fits is skipped, never forced.
-//!   5. **her age is inside the case's band** — the door's band — and near her face's age when a
+//!   6. **her age is inside the case's band** — the door's band — and near her face's age when a
 //!      face already fits, so the picture and the number agree. When no face fits, one is to be
 //!      made at the age drawn, and the pack goes out without a picture rather than with a wrong
 //!      one.
@@ -27,6 +31,7 @@ use crate::catalogue::{Case, Catalogue, Sex};
 use crate::door::WardView;
 use crate::ledger::Ledger;
 use crate::manifest::Manifest;
+use crate::need::Weights;
 use crate::pool::Person;
 use std::collections::{BTreeMap, BTreeSet};
 use vitals_web::ward::{difficulty_of, Pack, Persona, ENDEMIC_IN};
@@ -45,9 +50,21 @@ pub struct Inputs<'a> {
     pub manifest: &'a Manifest,
     pub ward: &'a WardView,
     pub ledger: &'a Ledger,
+    /// People per doctor per pooled country: the weight of the country draw.
+    pub weights: &'a Weights,
+    /// The ward's beds, for the cap: no country in more than 40 % of them at once.
+    pub beds: usize,
     /// How many packs to build.
     pub want: usize,
     pub seed: u64,
+}
+
+/// The share of the beds one country may hold at once.
+pub const BED_SHARE: f64 = 0.4;
+
+/// The most beds one country may hold at once, never fewer than one.
+pub fn bed_cap(beds: usize) -> usize {
+    ((beds as f64 * BED_SHARE).floor() as usize).max(1)
 }
 
 /// Where her `stable` picture comes from.
@@ -68,6 +85,8 @@ pub struct Planned {
     /// For the portrait prompt.
     pub place: String,
     pub base: Base,
+    /// The weight her country was drawn with: people per doctor, floored.
+    pub weight: f64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -151,10 +170,35 @@ pub fn plan(i: &Inputs) -> Plan {
         load.count(&s.case, &s.country);
     }
 
+    // Who is in a bed right now, by country, for the cap.
+    let mut in_beds: BTreeMap<String, usize> = BTreeMap::new();
+    for p in i.ward.open() {
+        if let Some(c) = &p.country {
+            *in_beds.entry(c.clone()).or_default() += 1;
+        }
+    }
+    let cap = bed_cap(i.beds);
+    let total_weight: f64 = i.pool.iter().map(|p| p.country.clone()).collect::<BTreeSet<_>>().iter().map(|c| i.weights.of(c)).sum();
+
     for slot in 0..i.want {
-        // 1. the people who are free, countries least on the ward first.
-        let mut free: Vec<&Person> = i.pool.iter().filter(|p| !busy.contains(&p.key)).collect();
-        free.sort_by_key(|p| (load.country(&p.country), shuffle_key(i.seed, slot, &p.key)));
+        // 1a. countries, by largest deficit against their share of everyone on the ward and
+        // waiting; a country at the bed cap sits out; ties go to the country with fewest in beds,
+        // then to the seed.
+        let free: Vec<&Person> = i.pool.iter().filter(|p| !busy.contains(&p.key)).collect();
+        let drawn_total: usize = load.country.values().sum();
+        let mut countries: Vec<&str> = free.iter().map(|p| p.country.as_str()).collect::<BTreeSet<_>>().into_iter().collect();
+        countries.retain(|c| in_beds.get(*c).copied().unwrap_or(0) < cap);
+        let deficit = |c: &str| {
+            let share = if total_weight > 0.0 { i.weights.of(c) / total_weight } else { 0.0 };
+            share * (drawn_total as f64 + 1.0) - load.country(c) as f64
+        };
+        countries.sort_by(|a, b| {
+            deficit(b)
+                .partial_cmp(&deficit(a))
+                .expect("finite")
+                .then_with(|| in_beds.get(*a).copied().unwrap_or(0).cmp(&in_beds.get(*b).copied().unwrap_or(0)))
+                .then_with(|| shuffle_key(i.seed, slot, a).cmp(&shuffle_key(i.seed, slot, b)))
+        });
 
         // 2–4. the case for a person: one draw in five from her country's list when it has one,
         // otherwise the emptiest band with a case written for someone of her sex. Deterministic
@@ -182,16 +226,19 @@ pub fn plan(i: &Inputs) -> Plan {
             None
         };
 
-        // A face that already fits is used before one is made: the first pass takes only people
-        // whose face fits the case they would get, the second takes anyone with a case.
         let mut placed = None;
-        'passes: for need_face in [true, false] {
-            for who in &free {
-                let Some((case, endemic)) = choose(who) else { continue };
-                let fit = i.manifest.base_for(&who.key, &case.band);
-                if need_face && fit.is_none() {
-                    continue;
-                }
+        'countries: for country in countries {
+            // Everyone free from this country, with the case each would get; a person for whom no
+            // case fits is skipped, never forced. Within the country a face that already fits is
+            // used before one is made, then the seed decides.
+            let mut people: Vec<(&Person, &Case, bool, Option<crate::manifest::Base>)> = free
+                .iter()
+                .copied()
+                .filter(|p| p.country == country)
+                .filter_map(|p| choose(p).map(|(c, e)| (p, c, e, i.manifest.base_for(&p.key, &c.band))))
+                .collect();
+            people.sort_by_key(|(p, _, _, fit)| (fit.is_none(), shuffle_key(i.seed, slot, &p.key)));
+            if let Some((who, case, endemic, fit)) = people.into_iter().next() {
                 // 5. her age, inside the band and near her face if she has one that fits.
                 let (base, age) = match fit {
                     Some(b) => {
@@ -221,8 +268,9 @@ pub fn plan(i: &Inputs) -> Plan {
                     sex: who.sex,
                     place: who.place.clone(),
                     base,
+                    weight: i.weights.of(&who.country),
                 });
-                break 'passes;
+                break 'countries;
             }
         }
 

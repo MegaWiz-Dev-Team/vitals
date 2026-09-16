@@ -15,6 +15,7 @@ pub mod catalogue;
 pub mod door;
 pub mod ledger;
 pub mod manifest;
+pub mod need;
 pub mod plan;
 pub mod pool;
 pub mod prompts;

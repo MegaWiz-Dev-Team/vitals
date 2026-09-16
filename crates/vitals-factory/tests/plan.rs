@@ -130,8 +130,9 @@ fn nobody_is_on_the_ward_twice() {
     ward.patients.push(on_board(2, "went_home", person(&pool, "IDN-1"), "osce-b", 25));
     let mut ledger = Ledger::default();
     ledger.sent.insert("deadbeef".into(), Sent::new("osce-a", anan, 70, false, None, 1, "test"));
-    // More wanted than there are people, so everyone who is free is drawn exactly once.
-    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &flat(&pool), beds: 3, want: 61, seed: 3 });
+    // More wanted than there are people, so everyone who is free is drawn exactly once (sixty
+    // beds, so the bed cap plays no part here).
+    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &flat(&pool), beds: 60, want: 61, seed: 3 });
     let keys: Vec<&str> = p.packs.iter().map(|pl| pl.person.as_str()).collect();
     assert_eq!(keys.len(), 58, "sixty people, two of them busy");
     assert!(!keys.contains(&"THA-0"), "Ploy is in a bed");
@@ -328,7 +329,8 @@ fn weights_are_people_per_doctor_with_a_floor_and_the_median_for_the_unknown() {
     assert_eq!(w.of("JPN"), 380.0);
     assert_eq!(w.of("USA"), 281.25, "the United States (270) is lifted to the floor");
     assert_eq!(w.year("ETH"), Some(2023));
-    let ranked: Vec<&str> = w.ranked().iter().map(|(c, _)| c.as_str()).collect();
+    let ranked_owned = w.ranked();
+    let ranked: Vec<&str> = ranked_owned.iter().map(|(c, _)| c.as_str()).collect();
     assert_eq!(&ranked[..5], &["ETH", "KEN", "NGA", "IDN", "THA"], "the five highest by the numbers, not by a list");
     assert_eq!(&ranked[5..10], &["EGY", "BGD", "IND", "MMR", "PHL"]);
     assert!((w.of("ETH") / w.of("JPN") - 18.4).abs() < 0.1, "Ethiopia about eighteen times Japan");
@@ -380,7 +382,9 @@ fn no_country_takes_more_than_its_share_of_the_beds() {
     assert_eq!(p.packs.len(), 6);
     assert!(p.packs.iter().all(|pl| pl.pack.persona.country != "ETH"), "Ethiopia has her bed: {:?}", p.packs.iter().map(|x| x.pack.persona.country.clone()).collect::<Vec<_>>());
     assert_eq!(p.packs[0].pack.persona.country, "KEN", "so the highest need without a bed goes first");
-    // With ten beds the cap is four, and Ethiopia is drawn again.
-    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &w, beds: 10, want: 3, seed: 9 });
-    assert!(p.packs.iter().any(|pl| pl.pack.persona.country == "ETH"));
+    // With ten beds the cap is four, and Ethiopia is drawn again once the others have caught up
+    // to her share — she already holds one of one, so not first.
+    let p = plan(&Inputs { catalogue: &cat, pool: &pool, endemic: &endemic, manifest: &man, ward: &ward, ledger: &ledger, weights: &w, beds: 10, want: 6, seed: 9 });
+    assert_ne!(p.packs[0].pack.persona.country, "ETH");
+    assert!(p.packs.iter().any(|pl| pl.pack.persona.country == "ETH"), "{:?}", p.packs.iter().map(|x| x.pack.persona.country.clone()).collect::<Vec<_>>());
 }
