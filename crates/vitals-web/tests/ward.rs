@@ -1513,3 +1513,45 @@ fn a_time_on_the_board_is_the_slots_own_block_time() {
             "a slot with no block time gets no time — never one worked out from the read's own \
              slot, which is the 38-hour error: {}", row(2));
 }
+
+/// **A head whose page has stopped beating is a head the ward takes back.**
+///
+/// The director measured it on staging: take a shift, close the tab, and the board still says
+/// `on_shift` a minute later — the bed freed on its own about ten minutes in, when the lease ran
+/// out. On three beds that is a third of the ward held by somebody who has gone.
+///
+/// So the page beats while it holds the head and the ward frees the head when the beats stop.
+/// Every part of that decision is here, out of the thread that acts on it: given when each page
+/// last beat and the time now, which heads should the ward take back. Two missed beats is the
+/// rule — one missed beat is a page on a train.
+///
+/// A patient nobody has beaten for is not in the map at all and is not freed by this: her lease is
+/// the net, and a shift that never beat is a client older than this rule.
+#[test]
+fn a_head_whose_page_stopped_beating_is_taken_back() {
+    use vitals_web::ward::heads_to_free;
+    let beat = 30_000u64;          // the page beats every thirty seconds
+    let grace = 2 * beat + 15_000; // two missed beats, and a little for the wire
+    let now = 1_789_700_000_000u64;
+
+    let beats: std::collections::BTreeMap<u64, u64> = [
+        (1u64, now - 5_000),            // beating
+        (2, now - 31_000),              // one missed beat: a page on a train
+        (3, now - grace - 1),           // gone
+        (4, now - 10 * 60_000),         // long gone
+    ].into_iter().collect();
+
+    assert_eq!(heads_to_free(&beats, now, grace), vec![3, 4],
+               "two missed beats is the rule, and one is not");
+    assert!(heads_to_free(&beats, now, grace).iter().all(|p| *p != 2),
+            "a page that missed one beat still holds its patient — the cost of being wrong here is \
+             taking a bed off somebody who is in the room");
+    assert!(heads_to_free(&std::collections::BTreeMap::new(), now, grace).is_empty(),
+            "a ward nobody is beating for frees nothing: a shift that never beat is a client older \
+             than this rule, and her lease is the net under it");
+
+    // A clock that went backwards (a host with NTP correcting itself) must not free the ward.
+    let future: std::collections::BTreeMap<u64, u64> = [(9u64, now + 60_000)].into_iter().collect();
+    assert!(heads_to_free(&future, now, grace).is_empty(),
+            "a beat from the future is not a beat that stopped");
+}
