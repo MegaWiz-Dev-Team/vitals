@@ -37,13 +37,13 @@ const grabConst = (name) => {
 };
 
 const sandbox = [grabConst('ALPHA3'), grabConst('STATE_LABEL'), grabConst('DOCTOR_BINS'), grab('countryId'), grab('countryCounts'), grab('visible'),
-  grab('stateOf'), grab('onBoard'), grab('inBeds'), grab('canTakeShift'), grab('censusFigures'), grab('paintOf'), grab('hoverText'), grab('waitingCounts'), grab('figuresFor'), grab('bedsEmptyWords'), grab('shouldReload'), grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
+  grab('stateOf'), grab('onBoard'), grab('inBeds'), grab('canTakeShift'), grab('censusFigures'), grab('paintOf'), grab('hoverText'), grab('countryGroups'), grab('countryHeading'), grab('waitingCounts'), grab('figuresFor'), grab('bedsEmptyWords'), grab('shouldReload'), grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
   grab('peoplePerDoctor'), grab('latestOf'), grab('tenYearTrend'), grab('fmtTrend'), grab('fmtPeople'), grab('doctorLine'),
   grab('worldAverage'), grab('missionLine'), grab('doctorBin'),
   grab('yearValue'), grab('yearRange'), grab('doctorLineAt'), grab('worldAverageAt'), grab('missionLineAt'),
   grab('escapeHtml'), grab('portraitImg'),
-  'return { countryId, countryCounts, visible, inBeds, canTakeShift, censusFigures, ALPHA3, waitingCounts, figuresFor, bedsEmptyWords, shouldReload, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg };'].join('\n');
-const { countryId, countryCounts, inBeds, canTakeShift, censusFigures, visible, ALPHA3, waitingCounts, figuresFor, bedsEmptyWords, shouldReload, whenMs, relative, absolute, stateLine,
+  'return { countryId, countryCounts, visible, inBeds, canTakeShift, censusFigures, ALPHA3, countryGroups, countryHeading, waitingCounts, figuresFor, bedsEmptyWords, shouldReload, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg };'].join('\n');
+const { countryId, countryCounts, inBeds, canTakeShift, censusFigures, visible, ALPHA3, countryGroups, countryHeading, waitingCounts, figuresFor, bedsEmptyWords, shouldReload, whenMs, relative, absolute, stateLine,
   stateOf, onBoard, paintOf, hoverText, STATE_LABEL,
   DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin,
   yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg } = new Function(sandbox)();
@@ -230,6 +230,31 @@ assert.equal(bare.title, '');
 const undated = line({ state: 'on_ward', admitted_slot: 499_139_724, closed_slot: 0 });
 assert.equal(undated.text, 'on the ward',
   'a slot the chain has not dated for us is not a time we invent from the read\'s own slot');
+
+// ── a country's panel, in two groups ─────────────────────────────────────────
+//
+// The founder, 18 ก.ย.: South Korea's ring says 1 and the panel lists two — Ji-woo in bed 1 and
+// Lee Seo-yeon, who died sixteen hours ago. Both are true and the pair is unreadable: the ring
+// counts beds, and a stay that ended is not a bed. So the panel says which is which, in the order
+// a reader wants them — who is here now, then who has been here.
+assert.deepEqual(countryGroups([]), { inBeds: [], left: [] });
+{
+  const jiwoo = { patient_id: 1, state: "on_ward", bed: 1, difficulty: "resident" };
+  const seoyeon = { patient_id: 2, state: "died", bed: null, difficulty: "intern" };
+  const adrift = { patient_id: 3, state: "off_ward", bed: null };
+  const g = countryGroups([seoyeon, jiwoo, adrift]);
+  assert.deepEqual(g.inBeds.map(p => p.patient_id), [1], "a bed is a state and a bed, as the ring counts it");
+  assert.deepEqual(g.left.map(p => p.patient_id), [2, 3],
+    "everybody else: went home, died, or on the chain with no bed the ward can offer");
+}
+
+// The heading carries both counts, and omits the half that is zero — "0 in beds" is a number
+// nobody asked for on a page about a country.
+assert.equal(countryHeading("South Korea", 1, 1), "South Korea · 1 in a bed · 1 left");
+assert.equal(countryHeading("South Korea", 2, 3), "South Korea · 2 in beds · 3 left");
+assert.equal(countryHeading("Nepal", 1, 0), "Nepal · 1 in a bed");
+assert.equal(countryHeading("Nepal", 0, 2), "Nepal · 2 left");
+assert.equal(countryHeading("Nepal", 0, 0), "Nepal");
 
 // ── the door, and the people behind it ───────────────────────────────────────
 //
