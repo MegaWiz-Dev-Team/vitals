@@ -252,3 +252,32 @@ for (const w of [rest, armed]) {
 }
 
 console.log('shift_logic: ok (and the hand-over button is the ward’s own)');
+
+// ── the one button the page is asking you to press ───────────────────────────
+//
+// The founder, on staging: "ปุ่มเข้ารักษาคนไข้มันไม่ค่อยเด่น" — the button that puts you at the
+// bedside is not prominent. It was a small control at the right end of a grey strip, the same size
+// and colour as "← the globe" beside it.
+//
+// So the patient block carries one primary button and it says what pressing it does, in the
+// patient's own words: take her, then hand her back. `primaryLabel` is that sentence, and it is a
+// function of the two facts that decide it — whether the head is yours, and whether the engine has
+// finished with her.
+const { primaryLabel } = new Function([grab('primaryLabel'), 'return { primaryLabel };'].join('\n'))();
+
+assert.equal(primaryLabel({ taken: false, over: false, name: 'Nusrat Jahan', g: her }),
+             'Take the shift · treat Nusrat Jahan',
+             'before the head is taken, the page has one thing to ask');
+assert.equal(primaryLabel({ taken: false, over: false, name: '', g: her }),
+             'Take the shift · treat her',
+             'and a page that does not know her name yet still says what the press does');
+assert.equal(primaryLabel({ taken: true, over: false, name: 'Nusrat Jahan', g: her }),
+             'Hand over · record this shift',
+             'once it is yours the one action is the one that writes it to the chain');
+assert.equal(primaryLabel({ taken: true, over: true, name: 'Rafael Moreira', g: him }),
+             'Hand over · record this shift',
+             'and a finished shift is exactly the one with something left to do');
+assert.equal(primaryLabel({ taken: true, over: false, name: 'Rafael Moreira', g: him }).includes('her'),
+             false, 'the ward admits men');
+
+console.log('shift_logic: ok (and the page has one button)');
