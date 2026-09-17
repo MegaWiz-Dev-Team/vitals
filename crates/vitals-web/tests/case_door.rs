@@ -399,6 +399,7 @@ fn a_patient_is_placed_only_on_a_case_written_about_somebody_like_her() {
         difficulty: level.into(),
         endemic: country.is_some(),
         provisional: true,
+        withdrawn: false,
         version: version.into(),
         title: id.into(),
     };

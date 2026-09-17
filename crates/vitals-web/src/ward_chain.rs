@@ -1179,6 +1179,16 @@ pub fn enqueue(store: &crate::store::Store, packs: Vec<crate::ward::Pack>) -> Qu
                 continue;
             }
         }
+        // Out of service. The pack is still in the store and the patients on it still open; what a
+        // withdrawn case does not get is anybody new.
+        if let Some(gone) = held.iter().find(|c| c.case_id == pack.case && c.withdrawn) {
+            out.rejected.push(format!(
+                "{} has been withdrawn — it stays for the patients already on it, and nobody new \
+                 is put on it. Leave the pack's case empty and let the ward choose one",
+                gone.case_id
+            ));
+            continue;
+        }
         if !pack.case.is_empty() && !held.iter().any(|c| c.case_id == pack.case) {
             out.rejected.push(format!(
                 "{} is not a case this ward holds — send it through /api/ward/case first, or \

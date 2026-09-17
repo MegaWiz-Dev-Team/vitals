@@ -2527,7 +2527,12 @@ fn guarded(path: &str) -> bool {
 fn door(path: &str) -> bool {
     // `/api/ward/case` is the case factory's, and `/api/ward/cases` — a letter apart — is the
     // catalogue anybody may read. Exact match on the first, which is why this is not a prefix.
-    path == "/api/ward/queue" || path == "/api/ward/case" || path.starts_with("/api/ward/pack/")
+    path == "/api/ward/queue"
+        || path == "/api/ward/case"
+        // `/api/ward/case/<id>/withdraw` — taking a case out of service is the factory's door too,
+        // and a public one would let a stranger empty the ward's catalogue.
+        || (path.starts_with("/api/ward/case/") && path.ends_with("/withdraw"))
+        || path.starts_with("/api/ward/pack/")
 }
 
 fn bearer_ok(req: &tiny_http::Request, token: &Option<String>) -> bool {
@@ -4433,6 +4438,62 @@ fn main() {
                 }
                 continue;
             }
+            // Taking a case out of service. **Not a delete**: patients are mid-stay on these and
+            // their charts are rebuilt from the pack, so it stays in the store and stays readable
+            // for as long as anybody is on it. What is withdrawn is its future.
+            //
+            // It exists because the compiler's own rules can change under a catalogue that is
+            // already full: it stopped accepting non-English cases on 17 ก.ย., and sixty of the
+            // cases this ward held were Thai ones with English placeholders filled into them —
+            // "womanวัยกลางคน…" over a Japanese patient. Without this the only ways to stop that
+            // are deleting the packs the chain's patients depend on, or emptying the ward.
+            (Method::Post, p) if p.starts_with("/api/ward/case/") && p.ends_with("/withdraw") => {
+                if !ward_mode() {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "error": "this host has no ward"
+                    }), 404));
+                    continue;
+                }
+                let id = p
+                    .trim_start_matches("/api/ward/case/")
+                    .trim_end_matches("/withdraw")
+                    .trim_matches('/')
+                    .to_string();
+                let key = ward_case::key_for(&id);
+                let Some(mut pack) = store.get::<serde_json::Value>(ward_case::CASE_STORE, &key)
+                else {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "refused": format!("{id} is not a case this ward holds")
+                    }), 404));
+                    continue;
+                };
+                // The same rule as replacing one, and for the same reason: somebody has played a
+                // reviewed case and the chain carries what they did.
+                if !pack.get("provisional").and_then(|p| p.as_bool()).unwrap_or(true) {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "refused": format!(
+                            "{id} is reviewed, and a reviewed case is not withdrawn: somebody has \
+                             played it and the chain carries shifts against it"
+                        )
+                    }), 409));
+                    continue;
+                }
+                pack["withdrawn"] = serde_json::Value::Bool(true);
+                match store.put(ward_case::CASE_STORE, &key, &pack) {
+                    Ok(()) => {
+                        let _ = req.respond(json(serde_json::json!({
+                            "withdrawn": id,
+                            "kept": "the pack stays in the store and stays readable: the patients                                      already on this case are rebuilt from it",
+                        })));
+                    }
+                    Err(e) => {
+                        let _ = req.respond(json_code(serde_json::json!({
+                            "refused": format!("the case could not be withdrawn: {e}")
+                        }), 503));
+                    }
+                }
+                continue;
+            }
             // What the ward is holding, without the scenarios: a pack is twenty kilobytes and
             // nobody reading the catalogue needs one.
             (Method::Get, "/api/ward/cases") => {
@@ -4451,8 +4512,14 @@ fn main() {
                         // assume, and the age its physiology was tuned for. The factory places a
                         // person against these.
                         "patient": { "age": c.patient_age, "sex": c.patient_sex },
+                        // Out of service: still here, still readable for the patients on it, never
+                        // placed again. A reader deciding what can be played asks `?placeable=1`.
+                        "withdrawn": c.withdrawn,
                     }))
                     .collect();
+                if param(&url, "placeable").is_some_and(|v| v == "1" || v == "true") {
+                    cases.retain(|c| c["withdrawn"] != serde_json::Value::Bool(true));
+                }
                 cases.sort_by(|a, b| a["case_id"].as_str().cmp(&b["case_id"].as_str()));
                 let _ = req.respond(json(serde_json::json!({
                     "cases": cases,
@@ -4460,7 +4527,11 @@ fn main() {
                         "cases": "every pack the case factory has put through /api/ward/case and \
                                   this ward accepted. `provisional` is the compiler's own word for \
                                   a case that has been compiled and not clinically reviewed; a \
-                                  reviewed one cannot be replaced under the same id",
+                                  reviewed one cannot be replaced under the same id. `withdrawn` is \
+                                  a case taken out of service: it stays here and stays readable, \
+                                  because patients are mid-stay on it and their charts are rebuilt \
+                                  from it, and nobody new is ever placed on it. `?placeable=1` \
+                                  leaves the withdrawn ones out",
                     },
                 })));
                 continue;

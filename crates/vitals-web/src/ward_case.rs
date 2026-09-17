@@ -33,6 +33,11 @@ pub struct CaseSummary {
     /// Compiled but not clinically reviewed. A provisional case may be replaced; a reviewed one
     /// may not, because somebody has played it and the chain carries what they did.
     pub provisional: bool,
+    /// Taken out of service. Not a delete: the pack stays in the store and stays readable, because
+    /// patients are mid-stay on it and their charts are rebuilt from it. What is gone is its
+    /// future — the ward never places anybody new on it and the queue door refuses a pack naming
+    /// it. A reviewed case cannot be withdrawn, for the reason it cannot be replaced.
+    pub withdrawn: bool,
     pub version: String,
     pub title: String,
     /// The age the case is written about, and the sex it is written for — the pack's own
@@ -190,6 +195,7 @@ pub fn validate_case(pack: &Value) -> Result<CaseSummary, String> {
         difficulty,
         endemic: pack.get("endemic").and_then(Value::as_bool).unwrap_or(false),
         provisional: pack.get("provisional").and_then(Value::as_bool).unwrap_or(true),
+        withdrawn: pack.get("withdrawn").and_then(Value::as_bool).unwrap_or(false),
         version,
         title: s("title"),
         patient_age: pack.get("patient").and_then(|p| p.get("age")).and_then(Value::as_u64).map(|a| a as u32),
@@ -315,6 +321,10 @@ pub fn choose_case<'a>(
     who: &crate::ward::Persona,
     difficulty: Option<&str>,
 ) -> Option<&'a CaseSummary> {
+    // A withdrawn case is out of service and this is where "out of service" is enforced: not in the
+    // list the ward is given, so no path through this function can reach one — including the named
+    // one below, because a pack naming a withdrawn case is a pack placing somebody on it.
+    let cases: Vec<&CaseSummary> = cases.iter().filter(|c| !c.withdrawn).collect();
     if let Some(id) = wanted {
         if let Some(hit) = cases.iter().find(|c| c.case_id == id) {
             return Some(hit);
@@ -333,6 +343,7 @@ pub fn choose_case<'a>(
     // It is a preference among the cases that fit her, never a reason to take one that does not.
     let mut hers: Vec<&CaseSummary> = cases
         .iter()
+        .copied()
         .filter(|c| c.country.as_deref() == Some(who.country.as_str()))
         .filter(at_level)
         .filter(fits)
@@ -341,7 +352,7 @@ pub fn choose_case<'a>(
     if let Some(first) = hers.first() {
         return Some(first);
     }
-    let mut any: Vec<&CaseSummary> = cases.iter().filter(at_level).filter(fits).collect();
+    let mut any: Vec<&CaseSummary> = cases.iter().copied().filter(at_level).filter(fits).collect();
     any.sort_by(newest);
     any.first().copied()
 }

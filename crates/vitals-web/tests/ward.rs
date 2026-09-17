@@ -543,6 +543,7 @@ fn the_policy_publishes_the_levels_and_the_endemic_rule() {
         difficulty: level.into(),
         endemic: false,
         provisional: true,
+        withdrawn: false,
         version: "0.1.0".into(),
         title: "a compiled case".into(),
     };
@@ -1268,6 +1269,7 @@ fn the_board_says_which_case_each_patient_is_on_and_how_hard_it_is() {
         difficulty: "intern".into(),
         endemic: true,
         provisional: true,
+        withdrawn: false,
         version: "0.1.0".into(),
         title: "ไข้เลือดออก".into(),
     }];
@@ -1321,6 +1323,7 @@ fn the_policy_says_what_this_ward_actually_does() {
         difficulty: level.into(),
         endemic: false,
         provisional,
+        withdrawn: false,
         version: "0.1.0".into(),
         title: "a compiled case".into(),
     };
