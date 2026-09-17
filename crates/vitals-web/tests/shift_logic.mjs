@@ -283,3 +283,25 @@ assert.equal(primaryLabel(true, false, 'Rafael Moreira', him).includes('her'),
              false, 'the ward admits men');
 
 console.log('shift_logic: ok (and the page has one button)');
+
+// ── what a chip says ─────────────────────────────────────────────────────────
+//
+// The compiler writes a label for the row it belongs to: "Ask: Prolonged stepwise fever for 3
+// weeks", "Examine: Abdominal examination". Under a tab that already says ASK, eleven to twenty
+// chips each beginning "Ask:" is a column of the same word (director, 17 ก.ย., B4) — and at the
+// sizes a learner reads them in, the first three words are what they see.
+//
+// The prefix comes off the *display* and nothing else: `data-x` is the intervention id, and what
+// fires, lands on the tape and is marked is untouched.
+const { chipText } = new Function([grab('chipText'), 'return { chipText };'].join('\n'))();
+
+assert.equal(chipText('Ask: Prolonged stepwise fever for 3 weeks'), 'Prolonged stepwise fever for 3 weeks');
+assert.equal(chipText('Examine: Abdominal examination'), 'Abdominal examination');
+assert.equal(chipText('Ask about the shoulder tip pain'), 'Ask about the shoulder tip pain',
+             'only the compiler’s own prefix, not any sentence that starts with the word');
+assert.equal(chipText('Crystalloid bolus, reassessed'), 'Crystalloid bolus, reassessed');
+assert.equal(chipText('ask: black tarry stool'), 'black tarry stool', 'however it was cased');
+assert.equal(chipText(''), '');
+assert.equal(chipText('Ask:'), 'Ask:', 'a label that is only the prefix keeps it rather than vanishing');
+
+console.log('shift_logic: ok (and a chip says the question)');
