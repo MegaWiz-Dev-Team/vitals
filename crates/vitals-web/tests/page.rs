@@ -820,7 +820,7 @@ fn the_question_table_keeps_every_string_on_one_line_with_no_double_quote_inside
         assert!(line.matches('"').count() % 2 == 0,
                 "line {} of the table has an odd number of double quotes — a string spans lines: {line}", n + 1);
     }
-    for set in ["physician", "student", "physician_world", "student_world"] {
+    for set in ["physician", "student", "physician_world", "student_world", "student_lang"] {
         assert!(table.contains(&format!("\n    {set}: [")), "QS has no `{set}` set");
     }
 }
@@ -934,6 +934,45 @@ fn the_instance_table_names_a_question_set_and_the_first_instance_names_none() {
             "{}", row("yo-world-2026-09"));
     assert!(row("muk-world-2026-09").contains("role: \"student\"") && row("muk-world-2026-09").contains("qs: \"student_world\""),
             "{}", row("muk-world-2026-09"));
+    assert!(row("muk-lang-2026-09-17").contains("role: \"student\"") && row("muk-lang-2026-09-17").contains("qs: \"student_lang\""),
+            "{}", row("muk-lang-2026-09-17"));
+}
+
+/// **The language instance asks one item per translated case, each with its lines.**
+///
+/// `/review?for=muk-lang-2026-09-17` is the learner-experience reviewer's third link: the 60
+/// World cases translated from their Thai sources, one item each, from
+/// `embla-cases-world/reviews/LANGUAGE_REVIEW_PACKET_2026-09-17.md`. Every item shows the
+/// packet's title pair and its five English-against-Thai lines side by side — six rows — and
+/// every item offers the three rulings (ผ่าน / แก้ / ไม่ผ่าน), so a pass is recordable as a pass
+/// and not as silence. One group, whose note is the packet's own instructions.
+#[test]
+fn the_language_instance_asks_one_item_per_translated_case_with_its_lines_beside_each_other() {
+    let lang = built("muk-lang-2026-09-17", "");
+    assert_eq!(lang["pick_hidden"], true);
+    assert_eq!(lang["pressed"], serde_json::json!(["student"]));
+    let hello = lang["greeting"].as_str().unwrap();
+    assert!(hello.contains("น้องมุก") && !hello.contains("อาจารย์"), "{hello}");
+
+    let ids = ids_of(&lang);
+    assert_eq!(ids.len(), 60, "the packet lists 60 translated cases: {ids:?}");
+    let mut uniq = ids.clone();
+    uniq.sort();
+    uniq.dedup();
+    assert_eq!(uniq.len(), 60, "duplicate question ids: {ids:?}");
+    for other in [built("", "student"), built("", "physician"), built("muk-world-2026-09", ""), built("yo-world-2026-09", "")] {
+        let theirs = ids_of(&other);
+        assert!(ids.iter().all(|id| !theirs.contains(id)), "ids shared with another set: {ids:?}");
+    }
+    assert_eq!(lang["optionless"], serde_json::json!([]), "every case must be passable with one tap");
+    let rows: Vec<u64> = lang["rows"].as_array().unwrap().iter().map(|r| r.as_u64().unwrap()).collect();
+    assert!(rows.iter().all(|r| *r == 6), "each item is the title pair plus the packet's five lines: {rows:?}");
+
+    let groups: Vec<&str> = lang["groups"].as_array().unwrap().iter().map(|g| g.as_str().unwrap()).collect();
+    assert_eq!(groups.len(), 1, "one group, with the how-to-review note at the top: {groups:?}");
+    assert!(lang["title"].as_str().unwrap().contains("60"), "{}", lang["title"]);
+    let keys: Vec<&str> = lang["draft_keys"].as_array().unwrap().iter().map(|k| k.as_str().unwrap()).collect();
+    assert!(keys.iter().all(|k| k.ends_with(":muk-lang-2026-09-17")), "{keys:?}");
 }
 
 // ── the footers reach the policy ────────────────────────────────────────────
