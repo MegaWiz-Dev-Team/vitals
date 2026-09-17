@@ -184,8 +184,19 @@ A pack is written only if, in this order:
    `station A`…`station D`/`OSCE station`, `/img/`, `/clip/`) or a whole-word token of the
    Embla patient's name. (An obstetric *fetal station* is not a season station.)
 
-Before any of that, a case the library's own `deployments.jsonl` records as deployed to target
-`vitals` is **refused as a season source** — the founder's rule that World never carries the
+Before any of that, two gates that read nothing but the case's own metadata:
+
+- **Language.** World compiles only cases whose `meta.language` is English (`en`, or an `en-…`
+  tag). A Thai story rendered under a persona from elsewhere is a wrong sheet — the ward showed
+  `womanวัยกลางคน…`, an English fill inside Thai prose over a patient from Japan — and there is no
+  translation step yet. Any other language, or a missing tag, is refused with `language: th — no
+  translation step yet` and counted in `REPORT.md`'s *Refused by language* section, so the
+  authors can see how many World-ready library cases are Thai. Defensively, the persona
+  placeholders (`{age}`, `{sex_word}`, the pronouns) never fire inside a non-English string —
+  counted by letters, more Latin than any other script — so a later translation step inherits
+  prose that was never half-filled; the leak scan still refuses such a pack.
+- **Season source.** A case the library's own `deployments.jsonl` records as deployed to target
+  `vitals` is **refused as a season source** — the founder's rule that World never carries the
 season's content — and `REPORT.md` lists them in a section of their own.
 
 The proof — untreated death time, the winning path with its clock, the golden score — is

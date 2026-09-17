@@ -46,12 +46,17 @@ fn adrenaline_im_is_a_timed_item_and_the_no_harm_items_price_the_reflexes() {
 }
 
 #[test]
-fn the_library_anaphylaxis_cases_with_vitals_compile() {
+fn the_library_anaphylaxis_cases_fit_the_shape_and_are_refused_only_by_language() {
+    // The Thai library cases fit the archetype below the gate; the gate refuses them for their
+    // language, not for their physiology — so the day a translation step exists they compile.
     let Some(dir) = common::embla_dir() else { return common::skip("embla-cases not present"); };
     for id in ["ddx-anaphylaxis-3", "ddx-anaphylaxis-4"] {
         let Some(json) = common::library_case(&dir, id) else { continue };
-        let p = compile(&json, Source::of("embla-cases", "worktree", &json)).unwrap_or_else(|e| panic!("{id}: {}", e.reason));
-        assert_eq!(p.archetype, "anaphylaxis", "{id}");
-        eprintln!("{id}: dies untreated {} s, wins {} at {} s", p.replay.untreated_death_sec, p.replay.win_outcome, p.replay.win_sec);
+        let case = vitals_casefactory::embla::parse_case(&json).unwrap();
+        let v0 = case.vitals0().unwrap();
+        let a = vitals_casefactory::archetype::Archetype::detect(&case, &v0).unwrap_or_else(|e| panic!("{id}: {e}"));
+        assert_eq!(a, vitals_casefactory::archetype::Archetype::Anaphylaxis, "{id}");
+        let err = compile(&json, Source::of("embla-cases", "worktree", &json)).unwrap_err();
+        assert_eq!(err.reason, "language: th — no translation step yet", "{id}");
     }
 }

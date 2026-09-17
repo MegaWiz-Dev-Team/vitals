@@ -113,32 +113,43 @@ fn a_synthetic_pea_presentation_compiles_and_shocks_are_harm_from_the_first_seco
 }
 
 #[test]
-fn the_library_rhythm_cases_compile_under_the_tachycardia_archetypes_or_are_refused_as_controlled() {
+fn the_library_rhythm_cases_fit_the_tachycardia_shapes_below_the_language_gate() {
+    // The Thai library cases are refused by the language gate before anything else is read;
+    // below it, the archetype layer still reads them right — so the day a translation step
+    // exists they compile under the shapes they fit, and the controlled ones stay refused.
+    use vitals_casefactory::archetype::Archetype;
+    use vitals_casefactory::embla::parse_case;
     let Some(dir) = common::embla_dir() else { return common::skip("embla-cases not present"); };
     let mut failures = Vec::new();
     // two of the four atrial fibrillations arrive rate-controlled (88 and 92 a minute, a normal
     // pressure): not a deterioration, and never another archetype's patient either
     for id in ["ddx-atrial-fibrillation-1", "ddx-atrial-fibrillation-3"] {
         let Some(json) = common::library_case(&dir, id) else { continue };
-        match compile(&json, Source::of("embla-cases", "worktree", &json)) {
-            Ok(p) => failures.push(format!("{id}: compiled as {} but is a controlled rhythm", p.archetype)),
+        let case = parse_case(&json).unwrap();
+        let v0 = case.vitals0().unwrap();
+        match Archetype::detect(&case, &v0) {
+            Ok(a) => failures.push(format!("{id}: fits {} but is a controlled rhythm", a.id())),
             Err(e) => {
-                if !e.reason.contains("controlled rhythm") { failures.push(format!("{id}: {}", e.reason)); }
+                if !e.contains("controlled rhythm") { failures.push(format!("{id}: {e}")); }
             }
         }
     }
     for (id, want) in [
-        ("ddx-psvt-1", "acls_tachycardia_svt"), ("ddx-psvt-2", "acls_tachycardia_svt"),
-        ("ddx-psvt-3", "acls_tachycardia_svt"), ("ddx-psvt-4", "acls_tachycardia_svt"),
-        ("ddx-atrial-fibrillation-2", "acls_tachycardia_af"), ("ddx-atrial-fibrillation-4", "acls_tachycardia_af"),
+        ("ddx-psvt-1", Archetype::AclsTachycardiaSvt), ("ddx-psvt-2", Archetype::AclsTachycardiaSvt),
+        ("ddx-psvt-3", Archetype::AclsTachycardiaSvt), ("ddx-psvt-4", Archetype::AclsTachycardiaSvt),
+        ("ddx-atrial-fibrillation-2", Archetype::AclsTachycardiaAf), ("ddx-atrial-fibrillation-4", Archetype::AclsTachycardiaAf),
     ] {
         let Some(json) = common::library_case(&dir, id) else { failures.push(format!("{id}: not in library")); continue };
-        match compile(&json, Source::of("embla-cases", "worktree", &json)) {
-            Ok(p) => {
-                if p.archetype != want { failures.push(format!("{id}: {} not {want}", p.archetype)); }
-                eprintln!("{id}: {} dies untreated {} s, wins {} at {} s", p.archetype, p.replay.untreated_death_sec, p.replay.win_outcome, p.replay.win_sec);
-            }
-            Err(e) => failures.push(format!("{id}: {}", e.reason)),
+        let case = parse_case(&json).unwrap();
+        let v0 = case.vitals0().unwrap();
+        match Archetype::detect(&case, &v0) {
+            Ok(a) if a == want => {}
+            Ok(a) => failures.push(format!("{id}: {} not {}", a.id(), want.id())),
+            Err(e) => failures.push(format!("{id}: {e}")),
+        }
+        let err = compile(&json, Source::of("embla-cases", "worktree", &json)).unwrap_err();
+        if err.reason != "language: th — no translation step yet" {
+            failures.push(format!("{id}: refused for {:?}, not for its language", err.reason));
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));

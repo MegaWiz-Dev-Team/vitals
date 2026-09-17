@@ -217,6 +217,22 @@ fn is_word_char(c: char) -> bool {
     c.is_alphanumeric() || c == '\''
 }
 
+/// Is this string English prose? Counted by letters: more Latin letters than letters of any
+/// other script. A Thai sentence with one English drug name is Thai; an English sentence with one
+/// Thai word is English; a string with no letters at all is left to the English path.
+pub fn is_english(text: &str) -> bool {
+    let mut latin = 0usize;
+    let mut other = 0usize;
+    for c in text.chars().filter(|c| c.is_alphabetic()) {
+        if c.is_ascii_alphabetic() || matches!(c, 'À'..='ÿ') {
+            latin += 1;
+        } else {
+            other += 1;
+        }
+    }
+    latin >= other
+}
+
 /// One sex's word table: the English `(word, placeholder)` pairs and the Thai nouns.
 type SexWords = (&'static [(&'static str, &'static str)], &'static [&'static str]);
 
@@ -255,7 +271,16 @@ impl Persona {
     }
 
     /// Replace the patient's age and sex words with placeholders.
+    ///
+    /// Only inside English prose. A placeholder is filled with an English word, and an English
+    /// word inside Thai (or any other script's) prose is the wrong sheet whichever persona fills
+    /// it — the ward showed exactly that. Until a translation step exists, a non-English string
+    /// is left as written; the language gate refuses such cases upstream, and this is the belt
+    /// to that brace for the day one gets through.
     pub fn depersonalise(&self, text: &str) -> String {
+        if !is_english(text) {
+            return text.to_string();
+        }
         let mut out = text.to_string();
         if let Some(a) = self.age {
             let n = a.to_string();

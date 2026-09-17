@@ -17,7 +17,10 @@ pub enum Outcome {
 /// Coarsen a refusal reason to the family it belongs to, for grouping.
 pub fn reason_family(reason: &str) -> String {
     let r = reason;
-    if r.starts_with("season source") {
+    if r.starts_with("language: ") {
+        let lang = r.trim_start_matches("language: ").split(' ').next().unwrap_or("?");
+        format!("language: {lang} (no translation step yet)")
+    } else if r.starts_with("season source") {
         "season source (the season's content, excluded by rule)".into()
     } else if r.starts_with("the prose still states") {
         "prose still states the patient's age or sex (placeholder pass missed it)".into()
@@ -82,6 +85,31 @@ pub fn render(results: &[(String, Outcome)], library: &str, git_ref: &str, commi
         let lo = deaths.iter().cloned().fold(f64::INFINITY, f64::min);
         let hi = deaths.iter().cloned().fold(0.0, f64::max);
         s.push_str(&format!("| {a} | {} | {endemic} | {lo:.0}–{hi:.0} |\n", packs.len()));
+    }
+
+    // refused by language: how many World-ready library cases are not in English
+    let mut by_lang: BTreeMap<String, Vec<&String>> = BTreeMap::new();
+    for (id, r) in &refused {
+        if let Some(rest) = r.reason.strip_prefix("language: ") {
+            let lang = rest.split(' ').next().unwrap_or("?").to_string();
+            by_lang.entry(lang).or_default().push(id);
+        }
+    }
+    let by_language_total: usize = by_lang.values().map(Vec::len).sum();
+    s.push_str("\n## Refused by language (World compiles English cases only — no translation step yet)\n\n");
+    if by_lang.is_empty() {
+        s.push_str("None: every case in this library that reached the gate is in English.\n");
+    } else {
+        s.push_str(&format!("{by_language_total} case(s) refused before anything else was read.\n\n| language | cases |\n|---|---|\n"));
+        for (lang, ids) in &by_lang {
+            s.push_str(&format!("| {lang} | {} |\n", ids.len()));
+        }
+        for (lang, ids) in &by_lang {
+            s.push_str(&format!("\n### {lang} — {}\n\n", ids.len()));
+            for id in ids {
+                s.push_str(&format!("- `{id}`\n"));
+            }
+        }
     }
 
     // the season's own, refused by rule

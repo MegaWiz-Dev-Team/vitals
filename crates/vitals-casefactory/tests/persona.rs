@@ -25,11 +25,16 @@ fn the_other_sex_and_other_peoples_ages_stay_and_so_does_the_body() {
 }
 
 #[test]
-fn thai_age_and_sex_nouns_are_placeholders_too() {
+fn thai_prose_is_left_as_written_and_the_scan_still_names_what_it_states() {
+    // Ruling of 17 Sep: a placeholder is filled with an English word, so it never fires inside
+    // non-English prose. The language gate refuses such cases upstream; if one ever got
+    // through, the scan would still refuse the pack rather than ship a Thai sentence that names
+    // the patient's sex — the belt to that brace.
+    use vitals_casefactory::text::prose_leaks;
     let s = depersonalise("ผู้ป่วยชายอายุ 26 ปี มาด้วยไข้", Some(26), Some("male"));
-    assert_eq!(s, "{sex_word}อายุ {age} ปี มาด้วยไข้");
-    let s = depersonalise("หญิงวัย 45 ปี", Some(45), Some("female"));
-    assert_eq!(s, "{sex_word}วัย {age} ปี");
+    assert_eq!(s, "ผู้ป่วยชายอายุ 26 ปี มาด้วยไข้");
+    let leaks = prose_leaks(&s, Some(26), Some("male"));
+    assert!(leaks.iter().any(|l| l.contains("age")) && leaks.iter().any(|l| l.contains("sex word")), "{leaks:?}");
 }
 
 #[test]

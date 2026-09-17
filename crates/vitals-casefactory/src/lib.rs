@@ -147,6 +147,15 @@ pub fn compile(case_json: &str, source: Source) -> Result<Pack, Refusal> {
     let case = embla::parse_case(case_json).map_err(|e| refuse("?", e))?;
     let id = case.meta.id.clone();
 
+    // The language gate comes first: a Thai story rendered under a persona from elsewhere is a
+    // wrong sheet, and there is no translation step yet. Only English compiles; a case that says
+    // nothing about its language is not assumed to be English.
+    match case.meta.language.as_deref().map(|l| l.trim().to_lowercase()) {
+        Some(l) if l == "en" || l.starts_with("en-") || l.starts_with("en_") => {}
+        Some(l) => return Err(refuse(&id, format!("language: {l} — no translation step yet"))),
+        None => return Err(refuse(&id, "language: unknown — meta.language is missing; no translation step yet".to_string())),
+    }
+
     let difficulty = match case.meta.difficulty.as_deref().map(str::to_lowercase).as_deref() {
         Some("student") => "student",
         Some("intern") => "intern",
