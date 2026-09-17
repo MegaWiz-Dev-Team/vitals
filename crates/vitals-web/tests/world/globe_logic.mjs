@@ -37,13 +37,13 @@ const grabConst = (name) => {
 };
 
 const sandbox = [grabConst('ALPHA3'), grabConst('STATE_LABEL'), grabConst('DOCTOR_BINS'), grab('countryId'), grab('countryCounts'), grab('visible'),
-  grab('stateOf'), grab('onBoard'), grab('inBeds'), grab('canTakeShift'), grab('censusFigures'), grab('paintOf'), grab('hoverText'), grab('shouldReload'), grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
+  grab('stateOf'), grab('onBoard'), grab('inBeds'), grab('canTakeShift'), grab('censusFigures'), grab('paintOf'), grab('hoverText'), grab('waitingCounts'), grab('figuresFor'), grab('bedsEmptyWords'), grab('shouldReload'), grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
   grab('peoplePerDoctor'), grab('latestOf'), grab('tenYearTrend'), grab('fmtTrend'), grab('fmtPeople'), grab('doctorLine'),
   grab('worldAverage'), grab('missionLine'), grab('doctorBin'),
   grab('yearValue'), grab('yearRange'), grab('doctorLineAt'), grab('worldAverageAt'), grab('missionLineAt'),
   grab('escapeHtml'), grab('portraitImg'),
-  'return { countryId, countryCounts, visible, inBeds, canTakeShift, censusFigures, ALPHA3, shouldReload, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg };'].join('\n');
-const { countryId, countryCounts, inBeds, canTakeShift, censusFigures, visible, ALPHA3, shouldReload, whenMs, relative, absolute, stateLine,
+  'return { countryId, countryCounts, visible, inBeds, canTakeShift, censusFigures, ALPHA3, waitingCounts, figuresFor, bedsEmptyWords, shouldReload, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg };'].join('\n');
+const { countryId, countryCounts, inBeds, canTakeShift, censusFigures, visible, ALPHA3, waitingCounts, figuresFor, bedsEmptyWords, shouldReload, whenMs, relative, absolute, stateLine,
   stateOf, onBoard, paintOf, hoverText, STATE_LABEL,
   DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin,
   yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg } = new Function(sandbox)();
@@ -230,6 +230,45 @@ assert.equal(bare.title, '');
 const undated = line({ state: 'on_ward', admitted_slot: 499_139_724, closed_slot: 0 });
 assert.equal(undated.text, 'on the ward',
   'a slot the chain has not dated for us is not a time we invent from the read\'s own slot');
+
+// ── the door, and the people behind it ───────────────────────────────────────
+//
+// Founder's ruling, 18 ก.ย.: a third door between closed and open. In `preview` the factory fills
+// the queue and the board publishes who is in it — so the globe rings the countries they are from,
+// the panel lists them, and nothing on the page offers to treat anybody. Production spent the week
+// before the fair behind a closed door with an empty board, which proved nothing to anybody who
+// opened it.
+//
+// The rings first: a waiting patient is not in a bed, so she is not in the ring that counts beds.
+// Her country gets its own count, and the legend says which is which.
+assert.deepEqual(waitingCounts([]), {});
+assert.deepEqual(
+  waitingCounts([{ country: "BGD" }, { country: "THA" }, { country: "BGD" }, { country: "ZZZ" }]),
+  { "050": 2, "764": 1 },
+  "counted by the same country ids the beds ring uses, and a country the atlas cannot place is \
+   left out of the ring rather than drawn somewhere wrong");
+
+// The figures row says what the door is doing. In preview the beds are empty and saying "0 in
+// beds" alone reads as a ward that lost its patients.
+assert.deepEqual(figuresFor("open", { shifts: 14, went_home: 0, died: 0 }, [], 3, 20),
+  [["in beds", 3], ["on shift now", 0], ["shifts", 14], ["went home", 0], ["died", 0]],
+  "an open ward's figures are what they always were");
+assert.deepEqual(figuresFor("preview", { shifts: 0, went_home: 0, died: 0 }, [], 0, 20),
+  [["in beds", 0], ["waiting", 20], ["opening", "soon"]],
+  "and a preview ward says what it is: nobody in a bed, twenty waiting, opening soon");
+assert.deepEqual(figuresFor("closed", {}, [], 0, 0), [],
+  "a closed ward publishes no queue and has no figures to give");
+
+// What the panel says when there is nobody in a bed. Three different facts, and the founder read
+// the wrong one on production: "the ward admits from its queue every minute" over a door that was
+// shut and a queue that was empty.
+assert.equal(bedsEmptyWords("closed", 0), "The door is closed · opening soon");
+assert.equal(bedsEmptyWords("preview", 20), "20 patients are waiting · the ward opens soon");
+assert.equal(bedsEmptyWords("preview", 0), "The ward opens soon · the queue is filling");
+assert.equal(bedsEmptyWords("open", 0), "No patient in a bed · the queue is empty");
+assert.equal(bedsEmptyWords("open", 4), "No patient in a bed · the ward admits from its queue every minute");
+assert.equal(bedsEmptyWords("open", null), "No patient in a bed · the queue is empty",
+  "a queue the ward could not count is not a queue with somebody in it");
 
 // ── the build under an open tab ───────────────────────────────────────────────
 // The founder read a ward three hours out of date in his own tab: the page had been fixed, his
