@@ -194,7 +194,7 @@ fn the_factory_speaks_to_four_routes_and_never_takes() {
         let mut rest = line;
         while let Some(i) = rest.find("/api/ward") {
             let tail = &rest[i..];
-            let end = tail.find(|c: char| c == '"' || c == '{' || c == ' ' || c == ')').unwrap_or(tail.len());
+            let end = tail.find(['"', '{', ' ', ')', ':']).unwrap_or(tail.len());
             routes.push(tail[..end].trim_end_matches('/').to_string());
             rest = &tail[end..];
         }

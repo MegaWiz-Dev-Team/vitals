@@ -10,7 +10,7 @@
 //! seeded entries carry no age; theirs is the batch's, by index, and [`batch_age`] says so.
 
 use crate::pool::Person;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ops::RangeInclusive;
 use std::path::Path;
 
@@ -37,10 +37,20 @@ pub struct Entry {
     pub portrait_256: BTreeMap<String, String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Manifest {
     pub entries: BTreeMap<String, Entry>,
+    /// The keys the file held when this was loaded — so a save can tell an entry another
+    /// factory added since (kept) from one this factory removed on purpose (not brought back).
+    loaded: BTreeSet<String>,
 }
+
+impl PartialEq for Manifest {
+    fn eq(&self, other: &Manifest) -> bool {
+        self.entries == other.entries
+    }
+}
+impl Eq for Manifest {}
 
 /// A base that fits: which entry, at what age, and where.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,7 +86,8 @@ impl Manifest {
             };
             entries.insert(key, entry);
         }
-        Ok(Manifest { entries })
+        let loaded = entries.keys().cloned().collect();
+        Ok(Manifest { entries, loaded })
     }
 
     pub fn to_json(&self) -> String {
@@ -92,9 +103,24 @@ impl Manifest {
         }
     }
 
-    /// Written whole through a temp file and a rename, so a crash mid-write leaves the old file.
+    /// Written whole through a temp file and a rename, so a crash mid-write leaves the old file
+    /// — after merging what is on disk, because the faces are shared between wards and two
+    /// factories may hold the file: an entry another factory added since this one loaded is
+    /// kept; an entry another factory removed since this one loaded (`--face` remakes one) stays
+    /// removed; an entry this one removed on purpose stays removed; ours wins for a key both
+    /// hold.
     pub fn save(&self, path: &Path) -> Result<(), String> {
-        write_atomically(path, &self.to_json())
+        let mut merged = self.entries.clone();
+        if let Ok(on_disk) = Manifest::load(path) {
+            for (k, e) in &on_disk.entries {
+                if !merged.contains_key(k) && !self.loaded.contains(k) {
+                    merged.insert(k.clone(), e.clone());
+                }
+            }
+            merged.retain(|k, _| on_disk.entries.contains_key(k) || !self.loaded.contains(k));
+        }
+        let whole = Manifest { entries: merged, loaded: BTreeSet::new() };
+        write_atomically(path, &whole.to_json())
     }
 
     /// The age an entry's base was made at: recorded, or the batch's by index.

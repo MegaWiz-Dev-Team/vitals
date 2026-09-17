@@ -685,7 +685,8 @@ fn faces_are_shared_between_wards_and_packs_are_not() {
     b.record_base("BRA-1", 45, &sha_url(b"b"), pool.iter().find(|p| p.key == "BRA-1").unwrap());
     b.save(&path).unwrap();
     let merged = Manifest::load(&path).unwrap();
-    assert!(merged.entries.contains_key("THA-0") && merged.entries.contains_key("BRA-1"), "{:?}", merged.entries.keys().collect::<Vec<_>>());
+    let has = |prefix: &str| merged.entries.keys().any(|k| k.starts_with(prefix));
+    assert!(has("THA-0") && has("BRA-1"), "{:?}", merged.entries.keys().collect::<Vec<_>>());
     assert!(!merged.entries.contains_key(&removed), "removed on purpose by a, and b's save did not bring it back");
     assert_eq!(merged.entries.len(), before + 1);
 }

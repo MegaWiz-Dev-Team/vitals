@@ -13,6 +13,10 @@
 //!     reads them is landing, and the one before it ignores them;
 //!   * `POST /api/ward/pack/<id>` — more of one patient's pictures, add only, same token.
 //!
+//! Those four and no other. The factory never takes, admits or frees a bed — the ward's ticker
+//! does — so a 409 from a take-style route is nothing it can receive, and nothing it would act
+//! on if it did.
+//!
 //! Every answer is read for what it says. The door answers a closed ward with 503 and the word
 //! `closed`, which is "come back later" and never "stop building"; it answers a bad page with
 //! `error` and the shape it wanted; and it never answers a push with fewer than four numbers.
@@ -49,8 +53,17 @@ impl std::fmt::Debug for Token {
 pub struct Queue {
     pub waiting: usize,
     pub beds: usize,
-    /// `open` or `closed`.
+    /// `open` (packs taken, patients admitted), `preview` (packs taken, nobody admitted — since
+    /// 17 Sep, the queue fills while the founder looks) or `closed`.
     pub door: String,
+}
+
+impl Queue {
+    /// Does the door take packs this tick? `open` and `preview` do; `closed` and any word the
+    /// factory does not know do not.
+    pub fn takes_packs(&self) -> bool {
+        matches!(self.door.as_str(), "open" | "preview")
+    }
 }
 
 /// One entry on the board, with the fields the factory uses. Everything about who she is may be

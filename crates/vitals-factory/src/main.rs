@@ -8,7 +8,8 @@
 //! | `QUEUE_DEPTH`            | 20                                       | keep at least this many packs waiting    |
 //! | `BASES_PER_TICK`         | 2                                        | faces made with mflux per tick (≈ 3 min each on the mini, measured 16 Sep) |
 //! | `VITALS_REPO`            | the checkout this binary was built from  | the pool and the physicians series       |
-//! | `VITALS_WORLD_DIR`       | `~/.vitals/world`                        | the manifest, the ledger, the faces      |
+//! | `VITALS_WORLD_DIR`       | `~/.vitals/world`                        | this ward's ledger and logs — one per ward |
+//! | `VITALS_FACES_DIR`       | the world dir                            | the manifest, the face bytes, the paint scratch — shared between wards |
 //! | `VITALS_GCP_PROJECT`     | *(required)*                             | the ward's project, where its `vitals-door-token` secret lives (`vitals-academy-dev` for staging, `vitals-academy` for production) |
 //! | `VITALS_VERTEX_PROJECT`  | `vitals-academy`                         | the image editor's project               |
 //! | `VITALS_PORTRAIT_BUCKET` | `vitals-world-portraits`                 | where faces are published                |
@@ -168,6 +169,7 @@ fn config(dry_run: bool) -> Result<Config, String> {
     }
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
     let world_dir = std::env::var_os("VITALS_WORLD_DIR").map(PathBuf::from).unwrap_or_else(|| home.join(".vitals/world"));
+    let faces_dir = std::env::var_os("VITALS_FACES_DIR").map(PathBuf::from).unwrap_or_else(|| world_dir.clone());
     let seed = env_num("FACTORY_SEED", now())?;
     Ok(Config {
         ward: ward.trim_end_matches('/').to_string(),
@@ -175,6 +177,7 @@ fn config(dry_run: bool) -> Result<Config, String> {
         bases_per_tick: env_num("BASES_PER_TICK", 2)? as usize,
         repo: default_repo(),
         world_dir,
+        faces_dir,
         secret_project: std::env::var("VITALS_GCP_PROJECT").ok().filter(|v| !v.trim().is_empty()).ok_or_else(|| {
             "VITALS_GCP_PROJECT is not set — the ward's own project, where its vitals-door-token secret lives \
              (vitals-academy-dev for staging, vitals-academy for production); a token from the wrong project is a door \

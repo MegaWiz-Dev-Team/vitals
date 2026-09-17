@@ -64,8 +64,12 @@ pub struct Config {
     pub bases_per_tick: usize,
     /// The checkout: the pool and the physicians series.
     pub repo: PathBuf,
-    /// `~/.vitals/world`: the manifest, the ledger, the faces.
+    /// `~/.vitals/world`: this ward's ledger and logs. One per ward, so two wards' patients
+    /// never share a ledger (the binary refuses a ledger written for another host).
     pub world_dir: PathBuf,
+    /// Where the faces live: the manifest, the face bytes, the paint scratch. Shared between
+    /// wards — a face made for one is on file for the other — and by default the world dir.
+    pub faces_dir: PathBuf,
     /// The ward's own GCP project: where its `vitals-door-token` secret lives. Staging is
     /// `vitals-academy-dev`, production `vitals-academy`, and a token read from the wrong one is
     /// a door that says `unauthorised` — which is how this became two fields.
@@ -88,14 +92,18 @@ pub struct Config {
 
 impl Config {
     pub fn manifest_path(&self) -> PathBuf {
-        self.world_dir.join("portraits.json")
+        self.faces_dir.join("portraits.json")
     }
     pub fn ledger_path(&self) -> PathBuf {
         self.world_dir.join("factory-ledger.json")
     }
     /// Where a face's bytes are kept locally, under the same name as in the bucket.
     pub fn face_path(&self, sha: &str) -> PathBuf {
-        self.world_dir.join("portraits").join(format!("{sha}.webp"))
+        self.faces_dir.join("portraits").join(format!("{sha}.webp"))
+    }
+    /// The painter's scratch, and `refused/` beside it.
+    pub fn work_dir(&self) -> PathBuf {
+        self.faces_dir.join("work")
     }
 }
 
@@ -302,7 +310,10 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
     if cases.iter().all(|w| w.patient.is_none()) {
         r.say("no case states its patient, so every case fits any adult of either sex this tick — a man may be drawn for a case written about a woman; the ward's 92b4181 adds `patient` to each row and the fit rule reads it");
     }
-    if ward.queue.as_ref().is_some_and(|q| q.door != "open") {
+    if let Some(q) = ward.queue.as_ref().filter(|q| q.takes_packs() && q.door == "preview") {
+        r.say(format!("the door is in preview: packs are taken and nobody is admitted; {} waiting, sending as usual", q.waiting));
+    }
+    if ward.queue.as_ref().is_some_and(|q| !q.takes_packs()) {
         r.say("the door is closed — the ward opens when the founder says so; nothing to do until then");
         if !cfg.dry_run {
             if let Err(e) = ledger.save(&cfg.ledger_path()) {
@@ -725,7 +736,7 @@ fn save_ledger(cfg: &Config, ledger: &Ledger, r: &mut Report) {
 /// sentence naming her, and nothing of the refused faces is recorded or uploaded — a doll that
 /// reached the bucket would have an address, and an address is something a pack can carry.
 fn make_face(cfg: &Config, tools: &dyn Tools, who: &Person, age: u16, place: &str, r: &mut Report) -> Result<String, String> {
-    let work = cfg.world_dir.join("work");
+    let work = cfg.work_dir();
     std::fs::create_dir_all(&work).map_err(|e| format!("{}: {e}", work.display()))?;
     let png = work.join(format!("{}@{age}.png", who.key));
     // The face's seed is the person, her age and this run's seed — so a tick (seeded by the clock
