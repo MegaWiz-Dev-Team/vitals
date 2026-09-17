@@ -4483,7 +4483,8 @@ fn main() {
                     Ok(()) => {
                         let _ = req.respond(json(serde_json::json!({
                             "withdrawn": id,
-                            "kept": "the pack stays in the store and stays readable: the patients                                      already on this case are rebuilt from it",
+                            "kept": "the pack stays in the store and stays readable: the \
+                                     patients already on this case are rebuilt from it",
                         })));
                     }
                     Err(e) => {
@@ -6895,7 +6896,8 @@ mod tests {
             );
             assert!(
                 r.sim_seconds <= limit,
-                "{ep} advertises {:.0} minutes and cannot be completed inside them: the win                  lands at {:.1}",
+                "{ep} advertises {:.0} minutes and cannot be completed inside them: the win \
+                 lands at {:.1}",
                 limit / 60.0,
                 r.sim_seconds / 60.0
             );

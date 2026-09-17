@@ -270,6 +270,22 @@ impl Server {
         }
     }
 
+    /// Every sentence in an answer reads as one — no hole in the middle of it.
+    ///
+    /// A Rust literal written across two lines without a `\` continuation keeps the source's own
+    /// indentation, and what goes over the wire is a sentence with thirty spaces in it. It has
+    /// happened three times now (the 401 from both doors, and "the pack stays in the store" in the
+    /// answer this test was written beside), always in a sentence read by the one person who can
+    /// act on it, in a log. Cheaper to catch here than to read every literal in the file.
+    fn reads_as_sentences(v: &Value) {
+        match v {
+            Value::String(s) => assert!(!s.contains("  "), "a hole in the middle of it: {s:?}"),
+            Value::Array(a) => a.iter().for_each(Self::reads_as_sentences),
+            Value::Object(o) => o.values().for_each(Self::reads_as_sentences),
+            _ => {}
+        }
+    }
+
     fn get(&self, path: &str) -> (u16, Value) {
         let url = format!("http://127.0.0.1:{}{path}", self.port);
         match ureq::get(&url).call() {
@@ -1084,6 +1100,7 @@ fn a_provisional_case_can_be_withdrawn_and_is_still_readable() {
     let (code, body) = s.post("/api/ward/case/embla-thai-library-1/withdraw", &json!({}));
     assert_eq!(code, 200, "{body}");
     assert_eq!(body["withdrawn"], "embla-thai-library-1");
+    Server::reads_as_sentences(&body);
 
     // The catalogue still lists it, and says so.
     let (code, list) = s.get("/api/ward/cases");
@@ -1130,6 +1147,7 @@ fn a_provisional_case_can_be_withdrawn_and_is_still_readable() {
     assert_eq!(s.post("/api/ward/case", &reviewed).0, 200);
     let (code, body) = s.post("/api/ward/case/embla-reviewed-1/withdraw", &json!({}));
     assert_eq!(code, 409, "{body}");
+    Server::reads_as_sentences(&body);
     assert!(body["refused"].as_str().is_some_and(|w| w.contains("reviewed")), "{body}");
 
     // A case nobody sent is a 404, and the door still takes only its own token.
