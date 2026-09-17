@@ -1484,7 +1484,9 @@ function stemHtml(e){
     + (WARDSURFACE?`<p class="stem-case" style="color:var(--ink-3,#7b8a86);margin:-.2rem 0 .6rem">${specShort(band)}${tier?' · '+tier:''}</p>`:'')
     +'<dl class="stem-g">'
       +`<dt>patient</dt><dd>${e.who||''}</dd>`
-      +`<dt>presents</dt><dd>${e.line||''}</dd>`
+      /* The bedside card two rows above says what she is presenting with, on this host. One
+         statement per fact: the sheet keeps the row on a station, where there is no card. */
+      +(WARDSURFACE?'':`<dt>presents</dt><dd>${e.line||''}</dd>`)
       +`<dt>in the room</dt><dd>${REVIEW?(room||'the case\u2019s own room'):WARD?'a public ward — anybody may take the next shift':room}</dd>`
       +`<dt>time</dt><dd>${REVIEW?'as long as you want — nothing here is timed against you':WARD?'your shift, until you hand over':(e.rt||'')}</dd>`
     +'</dl>'
@@ -3892,10 +3894,12 @@ function wardPage(html){
    moment it is said — the ward admits men, and this line is the most-read one on the page.
    `bed` is the board's number, not a second one computed here. */
 function shiftLine(bed, shift, before, g){
+  /* Short, because the button under her face is what is being asked for now and this line is the
+     context beside it. It was one sentence ending in the instruction, and a stranger read past all
+     of it looking for something to press. `g` stays in the signature: the day this line carries a
+     pronoun again, it will be the patient's. */
   return (bed?'bed '+bed+' · ':'')
-    +'shift '+shift+' of '+g.p+' stay · '+g.p+' chart is rebuilt from '+before
-    +' anchored shift'+(before===1?'':'s')
-    +' — take the shift to treat '+g.o;
+    +'shift '+shift+' · chart rebuilt from '+before+' anchored shift'+(before===1?'':'s');
 }
 
 /* Which bed she is in, from the board — the one place that works it out. It is a position in a
@@ -3911,6 +3915,33 @@ async function wardBed(){
   }catch(e){ return null; }
 }
 
+/* What the one button under the bedside card says.
+   Before the head is taken there is one thing to ask for and it is said in her name; after, the one
+   act left is the one that writes the shift to the chain. A finished shift keeps it — that is the
+   shift with something left to do, and the discharge path was closed for a day because a guard
+   read "finished" as "nothing more to do".
+   `taken` and `over` are passed rather than read off the page, so the sentence can be read without
+   one — and positionally rather than as an object, because the test that runs this function pulls
+   it out of the file by brace matching and a destructured parameter list closes the first brace. */
+function primaryLabel(taken, over, name, g){
+  if(!taken) return 'Take the shift · treat '+(name||g.o);
+  return 'Hand over · record this shift';
+}
+
+/* The bedside card's own button: the page's one action, under her face and her name, where the
+   founder looked for it ("ปุ่มเข้ารักษาคนไข้มันไม่ค่อยเด่น"). The strip keeps a second copy — a
+   stranger who has scrolled to the tray should not have to come back up. */
+function paintPrimary(){
+  const b=$('#wardprimary'); if(!b)return;
+  if(!WARD){ b.hidden=true; return; }
+  const taken=!takeFirst(WARD, id, null);
+  b.hidden=false;
+  b.textContent=primaryLabel(taken, over, (WARDSHIFT&&WARDSHIFT.name)||'', pro());
+  b.className='btn go primary'+(taken?' handover':'');
+  b.onclick=()=>{ if(!taken){ takeShift().catch(e=>wardSay(esc(e&&e.message?e.message:e))); }
+                  else { endRun(); } };
+}
+
 /* Every control that treats her, opened or closed in one place.
    Called when the page opens her and again when the head is taken, so there is one answer to
    "may I do this yet" and one sentence saying why not. */
@@ -3922,6 +3953,7 @@ function wardGate(){
   if(send)send.disabled=!!no;
   if(mic)mic.disabled=!!no;
   if($('#chips'))renderChips();
+  paintPrimary();
 }
 
 /* prepare on the server → sign here → submit to the ward's own program. The Eternal

@@ -203,15 +203,17 @@ console.log('shift_logic: ok (and the transcript reads like a conversation)');
 // A ward that does not know the bed says the rest of the sentence rather than "bed null".
 const { shiftLine } = new Function([grab('shiftLine'), 'return { shiftLine };'].join('\n'))();
 
-assert.equal(shiftLine(3, 1, 0, her),
-  'bed 3 · shift 1 of her stay · her chart is rebuilt from 0 anchored shifts — take the shift to treat her');
-assert.equal(shiftLine(null, 1, 0, her),
-  'shift 1 of her stay · her chart is rebuilt from 0 anchored shifts — take the shift to treat her',
+// Short: the button under her face carries the instruction now, and this line is the context beside
+// it. It used to be one sentence ending in "take the shift to treat her", and a stranger read past
+// all of it looking for something to press.
+assert.equal(shiftLine(3, 1, 0, her), 'bed 3 \u00b7 shift 1 \u00b7 chart rebuilt from 0 anchored shifts');
+assert.equal(shiftLine(null, 1, 0, her), 'shift 1 \u00b7 chart rebuilt from 0 anchored shifts',
   'a ward that does not know the bed says the rest of it rather than "bed null"');
 assert.equal(shiftLine(0, 1, 0, her).startsWith('shift'), true, 'and bed zero is not a bed');
-assert.equal(shiftLine(2, 4, 1, him),
-  'bed 2 · shift 4 of his stay · his chart is rebuilt from 1 anchored shift — take the shift to treat him',
-  'one shift is one shift, and the patient is a man');
+assert.equal(shiftLine(2, 4, 1, him), 'bed 2 \u00b7 shift 4 \u00b7 chart rebuilt from 1 anchored shift',
+  'one shift is one shift');
+assert.ok(shiftLine(2, 4, 1, him).split(' ').length <= 12,
+  'twelve words is the limit for anything a stranger reads to decide a press');
 
 console.log('shift_logic: ok (and the strip says which bed)');
 
@@ -265,19 +267,19 @@ console.log('shift_logic: ok (and the hand-over button is the ward’s own)');
 // finished with her.
 const { primaryLabel } = new Function([grab('primaryLabel'), 'return { primaryLabel };'].join('\n'))();
 
-assert.equal(primaryLabel({ taken: false, over: false, name: 'Nusrat Jahan', g: her }),
+assert.equal(primaryLabel(false, false, 'Nusrat Jahan', her),
              'Take the shift · treat Nusrat Jahan',
              'before the head is taken, the page has one thing to ask');
-assert.equal(primaryLabel({ taken: false, over: false, name: '', g: her }),
+assert.equal(primaryLabel(false, false, '', her),
              'Take the shift · treat her',
              'and a page that does not know her name yet still says what the press does');
-assert.equal(primaryLabel({ taken: true, over: false, name: 'Nusrat Jahan', g: her }),
+assert.equal(primaryLabel(true, false, 'Nusrat Jahan', her),
              'Hand over · record this shift',
              'once it is yours the one action is the one that writes it to the chain');
-assert.equal(primaryLabel({ taken: true, over: true, name: 'Rafael Moreira', g: him }),
+assert.equal(primaryLabel(true, true, 'Rafael Moreira', him),
              'Hand over · record this shift',
              'and a finished shift is exactly the one with something left to do');
-assert.equal(primaryLabel({ taken: true, over: false, name: 'Rafael Moreira', g: him }).includes('her'),
+assert.equal(primaryLabel(true, false, 'Rafael Moreira', him).includes('her'),
              false, 'the ward admits men');
 
 console.log('shift_logic: ok (and the page has one button)');

@@ -1393,9 +1393,9 @@ a.give:hover{filter:brightness(1.06)}
     /* The 2.5rem foot is scroll room for a sheet that fills a frame. In the flow it is dead
        space between the last line and her face. */
     padding-bottom:.7rem}
-  /* The line under her name is the sheet's PRESENTS row, two rows apart and word for word. While
-     the sheet is up it is the sheet's; the name and the live status word stay. */
-  html.is-ward .stage .pt:has(.stem:not(.hide)) .pt-line{display:none}
+  /* The line under her name belongs to the card now, and the sheet no longer carries a PRESENTS
+     row on this host — the two said the same sentence two rows apart, and the card is the one a
+     stranger reads first. */
   .stage{min-height:0;overflow-y:auto;overscroll-behavior:contain;gap:.6rem}
   .pt{display:flex;flex-direction:column;min-height:0;flex:2.2 1 0;padding-bottom:.55rem}
   .pt-art{aspect-ratio:auto;flex:1 1 auto;min-height:7rem}
@@ -1475,6 +1475,24 @@ html.is-ward.untaken #mic{opacity:.5;cursor:not-allowed}
    sentence written into it while it is either is a sentence nobody reads — the "Not this bed" page
    was invisible for exactly that reason. `plain` is what `wardPage` turns it into. */
 html.is-ward #game.plain{display:block}
+/* ── the bedside card ────────────────────────────────────────────────────────
+   Her face, her name, what is happening to her, what she is presenting with, and the one thing
+   this page is asking a stranger to do — at the top of the column, above the case sheet. It sat
+   below the sheet, between two panels, and the founder could not find the button at all.
+   Order rather than markup, because the same block is the bay's patient block on the other host,
+   where the frame is a film and belongs first. */
+html.is-ward .stage .pt{display:flex;flex-direction:column}
+html.is-ward .pt-face{order:1}
+html.is-ward .pt-name{order:2}
+html.is-ward .pt-status{order:3}
+html.is-ward .pt-line{order:4}
+html.is-ward #wardprimary{order:5}
+html.is-ward .pt-art{order:6}
+#wardprimary{width:100%;margin:.7rem 0 .2rem;padding:.95rem .9rem;font-size:1.02rem;
+  font-family:Archivo,system-ui,sans-serif;font-weight:700;letter-spacing:-.01em;min-height:3rem}
+#wardprimary[hidden]{display:none}
+#wardprimary.handover{background:var(--card-2);color:var(--ink);border:1px solid var(--line)}
+
 /* The review note is in the ward's markup and belongs to one page of it. Hidden rather than
    composed away because the two pages are one surface: `/ward/review/<case>` adds `is-review`. */
 .rv-note{grid-column:1/-1;margin:0;padding:.55rem .9rem;border:1px solid #e3d3ab;border-radius:.5rem;
