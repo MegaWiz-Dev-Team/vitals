@@ -1312,6 +1312,19 @@ fn shift_ix(pid: Pubkey, device: Pubkey, operator: Pubkey, patient_id: u64, data
     }
 }
 
+/// The ward's own hand on a lease: the operator signs, and the patient is the only other account.
+/// No player account in the list at all — this instruction is not about a player.
+fn free_ix(pid: Pubkey, signer: Pubkey, operator: Pubkey, patient_id: u64) -> SolIx {
+    SolIx {
+        program_id: pid,
+        accounts: vec![
+            AccountMeta::new_readonly(signer, true),
+            AccountMeta::new(patient_key(&pid, &operator, patient_id), false),
+        ],
+        data: borsh::to_vec(&Instruction::FreeShift { patient_id }).unwrap(),
+    }
+}
+
 async fn patient_of(banks: &mut solana_program_test::BanksClient, key: Pubkey) -> PatientAccount {
     let data = banks.get_account(key).await.unwrap().expect("patient account").data;
     borsh::from_slice(&data).expect("patient layout")
@@ -1576,4 +1589,107 @@ async fn one_person_may_carry_her_all_the_way_home() {
                    "anchoring gives the head back — including to the person about to take it again");
         head = p.head;
     }
+}
+
+/// **The ward may take back a head whose holder walked away.**
+///
+/// Three beds, and a stranger who closes the tab holds one of them until the lease runs out. The
+/// director measured it on staging on 17 ก.ย.: take the shift, close the page, and the board still
+/// reads `on_shift` a minute later; the bed freed on its own about ten minutes in, which is what
+/// `LEASE_SLOTS` is worth at devnet's real slot rate. On a three-bed ward at a fair that is a third
+/// of the ward held by nobody.
+///
+/// The page will send a heartbeat while it holds the head, and the server frees the head when the
+/// beats stop. It cannot do that today: `ReleaseShift` is the holder's to sign unless the lease has
+/// already expired — and a release the holder signed in advance is no use either, because a devnet
+/// blockhash lives about twenty-six seconds at the rate the chain is running, so anything the
+/// server stored has expired long before the silence is long enough to act on.
+///
+/// So the ward gets one instruction of its own. `FreeShift` is signed by the operator — the key
+/// the patient's own account is seeded on, the one that admitted her — and clears the lease
+/// whatever its state. Nothing else about her moves: not her head, not her chart, not her state.
+/// It is the ward saying "nobody is in that room", which is a fact the ward is the one to know.
+///
+/// The player's own `ReleaseShift` is untouched, and so is the rule that anyone may clear a lease
+/// that has already expired.
+#[tokio::test]
+async fn the_ward_frees_a_head_its_holder_walked_away_from() {
+    let pid = Pubkey::new_unique();
+    let pt = ProgramTest::new("vitals_program", pid, processor!(process_instruction));
+    let mut ctx = pt.start_with_context().await;
+    let operator = Keypair::from_bytes(&ctx.payer.to_bytes()).unwrap();
+    let op = operator.pubkey();
+    let (a, b) = (Keypair::new(), Keypair::new());
+    let patient = 77u64;
+    let pkey = patient_key(&pid, &op, patient);
+    let bh = ctx.last_blockhash;
+
+    for who in [&a, &b] {
+        ctx.banks_client
+            .process_transaction(Transaction::new_signed_with_payer(
+                &[ix(pid, op, who.pubkey(), &[acct(&pid, &who.pubkey())], Instruction::OpenAccount)],
+                Some(&op), &[&operator, who], bh,
+            ))
+            .await
+            .expect("opening an account");
+    }
+    ctx.banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[admit_ix(pid, op, patient, [5; 32])],
+            Some(&op), &[&operator], bh,
+        ))
+        .await
+        .expect("admitting a patient");
+
+    // A takes the head, and then closes the laptop.
+    let bh = ctx.banks_client.get_new_latest_blockhash(&bh).await.unwrap();
+    ctx.banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[shift_ix(pid, a.pubkey(), op, patient, Instruction::TakeShift { patient_id: patient })],
+            Some(&op), &[&operator, &a], bh,
+        ))
+        .await
+        .expect("A takes a shift");
+    let held = patient_of(&mut ctx.banks_client, pkey).await;
+    assert_ne!(held.lease_holder, [0; 32], "the lease is live and it is A's");
+
+    // B cannot take it, and B cannot free it either: this is not a door left open for strangers.
+    let bh = ctx.banks_client.get_new_latest_blockhash(&bh).await.unwrap();
+    let e = ctx.banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[free_ix(pid, b.pubkey(), op, patient)],
+            Some(&op), &[&operator, &b], bh,
+        ))
+        .await
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(custom(&e), Some(VitalsError::NotOperator as u32),
+               "only the ward that admitted her may take a live head back");
+
+    // The ward misses two heartbeats and frees the head.
+    let bh = ctx.banks_client.get_new_latest_blockhash(&bh).await.unwrap();
+    ctx.banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[free_ix(pid, op, op, patient)],
+            Some(&op), &[&operator], bh,
+        ))
+        .await
+        .expect("the operator frees a head nobody is holding any more");
+    let freed = patient_of(&mut ctx.banks_client, pkey).await;
+    assert_eq!(freed.lease_holder, [0; 32], "the room is empty");
+    assert_eq!(freed.lease_until_slot, 0);
+    assert_eq!(freed.head, held.head, "and nothing else about her moved");
+    assert_eq!(freed.shifts, held.shifts);
+    assert_eq!(freed.state, PATIENT_OPEN);
+
+    // B walks in.
+    let bh = ctx.banks_client.get_new_latest_blockhash(&bh).await.unwrap();
+    ctx.banks_client
+        .process_transaction(Transaction::new_signed_with_payer(
+            &[shift_ix(pid, b.pubkey(), op, patient, Instruction::TakeShift { patient_id: patient })],
+            Some(&op), &[&operator, &b], bh,
+        ))
+        .await
+        .expect("the next stranger takes the bed the ward freed");
+    assert_eq!(patient_of(&mut ctx.banks_client, pkey).await.lease_holder, b.pubkey().to_bytes());
 }
