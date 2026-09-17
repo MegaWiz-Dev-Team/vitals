@@ -3964,11 +3964,42 @@ async function wardBed(){
        lease nine and a half minutes while every sentence on this page said twenty-three. The ward
        measures it and publishes it; this page repeats it and works nothing out. */
     LEASEMIN=(w.policy&&w.policy.lease&&w.policy.lease.minutes_now)||null;
+    LEASESEC=(w.policy&&w.policy.lease&&w.policy.lease.seconds_now)||null;
     const her=(w.patients||[]).find(p=>String(p.patient_id)===String(WARD));
     return her&&her.bed?her.bed:null;
   }catch(e){ return null; }
 }
-let LEASEMIN=null;
+let LEASEMIN=null, LEASESEC=null, LEASEENDS=null, LEASETIMER=null;
+/* The countdown itself. Started at the take, because that is when the lease starts — the program
+   stamps `lease_until_slot` in the block the take lands in, and the page's own clock from that
+   moment is the honest local reading of it. Stopped when the shift ends, in either of its ways. */
+function leaseClock(){
+  clearInterval(LEASETIMER);
+  const paint=()=>{
+    const el=$('#leaseclock'); if(!el)return;
+    const left=LEASEENDS===null?null:Math.round((LEASEENDS-Date.now())/1000);
+    el.textContent=leaseLine(left);
+    el.classList.toggle('soon', left!==null&&left<=300);
+  };
+  paint();
+  if(LEASEENDS!==null)LEASETIMER=setInterval(paint, 1000);
+}
+function leaseStop(){ clearInterval(LEASETIMER); LEASETIMER=null; LEASEENDS=null;
+  const el=$('#leaseclock'); if(el){ el.textContent=''; el.classList.remove('soon'); } }
+/* What the clock is counting, in words, for the strip.
+   The lease is a fixed span and the program refuses an anchor past it — `anchor_shift` checks
+   `slot >= lease_until_slot` — so a shift that runs out is a shift that cannot be recorded. In the
+   last five minutes the line says what to do about it, because that is when saying so can still
+   change the outcome. At zero it says the two true things: the bed is free, and this is no longer
+   theirs to record. */
+function leaseLine(left){
+  if(left===null||left===undefined)return '';
+  if(left<=0)return 'the lease has run out — the bed is free';
+  const m=Math.floor(left/60), s=Math.floor(left%60);
+  const clock='shift ends in '+m+':'+String(s).padStart(2,'0');
+  return left<=300 ? clock+' — hand over to record it' : clock;
+}
+
 /* What the ward says about how long a head is held for, or nothing at all.
    Never a fixed number: the only honest sentence is the one the chain's own rate produces, and a
    ward that has not measured its rate says nothing rather than twenty-three minutes. */
@@ -4063,7 +4094,8 @@ function wardBar(){
     '<div id="wardbar" style="display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;'+
     'padding:.6rem .9rem;margin-bottom:.6rem;border:1px solid var(--rule,#d8ded9);'+
     'border-radius:.5rem;background:'+tint+'">'+
-    '<b id="wardwho">…</b><span id="wardsay" style="flex:1">reading the ward…</span>'+controls+
+    '<b id="wardwho">…</b><span id="wardsay" style="flex:1">reading the ward…</span>'+
+    '<span id="leaseclock" class="leaseclock"></span>'+controls+
     '<a class="btn" id="wardback" href="/">← the globe</a></div>');
   /* `#game` ships hidden and the strip goes inside it, so a way back in there is a way back
      nobody can press. `waiting` shows the strip and hides the cockpit under it, which has no
@@ -4276,6 +4308,9 @@ async function takeShift(){
      the controls open, and `plain_words.rs` holds every sentence on the strip to twelve words. */
   wardSay('the head is yours until you hand over. What you do here is on '+pro().p+
           ' chart, under your key. '+leaseWords(LEASEMIN));
+  /* The head is theirs from this second, so the countdown starts from this second. */
+  LEASEENDS=LEASESEC?Date.now()+LEASESEC*1000:null;
+  leaseClock();
   armTheExit();
 }
 
@@ -4328,7 +4363,7 @@ async function handBack(){
   const r=await wardDo('/api/ward/release?id='+id);
   if(r.refused){ $('#wardback-shift').disabled=false; return wardSay('<b>refused.</b> '+esc(r.refused)); }
   if(r.error){ $('#wardback-shift').disabled=false; return wardSay(esc(r.error)); }
-  stopBeating(); id=''; stop();
+  stopBeating(); leaseStop(); id=''; stop();
   /* She is somebody else's patient from this second, so the controls close the way they were
      closed before the head was taken — and say the same thing about why. */
   wardGate();
@@ -4410,7 +4445,7 @@ async function handOverInner(){
                    ' <a href="/ward/'+WARD+'">open '+pro().o+' again</a>');
   }
   if(a.error)return wardSay(esc(a.error));
-  stopBeating();
+  stopBeating(); leaseStop();
   /* The receipt is the point of the whole thing and it had no link: a stranger who just anchored
      a shift was told it landed and given a way back to the globe, and nothing that shows what
      they did. `/shift/<run hash>` is public and needs no key — see the receipt page. */

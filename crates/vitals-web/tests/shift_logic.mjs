@@ -396,8 +396,9 @@ const { leaseLine } = new Function([grab('leaseLine'), 'return { leaseLine };'].
 
 assert.equal(leaseLine(1351), 'shift ends in 22:31');
 assert.equal(leaseLine(600), 'shift ends in 10:00');
-assert.equal(leaseLine(61), 'shift ends in 1:01');
-assert.equal(leaseLine(9), 'shift ends in 0:09', 'seconds are padded, minutes are not');
+assert.equal(leaseLine(361), 'shift ends in 6:01', 'seconds are padded, minutes are not');
+assert.equal(leaseLine(9), 'shift ends in 0:09 — hand over to record it',
+             'nine seconds left is inside the last five minutes, and the instruction stays on');
 
 // The last five minutes carry the instruction, because that is when it is actionable.
 assert.equal(leaseLine(252), 'shift ends in 4:12 — hand over to record it');

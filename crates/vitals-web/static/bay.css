@@ -910,6 +910,12 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.78rem;background:va
 .presets .btn{font-size:.78rem;padding:.45rem .75rem}
 .sheet-f{display:flex;gap:.5rem;padding:.8rem 1rem;border-top:1px solid var(--line)}
 .sheet-f .sp{margin-left:auto}
+/* The countdown on the strip: quiet while there is time, the colour of the thing it is about to
+   cost in the last five minutes. A shift that runs past its lease cannot be anchored at all. */
+.leaseclock{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.72rem;
+  letter-spacing:.04em;color:var(--ink-3);white-space:nowrap}
+.leaseclock.soon{color:var(--alarm);font-weight:600}
+
 /* The exit that records nothing. It sits beside the one action the page is for, so it is quiet by
    weight and plain by name: a stranger tells the two apart without reading twice (UX review C4).
    Armed, it turns the colour of the thing it is about to cost them. */

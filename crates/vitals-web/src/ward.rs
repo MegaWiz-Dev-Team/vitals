@@ -1060,6 +1060,10 @@ fn policy(
             "seconds_per_slot_now": seconds_per_slot,
             "minutes_now": seconds_per_slot
                 .map(|s| (vitals_program::LEASE_SLOTS as f64 * s / 60.0).round() as u64),
+            // The page counts down in seconds and must not multiply two published numbers to get
+            // them: a countdown is the one figure a stranger watches, and it is this ward's to say.
+            "seconds_now": seconds_per_slot
+                .map(|s| (vitals_program::LEASE_SLOTS as f64 * s).round() as u64),
             "measured": "seconds a slot, from the block time of a recent slot and the block time \
                          of one a few thousand slots earlier — both facts the chain publishes and \
                          anybody can ask it for",
