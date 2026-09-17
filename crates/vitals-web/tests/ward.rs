@@ -482,30 +482,49 @@ fn every_case_the_ward_can_admit_has_a_difficulty_and_the_board_publishes_it() {
 /// chest pain than anyone else; she is more likely than a Norwegian to have dengue, and that is a
 /// fact about mosquitoes.
 ///
-/// The list is data, so the test is about the data: it may only name cases the ward can actually
-/// serve. A file naming a case we never converted would put a patient on the board that no shift
-/// could open, and the failure would arrive as a blank screen at a bed.
+/// The pairing is a fact about a case now, not a row in a file. A compiled pack carries `endemic`
+/// and the country it is endemic in, the compiler writes both, and the queue door checks the pack's
+/// claim against the catalogue (`ward_chain::endemic_claim`). Nothing in this crate reads
+/// `data/endemic.json` any more.
+///
+/// **The file is still there and still matters**, which is what this test is now for: `vitals-
+/// factory` reads it off the repo at every tick to decide which patients get the one-draw-in-five
+/// from their own country, and fails the whole tick if it cannot be read. So its shape is checked
+/// here — and the ids in it are not held to a catalogue any more, because that catalogue lives in
+/// a store this test cannot see. Moving the factory's own draw to the catalogue is the other half
+/// of the change the door has already made.
 #[test]
-fn the_endemic_list_may_only_name_cases_the_ward_can_serve() {
-    use vitals_web::ward::{endemic, CATALOGUE, ENDEMIC_IN};
+fn the_endemic_file_the_factory_reads_keeps_its_shape() {
+    use vitals_web::ward::ENDEMIC_IN;
 
-    assert_eq!(ENDEMIC_IN, 5, "one draw in five, for a country that has a list");
+    assert_eq!(ENDEMIC_IN, 5, "one draw in five, for a patient from a country a case is endemic in");
 
-    for (country, cases) in endemic() {
+    let raw = std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/endemic.json"),
+    )
+    .expect("the factory reads this file at every tick and fails the tick without it");
+    let file: serde_json::Value = serde_json::from_str(&raw).expect("and it has to parse for it");
+    let lists = file["endemic"].as_object().expect("an object of country → cases");
+
+    for (country, cases) in lists {
         assert_eq!(country.len(), 3,
                    "{country} is not ISO 3166-1 alpha-3, and the globe matches on alpha-3");
         assert!(country.bytes().all(|b| b.is_ascii_uppercase()), "{country} must be upper case");
+        let cases = cases.as_array().expect("a list of case ids");
         assert!(!cases.is_empty(),
                 "{country} carries an empty endemic list, which is a country that looks described \
                  and is not — leave it out instead");
-        for case in cases {
-            assert!(CATALOGUE.contains(&case.as_str()),
-                    "{country} names {case}, which is not in the catalogue — a patient the board \
-                     can show and no shift can open is a blank screen at a bed");
-            assert!(vitals_web::ward::difficulty_of(&case).is_some(),
-                    "{case} has no difficulty, so a player could not choose her by level");
-        }
     }
+
+    // And the door's own check does not read it: the whole point of the fix is that the claim is
+    // answered by the catalogue, so a file that stays for another crate cannot creep back in here.
+    let src = std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/ward_chain.rs"),
+    )
+    .expect("the door");
+    assert!(!src.contains("ward::endemic()") && !src.contains("include_str!(\"../data/endemic.json\")"),
+            "the queue door is reading the season's file again — eighteen of the cases this ward \
+             holds are tagged endemic by the compiler, and that file knows none of them");
 }
 
 /// The panel offers levels, so the policy has to say what is actually on the shelf — and the shelf
@@ -548,10 +567,14 @@ fn the_policy_publishes_the_levels_and_the_endemic_rule() {
 
     let rule = v["policy"]["endemic"].as_str().expect("the endemic rule is published");
     assert!(rule.contains("never"), "it has to say what origin does not do: {rule}");
-    assert_eq!(v["policy"]["countries_with_an_endemic_list"], 0,
-               "and today the honest count is zero — none of the converted sixteen belongs to a \
-                place, and pairing one with a country anyway is the thing this rule exists to \
-                stop");
+    assert!(rule.contains("the case it names is tagged endemic"),
+            "and how a pack's claim is checked, which is against the catalogue and not against a \
+             file written for the season: {rule}");
+    // Counted off the cases the ward holds. None of these three is endemic, so the honest answer
+    // is zero — and it is zero rather than absent, because "we counted and there are none" and "we
+    // did not look" are the two facts this endpoint keeps apart everywhere else.
+    assert_eq!(v["policy"]["endemic_cases"], 0);
+    assert_eq!(v["policy"]["countries_with_an_endemic_case"], 0);
 }
 
 /// The globe renders these fields, so the endpoint answers in the globe's own words.

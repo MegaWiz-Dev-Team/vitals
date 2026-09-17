@@ -316,13 +316,15 @@ fn the_queue_takes_only_patients_the_ward_can_actually_serve() {
     p.persona.age = 130;
     assert!(validate_pack(&p).is_err(), "and nobody is a hundred and thirty");
 
-    // The one claim the ward can check for itself, so it does: today no country has an endemic
-    // list, so every pack claiming an endemic draw is claiming something no list supports.
+    // The endemic claim is not a fact about the pack's shape and is no longer asked here: it is a
+    // question about the catalogue — is the case it names tagged endemic, and for which country —
+    // so the door asks it where the catalogue is, in `enqueue`. Checked against the season's static
+    // file until 17 ก.ย., which turned away every endemic patient the first real factory tick
+    // built; `case_door.rs::an_endemic_claim_is_checked_against_the_catalogue` is the rule now.
     let mut p = a_pack();
     p.endemic = true;
-    assert!(validate_pack(&p).is_err(),
-            "a pack may not label itself endemic for a country and case the endemic list does not \
-             pair — an endemic tag nothing backs is the stereotype the rule exists to prevent");
+    assert!(validate_pack(&p).is_ok(),
+            "the pack's own shape cannot answer this, so it must not refuse it either");
 
     // The portrait is a set now, keyed on the engine's own status words. Each value is the one
     // published shape and no other: the board puts these strings in image sources on a page

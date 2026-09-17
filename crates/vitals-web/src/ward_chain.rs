@@ -954,18 +954,9 @@ pub fn validate_pack(p: &crate::ward::Pack) -> Result<(), String> {
     for (state, src) in &p.portrait {
         portrait_entry(state, src)?;
     }
-    if p.endemic {
-        let has = crate::ward::endemic()
-            .get(&p.persona.country)
-            .is_some_and(|cases| cases.iter().any(|c| c == &p.case));
-        if !has {
-            return Err(format!(
-                "this pack calls itself endemic, but the endemic list does not pair {} with {} — \
-                 an endemic tag nothing backs is the claim the rule exists to prevent",
-                p.persona.country, p.case
-            ));
-        }
-    }
+    // The endemic claim is not checked here: it is a question about the catalogue — whether the
+    // case this pack names is tagged endemic, and for which country — and the catalogue lives in
+    // the store. `enqueue` asks it, beside the other two questions about this ward at this moment.
     Ok(())
 }
 
@@ -1123,6 +1114,38 @@ pub fn queue_depth(store: &crate::store::Store) -> Result<usize, String> {
 /// Each pack is stored under its own content address, so pushing the same page twice queues each
 /// patient once — the property the factory's retries depend on and the one that would otherwise
 /// put one woman in two beds.
+/// Why this pack may not call itself endemic, if it may not.
+///
+/// True of a pairing and nothing else: the case this pack names is tagged endemic, and the country
+/// it is endemic in is the patient's. Dengue is about mosquitoes and meningococcal disease about
+/// the dry season in the belt — which is epidemiology, and is only epidemiology while the case and
+/// the country actually go together. An endemic tag nothing backs is the claim the rule exists to
+/// prevent.
+///
+/// A pack that names no case may not claim it at all: the ward picks the case afterwards, and which
+/// case it picks is exactly what would make the claim true or false.
+fn endemic_claim(pack: &crate::ward::Pack, held: &[crate::ward_case::CaseSummary]) -> Option<String> {
+    if pack.case.is_empty() {
+        return Some(
+            "this pack calls itself endemic and names no case — the ward picks the case for a pack \
+             that names none, and which case it picks is what would make the claim true or false"
+                .to_string(),
+        );
+    }
+    let case = held.iter().find(|c| c.case_id == pack.case)?;
+    let where_it_is = match (case.endemic, case.country.as_deref()) {
+        (true, Some(country)) if country == pack.persona.country => return None,
+        (true, Some(country)) => format!("it is endemic in {country}"),
+        (true, None) => "it is endemic in no country the catalogue names".to_string(),
+        (false, _) => "the catalogue does not tag it endemic anywhere".to_string(),
+    };
+    Some(format!(
+        "this pack calls itself endemic for {} and {where_it_is} — an endemic tag nothing backs is \
+         the claim the rule exists to prevent. The case is {}",
+        pack.persona.country, pack.case
+    ))
+}
+
 pub fn enqueue(store: &crate::store::Store, packs: Vec<crate::ward::Pack>) -> Queued {
     let mut out = Queued::default();
     let held = crate::ward_case::all(store);
@@ -1141,6 +1164,17 @@ pub fn enqueue(store: &crate::store::Store, packs: Vec<crate::ward::Pack>) -> Qu
         // stranger they are treating a child while the board beside it says sixty-six.
         if let Some(named) = held.iter().find(|c| c.case_id == pack.case) {
             if let Some(why) = crate::ward_case::contradicts(named, &pack.persona) {
+                out.rejected.push(why);
+                continue;
+            }
+        }
+        // A pack's endemic claim is a claim about a pairing, and the catalogue is where that
+        // pairing lives. It was read from `data/endemic.json` — six country→case pairs written for
+        // the season's sixteen, empty today — so the first real factory tick had every endemic
+        // patient it built turned away at the door: eighteen of the cases this ward holds are
+        // tagged endemic by the compiler that wrote them, and the door could not see one of them.
+        if pack.endemic {
+            if let Some(why) = endemic_claim(&pack, &held) {
                 out.rejected.push(why);
                 continue;
             }

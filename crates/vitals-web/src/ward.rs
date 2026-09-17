@@ -464,30 +464,16 @@ pub fn persona_pool() -> Vec<PoolCountry> {
 /// part at all.
 pub const ENDEMIC_IN: u32 = 5;
 
-/// The endemic lists, by ISO 3166-1 alpha-3.
-///
-/// **What this is, and what it is not.** Where a patient is from never selects her disease for the
-/// common draw. A country with a list here contributes one draw in [`ENDEMIC_IN`] for patients
-/// from it — because dengue is about mosquitoes, thalassemia about carrier frequency and altitude
-/// sickness about altitude. None of that is a claim about people, and the difference is why this
-/// is reviewed data rather than a rule somebody wrote into a draw function.
-///
-/// Held to the catalogue by `the_endemic_list_may_only_name_cases_the_ward_can_serve`: a case
-/// named here that the ward cannot serve would be a patient the board shows and no shift can open.
-///
-/// Empty today, and the file says why in its own words.
-pub fn endemic() -> std::collections::BTreeMap<String, Vec<String>> {
-    #[derive(serde::Deserialize)]
-    struct File {
-        endemic: std::collections::BTreeMap<String, Vec<String>>,
-    }
-    serde_json::from_str::<File>(include_str!("../data/endemic.json"))
-        .map(|f| f.endemic)
-        // Baked into the binary by `include_str!`, so a parse failure is a build somebody shipped
-        // broken rather than a file that went missing at runtime — and an empty map is the safe
-        // shape: the ward draws uniformly, which is what it does for every country without a list.
-        .unwrap_or_default()
-}
+// `endemic()` read `data/endemic.json` — six country→case pairs for the season's sixteen, baked in
+// by `include_str!` — and the queue door checked a pack's endemic claim against it. The ward plays
+// what the case factory compiles now, and a compiled case carries its own endemic tag and its own
+// country, so the claim is checked against the catalogue in `ward_chain::endemic_claim` and nothing
+// in this crate reads that file any more.
+//
+// **The file stays.** `vitals-factory` reads it off the repo at every tick (`tick.rs`, "the endemic
+// list could not be read") and fails the whole tick when it cannot, so deleting it would stop the
+// factory admitting anybody. Moving the factory's draw to the catalogue is the other half of this,
+// and it is that crate's to make.
 
 /// The six numbers, in the order the card shows them.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -957,12 +943,24 @@ fn policy(cases: Option<&[crate::ward_case::CaseSummary]>) -> serde_json::Value 
             "resident": level("resident"),
         }),
         "endemic": format!(
-            "where a patient is from never selects the disease. A country with an endemic list \
-             contributes one draw in {ENDEMIC_IN} for patients from it — dengue is about \
-             mosquitoes and thalassemia about carrier frequency, which is epidemiology and not a \
-             claim about people. The list is reviewed data and may only name cases the ward can \
-             serve"),
-        "countries_with_an_endemic_list": endemic().len(),
+            "where a patient is from never selects the disease. Four draws in {ENDEMIC_IN} ignore \
+             it completely; the fifth, for a patient from a country one of these cases is endemic \
+             in, may take that case — dengue is about mosquitoes and meningococcal disease about \
+             the dry season in the belt, which is epidemiology and not a claim about people. A \
+             pack may call itself endemic only when the case it names is tagged endemic and that \
+             case's country is the patient's; the tag is the compiler's, on the case, and the door \
+             checks the pairing"),
+        // Counted off the catalogue, which is where the tags are. The old field counted the
+        // entries of a static file written for the season's sixteen, which is a number about a
+        // table this ward no longer plays from.
+        "endemic_cases": cases.map(|c| c.iter().filter(|c| c.endemic).count()),
+        "countries_with_an_endemic_case": cases.map(|c| {
+            c.iter()
+                .filter(|c| c.endemic)
+                .filter_map(|c| c.country.clone())
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+        }),
     })
 }
 
