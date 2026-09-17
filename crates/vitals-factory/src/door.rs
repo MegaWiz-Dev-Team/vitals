@@ -4,9 +4,10 @@
 //!
 //!   * `GET /api/ward` — the census, the policy, the board, and (once that build ships) the
 //!     queue block;
-//!   * `GET /api/ward/cases` — the cases the ward holds (7b's case door, 16 Sep): case_id,
-//!     country or null, difficulty, endemic, provisional, version. An older ward has no such
-//!     door and answers 404, which is read as an empty list, not an error;
+//!   * `GET /api/ward/cases?placeable=1` — the cases the ward holds and will place (7b's case
+//!     door, 16 Sep; `placeable` since 00034): case_id, country or null, difficulty, endemic,
+//!     provisional, title, version, patient, withdrawn. An older ward has no such door and
+//!     answers 404, which is read as an empty list, not an error;
 //!   * `POST /api/ward/queue` — a page of packs, behind the token. Each pack may carry a
 //!     `case_id` and a `difficulty` beside the ward's own fields ([`Outbound`]); the door that
 //!     reads them is landing, and the one before it ignores them;
@@ -128,6 +129,10 @@ pub struct WardCase {
     /// Who the case was written about; null when the case states nobody, which fits any adult.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub patient: Option<CasePatient>,
+    /// Withdrawn on review (ward 00034). The factory asks the door for placeable rows only
+    /// (`?placeable=1`) and, should one arrive anyway, never chooses it.
+    #[serde(default)]
+    pub withdrawn: bool,
 }
 
 /// The case door's answer — `{"cases": [...], "derivations": {...}}`, or a bare array — read for
@@ -356,12 +361,13 @@ impl Door for Http {
     }
 
     fn read_cases(&self) -> Result<Vec<WardCase>, String> {
-        match self.agent().get(&format!("{}/api/ward/cases", self.ward)).call() {
+        // Placeable rows only: a withdrawn case must never be chosen.
+        match self.agent().get(&format!("{}/api/ward/cases?placeable=1", self.ward)).call() {
             Ok(resp) => parse_cases(&resp.into_string().map_err(|e| e.to_string())?),
             // No case door on this build of the ward: an empty list, honestly.
             Err(ureq::Error::Status(404, _)) => Ok(Vec::new()),
-            Err(ureq::Error::Status(code, resp)) => Err(format!("GET /api/ward/cases: HTTP {code}: {}", resp.into_string().unwrap_or_default())),
-            Err(e) => Err(format!("GET /api/ward/cases: {e}")),
+            Err(ureq::Error::Status(code, resp)) => Err(format!("GET /api/ward/cases?placeable=1: HTTP {code}: {}", resp.into_string().unwrap_or_default())),
+            Err(e) => Err(format!("GET /api/ward/cases?placeable=1: {e}")),
         }
     }
 

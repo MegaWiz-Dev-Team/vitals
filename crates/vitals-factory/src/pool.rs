@@ -6,7 +6,6 @@
 //! by adding three people to one file without rebuilding this job.
 
 use crate::sex::Sex;
-use std::collections::BTreeMap;
 
 /// One person, keyed the way the portrait manifest keys her: `<ISO3>-<index>`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,15 +41,6 @@ pub fn read_pool(json: &str) -> Result<Vec<Person>, String> {
         }
     }
     Ok(out)
-}
-
-/// The endemic lists, by alpha-3, from `crates/vitals-web/data/endemic.json`.
-pub fn read_endemic(json: &str) -> Result<BTreeMap<String, Vec<String>>, String> {
-    #[derive(serde::Deserialize)]
-    struct File {
-        endemic: BTreeMap<String, Vec<String>>,
-    }
-    serde_json::from_str::<File>(json).map(|f| f.endemic).map_err(|e| format!("endemic.json: {e}"))
 }
 
 /// Who a patient on the board is, by the two fields the board publishes about her.

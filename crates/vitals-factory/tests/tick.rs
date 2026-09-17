@@ -625,7 +625,7 @@ fn no_endemic_file_is_needed_and_a_withdrawn_case_is_never_chosen() {
     let cfg = Config { repo: bare, ..config(&dir, 20, 20) };
     let r = tick(&cfg, &door, &tools);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
-    assert!(!r.lines.iter().any(|l| l.contains("endemic list")), "{:?}", r.lines);
+    assert!(!r.lines.iter().any(|l| l.contains("endemic list could not be read")), "{:?}", r.lines);
     let q = door.queue.borrow();
     assert!(q.len() >= 10, "{}", q.len());
     assert!(q.values().all(|p| p.case != "world-withdrawn-angina"), "a withdrawn row, never chosen");

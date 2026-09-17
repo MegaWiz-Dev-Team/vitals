@@ -28,11 +28,13 @@
 //!      skipped, and the plan records which countries were redrawn and why. The queue cap is
 //!      the one rule that yields to nothing: a queue that could only be filled with a third of
 //!      one country stays short, and the plan says so.
-//!   4. **the case first, from the ward's own list** ([`crate::cases::rank`]): a case written for
-//!      her country while none is already on the ward or waiting — and only then is the pack
-//!      `endemic`, when the case is — else the common draw at the level the board and the queue
-//!      are short of, so student, intern and resident stay about 1:1:1; never a case a bed holds;
-//!      never a season id, and never an empty case while the list has cases.
+//!   4. **the case first, from the ward's own list** ([`crate::cases::rank`]): for a country with
+//!      an endemic list — a placeable case tagged endemic for it — one draw in
+//!      [`vitals_web::ward::ENDEMIC_IN`] takes that case and the pack carries the tag; the other
+//!      draws, and every draw for a country without a list, are the common draw at the level the
+//!      board and the queue are short of, so student, intern and resident stay about 1:1:1; never
+//!      a case a bed holds, never a withdrawn case, never a season id, and never an empty case
+//!      while the list has cases.
 //!   5. **then a person of the case's sex**, from the country drawn, whose age can fit the case's
 //!      window ([`crate::cases::fits`]); when nobody of that country fits the case, the next case
 //!      is tried, and when no case fits anybody free of that country, the country is passed over
@@ -42,7 +44,7 @@
 //!      to be made at the age drawn inside the window, and the pack goes out without a picture
 //!      rather than with a wrong one.
 
-use crate::cases::{age_window, fits, rank, Mix};
+use crate::cases::{age_window, endemic_draw, fits, placeable, rank, Mix};
 use crate::door::{WardCase, WardView};
 use crate::ledger::Ledger;
 use crate::manifest::Manifest;
@@ -190,11 +192,13 @@ pub fn plan(i: &Inputs) -> Plan {
     let mut out = Plan::default();
     let mut rng = Rng::new(i.seed);
 
-    if i.cases.is_empty() {
+    let cases = placeable(i.cases);
+    if cases.is_empty() {
         out.exhausted = true;
-        out.notes.push(format!("the ward lists no cases, so nothing is built: a pack names a case from the ward's own list and nothing else; wanted {}", i.want));
+        out.notes.push(format!("the ward lists no cases it will place, so nothing is built: a pack names a case from the ward's own list and nothing else; wanted {}", i.want));
         return out;
     }
+    let cases = cases.as_slice();
 
     // What is already on the ward or waiting: by person, and by level and case for the balance.
     let mut busy: BTreeSet<String> = i.ledger.busy_keys(i.ward, i.pool);
@@ -203,13 +207,13 @@ pub fn plan(i: &Inputs) -> Plan {
     for p in i.ward.open() {
         if let Some(case) = p.case_held() {
             in_beds_cases.insert(case.to_string());
-            if let Some(level) = level_of(i.cases, case) {
+            if let Some(level) = level_of(cases, case) {
                 mix.count(level, case);
             }
         }
     }
     for (_, s) in i.ledger.unseen() {
-        if let Some(level) = s.difficulty.as_deref().or_else(|| level_of(i.cases, &s.case)) {
+        if let Some(level) = s.difficulty.as_deref().or_else(|| level_of(cases, &s.case)) {
             mix.count(level, &s.case);
         }
     }
@@ -306,7 +310,7 @@ pub fn plan(i: &Inputs) -> Plan {
         // then the seed decides.
         let mut placed = None;
         'countries: for country in countries {
-            let ranked = rank(i.cases, country, &in_beds_cases, &mix, i.seed, slot);
+            let ranked = rank(cases, country, &in_beds_cases, &mix, i.seed, slot, endemic_draw(cases, country, i.seed, slot));
             for (case, why) in ranked {
                 let window = age_window(case);
                 let mut people: Vec<(&Person, Option<crate::manifest::Base>)> = free

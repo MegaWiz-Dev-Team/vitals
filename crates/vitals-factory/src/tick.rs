@@ -62,7 +62,7 @@ pub struct Config {
     /// only while fewer than this have been painted, and then gets her [`FACE_ATTEMPTS`] tries.
     /// Packs past this wait for the next tick.
     pub bases_per_tick: usize,
-    /// The checkout: the scenarios, the persona files, the pool and the endemic list.
+    /// The checkout: the pool and the physicians series.
     pub repo: PathBuf,
     /// `~/.vitals/world`: the manifest, the ledger, the faces.
     pub world_dir: PathBuf,
@@ -273,7 +273,7 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
 
     // ── the case door: the ward's list is the catalogue ──
     let cases: Vec<WardCase> = match door.read_cases() {
-        Ok(c) => c,
+        Ok(c) => crate::cases::placeable(&c),
         Err(e) => {
             r.fail(format!("the case door could not be read ({e}); a pack names a case from the ward's own list and nothing else, so nothing is built"));
             return r;
@@ -283,15 +283,22 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
         r.fail("the ward lists no cases (no case door on this build, or an empty one); a pack names a case from the ward's own list and nothing else, so nothing is built");
         return r;
     }
+    let endemic_countries: BTreeSet<&str> = cases.iter().filter(|w| w.endemic).filter_map(|w| w.country.as_deref()).collect();
     r.say(format!(
-        "case door: {} cases listed — {} with a stated patient, {} written for a country ({} endemic), {} provisional; levels {}",
+        "case door: {} cases listed (placeable) — {} with a stated patient, {} common, {} written for a country ({} endemic; {} countries with an endemic list: {}), {} provisional; levels {}",
         cases.len(),
         cases.iter().filter(|w| w.patient.is_some()).count(),
+        cases.iter().filter(|w| w.country.is_none() && !w.endemic).count(),
         cases.iter().filter(|w| w.country.is_some()).count(),
         cases.iter().filter(|w| w.endemic).count(),
+        endemic_countries.len(),
+        endemic_countries.iter().copied().collect::<Vec<_>>().join(" "),
         cases.iter().filter(|w| w.provisional).count(),
         crate::plan::LEVELS.iter().map(|l| format!("{l} {}", cases.iter().filter(|w| w.difficulty == *l).count())).collect::<Vec<_>>().join(" · ")
     ));
+    if !cases.iter().any(|w| w.country.is_none() && !w.endemic) {
+        r.say("nothing of the common draw is placeable: only countries with a case written for them can be drawn, and the case written for home is taken on every draw, not one in five");
+    }
     if cases.iter().all(|w| w.patient.is_none()) {
         r.say("no case states its patient, so every case fits any adult of either sex this tick — a man may be drawn for a case written about a woman; the ward's 92b4181 adds `patient` to each row and the fit rule reads it");
     }
