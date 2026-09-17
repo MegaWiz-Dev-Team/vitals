@@ -716,6 +716,18 @@ fn the_gauge_did_not_displace_the_donation_itself() {
     assert!(html.contains("solana:9FJRwWnTNQXB9ff5SSmQKytCdVYqTQQPUz1b4zX9mt8y"), "the QR payload changed");
 }
 
+/// `var QS = { … }`, the question table and nothing after it.
+///
+/// Bounded at its closing brace on purpose: read to the end of the script, the last item of the
+/// table swallows every string the page declares after it — the scope texts, the titles, the
+/// greetings — and the clamp check below then reports the shortest question in the form as the
+/// longest, a few hundred characters from failing for a reason nobody could act on.
+fn question_table(js: &str) -> &str {
+    let start = js.find("var QS = {").expect("the question table");
+    let end = js[start..].find("\n  };").expect("the table's closing brace") + start;
+    &js[start..end]
+}
+
 /// Every item the review form asks fits the clamp the store keeps it under.
 ///
 /// `review::Answer::asked` no longer holds a question — it holds the whole item as it was shown,
@@ -731,8 +743,7 @@ fn the_gauge_did_not_displace_the_donation_itself() {
 fn every_item_the_review_form_asks_fits_the_clamp_the_store_keeps() {
     let html = review_page();
     let js = script(&html);
-    let start = js.find("var QS = {").expect("the question table");
-    let table = &js[start..];
+    let table = question_table(js);
     let items: Vec<&str> = table.split("\n      { ").skip(1).collect();
     assert!(items.len() > 30, "only found {} items — the split stopped working", items.len());
 
@@ -772,8 +783,7 @@ fn every_item_the_review_form_asks_fits_the_clamp_the_store_keeps() {
 fn every_ruling_offers_a_way_to_agree_with_what_we_already_do() {
     let html = review_page();
     let js = script(&html);
-    let table = &js[js.find("var QS = {").expect("the question table")..];
-    let items: Vec<&str> = table.split("\n      { ").skip(1).collect();
+    let items: Vec<&str> = question_table(js).split("\n      { ").skip(1).collect();
     let mut optionless = Vec::new();
     for item in &items {
         let id = item.split("id:\"").nth(1).and_then(|s| s.split('"').next()).unwrap_or("?");
@@ -781,14 +791,149 @@ fn every_ruling_offers_a_way_to_agree_with_what_we_already_do() {
             optionless.push(id.to_string());
         }
     }
-    // One item has no options on purpose: the open question at the end of the student's document,
-    // which asks whether the patients sound like people. There is no branch to pick there, and
-    // offering one would be the form telling her what shape her answer should take.
+    // The items with no options are open questions on purpose, and they are named here one by
+    // one so a ruling cannot lose its options by accident. `people` is the open question at the
+    // end of the student's season document, which asks whether the patients sound like people.
+    // The `u-` items are the World test script's own open questions — the two 💬 lines that
+    // close sections A and B, and the whole of section E, which the document heads *เขียนอิสระ*.
+    // There is no branch to pick in any of them, and offering one would be the form telling her
+    // what shape her answer should take.
     assert_eq!(
         optionless,
-        vec!["people"],
+        vec!["people", "u-a-q", "u-b-q", "u-e1", "u-e2", "u-e3", "u-e4", "u-e5", "u-e6"],
         "these items give the reviewer no way to answer without writing prose: {optionless:?}"
     );
+}
+
+/// The question table has to stay readable by the two scans above, and they read it by walking
+/// plain double-quoted strings one line at a time. A string that breaks across lines, or carries
+/// an escaped `\"`, does not fail them — it silently pairs the wrong quotes and sums the wrong
+/// text, and the clamp check passes an item it never measured. So: an even number of `"` on every
+/// line of the table, no `\"` anywhere in it, and the four sets the form serves are all present.
+#[test]
+fn the_question_table_keeps_every_string_on_one_line_with_no_double_quote_inside() {
+    let html = review_page();
+    let js = script(&html);
+    let table = question_table(js);
+    for (n, line) in table.lines().enumerate() {
+        assert!(!line.contains("\\\""), "line {} of the table escapes a double quote — use “ ” instead: {line}", n + 1);
+        assert!(line.matches('"').count() % 2 == 0,
+                "line {} of the table has an odd number of double quotes — a string spans lines: {line}", n + 1);
+    }
+    for set in ["physician", "student", "physician_world", "student_world"] {
+        assert!(table.contains(&format!("\n    {set}: [")), "QS has no `{set}` set");
+    }
+}
+
+// ── addressed instances ─────────────────────────────────────────────────────
+//
+// `/review?for=<id>` hands one named reviewer their own copy of the form. The first instance fixed
+// the role and the greeting and left the questions to the role. The World review is a different
+// document from the season's — 18 endemic cases and seven compiler rulings for the physician, a
+// test script for the student — so an instance now names its own question set, and the two
+// reviewers holding the older links must see exactly what they saw yesterday.
+
+/// The form as the page's own script builds it for one link, read back through
+/// `tests/review_logic.mjs`: which role button is pressed, the greeting, the group headings and
+/// the question ids in the order they were written into the page.
+fn built(for_id: &str, click: &str) -> serde_json::Value {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let out = std::process::Command::new("node")
+        .arg(dir.join("tests/review_logic.mjs"))
+        .arg(dir.join("static/review.html"))
+        .arg(for_id)
+        .arg(click)
+        .output()
+        .expect("run node");
+    assert!(out.status.success(), "review.html did not run for `{for_id}`:\n{}", String::from_utf8_lossy(&out.stderr));
+    serde_json::from_slice(&out.stdout).expect("the harness prints one JSON object")
+}
+
+fn ids_of(v: &serde_json::Value) -> Vec<String> {
+    v["ids"].as_array().unwrap().iter().map(|s| s.as_str().unwrap().to_string()).collect()
+}
+
+/// **An instance selects its own question set, and the old instance still selects the old one.**
+///
+/// The physician's World instance must put the World sheet in front of him and none of the
+/// season's rulings — he is holding both links, and the season's list is already answered in the
+/// other one. The student's instance greets her by the name her document uses and asks her the
+/// test script, step by step. And the first instance, `py-fa87c29f3afb`, which is already in a
+/// reviewer's hands, builds byte for byte what the bare `/review` builds for a physician.
+#[test]
+fn an_addressed_instance_selects_its_own_question_set_and_the_old_one_keeps_the_old_set() {
+    let bare_physician = built("", "physician");
+    let bare_student = built("", "student");
+    let old = built("py-fa87c29f3afb", "");
+    let yo = built("yo-world-2026-09", "");
+    let muk = built("muk-world-2026-09", "");
+
+    // The bare form is what it was: the season's two lists, by role.
+    let season_physician = ids_of(&bare_physician);
+    let season_student = ids_of(&bare_student);
+    assert!(season_physician.contains(&"r-ep2".to_string()), "{season_physician:?}");
+    assert!(season_student.contains(&"people".to_string()), "{season_student:?}");
+
+    // The first instance is unchanged: the physician's season list, under his greeting.
+    assert_eq!(old["pick_hidden"], true);
+    assert_eq!(ids_of(&old), season_physician, "py-fa87c29f3afb no longer builds the season's physician list");
+    assert!(old["greeting"].as_str().unwrap().contains("นพ.ปรีชายุทธ โยคะนิตย์"));
+
+    // The physician's World instance: his role, his greeting, and the World sheet alone.
+    assert_eq!(yo["pick_hidden"], true, "the World instance must not ask him to pick a role");
+    assert_eq!(yo["pressed"], serde_json::json!(["physician"]));
+    assert!(yo["greeting"].as_str().unwrap().contains("นพ.ปรีชายุทธ โยคะนิตย์"), "{}", yo["greeting"]);
+    let world_physician = ids_of(&yo);
+    assert_eq!(world_physician.len(), 6 + 1 + 7 + 12,
+               "the sheet is 6 batch-1 cases, one play-through item, 7 compiler rulings and 12 batch-2 cases: {world_physician:?}");
+    assert!(world_physician.iter().all(|id| !season_physician.contains(id)),
+            "the World instance carries season rulings he has already been asked: {world_physician:?}");
+    let groups: Vec<&str> = yo["groups"].as_array().unwrap().iter().map(|g| g.as_str().unwrap()).collect();
+    assert_eq!(groups.len(), 4, "the sheet has four sections: {groups:?}");
+    assert!(groups[0].contains("ชุดที่ 1"), "the first group is batch 1, the sheet's most urgent: {groups:?}");
+    assert!(yo["title"].as_str().unwrap().contains("World"), "{}", yo["title"]);
+
+    // The student's World instance: her role, her nickname and nothing more formal, the script.
+    assert_eq!(muk["pick_hidden"], true);
+    assert_eq!(muk["pressed"], serde_json::json!(["student"]));
+    let hello = muk["greeting"].as_str().unwrap();
+    assert!(hello.contains("น้องมุก"), "{hello}");
+    assert!(!hello.contains("อาจารย์"), "she is the learner-experience reviewer, not the advisor: {hello}");
+    let world_student = ids_of(&muk);
+    assert_eq!(world_student.len(), 7 + 10 + 5 + 3 + 6,
+               "A1–A6 and its question, B1–B9 and its question, C1–C5, D1–D3, E1–E6: {world_student:?}");
+    assert!(world_student.iter().all(|id| !season_student.contains(id)), "{world_student:?}");
+    assert!(world_student.iter().all(|id| !world_physician.contains(id)), "{world_student:?}");
+    let groups: Vec<&str> = muk["groups"].as_array().unwrap().iter().map(|g| g.as_str().unwrap()).collect();
+    assert_eq!(groups.len(), 5, "the script has sections A to E: {groups:?}");
+    assert_eq!(muk["optionless"], serde_json::json!(["u-a-q", "u-b-q", "u-e1", "u-e2", "u-e3", "u-e4", "u-e5", "u-e6"]));
+
+    // Every instance keeps its draft under its own key, so two links opened in one browser
+    // cannot overwrite each other's half-typed answers.
+    for (v, id) in [(&old, "py-fa87c29f3afb"), (&yo, "yo-world-2026-09"), (&muk, "muk-world-2026-09")] {
+        let keys: Vec<&str> = v["draft_keys"].as_array().unwrap().iter().map(|k| k.as_str().unwrap()).collect();
+        assert!(keys.iter().all(|k| k.ends_with(&format!(":{id}"))), "{id} drafts under {keys:?}");
+    }
+}
+
+/// The instance table says which set each link reads, and the builder reads the table — so the
+/// bare form and the first instance, which name no set, still fall through to the role's.
+#[test]
+fn the_instance_table_names_a_question_set_and_the_first_instance_names_none() {
+    let html = review_page();
+    let js = script(&html);
+    let start = js.find("var FORMS = {").expect("the instance table");
+    let end = js[start..].find("\n  };").expect("the table's closing brace") + start;
+    let forms = &js[start..end];
+    let row = |id: &str| -> &str {
+        let at = forms.find(&format!("\"{id}\"")).unwrap_or_else(|| panic!("no instance `{id}` in {forms}"));
+        forms[at..].lines().next().unwrap()
+    };
+    assert!(!row("py-fa87c29f3afb").contains("qs:"), "the first instance must go on reading the role's set");
+    assert!(row("yo-world-2026-09").contains("role: \"physician\"") && row("yo-world-2026-09").contains("qs: \"physician_world\""),
+            "{}", row("yo-world-2026-09"));
+    assert!(row("muk-world-2026-09").contains("role: \"student\"") && row("muk-world-2026-09").contains("qs: \"student_world\""),
+            "{}", row("muk-world-2026-09"));
 }
 
 // ── the footers reach the policy ────────────────────────────────────────────

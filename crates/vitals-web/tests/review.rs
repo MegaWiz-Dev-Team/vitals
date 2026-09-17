@@ -723,3 +723,33 @@ fn two_roles_answering_alike_in_one_second_are_two_records() {
     roles.sort();
     assert_eq!(roles, vec!["physician", "student"]);
 }
+
+/// `/review?for=<id>` is a fresh, addressed copy of the form handed to one named reviewer. The
+/// page puts the id in the body as `form`; the store keeps it so the founder can tell which link
+/// an answer came through. The bare link never sends one, and an absent field must read as empty
+/// rather than fail — the first two reviewers are still holding that link.
+#[test]
+fn an_addressed_form_carries_its_id_and_the_bare_form_carries_none() {
+    let s = Server::start();
+    let addressed = serde_json::json!({
+        "role": "physician", "name": "นพ.ตัวอย่าง ทดสอบ", "form": "py-example00",
+        "answers": [{ "id": "r-ep2", "asked": "1.1", "chose": "asys", "chose_label": "ยืนยัน" }],
+    })
+    .to_string();
+    let (code, reply) = s.post("/api/review", addressed.as_bytes());
+    assert_eq!(code, 200, "{reply}");
+    let bare = serde_json::json!({
+        "role": "physician",
+        "answers": [{ "id": "r-ep3", "asked": "1.2", "chose": "pea", "chose_label": "PEA" }],
+    })
+    .to_string();
+    let (code, reply) = s.post("/api/review", bare.as_bytes());
+    assert_eq!(code, 200, "{reply}");
+
+    let filed = s.filed();
+    assert_eq!(filed.len(), 2);
+    let forms: Vec<String> = filed.iter().map(|(_, r)| r["form"].as_str().unwrap_or("").to_string()).collect();
+    assert!(forms.contains(&"py-example00".to_string()), "the addressed id was not stored: {forms:?}");
+    assert!(forms.contains(&String::new()), "the bare form must store an empty id: {forms:?}");
+}
+

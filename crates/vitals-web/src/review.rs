@@ -132,6 +132,11 @@ pub struct Submission {
     /// Which build they saw, so an answer can be read against the thing that produced it.
     #[serde(default)]
     pub revision: String,
+    /// Which addressed instance of the form this came through, when the link carried one
+    /// (`/review?for=<id>`). Empty for the bare link. The id names an instance, not a person:
+    /// the reviewer's own `name` field is still theirs to fill or leave.
+    #[serde(default)]
+    pub form: String,
 }
 
 impl Submission {
@@ -204,6 +209,7 @@ impl Submission {
             answers,
             notes,
             revision: take("revision", 64),
+            form: take("form", 64),
         };
         s.id = Submission::key(at, &s.identity());
         Ok(s)
