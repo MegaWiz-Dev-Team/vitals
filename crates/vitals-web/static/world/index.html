@@ -633,6 +633,8 @@ function render(j) {
     if (!again) { location.reload(); return; }
   }
   if (rev && !BUILD_SEEN) BUILD_SEEN = rev;
+  /* Point the globe at the ward, once, as soon as a board says where it is. */
+  turnToTheWard(onBoard(j && Array.isArray(j.patients) ? j.patients : []), WAITINGWHO);
   if (j && Array.isArray(j.patients)) SAWBOARD = true;
   const q = (j && j.queue) || {};
   DOOR = typeof q.door === "string" ? q.door : "closed";
@@ -775,6 +777,29 @@ function canTakeShift(p) {
    `in beds` and `on shift now` are the ward's own and are always there — nobody has to be admitted
    for "0 in beds" to be true. The chain's three are left out when the census does not carry them,
    because a number nobody counted is not a zero. */
+/* Where the globe opens.
+   On the ward: the country of the patient in the first bed, or of the first person waiting for the
+   door if no bed is filled. It was a fixed rotation over Asia (UX review A2) — a guess that stopped
+   being true the moment the queue changed, and that showed a viewer in Lagos somebody else's
+   continent. `inBeds` again, so "the first bed" is the same first bed the panel and the ring mean. */
+function openingCountry(patients, waiting) {
+  const beds = inBeds(patients || []);
+  if (beds.length && beds[0].country) return beds[0].country;
+  const first = (waiting || [])[0];
+  return (first && first.country) || null;
+}
+
+/* And with nothing on the ward at all, the viewer's own longitude — from the offset their browser
+   already reports. `getTimezoneOffset` is minutes behind UTC, so Bangkok reports −420 and sits at
+   +105°. Nothing is asked of them and nothing about them is kept. */
+function openingLongitude(offsetMinutes) {
+  // 100°E — where this globe has always opened — for a browser that reports no offset at all.
+  if (typeof offsetMinutes !== "number") return 100;
+  // `|| 0` rather than a bare negation: −0 is a longitude that prints as "-0" and compares equal
+  // to 0 everywhere except in a test's own eyes.
+  return -offsetMinutes / 4 || 0;
+}
+
 /* A country's patients, in the two groups a reader actually distinguishes.
    The ring on the globe counts beds; a stay that ended is not a bed, and listing the two together
    made the ring disagree with the list under it (founder, 18 ก.ย.: South Korea ringed 1 and listed
@@ -1112,7 +1137,24 @@ const canvas = $("globe"), ctx = canvas.getContext("2d");
 const projection = d3.geoOrthographic().clipAngle(90);
 const path = d3.geoPath(projection, ctx);
 const sphere = { type: "Sphere" };
-let rotation = [-100, -15, 0];   // start over Asia, where the first patients are
+/* Where the globe is pointing. Until the first board arrives this is the viewer's own longitude —
+   their clock says it and nothing is asked of them — and `turnToTheWard` points it at the ward as
+   soon as there is a ward to point at. It was a fixed rotation over Asia (UX review A2). */
+let rotation = [-openingLongitude(new Date().getTimezoneOffset()), -15, 0];
+/* Turned once, at the first board, and never again: after that the view is the viewer's — dragged,
+   idle-spun, or left where they put it — and a page that re-aimed it on every refresh would take
+   the globe out of their hands every thirty seconds. */
+let TURNED = false;
+function turnToTheWard(patients, waiting) {
+  if (TURNED) return;
+  const cc = openingCountry(patients, waiting);
+  const id = cc && countryId(cc);
+  const f = id && countries.find(c => String(c.id) === id);
+  if (!f) return;
+  const c = d3.geoCentroid(f);
+  rotation = [-c[0], -Math.max(-60, Math.min(60, c[1])), 0];
+  TURNED = true;
+}
 let size = 900, dpr = 1;
 const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
 

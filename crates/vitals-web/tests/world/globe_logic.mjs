@@ -258,7 +258,9 @@ assert.equal(openingLongitude(-420), 105, "Bangkok");
 assert.equal(openingLongitude(0), 0, "London in winter");
 assert.equal(openingLongitude(300), -75, "New York in winter");
 assert.equal(openingLongitude(-660), 165, "and the far side of the date line");
-assert.equal(openingLongitude(null), -100, "an offset nobody reported leaves the old view alone");
+assert.equal(openingLongitude(null), 100,
+             "and a browser that reports no offset leaves the globe where it has always opened — \
+              100°E, which is the rotation this page was born with");
 
 // ── the controls read as controls ────────────────────────────────────────────
 //
