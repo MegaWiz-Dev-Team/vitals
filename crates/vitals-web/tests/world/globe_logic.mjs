@@ -103,13 +103,24 @@ assert.equal(countryCounts([P(1, 'THA')], atlasIds).unknown, 0, 'a drawable coun
 //
 // `inBeds` is the one place that decides, and `treatingById` is what makes "being treated right
 // now" drawable — the founder's "ดูยากว่าใครกำลังรักษาคนไข้อยู่".
-const bedded = [P(1, 'THA'), P(2, 'THA', { state: 'on_shift' }), P(3, 'IDN', { state: 'went_home' }),
-                P(4, 'IDN', { state: 'died' }), P(5, 'IDN', { state: 'off_ward' })];
-assert.deepEqual(inBeds(bedded).map(p => p.patient_id), [1, 2],
-                 'a bed holds the patients somebody can still treat, and nobody else');
+const bedded = [P(1, 'THA', { bed: 2 }), P(2, 'THA', { bed: 1, state: 'on_shift' }),
+                P(3, 'IDN', { state: 'went_home' }), P(4, 'IDN', { state: 'died' }),
+                P(5, 'IDN', { state: 'off_ward' }),
+                // On the chain, open, and with no bed: the ward cannot rebuild her chart, so
+                // nobody can take a shift on her and she is not in a bed. She was in this list and
+                // in the panel's heading, over a figure that said three — two definitions of "in
+                // beds" on one screen, which is the thing this page must never do.
+                P(6, 'ETH', { bed: null })];
+assert.deepEqual(inBeds(bedded).map(p => p.patient_id), [2, 1],
+                 'a bed is a bed: the state and a bed number, listed in bed order');
 const beds = countryCounts(inBeds(bedded));
 assert.deepEqual(beds.byId, { '764': 2 }, 'Indonesia is not ringed for three patients who left');
 assert.deepEqual(beds.treatingById, { '764': 1 }, 'and one of the two Thai beds is being worked in');
+assert.equal(beds.byId['231'], undefined, 'nor Ethiopia for a patient nobody can open');
+// The figure and the list are one number: whatever the panel lists, the heading counts, and
+// the census rail publishes.
+assert.equal(inBeds(bedded).length, censusFigures({}, bedded, inBeds(bedded).length)[0][1],
+             'the panel\'s count and the figure under the headline are the same number');
 assert.deepEqual(countryCounts(inBeds([P(1, 'THA')])).treatingById, {},
                  'a bed nobody is in right now is a ring without the second mark');
 
