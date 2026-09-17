@@ -199,7 +199,7 @@ fn the_levels_are_balanced_against_what_the_ward_already_holds_and_no_case_sits_
 #[test]
 fn a_face_already_made_is_used_and_a_missing_one_is_made_at_her_age() {
     let pool = read_pool(POOL).unwrap();
-    // A man of 71 (59–83) and a woman of 68 (56–80): the batch's 63-year-old faces fit both, so
+    // A man of 71 (61–81) and a woman of 68 (58–78): the batch's 63-year-old faces fit both, so
     // every pack carries a stable portrait, needs nothing made, and stays near the face's age.
     let elders = only(&["world-acs-elderly-man", "world-copd-woman"]);
     let man = full_manifest(&pool);
@@ -209,7 +209,7 @@ fn a_face_already_made_is_used_and_a_missing_one_is_made_at_her_age() {
         let Base::Have { url, age, .. } = &pl.base else { panic!("{}: a face exists at 63 and fits", pl.person) };
         assert_eq!(pl.pack.portrait.get("stable"), Some(url));
         assert!(*age == 63, "the face that fits is the 63-year-old's");
-        assert!((pl.pack.persona.age as i32 - 63).abs() <= 3, "her age stays near the face's: {}", pl.pack.persona.age);
+        assert!((pl.pack.persona.age as i32 - 63).abs() <= 2, "her age stays within two of the face's: {}", pl.pack.persona.age);
         assert!(age_window(by_id(&elders, &pl.pack.case)).contains(&pl.pack.persona.age));
         let idx: usize = pl.person.rsplit('-').next().unwrap().parse().unwrap();
         assert_eq!(idx % 3, 2, "every third person's face is the 63-year-old's in this manifest: {}", pl.person);
@@ -228,7 +228,7 @@ fn a_face_already_made_is_used_and_a_missing_one_is_made_at_her_age() {
     for pl in &p.packs {
         let Base::Make { key, age } = &pl.base else { panic!("no adult face fits a child") };
         assert_eq!(key, &pl.person);
-        assert!((1..=15).contains(age) && *age == pl.pack.persona.age, "{age}");
+        assert!((5..=9).contains(age) && *age == pl.pack.persona.age, "{age}: inside the six-year-old's band");
         assert_eq!(pl.sex, Sex::F, "written for a girl");
         assert!(pl.pack.portrait.is_empty(), "a missing picture is never a reason to withhold a patient, and never a wrong picture");
     }
@@ -283,6 +283,54 @@ fn a_persona_whose_sex_no_case_was_written_for_is_skipped_not_forced() {
     let p = plan(&Inputs { cases: &men_only, pool: &vietnam, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&vietnam), beds: 3, want: 3, seed: 1 });
     assert_eq!(p.packs.iter().map(|pl| pl.person.as_str()).collect::<Vec<_>>(), vec!["VNM-1"]);
     assert!(p.exhausted);
+}
+
+/// A persona is one person. Once a face exists for a key at some age — on file, or in the ledger
+/// whether the pack is waiting, admitted or closed — the key is only ever drawn within two years
+/// of it; otherwise another persona of that country and sex is drawn, and if none is free the
+/// draw is skipped with a note. Coordinator, 17 Sep: the second real tick painted the same name
+/// at 26 and at 1, and "Ousmane Garba, 26" and "Ousmane Garba, 1" cannot both exist.
+#[test]
+fn a_persona_is_one_person_and_is_only_reused_within_two_years_of_the_age_a_face_already_has() {
+    let pool = read_pool(POOL).unwrap();
+    let thai: Vec<Person> = pool.iter().filter(|x| x.country == "THA").cloned().collect();
+    let man = full_manifest(&pool);
+    // The batch faces are 28, 45 and 63 by index. A woman of 55 (45–65): only the women whose
+    // face is 45 or 63 can be her — THA-2 (63) and THA-5 (45); THA-0, THA-3 and THA-7 have faces
+    // at 28 and are not painted again at fifty for the same name.
+    let sepsis = only(&["world-sepsis-woman"]);
+    let p = plan(&Inputs { cases: &sepsis, pool: &thai, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&thai), beds: 3, want: 5, seed: 4 });
+    let mut who: Vec<&str> = p.packs.iter().map(|pl| pl.person.as_str()).collect();
+    who.sort_unstable();
+    assert_eq!(who, vec!["THA-2", "THA-5"], "{:?}", p.notes);
+    assert!(p.packs.iter().all(|pl| matches!(pl.base, Base::Have { .. })));
+    assert!(p.exhausted);
+    assert!(p.notes.iter().any(|n| n.contains("held to the age") && n.contains("THA-0") && n.contains("28")), "{:?}", p.notes);
+    // The ledger is an anchor too, closed or not: no faces on file, but THA-0 was sent at 66
+    // and admitted and has left. A woman of 25 (17–35): THA-0 is not her; THA-3 is, with a face
+    // to be made. A woman of 68 (58–78): THA-0 is, at 64–68, near the age she already had.
+    let mut ledger = Ledger::default();
+    let mut sent = Sent::new("world-copd-woman", person(&pool, "THA-0"), 66, false, None, 1, "test");
+    sent.patient_id = Some(1);
+    sent.closed = true;
+    ledger.sent.insert("old".into(), sent);
+    let migraine = only(&["world-migraine-woman"]);
+    let p = plan(&Inputs { cases: &migraine, pool: &thai, manifest: &Manifest::default(), ward: &empty_ward(), ledger: &ledger, weights: &flat(&thai), beds: 3, want: 1, seed: 4 });
+    assert_ne!(p.packs[0].person, "THA-0", "{:?}", p.packs[0]);
+    let copd = only(&["world-copd-woman"]);
+    let ploy: Vec<Person> = thai.iter().filter(|x| x.key == "THA-0").cloned().collect();
+    let p = plan(&Inputs { cases: &copd, pool: &ploy, manifest: &Manifest::default(), ward: &empty_ward(), ledger: &ledger, weights: &flat(&ploy), beds: 3, want: 1, seed: 4 });
+    assert_eq!(p.packs.len(), 1, "{:?}", p.notes);
+    assert!((64..=68).contains(&p.packs[0].pack.persona.age), "{}: within two of the 66 she already was", p.packs[0].pack.persona.age);
+    assert!(matches!(p.packs[0].base, Base::Make { .. }));
+    // Two faces that are not one person — 26 and 1, as NER-3 stands after the second tick — and
+    // the key is never drawn again; the note says so.
+    let mut man2 = Manifest::default();
+    man2.record_base("THA-0", 26, &url("young"), person(&pool, "THA-0"));
+    man2.record_base("THA-0", 1, &url("baby"), person(&pool, "THA-0"));
+    let p = plan(&Inputs { cases: &cases(), pool: &ploy, manifest: &man2, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&ploy), beds: 3, want: 1, seed: 4 });
+    assert!(p.packs.is_empty() && p.exhausted, "{:?}", p.packs);
+    assert!(p.notes.iter().any(|n| n.contains("THA-0") && n.contains("not one person")), "{:?}", p.notes);
 }
 
 /// The factory's endemic knowledge is the ward's list: a country has an endemic list iff a

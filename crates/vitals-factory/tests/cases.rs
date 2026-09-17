@@ -7,8 +7,10 @@
 //! then a person of the case's sex. `patient: {age, sex}` (sex spelled male/female) is the ward
 //! owner's addition; a row without it fits any adult, never "no case".
 //!
-//! Fit: the sex must match hers; her age within 12 years of the case's patient; a case under 16
-//! takes a persona under 16 only, and a case of 16 or more a persona of 16 or more.
+//! Fit: the sex must match hers; her age inside the case's band around its patient's age A —
+//! under 5: [max(1, A−1), A+1]; 5–15: [max(5, A−3), min(15, A+3)]; 16–39: [max(16, A−8), A+10];
+//! 40 and over: [A−10, A+10] — never below 1, never across the 16 line (coordinator, 17 Sep, after
+//! the second real tick queued a one-year-old for an eight-year-old's case under the flat ±12).
 //!
 //! Endemic: the factory's knowledge of what is endemic where is the list itself — a country "has
 //! an endemic list" iff a placeable case is tagged endemic for it — and the founder's one draw in
@@ -18,7 +20,7 @@
 //! it says. No file is read for any of this.
 
 use std::collections::BTreeSet;
-use vitals_factory::cases::{age_window, endemic_draw, fits, has_endemic_list, placeable, rank, sex_of, Mix, ADULT_ANY, AGE_SLACK, CHILD_UNDER};
+use vitals_factory::cases::{age_window, endemic_draw, fits, has_endemic_list, placeable, rank, sex_of, window_around, Mix, ADULT_ANY, CHILD_UNDER};
 use vitals_web::ward::ENDEMIC_IN;
 use vitals_factory::door::{parse_cases, WardCase};
 use vitals_factory::sex::Sex;
@@ -77,13 +79,33 @@ fn the_case_door_is_parsed_in_the_real_shape_with_and_without_a_patient() {
 }
 
 #[test]
-fn the_age_window_is_twelve_years_either_side_and_children_stay_children() {
+fn the_age_window_is_a_band_around_the_patient_and_a_baby_is_never_drawn_for_a_schoolchild() {
     let cases = cases();
-    assert_eq!((AGE_SLACK, CHILD_UNDER), (12, 16));
-    assert_eq!(age_window(by_id(&cases, "world-acs-elderly-man")), 59..=83);
-    assert_eq!(age_window(by_id(&cases, "world-pneumothorax-young-man")), 16..=37, "an adult case never takes a child");
-    assert_eq!(age_window(by_id(&cases, "world-appendicitis-teen")), 2..=15, "a case under sixteen takes only a persona under sixteen");
-    assert_eq!(age_window(by_id(&cases, "world-febrile-toddler")), 1..=15, "and nobody is nought");
+    assert_eq!(CHILD_UNDER, 16);
+    // Under five: a year either side, never below one.
+    assert_eq!(window_around(1), 1..=2);
+    assert_eq!(window_around(3), 2..=4);
+    assert_eq!(window_around(4), 3..=5);
+    // Five to fifteen: three either side, inside five to fifteen.
+    assert_eq!(window_around(5), 5..=8);
+    assert_eq!(window_around(8), 5..=11, "the eight-year-old's case that took a one-year-old under the flat window");
+    assert_eq!(window_around(14), 11..=15);
+    assert_eq!(window_around(15), 12..=15);
+    // Sixteen to thirty-nine: eight below and ten above, never under sixteen.
+    assert_eq!(window_around(16), 16..=26);
+    assert_eq!(window_around(22), 16..=32);
+    assert_eq!(window_around(25), 17..=35);
+    assert_eq!(window_around(39), 31..=49);
+    // Forty and over: ten either side.
+    assert_eq!(window_around(40), 30..=50);
+    assert_eq!(window_around(71), 61..=81);
+    assert_eq!(window_around(82), 72..=92);
+    // The rows.
+    assert_eq!(age_window(by_id(&cases, "world-acs-elderly-man")), 61..=81);
+    assert_eq!(age_window(by_id(&cases, "world-pneumothorax-young-man")), 17..=35, "an adult case never takes a child");
+    assert_eq!(age_window(by_id(&cases, "world-appendicitis-teen")), 11..=15, "a case under sixteen takes only a persona under sixteen");
+    assert_eq!(age_window(by_id(&cases, "world-febrile-toddler")), 2..=4, "a baby is never drawn for a schoolchild, nor a schoolchild for a baby");
+    assert_eq!(age_window(by_id(&cases, "world-asthma-child")), 5..=9);
     assert_eq!(age_window(by_id(&cases, "world-rta-adult")), ADULT_ANY, "no stated patient: any adult");
     assert_eq!(ADULT_ANY, 18..=85);
 }
@@ -92,12 +114,12 @@ fn the_age_window_is_twelve_years_either_side_and_children_stay_children() {
 fn a_persona_fits_a_case_by_sex_and_by_the_window_and_a_case_with_no_patient_fits_any_adult() {
     let cases = cases();
     let acs = by_id(&cases, "world-acs-elderly-man");
-    assert!(fits(acs, Sex::M, 63) && fits(acs, Sex::M, 59) && fits(acs, Sex::M, 83));
+    assert!(fits(acs, Sex::M, 63) && fits(acs, Sex::M, 61) && fits(acs, Sex::M, 81));
     assert!(!fits(acs, Sex::F, 63), "written for a man");
-    assert!(!fits(acs, Sex::M, 58) && !fits(acs, Sex::M, 84));
+    assert!(!fits(acs, Sex::M, 60) && !fits(acs, Sex::M, 82));
     let toddler = by_id(&cases, "world-febrile-toddler");
-    assert!(fits(toddler, Sex::F, 3) && fits(toddler, Sex::F, 15));
-    assert!(!fits(toddler, Sex::F, 16), "a child's case never takes an adult");
+    assert!(fits(toddler, Sex::F, 2) && fits(toddler, Sex::F, 3) && fits(toddler, Sex::F, 4));
+    assert!(!fits(toddler, Sex::F, 1) && !fits(toddler, Sex::F, 5) && !fits(toddler, Sex::F, 16), "a child's case never takes an adult, nor a baby a schoolchild's");
     let rta = by_id(&cases, "world-rta-adult");
     assert!(fits(rta, Sex::F, 28) && fits(rta, Sex::M, 63) && fits(rta, Sex::M, 85));
     assert!(!fits(rta, Sex::M, 15) && !fits(rta, Sex::F, 86));
