@@ -19,6 +19,17 @@ const HASLOBBY=()=>!!$('#hero');
    code at the foot of the script, because the card renderer reads it and a const in its temporal
    dead zone would throw the first time a station card is drawn. */
 const WARD=(location.pathname.match(/^\/ward\/(\d+)\/?$/)||[])[1]||null;
+/* The case this page is *reading*, when it is a review run: `/ward/review/<case id>`. Not a shift —
+   nobody is in this bed, nothing is anchored and there is no head to take — but the same surface,
+   because a reviewer has to read the case as a learner meets it. Declared beside `WARD` and for the
+   same reason: the card renderer runs long before the ward's own code. */
+const REVIEW=(location.pathname.match(/^\/ward\/review\/([a-z0-9-]+)\/?$/)||[])[1]||null;
+/* The two pages this host serves, in the one thing they have in common: the case comes off the
+   wire. Everything that used to ask "is this the ward" to answer "where does the case come from"
+   asks this instead — a review run that asked `WARD` got the shelf's answer, which is EP1, which is
+   the bug this whole surface was rebuilt to stop. What stays `WARD` is what is true only of a
+   shift: a head to take, a bed, a chain. */
+const WARDSURFACE=WARD||REVIEW;
 
 /* The face the last view carried, or '' when there was none. Up here with `WARD` and for the same
    reason: `paintStill` is a long way above the rest of the ward's code and a `let` declared below
@@ -36,8 +47,9 @@ let WARDCARD=null, WARDCHIPS=null, WARDLABEL={};
    and must find nothing here that leads into it. The class goes on before anything paints, and
    the lobby, its hero, its shelf, its stars and the bay's own way back to the shelf all go with
    it. `/` on this host is the globe; the way back is there. */
-if(WARD){
+if(WARD||REVIEW){
   document.documentElement.classList.add('is-ward');
+  if(REVIEW)document.documentElement.classList.add('is-review');
   addEventListener('DOMContentLoaded',()=>{
     document.querySelector('#lobby')?.classList.add('hide');
     document.querySelector('#game')?.classList.remove('hide');
@@ -312,7 +324,7 @@ const SEASON=[
    the season's sixteen. `bay.js` ships to both hosts, so the table is here on the ward too; the
    rule is that a shift never asks it. The ward's card comes off the wire. */
 function epOf(card, shelfId){ return card||SEASON.find(e=>e.id===shelfId)||SEASON[0]; }
-const ep=()=>epOf(WARD?WARDCARD:null, $('#ep').value);
+const ep=()=>epOf(WARDSURFACE?WARDCARD:null, $('#ep').value);
 
 /* An entry's art as a <picture>: a phone takes the 3:2 crop and never downloads the 16:9
    billboard, and an entry with only one file still works because <source> is optional.
@@ -579,7 +591,7 @@ const bedOf=e=>{
   /* On the ward it is a ward bed. Which number is the board's to say and the payload does not
      carry it yet; "BED 3" over every patient on a public ward is the hard-coded lie this whole
      function exists to undo. */
-  return (WARD ? 'WARD' : e.station ? (e.n||'OSCE') : 'BED 3')+' · '+unit;
+  return (REVIEW ? 'REVIEW' : WARD ? 'WARD' : e.station ? (e.n||'OSCE') : 'BED 3')+' · '+unit;
 };
 /* `{s}` subject, `{o}` object, `{p}` possessive. A line with no placeholder is a line that never
    needed one — "the reaction comes back" is true whoever it comes back in. */
@@ -1107,7 +1119,7 @@ function direct(newBeats,outcome){
    a differential, so the kit draws all six. A compiled case has what its author wrote and no more,
    and a row with nothing in it is an empty shelf a stranger opens looking for the thing to reach
    for. So on a shift the kit is the rows this case actually has. */
-const modeRows=()=>WARD&&WARDCHIPS?MODES.filter(m=>(WARDCHIPS[m.id]||[]).length):MODES;
+const modeRows=()=>WARDSURFACE&&WARDCHIPS?MODES.filter(m=>(WARDCHIPS[m.id]||[]).length):MODES;
 function renderModes(){
   $('#modes').innerHTML=modeRows().map(m=>`<button class="btn${m.id===mode?' on':''}" data-m="${m.id}" data-ga="mode:${m.id}">${m.icon} ${m.label}</button>`).join('');
   $('#modes').querySelectorAll('button').forEach(b=>b.onclick=()=>{mode=b.dataset.m;renderModes();renderChips();});
@@ -1139,7 +1151,7 @@ const shuffled=(list,seed)=>{const a=list.slice();let s=seed||1;
 const chipLabel=x=>WARDLABEL[x]||PACK.asks[x]||x;
 /* The tray, from the case in front of this shift or from the season's table. Same reason as
    `epOf`: on the ward the table is the wrong sixteen questions about the wrong patient. */
-const chipRows=()=>(WARD&&WARDCHIPS)||CHIPS[ep().id]||{};
+const chipRows=()=>(WARDSURFACE&&WARDCHIPS)||CHIPS[ep().id]||{};
 function renderChips(){
   const c0=chipRows()[mode]||[];
   const c=examMode()?shuffled(c0,seedOf((id||'')+':'+ep().id+':'+mode)):c0;
@@ -1440,7 +1452,7 @@ function stemHtml(e){
   /* Same two authorities, same precedence as the shelf card: the server's set table
      names the stem, the band and the tier, and the SEASON entry is the copy that paints
      before it arrives. A station whose table entry has not landed still gets a full sheet. */
-  const info=WARD?null:memberOf(e.id);
+  const info=WARDSURFACE?null:memberOf(e.id);
   /* A station's title is the manifest's and carries the case's own age — "…worse at night — F 6"
      over the ward's eight-year-old. Retold here rather than written back into the manifest: the
      manifest is the authored case and stays what its author wrote. */
@@ -1455,19 +1467,20 @@ function stemHtml(e){
   /* The band and the level are said once. On a station they ride the header beside the station's
      letter; on the ward there is no letter, the line below carries them, and a header that said
      them too printed "ER · intern" twice on one sheet. */
-  return `<div class="stem-h"><b>${WARD?'on the ward':'OSCE station '+e.n.replace(/^OSCE /,'')}</b>`
+  const head=REVIEW?'reading the case':WARD?'on the ward':'OSCE station '+e.n.replace(/^OSCE /,'');
+  return `<div class="stem-h"><b>${head}</b>`
       +'<span class="sp"></span>'
-      +`<span>${WARD?'':specShort(band)+(tier?' · '+tier:'')}</span></div>`
+      +`<span>${WARDSURFACE?'':specShort(band)+(tier?' · '+tier:'')}</span></div>`
     +`<h3 class="stem-t">${title}</h3>`
     /* The case, said once, quietly, on a shift — the header above it now names the person. */
     /* The band and the level, and not the station's letter: "station A2" is the season's own
        shelf label, and a stranger at a bed on a public ward has no shelf to place it on. */
-    + (WARD?`<p class="stem-case" style="color:var(--ink-3,#7b8a86);margin:-.2rem 0 .6rem">${specShort(band)}${tier?' · '+tier:''}</p>`:'')
+    + (WARDSURFACE?`<p class="stem-case" style="color:var(--ink-3,#7b8a86);margin:-.2rem 0 .6rem">${specShort(band)}${tier?' · '+tier:''}</p>`:'')
     +'<dl class="stem-g">'
       +`<dt>patient</dt><dd>${e.who||''}</dd>`
       +`<dt>presents</dt><dd>${e.line||''}</dd>`
-      +`<dt>in the room</dt><dd>${WARD?'a public ward — anybody may take the next shift':room}</dd>`
-      +`<dt>time</dt><dd>${WARD?'your shift, until you hand over':(e.rt||'')}</dd>`
+      +`<dt>in the room</dt><dd>${REVIEW?(room||'the case\u2019s own room'):WARD?'a public ward — anybody may take the next shift':room}</dd>`
+      +`<dt>time</dt><dd>${REVIEW?'as long as you want — nothing here is timed against you':WARD?'your shift, until you hand over':(e.rt||'')}</dd>`
     +'</dl>'
     /* Deliberately the generic candidate instruction and not a per-case one: a task
        written for this station would have to say what the station is about. */
@@ -1478,7 +1491,10 @@ function stemHtml(e){
        else will inherit. Saying "the mark sheet stays sealed until the bell" to a stranger on a
        public ward promises a thing that does not happen there, which is the sort of small false
        claim this page is otherwise careful about. */
-    +(WARD
+    +(REVIEW
+      ? '<p class="stem-f"><b>★ review run</b> — the case is being read, not played on anybody. '
+        +'Nothing here is recorded, counted or anchored, and the board does not move.</p>'
+      : WARD
       ? '<p class="stem-f"><b>★ on the ward</b> — this shift is declared on chain before it is '
         +'played, and what you do is on '+pro(e).p+' chart under your key. Hand over when you are '
         +'done: '+pro(e).s+' stays, and the next stranger starts where you left '+pro(e).o+'.</p>'
@@ -1492,7 +1508,7 @@ function renderStage(){
      and the place tag goes back where the Director left it. A shift is not an episode and has no
      film: what a stranger at a bed reads before the first order is the sheet, which is why the
      ward comes down the same path a station does without being one. */
-  if(!E.station&&!WARD){
+  if(!E.station&&!WARDSURFACE){
     art.classList.remove('doc','film');
     $('#stem').classList.add('hide'); $('#filmv').classList.add('hide');
     $('#sgt').classList.add('hide'); $('#place').classList.remove('hide');
@@ -3909,16 +3925,26 @@ async function wardDo(path){
   return await (await fetch('/api/ward/submit?player='+me.pub+'&sig='+await sign(r.sign))).json();
 }
 function wardSay(html){ const b=$('#wardbar'); if(b)$('#wardsay').innerHTML=html; }
+/* The strip at the top of the bay, for both kinds of run this host has.
+   A shift's carries the two controls that put a stranger on the chain — take, and hand back. A
+   review run has neither: nobody is in the bed, so there is no head to take and nothing to hand
+   back, and what a reviewer wants instead is the way to the next case. One function, because the
+   ids are read by `wardSay` and by `wardGate` and a second copy of them would be two elements with
+   one name — which is what `page.rs::no_id_is_declared_twice` refuses. */
 function wardBar(){
   if($('#wardbar'))return;
+  const tint=REVIEW?'rgba(198,143,31,.09)':'rgba(15,110,92,.06)';
+  const controls=REVIEW
+    ? '<a class="btn" href="/ward/review">open another case</a>'
+    : '<button class="btn go" id="wardtake">take this shift</button>'
+      +'<button class="btn" id="wardback-shift" style="display:none">hand back</button>';
   $('#game').insertAdjacentHTML('afterbegin',
     '<div id="wardbar" style="display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;'+
     'padding:.6rem .9rem;margin-bottom:.6rem;border:1px solid var(--rule,#d8ded9);'+
-    'border-radius:.5rem;background:rgba(15,110,92,.06)">'+
-    '<b id="wardwho">…</b><span id="wardsay" style="flex:1"></span>'+
-    '<button class="btn go" id="wardtake">take this shift</button>'+
-    '<button class="btn" id="wardback-shift" style="display:none">hand back</button>'+
+    'border-radius:.5rem;background:'+tint+'">'+
+    '<b id="wardwho">…</b><span id="wardsay" style="flex:1"></span>'+controls+
     '<a class="btn" id="wardback" href="/">← the globe</a></div>');
+  if(REVIEW)return;
   /* Wrapped, because a button that throws is a button that does nothing and says nothing. One
      driven run ended with the strip showing its opening line and no sign that the press had been
      received; I could not reproduce it, and the fix for the class is to make any failure in here
@@ -3931,6 +3957,53 @@ function wardBar(){
     wardSay('that did not go through: '+esc(e&&e.message?e.message:e)+' — try again');
   });
 }
+/* A case, opened to be read. The same surface a shift uses and the same card renderer: what
+   differs is that nobody is in this bed, so there is nothing to take, nothing to hand over and
+   nothing to anchor — and the strip says so before anything is played. */
+async function openReview(){
+  const r=await (await fetch('/api/new?review='+encodeURIComponent(REVIEW)+langQ())).json();
+  if(r.error){
+    wardPage('<p class="bed">case '+esc(REVIEW)+'</p>'
+      +'<h1>Not a case here</h1><p>'+esc(r.error)+'</p>'
+      +'<p><a href="/ward/review">← the cases the ward holds</a></p>');
+    return;
+  }
+  const rv=r.review||{};
+  wardBar();
+  const built=wardCard(rv.content);
+  if(!built){
+    wardPage('<p class="bed">case '+esc(REVIEW)+'</p>'
+      +'<h1>Not on this page yet</h1>'
+      +'<p>This case is held, and there is nothing here yet that can draw it.</p>'
+      +'<p><a href="/ward/review">← the cases the ward holds</a></p>');
+    return;
+  }
+  WARDCARD=built.entry; WARDCHIPS=built.chips; WARDLABEL=built.labels;
+  /* The run is live from the first paint: there is no head to take, so the gate that holds a
+     stranger at a bed has nothing to hold here. */
+  id=r.id;
+  $('#wardwho').textContent='Review run';
+  $('#fallback').alt=rv.title||'the case';
+  $('#lobby').classList.add('hide'); $('#game').classList.remove('hide');
+  const sel=$('#ep');
+  if(sel&&!sel.querySelector('option[value="'+rv.case+'"]')) sel.add(new Option(rv.case, rv.case));
+  $('#ep').value=rv.case;
+  SHOWN=[]; STAGE='stem'; stageKey='';
+  if(!(built.chips[mode]||[]).length){
+    const first=MODES.find(m=>(built.chips[m.id]||[]).length);
+    if(first)mode=first.id;
+  }
+  renderModes(); renderChips();
+  paint(r.view);
+  bootMonitor();
+  run();
+  /* The badges a reviewer needs to read the row they are in: not reviewed, withdrawn, endemic. */
+  const badges=[rv.provisional?'not clinically reviewed':'', rv.withdrawn?'withdrawn from placement':'',
+                rv.endemic&&rv.country?('endemic · '+rv.country):'' ].filter(Boolean).join(' · ');
+  wardSay((rv.not_on_the_ward||'')+(badges?' · '+esc(badges):''));
+  wardGate();
+}
+
 async function openShift(){
   await identity();
   wardBar();
@@ -4157,6 +4230,7 @@ async function handOverInner(){
           ' <a href="/">back to the globe</a>');
 }
 if(WARD) addEventListener('load',openShift);
+if(REVIEW) addEventListener('load',openReview);
 
 refreshRecord();
 if(location.hash.startsWith('#play')){

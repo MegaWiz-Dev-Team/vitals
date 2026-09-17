@@ -1155,3 +1155,93 @@ fn a_provisional_case_can_be_withdrawn_and_is_still_readable() {
     assert_eq!(s.post_with("/api/ward/case/embla-thai-library-1/withdraw", &json!({}), None).0, 401,
                "the withdraw door is a door");
 }
+
+
+/// **The catalogue is read by people, so it carries no placeholders.**
+///
+/// A compiled title is written for whoever is put in the bed: "Elderly {sex_word} with wheezing
+/// after COPD exacerbation". Filled at the bedside from the person there, and filled here from the
+/// case's own patient — because the catalogue is a list of cases rather than of patients, and the
+/// case's own patient is the one it is written about. The reviewer's list showed eighteen rows of
+/// `{sex_word}` until this.
+#[test]
+fn the_catalogue_reads_as_prose_and_not_as_a_template() {
+    let s = Server::start();
+    let mut pack = a_pack();
+    pack["case_id"] = json!("embla-placeholder-1");
+    pack["title"] = json!("Elderly {sex_word} of {age} with wheezing");
+    pack["patient"] = json!({ "age": 82, "sex": "male" });
+    assert_eq!(s.post("/api/ward/case", &pack).0, 200);
+
+    let (_, list) = s.get("/api/ward/cases");
+    let row = list["cases"].as_array().expect("the catalogue")
+        .iter().find(|c| c["case_id"] == "embla-placeholder-1").expect("listed").clone();
+    assert_eq!(row["title"], "Elderly man of 82 with wheezing", "{row}");
+    assert!(!row["title"].as_str().unwrap_or_default().contains('{'),
+            "a reader of the catalogue is reading the compiler's plumbing: {row}");
+}
+
+/// **Twelve years either way is an adult's rule, and it let a one-year-old onto an eight-year-old's
+/// case.**
+///
+/// The factory queued exactly that on 17 ก.ย. — a persona of 1 for a spontaneous pneumothorax
+/// written about a child of 8 — and the door took it. `(1 - 8).abs() <= 12` is true, and the "child
+/// only with a child" rule was satisfied because both are under sixteen. Everything the case
+/// assumes about that patient is wrong: the airway, the doses, the words she uses, whether she
+/// speaks at all.
+///
+/// So the tolerance follows the age it is about, which is how paediatrics works: an infant and a
+/// toddler are different patients, a school-age child and a teenager are not interchangeable, and
+/// two adults ten years apart usually are. The table is the director's, and the factory takes the
+/// same one:
+///
+///   * under 5 — within one year, never below one
+///   * 5 to 15 — within three, and never outside 5–15
+///   * 16 to 39 — from 16, up to ten years older, eight years younger
+///   * 40 and over — within ten
+#[test]
+fn the_age_a_case_allows_follows_the_age_it_is_written_about() {
+    use vitals_web::ward::Persona;
+    use vitals_web::ward_case::{contradicts, CaseSummary};
+
+    let case = |age: u32| CaseSummary {
+        case_id: "embla-age-1".into(),
+        archetype: "pneumothorax".into(),
+        patient_age: Some(age),
+        patient_sex: Some("female".into()),
+        country: None,
+        difficulty: "intern".into(),
+        endemic: false,
+        provisional: true,
+        withdrawn: false,
+        version: "0.1.0".into(),
+        title: "a case".into(),
+    };
+    let who = |age: u16| Persona {
+        name: "Forseti Probe".into(), country: "THA".into(), age, sex: "f".into(),
+    };
+    let ok = |c: u32, p: u16| contradicts(&case(c), &who(p)).is_none();
+
+    // The pair from the tick.
+    let refused = contradicts(&case(8), &who(1)).expect("a one-year-old is not an eight-year-old");
+    assert!(refused.contains('8') && refused.contains('1'), "with both ages in it: {refused}");
+
+    // under 5: within one year, and never below one.
+    assert!(ok(3, 2) && ok(3, 3) && ok(3, 4));
+    assert!(!ok(3, 5) && !ok(3, 1), "two years is a different patient at three");
+    assert!(ok(1, 1) && !ok(1, 0), "nobody is nought, and the door says so elsewhere too");
+
+    // 5–15: within three, and never outside the band.
+    assert!(ok(8, 5) && ok(8, 11) && !ok(8, 4) && !ok(8, 12));
+    assert!(ok(15, 12) && !ok(15, 16), "sixteen is not a child's case");
+    assert!(ok(5, 8) && !ok(5, 4), "and four is not on a five-year-old's case");
+
+    // 16–39: sixteen at the youngest, ten years up, eight years down.
+    assert!(ok(20, 16) && !ok(20, 15), "a child never plays an adult's case");
+    assert!(ok(30, 40) && !ok(30, 41), "ten years older");
+    assert!(ok(30, 22) && !ok(30, 21), "eight years younger");
+
+    // 40 and over: within ten, which is the rule that was right all along.
+    assert!(ok(62, 52) && ok(62, 72) && !ok(62, 51) && !ok(62, 73));
+    assert!(ok(80, 74));
+}

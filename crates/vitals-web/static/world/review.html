@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cases to review — Vitals World</title>
+<link rel="icon" type="image/svg+xml" href="/world/favicon.svg">
+<link rel="apple-touch-icon" href="/world/apple-touch-icon.png">
+<!-- The reviewer's list: every case the ward holds, opened one at a time to be read rather than
+     caught as the ticker admits it. Three beds cannot show eighteen cases, and a case nobody has
+     been placed on cannot be seen from the board at all.
+
+     Its own page rather than the play surface: this one is a table of contents and the other is a
+     patient. It shares the stylesheet for the same reason the shift page does — the words a
+     reviewer reads here have to look like the words they will read there. -->
+<link rel="stylesheet" href="/bay.css?v=__VITALS_BUILD__">
+<style>
+  .wd-bar{display:flex;gap:.9rem;align-items:baseline;flex-wrap:wrap;
+    padding:.7rem 1rem;border-bottom:1px solid var(--rule,#d8ded9)}
+  .wd-bar .brand{font-family:Archivo,system-ui,sans-serif;font-weight:800;font-size:.95rem;
+    letter-spacing:-.01em;color:var(--ink,#16302b)}
+  .wd-bar .sub{color:var(--ink-3,#7b8a86);font-size:.82rem;letter-spacing:.1em;text-transform:uppercase}
+  .rv{max-width:62rem;margin:1.6rem auto 4rem;padding:0 1.2rem}
+  .rv h1{font-family:Archivo,system-ui,sans-serif;font-size:1.5rem;margin:0 0 .3rem}
+  .rv .lede{color:var(--ink-2,#4A5B5E);margin:0 0 1.4rem;max-width:44rem;line-height:1.6}
+  .rv h2{font:600 .82rem/1.6 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--ink-3,#7b8a86);margin:1.8rem 0 .6rem}
+  .rv ul{list-style:none;margin:0;padding:0;display:grid;gap:.5rem}
+  .rv li{border:1px solid var(--line,#DDE5E4);border-radius:10px;background:var(--card,#fff)}
+  .rv a.case{display:flex;gap:.7rem;align-items:baseline;flex-wrap:wrap;
+    padding:.7rem .85rem;text-decoration:none;color:inherit}
+  .rv a.case:hover{background:var(--card-2,#f4f7f5)}
+  .rv .ttl{font-weight:600;flex:1 1 22rem;min-width:0}
+  .rv .id{font:.72rem/1.4 "IBM Plex Mono",ui-monospace,monospace;color:var(--ink-3,#7b8a86);
+    flex:1 1 100%;word-break:break-all}
+  .rv .tag{font:.72rem/1.4 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.06em;
+    text-transform:uppercase;border:1px solid var(--line,#DDE5E4);border-radius:999px;
+    padding:.1rem .5rem;color:var(--ink-2,#4A5B5E);white-space:nowrap}
+  .rv .tag.gone{border-color:#e0c3c3;color:#a4453f}
+  .rv .tag.endemic{border-color:#bfd9cf;color:#0f6e5c}
+  .rv .none{color:var(--ink-3,#7b8a86)}
+  .rv footer{margin-top:2.4rem;font-size:.85rem}
+  .rv footer a{color:#0f6e5c}
+</style>
+</head>
+<body>
+
+<div class="wd-bar">
+  <!--BRAND-->
+  <span class="sub">cases to review</span>
+</div>
+
+<main class="rv">
+  <h1>Cases the ward holds</h1>
+  <p class="lede">Open one to read it as a learner meets it — the patient's words, the examination,
+    the orders it pays for. A review run is not on the ward and not on the chain: nobody is
+    admitted, nothing is recorded, and the board does not move.</p>
+  <div id="list"><p class="none">reading the catalogue…</p></div>
+  <footer><a href="/">← the globe</a></footer>
+</main>
+
+<script>
+/* The catalogue, grouped the way a reviewer works through it: by level, because that is what a
+   case is offered at, and with the place a case belongs to beside it. Everything here is one GET
+   of a public endpoint — this page holds no opinion the server does not publish. */
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const LEVELS = ["student", "intern", "resident"];
+
+function row(c) {
+  const tags = [];
+  if (c.country) tags.push(`<span class="tag">${esc(c.country)}</span>`);
+  if (c.endemic) tags.push(`<span class="tag endemic">endemic</span>`);
+  if (c.provisional) tags.push(`<span class="tag">not reviewed</span>`);
+  if (c.withdrawn) tags.push(`<span class="tag gone">withdrawn</span>`);
+  const who = c.patient && c.patient.age != null
+    ? `<span class="tag">${esc(String(c.patient.sex || "").slice(0, 1).toUpperCase())} ${esc(c.patient.age)}</span>`
+    : "";
+  return `<li><a class="case" href="/ward/review/${encodeURIComponent(c.case_id)}">
+      <span class="ttl">${esc(c.title || c.case_id)}</span>${who}${tags.join("")}
+      <span class="id">${esc(c.case_id)}</span></a></li>`;
+}
+
+fetch("/api/ward/cases").then(r => r.json()).then(d => {
+  const cases = Array.isArray(d.cases) ? d.cases : [];
+  const el = document.getElementById("list");
+  if (!cases.length) {
+    el.innerHTML = `<p class="none">The ward holds no cases yet. They arrive through the case
+      door, from the case factory.</p>`;
+    return;
+  }
+  const bands = LEVELS.map(level => [level, cases.filter(c => c.difficulty === level)])
+    .filter(([, list]) => list.length);
+  const other = cases.filter(c => !LEVELS.includes(c.difficulty));
+  if (other.length) bands.push(["other", other]);
+  el.innerHTML = bands.map(([level, list]) =>
+    `<h2>${esc(level)} · ${list.length}</h2><ul>${list.map(row).join("")}</ul>`).join("");
+}).catch(() => {
+  document.getElementById("list").innerHTML =
+    `<p class="none">The catalogue could not be read just now.</p>`;
+});
+</script>
+</body>
+</html>

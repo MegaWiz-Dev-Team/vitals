@@ -36,6 +36,11 @@ const BAY_CSS: &str = include_str!("../static/bay.css");
 const BAY_JS: &str = include_str!("../static/bay.js");
 /// The ward's own shift page: the same surface, none of the season.
 const SHIFT: &str = include_str!("../static/world/shift.html");
+/// The clinical reviewer's list of cases the ward holds — `/ward/review`.
+///
+/// Named for the ward rather than for review, because `REVIEW` is already the case-review form a
+/// physician fills in for the season and the two have nothing to do with each other.
+const WARD_CASES: &str = include_str!("../static/world/review.html");
 /// The front door. The product page lives at `/` and the game one click behind it at `/play`,
 /// because the first visitor a public URL meets is as likely to be a reviewer deciding what this
 /// company is as a learner deciding whether to press play — and the bay answers only the second.
@@ -1860,17 +1865,7 @@ fn open_review(store: &store::Store, case_id: &str) -> Result<(Session, serde_js
 
     // Nobody is in this bed, and the page must not imply somebody is. The age and the sex are the
     // case's own, because the prose, the examination and the physiology are written about them.
-    let who = ward::Persona {
-        name: "a patient".to_string(),
-        country: summary.country.clone().unwrap_or_default(),
-        age: summary.patient_age.unwrap_or(40) as u16,
-        sex: summary
-            .patient_sex
-            .as_deref()
-            .map(|s| if s.to_ascii_lowercase().starts_with('m') { "m" } else { "f" })
-            .unwrap_or("f")
-            .to_string(),
-    };
+    let who = ward_case::a_patient_of(&summary);
 
     let review = serde_json::json!({
         "is_review": true,
@@ -4103,6 +4098,14 @@ fn main() {
                     // surface as the Eternal entry, composed from the same file, and none of the
                     // season around it.
                     Some(_) => compose(SHIFT),
+                    // The reviewer's two: the list of cases the ward holds, and one case opened to
+                    // be read. The run is the same play surface as a shift — one page, one engine,
+                    // one tape — and the page reads which it is out of its own path.
+                    None if p == "/ward/review" || p == "/ward/review/" => compose(WARD_CASES),
+                    None if ward::review_case_in_path(p).is_some() => compose(SHIFT),
+                    None if p.starts_with("/ward/review/") => {
+                        ward_page_missing("that is not a case id")
+                    }
                     None => ward_page_missing("that is not a patient id"),
                 };
                 let _ = req.respond(html(&body));
@@ -4655,7 +4658,10 @@ fn main() {
                     .map(|c| serde_json::json!({
                         "case_id": c.case_id,
                         "archetype": c.archetype,
-                        "title": c.title,
+                        // Filled from the case's own patient. The catalogue is a list of cases and
+                        // the case's own patient is who its title is written about, so a reader
+                        // gets the sentence the author wrote rather than "{sex_word} of {age}".
+                        "title": ward_case::fill_persona(&c.title, &ward_case::a_patient_of(&c)),
                         "country": c.country,
                         "difficulty": c.difficulty,
                         "endemic": c.endemic,

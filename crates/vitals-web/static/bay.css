@@ -1458,6 +1458,11 @@ html.is-ward.untaken #mic{opacity:.5;cursor:not-allowed}
    sentence written into it while it is either is a sentence nobody reads — the "Not this bed" page
    was invisible for exactly that reason. `plain` is what `wardPage` turns it into. */
 html.is-ward #game.plain{display:block}
+/* The review note is in the ward's markup and belongs to one page of it. Hidden rather than
+   composed away because the two pages are one surface: `/ward/review/<case>` adds `is-review`. */
+.rv-note{grid-column:1/-1;margin:0;padding:.55rem .9rem;border:1px solid #e3d3ab;border-radius:.5rem;
+  background:rgba(198,143,31,.09);color:var(--ink-2,#4A5B5E);font-size:.9rem}
+html:not(.is-review) .rv-note{display:none}
 html.is-ward .wardpage{max-width:34rem;margin:4rem auto;padding:0 1.2rem;line-height:1.6}
 html.is-ward .wardpage h1{font-size:1.5rem;margin:0 0 .4rem}
 /* The way back is the only control on this page, so it is the page's own ink rather than the

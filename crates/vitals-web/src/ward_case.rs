@@ -357,6 +357,25 @@ pub fn choose_case<'a>(
     any.first().copied()
 }
 
+/// The case's own patient, as a persona prose can be filled from.
+///
+/// Not a person: nobody is called "a patient". It is the age and the sex the case is written about,
+/// in the shape `fill_persona` takes, so a reader of the catalogue and a reviewer opening the case
+/// see the sentence the author wrote rather than `{sex_word}` and `{age}`.
+pub fn a_patient_of(c: &CaseSummary) -> crate::ward::Persona {
+    crate::ward::Persona {
+        name: "a patient".to_string(),
+        country: c.country.clone().unwrap_or_default(),
+        age: c.patient_age.unwrap_or(40) as u16,
+        sex: c
+            .patient_sex
+            .as_deref()
+            .map(|s| if s.to_ascii_lowercase().starts_with('m') { "m" } else { "f" })
+            .unwrap_or("f")
+            .to_string(),
+    }
+}
+
 /// "a" or "an", for an age read aloud: an 8-year-old, an 11-year-old, an 18-year-old, an
 /// 80-year-old. Everything else takes "a". The sentence this is for is read by a person, and "a
 /// 8-year-old girl" is the sort of thing that makes a reader trust the rest of it less.

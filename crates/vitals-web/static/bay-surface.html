@@ -5,6 +5,13 @@
      the sentence lands on the page as text. It did.) -->
 <div class="app hide" id="game">
 
+  <!-- What a review run is, in the served bytes rather than after a fetch: a reviewer opening a
+       case must not read half a second of a page that looks like somebody's bedside. Shown only on
+       `/ward/review/<case>` (the stylesheet hides it everywhere else) and repeated in the strip the
+       script draws, which also carries the badges — withdrawn, not yet reviewed, endemic. -->
+  <!--WARD--><p class="rv-note" id="rv-note">Review run — not on the ward, not on the chain.
+    Nothing you do here is recorded.</p><!--/WARD-->
+
   <div class="bar">
     <span class="brand">Vital<span>s</span></span>
     <span class="ep" id="ep-name">the resus bay</span>

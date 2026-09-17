@@ -854,6 +854,19 @@ pub fn patient_id_in_path(path: &str) -> Option<u64> {
     rest.parse().ok()
 }
 
+/// The case a review path names: `/ward/review/<case_id>`.
+///
+/// The same shape the case door accepts, checked here for the same reason it is checked there — the
+/// id is rendered into a page and read out of a store, so it is the narrow shape both can carry.
+/// `None` for `/ward/review` itself, which is the list, and for anything else.
+pub fn review_case_in_path(path: &str) -> Option<String> {
+    let rest = path.strip_prefix("/ward/review/")?.trim_end_matches('/');
+    let ok = !rest.is_empty()
+        && rest.len() <= 120
+        && rest.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+    ok.then(|| rest.to_string())
+}
+
 /// Which portrait a patient in this chain state should be drawn with, today.
 ///
 /// **This is the honest half of a thing that is not finished.** Her physiological status —
