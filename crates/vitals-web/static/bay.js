@@ -3997,10 +3997,13 @@ async function openReview(){
   paint(r.view);
   bootMonitor();
   run();
-  /* The badges a reviewer needs to read the row they are in: not reviewed, withdrawn, endemic. */
+  /* The badges, and only the badges: what this run is is said once, in the note the server put in
+     the page before any of this ran. Saying it twice is two lines a reviewer has to read to learn
+     one thing. */
   const badges=[rv.provisional?'not clinically reviewed':'', rv.withdrawn?'withdrawn from placement':'',
-                rv.endemic&&rv.country?('endemic · '+rv.country):'' ].filter(Boolean).join(' · ');
-  wardSay((rv.not_on_the_ward||'')+(badges?' · '+esc(badges):''));
+                rv.endemic&&rv.country?('endemic · '+rv.country):'',
+                rv.difficulty?('level: '+rv.difficulty):''].filter(Boolean).join(' · ');
+  wardSay(esc(badges||rv.case||''));
   wardGate();
 }
 
