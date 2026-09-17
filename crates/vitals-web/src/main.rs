@@ -2596,16 +2596,58 @@ fn receipt_page(r: &serde_json::Value) -> String {
 
 /// The ward as it stands, from the held read — one source for the endpoint and the patient page,
 /// so a judge who opens both in one minute cannot be shown two different wards.
-fn ward_now(held: &WardView, store: &store::Store) -> serde_json::Value {
-    let mut cell = held.lock().unwrap();
-    let mut v = match cell.as_ref().filter(|(at, _)| at.elapsed() < WARD_TTL) {
-        Some((_, v)) => v.clone(),
-        None => {
+/// Is a board being read right now, somewhere behind an answer already given?
+///
+/// One at a time: every request that finds the board stale would otherwise start its own chain
+/// read, and twenty tabs on the globe would be twenty reads of the same thing.
+static BOARD_READING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The ward as this host last read it — answered now, refreshed behind the answer.
+///
+/// `ward::board_use` is the decision and the reasoning is there. The shape here is the part that
+/// matters: the lock is held to *copy* a board and released before anything slow happens, so a
+/// chain read never holds the one thing every request on this server needs to touch.
+fn ward_now(held: &WardView, store: &store::Store, state: &str) -> serde_json::Value {
+    let (age, cached) = {
+        let cell = held.lock().unwrap();
+        match cell.as_ref() {
+            Some((at, v)) => (Some(at.elapsed()), Some(v.clone())),
+            None => (None, None),
+        }
+    };
+    let mut v = match (ward::board_use(age, WARD_TTL), cached) {
+        (ward::Board::Serve, Some(v)) => v,
+        (ward::Board::ServeAndRefresh, Some(v)) => {
+            if !BOARD_READING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                let view = Arc::clone(held);
+                let dir = state.to_string();
+                std::thread::spawn(move || {
+                    let fresh = match store::Store::open(std::path::PathBuf::from(&dir)) {
+                        Ok(store) => match ward_chain::WardChain::connect() {
+                            Ok(c) => Some(ward_chain::read_ward(&c, &store)),
+                            Err(e) => Some(ward::ward_unavailable("unconfigured", &e)),
+                        },
+                        Err(e) => {
+                            eprintln!("ward       the board could not be refreshed: {e}");
+                            None
+                        }
+                    };
+                    if let Some(fresh) = fresh {
+                        *view.lock().unwrap() = Some((Instant::now(), fresh));
+                    }
+                    BOARD_READING.store(false, std::sync::atomic::Ordering::SeqCst);
+                });
+            }
+            v
+        }
+        // Nothing to serve. The first request after a boot pays for the read, and it is the only
+        // one that does.
+        _ => {
             let v = match ward_chain::WardChain::connect() {
                 Ok(c) => ward_chain::read_ward(&c, store),
                 Err(e) => ward::ward_unavailable("unconfigured", &e),
             };
-            *cell = Some((Instant::now(), v.clone()));
+            *held.lock().unwrap() = Some((Instant::now(), v.clone()));
             v
         }
     };
@@ -4789,7 +4831,7 @@ fn main() {
                     let mut last = String::new();
                     let mut quiet = Duration::ZERO;
                     loop {
-                        let v = ward_now(&view, &store);
+                        let v = ward_now(&view, &store, &state);
                         // Compared without `as_of_slot`, so a re-read that found nothing new is
                         // not an event. A board that flashed every thirty seconds because the
                         // clock moved would teach its watcher to stop looking.
@@ -5730,7 +5772,7 @@ fn main() {
                     })));
                     continue;
                 }
-                let body = serde_json::to_vec(&ward_now(&ward_view, &store))
+                let body = serde_json::to_vec(&ward_now(&ward_view, &store, &state_dir))
                     .unwrap_or_else(|_| b"{}".to_vec());
                 let tag = etag_of(&body);
                 // Asked again with the tag it already has, the ward says "still that" and sends

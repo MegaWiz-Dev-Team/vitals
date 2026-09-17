@@ -205,6 +205,30 @@ pub fn utc_iso(secs: u64) -> String {
     format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", rem / 3600, (rem % 3600) / 60, rem % 60)
 }
 
+/// What to do with the board this ward is holding.
+///
+/// The board is a chain read kept for a few seconds. When it goes stale the question is who pays
+/// for the next read — and it must not be the person who happened to ask. A board carries its own
+/// `as_of`, so handing over one that is a minute old is a fact a reader can see; making them wait
+/// for devnet is a blank panel and the founder asking where the patients went.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Board {
+    /// Nothing to serve: read the chain now. The first request after a boot, and only that one.
+    Wait,
+    /// Inside its life. Answer with it and touch nothing.
+    Serve,
+    /// Past its life. Answer with it anyway, and read the chain behind the answer.
+    ServeAndRefresh,
+}
+
+pub fn board_use(age: Option<std::time::Duration>, ttl: std::time::Duration) -> Board {
+    match age {
+        None => Board::Wait,
+        Some(a) if a < ttl => Board::Serve,
+        Some(_) => Board::ServeAndRefresh,
+    }
+}
+
 /// Which heads the ward should take back, given when each page last beat.
 ///
 /// The page beats while it holds a head; the ward frees the head when the beats stop. Two missed

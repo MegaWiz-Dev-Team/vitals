@@ -107,7 +107,11 @@ canvas#globe.dragging{cursor:grabbing}
 .prow .ph{display:flex;align-items:center;justify-content:center;font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--ink-3)}
 .prow b{display:block;font-size:.92rem;line-height:1.2;overflow-wrap:anywhere}
 .prow .meta{font-family:"IBM Plex Mono",monospace;font-size:.66rem;color:var(--ink-3);margin-top:.2rem;display:flex;gap:.3rem;flex-wrap:wrap;align-items:center;line-height:1.5}
-.state{display:inline-block;padding:0 .35rem;border-radius:.3rem;border:1px solid var(--rule);white-space:nowrap}
+.state{display:inline-block;padding:0 .35rem;border-radius:.3rem;border:1px solid var(--rule);
+  /* Wrapping is the last resort and it has to exist: a pill that cannot wrap and will not shrink
+     leaves the row, which is what the founder photographed at 300 px. Short text first (see
+     `stateLine`), then this. */
+  white-space:normal;max-width:100%;overflow-wrap:anywhere}
 .state.on_ward{color:var(--proven);border-color:var(--proven)}
 .state.on_shift{color:var(--proven);background:var(--proven-soft);border-color:var(--proven)}
 .state.went_home{color:var(--ink-2)}
@@ -521,6 +525,10 @@ function shouldReload(seen, now) {
   return !!seen && !!now && seen !== now;
 }
 let BUILD_SEEN = "";
+/* Has any board arrived yet? Before the first one, an empty panel is not a fact about the ward:
+   the founder read "No patient is in a bed right now" while the request was still in flight and
+   asked where the patients had gone. */
+let SAWBOARD = false;
 
 function render(j) {
   const rev = j && j.revision ? String(j.revision) : "";
@@ -533,6 +541,7 @@ function render(j) {
     if (!again) { location.reload(); return; }
   }
   if (rev && !BUILD_SEEN) BUILD_SEEN = rev;
+  if (j && Array.isArray(j.patients)) SAWBOARD = true;
   patients = onBoard(j && Array.isArray(j.patients) ? j.patients : []);
   census = j ? (j.census || j) : null;   // the census keys may sit at the top level or under `census`
   beds = j && typeof j.in_beds === "number" ? j.in_beds : null;
@@ -624,17 +633,22 @@ function stateLine(p, nowMs) {
   const label = STATE_LABEL[st];
   const any = v => whenMs(typeof v === "string" ? { iso: v } : { unix: v }, nowMs);
   const ago = r => r === "just now" ? r : `${r} ago`;
+  /* The pill says the state and how long; the title says which event that was, and when exactly.
+     "on the ward · handed over 30 h ago" ran off the right edge of a 300 px panel — and of the two
+     halves, the one a reader needs at a glance is the one that is left. */
+  const said = (t, word) => ({ text: `${label} · ${relative(t, nowMs)}`,
+                               title: `${word} ${ago(relative(t, nowMs))} · ${absolute(t)}` });
   if (st === "on_shift") {
     const t = any(p.on_shift_since);
     if (t !== null) return { text: `${label} · ${relative(t, nowMs)}`, title: `since ${absolute(t)}` };
   } else if (st === "went_home" || st === "died") {
     const t = any(p.closed_at);
-    if (t !== null) return { text: `${label} · ${ago(relative(t, nowMs))}`, title: `left ${absolute(t)}` };
+    if (t !== null) return said(t, "left");
   } else {
     const h = any(p.handed_over);
-    if (h !== null) return { text: `${label} · handed over ${ago(relative(h, nowMs))}`, title: `handed over ${absolute(h)}` };
+    if (h !== null) return said(h, "handed over");
     const a = any(p.admitted_at);
-    if (a !== null) return { text: `${label} · admitted ${ago(relative(a, nowMs))}`, title: `admitted ${absolute(a)}` };
+    if (a !== null) return said(a, "admitted");
   }
   return { text: label, title: "" };
 }
@@ -772,14 +786,17 @@ function renderBeds() {
   selected = null;
   const list = inBeds(visible(patients, filter));
   $("pk").textContent = "on the ward now";
-  $("ptitle").textContent = list.length === 1 ? "1 patient in a bed" : `${list.length} patients in beds`;
+  $("ptitle").textContent = !SAWBOARD ? "the beds"
+    : list.length === 1 ? "1 patient in a bed" : `${list.length} patients in beds`;
   $("pdoc").hidden = true;
   $("plist").textContent = "";
   if (!list.length) {
     $("pempty").hidden = false;
-    $("pempty").textContent = Object.values(filter).every(v => !v)
-      ? "Every difficulty is switched off, so the beds are hidden rather than empty."
-      : "No patient is in a bed right now. The ward admits from its queue every minute.";
+    $("pempty").textContent = !SAWBOARD
+      ? "loading the beds…"
+      : Object.values(filter).every(v => !v)
+        ? "Every difficulty is switched off, so the beds are hidden rather than empty."
+        : "No patient is in a bed right now. The ward admits from its queue every minute.";
   } else {
     $("pempty").hidden = true;
     for (const p of list) $("plist").appendChild(row(p, true));
@@ -1022,7 +1039,9 @@ function tick(t) {
   requestAnimationFrame(tick);
 }
 window.addEventListener("resize", resize);
-resize(); setYear(YEARS.max); load(); requestAnimationFrame(tick);   // the year last, once the canvas exists
+/* The panel's frame first, before anything is asked for: a stranger sees where the beds will be
+   and that they are coming, rather than a page that looks finished and empty. */
+resize(); setYear(YEARS.max); renderBeds(); load(); requestAnimationFrame(tick);   // the year last, once the canvas exists
 setInterval(load, 30000);   // the ward changes without a reload — and the poll outlives a dropped stream
 // Pushed as well as polled: the ward's stream carries the same payload the moment it changes.
 const es = new EventSource("/api/ward/stream"); es.addEventListener("ward", e => { try { render(JSON.parse(e.data)); } catch {} });
