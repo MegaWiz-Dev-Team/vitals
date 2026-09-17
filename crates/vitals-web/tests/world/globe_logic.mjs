@@ -37,13 +37,13 @@ const grabConst = (name) => {
 };
 
 const sandbox = [grabConst('ALPHA3'), grabConst('SLOT_MS'), grabConst('STATE_LABEL'), grabConst('DOCTOR_BINS'), grab('countryId'), grab('countryCounts'), grab('visible'),
-  grab('stateOf'), grab('onBoard'), grab('paintOf'), grab('hoverText'), grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
+  grab('stateOf'), grab('onBoard'), grab('inBeds'), grab('paintOf'), grab('hoverText'), grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
   grab('peoplePerDoctor'), grab('latestOf'), grab('tenYearTrend'), grab('fmtTrend'), grab('fmtPeople'), grab('doctorLine'),
   grab('worldAverage'), grab('missionLine'), grab('doctorBin'),
   grab('yearValue'), grab('yearRange'), grab('doctorLineAt'), grab('worldAverageAt'), grab('missionLineAt'),
   grab('escapeHtml'), grab('portraitImg'),
-  'return { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg };'].join('\n');
-const { countryId, countryCounts, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine,
+  'return { countryId, countryCounts, visible, inBeds, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg };'].join('\n');
+const { countryId, countryCounts, inBeds, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine,
   stateOf, onBoard, paintOf, hoverText, STATE_LABEL,
   DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin,
   yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg } = new Function(sandbox)();
@@ -82,7 +82,8 @@ const P = (id, country, extra = {}) => ({ patient_id: id, name: `p${id}`, countr
 const cc = countryCounts([P(1, 'THA'), P(2, 'THA'), P(3, 'IDN'), P(4, null), P(5, 'tha')]);
 assert.deepEqual(cc.byId, { '764': 3, '360': 1 }, 'tallied by atlas id, case-folded, null excluded');
 assert.equal(cc.unknown, 1, 'the null-country patient is counted, not dropped');
-assert.deepEqual(countryCounts([]), { byId: {}, unknown: 0 }, 'an empty ward is an empty tally');
+assert.deepEqual(countryCounts([]), { byId: {}, treatingById: {}, unknown: 0 },
+                 'an empty ward is an empty tally');
 assert.deepEqual(countryCounts([P(1, 'XXX')]).byId, {}, 'an unknown code lights nothing');
 assert.equal(countryCounts([P(1, 'XXX')]).unknown, 1, '…but she is still on the ward, in the tray');
 // A real code the atlas has no polygon for (HKG at 110m) must also go to the tray: a patient who
@@ -91,6 +92,26 @@ const hk = countryCounts([P(1, 'HKG')], atlasIds);
 assert.deepEqual(hk.byId, {}, 'HKG lights no polygon (there is none)');
 assert.equal(hk.unknown, 1, 'HKG goes to the tray');
 assert.equal(countryCounts([P(1, 'THA')], atlasIds).unknown, 0, 'a drawable country never goes to the tray');
+
+// ── the rings are beds, and one of them is being worked in ───────────────────
+//
+// The globe showed USA 1, MEX 1, BRA 1, EGY 1 and ETH 3 on a board whose beds held KOR, ETH and JPN
+// (director, 17 ก.ย., staging 00033). Every ring but one was a patient who had gone home, died, or
+// was never the ward's to open: the tally counted the whole chain's history. A ring means "there is
+// somebody here you can treat", and the whole point of the page is that the number is small and
+// true.
+//
+// `inBeds` is the one place that decides, and `treatingById` is what makes "being treated right
+// now" drawable — the founder's "ดูยากว่าใครกำลังรักษาคนไข้อยู่".
+const bedded = [P(1, 'THA'), P(2, 'THA', { state: 'on_shift' }), P(3, 'IDN', { state: 'went_home' }),
+                P(4, 'IDN', { state: 'died' }), P(5, 'IDN', { state: 'off_ward' })];
+assert.deepEqual(inBeds(bedded).map(p => p.patient_id), [1, 2],
+                 'a bed holds the patients somebody can still treat, and nobody else');
+const beds = countryCounts(inBeds(bedded));
+assert.deepEqual(beds.byId, { '764': 2 }, 'Indonesia is not ringed for three patients who left');
+assert.deepEqual(beds.treatingById, { '764': 1 }, 'and one of the two Thai beds is being worked in');
+assert.deepEqual(countryCounts(inBeds([P(1, 'THA')])).treatingById, {},
+                 'a bed nobody is in right now is a ring without the second mark');
 
 // ── visible ──────────────────────────────────────────────────────────────────
 const ward = [P(1, 'THA', { difficulty: 'student' }), P(2, 'THA', { difficulty: 'intern' }),
