@@ -312,7 +312,7 @@ fn a_soft_rule_yields_when_no_country_it_keeps_can_take_a_case() {
     let p = plan(&Inputs { cases: &only_endemic, pool: &pool, manifest: &man, ward: &empty_ward(), ledger: &ledger, weights: &w, beds: 60, want: 3, seed: 3 });
     assert_eq!(p.packs.len(), 3, "the world rule yields and the draw goes on: {:?}", p.notes);
     assert!(p.packs.iter().all(|pl| ["THA", "KEN", "NPL"].contains(&pl.pack.persona.country.as_str())), "{:?}", countries(&p));
-    assert!(p.notes.iter().any(|n| n.contains("the world rule") && n.contains("yields")), "{:?}", p.notes);
+    assert!(p.notes.iter().any(|n| n.contains("the world rule") && n.contains("no other country") && n.contains("yields")), "{:?}", p.notes);
     assert!(!p.exhausted);
     // With a case for everyone the same history makes the world rule bind, not yield: the first
     // draw is from a region the run has never shown.

@@ -374,7 +374,7 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
             r.say(format!("  {}. {} · {} · {} · case_id {} ({})", n + 1, pl.pack.persona.country, region_name(pl.region), pl.pack.persona.name, pl.pack.case, level_words(&pl.level)));
         }
         r.say(format!("spread: {} countries, {} regions of {} in these {} draws", countries.len(), regions.len(), ALL.len(), next.packs.len()));
-        for n in next.notes.iter().filter(|n| n.starts_with("redrawn")) {
+        for n in &next.notes {
             r.say(format!("over the {}: {n}", QUEUE_WINDOW));
         }
         dry_run_faces(cfg, &mut r, &ward, &pool, &manifest);

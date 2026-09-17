@@ -27,7 +27,8 @@
 //!      the same order, so the weights are renormalised over what is left — never a tick
 //!      skipped, and the plan records which countries were redrawn and why. The queue cap is
 //!      the one rule that yields to nothing: a queue that could only be filled with a third of
-//!      one country stays short, and the plan says so.
+//!      one country stays short, and the plan says so. The other rules yield, one at a time from
+//!      the last and with a note, when no country they keep can take a case the ward lists.
 //!   4. **the case first, from the ward's own list** ([`crate::cases::rank`]): for a country with
 //!      an endemic list — a placeable case tagged endemic for it — one draw in
 //!      [`vitals_web::ward::ENDEMIC_IN`] takes that case and the pack carries the tag; the other
@@ -273,18 +274,20 @@ pub fn plan(i: &Inputs) -> Plan {
         let world_regions = regions_in(&world_fixed);
         let world_absent: BTreeSet<Region> = ALL.iter().copied().filter(|r| !world_regions.contains(r)).collect();
 
-        let mut refused: BTreeMap<String, String> = BTreeMap::new();
+        let mut capped: BTreeMap<String, String> = BTreeMap::new();
         // The cap yields to nothing.
         countries.retain(|c| {
             let n = count_in(&queue_fixed, c);
             if n >= QUEUE_CAP {
-                refused.insert(c.to_string(), format!("at the queue cap: {n} of the last {QUEUE_WINDOW}"));
+                capped.insert(c.to_string(), format!("at the queue cap: {n} of the last {QUEUE_WINDOW}"));
                 false
             } else {
                 true
             }
         });
-        // The rest yield when nobody else is available, and the plan says so once per rule.
+        // The rest yield when nothing they keep can build a pack, and the plan says so once per
+        // rule: the rules are applied together first, then dropped one at a time from the last,
+        // until a pack is placed or none is left.
         let mut rules: Vec<SoftRule> = vec![(
             "the board rule",
             Box::new(|c| in_beds.get(c).copied().unwrap_or(0) < cap),
@@ -299,64 +302,83 @@ pub fn plan(i: &Inputs) -> Plan {
         if queue_regions.len() + queue_slots_left <= MIN_REGIONS {
             rules.push(("the six-regions rule", Box::new(|c| region_of(c).is_some_and(|r| !queue_regions.contains(&r))), format!("the queue must reach {MIN_REGIONS} regions and the next must be from a new one")));
         }
-        for (rule, keep, why) in &rules {
-            if !narrow(&mut countries, keep, why, &mut refused) && !countries.is_empty() && relaxed.insert(rule.to_string()) {
-                out.notes.push(format!("{rule}: no other country is available, so the rule yields for this tick"));
-            }
-        }
-
         // 4–6. the case first, then a person of its sex from the country drawn. Within a case a
         // person whose face already fits the window is used before one whose face must be made,
-        // then the seed decides.
-        let mut placed = None;
-        'countries: for country in countries {
-            let ranked = rank(cases, country, &in_beds_cases, &mix, i.seed, slot, endemic_draw(cases, country, i.seed, slot));
-            for (case, why) in ranked {
-                let window = age_window(case);
-                let mut people: Vec<(&Person, Option<crate::manifest::Base>)> = free
-                    .iter()
-                    .copied()
-                    .filter(|p| p.country == country && fits(case, p.sex, *window.start()))
-                    .map(|p| (p, i.manifest.base_for(&p.key, &window)))
-                    .collect();
-                people.sort_by_key(|(p, fit)| (fit.is_none(), shuffle_key(i.seed, slot, &p.key)));
-                let Some((who, fit)) = people.into_iter().next() else { continue };
-                let (base, age) = match fit {
-                    Some(b) => {
-                        let lo = (*window.start()).max(b.age.saturating_sub(NEAR_FACE));
-                        let hi = (*window.end()).min(b.age.saturating_add(NEAR_FACE));
-                        let age = lo + rng.below(u64::from(hi - lo) + 1) as u16;
-                        (Base::Have { key: b.key, url: b.url, age: b.age }, age)
+        // then the seed decides. A choice is made without drawing an age, so a try that places
+        // nobody moves the seed's numbers for nobody.
+        let choose = |countries: &[&str]| -> Option<(&Person, &WardCase, String, Option<crate::manifest::Base>)> {
+            for country in countries {
+                let ranked = rank(cases, country, &in_beds_cases, &mix, i.seed, slot, endemic_draw(cases, country, i.seed, slot));
+                for (case, why) in ranked {
+                    let window = age_window(case);
+                    let mut people: Vec<(&Person, Option<crate::manifest::Base>)> = free
+                        .iter()
+                        .copied()
+                        .filter(|p| p.country == *country && fits(case, p.sex, *window.start()))
+                        .map(|p| (p, i.manifest.base_for(&p.key, &window)))
+                        .collect();
+                    people.sort_by_key(|(p, fit)| (fit.is_none(), shuffle_key(i.seed, slot, &p.key)));
+                    if let Some((who, fit)) = people.into_iter().next() {
+                        return Some((who, case, why, fit));
                     }
-                    None => {
-                        let (lo, hi) = (*window.start(), *window.end());
-                        let age = lo + rng.below(u64::from(hi - lo) + 1) as u16;
-                        (Base::Make { key: who.key.clone(), age }, age)
-                    }
-                };
-                let portrait = match &base {
-                    Base::Have { url, .. } => BTreeMap::from([("stable".to_string(), url.clone())]),
-                    Base::Make { .. } => BTreeMap::new(),
-                };
-                placed = Some(Planned {
-                    pack: Pack {
-                        case: case.case_id.clone(),
-                        persona: Persona { name: who.name.clone(), age, country: who.country.clone(), sex: who.sex.letter().into() },
-                        portrait,
-                        endemic: case.endemic && case.country.as_deref() == Some(country),
-                    },
-                    person: who.key.clone(),
-                    sex: who.sex,
-                    place: who.place.clone(),
-                    base,
-                    weight: i.weights.of(&who.country),
-                    region: region_of(&who.country),
-                    level: case.difficulty.clone(),
-                    case_why: why,
-                });
-                break 'countries;
+                }
+            }
+            None
+        };
+        // All the rules, then one fewer from the last, until something builds.
+        let mut refused: BTreeMap<String, String> = capped.clone();
+        let mut chosen = None;
+        for keep_rules in (0..=rules.len()).rev() {
+            let mut allowed = countries.clone();
+            refused = capped.clone();
+            for (_, keep, why) in &rules[..keep_rules] {
+                narrow(&mut allowed, keep, why, &mut refused);
+            }
+            chosen = choose(&allowed);
+            if chosen.is_some() || keep_rules == 0 {
+                break;
+            }
+            let (rule, _, _) = &rules[keep_rules - 1];
+            if relaxed.insert(rule.to_string()) {
+                out.notes.push(format!("{rule}: no other country is available — none it keeps can take a case the ward lists — so the rule yields for this tick"));
             }
         }
+        let placed = chosen.map(|(who, case, why, fit)| {
+            let window = age_window(case);
+            let (base, age) = match fit {
+                Some(b) => {
+                    let lo = (*window.start()).max(b.age.saturating_sub(NEAR_FACE));
+                    let hi = (*window.end()).min(b.age.saturating_add(NEAR_FACE));
+                    let age = lo + rng.below(u64::from(hi - lo) + 1) as u16;
+                    (Base::Have { key: b.key, url: b.url, age: b.age }, age)
+                }
+                None => {
+                    let (lo, hi) = (*window.start(), *window.end());
+                    let age = lo + rng.below(u64::from(hi - lo) + 1) as u16;
+                    (Base::Make { key: who.key.clone(), age }, age)
+                }
+            };
+            let portrait = match &base {
+                Base::Have { url, .. } => BTreeMap::from([("stable".to_string(), url.clone())]),
+                Base::Make { .. } => BTreeMap::new(),
+            };
+            Planned {
+                pack: Pack {
+                    case: case.case_id.clone(),
+                    persona: Persona { name: who.name.clone(), age, country: who.country.clone(), sex: who.sex.letter().into() },
+                    portrait,
+                    endemic: case.endemic && case.country.as_deref() == Some(who.country.as_str()),
+                },
+                person: who.key.clone(),
+                sex: who.sex,
+                place: who.place.clone(),
+                base,
+                weight: i.weights.of(&who.country),
+                region: region_of(&who.country),
+                level: case.difficulty.clone(),
+                case_why: why,
+            }
+        });
 
         match placed {
             Some(pl) => {
@@ -412,11 +434,8 @@ fn tail(seq: &[String], n: usize) -> &[String] {
 }
 
 /// One soft rule of the spread: keep the countries `keep` allows, recording `why` against the
-/// rest, when any is left — and keep them all, returning false, when the rule would leave nobody.
-fn narrow(countries: &mut Vec<&str>, keep: &dyn Fn(&str) -> bool, why: &str, refused: &mut BTreeMap<String, String>) -> bool {
-    if !countries.iter().any(|c| keep(c)) {
-        return false;
-    }
+/// rest. Whether what is kept can build is the caller's to find out, and to drop the rule if not.
+fn narrow(countries: &mut Vec<&str>, keep: &dyn Fn(&str) -> bool, why: &str, refused: &mut BTreeMap<String, String>) {
     countries.retain(|c| {
         if keep(c) {
             true
@@ -425,5 +444,4 @@ fn narrow(countries: &mut Vec<&str>, keep: &dyn Fn(&str) -> bool, why: &str, ref
             false
         }
     });
-    true
 }
