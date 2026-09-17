@@ -750,6 +750,42 @@ fn the_landing_and_donate_footers_link_to_the_policy_and_the_terms() {
     }
 }
 
+/// The Eternal entry names its sister entry once, and the link says which door it came through.
+///
+/// Vitals World is the same engine and the same chain behind a public ward — a patient who
+/// belongs to nobody, a shift any stranger can take. A reader who has finished this page is the
+/// one person who should hear that it exists, so the line sits in the footer. Exactly one link,
+/// so a copy edit cannot quietly turn a footnote into a campaign; `?src=eternal` on it, so the
+/// ward can tell this door from the others; and the name in the anchor, so the link is named by
+/// what it is rather than by its address.
+#[test]
+fn the_landing_names_its_sister_entry_once_and_says_which_door_it_came_through() {
+    let html = static_page("landing.html");
+
+    let hrefs: Vec<&str> = html
+        .match_indices("href=\"")
+        .map(|(at, _)| {
+            let s = at + "href=\"".len();
+            let e = html[s..].find('"').expect("unterminated href") + s;
+            &html[s..e]
+        })
+        .filter(|h| h.contains("world.vitals.academy"))
+        .collect();
+    assert_eq!(hrefs.len(), 1, "the landing links Vitals World exactly once: {hrefs:?}");
+    assert_eq!(
+        hrefs[0], "https://world.vitals.academy/?src=eternal",
+        "the sister link does not say it came from the Eternal entry"
+    );
+
+    // The whole anchor element, from `<a` to `</a>`: the name is its text and it opens noopener.
+    let at = html.find("world.vitals.academy").unwrap();
+    let open = html[..at].rfind("<a ").expect("the sister link is not an anchor");
+    let close = at + html[at..].find("</a>").expect("unterminated anchor") + "</a>".len();
+    let anchor = &html[open..close];
+    assert!(anchor.contains("Vitals World"), "the sister link is not named Vitals World: {anchor}");
+    assert!(anchor.contains("rel=\"noopener\""), "the sister link opens without noopener: {anchor}");
+}
+
 /// And the two documents link back to each other and to the front door, so a reader who arrives
 /// at one is never stranded there.
 #[test]
