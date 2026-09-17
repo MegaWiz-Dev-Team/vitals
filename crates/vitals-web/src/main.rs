@@ -246,6 +246,13 @@ struct Session {
     saved_at: Option<std::time::Instant>,
     /// Which shift on the ward this run is, when it is one. `None` is the Eternal bay, unchanged.
     ward: Option<WardShift>,
+    /// Which case this run is *reading*, when it is a review run rather than a shift.
+    ///
+    /// A review run plays a held case with an invented person, so that eighteen cases waiting for a
+    /// clinical advisor do not have to be caught one at a time as the ticker admits them. It is not
+    /// on the ward and not on the chain: no bed, no lease, nothing anchored, nothing counted. The
+    /// chain routes read this to refuse it in words that say what kind of run it is.
+    review: Option<String>,
     /// Handed over: reduced, named and finished. Nothing more goes on this tape.
     ///
     /// Set when `/api/handover` has computed the leaf, because that is the moment a tape stops
@@ -305,6 +312,9 @@ struct Saved {
     /// existed reads back as what it was: a run in the bay.
     #[serde(default)]
     ward: Option<WardShift>,
+    /// The case this run is reading, if it is a review run.
+    #[serde(default)]
+    review: Option<String>,
     /// Handed over, so a restart cannot un-finish a shift.
     #[serde(default)]
     handed_over: bool,
@@ -355,6 +365,7 @@ impl Session {
             commit: self.commit,
             exam_mode: self.exam_mode,
             ward: self.ward.clone(),
+            review: self.review.clone(),
             handed_over: self.handed_over,
         }
     }
@@ -402,6 +413,7 @@ impl Session {
         Ok(Session {
             ep: saved.ep.clone(),
             owner: saved.owner.clone(),
+            review: saved.review.clone(),
             state,
             beats: r.beats,
             films: films_from_tape(&saved.ep, &saved.tape),
@@ -1778,6 +1790,19 @@ fn runtime_sec(ep: &str) -> f64 {
     m as f64 * 60.0
 }
 
+/// The bay's own word for a level, from the compiler's.
+///
+/// The catalogue's levels are the three the ward offers and the bay's enum is the same three under
+/// other names; an unknown word is the middle one rather than a panic, because a case that says
+/// something new about its level is still a case somebody is reading.
+fn difficulty_named(level: &str) -> Difficulty {
+    match level {
+        "student" => Difficulty::Student,
+        "resident" => Difficulty::Resident,
+        _ => Difficulty::Intern,
+    }
+}
+
 fn difficulty(ep: &str) -> Difficulty {
     // A set member's tier is declared once, in SETS — the shelf chip and the XP weight read
     // the same field, and a Phase-5b member needs no arm here.
@@ -1810,8 +1835,91 @@ fn new_session(ep: &str) -> Result<Session, String> {
         commit: None,
         exam_mode: false,
         ward: None,
+        review: None,
         handed_over: false,
         })
+}
+
+/// Open a case the ward holds, to be read rather than played on anybody.
+///
+/// The person is invented from the case's own patient block — the age and sex it is written about,
+/// and a name that is not a name, because nobody is in this bed. The ward's persona pool is not
+/// touched: a review run must not consume a face or a person the factory would have placed.
+///
+/// Everything else is the shift's: the compiled scenario, the case's own content, its voice and its
+/// chips, the same monitor. What is missing is what makes a shift a shift — a patient, a head, a
+/// lease — and the routes that reach the chain read `review` and refuse.
+fn open_review(store: &store::Store, case_id: &str) -> Result<(Session, serde_json::Value), String> {
+    let key = ward_case::key_for(case_id);
+    let pack: serde_json::Value = store
+        .get(ward_case::CASE_STORE, &key)
+        .ok_or_else(|| format!("{case_id} is not a case this ward holds"))?;
+    let summary = ward_case::validate_case(&pack)?;
+    let sce_json = ward_sce(store, case_id)?;
+    let sce = Sce::from_json(&sce_json).map_err(|e| e.to_string())?;
+
+    // Nobody is in this bed, and the page must not imply somebody is. The age and the sex are the
+    // case's own, because the prose, the examination and the physiology are written about them.
+    let who = ward::Persona {
+        name: "a patient".to_string(),
+        country: summary.country.clone().unwrap_or_default(),
+        age: summary.patient_age.unwrap_or(40) as u16,
+        sex: summary
+            .patient_sex
+            .as_deref()
+            .map(|s| if s.to_ascii_lowercase().starts_with('m') { "m" } else { "f" })
+            .unwrap_or("f")
+            .to_string(),
+    };
+
+    let review = serde_json::json!({
+        "is_review": true,
+        "case": summary.case_id,
+        // Filled, like every other piece of prose that leaves a pack: the raw title carries
+        // `{sex_word}` and `{age}`, and a reviewer reading "a {sex_word} of {age}" is reading the
+        // compiler's plumbing rather than the case.
+        "title": ward_case::fill_persona(&summary.title, &who),
+        "difficulty": summary.difficulty,
+        "country": summary.country,
+        "country_name": summary.country.as_ref().and_then(|c| ward::persona_pool()
+            .into_iter()
+            .find(|p| &p.country == c)
+            .map(|p| p.place)
+            .filter(|p| !p.is_empty())),
+        "provisional": summary.provisional,
+        "withdrawn": summary.withdrawn,
+        "endemic": summary.endemic,
+        "name": who.name,
+        "age": who.age,
+        "content": ward_case::case_view(&pack, &who),
+        // Said by the server rather than only drawn by the page, so anything reading this answer —
+        // a script, a log, the page — is told the same thing.
+        "not_on_the_ward": "a review run: not on the ward, not on the chain. Nothing done here is \
+                            recorded, counted or anchored",
+    });
+
+    Ok((
+        Session {
+            ep: summary.case_id.clone(),
+            owner: None,
+            state: SceState::new(sce),
+            tape: Vec::new(),
+            beats: Vec::new(),
+            films: Vec::new(),
+            sce_json,
+            scenario: summary.title,
+            difficulty: difficulty_named(&summary.difficulty),
+            anchored: false,
+            said: Vec::new(),
+            saved_at: None,
+            commit: None,
+            exam_mode: false,
+            ward: None,
+            review: Some(case_id.to_string()),
+            handed_over: false,
+        },
+        review,
+    ))
 }
 
 /// Everything a run in progress needs to be rebuilt on the patient it was played on.
@@ -1975,6 +2083,7 @@ fn open_shift(
         Session {
             ep: pack.case.clone(),
             owner: None,
+            review: None,
             state,
             tape: Vec::new(),
             beats: Vec::new(),
@@ -3325,6 +3434,39 @@ fn main() {
                     }
                     continue;
                 }
+                // A review run: a held case, opened to be read. Before the episode path, because
+                // `?review=` with no `ep` used to fall through to it and open EP1 — on the host
+                // whose front page is a globe and whose ruling is that nothing of the season lives
+                // here.
+                if let Some(case_id) = param(&url, "review") {
+                    if !ward_mode() {
+                        let _ = req.respond(json_code(serde_json::json!({
+                            "error": "this host has no ward and no catalogue to review",
+                            "the_ward_is": "https://world.vitals.academy"
+                        }), 404));
+                        continue;
+                    }
+                    match open_review(&store, &case_id) {
+                        Ok((mut s, review)) => {
+                            s.owner = param(&url, "player").and_then(|p| pubkey(&p)).map(|k| k.to_string());
+                            let id = fresh_id();
+                            let view = s.view(lang::language(param(&url, "lang").as_deref()));
+                            let mut map = sessions.lock().unwrap();
+                            map.insert(id.clone(), s);
+                            persist(&store, &id, map.get_mut(&id).expect("just inserted"), true);
+                            drop(map);
+                            // Not counted in `usage`: nobody played a case here, somebody read one.
+                            // The month's figures are about learners at bedsides.
+                            let _ = req.respond(json(serde_json::json!({
+                                "id": id, "view": view, "review": review
+                            })));
+                        }
+                        Err(why) => {
+                            let _ = req.respond(json_code(serde_json::json!({ "error": why }), 404));
+                        }
+                    }
+                    continue;
+                }
                 let ep = param(&url, "ep").unwrap_or_else(|| "ep1".into());
                 // A case id this server does not have is refused here, before anything is
                 // created or counted.
@@ -4628,6 +4770,28 @@ fn main() {
                     }), 400));
                     continue;
                 };
+                // What kind of run this is, before reaching for a cluster. A review run has no
+                // patient, no lease and no head, and asking the chain about it first meant a ward
+                // with no chain answered "no chain to read" to a question that was never about the
+                // chain. The sentence a reviewer gets says what their run is instead.
+                if p != "/api/ward/open" {
+                    let kind = sessions
+                        .lock()
+                        .unwrap()
+                        .get(&param(&url, "id").unwrap_or_default())
+                        .map(|s| (s.ward.is_some(), s.review.clone()));
+                    if let Some((false, review)) = kind {
+                        let _ = req.respond(json_code(serde_json::json!({
+                            "error": if review.is_some() {
+                                "this is a review run — the case is being read, not played on \
+                                 anybody. Nothing here is on the ward or on the chain"
+                            } else {
+                                "this run is not a shift on the ward"
+                            }
+                        }), 409));
+                        continue;
+                    }
+                }
                 let chain = match ward_chain::WardChain::connect() {
                     Ok(c) => c,
                     Err(e) => {
@@ -4650,6 +4814,11 @@ fn main() {
                     match map.get(&id).filter(|s| s.answers_to(Some(&who.to_string()))) {
                         None => Err("no such session".to_string()),
                         Some(s) => match (&s.ward, p) {
+                            (None, _) if s.review.is_some() => Err(
+                                "this is a review run — the case is being read, not played on \
+                                 anybody. Nothing here is on the ward or on the chain"
+                                    .into(),
+                            ),
                             (None, _) => Err("this run is not a shift on the ward".into()),
                             (Some(w), "/api/ward/release") => Ok((
                                 ward_chain::release_shift_ix(

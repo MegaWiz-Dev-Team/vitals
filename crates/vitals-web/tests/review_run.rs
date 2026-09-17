@@ -123,12 +123,6 @@ impl Server {
         me
     }
 
-    /// Where this server keeps what it was given, so a test can read it back the way the ward
-    /// does rather than through an endpoint that has already chosen what to show.
-    fn state(&self) -> std::path::PathBuf {
-        self._state.clone()
-    }
-
     fn post(&self, path: &str, body: &Value) -> (u16, Value) {
         let url = format!("http://127.0.0.1:{}{path}", self.port);
         let r = ureq::post(&url)
@@ -139,36 +133,6 @@ impl Server {
             Ok(res) => (res.status(), res.into_json().unwrap_or(Value::Null)),
             Err(ureq::Error::Status(c, res)) => (c, res.into_json().unwrap_or(Value::Null)),
             Err(e) => panic!("{url}: {e}"),
-        }
-    }
-
-    /// The same POST with somebody else's token — or none at all.
-    fn post_with(&self, path: &str, body: &Value, token: Option<&str>) -> (u16, Value) {
-        let url = format!("http://127.0.0.1:{}{path}", self.port);
-        let mut r = ureq::post(&url).set("Content-Type", "application/json");
-        if let Some(t) = token {
-            r = r.set("Authorization", &format!("Bearer {t}"));
-        }
-        match r.send_string(&body.to_string()) {
-            Ok(res) => (res.status(), res.into_json().unwrap_or(Value::Null)),
-            Err(ureq::Error::Status(c, res)) => (c, res.into_json().unwrap_or(Value::Null)),
-            Err(e) => panic!("{url}: {e}"),
-        }
-    }
-
-    /// Every sentence in an answer reads as one — no hole in the middle of it.
-    ///
-    /// A Rust literal written across two lines without a `\` continuation keeps the source's own
-    /// indentation, and what goes over the wire is a sentence with thirty spaces in it. It has
-    /// happened three times now (the 401 from both doors, and "the pack stays in the store" in the
-    /// answer this test was written beside), always in a sentence read by the one person who can
-    /// act on it, in a log. Cheaper to catch here than to read every literal in the file.
-    fn reads_as_sentences(v: &Value) {
-        match v {
-            Value::String(s) => assert!(!s.contains("  "), "a hole in the middle of it: {s:?}"),
-            Value::Array(a) => a.iter().for_each(Self::reads_as_sentences),
-            Value::Object(o) => o.values().for_each(Self::reads_as_sentences),
-            _ => {}
         }
     }
 
@@ -197,6 +161,12 @@ fn a_review_run_opens_a_case_and_leaves_the_ward_alone() {
         "hpi": "A {sex_word} of {age}.",
         "setting": "a district hospital"
     });
+    // A case with questions in it, because the tray is half of what a reviewer is reading.
+    typhoid["sce"]["interventions"] = json!([
+        { "id": "ask_fever_days", "label": "Ask how long the fever", "match": { "any_kw": ["fever"] }, "effects": [] },
+        { "id": "tx_fluids", "label": "Crystalloid bolus", "match": { "any_kw": ["fluids"] },
+          "effects": [{ "to_state": "stabilising" }] }
+    ]);
     assert_eq!(s.post("/api/ward/case", &typhoid).0, 200);
 
     // The board before, and the board after, are the same board.
@@ -213,7 +183,10 @@ fn a_review_run_opens_a_case_and_leaves_the_ward_alone() {
     assert_eq!(review["content"]["title"], "Nine days of fever — woman of 64",
                "the case's own words, filled from the person it is written about");
     assert_eq!(review["content"]["presents"], "She has had a fever for nine days");
-    assert!(review["content"]["chips"]["ask"].is_array(), "its own questions: {review}");
+    assert_eq!(review["content"]["chips"]["ask"][0]["id"], "ask_fever_days",
+               "its own questions, in the case author's words: {review}");
+    assert_eq!(review["title"], "Nine days of fever — woman of 64",
+               "and no placeholder reaches the page: {review}");
     assert!(review["head"].is_null(), "no head: there is no chain here");
     assert!(review["patient_id"].is_null(), "and no patient: nobody was admitted");
 
@@ -235,7 +208,9 @@ fn a_review_run_opens_a_case_and_leaves_the_ward_alone() {
 
     // What it can never do is reach the chain.
     for route in ["/api/ward/take", "/api/ward/declare", "/api/ward/anchor"] {
-        let key = "1".repeat(44);
+        // A well-formed key that signs nothing: the refusal has to be about what this run is, not
+        // about the shape of the key asking.
+        let key = "1".repeat(32);
         let (code, body) = s.get(&format!("{route}?id={id}&player={key}"));
         assert_eq!(code, 409, "{route} answered {code}: {body}");
         let why = body["error"].as_str().unwrap_or_default();
