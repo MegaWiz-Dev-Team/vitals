@@ -34,6 +34,24 @@ fn the_launchd_job_is_the_one_the_brief_names_and_carries_no_secret() {
     assert_eq!(DOOR_SECRET, "vitals-door-token");
     assert!(text.contains("vitals-door-token") && !text.contains("vitals-token secret"), "the plist names the secret the factory reads");
     assert!(flat.contains("<key>PATH</key>"), "mflux-generate, gcloud and cwebp are on the user's path, not launchd's");
+    // The production job beside it: the same binary against world.vitals.academy, its own world
+    // directory (its own ledger), the shared faces directory, and the production project's
+    // secret.
+    let prod = repo_root().join("deploy/launchd/com.vitals.world-factory-prod.plist");
+    let text = std::fs::read_to_string(&prod).unwrap_or_else(|e| panic!("{}: {e}", prod.display()));
+    let flat: String = text.split_whitespace().collect();
+    assert!(flat.contains("<key>Label</key><string>com.vitals.world-factory-prod</string>"));
+    assert!(flat.contains("<key>WARD</key><string>https://world.vitals.academy</string>"));
+    assert!(flat.contains("<key>VITALS_GCP_PROJECT</key><string>vitals-academy</string>"));
+    assert!(flat.contains("<key>VITALS_WORLD_DIR</key><string>/Users/mimir/.vitals/world-prod</string>"), "its own ledger");
+    assert!(flat.contains("<key>VITALS_FACES_DIR</key><string>/Users/mimir/.vitals/world</string>"), "the shared faces");
+    assert!(flat.contains("<key>VITALS_VERTEX_PROJECT</key><string>vitals-academy</string>"));
+    assert!(!text.contains("VITALS_TOKEN") && text.contains("vitals-door-token"));
+    assert!(flat.contains("<key>StartInterval</key><integer>600</integer>"));
+    assert!(text.contains("world-prod/factory.log"), "its own log");
+    if let Ok(out) = Command::new("plutil").args(["-lint", "-s"]).arg(&prod).output() {
+        assert!(out.status.success(), "plutil: {}", String::from_utf8_lossy(&out.stderr));
+    }
     // macOS's own linter, when this runs on a Mac.
     if let Ok(out) = Command::new("plutil").args(["-lint", "-s"]).arg(&path).output() {
         assert!(out.status.success(), "plutil: {}", String::from_utf8_lossy(&out.stderr));

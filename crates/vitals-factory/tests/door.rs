@@ -10,7 +10,7 @@
 //! meets both.
 
 use std::collections::BTreeMap;
-use vitals_factory::door::{push_body, FillReply, Outbound, Pushed, Token, WardView};
+use vitals_factory::door::{push_body, FillReply, Outbound, Pushed, Queue, Token, WardView};
 use vitals_web::ward::{Pack, Persona};
 
 const STAGING: &str = include_str!("fixtures/ward-staging-2026-09-16.json");
@@ -167,4 +167,40 @@ fn the_token_is_never_printed() {
     assert!(!shown.contains("sekrit"), "debug output leaks the token: {shown}");
     assert!(shown.contains("redacted"));
     assert_eq!(t.bearer(), "Bearer sekrit-value-1234", "the header is the one place it is spelled out");
+}
+
+/// The ward's door has three states since 17 Sep: `open` (packs taken, patients admitted),
+/// `preview` (packs taken, nobody admitted — the queue fills while the founder looks), and
+/// `closed`. The factory sends on the first two and waits on the third.
+#[test]
+fn preview_takes_packs_like_open_and_closed_does_not() {
+    for (door, takes) in [("open", true), ("preview", true), ("closed", false), ("", false), ("shut", false)] {
+        let q = Queue { waiting: 4, beds: 3, door: door.into() };
+        assert_eq!(q.takes_packs(), takes, "{door:?}");
+    }
+    let body = r#"{"readable": true, "source": "devnet:x", "policy": {"beds": 3, "catalogue": []}, "queue": {"waiting": 7, "beds": 3, "door": "preview"}, "patients": []}"#;
+    let w = WardView::parse(body).unwrap();
+    let q = w.queue.as_ref().unwrap();
+    assert!(q.takes_packs() && q.waiting == 7, "{q:?}");
+}
+
+/// The factory speaks to four routes and no other: it never takes, admits, or touches a bed, so
+/// a 409 from a take-style route is never its to see. Held here the way a grep would hold it.
+#[test]
+fn the_factory_speaks_to_four_routes_and_never_takes() {
+    let src = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/door.rs")).unwrap();
+    let mut routes: Vec<String> = Vec::new();
+    for line in src.lines().filter(|l| !l.trim_start().starts_with("//")) {
+        let mut rest = line;
+        while let Some(i) = rest.find("/api/ward") {
+            let tail = &rest[i..];
+            let end = tail.find(|c: char| c == '"' || c == '{' || c == ' ' || c == ')').unwrap_or(tail.len());
+            routes.push(tail[..end].trim_end_matches('/').to_string());
+            rest = &tail[end..];
+        }
+    }
+    routes.sort();
+    routes.dedup();
+    assert_eq!(routes, vec!["/api/ward", "/api/ward/cases?placeable=1", "/api/ward/pack", "/api/ward/queue"], "{routes:?}");
+    assert!(!src.contains("/take") && !src.contains("/admit"), "no take-style route, ever");
 }

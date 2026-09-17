@@ -12,7 +12,7 @@ use std::collections::VecDeque;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use vitals_factory::cases::fits;
-use vitals_factory::door::{parse_cases, Door, FillReply, Filled, Outbound, Pushed, Queued, Token, WardCase, WardView};
+use vitals_factory::door::{parse_cases, Door, FillReply, Filled, Outbound, Pushed, Queue, Queued, Token, WardCase, WardView};
 use vitals_factory::ledger::Ledger;
 use vitals_factory::manifest::{batch_age, Manifest};
 use vitals_factory::pool::{read_pool, Person};
@@ -68,6 +68,7 @@ fn config(dir: &Path, depth: usize, bases: usize) -> Config {
         bases_per_tick: bases,
         repo: repo_root(),
         world_dir: dir.to_path_buf(),
+        faces_dir: dir.to_path_buf(),
         secret_project: "vitals-academy-dev".into(),
         vertex_project: "vitals-academy".into(),
         bucket: "vitals-world-portraits".into(),
@@ -413,6 +414,36 @@ fn a_second_tick_queues_nobody_twice_whether_or_not_the_door_kept_them() {
     assert_eq!(Ledger::load(&dir.join("factory-ledger.json")).unwrap().sent.len(), q3.len());
 }
 
+/// The ward's `preview` state: the queue door takes packs and nobody is admitted. The factory
+/// sends as on an open door and reads the depth the block says; `closed` still means nothing is
+/// sent this tick, with a line; a door word it does not know is read as closed.
+#[test]
+fn a_preview_door_takes_packs_like_an_open_one_and_a_closed_one_waits() {
+    let dir = world("preview");
+    let pool = read_pool(POOL).unwrap();
+    seed_manifest(&dir, &pool);
+    let mut ward = WardView::parse(STAGING).unwrap();
+    ward.queue = Some(Queue { waiting: 4, beds: 3, door: "preview".into() });
+    let door = FakeDoor::new(ward.clone());
+    let tools = FakeTools::default();
+    let r = tick(&config(&dir, 6, 2), &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert!(!door.queue.borrow().is_empty(), "packs were sent");
+    assert!(r.lines.iter().any(|l| l.contains("door preview")), "{:?}", r.lines);
+    assert!(r.lines.iter().any(|l| l.contains("preview") && l.contains("nobody is admitted")), "says what preview means: {:?}", r.lines);
+    assert!(r.lines.iter().any(|l| l.contains("assuming depth 4") || l.contains("queue depth")), "{:?}", r.lines);
+    // Closed: nothing sent, one line, no error, not even a probe.
+    let dir2 = world("preview-closed");
+    seed_manifest(&dir2, &pool);
+    ward.queue = Some(Queue { waiting: 4, beds: 3, door: "closed".into() });
+    let door = FakeDoor::new(ward.clone());
+    let tools = FakeTools::default();
+    let r = tick(&config(&dir2, 6, 2), &door, &tools);
+    assert!(door.queue.borrow().is_empty() && door.pushes.borrow().is_empty());
+    assert!(r.errors.is_empty() && r.lines.iter().any(|l| l.contains("the door is closed")), "{:?}", r.lines);
+    assert_eq!(*tools.token_fetches.borrow(), 0, "no token for a closed door");
+}
+
 #[test]
 fn a_closed_door_builds_nothing_and_says_so() {
     let dir = world("closed");
@@ -604,6 +635,59 @@ fn every_pack_built_names_a_world_case_that_fits_and_carries_its_level() {
     let text = r.lines.join("\n");
     assert!(text.contains("case door: 18 cases listed"), "the withdrawn row is not counted: {text}");
     assert!(text.lines().filter(|l| l.starts_with("queued")).all(|l| l.contains(" · student") || l.contains(" · intern") || l.contains(" · resident")), "every queued line names the level:\n{text}");
+}
+
+/// Faces are shared and packs are per ward. Two wards run from two world directories — each
+/// its own ledger, so their patients never mix — and one faces directory, so a face made for one
+/// is on file for the other and never painted twice. The manifest merges on save rather than
+/// overwrites, so two factories writing it lose nothing of each other's.
+#[test]
+fn faces_are_shared_between_wards_and_packs_are_not() {
+    let faces = world("shared-faces");
+    let dev = world("shared-dev");
+    let prod = world("shared-prod");
+    let pool = read_pool(POOL).unwrap();
+    // Nobody has a face: the dev tick paints some.
+    let dev_cfg = Config { world_dir: dev.clone(), faces_dir: faces.clone(), ward: "https://dev.ward.test".into(), ..config(&dev, 4, 4) };
+    let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
+    let tools = FakeTools::default();
+    let r = tick(&dev_cfg, &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let painted = tools.paints.borrow().len();
+    assert!(painted >= 4, "{painted}");
+    assert!(faces.join("portraits.json").exists() && !dev.join("portraits.json").exists(), "the manifest lives with the faces");
+    assert!(dev.join("factory-ledger.json").exists() && !faces.join("factory-ledger.json").exists(), "the ledger lives with the ward");
+    assert!(faces.join("work").exists() && !dev.join("work").exists(), "the paint scratch lives with the faces");
+    // The production tick, same seed, an empty ward: the same people are drawn, and every face
+    // it needs is already on file — nothing painted, and its own ledger starts empty.
+    let prod_cfg = Config { world_dir: prod.clone(), faces_dir: faces.clone(), ward: "https://prod.ward.test".into(), ..config(&prod, 4, 4) };
+    let door2 = FakeDoor::new(WardView::parse(STAGING).unwrap());
+    let tools2 = FakeTools::default();
+    let r = tick(&prod_cfg, &door2, &tools2);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert_eq!(tools2.paints.borrow().len(), 0, "every face was on file: {:?}", r.lines);
+    assert_eq!(door2.queue.borrow().len(), 4);
+    let dev_ledger = Ledger::load(&dev.join("factory-ledger.json")).unwrap();
+    let prod_ledger = Ledger::load(&prod.join("factory-ledger.json")).unwrap();
+    assert_eq!(dev_ledger.sent.len(), 4);
+    assert_eq!(prod_ledger.sent.len(), 4);
+    assert!(dev_ledger.sent.values().all(|s| s.ward == "https://dev.ward.test") && prod_ledger.sent.values().all(|s| s.ward == "https://prod.ward.test"));
+    // The merge: two manifests loaded from the same file, each adding a face, each saving — the
+    // file holds both; a face one of them removed on purpose does not come back.
+    let path = faces.join("portraits.json");
+    let mut a = Manifest::load(&path).unwrap();
+    let mut b = Manifest::load(&path).unwrap();
+    let before = a.entries.len();
+    let removed = a.entries.keys().next().unwrap().clone();
+    a.entries.remove(&removed);
+    a.record_base("THA-0", 28, &sha_url(b"a"), &pool[0]);
+    a.save(&path).unwrap();
+    b.record_base("BRA-1", 45, &sha_url(b"b"), pool.iter().find(|p| p.key == "BRA-1").unwrap());
+    b.save(&path).unwrap();
+    let merged = Manifest::load(&path).unwrap();
+    assert!(merged.entries.contains_key("THA-0") && merged.entries.contains_key("BRA-1"), "{:?}", merged.entries.keys().collect::<Vec<_>>());
+    assert!(!merged.entries.contains_key(&removed), "removed on purpose by a, and b's save did not bring it back");
+    assert_eq!(merged.entries.len(), before + 1);
 }
 
 /// The endemic list is the ward's, not a file: a checkout with the pool and the physicians series
