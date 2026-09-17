@@ -1140,3 +1140,45 @@ fn a_patient_nobody_came_back_to_is_closed_by_the_ward_and_not_by_the_next_stran
     assert!(err.is_err(),
             "her chart cannot be rebuilt, so the ward says so rather than closing her on a guess");
 }
+
+/// **A receipt address this ward never played is refused without reading the chain.**
+///
+/// `/shift/<64 hex>` answered in 29 to 102 seconds on staging (measured 17 ก.ย., three times, on a
+/// hash nobody has ever anchored), and the ward serves requests one at a time — so any stranger
+/// with a URL bar could hold the whole ward, board and beds and all, for a minute and a half. The
+/// cause is in `find_shift`: when the cached pass finds nothing it walks *every patient* again,
+/// refreshing each one's history from the RPC, which is twenty-odd round trips for an answer that
+/// was always going to be "no shift on this ward has that hash".
+///
+/// The refresh exists for one real case: this ward anchored a shift a moment ago and its own cache
+/// has not caught up. That case has a tell — the tape is here, kept under the hash the leaf commits
+/// to, because this ward is what kept it. So the tape is the ticket to the chain walk, and a hash
+/// with no tape behind it is refused from the store alone.
+///
+/// Nothing is lost by it. A receipt is rebuilt *from* the tape; a shift whose tape this ward does
+/// not hold cannot be rendered even when the chain confirms it exists, which is what the board
+/// already says in words about its unrebuildable patients.
+#[test]
+fn a_receipt_address_this_ward_never_played_is_refused_without_reading_the_chain() {
+    use vitals_web::store::Store;
+    use vitals_web::ward_chain::{keep_tape, worth_reading_the_chain_for, StoredTape};
+
+    let root = std::env::temp_dir().join(format!("vitals-receipt-{}-{:?}", std::process::id(),
+                                                 std::thread::current().id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let store = Store::open(root.clone()).expect("a store");
+
+    let ours = "a".repeat(64);
+    let strangers = "9f2c1e5a7b3d4c6e8a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f6071";
+    keep_tape(&store, &StoredTape { patient_id: 7, run_hash: ours.clone(), steps: vec![] })
+        .expect("the tape is kept");
+
+    assert!(worth_reading_the_chain_for(&store, &ours),
+            "this ward played it and holds the tape, so a cache that has not caught up is worth \
+             one read of the chain");
+    assert!(!worth_reading_the_chain_for(&store, strangers),
+            "a hash nobody here has ever played is answered from the store, in milliseconds");
+    assert!(!worth_reading_the_chain_for(&store, "zzz"), "and a thing that is not a hash at all");
+
+    let _ = std::fs::remove_dir_all(&root);
+}
