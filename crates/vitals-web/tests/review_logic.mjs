@@ -148,6 +148,8 @@ const out = {
   optionless: questions.querySelectorAll('section.q')
     .filter(c => !c.querySelector('.opts'))
     .map(c => c.querySelector('textarea[data-q]').dataset.q),
+  // English-against-Thai rows per card, in order — the language review's whole content.
+  rows: questions.querySelectorAll('section.q').map(c => c.querySelectorAll('.lines tr').length),
   draft_keys: Object.keys(store),
 };
 process.stdout.write(JSON.stringify(out));
