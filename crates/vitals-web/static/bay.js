@@ -1876,6 +1876,31 @@ function endWords(ward, armed, g){
         note:'Ends your shift and writes it to '+g.p+' chain. '+Cap(g.s)+
              ' stays on the ward, and the next stranger starts where you stopped.' };
 }
+/* The other way out, and the one that costs a stranger everything they have done: the shift is
+   released and nothing is written. Named by what it does — "hand her back" and "hand over" are one
+   word apart and opposite in consequence (UX review C4) — and asked once before it acts, in the
+   same press-again idiom as the end button. A browser dialogue would be dismissed without reading;
+   the strip is where this page already speaks. */
+let LEAVEARM=null, LEAVEWAS=null;
+/* Six seconds and the question is withdrawn, the same as the end button's. A page that keeps a
+   confirmed state after the stranger has looked away is a page that leaves a loaded press behind
+   the next thing they do. */
+function disarmLeave(){
+  clearTimeout(LEAVEARM); LEAVEARM=null;
+  /* The strip asked the question, so the strip takes it back. A button that has withdrawn its
+     question over a page still asking it is the page contradicting itself, and the stranger who
+     looks up at that moment reads the sentence rather than the button. */
+  if(LEAVEWAS!==null&&$('#wardsay')){ $('#wardsay').innerHTML=LEAVEWAS; LEAVEWAS=null; }
+  const b=$('#wardback-shift'); if(!b)return;
+  b.classList.remove('armed'); b.textContent=leaveWords(false).label;
+}
+
+function leaveWords(armed){
+  return armed
+    ? { label:'press again to leave', say:'nothing you did will be kept — leave?' }
+    : { label:'Leave without recording', say:'' };
+}
+
 function disarmEnd(){
   if(armT){clearTimeout(armT);armT=null}
   const b=$('#endrun'); if(!b)return;
@@ -4020,7 +4045,8 @@ function wardBar(){
   const controls=REVIEW
     ? '<a class="btn" href="/ward/review">open another case</a>'
     : '<button class="btn go" id="wardtake" disabled>take this shift</button>'
-      +'<button class="btn" id="wardback-shift" style="display:none">hand back</button>';
+      +'<button class="btn quiet" id="wardback-shift" style="display:none">'
+      +leaveWords(false).label+'</button>';
   $('#game').insertAdjacentHTML('afterbegin',
     '<div id="wardbar" style="display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;'+
     'padding:.6rem .9rem;margin-bottom:.6rem;border:1px solid var(--rule,#d8ded9);'+
@@ -4036,9 +4062,22 @@ function wardBar(){
      driven run ended with the strip showing its opening line and no sign that the press had been
      received; I could not reproduce it, and the fix for the class is to make any failure in here
      arrive on the strip rather than in a console nobody has open. */
-  $('#wardback-shift').onclick=()=>handBack().catch(e=>{
-    wardSay('that did not go through: '+esc(e&&e.message?e.message:e)+' — try again');
-  });
+  $('#wardback-shift').onclick=()=>{
+    const b=$('#wardback-shift');
+    if(!b.classList.contains('armed')){
+      /* Asked once. The strip carries the question because it is where the page speaks and
+         because a stranger reading the button is already looking at it. */
+      b.classList.add('armed'); b.textContent=leaveWords(true).label;
+      LEAVEWAS=($('#wardsay')||{}).innerHTML;
+      wardSay(leaveWords(true).say);
+      clearTimeout(LEAVEARM); LEAVEARM=setTimeout(disarmLeave, ARM_MS);
+      return;
+    }
+    disarmLeave();
+    handBack().catch(e=>{
+      wardSay('that did not go through: '+esc(e&&e.message?e.message:e)+' — try again');
+    });
+  };
   $('#wardtake').onclick=()=>takeShift().catch(e=>{
     $('#wardtake').disabled=false;
     wardSay('that did not go through: '+esc(e&&e.message?e.message:e)+' — try again');
@@ -4192,7 +4231,6 @@ async function openShift(){
   wardBed().then(bed=>{
     if(bed&&!id)wardSay(shiftLine(bed, r.ward.shift, r.ward.shifts_before, pro()));
   });
-  $('#wardback-shift').textContent='hand '+pro().o+' back';
   /* Read, not treat. Every control that would touch the patient says which of the two this is. */
   wardGate();
   /* Two controls that mean something in the bay and nothing here: "restart" would quietly open a
@@ -4274,7 +4312,7 @@ function nameNow(){ return (WARDSHIFT&&WARDSHIFT.name)||('patient '+WARD); }
 async function handBack(){
   if(!id)return;
   $('#wardback-shift').disabled=true;
-  wardSay('handing '+pro().o+' back…');
+  wardSay('leaving without recording…');
   const r=await wardDo('/api/ward/release?id='+id);
   if(r.refused){ $('#wardback-shift').disabled=false; return wardSay('<b>refused.</b> '+esc(r.refused)); }
   if(r.error){ $('#wardback-shift').disabled=false; return wardSay(esc(r.error)); }
@@ -4282,8 +4320,8 @@ async function handBack(){
   /* She is somebody else's patient from this second, so the controls close the way they were
      closed before the head was taken — and say the same thing about why. */
   wardGate();
-  wardSay('<b>handed back.</b> nothing you did was recorded; the next person gets '+pro().o+
-          ' as you found '+pro().o+'. <a href="/">back to the globe</a>');
+  wardSay('<b>left without recording.</b> the next person finds '+pro().o+' as you did. '+
+          '<a href="/">back to the globe</a>');
 }
 
 /* A stranger who closes the tab should free the bed in seconds rather than in the length of a

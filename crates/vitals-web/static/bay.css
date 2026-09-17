@@ -910,6 +910,17 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.78rem;background:va
 .presets .btn{font-size:.78rem;padding:.45rem .75rem}
 .sheet-f{display:flex;gap:.5rem;padding:.8rem 1rem;border-top:1px solid var(--line)}
 .sheet-f .sp{margin-left:auto}
+/* The exit that records nothing. It sits beside the one action the page is for, so it is quiet by
+   weight and plain by name: a stranger tells the two apart without reading twice (UX review C4).
+   Armed, it turns the colour of the thing it is about to cost them. */
+.btn.quiet{background:transparent;border-color:var(--line);color:var(--ink-2);font-weight:400}
+.btn.quiet:hover:not(:disabled){background:transparent;border-color:var(--ink-3);color:var(--ink)}
+/* The hover rule above is as specific as this one and comes first, so a pointer resting on the
+   button after the press would otherwise paint the question in the resting colours — which is
+   exactly when a stranger is looking at it. */
+.btn.quiet.armed,
+.btn.quiet.armed:hover:not(:disabled){color:var(--alarm);border-color:var(--alarm);font-weight:600}
+
 .btn.danger{color:var(--alarm);border-color:#EFD3D0}
 .btn.danger:hover{background:var(--alarm-soft);border-color:var(--alarm)}
 /* The finish control. Wider than anything else in the column and the only thing on the page

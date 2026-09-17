@@ -774,3 +774,39 @@ fn a_shift_does_not_carry_the_practice_controls() {
     assert!(paint.contains("WARDSURFACE?''") || paint.contains("!WARDSURFACE"),
             "the LIVE pill is still drawn on the ward host: {paint}");
 }
+
+/// **The quiet exit is quiet, and its question survives a resting pointer.**
+///
+/// C4's other half is weight. "Leave without recording" sits next to the one action this page is
+/// for, so it carries no fill and no bold — a stranger tells the two apart before reading either.
+/// Measured in Chrome at 1460×900 and 390×844: 400 against the primary's 700, transparent against
+/// its filled card.
+///
+/// The armed rule comes *after* the hover rule deliberately, and that is the assertion. Both are
+/// `.btn.quiet` plus one more class or pseudo-class, so they are equally specific and the later one
+/// wins — and the pointer is always resting on the button at the moment it asks the question,
+/// because the press is what armed it. Written the other way round, the driven page showed
+/// "press again to leave" in the resting ink: the one state where the colour is the warning, in the
+/// one situation where it is always hovered.
+#[test]
+fn the_quiet_exit_keeps_its_warning_under_the_pointer() {
+    let css = bay_css();
+    let quiet = css.find(".btn.quiet{").expect("the quiet button's own rule");
+    let hover = css.find(".btn.quiet:hover").expect("its hover rule");
+    let armed = css.find(".btn.quiet.armed").expect("the armed rule");
+
+    let block = &css[quiet..css[quiet..].find('}').map(|e| quiet + e).unwrap_or(css.len())];
+    assert!(block.contains("background:transparent"),
+            "the exit that records nothing carries no fill: {block}");
+    assert!(block.contains("font-weight:400"),
+            "and no bold — the weight is the first thing a stranger reads: {block}");
+
+    assert!(armed > hover,
+            "the armed rule has to come after the hover rule, or the question is painted in the \
+             resting colours at exactly the moment it is asked — the press is what armed it, so \
+             the pointer is on the button");
+    let armed_block = &css[armed..css[armed..].find('}').map(|e| armed + e).unwrap_or(css.len())];
+    assert!(armed_block.contains("hover"),
+            "and it has to name the hover state itself, because the pointer is resting there: \
+             {armed_block}");
+}
