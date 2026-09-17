@@ -3796,12 +3796,21 @@ fn main() {
                     })),
                     // A case with no rubric — EP1, or a member whose files have not landed — has
                     // no mark sheet to open. That is a fact about the case, not a failure.
-                    Some(s) => match rubric_path(&s.ep) {
+                    Some(s) => {
+                        // The rubric of a compiled case is in the pack, in the store, because that
+                        // is how it arrived: the compiler sends the mark sheet with the scenario
+                        // through the case door. Only the season's cases have a file. `s.ep` is the
+                        // case id for a ward shift and for a review run alike, so one lookup
+                        // answers for both.
+                        let held = store
+                            .get::<serde_json::Value>(ward_case::CASE_STORE, &ward_case::key_for(&s.ep))
+                            .and_then(|pack| pack.get("rubric").cloned())
+                            .map(|r| r.to_string());
+                        let on_disk = || rubric_path(&s.ep).and_then(|p| std::fs::read_to_string(p).ok());
+                        match held.or_else(on_disk) {
                         None => json(serde_json::json!({ "case": s.ep, "items": [] })),
-                        Some(p) => {
-                            let sheet = std::fs::read_to_string(&p)
-                                .map_err(|e| e.to_string())
-                                .and_then(|rj| vitals_osce::sheet_for_run(&s.sce_json, &s.tape, &rj));
+                        Some(rj) => {
+                            let sheet = vitals_osce::sheet_for_run(&s.sce_json, &s.tape, &rj);
                             match sheet {
                                 Err(e) => json(serde_json::json!({ "error": e })),
                                 Ok((rubric, det)) => json(serde_json::json!({
@@ -3871,7 +3880,8 @@ fn main() {
                                 })),
                             }
                         }
-                    },
+                        }
+                    }
                 }
             }
             (Method::Get, "/api/tape") => {
