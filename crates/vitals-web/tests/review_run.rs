@@ -136,6 +136,16 @@ impl Server {
         }
     }
 
+    /// A page rather than an answer.
+    fn page(&self, path: &str) -> (u16, String) {
+        let url = format!("http://127.0.0.1:{}{path}", self.port);
+        match ureq::get(&url).call() {
+            Ok(res) => (res.status(), res.into_string().unwrap_or_default()),
+            Err(ureq::Error::Status(c, res)) => (c, res.into_string().unwrap_or_default()),
+            Err(e) => panic!("{url}: {e}"),
+        }
+    }
+
     fn get(&self, path: &str) -> (u16, Value) {
         let url = format!("http://127.0.0.1:{}{path}", self.port);
         match ureq::get(&url).call() {
@@ -281,4 +291,38 @@ fn the_mark_sheet_of_a_compiled_case_comes_out_of_the_pack() {
     let items = marks["items"].as_array().expect("the rows a reviewer reads");
     assert_eq!(items.len(), 2, "{marks}");
     assert!(items.iter().any(|i| i["label"] == "Fluids"), "{marks}");
+}
+
+/// **The two pages a reviewer opens.**
+///
+/// `/ward/review/<case>` is the play surface, the same one a shift uses — one page, one engine, one
+/// tape, with a parameter saying what this run is. `/ward/review` is the list to choose from, which
+/// is the thing three beds cannot give you.
+#[test]
+fn the_review_pages_are_served_on_the_ward_host() {
+    let s = Server::start();
+    let mut pack = a_pack();
+    pack["case_id"] = json!("embla-page-1");
+    assert_eq!(s.post("/api/ward/case", &pack).0, 200);
+
+    let (code, run) = s.page("/ward/review/embla-page-1");
+    assert_eq!(code, 200);
+    assert!(run.contains("id=\"game\""), "the play surface, as a shift gets it");
+    assert!(run.contains("not on the ward"),
+            "and it says what kind of run this is before anything is played: {}",
+            &run[..200.min(run.len())]);
+    // The season is no more present here than on a shift page.
+    for season in ["EP1", "OSCE", "\u{2190} episodes"] {
+        assert!(!run.contains(season), "the review page carries {season:?}");
+    }
+
+    let (code, list) = s.page("/ward/review");
+    assert_eq!(code, 200);
+    assert!(list.contains("review"), "the list page: {}", &list[..200.min(list.len())]);
+
+    // A path that is not a case id is not a patient id either, and says so rather than opening
+    // something.
+    let (code, bad) = s.page("/ward/review/NOT A CASE");
+    assert_eq!(code, 200, "a page, not a stack trace");
+    assert!(bad.contains("Nobody here") || bad.contains("not a case"), "{bad:.200}");
 }
