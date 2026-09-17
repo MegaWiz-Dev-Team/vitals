@@ -4090,21 +4090,51 @@ async function openReview(){
   wardGate();
 }
 
+/* One patient's whole stay, for a patient who is not in a bed any more.
+   Every state but "on the ward right now" was "Not this bed": no name, no face, no outcome, and no
+   way to the shifts that treated her. The chart is the chain — this is where a stranger reads it. */
+function chartPage(c){
+  const g=/^m/i.test(c.sex||'')?PRO_M:(/^f/i.test(c.sex||'')?PRO_F:PRO_N);
+  const when=t=>t?String(t).replace('T',' ').replace(/\.\d+Z?$/,'').replace('Z','')+' UTC':'';
+  const face=c.portrait?'<img src="'+esc(c.portrait)+'" alt="" width="128" height="128" '+
+      'style="border-radius:12px;object-fit:cover;display:block;margin:0 0 .9rem">':'';
+  const shifts=(c.shifts||[]).map((s,i)=>
+    '<li>shift '+(i+1)+' · <a href="/shift/'+encodeURIComponent(s.run_hash)+'">the receipt</a>'
+    +' · key '+esc(s.signer)+'…'+(s.kept?'':' · <i>tape not kept here</i>')+'</li>').join('');
+  const what=c.state==='went_home'?'went home':c.state==='died'?'died'
+            :c.state==='off_ward'?'is on the chain and has no case here':'is on the ward';
+  wardPage(
+    '<p class="bed">patient '+esc(c.patient_id)+'</p>'
+    +face
+    +'<h1>'+esc(c.name||('patient '+c.patient_id))+'</h1>'
+    +'<p>'+[c.age?esc(c.age):'', c.country_name?'from '+esc(c.country_name):'',
+            c.case_title?esc(c.case_title):'', c.difficulty?esc(c.difficulty):'']
+        .filter(Boolean).join(' · ')+'</p>'
+    +'<p><b>'+esc(cap(g.s))+' '+esc(what)+'</b>'
+      +(c.closed_at?' · '+esc(when(c.closed_at)):'')
+      +(c.admitted_at?'<br>admitted '+esc(when(c.admitted_at)):'')+'</p>'
+    +(shifts?'<h2 style="font-size:1rem;margin:1.4rem 0 .4rem">'
+        +(c.shifts.length===1?'one shift':c.shifts.length+' shifts')
+        +' on '+esc(g.p)+' chain</h2><ol style="line-height:1.9">'+shifts+'</ol>'
+      :'<p>No shift was ever anchored on '+esc(g.p)+' chain.</p>'));
+}
+const cap=w=>String(w||'').charAt(0).toUpperCase()+String(w||'').slice(1);
+
 async function openShift(){
   await identity();
   wardBar();
   const me=await identity();
   const r=await (await fetch('/api/new?patient='+WARD+(me?'&player='+me.pub:'')+langQ())).json();
   if(r.error){
-    /* A bed that cannot be opened is a page of its own, not a strip above a product this stranger
-       did not come for. The sentence, which bed she is in if the board knows, and the way back. */
-    let bed='';
+    /* A bed that cannot be opened is not a refusal, it is a patient whose stay is over — or one
+       nobody can open yet. Her own chart is the page: who she is, what happened, and every shift
+       that treated her with its receipt. The sentence from `/api/new` is kept for the case where
+       even the chart cannot be read, because then there is nothing else true to say. */
     try{
-      const w=await (await fetch('/api/ward')).json();
-      const her=(w.patients||[]).find(p=>String(p.patient_id)===String(WARD));
-      if(her&&her.bed)bed='bed '+her.bed+' · ';
-    }catch(e){ /* the board is not needed to say what happened */ }
-    wardPage('<p class="bed">'+bed+'patient '+esc(WARD)+'</p>'
+      const c=await (await fetch('/api/ward/patient/'+encodeURIComponent(WARD))).json();
+      if(c&&!c.error&&c.patient_id!==undefined){ chartPage(c); return; }
+    }catch(e){ /* the chart is not needed to say what happened */ }
+    wardPage('<p class="bed">patient '+esc(WARD)+'</p>'
       +'<h1>Not this bed</h1><p>'+esc(r.error)+'</p>');
     return;
   }

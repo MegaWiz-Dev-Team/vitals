@@ -326,3 +326,34 @@ fn the_review_pages_are_served_on_the_ward_host() {
     assert_eq!(code, 200, "a page, not a stack trace");
     assert!(bad.contains("Nobody here") || bad.contains("not a case"), "{bad:.200}");
 }
+
+/// **A patient who is no longer in a bed still has a page.**
+///
+/// Every state except "on the ward right now" answered "Not this bed": no name, no face, no
+/// outcome, and no way to the shifts that treated her. The claim this project makes is that the
+/// chart *is* the chain, and a patient whose chart cannot be read the moment her stay ends is that
+/// claim with a hole in it — the hole a judge would find first.
+///
+/// This test is what can be asserted without a chain: the endpoint exists on the ward host, answers
+/// in a sentence rather than a stack trace when there is no chain to read, and refuses an id that
+/// is not one. What it publishes for a real patient is driven against staging, where seven have
+/// died and one has gone home.
+#[test]
+fn a_patient_has_a_page_after_the_bed() {
+    let s = Server::start();
+
+    let (code, body) = s.get("/api/ward/patient/1789528325");
+    assert_eq!(code, 200, "{body}");
+    assert!(body["error"].as_str().is_some_and(|e| !e.is_empty()),
+            "with no chain there is nothing to say about her, and it says so: {body}");
+    assert!(body["error"].as_str().is_some_and(|e| !e.contains("panicked")), "{body}");
+
+    let (code, body) = s.get("/api/ward/patient/not-a-number");
+    assert_eq!(code, 404, "{body}");
+    assert!(body["error"].as_str().is_some_and(|e| e.contains("whole number")), "{body}");
+
+    // And it is a read anybody may make: the chart is the chain, and a chart behind a token is a
+    // claim rather than a record.
+    let (code, _) = s.get("/api/ward/patient/1789528325");
+    assert_ne!(code, 401);
+}

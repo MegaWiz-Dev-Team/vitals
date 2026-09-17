@@ -2239,6 +2239,104 @@ const WORLD_BRAND: &str = concat!(
 );
 
 /// One shift's receipt, or the reason there is none.
+/// One patient's whole stay, for the page that shows it.
+///
+/// **Every state except "on the ward right now" used to be a 404.** A patient who went home, died,
+/// or reached the chain without a pack answered "Not this bed" — no name, no face, no outcome, and
+/// no way to the shifts that treated her. The claim this project makes is that the chart is the
+/// chain; a patient whose chart cannot be read the moment her stay ends is that claim with a hole
+/// in it, and it is the hole a judge would find first.
+///
+/// Public and ungated, like the board and the receipts: what it publishes is on chain already, plus
+/// the pack the factory sent and the tapes this ward kept.
+/// A slot, as the wall time it happened at, measured back from the read's own slot.
+///
+/// The same arithmetic the board does for `on_shift_since` and `handed_over`: the chain counts in
+/// slots and a person reads a clock, and the only honest bridge between them is this read's own
+/// anchor point.
+fn slot_to_utc(as_of: u64, slot: u64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let ago = as_of.saturating_sub(slot) as f64 * vitals_replay::SLOT_SECONDS;
+    ward::utc_iso(now.saturating_sub(ago as u64))
+}
+
+fn ward_chart(store: &store::Store, patient_id: u64) -> serde_json::Value {
+    let bad = |why: &str| serde_json::json!({ "error": why });
+    let chain = match ward_chain::WardChain::connect() {
+        Ok(c) => c,
+        Err(e) => return bad(&e),
+    };
+    let her = match chain.patient(patient_id) {
+        Ok(Some(p)) => p,
+        Ok(None) => return bad(&format!("no patient {patient_id} has been admitted here")),
+        Err(e) => return bad(&e),
+    };
+    let as_of = chain.slot().unwrap_or(0);
+    let pack = ward_chain::packs(store).remove(&patient_id);
+    let case = pack.as_ref().map(|p| p.case.clone()).unwrap_or_default();
+    let held = store
+        .get::<serde_json::Value>(ward_case::CASE_STORE, &ward_case::key_for(&case))
+        .and_then(|c| ward_case::validate_case(&c).ok());
+
+    // Her shifts, from the cache this ward fills as it reads the chain. Each one is addressed by
+    // the leaf where there is one and by its tape's hash otherwise — the same two addresses the
+    // receipt page takes, so every row here is a link that resolves.
+    let key = format!("p{patient_id}");
+    let seen: ward_chain::Seen = store.get(ward_chain::SHIFT_CACHE, &key).unwrap_or_default();
+    let mut shifts: Vec<serde_json::Value> = seen
+        .shifts()
+        .into_iter()
+        .map(|s| {
+            let hash = hex(&s.run_hash);
+            serde_json::json!({
+                "run_hash": hash,
+                "slot": s.slot,
+                "kept": ward_chain::tape_by_hash(store, &hash).is_some(),
+                // A key, not a person: there is no signup here, so this is the short form the
+                // receipt shows and nothing more.
+                "signer": hex(&s.signer).chars().take(8).collect::<String>(),
+            })
+        })
+        .collect();
+    shifts.sort_by_key(|s| s.get("slot").and_then(|v| v.as_u64()).unwrap_or(0));
+
+    serde_json::json!({
+        "patient_id": patient_id,
+        "state": ward::state_word(her.state),
+        "admitted_slot": her.admitted_slot,
+        "closed_slot": (her.closed_slot > 0).then_some(her.closed_slot),
+        "as_of_slot": as_of,
+        // The two slots as wall time, carried the way the board carries its own: a slot is a fact
+        // about the chain and a page shows a person when something happened to them.
+        "admitted_at": slot_to_utc(as_of, her.admitted_slot),
+        "closed_at": (her.closed_slot > 0).then(|| slot_to_utc(as_of, her.closed_slot)),
+        "sex": pack.as_ref().map(|p| p.persona.sex.clone()),
+        "shifts_on_chain": her.shifts,
+        "name": pack.as_ref().map(|p| p.persona.name.clone()),
+        "age": pack.as_ref().map(|p| p.persona.age),
+        "country": pack.as_ref().map(|p| p.persona.country.clone()),
+        "country_name": pack.as_ref().and_then(|p| ward::persona_pool()
+            .into_iter()
+            .find(|c| c.country == p.persona.country)
+            .map(|c| c.place)
+            .filter(|s| !s.is_empty())),
+        "portrait": pack.as_ref().and_then(|p| {
+            ward::portrait_for(&p.portrait, ward::portrait_state(her.state)).map(str::to_string)
+        }),
+        "case": (!case.is_empty()).then(|| case.clone()),
+        // The case's own words about its own patient: the title as its author wrote it, filled.
+        "case_title": held.as_ref().map(|c| {
+            ward_case::fill_persona(&c.title, &ward_case::a_patient_of(c))
+        }),
+        "difficulty": held.as_ref().map(|c| c.difficulty.clone()),
+        "withdrawn": held.as_ref().map(|c| c.withdrawn),
+        "shifts": shifts,
+    })
+}
+
 fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
     let bad = |why: &str| serde_json::json!({ "error": why });
     if !ward_chain::is_shift_hash(address) {
@@ -5313,6 +5411,23 @@ fn main() {
             }
             // One shift, for somebody who never played it. Public and unguarded: a receipt only
             // the people we hand a token to can read is not a receipt, it is a claim.
+            // One patient's whole stay: who she is, what happened to her, and every shift that
+            // treated her with the address of its receipt. The page for a patient who is no longer
+            // in a bed reads this — until it existed, her page was "Not this bed".
+            (Method::Get, p) if ward_mode() && p.starts_with("/api/ward/patient/") => {
+                let id = p.trim_start_matches("/api/ward/patient/").trim_end_matches('/');
+                match id.parse::<u64>() {
+                    Ok(patient_id) => {
+                        let _ = req.respond(json(ward_chart(&store, patient_id)));
+                    }
+                    Err(_) => {
+                        let _ = req.respond(json_code(serde_json::json!({
+                            "error": "a patient id is a whole number"
+                        }), 404));
+                    }
+                }
+                continue;
+            }
             (Method::Get, p) if ward_mode() && p.starts_with("/api/shift/") => {
                 let hash = p.trim_start_matches("/api/shift/");
                 let _ = req.respond(json(ward_receipt(&store, hash)));

@@ -877,7 +877,9 @@ pub fn review_case_in_path(path: &str) -> Option<String> {
 ///
 /// When the replay lands, this is the one place that changes: the board is already given the whole
 /// set, so it will not need asking twice.
-fn portrait_state(state: u8) -> &'static str {
+/// Which picture a patient in this chain state is drawn with. Public because the chart page — one
+/// patient's whole stay — asks the same question the board does and must get the same answer.
+pub fn portrait_state(state: u8) -> &'static str {
     match state {
         DISCHARGED => "recovered",
         DIED => "dead",
@@ -890,7 +892,8 @@ fn portrait_state(state: u8) -> &'static str {
 /// `unknown` rather than a panic or a guess: a byte this build does not know means the program
 /// moved ahead of the server, and the honest answer to a reader is that we do not know what she
 /// is, not a state we picked.
-fn state_word(state: u8) -> &'static str {
+/// The board's word for a chain state, used by the board and by one patient's own page.
+pub fn state_word(state: u8) -> &'static str {
     match state {
         // The board's word, not the program's. `on_ward` rather than `open` because a reader of
         // this endpoint is looking at a ward, and because the page that renders it says on the
