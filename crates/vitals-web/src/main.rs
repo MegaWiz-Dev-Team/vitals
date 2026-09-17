@@ -2686,6 +2686,50 @@ fn revision() -> String {
 }
 
 /// No such patient, or no readable chain — said in a sentence rather than as a status code alone.
+/// What a shared bed looks like when somebody pastes it into a chat.
+///
+/// UX review G5. The link unfurled as the product's own name and no picture — a card about a
+/// website, when what was shared was a person. This is her: the name, the age, the country in
+/// words, her face, and the one sentence that says what is happening to her.
+///
+/// Off the board, so a card cannot say anything the ward is not already saying, and a row with no
+/// name on it produces nothing rather than a card about nobody.
+fn og_tags(her: &serde_json::Value) -> String {
+    let esc = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('"', "&quot;");
+    let Some(name) = her["name"].as_str().filter(|n| !n.is_empty()) else { return String::new() };
+    let age = her["age"].as_u64().map(|a| format!(" · {a}")).unwrap_or_default();
+    let place = her["country"]
+        .as_str()
+        .and_then(|c| ward::persona_pool().into_iter().find(|x| x.country == c).map(|x| x.place))
+        .filter(|s| !s.is_empty())
+        .map(|s| format!(" · {s}"))
+        .unwrap_or_default();
+    let what = match her["state"].as_str().unwrap_or("") {
+        "on_shift" => "Somebody is treating her right now on a public ward.",
+        "went_home" | "died" => "Her stay has ended. Her chart is on the chain, and anybody can read it.",
+        "off_ward" => "She is on the chain, and this ward has no case for her.",
+        _ => "Nobody is with her. Take a shift and treat her — a few minutes at her bedside.",
+    };
+    let face = her["portrait"]
+        .as_str()
+        .filter(|u| u.starts_with("https://"))
+        .map(|u| format!(
+            "<meta property=\"og:image\" content=\"{}\">\
+             <meta name=\"twitter:card\" content=\"summary_large_image\">",
+            esc(u)))
+        // No face yet: a small card rather than a large one with nothing in it.
+        .unwrap_or_else(|| "<meta name=\"twitter:card\" content=\"summary\">".to_string());
+    format!(
+        "<meta property=\"og:title\" content=\"{name}{age}{place}\">\
+         <meta property=\"og:description\" content=\"{what}\">\
+         <meta property=\"og:type\" content=\"profile\">{face}",
+        name = esc(name),
+        age = esc(&age),
+        place = esc(&place),
+        what = esc(what),
+    )
+}
+
 /// The beds a stranger can take, as rows for a page that has just said no.
 ///
 /// UX review F1: a refusal is read by somebody who came to treat a patient, and a sentence plus a
@@ -4605,8 +4649,17 @@ fn main() {
                 let body = match ward::patient_id_in_path(p) {
                     // The ward's own page (founder, 16 ก.ย.: "ทำให้แยกกันเลยสิ"). The same play
                     // surface as the Eternal entry, composed from the same file, and none of the
-                    // season around it.
-                    Some(_) => compose(SHIFT),
+                    // season around it — plus the tags that make a shared link carry the patient
+                    // rather than the product (UX review G5). The board is already in hand and the
+                    // card is built from her row on it, so a card cannot say what the ward does not.
+                    Some(id) => {
+                        let board = ward_now(&ward_view, &store, &state_dir);
+                        let her = board["patients"]
+                            .as_array()
+                            .and_then(|rows| rows.iter().find(|p| p["patient_id"] == id).cloned())
+                            .unwrap_or(serde_json::Value::Null);
+                        compose(SHIFT).replace("<!--OG-->", &og_tags(&her))
+                    }
                     // The reviewer's two: the list of cases the ward holds, and one case opened to
                     // be read. The run is the same play surface as a shift — one page, one engine,
                     // one tape — and the page reads which it is out of its own path.
@@ -7040,6 +7093,12 @@ mod tests {
         let gone = serde_json::json!({ "name": "Lee Seo-yeon", "age": 54, "country": "KOR",
                                        "state": "died" });
         assert!(og_tags(&gone).contains("stay has ended"), "{}", og_tags(&gone));
+
+        // The page has somewhere to put them, and a composed page that never met a patient keeps
+        // the marker empty rather than carrying somebody else's card.
+        assert!(SHIFT.contains("<!--OG-->"), "the shift page has no slot for these any more");
+        assert!(!compose(SHIFT).replace("<!--OG-->", "").contains("og:title"),
+                "a page composed for nobody in particular claims nothing about anybody");
 
         // Nothing known, nothing claimed.
         assert_eq!(og_tags(&serde_json::Value::Null), "");
