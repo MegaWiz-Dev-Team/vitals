@@ -454,7 +454,11 @@
    ───────────────────────────────────────────────────────────── */
 :root{
   --room:#EFF3F2; --card:#FFFFFF; --card-2:#F6F9F8;
-  --ink:#0E1719; --ink-2:#4A5B5E; --ink-3:#849698; --line:#DDE5E4;
+  --ink:#0E1719; --ink-2:#4A5B5E;
+  /* Body text on the room and on a card, so it carries the 4.5:1 floor: 4.69:1 and 5.25:1. It was
+     #849698 — 2.76:1 on the room, which is the strip's clock, the chip labels and the quiet exit
+     (UX review G2). */
+  --ink-3:#5E6F73; --line:#DDE5E4;
   --act:#0B6E58; --act-soft:#E3F0EC;
   --warn:#B4590F; --warn-soft:#FBEDE1;
   --alarm:#C6362E; --alarm-soft:#FBE8E6;
@@ -503,6 +507,9 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.78rem;background:va
   transition:border-color .12s,background .12s,transform .06s}
 .btn:hover:not(:disabled){border-color:var(--act);background:var(--act-soft)}
 .btn:active:not(:disabled){transform:translateY(1px)}
+/* Every control on the bay answers a keyboard: the buttons, the ask bar, the quick questions and
+   the tray's tabs. None of them had a rule of its own (UX review H1). */
+.btn:focus-visible{outline:2px solid var(--act);outline-offset:2px}
 .btn:disabled{opacity:.38;cursor:not-allowed}
 .btn.go{background:var(--act);color:#fff;border-color:var(--act);font-weight:600}
 .btn.on{background:var(--act);color:#fff;border-color:var(--act)}

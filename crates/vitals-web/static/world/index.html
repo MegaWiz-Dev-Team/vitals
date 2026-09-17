@@ -14,7 +14,11 @@
 <style>
 :root{
   --ground:#F5F8F8; --surface:#FFFFFF; --surface-2:#EDF2F2;
-  --ink:#0F1719; --ink-2:#48585C; --ink-3:#7E8F93;
+  --ink:#0F1719; --ink-2:#48585C;
+  /* 4.65:1 on the darkest ground it sits on, which is the floor for body text — and every use of
+     it is body text: the legend, the hint, the footer, the figures' labels, a placeholder's
+     initials. It was #7E8F93, which was 2.98:1 there (UX review G2). */
+  --ink-3:#5E6F73;
   --rule:#D9E2E2; --rule-soft:#E8EEEE;
   --proven:#0B6E58; --proven-soft:#E2F0EB;
   --sea:#E3EBEB; --land:#CBD6D6; --land-edge:#B5C2C2; --lit:#0B6E58; --lit-edge:#085643; --hover:#9CC9BA;
@@ -124,10 +128,12 @@ canvas#globe.dragging{cursor:grabbing}
 .legend .note>summary{cursor:pointer;letter-spacing:.06em;text-transform:uppercase;font-size:.62rem;
   color:var(--ink-3);list-style:none}
 .legend .note>summary::-webkit-details-marker{display:none}
+.legend .note>summary:focus-visible{outline:2px solid var(--proven);outline-offset:2px;border-radius:.2rem}
 .legend .note>summary::before{content:"▸ ";font-size:.7em}
 .legend .note[open]>summary::before{content:"▾ "}
 .yearrow{display:flex;align-items:center;gap:.6rem;margin:.55rem 0 0;font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-2)}
 .yearrow input[type=range]{flex:1 1 10rem;min-width:8rem;max-width:22rem;accent-color:var(--proven)}
+.yearrow input:focus-visible{outline:2px solid var(--proven);outline-offset:3px}
 .yearrow button{font:inherit;cursor:pointer;width:2rem;height:1.7rem;border-radius:.4rem;border:1px solid var(--rule);background:var(--surface);color:var(--proven);line-height:1}
 .yearrow button:focus-visible{outline:2px solid var(--proven);outline-offset:2px}
 .yearrow output{min-width:3.2em;font-weight:600;color:var(--ink);letter-spacing:.06em}
@@ -183,13 +189,18 @@ canvas#globe.dragging{cursor:grabbing}
 .prow .note{color:var(--ink-3,#7b8a86);font-size:.86rem;line-height:1.45;margin-top:.15rem}
 .tag.endemic{color:var(--proven);background:var(--proven-soft)}
 a.take{font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.06em;text-decoration:none;color:var(--proven);border:1px solid var(--proven);border-radius:.4rem;padding:.25rem .55rem;white-space:nowrap}
-a.take:hover,a.take:focus-visible{background:var(--proven-soft);outline:none}
+a.take:hover{background:var(--proven-soft)}
+/* Hover and focus were one rule that turned the outline off so the hover would look clean — which
+   left the way into every bed invisible to a keyboard (UX review H1). */
+a.take:focus-visible{background:var(--proven-soft);outline:2px solid var(--proven);outline-offset:2px}
 /* Nothing to take here — but there is something to read: her chart, her shifts and what happened
    to her. It was `aria-disabled` with `pointer-events:none`, which made the whole row unclickable
    for exactly the patients whose page is the most worth opening. The word on it says which of the
    two this is, and the weight says it again. */
 a.take.look{color:var(--ink-3);border-color:var(--rule)}
-a.take.look:hover,a.take.look:focus-visible{color:var(--ink-2);border-color:var(--ink-3);background:transparent}
+a.take.look:hover{color:var(--ink-2);border-color:var(--ink-3);background:transparent}
+a.take.look:focus-visible{color:var(--ink-2);border-color:var(--ink-3);background:transparent;
+  outline:2px solid var(--ink-2);outline-offset:2px}
 .tray{margin-top:1rem}
 .tray .k{margin-bottom:.3rem;display:block}
 .holding{margin:1.2rem 0 0;padding:.95rem 1.1rem;background:var(--surface);border:1px solid var(--rule);border-radius:.6rem;font-family:"IBM Plex Mono",monospace;font-size:.84rem;color:var(--ink-2)}
@@ -233,6 +244,7 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
   .prow>a.take{justify-self:end;margin-top:.3rem}
 }
 .panel .close{display:none;float:right;font:inherit;background:none;border:1px solid var(--rule);border-radius:.4rem;color:var(--ink-2);padding:.15rem .5rem;cursor:pointer}
+.panel .close:focus-visible{outline:2px solid var(--proven);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){.panel{transition:none}}
 </style>
 <body>

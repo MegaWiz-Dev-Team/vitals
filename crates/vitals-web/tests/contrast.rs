@@ -40,6 +40,25 @@ fn css_of(rel: &str) -> String {
     out
 }
 
+/// A stylesheet with its prose taken out.
+///
+/// Comments carry colons and are written inside `:root` beside the token they explain, so a parser
+/// that splits declarations on `;` reads one as `/* … a token's reason : here */ --ink-3` and loses
+/// the token silently — which it did, the first time a token was given a reason.
+fn without_comments(css: &str) -> String {
+    let mut out = String::with_capacity(css.len());
+    let mut rest = css;
+    while let Some(i) = rest.find("/*") {
+        out.push_str(&rest[..i]);
+        rest = match rest[i..].find("*/") {
+            Some(e) => &rest[i + e + 2..],
+            None => "",
+        };
+    }
+    out.push_str(rest);
+    out
+}
+
 /// Every custom property the page really has, merged in the order the cascade would.
 ///
 /// Three things this has to get right, each of which it got wrong first:
@@ -50,6 +69,7 @@ fn css_of(rel: &str) -> String {
 ///   * a `:root` inside `@media (prefers-color-scheme: dark)` is a different palette for a
 ///     different reader and is not merged into this one. Depth tells them apart.
 fn tokens(css: &str) -> std::collections::BTreeMap<String, String> {
+    let css = &without_comments(css);
     let mut out = std::collections::BTreeMap::new();
     // Byte indices throughout, because this file is full of box-drawing comments and a char index
     // into a Rust string is not a byte index — the first attempt panicked inside a '─'.
@@ -152,30 +172,67 @@ fn the_contrast_of_every_text_colour_on_every_ground_it_sits_on() {
 }
 
 #[test]
-fn every_focus_rule_shows_something() {
+fn no_focus_rule_turns_the_ring_off_and_leaves_nothing() {
+    // The defect class, stated exactly: a rule that takes the outline away must put something in
+    // its place. A rule that sets neither — the reduced-motion block that only cancels a lift — is
+    // not taking anything away and is not this test's business.
     let mut blind = Vec::new();
     for page in ["static/world/index.html", "static/bay.css"] {
-        let css = css_of(page);
+        let css = without_comments(&css_of(page));
         let mut rest = css.as_str();
         while let Some(i) = rest.find(":focus-visible") {
-            // Back to the start of the selector, forward to the end of the block.
             let sel_start = rest[..i].rfind('}').map(|p| p + 1).unwrap_or(0);
             let Some(open) = rest[i..].find('{').map(|p| i + p) else { break };
             let Some(close) = rest[open..].find('}').map(|p| open + p) else { break };
             let sel = rest[sel_start..open].trim().replace('\n', " ");
             let body = &rest[open + 1..close];
+            let kills = body.split(';').any(|d| {
+                let d = d.trim().replace(' ', "");
+                d.starts_with("outline:none") || d.starts_with("outline:0")
+            });
             let shows = body.contains("box-shadow")
                 || body.split(';').any(|d| {
                     let d = d.trim();
                     d.starts_with("outline") && !d.contains("none") && !d.starts_with("outline-offset")
+                        && !d.starts_with("outline:0")
                 });
-            if !shows {
+            if kills && !shows {
                 blind.push(format!("{page}: {sel} {{{}}}", body.trim().replace('\n', " ")));
             }
             rest = &rest[close..];
         }
     }
     assert!(blind.is_empty(),
-            "a :focus-visible rule that shows nothing is a control a keyboard cannot find:\n  {}",
-            blind.join("\n  "));
+            "a :focus-visible rule that turns the outline off and puts nothing in its place is a \
+             control a keyboard cannot find:\n  {}", blind.join("\n  "));
+}
+
+/// **Every control a stranger can reach says so when the keyboard reaches it.**
+///
+/// The list is the controls the two pages actually have. A control missing from this list is not
+/// tested; a control *in* it with no `:focus-visible` rule anywhere in its own stylesheet is a
+/// control that shows nothing when tabbed to, which is H1.
+#[test]
+fn every_control_has_a_focus_rule_of_its_own() {
+    // The selectors the stylesheets actually use. On the bay every control is a `.btn` — the
+    // quick questions and the tray's tabs are `.chips .btn` and `.modes .btn` — so one rule covers
+    // them, and the ask bar is an input, which shows focus on `:focus` rather than waiting for the
+    // browser to decide the focus was keyboard-shaped.
+    let wants: &[(&str, &[&str])] = &[
+        ("static/world/index.html", &["a.take", ".filters button", ".yearrow button",
+                                      ".yearrow input", ".panel .close", ".legend .note>summary"]),
+        ("static/bay.css", &[".btn", "#cmd"]),
+    ];
+    let mut quiet = Vec::new();
+    for (page, controls) in wants {
+        let css = without_comments(&css_of(page));
+        for c in *controls {
+            if !css.contains(&format!("{c}:focus")) {
+                quiet.push(format!("{page}: {c}"));
+            }
+        }
+    }
+    assert!(quiet.is_empty(),
+            "a control with no focus rule of its own shows nothing when a keyboard reaches it:\n  {}",
+            quiet.join("\n  "));
 }
