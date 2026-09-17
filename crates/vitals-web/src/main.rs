@@ -2373,7 +2373,7 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
     let admitted = chain.patient(patient_id).ok().flatten().map(|p| p.admitted_slot).unwrap_or(0);
     match ward_chain::receipt(
         &sce_json,
-        ward_chain::rubric_of(&root, &pack.case).as_deref(),
+        ward_chain::rubric_for(store, &root, &pack.case).as_deref(),
         &shifts,
         &this,
         &|h| ward_chain::tape_by_hash(store, h),
@@ -2387,6 +2387,30 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
             if address != run_hash {
                 v["leaf"] = serde_json::json!(address);
             }
+            // The person and the case, in the words a reader knows them by: her face, her age and
+            // her country, and the case's own title and level rather than its id. The id is a fact
+            // about the filing and belongs with the leaf and the slot.
+            let held = store
+                .get::<serde_json::Value>(ward_case::CASE_STORE, &ward_case::key_for(&pack.case))
+                .and_then(|c| ward_case::validate_case(&c).ok());
+            v["case_title"] = serde_json::json!(held.as_ref().map(|c| {
+                ward_case::fill_persona(&c.title, &ward_case::a_patient_of(c))
+            }));
+            v["difficulty"] = serde_json::json!(held.as_ref().map(|c| c.difficulty.clone()));
+            v["age"] = serde_json::json!(pack.persona.age);
+            v["sex"] = serde_json::json!(pack.persona.sex);
+            v["country"] = serde_json::json!(pack.persona.country);
+            v["country_name"] = serde_json::json!(ward::persona_pool()
+                .into_iter()
+                .find(|c| c.country == pack.persona.country)
+                .map(|c| c.place)
+                .filter(|p| !p.is_empty()));
+            v["portrait"] = serde_json::json!(ward::portrait_for(&pack.portrait, "stable"));
+            // The transaction that anchored it, so a reader can open it in an explorer and see the
+            // same thing on somebody else's screen. That is the whole point of anchoring it.
+            let key = format!("p{}", patient_id);
+            let seen: ward_chain::Seen = store.get(ward_chain::SHIFT_CACHE, &key).unwrap_or_default();
+            v["signature"] = serde_json::json!(seen.signature_of(&this.run_hash));
             v
         }
         Err(e) => bad(&e),
@@ -2408,62 +2432,151 @@ fn receipt_page(r: &serde_json::Value) -> String {
             esc(why)
         );
     }
-    let row = |k: &str, v: String| format!("<tr><th>{k}</th><td>{v}</td></tr>");
+    // ── the shift, as a story a stranger can read ───────────────────────────
+    //
+    // It said "13 orders · 0 beats" and "8 of 40" over a case id, with the patient's pronoun wrong
+    // and no way to check any of it on the chain. A receipt is the thing a player wants to show
+    // somebody: who the patient was, what they did, what happened, and where to see for themselves.
+    // The hashes are the evidence and they go at the foot, folded, where evidence belongs.
     let did = &r["did"];
-    let harm = did["harm"].as_array().map(|h| h.len()).unwrap_or(0);
-    let det = match (&r["det"]["earned"], &r["det"]["max"]) {
-        (serde_json::Value::Number(e), serde_json::Value::Number(m)) => format!("{e} of {m}"),
-        _ => "not scored — this case has no rubric".to_string(),
+    let pid = r["patient_id"].as_u64().unwrap_or(0);
+    let sex = r["sex"].as_str().unwrap_or("");
+    let (subj, poss) = match sex.chars().next().map(|c| c.to_ascii_lowercase()) {
+        Some('m') => ("he", "his"),
+        Some('f') => ("she", "her"),
+        // The receipt said "what she did" over Yonas Tesfaye until 17 ก.ย.; a page with no persona
+        // to read says neither rather than choosing.
+        _ => ("the stranger who took it", "the patient's"),
     };
+    let cap = |w: &str| {
+        let mut c = w.chars();
+        c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+    };
+    let who = [
+        r["age"].as_u64().map(|a| a.to_string()),
+        r["country_name"].as_str().map(|c| format!("from {}", esc(c))),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" · ");
+    let case_line = [
+        r["case_title"].as_str().map(&esc),
+        r["difficulty"].as_str().map(&esc),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" · ");
+    let face = r["portrait"]
+        .as_str()
+        .map(|src| format!("<img class=face src=\"{}\" alt=\"\" width=96 height=96>", esc(src)))
+        .unwrap_or_default();
+
+    let mins = |at: f64| format!("{}:{:02}", (at as u64) / 60, (at as u64) % 60);
+    let timeline = r["timeline"].as_array().map(|steps| {
+        if steps.is_empty() {
+            "<p class=note>Nothing was ordered or asked on this shift.</p>".to_string()
+        } else {
+            let rows = steps.iter().map(|s| format!(
+                "<li><span class=at>{}</span> <span class=kind>{}</span> {}</li>",
+                mins(s["at"].as_f64().unwrap_or(0.0)),
+                if s["kind"] == "asked" { "asked" } else { "ordered" },
+                esc(s["text"].as_str().unwrap_or("")),
+            )).collect::<Vec<_>>().join("");
+            format!("<ol class=tl>{rows}</ol>")
+        }
+    }).unwrap_or_default();
+
+    let harm = did["harm"].as_array().map(|h| h.len()).unwrap_or(0);
+    let harm_line = if harm == 0 {
+        "no harm was recorded on this shift".to_string()
+    } else {
+        did["harm"].as_array().unwrap().iter()
+            .map(|h| esc(h.as_str().unwrap_or("")))
+            .collect::<Vec<_>>().join("<br>")
+    };
+    let outcome = match r["did"]["outcome"].as_str() {
+        Some(o) => format!("the case reached <b>{}</b>", esc(o)),
+        None => format!("{} was handed on, still on the ward", subj),
+    };
+    let marks = match (&r["det"]["earned"], &r["det"]["max"]) {
+        (serde_json::Value::Number(e), serde_json::Value::Number(m)) => {
+            let rows = r["items"].as_array().map(|items| items.iter().map(|i| format!(
+                "<li class=\"{}\"><b>{}</b> of {} · {}</li>",
+                if i["earned"].as_i64().unwrap_or(0) > 0 { "got" } else { "missed" },
+                i["earned"], i["points"], esc(i["label"].as_str().unwrap_or("")),
+            )).collect::<Vec<_>>().join("")).unwrap_or_default();
+            format!("<p class=score><b>{e}</b> of {m}</p><ul class=marks>{rows}</ul>")
+        }
+        _ => "<p class=note>This case carries no mark sheet.</p>".to_string(),
+    };
+
+    let explorer = r["signature"].as_str().map(|sig| format!(
+        "<p><a href=\"https://explorer.solana.com/tx/{}?cluster=devnet\">this shift on the devnet \
+         explorer</a> — the transaction that anchored it</p>",
+        esc(sig)
+    )).unwrap_or_default();
+    let ev = |k: &str, v: String| format!("<tr><th>{k}</th><td>{v}</td></tr>");
+    let evidence = [
+        ev("patient", format!("<a href=/ward/{pid}>{pid}</a>")),
+        ev("case", format!("<code>{}</code>", esc(r["case"].as_str().unwrap_or("")))),
+        ev("anchored at slot", r["slot"].to_string()),
+        ev("leaf", format!("<code>{}</code>", esc(r["leaf"].as_str().unwrap_or("—")))),
+        ev("run hash", format!("<code>{}</code>", esc(r["run_hash"].as_str().unwrap_or("")))),
+        ev("played by", format!("<code>{}</code>", esc(r["player"].as_str().unwrap_or("")))),
+        match r["also_anchored_note"].as_str() {
+            Some(n) => ev("also on this ward", esc(n)),
+            None => String::new(),
+        },
+    ].concat();
+
     format!(
         "<!doctype html><meta charset=utf-8><title>One shift — Vitals World</title>\
          <link rel=\"icon\" type=\"image/svg+xml\" href=\"/world/favicon.svg\">\
          <meta name=viewport content='width=device-width,initial-scale=1'>\
-         <style>body{{font:16px/1.6 ui-sans-serif,system-ui,sans-serif;max-width:40rem;\
+         <style>body{{font:16px/1.6 ui-sans-serif,system-ui,sans-serif;max-width:42rem;\
          margin:3rem auto;padding:0 1.2rem;color:#16302b;background:#fbfaf7}}\
-         h1{{font-size:1.4rem;margin:0 0 .2rem}}a{{color:#0f6e5c}}\
+         h1{{font-size:1.45rem;margin:0 0 .1rem}}h2{{font-size:.82rem;letter-spacing:.1em;\
+         text-transform:uppercase;color:#5d6f6d;margin:2rem 0 .5rem}}a{{color:#0f6e5c}}\
          .k{{color:#5d6f6d;font:600 .78rem/1.6 ui-monospace,monospace;letter-spacing:.08em;\
-         text-transform:uppercase}}table{{border-collapse:collapse;margin:1.2rem 0;width:100%}}\
+         text-transform:uppercase}}.face{{border-radius:12px;object-fit:cover;float:right;\
+         margin:0 0 .6rem .9rem}}p.note{{color:#5d6f6d}}\
+         ol.tl{{list-style:none;padding:0;margin:0}}ol.tl li{{padding:.15rem 0;border-bottom:1px solid #e7ebe8}}\
+         .at{{font:600 .78rem ui-monospace,monospace;color:#5d6f6d;margin-right:.5rem}}\
+         .kind{{font:600 .7rem ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;\
+         color:#0f6e5c;margin-right:.4rem}}\
+         p.score{{font-size:1.6rem;margin:.2rem 0}}ul.marks{{list-style:none;padding:0;margin:.4rem 0}}\
+         ul.marks li{{padding:.1rem 0}}ul.marks li.missed{{color:#8a9a96}}\
+         details{{margin:1.4rem 0}}summary{{cursor:pointer;color:#5d6f6d}}\
+         table{{border-collapse:collapse;margin:.6rem 0;width:100%}}\
          th{{text-align:left;font-weight:600;color:#5d6f6d;padding:.3rem 1rem .3rem 0;\
          white-space:nowrap;vertical-align:top;width:11rem}}td{{padding:.3rem 0}}\
-         code{{font-size:.85rem;word-break:break-all}}p.note{{color:#5d6f6d}}</style>\
-         <p class=k>shift {shift} · patient {pid}</p>\
-         <h1>{name} · {case}</h1>\
-         <p class=note>Everything below is on the chain or recomputed from the tape in front of \
-         you. Nothing here is this server's word for it.</p>\
-         <table>{rows}</table>\
+         code{{font-size:.85rem;word-break:break-all}}</style>\
+         {face}\
+         <p class=k>shift {shift} · one shift on a public ward</p>\
+         <h1>{name}</h1>\
+         <p class=note>{who}</p>\
+         <p>{case_line}</p>\
+         <h2>what happened</h2>\
+         {timeline}\
+         <h2>how it ended</h2>\
+         <p>{outcome}, and {harm_line}.</p>\
+         <h2>what the case paid for</h2>\
+         {marks}\
          <p class=note>{omitted}</p>\
+         <h2>check it yourself</h2>\
+         {explorer}\
          <p><a href=\"{tape}\">download this shift's tape</a> — replay it against the case with \
-         vitals-replay and the leaf must come out as the hash above.</p>\
-         <p><a href=/ward/{pid}>← her bed</a> · <a href=/>the ward</a></p>",
+         vitals-replay and the leaf must come out as the hash below.</p>\
+         <details><summary>the addresses this shift is filed under</summary>\
+         <table>{evidence}</table></details>\
+         <p><a href=/ward/{pid}>← {poss} chart</a> · <a href=/>the ward</a></p>",
         shift = r["shift"],
-        pid = r["patient_id"],
         name = esc(r["name"].as_str().unwrap_or("a patient")),
-        case = esc(r["case"].as_str().unwrap_or("")),
         omitted = esc(r["judged_omitted"].as_str().unwrap_or("")),
         tape = esc(r["tape"].as_str().unwrap_or("#")),
-        rows = [
-            row("played by", format!("<code>{}</code>", esc(r["player"].as_str().unwrap_or("")))),
-            row("anchored at slot", r["slot"].to_string()),
-            row("run hash", format!("<code>{}</code>", esc(r["run_hash"].as_str().unwrap_or("")))),
-            row("what she did", format!("{} orders · {} beats", did["steps"], did["beats"])),
-            row("harm this shift added", if harm == 0 {
-                "none".to_string()
-            } else {
-                did["harm"].as_array().unwrap().iter()
-                    .map(|h| esc(h.as_str().unwrap_or("")))
-                    .collect::<Vec<_>>().join("<br>")
-            }),
-            row("deterministic score", esc(&det)),
-            match r["also_anchored_note"].as_str() {
-                Some(n) => row("also on this ward", esc(n)),
-                None => String::new(),
-            },
-            row("outcome", match r["did"]["outcome"].as_str() {
-                Some(o) => esc(o),
-                None => "she was handed on, still on the ward".to_string(),
-            }),
-        ].concat(),
+        outcome = cap(&outcome),
     )
 }
 
@@ -8052,4 +8165,78 @@ mod tests {
         assert_eq!(neutral_label("(HARM)"), "(HARM)", "a label with no order in it has no neutral form");
     }
 
+
+    /// **The receipt tells a stranger what happened, in the right person's pronoun.**
+    ///
+    /// It read "13 orders · 0 beats" and "8 of 40" under a case id, with no list of what was done,
+    /// no mark it was earned against, nothing to open on the chain — and it said "what she did"
+    /// over Yonas Tesfaye, because the page had one pronoun written into it. A receipt is the thing
+    /// a player wants to show somebody.
+    #[test]
+    fn the_receipt_tells_the_shift_and_takes_the_patients_pronoun() {
+        let r = serde_json::json!({
+            "patient_id": 1789528999,
+            "shift": 2,
+            "name": "Yonas Tesfaye",
+            "sex": "m",
+            "age": 41,
+            "country_name": "Ethiopia",
+            "case": "embla-severe-falciparum-malaria-cerebral-resident",
+            "case_title": "Man of 41 from Ethiopia with fever and confusion",
+            "difficulty": "resident",
+            "portrait": "https://storage.googleapis.com/vitals-world-portraits/aa.webp",
+            "run_hash": "9f2c",
+            "leaf": "11aa",
+            "slot": 498100000,
+            "player": "7FAEaaaa",
+            "signature": "5xTxSig",
+            "did": { "steps": 3, "beats": 1, "harm": [], "outcome": "death_arrest" },
+            "det": { "earned": 8, "max": 40 },
+            "items": [
+                { "label": "Blood cultures before antibiotics", "points": 3, "earned": 3 },
+                { "label": "Antibiotics within the hour", "points": 6, "earned": 0 }
+            ],
+            "timeline": [
+                { "at": 12.0, "kind": "asked", "text": "how long has the fever been going?" },
+                { "at": 48.0, "kind": "order", "text": "blood cultures", "id": "ix_blood_cultures" }
+            ],
+            "tape": "/api/tape/9f2c",
+            "judged_omitted": "AI-judged marks are not shown on a mid-stay shift",
+        });
+        let page = receipt_page(&r);
+
+        // The story, in order.
+        assert!(page.contains("Yonas Tesfaye"), "{page}");
+        assert!(page.contains("Man of 41 from Ethiopia with fever and confusion"),
+                "the case's own title, not its id, in the headline");
+        assert!(page.contains("what happened") && page.contains("how long has the fever been going?")
+                    && page.contains("blood cultures"),
+                "the tape read out: what was asked and what was ordered");
+        assert!(page.contains("0:12") && page.contains("0:48"), "with the clock beside each");
+        assert!(page.contains("8</b> of 40") && page.contains("Antibiotics within the hour"),
+                "the marks, and the rows they are made of");
+
+        // The evidence is present and folded: the id, the leaf, the slot, the explorer, the tape.
+        assert!(page.contains("<details>") && page.contains("the addresses this shift is filed under"));
+        assert!(page.contains("embla-severe-falciparum-malaria-cerebral-resident"),
+                "the case id is in the evidence rather than the headline");
+        let head = page.split("<h2>").next().unwrap_or("");
+        assert!(!head.contains("embla-severe-falciparum"), "and never above it: {head}");
+        assert!(page.contains("explorer.solana.com/tx/5xTxSig?cluster=devnet"),
+                "the transaction a stranger can open on somebody else's screen");
+        assert!(page.contains("/api/tape/9f2c"));
+
+        // The pronoun is the patient's.
+        assert!(page.contains("his chart"), "{page}");
+        assert!(!page.contains("her chart") && !page.contains("what she did"),
+                "the ward admits men, and this page said otherwise over Yonas");
+
+        // A patient with no persona to read gets neither pronoun rather than a guess.
+        let mut anon = r.clone();
+        anon["sex"] = serde_json::json!("");
+        anon["did"]["outcome"] = serde_json::Value::Null;
+        let page = receipt_page(&anon);
+        assert!(page.contains("handed on, still on the ward"), "{page}");
+        assert!(!page.contains(" she ") && !page.contains(" he "), "{page}");
+    }
 }

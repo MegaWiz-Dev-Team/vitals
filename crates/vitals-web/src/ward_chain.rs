@@ -176,6 +176,18 @@ impl Seen {
         (got, cursor, None)
     }
 
+    /// The transaction that carried a given shift, if this cache read it.
+    ///
+    /// A leaf is a hash and a hash is not an address: the thing a stranger can open in an explorer
+    /// and see for themselves is the transaction that anchored it. Kept here already, because a
+    /// signature is how this cache tells one shift from another.
+    pub fn signature_of(&self, run_hash: &[u8; 32]) -> Option<String> {
+        self.shifts
+            .iter()
+            .find(|s| &s.shift.run_hash == run_hash)
+            .map(|s| s.signature.clone())
+    }
+
     pub fn shifts(&self) -> Vec<ShiftOnChain> {
         self.shifts.iter().map(|s| s.shift).collect()
     }
@@ -2160,6 +2172,28 @@ pub fn receipt(
     let r = vitals_replay::shift(&mut st, &tape, 0);
 
     let det = rubric_json.and_then(|rj| vitals_osce::det_for_run(sce_json, &tape, rj).ok());
+    // The rows of the mark sheet, so a stranger can see what the case paid for and what it did not.
+    // The same sheet `/api/marks` opens at the bell, on a shift that is already over.
+    let sheet = rubric_json.and_then(|rj| vitals_osce::sheet_for_run(sce_json, &tape, rj).ok());
+
+    // What this stranger actually did, in the order they did it. The tape is the evidence and this
+    // is the tape read out: every order with the intervention it resolved to, every question asked,
+    // and the beats the case produced in reply. A receipt that says "13 orders · 0 beats" tells a
+    // reader the shape of the shift and nothing about it.
+    let mut at = 0.0f64;
+    let mut timeline: Vec<serde_json::Value> = Vec::new();
+    for step in &tape {
+        match step {
+            vitals_replay::Step::Tick(dt) => at += dt,
+            vitals_replay::Step::Do(text) => timeline.push(serde_json::json!({
+                "at": at, "kind": "order", "text": text })),
+            vitals_replay::Step::Act { text, id } => timeline.push(serde_json::json!({
+                "at": at, "kind": "order", "text": text, "id": id })),
+            vitals_replay::Step::Ask(q) => timeline.push(serde_json::json!({
+                "at": at, "kind": "asked", "text": q })),
+            _ => {}
+        }
+    }
 
     // The same bytes can be anchored more than once: a run hash is the hash of the tape, and two
     // strangers who did exactly the same things to the same case produce the same one. Their
@@ -2184,6 +2218,18 @@ pub fn receipt(
             "outcome": r.outcome,
         },
         "det": det.map(|(earned, max, _)| serde_json::json!({ "earned": earned, "max": max })),
+        // Every row of the sheet, costliest first: what was earned, what was not, and what it was
+        // worth. A total with no rows is a mark nobody can learn from.
+        "items": sheet.as_ref().map(|(_, d)| d.by_loss().iter().map(|i| serde_json::json!({
+            "label": i.label,
+            "kind": i.kind,
+            "mark": i.mark.as_str(),
+            "points": i.points,
+            "earned": i.earned_points(),
+        })).collect::<Vec<_>>()),
+        "pass_bps": sheet.as_ref().map(|(r, _)| r.pass_bps),
+        "timeline": timeline,
+        "status_after": format!("{:?}", st.status),
         "judged": serde_json::Value::Null,
         "judged_omitted": "a judged score belongs to a finished case. This is one shift in the \
                            middle of a stay, and a number that cannot mean what a reader assumes \
@@ -2261,4 +2307,22 @@ pub fn find_shift(
 /// The rubric a case is marked against, when it has one.
 pub fn rubric_of(root: &std::path::Path, case: &str) -> Option<String> {
     std::fs::read_to_string(root.join("demo/rubrics").join(format!("{case}.json"))).ok()
+}
+
+/// The mark sheet for a case, wherever this ward keeps it.
+///
+/// A compiled case's rubric arrives inside the pack, through the case door, and lives in the store;
+/// only the season's cases have a file. Every receipt on this ward read the file and printed "not
+/// scored — this case has no rubric", which is a fact about where we looked. The receipt is where a
+/// stranger finds out what their shift earned.
+pub fn rubric_for(
+    store: &crate::store::Store,
+    root: &std::path::Path,
+    case: &str,
+) -> Option<String> {
+    store
+        .get::<serde_json::Value>(crate::ward_case::CASE_STORE, &crate::ward_case::key_for(case))
+        .and_then(|pack| pack.get("rubric").cloned())
+        .map(|r| r.to_string())
+        .or_else(|| rubric_of(root, case))
 }
