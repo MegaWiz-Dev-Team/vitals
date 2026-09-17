@@ -1232,7 +1232,10 @@ function paint(v,named){
         +(WARDSHIFT.age?' · '+WARDSHIFT.age:'')
         +(WARDSHIFT.country_name?' · from '+esc(WARDSHIFT.country_name):'')
       : (E.sn||E.n)+' · '+E.t)
-    +' · <span class="live'+(onAir?'':' end')+'">'+(onAir?'LIVE':'ENDED')+'</span>'
+    /* The pill is the bay's own word for a run in progress. On this host the strip above says what
+       is happening in a sentence a stranger reads, and a second badge saying LIVE is one more
+       thing to decode at a bedside. */
+    +(WARDSURFACE?'':' · <span class="live'+(onAir?'':' end')+'">'+(onAir?'LIVE':'ENDED')+'</span>')
     +(EXAMLIVE?' <span class="live exam">OSCE EXAM</span>':'');
   $('#ep-name').title='scenario '+v.sce_hash;
   $('#pt-name').textContent=E.who; $('#pt-line').textContent=E.line; $('#place').textContent='📷 '+E.place;
@@ -1350,7 +1353,10 @@ function paint(v,named){
      It clears on the first thing done to the patient of any kind, drug or device, because the
      sentence it makes is "nothing given yet" and a mask on a face is something given. */
   const acted = v.chart.some(c=>c.kind==='action'||c.kind==='equipment');
-  $('#nudge').textContent = (examMode()||acted||over) ? '' : '⚠ nothing given yet';
+  /* And not before the head is taken: "nothing given yet" to somebody who may not give anything
+     yet is an alarm about a shift that has not started. */
+  const mine = !takeFirst(WARD, id, null);
+  $('#nudge').textContent = (examMode()||acted||over||!mine) ? '' : '⚠ nothing given yet';
   /* Same rule, one panel down: the reason for admitting is a teaching line in practice and an
      answer at a station — a reason to admit belongs to one diagnosis and to no other, so it is
      said only on the case it is true of. */
@@ -3829,7 +3835,7 @@ function wardAged(text, age){
    the person actually in the bed, and the tray is the case's own interventions.
    `null` when the payload carried no case content — the page says so rather than drawing whatever
    the page's own table answers, which was EP1's patient over everybody. */
-function wardCard(content){
+function wardCard(content, reviewing){
   if(!content||!content.case_id)return null;
   /* The compiler's vocabulary on the left, the kit's rows on the right: `ix_` is an investigation
      and the tray calls that row labs, `tx_` is a treatment and the tray calls it drugs. Nothing is
@@ -3852,7 +3858,11 @@ function wardCard(content){
      ไม่ได้"). The sheet a station also draws is `renderStage`'s to give the ward directly. */
   const entry={
     id:content.case_id,
-    n:'the ward', sn:'the ward',
+    /* What the bar calls this run. "the ward" over a case nobody is in is the wrong half of the
+       truth on a review page, where the patient is invented and the case is the subject. Passed in
+       rather than read off `REVIEW`, so this function is a function of what it is given — which is
+       also how it is tested. */
+    n:reviewing?'reviewing':'the ward', sn:reviewing?'reviewing':'the ward',
     t:content.title||'',
     who:content.who||'',
     line:content.presents||'',
@@ -3970,7 +3980,7 @@ async function openReview(){
   }
   const rv=r.review||{};
   wardBar();
-  const built=wardCard(rv.content);
+  const built=wardCard(rv.content, true);
   if(!built){
     wardPage('<p class="bed">case '+esc(REVIEW)+'</p>'
       +'<h1>Not on this page yet</h1>'

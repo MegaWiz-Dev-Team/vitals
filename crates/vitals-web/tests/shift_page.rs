@@ -732,9 +732,16 @@ fn nothing_alarms_before_the_shift_is_taken() {
     // somebody treating a patient, not for somebody reading about one.
     let js = bay_js();
     let paint = without_comments(&body_of(&js, "paint"));
-    let nudge = paint.split("#nudge").nth(1).unwrap_or("").split(';').next().unwrap_or("");
-    assert!(nudge.contains("takeFirst") || nudge.contains("untaken"),
-            "the nudge does not ask whether this shift has been taken: {nudge}");
+    let nudge = paint.split("#nudge").nth(1).unwrap_or("").split(';').next().unwrap_or("").to_string();
+    let asked = paint
+        .split('\n')
+        .filter(|l| l.contains("takeFirst"))
+        .filter_map(|l| l.split_once("const ").and_then(|(_, r)| r.split_once('=')))
+        .map(|(name, _)| name.trim().to_string())
+        .find(|name| nudge.contains(name.as_str()));
+    assert!(asked.is_some(),
+            "the nudge does not ask whether this shift has been taken — it is drawn for somebody \
+             who may not give anything yet: {nudge}");
 }
 
 /// **The practice controls are the bay's, and a shift is not practice.**

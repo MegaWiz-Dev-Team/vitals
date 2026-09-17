@@ -122,6 +122,10 @@ const CONTENT = {
 };
 
 const built = wardCard(CONTENT);
+// The same card, read on the reviewer's page: the bar says what the run is, and "the ward" over a
+// case nobody is in is the wrong half of the truth there.
+assert.equal(wardCard(CONTENT, true).entry.n, 'reviewing');
+assert.equal(built.entry.n, 'the ward');
 assert.equal(built.entry.id, 'embla-typhoid-bgd-1');
 assert.equal(built.entry.t, CONTENT.title, 'the headline is the case’s own title');
 assert.equal(built.entry.line, CONTENT.presents, 'and the briefing is its presenting line');

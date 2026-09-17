@@ -1448,6 +1448,23 @@ html.is-ward #lobby,
 html.is-ward #back,
 html.is-ward #start,
 html.is-ward #tally{display:none!important}
+/* Before the head is taken the page is a chart to read, not a bedside in trouble. The empty-chart
+   warning, the NEWS2 escalation banner and the clock are all about an action that has not started:
+   beside "take the shift to treat her" they say the opposite — that something is wrong and nobody
+   is doing anything. They come back the moment the shift is taken, which is the moment they are
+   true. (A review run is live from its first paint, so `untaken` is never on it.) */
+html.is-ward.untaken #nudge,
+html.is-ward.untaken #newsbox,
+html.is-ward.untaken #clock{display:none}
+
+/* The bay's practice controls: `hold` stops the clock, `easy` picks how fast the patient
+   deteriorates. On a shift the clock is a lease on the chain and the deterioration is the case's,
+   so neither is a thing anybody does here. A review run is practice on nobody and keeps both. */
+html.is-ward:not(.is-review) #pause,
+html.is-ward:not(.is-review) #diff{display:none}
+/* The wordmark is in the page's own corner. The bay's bar carried a second one. */
+html.is-ward .bar .brand{display:none}
+
 /* Not yet hers. Greyed rather than hidden: a stranger who can see what they will be able to do
    knows they are one press away from doing it, and the ask bar's placeholder says the sentence. */
 html.is-ward.untaken .chips button,
