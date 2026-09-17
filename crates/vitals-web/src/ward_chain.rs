@@ -2329,6 +2329,18 @@ pub fn is_shift_hash(run_hash: &str) -> bool {
         && run_hash.bytes().any(|b| b != b'0')
 }
 
+/// Whether a shift hash is worth asking the chain about.
+///
+/// The ward holds the tape for every shift it anchored, kept under the hash the leaf commits to.
+/// So a hash with a tape behind it may have landed on chain a moment ago with this ward's own
+/// cache not yet caught up — one read of the chain settles that. A hash with no tape here is a
+/// hash this ward cannot render a receipt for even if the chain confirms it, and it is answered
+/// from the store in microseconds rather than in a minute and a half of RPC round trips that any
+/// stranger with a URL bar could start.
+pub fn worth_reading_the_chain_for(store: &crate::store::Store, run_hash: &str) -> bool {
+    is_shift_hash(run_hash) && tape_by_hash(store, run_hash).is_some()
+}
+
 pub fn find_shift(
     chain: &WardChain,
     store: &crate::store::Store,
@@ -2338,7 +2350,11 @@ pub fn find_shift(
         return Ok(None);
     }
     let patients = chain.patients()?;
-    for refreshing in [false, true] {
+    // The cached pass always; the refreshing one only for a hash this ward has a tape for. The
+    // second pass is twenty-odd RPC round trips, it is reached by any 64-hex string a stranger
+    // types, and this server answers requests one at a time — see `worth_reading_the_chain_for`.
+    let passes: &[bool] = if worth_reading_the_chain_for(store, run_hash) { &[false, true] } else { &[false] };
+    for refreshing in passes.iter().copied() {
         for p in &patients {
             let key = format!("p{}", p.patient_id);
             let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
