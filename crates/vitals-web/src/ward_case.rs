@@ -457,12 +457,31 @@ fn fits_patient(c: &CaseSummary, who: &crate::ward::Persona) -> bool {
     if !same_sex {
         return false;
     }
-    let hers = who.age as i64;
-    let theirs = age as i64;
-    if (hers < 16) != (theirs < 16) {
-        return false;
+    age_fits(age, who.age)
+}
+
+/// Is this person near enough the age the case is written about?
+///
+/// **The tolerance follows the age**, which is how paediatrics works. Twelve years either way is an
+/// adult's rule, and under it the factory queued a one-year-old for a case about a child of eight:
+/// the arithmetic was satisfied and every clinical thing in that case — the airway, the doses, the
+/// words she uses, whether she speaks at all — was about somebody else.
+///
+///   * **under 5**: within a year. An infant, a one-year-old and a three-year-old are three
+///     different patients, and never below one, because nobody is nought.
+///   * **5 to 15**: within three, and never outside the band. A school-age child is not a teenager
+///     and neither is a toddler.
+///   * **16 to 39**: sixteen at the youngest whatever the case says, then ten years older or eight
+///     younger — an adult case tuned for thirty plays honestly at twenty-two and not at twenty-one.
+///   * **40 and over**: within ten, which is the rule that was always right for this band.
+pub fn age_fits(case_age: u32, persona_age: u16) -> bool {
+    let (a, p) = (case_age as i64, persona_age as i64);
+    match a {
+        ..=4 => p >= 1 && (p - a).abs() <= 1,
+        5..=15 => (5..=15).contains(&p) && (p - a).abs() <= 3,
+        16..=39 => p >= 16 && p <= a + 10 && p >= a - 8,
+        _ => (p - a).abs() <= 10,
     }
-    (hers - theirs).abs() <= 12
 }
 
 // ── the case's own words, told about the person in the bed ──────────────────

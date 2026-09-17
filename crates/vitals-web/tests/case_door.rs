@@ -452,9 +452,12 @@ fn a_patient_is_placed_only_on_a_case_written_about_somebody_like_her() {
     assert_eq!(pick(None, &who("THA", 58, "m"), None), Some("ugib-2".into()),
                "newest version of the ones that fit");
 
-    // Age: near the case's own, and never a child on an adult's physiology or the other way.
-    assert_eq!(pick(None, &who("THA", 50, "m"), None), Some("ugib-2".into()), "twelve years is near");
-    assert_eq!(pick(None, &who("THA", 49, "m"), None), None, "thirteen is not");
+    // Age: near the case's own, by the band that age is in — `age_fits`, and
+    // `the_age_a_case_allows_follows_the_age_it_is_written_about` is where the table is read. These
+    // two are the 40-and-over band, where near means ten years: the UGIB cases are written about a
+    // man of 62.
+    assert_eq!(pick(None, &who("THA", 52, "m"), None), Some("ugib-2".into()), "ten years is near");
+    assert_eq!(pick(None, &who("THA", 51, "m"), None), None, "eleven is not");
     let paeds = vec![case("croup-1", None, "student", "0.1.0", 6, "female")];
     let kid = who("THA", 8, "f");
     assert_eq!(choose_case(&paeds, None, &kid, None).map(|c| c.case_id.clone()), Some("croup-1".into()));
