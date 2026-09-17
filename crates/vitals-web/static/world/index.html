@@ -42,8 +42,12 @@ body{margin:0;background:var(--ground);color:var(--ink);
 .rail .mark svg{width:1.15rem;height:1.15rem;display:block;border-radius:.3rem}
 .rail .mark:hover b{text-decoration:underline;text-underline-offset:.22em}
 .rail .mark:focus-visible{outline:2px solid var(--proven);outline-offset:3px;border-radius:.35rem}
-.rail .census{margin-left:auto;display:flex;gap:1rem}
-.rail .census span b{letter-spacing:0;color:var(--proven)}
+.figures{display:flex;flex-wrap:wrap;gap:1.6rem;margin:.2rem 0 1.1rem}
+.figures .fig{display:flex;flex-direction:column;font:.78rem/1.3 "IBM Plex Mono",ui-monospace,monospace;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.figures .fig b{font:800 1.9rem/1.1 Archivo,system-ui,sans-serif;letter-spacing:-.01em;
+  text-transform:none;color:var(--ink)}
+.figures .fig:first-child b{color:var(--proven)}
 h1{font-family:Archivo,Arial,sans-serif;font-weight:800;font-size:clamp(1.25rem,3.2vw,2rem);line-height:1.18;letter-spacing:-.015em;margin:1.4rem 0 0;text-wrap:balance;overflow-wrap:anywhere}
 h1 .second{display:block;color:var(--proven)}
 .mission{margin:.7rem 0 0;max-width:44em;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.82rem;line-height:1.6;color:var(--ink-2);
@@ -147,12 +151,16 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
          icon and the shift page's bar; `the_mark_in_the_bar_is_the_mark_in_the_tab` keeps the
          three from drifting. -->
     <a class="mark" href="/" aria-label="Vitals World — the globe"><svg viewBox="0 0 64 64" width="18" height="18" aria-hidden="true" focusable="false"><rect x="0" y="0" width="64" height="64" rx="14" fill="#0E1719"/><rect x="8" y="14" width="40" height="30" rx="7" fill="none" stroke="#FFFFFF" stroke-width="5"/><polyline points="8,29 20,29 23,25 26,29 29,29 32,17 36,40 39,29 60,29" fill="none" stroke="#26C0A5" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/></svg><b>VITALS WORLD</b></a><span>a public ward</span>
-    <span class="census" id="census" aria-live="polite"></span>
+
   </div>
 
   <h1 id="h1">Spin the world. Find a patient. Take a shift.
       <span class="second" id="h1b">Countries with somebody in a bed are ringed; a filled ring is a patient being treated right now.</span></h1>
   <p class="mission" id="mission" hidden></p>
+  <!-- What this ward is doing, in numbers, where a reader looks second. `in beds` and `on shift
+       now` are the ward's own; the other three are the chain's and are left out when the census
+       does not carry them. -->
+  <div class="figures" id="figures" aria-live="polite"></div>
   <p class="sub">Drag the globe, hover a country, click a ringed one to see who is waiting there. A shift is a few minutes at her bedside; the next stranger opens her where you stopped.</p>
 
   <div class="stage">
@@ -484,7 +492,10 @@ function onBoard(ps) {
 function recompute() {
   counts = countryCounts(inBeds(visible(patients, filter)), DRAWABLE);
   renderTray();
-  if (selected) renderPanel(selected);
+  // The panel is the beds until a country is picked, and follows the board as it changes: a patient
+  // admitted or handed over while somebody is reading must not leave a stale list in the one place
+  // this page asks them to act.
+  if (selected) renderPanel(selected); else renderBeds();
   draw();
 }
 
@@ -519,18 +530,14 @@ async function load() {
 }
 
 function renderCensus() {
-  const c = census || {};
-  const n = k => (typeof c[k] === "number") ? c[k] : (c.all && typeof c.all[k] === "number" ? c.all[k] : null);
-  /* "on the ward" is the chain's count and "in beds" is the ward's. They differ when somebody
-     reached the chain without passing the queue, and a rail that published only the first would
-     hand a stranger a number that means something other than what it looks like. */
   /* "in beds" and not "on the ward": the chain's count includes patients that reached it without
-     passing the queue, and a front page is not the place to explain that. The census keeps both
-     and says which is which — a reader who wants the chain's number can read the endpoint. */
-  const parts = [["in beds", beds], ["shifts", n("shifts")],
-                 ["went home", n("went_home")], ["died", n("died")]]
-    .filter(([, v]) => v !== null).map(([k, v]) => `<span>${k} <b>${v}</b></span>`);
-  $("census").innerHTML = parts.join("");
+     passing the queue, and a front page is not the place to explain that. The census keeps both and
+     says which is which — a reader who wants the chain's number can read the endpoint.
+     The row lives under the headline rather than in the corner: these are the numbers this page
+     exists to publish, and they were eleven pixels of monospace beside the wordmark. */
+  const figs = censusFigures(census, patients, beds);
+  $("figures").innerHTML = figs
+    .map(([k, v]) => `<span class="fig"><b>${v}</b>${k}</span>`).join("");
 }
 
 // ── panel + tray ──────────────────────────────────────────────────────────────────────────────
@@ -612,6 +619,29 @@ function portraitImg(p) {
   if (!src) return `<span class="ph">\u2014</span>`;
   return `<img src="${String(src).replace(/"/g, "&quot;")}" width="56" height="56" loading="lazy" decoding="async" alt="">`;
 }
+/* Whether this row's button can do what it says.
+   A shift is taken on somebody in a bed whose chart this ward can open. A patient with no bed —
+   admitted outside the ward, or on the chain with a chart nobody here can rebuild — is on the board
+   with her own sentence, and offering a button that the shift page will refuse spends the one
+   gesture this page is asking for. Somebody already in the room is the other no: the head is held
+   until it is anchored or its time runs out. */
+function canTakeShift(p) {
+  return stateOf(p) === "on_ward" && p && p.bed !== undefined && p.bed !== null;
+}
+
+/* The numbers under the headline: what this ward is doing, in the order a reader meets it.
+   `in beds` and `on shift now` are the ward's own and are always there — nobody has to be admitted
+   for "0 in beds" to be true. The chain's three are left out when the census does not carry them,
+   because a number nobody counted is not a zero. */
+function censusFigures(census, patients, beds) {
+  const c = census || {};
+  const n = k => (typeof c[k] === "number") ? c[k] : (c.all && typeof c.all[k] === "number" ? c.all[k] : null);
+  const treating = (patients || []).filter(p => stateOf(p) === "on_shift").length;
+  return [["in beds", typeof beds === "number" ? beds : 0], ["on shift now", treating],
+          ["shifts", n("shifts")], ["went home", n("went_home")], ["died", n("died")]]
+    .filter(([, v]) => v !== null);
+}
+
 function row(p, showCountry) {
   const li = document.createElement("li"); li.className = "prow";
   const st = stateOf(p);
@@ -625,7 +655,7 @@ function row(p, showCountry) {
   const age = p.age !== undefined && p.age !== null ? ` · ${p.age}` : "";
   const diff = p.difficulty ? `<span class="tag">${p.difficulty}</span>` : "";
   const end = p.endemic ? `<span class="tag endemic">endemic</span>` : "";
-  const canTake = st === "on_ward";
+  const canTake = canTakeShift(p);
   const line = stateLine(p, asOf.slot, Date.now());
   /* The endpoint sends a sentence with a patient it cannot describe. It is shown rather than
      summarised: a reader who wants to know why this one has no bed deserves the whole reason, and
@@ -701,11 +731,32 @@ function renderPanel(id) {
   }
   $("panel").classList.add("open");
 }
-function clearPanel() {
+/* Nothing selected is not nothing to show.
+   The panel said "Nobody selected" over the best space on the page while the three patients a
+   stranger came to treat were somewhere on a globe they had to find first (director, 17 ก.ย., A1).
+   So the resting state of this panel is the beds: everybody in one, whatever country they are from,
+   with the way in beside each. Clicking a country still narrows it to that country. */
+function renderBeds() {
   selected = null;
-  $("pk").textContent = "pick a country"; $("ptitle").textContent = "Nobody selected"; $("pdoc").hidden = true;
-  $("pempty").hidden = false; $("pempty").textContent = "Click a ringed country on the globe. Patients from a country the map cannot place are listed below the globe.";
-  $("plist").textContent = ""; $("panel").classList.remove("open"); draw();
+  const list = inBeds(visible(patients, filter));
+  $("pk").textContent = "on the ward now";
+  $("ptitle").textContent = list.length === 1 ? "1 patient in a bed" : `${list.length} patients in beds`;
+  $("pdoc").hidden = true;
+  $("plist").textContent = "";
+  if (!list.length) {
+    $("pempty").hidden = false;
+    $("pempty").textContent = Object.values(filter).every(v => !v)
+      ? "Every difficulty is switched off, so the beds are hidden rather than empty."
+      : "No patient is in a bed right now. The ward admits from its queue every minute.";
+  } else {
+    $("pempty").hidden = true;
+    for (const p of list) $("plist").appendChild(row(p, true));
+  }
+  $("panel").classList.remove("open");
+}
+function clearPanel() {
+  renderBeds();
+  draw();
 }
 function renderTray() {
   const list = visible(patients, filter).filter(p => placed(p) === null);
