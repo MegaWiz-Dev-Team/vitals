@@ -217,3 +217,37 @@ fn the_pages_about_a_patient_name_no_pronoun() {
         }
     }
 }
+
+/// **A sentence a stranger reads in order to press something is twelve words or fewer.**
+///
+/// The UX review of 17 ก.ย. (G3) found the pages written in long literary sentences — *"Nothing
+/// here is this server's word for it"*, *"a stay that ended is not one anybody can add to"*. That
+/// reads well to the engineer who wrote it and badly to a medical student in their second language
+/// deciding what to do in three seconds. The rule that came out of it, and that the director asked
+/// for as a test: every string a user must read to decide a press is at most twelve words.
+///
+/// The scan is `press_words.mjs`, run over what the server serves — the script that builds the
+/// controls and the markup they sit in — because the strings live in JavaScript and JavaScript is
+/// what can read them. Three collections: the words on a control, the strip's own sentences, and
+/// the sentence that stands between a stranger and a control that will not answer yet.
+///
+/// Prose that explains rather than directs is deliberately out of scope: the receipt's account of
+/// why a hash resolves to nothing is read with nothing in hand to press.
+#[test]
+fn every_sentence_a_stranger_presses_on_is_twelve_words_or_fewer() {
+    let here = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let out = std::process::Command::new("node")
+        .arg(here.join("tests/press_words.mjs"))
+        .arg(here.join("static/bay.js"))
+        .arg(here.join("static/bay-surface.html"))
+        .arg(here.join("static/world/shift.html"))
+        .arg(here.join("static/world/review.html"))
+        .output()
+        .expect("run node");
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
