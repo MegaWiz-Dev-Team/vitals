@@ -721,6 +721,9 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.78rem;background:va
 /* A question is something you say; an order is something you write down. They should not
    look like the same control. */
 .chips .btn{font-size:.88rem;border-radius:999px;font-family:"IBM Plex Sans",sans-serif}
+/* The rest of the tray, one press away. Quieter than the chips it opens: it is a way to see more,
+   not a thing to do to a patient. */
+.chips .btn.more{background:none;border-style:dashed;color:var(--ink-2)}
 .acts.order-mode .chips .btn{border-radius:7px;font-family:"IBM Plex Mono",monospace;font-size:.83rem}
 .acts.order-mode #cmd{border-color:#CFE4DC}
 #cmdf{display:flex;gap:.45rem}
@@ -1491,6 +1494,15 @@ html.is-ward .pt-art{order:6}
 #wardprimary{width:100%;margin:.7rem 0 .2rem;padding:.95rem .9rem;font-size:1.02rem;
   font-family:Archivo,system-ui,sans-serif;font-weight:700;letter-spacing:-.01em;min-height:3rem}
 #wardprimary[hidden]{display:none}
+/* The monitor in the card, on a phone: the four numbers in a row, the trace put away, pinned to the
+   top of the screen while the case below it is read. */
+@media (max-width:760px){
+  html.is-ward .pt > #mini{order:0;position:sticky;top:0;z-index:3;margin:0 0 .5rem;padding:.45rem .6rem}
+  html.is-ward .pt > #mini .mini-tr{display:none}
+  html.is-ward .pt > #mini .mini-h{margin-bottom:.15rem}
+  html.is-ward .pt > #mini .mini-g{grid-template-columns:repeat(4,1fr);gap:.1rem .5rem}
+  html.is-ward .pt > #mini .mini-g b{font-size:1.02rem}
+}
 #wardprimary.handover{background:var(--card-2);color:var(--ink);border:1px solid var(--line)}
 
 /* The review note is in the ward's markup and belongs to one page of it. Hidden rather than

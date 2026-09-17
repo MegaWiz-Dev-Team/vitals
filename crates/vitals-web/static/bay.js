@@ -1149,19 +1149,43 @@ const shuffled=(list,seed)=>{const a=list.slice();let s=seed||1;
    label wins where there is one — the words that case was written in — and the rule underneath is
    unchanged: the label is a coat over the button and `data-x` is what fires. */
 const chipLabel=x=>WARDLABEL[x]||PACK.asks[x]||x;
+/* What a chip says, from what the case calls it. The compiler prefixes each label with the row it
+   belongs to — "Ask: …", "Examine: …" — and under a tab that already says ASK, twenty chips opening
+   with the same word are twenty chips a learner reads the fourth word of. Display only: `data-x` is
+   the intervention id and what fires is untouched. */
+const chipText=label=>{
+  const t=String(label==null?'':label);
+  const m=/^(ask|examine|order|give)\s*:\s*(\S.*)$/i.exec(t);
+  return m?m[2]:t;
+};
 /* The tray, from the case in front of this shift or from the season's table. Same reason as
    `epOf`: on the ward the table is the wrong sixteen questions about the wrong patient. */
 const chipRows=()=>(WARDSURFACE&&WARDCHIPS)||CHIPS[ep().id]||{};
+/* Which rows have been opened out. Per row, because a learner who wanted every question does not
+   want every drug, and remembered while the page lives so a mode change and back does not fold the
+   tray under their hand. */
+const chipsOpen={};
 function renderChips(){
   const c0=chipRows()[mode]||[];
   const c=examMode()?shuffled(c0,seedOf((id||'')+':'+ep().id+':'+mode)):c0;
   const m=mode;
-  $('#chips').innerHTML=c.map(x=>`<button class="btn" data-x="${x}" data-ga="chip:${x}">${chipLabel(x)}</button>`).join('');
+  /* Four, then the rest behind one press.
+     A compiled case brings its own tray — twenty questions, twenty-five investigations — and a
+     wall of them is a wall to read before the first thing can be done. The first few are where a
+     case is started; the rest are there, one press away, in the order the author wrote them.
+     Kept whole on the season's six-chip rows, where there is nothing to fold. */
+  const FEW=4;
+  const folds=WARDSURFACE&&c.length>FEW+1&&!chipsOpen[m];
+  const shown=folds?c.slice(0,FEW):c;
+  $('#chips').innerHTML=shown.map(x=>`<button class="btn" data-x="${x}" data-ga="chip:${x}">${chipText(chipLabel(x))}</button>`).join('')
+    +(folds?`<button class="btn more" id="chipmore" data-ga="chip:more">+ ${c.length-FEW} more</button>`:'');
   /* The label goes with the press for everything except the ask row, whose label is a
      translation — the chart and its echo are English by design (docs/internal/LANGUAGE_LAYER.md),
      and a Thai sentence in the order column would be this file quietly deciding otherwise. */
   const no=takeFirst(WARD, id, pro().o);
-  $('#chips').querySelectorAll('button').forEach(b=>{
+  const more=$('#chipmore');
+  if(more){ more.onclick=()=>{ chipsOpen[m]=true; renderChips(); }; more.disabled=false; more.title=''; }
+  $('#chips').querySelectorAll('button[data-x]').forEach(b=>{
     b.onclick=()=>fire(b.dataset.x, askedShown(WARD, m, b.dataset.x, chipLabel(b.dataset.x)), m==='dx');
     /* Greyed and titled rather than missing: a stranger who can see what they will be able to do
        knows they are one press away from doing it. */
@@ -3942,6 +3966,22 @@ function paintPrimary(){
                   else { endRun(); } };
 }
 
+/* The monitor, where a thumb can see it.
+   On a phone the rail is under the transcript and the tray, six thousand pixels down a shift page:
+   a learner deciding what to do next had to scroll past everything they had already read to see a
+   pulse. So on a narrow screen the monitor moves into the bedside card and stays at the top of the
+   screen while the case is read. One element, moved — a second copy would be two things claiming
+   the same four numbers, and one of them would go stale. */
+function monitorWhereItIsRead(){
+  const mon=$('#mini'), pt=document.querySelector('.stage .pt');
+  if(!mon||!pt||!WARDSURFACE)return;
+  const phone=matchMedia('(max-width:760px)').matches;
+  const rail=document.querySelector('.rail');
+  if(phone){ if(mon.parentElement!==pt) pt.insertBefore(mon, pt.firstChild); }
+  else if(rail&&mon.parentElement!==rail) rail.insertBefore(mon, rail.firstChild);
+}
+addEventListener('resize', monitorWhereItIsRead);
+
 /* Every control that treats her, opened or closed in one place.
    Called when the page opens her and again when the head is taken, so there is one answer to
    "may I do this yet" and one sentence saying why not. */
@@ -3954,6 +3994,7 @@ function wardGate(){
   if(mic)mic.disabled=!!no;
   if($('#chips'))renderChips();
   paintPrimary();
+  monitorWhereItIsRead();
 }
 
 /* prepare on the server → sign here → submit to the ward's own program. The Eternal

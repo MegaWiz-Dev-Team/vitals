@@ -135,10 +135,13 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
   a.take{padding:.3rem .45rem}
   .stage{grid-template-columns:1fr;gap:.9rem}
   .rail .census{margin-left:0;width:100%}
-  .panel{position:fixed;left:0;right:0;bottom:0;max-height:60vh;overflow:auto;border-radius:.9rem .9rem 0 0;
-    box-shadow:0 -8px 30px rgba(0,0,0,.14);transform:translateY(105%);transition:transform .25s ease;z-index:5}
-  .panel.open{transform:none}
-  .panel .close{display:inline-block}
+  /* The panel is a section of the page on a phone, under the globe, in the order a thumb reaches
+     it. It was a sheet fixed to the bottom of the screen that slid up over the legend when a
+     country was picked — and once its resting state became the beds, a sheet that is only shown
+     when something is selected meant the patients were not on the page at all. */
+  .panel{position:static;transform:none;max-height:none;overflow:visible;border-radius:.9rem;
+    box-shadow:none;z-index:auto}
+  .panel .close{display:none}
   .tray{margin-bottom:.5rem}
 }
 .panel .close{display:none;float:right;font:inherit;background:none;border:1px solid var(--rule);border-radius:.4rem;color:var(--ink-2);padding:.15rem .5rem;cursor:pointer}
