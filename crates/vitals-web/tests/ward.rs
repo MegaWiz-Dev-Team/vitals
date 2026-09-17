@@ -1659,14 +1659,27 @@ fn a_waiting_patient_is_published_without_a_bed_and_without_her_case() {
         }),
     ];
 
-    let packs = nobody();
-    let mut r = read(&[], &[], &packs, None, 100);
-    r.waiting = &waiting;
-    let v = ward_payload(&r);
+    // The catalogue the ward holds, so a waiting row can carry the case's own title with her name
+    // and age in it — which is what a reader looking at a country wants to know is waiting there.
+    let held = vec![vitals_web::ward_case::CaseSummary {
+        case_id: "embla-typhoid-ileal-perforation".into(),
+        archetype: "septic_shock".into(),
+        patient_age: Some(64),
+        patient_sex: Some("female".into()),
+        country: Some("BGD".into()),
+        difficulty: "intern".into(),
+        endemic: true,
+        provisional: true,
+        withdrawn: false,
+        version: "0.1.0".into(),
+        title: "{name}, {age}, fever for 3 weeks and now a sudden abdominal pain".into(),
+    }];
 
-    assert_eq!(v["queue"]["waiting_patients"].as_array().map(Vec::len), Some(2),
-               "both of them, in the queue's own block beside the count");
-    let first = &v["queue"]["waiting_patients"][0];
+    // The rows themselves, which is where the shape is decided. The board attaches them to its
+    // queue block — `preview_door.rs` drives a real ward and reads them off `/api/ward`.
+    let rows = vitals_web::ward::waiting_rows(&waiting, &held);
+    assert_eq!(rows.len(), 2, "both of them");
+    let first = &rows[0];
     assert_eq!(first["pack"], "pk-1", "addressed by the pack id, which is what /ward/waiting takes");
     assert_eq!(first["name"], "Nusrat Jahan");
     assert_eq!(first["age"], 64);
@@ -1676,6 +1689,11 @@ fn a_waiting_patient_is_published_without_a_bed_and_without_her_case() {
     assert_eq!(first["endemic"], true);
     assert!(first["portrait"].as_str().unwrap_or_default().ends_with(".webp"),
             "her face, the one the pack arrived with: {first}");
+    assert_eq!(first["case_title"],
+               "Nusrat Jahan, 64, fever for 3 weeks and now a sudden abdominal pain",
+               "the case's own title, filled with the person who is waiting on it");
+    assert!(rows[1]["case_title"].is_null(),
+            "and null for a pack whose case this ward does not hold: {}", rows[1]);
 
     assert!(first["bed"].is_null(), "she is in no bed and the payload does not invent one");
     assert!(first["sce"].is_null() && first["patient_id"].is_null(),
