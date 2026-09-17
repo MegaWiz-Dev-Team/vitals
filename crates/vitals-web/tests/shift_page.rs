@@ -810,3 +810,45 @@ fn the_quiet_exit_keeps_its_warning_under_the_pointer() {
             "and it has to name the hover state itself, because the pointer is resting there: \
              {armed_block}");
 }
+
+/// **Every path the page beacons to is a path the server answers with POST.**
+///
+/// `navigator.sendBeacon` always sends a POST. The page's exit posted a signed release to
+/// `/api/ward/submit`, which this server answers on GET and nothing else — so the request never
+/// matched a route, and the bed a stranger walked away from stayed held until the lease ran out.
+/// Two runs on staging on 17 ก.ย. (close the tab; navigate away) both left the board reading
+/// `on_shift` a minute later, and the founder had met the same thing the day before.
+///
+/// It is not a bug either file can see on its own: the page is right about what it sends and the
+/// server is right about what it answers, and the two are about different verbs. So the test is
+/// the one that spans them — every beacon target in the page, matched against the methods the
+/// router really has for that path.
+#[test]
+fn a_beacon_only_ever_posts_to_a_route_that_answers_post() {
+    let js = without_comments(&bay_js());
+    let server = std::fs::read_to_string(repo().join("crates/vitals-web/src/main.rs")).expect("main.rs");
+
+    let mut beacons: Vec<String> = Vec::new();
+    for (i, _) in js.match_indices("navigator.sendBeacon(") {
+        let rest = &js[i + "navigator.sendBeacon(".len()..];
+        let quote = rest.chars().next().expect("a beacon with an argument");
+        assert!(quote == '\'' || quote == '"' || quote == '`',
+                "a beacon target built some other way — this test reads literals: {}", &rest[..40.min(rest.len())]);
+        let end = rest[1..].find(quote).expect("the target's closing quote") + 1;
+        let target = &rest[1..end];
+        // The path is what routes; everything after the first `?` or `'+` is the query it carries.
+        let path = target.split(['?', '\'']).next().unwrap_or("").trim().to_string();
+        assert!(path.starts_with('/'), "a beacon to something that is not a path: {target}");
+        beacons.push(path);
+    }
+    assert!(beacons.len() >= 2,
+            "the page beacons on the way out and while it holds a head — found {}: {beacons:?}",
+            beacons.len());
+
+    for path in &beacons {
+        let post = format!("(Method::Post, \"{path}\")");
+        assert!(server.contains(&post),
+                "the page beacons to {path} and the server has no POST route for it — a beacon is \
+                 always a POST, so this request lands nowhere and the page has no way to find out");
+    }
+}

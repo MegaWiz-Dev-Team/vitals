@@ -4316,7 +4316,7 @@ async function handBack(){
   const r=await wardDo('/api/ward/release?id='+id);
   if(r.refused){ $('#wardback-shift').disabled=false; return wardSay('<b>refused.</b> '+esc(r.refused)); }
   if(r.error){ $('#wardback-shift').disabled=false; return wardSay(esc(r.error)); }
-  EXITSIG=null; id=''; stop();
+  stopBeating(); id=''; stop();
   /* She is somebody else's patient from this second, so the controls close the way they were
      closed before the head was taken — and say the same thing about why. */
   wardGate();
@@ -4325,29 +4325,47 @@ async function handBack(){
 }
 
 /* A stranger who closes the tab should free the bed in seconds rather than in the length of a
-   lease. The signature cannot be made during unload — WebCrypto is async and the page is going —
-   so one is made **now** and refreshed while the shift runs, and `sendBeacon` posts it on the way
-   out. A blockhash is only good for a minute or so, which is why this is refreshed rather than
-   prepared once.
-   Best effort by nature: a beacon can be dropped and a browser can be killed. The lease expiring
-   is still the net under it, and nothing here is load-bearing for correctness. */
-let EXITSIG=null, EXITTIMER=null;
-async function armTheExit(){
-  clearInterval(EXITTIMER);
-  const prime=async()=>{
+   lease. Two halves, and neither of them depends on a signature surviving anything:
+
+     * while this page holds a head it says so, every `beat_again_in_seconds` the ward asks for.
+       The ward takes the head back when the beats stop — two missed beats — on its own authority,
+       which is what `FreeShift` is for;
+     * and on the way out the page says it is leaving, which frees the bed now rather than in two
+       missed beats. `sendBeacon` because it is the only thing a closing page can still send, and a
+       POST because that is the only thing `sendBeacon` sends — the old exit posted a signed
+       release to a route that only answered GET, so it had never once landed.
+
+   What this replaces: a release signed in advance and refreshed every 45 seconds. It could not
+   have worked. A blockhash on this chain is worth about 26 seconds (measured 17 ก.ย.), so the
+   signature the page was holding had expired before the page could ever use it. */
+let BEATTIMER=null;
+function armTheExit(){
+  clearTimeout(BEATTIMER);
+  const beat=async()=>{
     if(!id||!WARD)return;
     try{
-      const me=await identity(); if(!me)return;
-      const r=await (await fetch('/api/ward/release?id='+id+'&player='+me.pub)).json();
-      if(r&&r.sign) EXITSIG={player:me.pub, sig:await sign(r.sign)};
-    }catch(e){ /* the exit is a courtesy; the lease expiry is the guarantee */ }
+      const r=await (await fetch('/api/ward/beat?id='+encodeURIComponent(id),
+                                 {method:'POST', keepalive:true})).json();
+      const s=Number(r&&r.beat_again_in_seconds)||30;
+      BEATTIMER=setTimeout(beat, s*1000);
+    }catch(e){
+      /* A beat that did not go through is not a shift that ended: try again on the same rhythm,
+         and let the ward's own grace decide what a silence means. */
+      BEATTIMER=setTimeout(beat, 30000);
+    }
   };
-  await prime();
-  EXITTIMER=setInterval(prime, 45000);
+  beat();
+}
+/* The shift is over and the head is already back on chain — handed over, or handed back. The ward
+   forgets this page rather than sweeping a head nobody holds and paying for a transaction to say
+   what the chain already says. */
+function stopBeating(){
+  clearTimeout(BEATTIMER); BEATTIMER=null;
+  if(id&&WARD)navigator.sendBeacon('/api/ward/beat?id='+encodeURIComponent(id)+'&done=1');
 }
 addEventListener('pagehide',()=>{
-  if(!EXITSIG||!id)return;
-  navigator.sendBeacon('/api/ward/submit?player='+EXITSIG.player+'&sig='+EXITSIG.sig);
+  if(!id||!WARD)return;
+  navigator.sendBeacon('/api/ward/left?id='+encodeURIComponent(id));
 });
 async function handOver(){
   if(!id)return;
@@ -4380,7 +4398,7 @@ async function handOverInner(){
                    ' <a href="/ward/'+WARD+'">open '+pro().o+' again</a>');
   }
   if(a.error)return wardSay(esc(a.error));
-  clearInterval(EXITTIMER); EXITSIG=null;
+  stopBeating();
   /* The receipt is the point of the whole thing and it had no link: a stranger who just anchored
      a shift was told it landed and given a way back to the globe, and nothing that shows what
      they did. `/shift/<run hash>` is public and needs no key — see the receipt page. */

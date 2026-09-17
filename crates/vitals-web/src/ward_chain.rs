@@ -618,6 +618,27 @@ pub fn take_shift_ix(
     )
 }
 
+/// Take a head back on the ward's own authority.
+///
+/// Two accounts and no player among them: the operator signs, and the patient is what it signs
+/// about. The program reads the operator off the patient herself, so a ward can only free a head on
+/// a patient it admitted.
+///
+/// This is what the heartbeat is for. A stranger who closes the tab used to hold a bed until the
+/// lease ran out — nine and a half minutes at the rate devnet is running, on a ward with three
+/// beds — and a release they signed in advance could not be held for them: a blockhash here is
+/// worth about twenty-six seconds, and the silence worth acting on is longer than that.
+pub fn free_shift_ix(program_id: &Pubkey, operator: &Pubkey, patient_id: u64) -> SolInstruction {
+    SolInstruction::new_with_borsh(
+        *program_id,
+        &Instruction::FreeShift { patient_id },
+        vec![
+            AccountMeta::new_readonly(*operator, true),
+            AccountMeta::new(patient_pda(program_id, operator, patient_id).0, false),
+        ],
+    )
+}
+
 /// Put the head down without anchoring anything.
 ///
 /// The same three accounts taking it names, and the same absence: the relay pays for the
@@ -795,6 +816,16 @@ impl WardChain {
     /// Take the head of a patient's chain — prepared here, signed in the browser.
     pub fn take_shift(&self, player: &Pubkey, patient_id: u64) -> Result<Pending, String> {
         self.prepare(take_shift_ix(&self.program_id, &self.operator, player, patient_id), player)
+    }
+
+    /// Take a head back, because the page holding it has stopped beating.
+    ///
+    /// Signed and sent by the ward itself — the relay is the operator here, which is true of
+    /// nothing a player does. `Err` with the program's own words if this host is not the operator
+    /// the patient was admitted by, which is a read-only deployment publishing somebody else's
+    /// ward and must not be able to move anything on it.
+    pub fn free_shift(&self, patient_id: u64) -> Result<String, String> {
+        self.now(free_shift_ix(&self.program_id, &self.operator, patient_id))
     }
 
     /// Anchor the shift that was played, onto the head it claims to extend.

@@ -547,6 +547,19 @@ type WardView = Arc<Mutex<Option<(Instant, serde_json::Value)>>>;
 /// day, which is nothing, and the alternative is a person noticing.
 const WARD_TICK: Duration = Duration::from_secs(60);
 
+/// How often a page holding a head says it is still there, and how long the ward waits before
+/// taking the head back.
+///
+/// Thirty seconds and two missed beats. The page sends one plain POST per beat — no signature, no
+/// chain read — so the cost of beating often is nothing and the cost of being wrong is a bed taken
+/// off somebody standing in the room. Fifteen seconds' slack for a page on a slow train.
+///
+/// The sweep is faster than the grace on purpose: the answer to "how long is a bed held after
+/// somebody walks away" should be the grace, not the grace plus however long the sweeper sleeps.
+const BEAT_EVERY: Duration = Duration::from_secs(30);
+const BEAT_GRACE_MS: u64 = 75_000;
+const BEAT_SWEEP: Duration = Duration::from_secs(10);
+
 /// How many boards may be watching at once.
 ///
 /// Each stream is a thread that lives as long as the connection, so this is the ceiling on threads
@@ -2896,6 +2909,15 @@ fn read_body(req: &mut tiny_http::Request, max: usize) -> Result<String, BadBody
 ///
 /// A client clock is not evidence of anything, which is why `review::Submission::at` is stamped
 /// here and not read off the body — and why the key a submission sorts under is derived from it.
+/// This host's clock in milliseconds, for the arithmetic that is about this host: how long ago a
+/// page beat, and nothing a reader is shown.
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 fn now_secs() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -2998,6 +3020,14 @@ fn main() {
         if broken > 0 { format!(" · {broken} unreplayable") } else { String::new() },
     );
     let sessions: Arc<Mutex<HashMap<String, Session>>> = Arc::new(Mutex::new(restored));
+
+    /// When each page holding a head last said it was still there, by patient.
+    ///
+    /// In memory and nowhere else: a restart is the one case where forgetting is right, because a
+    /// server that comes back with a list of heads nobody has beaten for since would free every
+    /// bed on the ward at once. After a restart the leases are the net until the pages beat again.
+    type Beats = Arc<Mutex<std::collections::BTreeMap<u64, u64>>>;
+    let beats: Beats = Arc::new(Mutex::new(std::collections::BTreeMap::new()));
 
     // What this bay may spend, resumed from the store so a deploy does not reset the month.
     let mut meter = meter::Meter::open(&store);
@@ -3195,6 +3225,40 @@ fn main() {
                         }
                     }
                 }
+            }
+        });
+
+        // The heartbeat's other half. The page beats while it holds a head; this frees the head
+        // when the beats stop. Two missed beats and a little for the wire — `ward::heads_to_free`
+        // is the whole decision and it is tested away from this thread.
+        //
+        // The ward's own authority, not a signature kept in a drawer: a release the holder signed
+        // in advance cannot be held for them, because a blockhash on this chain is worth about
+        // twenty-six seconds and the silence worth acting on is longer than that.
+        let heard = Arc::clone(&beats);
+        std::thread::spawn(move || loop {
+            std::thread::sleep(BEAT_SWEEP);
+            let now = now_ms();
+            let gone = {
+                let map = heard.lock().unwrap();
+                ward::heads_to_free(&map, now, BEAT_GRACE_MS)
+            };
+            if gone.is_empty() {
+                continue;
+            }
+            match ward_chain::WardChain::connect() {
+                Ok(chain) => {
+                    for patient in gone {
+                        match chain.free_shift(patient) {
+                            Ok(sig) => {
+                                heard.lock().unwrap().remove(&patient);
+                                println!("ward       freed the head on {patient} — the page stopped beating · {sig}");
+                            }
+                            Err(e) => eprintln!("ward       could not free the head on {patient}: {e}"),
+                        }
+                    }
+                }
+                Err(e) => eprintln!("ward       no chain, so no head can be freed: {e}"),
             }
         });
     }
@@ -5191,6 +5255,49 @@ fn main() {
             // and send. A refusal from the program comes back as a sentence, because this is the
             // moment the ward is most worth watching — the chain deciding, in public, against
             // somebody who wanted a different answer.
+            // ── the heartbeat ───────────────────────────────────────────────────────
+            // A page holding a head says so every thirty seconds. POST, because that is what
+            // `sendBeacon` sends and the leaving half of this pair is a beacon; no body and no
+            // signature, because the only thing being said is "still here" and the session id is
+            // already the secret every other control on that page is guarded by.
+            (Method::Post, "/api/ward/beat") | (Method::Post, "/api/ward/left") if ward_mode() => {
+                let leaving = path == "/api/ward/left";
+                let patient = param(&url, "id")
+                    .and_then(|id| sessions.lock().unwrap().get(&id).and_then(|s| s.ward.as_ref().map(|w| w.patient_id)));
+                let Some(patient) = patient else {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "error": "no shift of that name is running here"
+                    }), 404));
+                    continue;
+                };
+                if leaving {
+                    // The fast path: the tab is closing and the bed should be free before the next
+                    // stranger refreshes the globe, not two missed beats later. Best effort by
+                    // nature — a beacon can be dropped — and the heartbeat is the net under it.
+                    beats.lock().unwrap().remove(&patient);
+                    let freed = match ward_chain::WardChain::connect() {
+                        Ok(chain) => chain.free_shift(patient).map(|_| true),
+                        Err(e) => Err(e),
+                    };
+                    if let Err(e) = &freed {
+                        eprintln!("ward       a page left patient {patient} and the head did not come back: {e}");
+                    }
+                    let _ = req.respond(json(serde_json::json!({ "freed": freed.is_ok() })));
+                } else if param(&url, "done").is_some() {
+                    // The shift ended properly — handed over, or handed back. The head is already
+                    // back on chain, so the ward forgets this page rather than sweeping a head
+                    // nobody is holding and paying for a transaction to say so.
+                    beats.lock().unwrap().remove(&patient);
+                    let _ = req.respond(json(serde_json::json!({ "heard": true, "watching": false })));
+                } else {
+                    beats.lock().unwrap().insert(patient, now_ms());
+                    let _ = req.respond(json(serde_json::json!({
+                        "heard": true,
+                        "beat_again_in_seconds": BEAT_EVERY.as_secs(),
+                    })));
+                }
+                continue;
+            }
             (Method::Get, "/api/ward/submit") if ward_mode() => {
                 let Some(who) = param(&url, "player").and_then(|k| pubkey(&k)) else {
                     let _ = req.respond(json_code(serde_json::json!({ "error": "no player key" }), 400));

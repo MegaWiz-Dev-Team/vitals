@@ -205,6 +205,27 @@ pub fn utc_iso(secs: u64) -> String {
     format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", rem / 3600, (rem % 3600) / 60, rem % 60)
 }
 
+/// Which heads the ward should take back, given when each page last beat.
+///
+/// The page beats while it holds a head; the ward frees the head when the beats stop. Two missed
+/// beats is the rule — one is a page on a train, and the cost of being wrong is taking a bed off
+/// somebody standing in the room.
+///
+/// Pure, and in milliseconds since the epoch rather than an `Instant`, so the decision can be
+/// tested at any distance from the thread that acts on it. A beat from the future is treated as a
+/// beat now: a host whose clock stepped backwards has not been abandoned by anybody.
+pub fn heads_to_free(
+    beats: &std::collections::BTreeMap<u64, u64>,
+    now_ms: u64,
+    grace_ms: u64,
+) -> Vec<u64> {
+    beats
+        .iter()
+        .filter(|(_, last)| now_ms.saturating_sub(**last) > grace_ms)
+        .map(|(patient, _)| *patient)
+        .collect()
+}
+
 /// When a chain event happened, as the chain itself dates the slot it landed in.
 ///
 /// `None` for slot zero (the program's "never") and for a slot this ward has no block time for.

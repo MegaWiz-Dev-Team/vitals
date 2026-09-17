@@ -181,6 +181,21 @@ pub enum Instruction {
     /// a stale `prev_head`, and the patient the next stranger opens is the one that actually
     /// happened.
     AnchorShift { tree_id: u64, patient_id: u64, record: RecordWire, prev_head: [u8; 32] },
+    /// The ward's own hand on a lease: clear it whatever its state, signed by the operator.
+    ///
+    /// Appended deliberately — borsh reads a variant by its position, so a new one anywhere else
+    /// would renumber the ward's instructions under every client already running.
+    ///
+    /// A stranger who closes the tab holds a bed until the lease expires, which is a third of a
+    /// three-bed ward held by nobody. The page sends a heartbeat while it holds the head and the
+    /// server frees the head when the beats stop; this is what the server needs to do it, because
+    /// a release signed in advance cannot be held — a blockhash on this chain is worth about
+    /// twenty-six seconds and the silence worth acting on is longer than that.
+    ///
+    /// It moves the lease and nothing else: not her head, not her chart, not her shift count, not
+    /// her state. Whoever was on shift keeps their tape and can still anchor it, if the head they
+    /// extended is still the head.
+    FreeShift { patient_id: u64 },
 }
 
 /// Trees are addressed by id rather than being one global tree.
@@ -410,6 +425,8 @@ pub enum VitalsError {
     PatientClosed = 18,
     /// Anchoring or releasing a shift that is not yours to anchor or release.
     NotLeaseHolder = 19,
+    /// Freeing a head on somebody else's ward. `FreeShift` is the operator's alone.
+    NotOperator = 20,
 }
 
 impl From<VitalsError> for ProgramError {
@@ -444,6 +461,7 @@ pub fn process_instruction(program_id: &Pubkey, accounts: &[AccountInfo], data: 
         Instruction::AnchorShift { tree_id, patient_id, record, prev_head } => {
             anchor_shift(program_id, accounts, tree_id, patient_id, record, prev_head)
         }
+        Instruction::FreeShift { patient_id } => free_shift(program_id, accounts, patient_id),
     }
 }
 
@@ -995,6 +1013,34 @@ fn release_shift(program_id: &Pubkey, accounts: &[AccountInfo], patient_id: u64)
     patient.lease_holder = [0; 32];
     patient.lease_until_slot = 0;
     write(patient_ai, &patient)?;
+    Ok(())
+}
+
+/// Take a head back on the ward's own authority.
+///
+/// Two accounts and no player among them: the operator signs, and the patient is the account it
+/// signs about. The operator is read off the patient herself — `patient_here` has already checked
+/// that her address is the one her own operator's seeds produce — so a ward can only ever free a
+/// head on a patient it admitted.
+///
+/// The lease is all that moves. A stranger whose page stopped beating keeps their tape and can
+/// still anchor it afterwards if nobody else has moved the head in the meantime; what they lose is
+/// the room, which they had already left.
+fn free_shift(program_id: &Pubkey, accounts: &[AccountInfo], patient_id: u64) -> ProgramResult {
+    let it = &mut accounts.iter();
+    let operator = next_account_info(it)?;
+    let patient_ai = next_account_info(it)?;
+    if !operator.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let mut patient = patient_here(program_id, patient_id, patient_ai)?;
+    if operator.key.to_bytes() != patient.operator {
+        return Err(VitalsError::NotOperator.into());
+    }
+    patient.lease_holder = [0; 32];
+    patient.lease_until_slot = 0;
+    write(patient_ai, &patient)?;
+    msg!("ward freed the head on patient {}", patient_id);
     Ok(())
 }
 
