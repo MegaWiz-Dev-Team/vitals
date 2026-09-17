@@ -37,13 +37,13 @@ const grabConst = (name) => {
 };
 
 const sandbox = [grabConst('ALPHA3'), grabConst('STATE_LABEL'), grabConst('DOCTOR_BINS'), grab('countryId'), grab('countryCounts'), grab('visible'),
-  grab('stateOf'), grab('onBoard'), grab('inBeds'), grab('canTakeShift'), grab('censusFigures'), grab('paintOf'), grab('hoverText'), grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
+  grab('stateOf'), grab('onBoard'), grab('inBeds'), grab('canTakeShift'), grab('censusFigures'), grab('paintOf'), grab('hoverText'), grab('shouldReload'), grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
   grab('peoplePerDoctor'), grab('latestOf'), grab('tenYearTrend'), grab('fmtTrend'), grab('fmtPeople'), grab('doctorLine'),
   grab('worldAverage'), grab('missionLine'), grab('doctorBin'),
   grab('yearValue'), grab('yearRange'), grab('doctorLineAt'), grab('worldAverageAt'), grab('missionLineAt'),
   grab('escapeHtml'), grab('portraitImg'),
-  'return { countryId, countryCounts, visible, inBeds, canTakeShift, censusFigures, ALPHA3, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg };'].join('\n');
-const { countryId, countryCounts, inBeds, canTakeShift, censusFigures, visible, ALPHA3, whenMs, relative, absolute, stateLine,
+  'return { countryId, countryCounts, visible, inBeds, canTakeShift, censusFigures, ALPHA3, shouldReload, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg };'].join('\n');
+const { countryId, countryCounts, inBeds, canTakeShift, censusFigures, visible, ALPHA3, shouldReload, whenMs, relative, absolute, stateLine,
   stateOf, onBoard, paintOf, hoverText, STATE_LABEL,
   DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin,
   yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg } = new Function(sandbox)();
@@ -223,6 +223,23 @@ assert.equal(undated.text, 'on the ward',
   'a slot the chain has not dated for us is not a time we invent from the read\'s own slot');
 const future = line({ state: 'on_ward', handed_over: '2026-09-16T06:00:00Z' });
 assert.equal(future.text, 'on the ward · handed over 6 h ago', 'a Z string the payload carries is read the same way');
+
+// ── the build under an open tab ───────────────────────────────────────────────
+// The founder read a ward three hours out of date in his own tab: the page had been fixed, his
+// browser had the old one, and nothing in the answer had told it to ask. Pages are `no-cache` now,
+// which fixes the next visit — and this is the tab that never navigates again. Every board the
+// page receives carries the revision that served it; when that changes under an open tab, the page
+// reloads itself, once.
+//
+// Once, and only between two revisions it has actually seen. A rollout serves two revisions at the
+// same time and a board can arrive from either; a page that reloaded on every difference would
+// bounce between them for as long as the rollout lasted.
+assert.equal(shouldReload("00044", "00044"), false, "the same build is not a new build");
+assert.equal(shouldReload("00044", "00045"), true);
+assert.equal(shouldReload("", "00045"), false, "a page that never learned its own build stays put");
+assert.equal(shouldReload("00044", ""), false, "and a board that does not say is not an answer");
+assert.equal(shouldReload("00044", null), false);
+assert.equal(shouldReload(null, null), false);
 
 // ── the wire ─────────────────────────────────────────────────────────────────
 // Pushed, and still polled: the 30-second refetch stays for browsers and proxies that drop the
