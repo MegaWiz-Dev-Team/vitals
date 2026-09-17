@@ -1048,3 +1048,91 @@ fn an_endemic_claim_is_checked_against_the_catalogue() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// **A case can be withdrawn, and a withdrawn case is not a deleted one.**
+///
+/// The compiler stopped accepting non-English cases on 17 ก.ย.: the library is 421 Thai of 433, and
+/// the founder was shown "womanวัยกลางคน…" over a Japanese patient — a Thai case with English
+/// placeholders filled into it, on a person from the wrong side of the world. Sixty of the cases
+/// this ward holds are those, and the ticker will keep putting people on them until somebody says
+/// otherwise.
+///
+/// Withdrawing is that sentence. It is not a delete: patients are mid-stay on some of these, their
+/// shifts are on the chain, and the case is what their chart is rebuilt from — so the pack stays in
+/// the store, readable, for as long as anybody is on it. What goes is its future: it is never
+/// placed, and a pack naming it is refused at the queue door in the door's own words.
+///
+/// A reviewed case may not be withdrawn, for the same reason it may not be replaced: somebody has
+/// played it and the chain carries what they did.
+#[test]
+fn a_provisional_case_can_be_withdrawn_and_is_still_readable() {
+    use vitals_web::store::Store;
+    use vitals_web::ward::{Pack, Persona};
+    use vitals_web::ward_case::{all, choose_case, key_for, sce_of, CASE_STORE};
+    use vitals_web::ward_chain::enqueue;
+
+    let s = Server::start();
+    let mut thai = a_pack();
+    thai["case_id"] = json!("embla-thai-library-1");
+    thai["language"] = json!("th");
+    thai["patient"] = json!({ "age": 40, "sex": "female" });
+    let (code, _) = s.post("/api/ward/case", &thai);
+    assert_eq!(code, 200);
+
+    // Withdrawn by the same door the case came through, and the answer says what happened.
+    let (code, body) = s.post("/api/ward/case/embla-thai-library-1/withdraw", &json!({}));
+    assert_eq!(code, 200, "{body}");
+    assert_eq!(body["withdrawn"], "embla-thai-library-1");
+
+    // The catalogue still lists it, and says so.
+    let (code, list) = s.get("/api/ward/cases");
+    assert_eq!(code, 200);
+    let row = list["cases"].as_array().expect("the catalogue")
+        .iter().find(|c| c["case_id"] == "embla-thai-library-1").expect("still listed").clone();
+    assert_eq!(row["withdrawn"], true, "a withdrawn case is on the record, not gone: {row}");
+
+    // And a reader that wants only what can be played can ask for that.
+    let (_, placeable) = s.get("/api/ward/cases?placeable=1");
+    assert!(placeable["cases"].as_array().expect("cases").iter()
+                .all(|c| c["case_id"] != "embla-thai-library-1"),
+            "?placeable=1 still offers a case nobody may be put on: {placeable}");
+
+    // Nobody new is put on it: not by the ward choosing it…
+    let store = Store::open(s.state()).expect("the ward's own store");
+    let held = all(&store);
+    let her = Persona { name: "Aoi Nakamura".into(), country: "JPN".into(), age: 40, sex: "f".into() };
+    assert!(choose_case(&held, None, &her, None).is_none_or(|c| c.case_id != "embla-thai-library-1"),
+            "the ward placed a patient on a withdrawn case");
+    // …nor by a pack naming it outright.
+    let named = enqueue(&store, vec![Pack {
+        case: "embla-thai-library-1".into(),
+        difficulty: None,
+        persona: her.clone(),
+        portrait: Default::default(),
+        endemic: false,
+    }]);
+    assert_eq!(named.queued, 0, "{:?}", named.rejected);
+    let why = named.rejected.first().cloned().unwrap_or_default();
+    assert!(why.contains("withdrawn"), "and the sentence says which word it is: {why}");
+
+    // But the patients already on it can still be opened: the pack is in the store, and the chart
+    // of anybody mid-stay is rebuilt from it.
+    assert!(store.get::<Value>(CASE_STORE, &key_for("embla-thai-library-1")).is_some(),
+            "a withdrawn case is kept, or every patient on it becomes a blank screen at a bed");
+    assert!(sce_of(&store, "embla-thai-library-1").is_some(),
+            "and its scenario still loads, which is what a shift on her replays");
+
+    // A reviewed case is not withdrawable, for the reason it is not replaceable.
+    let mut reviewed = a_pack();
+    reviewed["case_id"] = json!("embla-reviewed-1");
+    reviewed["provisional"] = json!(false);
+    assert_eq!(s.post("/api/ward/case", &reviewed).0, 200);
+    let (code, body) = s.post("/api/ward/case/embla-reviewed-1/withdraw", &json!({}));
+    assert_eq!(code, 409, "{body}");
+    assert!(body["refused"].as_str().is_some_and(|w| w.contains("reviewed")), "{body}");
+
+    // A case nobody sent is a 404, and the door still takes only its own token.
+    assert_eq!(s.post("/api/ward/case/embla-never-sent/withdraw", &json!({})).0, 404);
+    assert_eq!(s.post_with("/api/ward/case/embla-thai-library-1/withdraw", &json!({}), None).0, 401,
+               "the withdraw door is a door");
+}
