@@ -305,3 +305,25 @@ assert.equal(chipText(''), '');
 assert.equal(chipText('Ask:'), 'Ask:', 'a label that is only the prefix keeps it rather than vanishing');
 
 console.log('shift_logic: ok (and a chip says the question)');
+
+// ── the strip is on the page before the page waits for anything ──────────────
+//
+// `#wardbar` is the only way back to the globe a shift page has, and — until the case lands — the
+// only thing on it a stranger can act on at all. It was built after `await identity()`, so on a
+// ward that answers slowly the page was a header over nothing, with no way out of it: staging
+// blocked for 49 seconds on 17 ก.ย. while the chain was read, and a scrape of /ward/<id> taken in
+// that window found the bay's shell and no strip. So the order is the assertion — the strip is
+// painted first, and every await on the page happens behind it.
+//
+// This reads the shipped source rather than a DOM, because the property is an ordering one: a
+// `wardBar()` that has moved below an `await` is the bug, however the page renders afterwards.
+for (const name of ['openShift', 'openReview']) {
+  const body = grab(name);
+  const bar = body.indexOf('wardBar()');
+  const wait = body.indexOf('await');
+  assert.ok(bar >= 0, `${name} no longer paints the strip at all`);
+  assert.ok(wait < 0 || bar < wait,
+            `${name} waits before it paints the strip — a page with no way back until a fetch returns`);
+}
+
+console.log('shift_logic: ok (and the way back is painted before the waiting)');
