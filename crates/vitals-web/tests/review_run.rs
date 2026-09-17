@@ -244,3 +244,41 @@ fn a_withdrawn_case_can_still_be_reviewed() {
     assert_eq!(run["review"]["withdrawn"], true,
                "and the page can say so, because that is what the reviewer is looking at: {run}");
 }
+
+/// **The mark sheet of a compiled case comes out of the pack.**
+///
+/// `/api/marks` reads a rubric off disk, beside the season's scenario files. A compiled case has no
+/// file: the compiler sends the rubric inside the pack, through the case door, and the ward keeps
+/// it in the store. So every shift on this ward, and every review run, has answered "no mark sheet
+/// to open" — which reads as a fact about the case and is a fact about where we looked.
+///
+/// It is the whole point of a review run: the reviewer is reading what the case *pays for*, and it
+/// is what a receipt has to show for a shift somebody played.
+#[test]
+fn the_mark_sheet_of_a_compiled_case_comes_out_of_the_pack() {
+    let s = Server::start();
+    let mut pack = a_pack();
+    pack["case_id"] = json!("embla-marks-1");
+    pack["rubric"]["case"] = json!("embla-marks-1");
+    assert_eq!(s.post("/api/ward/case", &pack).0, 200);
+
+    let (_, run) = s.get("/api/new?review=embla-marks-1");
+    let id = run["id"].as_str().expect("a session").to_string();
+
+    // Sealed until the case is over, as everywhere else.
+    let (_, sealed) = s.get(&format!("/api/marks?id={id}"));
+    assert_eq!(sealed["sealed"], true, "{sealed}");
+
+    // Play it to an ending: the fixture's fluids reach the state its win is written from.
+    let (_, _) = s.get(&format!("/api/step?id={id}&do=crystalloid%20fluids"));
+    let (code, done) = s.get(&format!("/api/finish?id={id}"));
+    assert_eq!(code, 200, "{done}");
+
+    let (_, marks) = s.get(&format!("/api/marks?id={id}"));
+    assert_eq!(marks["case"], "embla-marks-1", "the rubric's own case line: {marks}");
+    assert_eq!(marks["max"], 20, "the pack's two items add to twenty: {marks}");
+    assert_eq!(marks["pass_bps"], 6000);
+    let items = marks["items"].as_array().expect("the rows a reviewer reads");
+    assert_eq!(items.len(), 2, "{marks}");
+    assert!(items.iter().any(|i| i["label"] == "Fluids"), "{marks}");
+}
