@@ -380,3 +380,36 @@ assert.equal(leaseWords(0), '', 'and a zero is a measurement that failed, not a 
 assert.equal(leaseWords(undefined), '');
 
 console.log('shift_logic: ok (and the lease is the one the chain is keeping today)');
+
+// ── what the clock is counting ───────────────────────────────────────────────
+//
+// UX review C1: the clock runs and says nothing about what it is measuring. A stranger has no idea
+// the head is theirs for a fixed span, or when to hand over — and the span is not cosmetic: the
+// program refuses an anchor once the lease has run out (`anchor_shift`: `slot >=
+// patient.lease_until_slot` → NotLeaseHolder), so a shift that runs past it cannot be recorded at
+// all.
+//
+// So the line says the time left, and in the last five minutes it says what to do with it. At zero
+// it says the truth: the bed is free for the next stranger, and this shift is no longer theirs to
+// record.
+const { leaseLine } = new Function([grab('leaseLine'), 'return { leaseLine };'].join('\n'))();
+
+assert.equal(leaseLine(1351), 'shift ends in 22:31');
+assert.equal(leaseLine(600), 'shift ends in 10:00');
+assert.equal(leaseLine(61), 'shift ends in 1:01');
+assert.equal(leaseLine(9), 'shift ends in 0:09', 'seconds are padded, minutes are not');
+
+// The last five minutes carry the instruction, because that is when it is actionable.
+assert.equal(leaseLine(252), 'shift ends in 4:12 — hand over to record it');
+assert.equal(leaseLine(300), 'shift ends in 5:00 — hand over to record it', 'five minutes is inside it');
+assert.equal(leaseLine(301), 'shift ends in 5:01', 'and a second more is not');
+
+// Zero and past it: the bed is free and the shift cannot be anchored. Both halves are true and the
+// second is the one a stranger needs — their work is not on the chain and will not go there.
+assert.equal(leaseLine(0), 'the lease has run out — the bed is free');
+assert.equal(leaseLine(-90), 'the lease has run out — the bed is free');
+// And a ward that has not told the page how long a lease is says nothing at all.
+assert.equal(leaseLine(null), '');
+assert.equal(leaseLine(undefined), '');
+
+console.log('shift_logic: ok (and the clock says what it is counting)');
