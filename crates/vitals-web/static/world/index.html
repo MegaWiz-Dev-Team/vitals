@@ -281,10 +281,17 @@ function countryCounts(patients, drawable) {
    done. The board showed five countries ringed over three beds until 17 ก.ย. for exactly that
    reason. One place decides, so nothing downstream can put them back. */
 function inBeds(ps) {
-  return (ps || []).filter(p => {
-    const s = stateOf(p);
-    return s === "on_ward" || s === "on_shift";
-  });
+  return (ps || [])
+    .filter(p => {
+      const s = stateOf(p);
+      // The state *and* the bed. A patient on the chain whose chart this ward cannot rebuild is
+      // open and has no bed: she cannot be taken, she is not in a bed, and counting her put "5
+      // patients in beds" beside a figure reading 3 on the same screen.
+      return (s === "on_ward" || s === "on_shift") && p && p.bed !== undefined && p.bed !== null;
+    })
+    // In bed order, because that is the order a person standing on the ward would read them in,
+    // and it does not change under a reader when the board is pushed again.
+    .sort((a, b) => a.bed - b.bed);
 }
 
 // The difficulty toggles. A patient whose difficulty the page has no toggle for is shown, not
@@ -660,7 +667,11 @@ function row(p, showCountry) {
   /* The endpoint sends a sentence with a patient it cannot describe. It is shown rather than
      summarised: a reader who wants to know why this one has no bed deserves the whole reason, and
      it is one line. */
-  const note = p.note ? `<div class="note">${escapeHtml(p.note)}</div>` : "";
+  /* The ward's sentence about why this patient has no bed is a paragraph, and a list of people is
+     not where a paragraph belongs (director, 17 ก.ย.). It rides the row as its title until the
+     patient's own chart page exists to print it. */
+  const note = "";
+  if (p.note) li.title = p.note;
   li.innerHTML = `${img}<div><b>${escapeHtml(p.name || ("patient " + p.patient_id))}${age}</b>
     <div class="meta">${where}${bed}<span class="state ${st}" title="${escapeHtml(line.title)}">${escapeHtml(line.text)}</span>${diff}${end}</div>${note}</div>
     <a class="take" href="/ward/${encodeURIComponent(p.patient_id)}" aria-disabled="${!canTake}">${canTake ? "take a shift" : "view"}</a>`;
@@ -759,7 +770,13 @@ function clearPanel() {
   draw();
 }
 function renderTray() {
-  const list = visible(patients, filter).filter(p => placed(p) === null);
+  /* Everybody the panel does not show: a country the map cannot place, or no bed — a patient on the
+     chain the ward cannot describe or cannot rebuild. She is on the board with her own state and a
+     link that says "view", rather than in a list of beds she is not in. */
+  const beds = new Set(inBeds(visible(patients, filter)).map(p => p.patient_id));
+  const list = visible(patients, filter)
+    .filter(p => stateOf(p) !== "went_home" && stateOf(p) !== "died")
+    .filter(p => placed(p) === null || !beds.has(p.patient_id));
   $("tray").hidden = list.length === 0;
   $("traylist").textContent = "";
   for (const p of list) $("traylist").appendChild(row(p, true));
