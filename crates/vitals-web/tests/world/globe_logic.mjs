@@ -37,13 +37,13 @@ const grabConst = (name) => {
 };
 
 const sandbox = [grabConst('ALPHA3'), grabConst('SLOT_MS'), grabConst('STATE_LABEL'), grabConst('DOCTOR_BINS'), grab('countryId'), grab('countryCounts'), grab('visible'),
-  grab('stateOf'), grab('onBoard'), grab('inBeds'), grab('paintOf'), grab('hoverText'), grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
+  grab('stateOf'), grab('onBoard'), grab('inBeds'), grab('canTakeShift'), grab('censusFigures'), grab('paintOf'), grab('hoverText'), grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
   grab('peoplePerDoctor'), grab('latestOf'), grab('tenYearTrend'), grab('fmtTrend'), grab('fmtPeople'), grab('doctorLine'),
   grab('worldAverage'), grab('missionLine'), grab('doctorBin'),
   grab('yearValue'), grab('yearRange'), grab('doctorLineAt'), grab('worldAverageAt'), grab('missionLineAt'),
   grab('escapeHtml'), grab('portraitImg'),
-  'return { countryId, countryCounts, visible, inBeds, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg };'].join('\n');
-const { countryId, countryCounts, inBeds, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine,
+  'return { countryId, countryCounts, visible, inBeds, canTakeShift, censusFigures, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg };'].join('\n');
+const { countryId, countryCounts, inBeds, canTakeShift, censusFigures, visible, ALPHA3, SLOT_MS, whenMs, relative, absolute, stateLine,
   stateOf, onBoard, paintOf, hoverText, STATE_LABEL,
   DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin,
   yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg } = new Function(sandbox)();
@@ -112,6 +112,37 @@ assert.deepEqual(beds.byId, { '764': 2 }, 'Indonesia is not ringed for three pat
 assert.deepEqual(beds.treatingById, { '764': 1 }, 'and one of the two Thai beds is being worked in');
 assert.deepEqual(countryCounts(inBeds([P(1, 'THA')])).treatingById, {},
                  'a bed nobody is in right now is a ring without the second mark');
+
+// ── who can actually be taken ────────────────────────────────────────────────
+//
+// The tray offered "take a shift" on a patient the ward cannot rebuild, and pressing it landed on a
+// page that refuses (director, 17 ก.ย., A6). A button that cannot do what it says is worse than no
+// button: it spends the one gesture the front page is asking for.
+//
+// A shift can be taken on somebody in a bed whose chart this ward can open. A patient with no bed —
+// admitted outside the ward, or on the chain with a chart nobody here can rebuild — is on the board
+// with her own sentence, and the link says "view".
+assert.equal(canTakeShift(P(1, 'THA', { bed: 2 })), true);
+assert.equal(canTakeShift(P(1, 'THA', { bed: null })), false, 'no bed, nothing to take');
+assert.equal(canTakeShift(P(1, 'THA', { bed: 2, state: 'on_shift' })), false,
+             'somebody is already in the room with her');
+assert.equal(canTakeShift(P(1, 'THA', { bed: null, state: 'off_ward' })), false);
+assert.equal(canTakeShift(P(1, 'THA', { bed: 1, state: 'went_home' })), false);
+
+// ── the figures under the headline ───────────────────────────────────────────
+//
+// The numbers the founder wants followed week to week were 11 px of monospace in a corner (A5). They
+// are the page's second sentence now, and they carry the one the board could not say before:
+// how many of the beds have somebody in them right now.
+const figs = censusFigures({ shifts: 25, went_home: 1, died: 7 }, [
+  P(1, 'THA', { bed: 1 }), P(2, 'KOR', { bed: 2, state: 'on_shift' }), P(3, 'BRA', { bed: 3 }),
+  P(4, 'IDN', { state: 'went_home' }),
+], 3);
+assert.deepEqual(figs, [['in beds', 3], ['on shift now', 1], ['shifts', 25], ['went home', 1], ['died', 7]],
+                 'the five numbers, in the order a reader meets them');
+// A census that does not carry a number is not a zero: the figure is left out rather than invented.
+assert.deepEqual(censusFigures({}, [], 0).map(([k]) => k), ['in beds', 'on shift now'],
+                 'what the ward itself counts is always there; the chain\'s numbers are not faked');
 
 // ── visible ──────────────────────────────────────────────────────────────────
 const ward = [P(1, 'THA', { difficulty: 'student' }), P(2, 'THA', { difficulty: 'intern' }),
