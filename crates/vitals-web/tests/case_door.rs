@@ -964,3 +964,87 @@ fn a_patient_is_queued_only_onto_a_case_written_about_somebody_like_her() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// **A pack's endemic claim is checked against the catalogue, because that is where cases live now.**
+///
+/// The first real factory tick, 17 ก.ย., staging 00033: the door refused
+/// `embla-meningococcal-meningitis-septic-shock-intern` for Ousmane Garba, 26, from Niger — *"this
+/// pack calls itself endemic, but the endemic list does not pair NER with
+/// embla-meningococcal-…"*. The case is tagged endemic for NER in the catalogue, by the compiler,
+/// and the door was reading `data/endemic.json`: a static file of six country→case pairs written
+/// for the season's sixteen, empty today, that knows nothing of the case door. Eighteen of the
+/// seventy-eight cases the ward holds are endemic, so every endemic patient the factory builds was
+/// being turned away at the door.
+///
+/// The claim is a fact about the pairing, and the catalogue is where that fact is: a pack may call
+/// itself endemic if the case it names is tagged endemic and its country is the patient's. A pack
+/// naming no case may not claim it at all — the ward picks the case afterwards, and which case it
+/// picks is what would make the claim true or false.
+#[test]
+fn an_endemic_claim_is_checked_against_the_catalogue() {
+    use vitals_web::store::Store;
+    use vitals_web::ward::{Pack, Persona};
+    use vitals_web::ward_case::CASE_STORE;
+    use vitals_web::ward_chain::enqueue;
+
+    let dir = std::env::temp_dir().join(format!("vitals-endemic-door-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store = Store::open(dir.clone()).expect("a store");
+
+    // The case from the tick, as the catalogue holds it: endemic in Niger, written about a boy of
+    // sixteen.
+    let mut meningo = a_pack();
+    meningo["case_id"] = json!("embla-meningococcal-meningitis-septic-shock-intern");
+    meningo["country"] = json!("NER");
+    meningo["endemic"] = json!(true);
+    meningo["patient"] = json!({ "age": 16, "sex": "male" });
+    store.put(CASE_STORE, &vitals_web::ward_case::key_for("embla-meningococcal-meningitis-septic-shock-intern"), &meningo)
+        .expect("the ward holds it");
+    // And one that is endemic somewhere else.
+    let mut dengue = a_pack();
+    dengue["case_id"] = json!("embla-dengue-shock-child");
+    dengue["country"] = json!("THA");
+    dengue["endemic"] = json!(true);
+    dengue["patient"] = json!({ "age": 20, "sex": "male" });
+    store.put(CASE_STORE, &vitals_web::ward_case::key_for("embla-dengue-shock-child"), &dengue).expect("held");
+    // And one that belongs to no place at all.
+    store.put(CASE_STORE, &vitals_web::ward_case::key_for("auth-demo-1"), &a_pack()).expect("held");
+
+    let pack = |case: &str, country: &str, age: u16, endemic: bool| Pack {
+        case: case.to_string(),
+        difficulty: None,
+        persona: Persona { name: "Ousmane Garba".into(), country: country.into(), age, sex: "m".into() },
+        portrait: Default::default(),
+        endemic,
+    };
+
+    // The pack from the tick. Nothing about it is wrong.
+    let tick = enqueue(&store, vec![pack("embla-meningococcal-meningitis-septic-shock-intern", "NER", 26, true)]);
+    assert_eq!(tick.queued, 1,
+               "the case is tagged endemic for Niger in the catalogue and this patient is from \
+                Niger: {:?}", tick.rejected);
+
+    // Endemic in Thailand is not endemic in Niger, whoever the patient is.
+    let elsewhere = enqueue(&store, vec![pack("embla-dengue-shock-child", "NER", 26, true)]);
+    assert_eq!(elsewhere.queued, 0);
+    let why = elsewhere.rejected.first().cloned().unwrap_or_default();
+    assert!(why.contains("THA") && why.contains("NER"), "both places are named: {why}");
+
+    // A case that belongs to no place cannot be claimed as endemic anywhere.
+    let nowhere = enqueue(&store, vec![pack("auth-demo-1", "NER", 60, true)]);
+    assert_eq!(nowhere.queued, 0, "{:?}", nowhere.rejected);
+    assert!(nowhere.rejected.first().is_some_and(|w| w.contains("auth-demo-1")), "{:?}", nowhere.rejected);
+
+    // A pack naming no case may not claim it: the ward picks the case afterwards, and which case it
+    // picks is exactly what would make the claim true or false.
+    let unnamed = enqueue(&store, vec![pack("", "NER", 26, true)]);
+    assert_eq!(unnamed.queued, 0);
+    assert!(unnamed.rejected.first().is_some_and(|w| w.contains("names no case")),
+            "{:?}", unnamed.rejected);
+
+    // And a pack that claims nothing is queued whatever the case is tagged.
+    let quiet = enqueue(&store, vec![pack("embla-meningococcal-meningitis-septic-shock-intern", "THA", 20, false)]);
+    assert_eq!(quiet.queued, 1, "{:?}", quiet.rejected);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
