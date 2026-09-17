@@ -48,15 +48,42 @@ body{margin:0;background:var(--ground);color:var(--ink);
 .figures .fig b{font:800 1.9rem/1.1 Archivo,system-ui,sans-serif;letter-spacing:-.01em;
   text-transform:none;color:var(--ink)}
 .figures .fig:first-child b{color:var(--proven)}
-h1{font-family:Archivo,Arial,sans-serif;font-weight:800;font-size:clamp(1.25rem,3.2vw,2rem);line-height:1.18;letter-spacing:-.015em;margin:1.4rem 0 0;text-wrap:balance;overflow-wrap:anywhere}
-h1 .second{display:block;color:var(--proven)}
-.mission{margin:.7rem 0 0;max-width:44em;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.82rem;line-height:1.6;color:var(--ink-2);
-  padding:.55rem .8rem;border-left:3px solid var(--proven);background:var(--surface)}
+h1{font-family:Archivo,Arial,sans-serif;font-weight:800;font-size:clamp(1.15rem,2.4vw,1.7rem);line-height:1.2;letter-spacing:-.015em;margin:1.4rem 0 0;text-wrap:balance;overflow-wrap:anywhere}
+/* One line each, on a screen wide enough to hold them. The headline and the sentence under it are
+   what a stranger reads first and they were three lines and two between them; the size comes down
+   rather than the words, because the words are the product's one claim. */
+h1 .second{display:block;color:var(--proven);font-size:.72em;font-weight:600;margin-top:.25rem}
+/* A sentence under the headline, not a box beside it. It was a mono block with a rule down its
+   left edge, which read as a pull-quote about the company on a page whose subject is a ward. */
+.mission{margin:.45rem 0 0;max-width:44em;font-size:.92rem;line-height:1.5;color:var(--ink-2)}
 .mission b{color:var(--ink);font-weight:600}
 .mission[hidden]{display:none}
 .sub{color:var(--ink-2);max-width:40em;margin:.6rem 0 0;font-size:.95rem}
 
-.stage{display:grid;grid-template-columns:minmax(0,1fr) 20rem;gap:1.25rem;margin-top:1.4rem;align-items:start}
+.stage{display:grid;grid-template-columns:minmax(0,1fr);gap:1.25rem;margin-top:1.1rem;align-items:start}
+/* Wide: the page is two columns and the panel is the second one, from the headline down. The globe
+   is capped at 620 px because past that it is a picture of a globe rather than a control — and the
+   panel never goes under 380 px, which is the width the rows were overflowing at. */
+@media (min-width:1280px){
+  .wrap{display:grid;grid-template-columns:minmax(0,620px) minmax(380px,1fr);gap:0 1.6rem;
+    grid-template-areas:"rail rail" "head panel" "mission panel" "figs panel" "sub panel"
+      "stage panel" "tray panel" "links links";align-items:start}
+  .wrap>.rail{grid-area:rail}
+  .wrap>h1{grid-area:head;margin-top:1.2rem}
+  .wrap>.mission{grid-area:mission}
+  .wrap>.figures{grid-area:figs}
+  .wrap>.sub{grid-area:sub}
+  .wrap>.stage{grid-area:stage}
+  .wrap>.tray{grid-area:tray}
+  .wrap>.links{grid-area:links}
+  .wrap>.panel{grid-area:panel;margin-top:1.2rem;position:sticky;top:1rem;max-height:calc(100vh - 2rem);overflow:auto}
+  .globe-wrap{max-width:620px}
+}
+/* Between a phone and that: one column, and the panel under the globe where it already was. */
+@media (min-width:761px) and (max-width:1279px){
+  .panel{margin-top:1.1rem}
+  .globe-wrap{max-width:min(620px, calc(100vh - 14rem))}
+}
 .globe-wrap{position:relative;min-width:0;max-width:min(100%, calc(100vh - 14rem));margin:0 auto}
 canvas#globe{display:block;max-width:100%;touch-action:none;cursor:grab;border-radius:50%}
 canvas#globe.dragging{cursor:grabbing}
@@ -79,19 +106,27 @@ canvas#globe.dragging{cursor:grabbing}
 .legend .sw.hatch{background:repeating-linear-gradient(135deg,var(--land) 0 2px,var(--land-edge) 2px 3px)}
 .legend .sw.ring{background:var(--ramp-1);border:2px solid var(--lit-edge)}
 .legend .sw.ring.on{background:var(--lit-edge);border-color:var(--lit-edge)}
-.legend .note{display:block;margin-top:.3rem;color:var(--ink-3)}
+.legend .note{display:block;margin-top:.35rem;color:var(--ink-3);line-height:1.5}
+.legend .note>summary{cursor:pointer;letter-spacing:.06em;text-transform:uppercase;font-size:.62rem;
+  color:var(--ink-3);list-style:none}
+.legend .note>summary::-webkit-details-marker{display:none}
+.legend .note>summary::before{content:"▸ ";font-size:.7em}
+.legend .note[open]>summary::before{content:"▾ "}
 .yearrow{display:flex;align-items:center;gap:.6rem;margin:.55rem 0 0;font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-2)}
 .yearrow input[type=range]{flex:1 1 10rem;min-width:8rem;max-width:22rem;accent-color:var(--proven)}
 .yearrow button{font:inherit;cursor:pointer;width:2rem;height:1.7rem;border-radius:.4rem;border:1px solid var(--rule);background:var(--surface);color:var(--proven);line-height:1}
 .yearrow button:focus-visible{outline:2px solid var(--proven);outline-offset:2px}
 .yearrow output{min-width:3.2em;font-weight:600;color:var(--ink);letter-spacing:.06em}
 .yearrow .from{color:var(--ink-3)}
-.pdoc{margin:.7rem 0 0;padding:.6rem .7rem;border:1px solid var(--rule-soft);border-radius:.6rem;background:var(--ground)}
+.pdoc{margin:.6rem 0 0;padding:.55rem .7rem;border:1px solid var(--rule-soft);border-radius:.6rem;background:var(--ground)}
+/* The label above this card said "people per doctor · World Bank/WHO" over a card whose every line
+   is already that, under a legend that says it a third time. */
+.pdoc .k{display:none}
 .pdoc[hidden]{display:none}
 .pdoc .k{display:block}
-.pdoc .big{font-family:Archivo,Arial,sans-serif;font-weight:700;font-size:1.05rem;letter-spacing:-.01em;margin:.2rem 0 0;color:var(--ink);overflow-wrap:anywhere}
+.pdoc .big{font-family:Archivo,Arial,sans-serif;font-weight:700;font-size:.98rem;line-height:1.3;letter-spacing:-.01em;margin:0;color:var(--ink);overflow-wrap:anywhere}
 .pdoc .yr,.pdoc .trend .yr{font-family:"IBM Plex Mono",monospace;font-weight:400;font-size:.7rem;color:var(--ink-3);letter-spacing:.04em}
-.pdoc svg{display:block;width:100%;height:auto;margin:.4rem 0 0}
+.pdoc svg{display:block;width:100%;height:36px;margin:.35rem 0 0}
 .pdoc .trend{font-family:"IBM Plex Mono",monospace;font-size:.74rem;color:var(--ink-2);margin:.35rem 0 0}
 .pdoc .trend b{color:var(--proven);font-weight:600}
 .pdoc .trend b.up{color:var(--ramp-6)}
@@ -101,11 +136,17 @@ canvas#globe.dragging{cursor:grabbing}
 .panel .k{font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.1em;color:var(--ink-3);text-transform:uppercase}
 .panel .empty{color:var(--ink-2);font-size:.92rem;margin:.6rem 0 0}
 .plist{list-style:none;margin:.8rem 0 0;padding:0;display:flex;flex-direction:column;gap:.6rem}
-.prow{display:grid;grid-template-columns:56px minmax(0,1fr);grid-template-areas:"pic body" "pic act";gap:.15rem .6rem;align-items:start;padding:.55rem .6rem;border:1px solid var(--rule-soft);border-radius:.6rem;background:var(--ground);min-width:0}
-.prow>img,.prow>.ph{grid-area:pic;align-self:center}.prow>div{grid-area:body}.prow>a.take{grid-area:act;justify-self:start;margin-top:.15rem}
+.prow{position:relative;display:grid;grid-template-columns:56px minmax(0,1fr) auto;grid-template-areas:"pic body act";gap:.15rem .6rem;align-items:center;padding:.5rem .6rem;border:1px solid var(--rule-soft);border-radius:.6rem;background:var(--ground);min-width:0}
+.prow>img,.prow>.ph{grid-area:pic;align-self:center}.prow>div{grid-area:body;min-width:0}
+.prow>a.take{grid-area:act;justify-self:end;align-self:center;white-space:nowrap}
+/* The whole row is the way in. One link, stretched over the row by its own ::after — a second
+   anchor around everything would be a second thing in the tab order saying the same word. */
+.prow>a.take::after{content:"";position:absolute;inset:0;border-radius:.6rem}
+.prow:hover{border-color:var(--rule)}
 .prow img,.prow .ph{width:56px;height:56px;border-radius:50%;object-fit:cover;background:var(--surface-2);border:1px solid var(--rule)}
 .prow .ph{display:flex;align-items:center;justify-content:center;font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--ink-3)}
-.prow b{display:block;font-size:.92rem;line-height:1.2;overflow-wrap:anywhere}
+.prow b{font-size:.92rem;line-height:1.25;overflow-wrap:anywhere}
+.prow .who{display:flex;gap:.4rem;align-items:baseline;flex-wrap:wrap}
 .prow .meta{font-family:"IBM Plex Mono",monospace;font-size:.66rem;color:var(--ink-3);margin-top:.2rem;display:flex;gap:.3rem;flex-wrap:wrap;align-items:center;line-height:1.5}
 .state{display:inline-block;padding:0 .35rem;border-radius:.3rem;border:1px solid var(--rule);
   /* Wrapping is the last resort and it has to exist: a pill that cannot wrap and will not shrink
@@ -121,7 +162,12 @@ canvas#globe.dragging{cursor:grabbing}
 .tag.endemic{color:var(--proven);background:var(--proven-soft)}
 a.take{font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.06em;text-decoration:none;color:var(--proven);border:1px solid var(--proven);border-radius:.4rem;padding:.25rem .55rem;white-space:nowrap}
 a.take:hover,a.take:focus-visible{background:var(--proven-soft);outline:none}
-a.take[aria-disabled="true"]{color:var(--ink-3);border-color:var(--rule);pointer-events:none}
+/* Nothing to take here — but there is something to read: her chart, her shifts and what happened
+   to her. It was `aria-disabled` with `pointer-events:none`, which made the whole row unclickable
+   for exactly the patients whose page is the most worth opening. The word on it says which of the
+   two this is, and the weight says it again. */
+a.take.look{color:var(--ink-3);border-color:var(--rule)}
+a.take.look:hover,a.take.look:focus-visible{color:var(--ink-2);border-color:var(--ink-3);background:transparent}
 .tray{margin-top:1rem}
 .tray .k{margin-bottom:.3rem;display:block}
 .holding{margin:1.2rem 0 0;padding:.95rem 1.1rem;background:var(--surface);border:1px solid var(--rule);border-radius:.6rem;font-family:"IBM Plex Mono",monospace;font-size:.84rem;color:var(--ink-2)}
@@ -134,7 +180,16 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
 .sr{position:absolute;left:-9999px}
 
 @media (max-width:760px){
-  .wrap{padding:0 1rem 2.5rem}
+  /* The order a thumb meets them in: what the ward is, how many are in it, who they are, and then
+     the globe. The panel was under the globe and 278 px of legend, 1,216 px down the page. */
+  .wrap{padding:0 1rem 2.5rem;display:flex;flex-direction:column}
+  /* Everything not named below goes last rather than first — the credits are a direct child of
+     the page too, and an unordered child of a flex row sits at 0, which put them above the
+     headline. */
+  .wrap>*{order:9}
+  .wrap>.rail{order:0} .wrap>h1{order:1} .wrap>.mission{order:2} .wrap>.figures{order:3}
+  .wrap>.panel{order:4;margin:.2rem 0 .2rem} .wrap>.sub{order:5} .wrap>.stage{order:6}
+  .wrap>.tray{order:7} .wrap>.links{order:8}
   .globe-wrap{max-width:100%}
   a.take{padding:.3rem .45rem}
   .stage{grid-template-columns:1fr;gap:.9rem}
@@ -147,6 +202,13 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
     box-shadow:none;z-index:auto}
   .panel .close{display:none}
   .tray{margin-bottom:.5rem}
+}
+/* Narrow enough that the button on the row leaves the name and the pill nothing: at 358 px the
+   name broke over two lines and the pill broke between the number and its unit. The button takes
+   its own line here and everything else gets the width back. */
+@media (max-width:460px){
+  .prow{grid-template-columns:56px minmax(0,1fr);grid-template-areas:"pic body" "pic act";align-items:start}
+  .prow>a.take{justify-self:end;margin-top:.3rem}
 }
 .panel .close{display:none;float:right;font:inherit;background:none;border:1px solid var(--rule);border-radius:.4rem;color:var(--ink-2);padding:.15rem .5rem;cursor:pointer}
 @media (prefers-reduced-motion:reduce){.panel{transition:none}}
@@ -162,13 +224,13 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
   </div>
 
   <h1 id="h1">Spin the world. Find a patient. Take a shift.
-      <span class="second" id="h1b">Countries with somebody in a bed are ringed; a filled ring is a patient being treated right now.</span></h1>
+      <span class="second" id="h1b">A ring is a country with a patient in a bed; filled, being treated now.</span></h1>
   <p class="mission" id="mission" hidden></p>
   <!-- What this ward is doing, in numbers, where a reader looks second. `in beds` and `on shift
        now` are the ward's own; the other three are the chain's and are left out when the census
        does not carry them. -->
   <div class="figures" id="figures" aria-live="polite"></div>
-  <p class="sub">Drag the globe, hover a country, click a ringed one to see who is waiting there. A shift is a few minutes at her bedside; the next stranger opens her where you stopped.</p>
+  <p class="sub">Drag the globe · hover a country · click a ring</p>
 
   <div class="stage">
     <div class="globe-wrap">
@@ -201,21 +263,27 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
           <output id="yearout" for="year">2024</output>
           <span class="from" id="yearfrom"></span>
         </div>
-        <span class="note">people per doctor = population per physician, not patients · each country at the chosen year, or its latest earlier value marked "(value from YEAR)" · no value = hatched, never coloured · the ward ring and its counts are today's whatever the year · World Bank SH.MED.PHYS.ZS (WHO data), CC BY 4.0</span>
+        <details class="note"><summary>About this map</summary>people per doctor = population per physician, not patients · each country at the chosen year, or its latest earlier value marked "(value from YEAR)" · no value = hatched, never coloured · the ward ring and its counts are today's whatever the year · World Bank SH.MED.PHYS.ZS (WHO data), CC BY 4.0</details>
       </div>
       <p class="hint" id="hint">drag to rotate · scroll or pinch does nothing · idle and it turns on its own</p>
       <div class="holding" id="holding" hidden>The ward opens in <b>week 2 of Crypto World&rsquo;s Fair</b> &mdash; 21&ndash;27 September 2026. Nobody is admitted yet; the globe is here so the link works before they are.</div>
     </div>
 
-    <aside class="panel" id="panel" aria-live="polite">
-      <button type="button" class="close" id="close" aria-label="Close">close</button>
-      <span class="k" id="pk">pick a country</span>
-      <h2 id="ptitle">Nobody selected</h2>
-      <div class="pdoc" id="pdoc" hidden></div>
-      <p class="empty" id="pempty">Click a ringed country on the globe. Patients from a country the map cannot place are listed below the globe.</p>
-      <ul class="plist" id="plist"></ul>
-    </aside>
   </div>
+
+  <!-- Beside the headline rather than below the intro: the beds are what a stranger came for, and
+       on a wide screen the panel used to start 324 px down the page with nothing in the gap
+       (measured on 00044). It is a child of the page now rather than of the stage, which is what
+       lets it take a column of its own on a wide screen and a place of its own on a phone — right
+       after the figures, before the globe, where a thumb reaches it first. -->
+  <aside class="panel" id="panel" aria-live="polite">
+    <button type="button" class="close" id="close" aria-label="Close">close</button>
+    <span class="k" id="pk">pick a country</span>
+    <h2 id="ptitle">Nobody selected</h2>
+    <div class="pdoc" id="pdoc" hidden></div>
+    <p class="empty" id="pempty">Click a ringed country on the globe. Patients from a country the map cannot place are listed below the globe.</p>
+    <ul class="plist" id="plist"></ul>
+  </aside>
 
   <div class="tray" id="tray" hidden>
     <!-- These are the ward's own patients whose country the 110m atlas has no polygon for — Hong
@@ -707,9 +775,13 @@ function row(p, showCountry) {
      patient's own chart page exists to print it. */
   const note = "";
   if (p.note) li.title = p.note;
-  li.innerHTML = `${img}<div><b>${escapeHtml(p.name || ("patient " + p.patient_id))}${age}</b>
-    <div class="meta">${where}${bed}<span class="state ${st}" title="${escapeHtml(line.title)}">${escapeHtml(line.text)}</span>${diff}${end}</div>${note}</div>
-    <a class="take" href="/ward/${encodeURIComponent(p.patient_id)}" aria-disabled="${!canTake}">${canTake ? "take a shift" : "view"}</a>`;
+  /* Two lines and a button: who and where on the first, how they are on the second. The order is
+     the order a stranger reads them in — the name is what they are looking for, the bed is how the
+     ward is arranged, and the state is what decides whether to take this one. */
+  li.innerHTML = `${img}<div>
+    <div class="who"><b>${escapeHtml(p.name || ("patient " + p.patient_id))}${age}</b>${bed}</div>
+    <div class="meta"><span class="state ${st}" title="${escapeHtml(line.title)}">${escapeHtml(line.text)}</span>${diff}${where}${end}</div>${note}</div>
+    <a class="take${canTake ? "" : " look"}" href="/ward/${encodeURIComponent(p.patient_id)}">${canTake ? "take a shift" : "view"}</a>`;
   return li;
 }
 function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
@@ -755,8 +827,9 @@ function renderDoctors(id) {
   const trend = t
     ? `${t.from[0]} \u2192 ${t.to[0]}: <b class="${t.pct_per_year > 0.05 ? "up" : ""}">${fmtTrend(t.pct_per_year)}</b> <span class="yr">people per doctor, ${t.years} years</span>`
     : `<span class="yr">${fmtTrend(null)} (${pts.length} value${pts.length === 1 ? "" : "s"}, ${x0}${x1 !== x0 ? "\u2013" + x1 : ""})</span>`;
-  box.innerHTML = `<span class="k">people per doctor · World Bank/WHO</span>
-    <div class="big">1 doctor per ${fmtPeople(people)} people <span class="yr">(${at.exact ? at.year : "value from " + at.year})</span></div>
+  /* Two lines and no label: the country's name is the panel's own heading above this, and what
+     the figure is is said in the legend under the globe. It was said three times on one screen. */
+  box.innerHTML = `<div class="big">1 doctor per ${fmtPeople(people)} people <span class="yr">(${at.exact ? at.year : "value from " + at.year})</span></div>
     ${pts.length > 1 ? svg : ""}
     <div class="trend">${trend}</div>`;
 }
