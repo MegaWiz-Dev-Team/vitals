@@ -3909,7 +3909,7 @@ function wardCard(content, reviewing){
    was until this line existed. `plain` turns the bay's grid back into a page. */
 function wardPage(html){
   const g=$('#game');
-  g.classList.remove('hide'); g.classList.add('plain');
+  g.classList.remove('hide','waiting'); g.classList.add('plain');
   g.innerHTML='<div class="wardpage">'+html+'<p><a href="/">← the globe</a></p></div>';
 }
 
@@ -4019,14 +4019,18 @@ function wardBar(){
   const tint=REVIEW?'rgba(198,143,31,.09)':'rgba(15,110,92,.06)';
   const controls=REVIEW
     ? '<a class="btn" href="/ward/review">open another case</a>'
-    : '<button class="btn go" id="wardtake">take this shift</button>'
+    : '<button class="btn go" id="wardtake" disabled>take this shift</button>'
       +'<button class="btn" id="wardback-shift" style="display:none">hand back</button>';
   $('#game').insertAdjacentHTML('afterbegin',
     '<div id="wardbar" style="display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;'+
     'padding:.6rem .9rem;margin-bottom:.6rem;border:1px solid var(--rule,#d8ded9);'+
     'border-radius:.5rem;background:'+tint+'">'+
-    '<b id="wardwho">…</b><span id="wardsay" style="flex:1"></span>'+controls+
+    '<b id="wardwho">…</b><span id="wardsay" style="flex:1">reading the ward…</span>'+controls+
     '<a class="btn" id="wardback" href="/">← the globe</a></div>');
+  /* `#game` ships hidden and the strip goes inside it, so a way back in there is a way back
+     nobody can press. `waiting` shows the strip and hides the cockpit under it, which has no
+     patient in it yet; the run drops the class when the case lands. */
+  const g=$('#game'); g.classList.remove('hide'); g.classList.add('waiting');
   if(REVIEW)return;
   /* Wrapped, because a button that throws is a button that does nothing and says nothing. One
      driven run ended with the strip showing its opening line and no sign that the press had been
@@ -4044,6 +4048,7 @@ function wardBar(){
    differs is that nobody is in this bed, so there is nothing to take, nothing to hand over and
    nothing to anchor — and the strip says so before anything is played. */
 async function openReview(){
+  wardBar();
   const r=await (await fetch('/api/new?review='+encodeURIComponent(REVIEW)+langQ())).json();
   if(r.error){
     wardPage('<p class="bed">case '+esc(REVIEW)+'</p>'
@@ -4052,7 +4057,6 @@ async function openReview(){
     return;
   }
   const rv=r.review||{};
-  wardBar();
   const built=wardCard(rv.content, true);
   if(!built){
     wardPage('<p class="bed">case '+esc(REVIEW)+'</p>'
@@ -4067,7 +4071,7 @@ async function openReview(){
   id=r.id;
   $('#wardwho').textContent='Review run';
   $('#fallback').alt=rv.title||'the case';
-  $('#lobby').classList.add('hide'); $('#game').classList.remove('hide');
+  $('#lobby').classList.add('hide'); $('#game').classList.remove('hide','waiting');
   const sel=$('#ep');
   if(sel&&!sel.querySelector('option[value="'+rv.case+'"]')) sel.add(new Option(rv.case, rv.case));
   $('#ep').value=rv.case;
@@ -4121,7 +4125,10 @@ function chartPage(c){
 const cap=w=>String(w||'').charAt(0).toUpperCase()+String(w||'').slice(1);
 
 async function openShift(){
-  await identity();
+  /* First, before anything is awaited: the strip is this page's only way back to the globe, and
+     until the case lands it is the only thing on the page a stranger can act on. A ward that
+     answers slowly — staging blocked for 49 seconds on 17 ก.ย. while the chain was read — was a
+     header over nothing until this line moved above the awaits. */
   wardBar();
   const me=await identity();
   const r=await (await fetch('/api/new?patient='+WARD+(me?'&player='+me.pub:'')+langQ())).json();
@@ -4154,7 +4161,8 @@ async function openShift(){
   $('#wardwho').textContent=(r.ward.name||('patient '+WARD))+' · '+(r.ward.country||'—');
   /* The frame is about to hold her face, so what a screen reader is told about it is her name. */
   $('#fallback').alt=r.ward.name||'the patient';
-  $('#lobby').classList.add('hide'); $('#game').classList.remove('hide');
+  $('#lobby').classList.add('hide'); $('#game').classList.remove('hide','waiting');
+  $('#wardtake').disabled=false;
   /* The select is the bay's own record of which case is running — `markSeen`, the star, the
      author line and the analytics event all read it — so the case is added as its only option.
      Nothing about the case is *looked up* from it any more: `epOf` answers that off the card. */

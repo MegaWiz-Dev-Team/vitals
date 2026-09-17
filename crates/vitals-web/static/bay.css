@@ -1474,6 +1474,15 @@ html.is-ward.untaken .chips button,
 html.is-ward.untaken #cmd,
 html.is-ward.untaken #send,
 html.is-ward.untaken #mic{opacity:.5;cursor:not-allowed}
+/* The strip, while the ward is still being read. `#game` ships hidden, the strip is inside it,
+   and a way back nobody can press is not a way back: a stranger who opened a bed on a ward that
+   answers slowly had a header over nothing and no way out of it. `waiting` shows the strip and
+   holds back the cockpit under it, which has no patient in it yet. The run drops the class as the
+   case lands, and `wardPage` drops it too — a page written where the bay would be is not a
+   cockpit and must not be hidden as one. */
+html.is-ward #game.waiting{display:block}
+html.is-ward #game.waiting > *:not(#wardbar){display:none}
+
 /* A page where the bay would be. `#game` is a grid with a fixed max width and ships hidden; a
    sentence written into it while it is either is a sentence nobody reads — the "Not this bed" page
    was invisible for exactly that reason. `plain` is what `wardPage` turns it into. */

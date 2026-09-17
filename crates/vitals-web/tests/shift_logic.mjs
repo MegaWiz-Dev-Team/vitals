@@ -317,8 +317,11 @@ console.log('shift_logic: ok (and a chip says the question)');
 //
 // This reads the shipped source rather than a DOM, because the property is an ordering one: a
 // `wardBar()` that has moved below an `await` is the bug, however the page renders afterwards.
+// Comments are stripped first: the sentence above `wardBar()` explains what it must not sit
+// behind, and the word it explains would otherwise be the first `await` in the function.
+const uncommented = src => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 for (const name of ['openShift', 'openReview']) {
-  const body = grab(name);
+  const body = uncommented(grab(name));
   const bar = body.indexOf('wardBar()');
   const wait = body.indexOf('await');
   assert.ok(bar >= 0, `${name} no longer paints the strip at all`);
