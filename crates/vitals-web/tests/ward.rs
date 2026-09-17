@@ -1623,3 +1623,65 @@ fn the_lease_says_how_long_it_is_today_or_says_nothing() {
     r.seconds_per_slot = Some(0.4);
     assert_eq!(ward_payload(&r)["policy"]["lease"]["minutes_now"], 23);
 }
+
+/// **In preview the board publishes who is waiting, and never a bed for them.**
+///
+/// The founder's ruling of 18 ก.ย. A production ward with a closed door and an empty board proves
+/// nothing in the week before the fair: nobody can see the patients it would hold. In preview the
+/// factory fills the queue and the board says who is in it — a name, an age, a country, the case's
+/// own title, the level, her face — so the globe can ring the countries they are from and a judge
+/// meets a ward rather than a page about one.
+///
+/// What a waiting row may never carry: a bed (she is in none), and anything from her case beyond
+/// its title (the sce is the case, and the case is what a learner is supposed to meet at a bedside
+/// rather than read in a payload).
+#[test]
+fn a_waiting_patient_is_published_without_a_bed_and_without_her_case() {
+    use vitals_web::ward::{Pack, Persona};
+
+    let waiting = vec![
+        ("pk-1".to_string(), Pack {
+            case: "embla-typhoid-ileal-perforation".into(),
+            difficulty: Some("intern".into()),
+            persona: Persona { name: "Nusrat Jahan".into(), age: 64, sex: "f".into(), country: "BGD".into() },
+            portrait: [("stable".to_string(),
+                        "https://storage.googleapis.com/vitals-world-portraits/\
+                         bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.webp".to_string())]
+                .into_iter().collect(),
+            endemic: true,
+        }),
+        ("pk-2".to_string(), Pack {
+            case: "embla-dengue-shock".into(),
+            difficulty: Some("student".into()),
+            persona: Persona { name: "Anan Thepwong".into(), age: 69, sex: "m".into(), country: "THA".into() },
+            portrait: Default::default(),
+            endemic: false,
+        }),
+    ];
+
+    let packs = nobody();
+    let mut r = read(&[], &[], &packs, None, 100);
+    r.waiting = &waiting;
+    let v = ward_payload(&r);
+
+    assert_eq!(v["queue"]["waiting_patients"].as_array().map(Vec::len), Some(2),
+               "both of them, in the queue's own block beside the count");
+    let first = &v["queue"]["waiting_patients"][0];
+    assert_eq!(first["pack"], "pk-1", "addressed by the pack id, which is what /ward/waiting takes");
+    assert_eq!(first["name"], "Nusrat Jahan");
+    assert_eq!(first["age"], 64);
+    assert_eq!(first["sex"], "f");
+    assert_eq!(first["country"], "BGD");
+    assert_eq!(first["difficulty"], "intern");
+    assert_eq!(first["endemic"], true);
+    assert!(first["portrait"].as_str().unwrap_or_default().ends_with(".webp"),
+            "her face, the one the pack arrived with: {first}");
+
+    assert!(first["bed"].is_null(), "she is in no bed and the payload does not invent one");
+    assert!(first["sce"].is_null() && first["patient_id"].is_null(),
+            "no scenario and no patient id: she is not on the chain yet and her case is not a \
+             payload to read — {first}");
+    for key in ["state", "on_shift_since", "handed_over"] {
+        assert!(first[key].is_null(), "{key} is a fact about a patient on the ward: {first}");
+    }
+}
