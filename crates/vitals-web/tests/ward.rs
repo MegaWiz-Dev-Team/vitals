@@ -341,7 +341,7 @@ fn an_unattended_patient_dies_when_the_engine_says_she_does() {
         // matters: `shift` is what the server calls, and a clock that kills only when a test ticks
         // it by hand would be a promise about nothing.
         let (mut st, _) = resume(&sce, &[]).expect("scenario loads");
-        shift(&mut st, &[], gap_slots);
+        shift(&mut st, &[], gap_slots as f64 * SLOT_SECONDS);
         table.push((id.to_string(), arrest_real_hours, st.outcome().is_some()));
     }
 
@@ -1582,4 +1582,41 @@ fn a_board_is_served_while_the_next_one_is_read() {
     assert_eq!(board_use(Some(Duration::from_secs(600)), ttl), Board::ServeAndRefresh,
                "however old it is: a board with its own `as_of` on it is a fact, and waiting ten \
                 minutes for a fresher one is not an improvement on it");
+}
+
+/// **The lease is 3,450 slots, and how long that is today is measured rather than assumed.**
+///
+/// The page said 23 minutes because 3,450 × 0.4 s is 23 minutes. Devnet was producing slots at
+/// 0.166 s on 17 ก.ย. — measured four ways against getBlockTime — so the lease was really 9.5
+/// minutes, and the director's abandoned bed freed itself at exactly that. Every sentence that
+/// says a number of minutes has to get it from the chain's own rate.
+///
+/// Both figures are published: the slots, which are the program's constant and never change, and
+/// the minutes, which are what a person can act on and change with the chain's mood. A ward that
+/// has not measured a rate publishes the slots and **no** minutes — never the nominal number,
+/// which is the one that was wrong.
+#[test]
+fn the_lease_says_how_long_it_is_today_or_says_nothing() {
+    let v = ward_payload(&read(&[], &[], &nobody(), None, 100));
+    let p = &v["policy"]["lease"];
+    assert_eq!(p["slots"], vitals_program::LEASE_SLOTS,
+               "the program's own constant, which is the same on every chain");
+    assert!(p["minutes_now"].is_null(),
+            "a ward that has not measured its chain does not guess: {p}");
+    assert!(p["measured"].as_str().unwrap_or_default().contains("block time"),
+            "and it says how the measurement is made, so a reader can make it themselves: {p}");
+
+    // A chain running at devnet's real rate on 17 ก.ย.
+    let mut r = read(&[], &[], &nobody(), None, 100);
+    r.seconds_per_slot = Some(0.166);
+    let fast = ward_payload(&r);
+    assert_eq!(fast["policy"]["lease"]["minutes_now"], 9,
+               "3,450 slots at 0.166 s is nine and a half minutes, and the page may not say 23");
+    assert_eq!(fast["policy"]["lease"]["seconds_per_slot_now"], 0.166);
+
+    // And at the nominal rate the old number is right — which is the point: it is a measurement,
+    // not a correction.
+    let mut r = read(&[], &[], &nobody(), None, 100);
+    r.seconds_per_slot = Some(0.4);
+    assert_eq!(ward_payload(&r)["policy"]["lease"]["minutes_now"], 23);
 }
