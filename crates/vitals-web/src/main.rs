@@ -2252,20 +2252,6 @@ const WORLD_BRAND: &str = concat!(
 ///
 /// Public and ungated, like the board and the receipts: what it publishes is on chain already, plus
 /// the pack the factory sent and the tapes this ward kept.
-/// A slot, as the wall time it happened at, measured back from the read's own slot.
-///
-/// The same arithmetic the board does for `on_shift_since` and `handed_over`: the chain counts in
-/// slots and a person reads a clock, and the only honest bridge between them is this read's own
-/// anchor point.
-fn slot_to_utc(as_of: u64, slot: u64) -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let ago = as_of.saturating_sub(slot) as f64 * vitals_replay::SLOT_SECONDS;
-    ward::utc_iso(now.saturating_sub(ago as u64))
-}
-
 fn ward_chart(store: &store::Store, patient_id: u64) -> serde_json::Value {
     let bad = |why: &str| serde_json::json!({ "error": why });
     let chain = match ward_chain::WardChain::connect() {
@@ -2278,6 +2264,14 @@ fn ward_chart(store: &store::Store, patient_id: u64) -> serde_json::Value {
         Err(e) => return bad(&e),
     };
     let as_of = chain.slot().unwrap_or(0);
+    // The two slots her stay is bounded by, dated by the chain itself and kept for ever. Asked for
+    // here rather than carried from the board's read: a chart is opened one patient at a time, and
+    // these are two lookups the store answers from the second time on.
+    let times = ward_chain::slot_times(
+        &chain,
+        store,
+        &[her.admitted_slot, her.closed_slot].into_iter().filter(|s| *s > 0).collect(),
+    );
     let pack = ward_chain::packs(store).remove(&patient_id);
     let case = pack.as_ref().map(|p| p.case.clone()).unwrap_or_default();
     let held = store
@@ -2314,8 +2308,12 @@ fn ward_chart(store: &store::Store, patient_id: u64) -> serde_json::Value {
         "as_of_slot": as_of,
         // The two slots as wall time, carried the way the board carries its own: a slot is a fact
         // about the chain and a page shows a person when something happened to them.
-        "admitted_at": slot_to_utc(as_of, her.admitted_slot),
-        "closed_at": (her.closed_slot > 0).then(|| slot_to_utc(as_of, her.closed_slot)),
+        // The chain's own dating of the two slots her stay is bounded by, and nothing worked out
+        // from this read's slot: that arithmetic put her admission 38 hours early on the board.
+        // Null is "this ward has not asked the chain for that slot yet", and the page then shows
+        // her state without a date rather than a date nobody can check.
+        "admitted_at": ward::at_slot(&times, her.admitted_slot),
+        "closed_at": ward::at_slot(&times, her.closed_slot),
         "sex": pack.as_ref().map(|p| p.persona.sex.clone()),
         "shifts_on_chain": her.shifts,
         "name": pack.as_ref().map(|p| p.persona.name.clone()),

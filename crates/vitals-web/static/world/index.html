@@ -565,14 +565,17 @@ function stateOf(p) {
   return STATE_LABEL[s] ? s : "on_ward";
 }
 // ── time ──────────────────────────────────────────────────────────────────────────────────────
-// Every timestamp on the board comes from the payload as a slot (measured against the read's own
-// `as_of_slot`), unix seconds, or a Z-suffixed UTC string. The page shows the distance from now
-// first and keeps the absolute moment, in the viewer's own zone, behind it as a title. There is
-// no server-side local time anywhere in this: the server's clock is a slot, and a zone is the
-// viewer's to have.
-// vitals_replay::SLOT_SECONDS: 0.4 s a slot.
-const SLOT_MS = 400;
-function whenMs(v, asOfSlot, nowMs) {
+// Every timestamp on the board is a moment the chain itself dated: the payload carries the block
+// time of the slot an event landed in, as a Z-suffixed UTC string (or unix seconds). The page
+// shows the distance from now first and keeps the absolute moment, in the viewer's own zone,
+// behind it as a title. There is no server-side local time anywhere in this, and no zone is
+// stored: a zone is the viewer's to have.
+//
+// A slot is not a time here and this page will not make one out of it. It did — `as_of_slot`
+// minus the event's slot, at 0.4 s a slot — and on 17 ก.ย. that put an admission 38 hours early,
+// because a chain does not produce slots at its nominal rate for days on end. A row whose slot
+// the ward has not dated says the state and stops.
+function whenMs(v, nowMs) {
   if (!v) return null;
   if (typeof v.iso === "string") {
     if (!/[Zz]$/.test(v.iso)) return null;      // a time with no zone is not a time to guess at
@@ -580,10 +583,6 @@ function whenMs(v, asOfSlot, nowMs) {
     return isNaN(t) ? null : t;
   }
   if (typeof v.unix === "number" && v.unix > 0) return v.unix * 1000;   // 0 is the program's "never"
-  if (typeof v.slot === "number" && v.slot > 0) {
-    if (typeof asOfSlot !== "number") return null;
-    return nowMs - Math.max(0, asOfSlot - v.slot) * SLOT_MS;   // a slot past the read is now
-  }
   return null;
 }
 function relative(ms, nowMs) {
@@ -600,22 +599,21 @@ function absolute(ms) {
 }
 // The words under a patient, and the title behind them. A payload that carries no time for her
 // state gets the state alone: no time on the page that is not in the payload.
-function stateLine(p, asOfSlot, nowMs) {
+function stateLine(p, nowMs) {
   const st = stateOf(p);
   const label = STATE_LABEL[st];
-  const when = v => whenMs(v, asOfSlot, nowMs);
-  const any = v => typeof v === "string" ? when({ iso: v }) : when({ unix: v });
+  const any = v => whenMs(typeof v === "string" ? { iso: v } : { unix: v }, nowMs);
   const ago = r => r === "just now" ? r : `${r} ago`;
   if (st === "on_shift") {
     const t = any(p.on_shift_since);
     if (t !== null) return { text: `${label} · ${relative(t, nowMs)}`, title: `since ${absolute(t)}` };
   } else if (st === "went_home" || st === "died") {
-    const t = when({ slot: p.closed_slot });
+    const t = any(p.closed_at);
     if (t !== null) return { text: `${label} · ${ago(relative(t, nowMs))}`, title: `left ${absolute(t)}` };
   } else {
     const h = any(p.handed_over);
     if (h !== null) return { text: `${label} · handed over ${ago(relative(h, nowMs))}`, title: `handed over ${absolute(h)}` };
-    const a = when({ slot: p.admitted_slot });
+    const a = any(p.admitted_at);
     if (a !== null) return { text: `${label} · admitted ${ago(relative(a, nowMs))}`, title: `admitted ${absolute(a)}` };
   }
   return { text: label, title: "" };
@@ -666,7 +664,7 @@ function row(p, showCountry) {
   const diff = p.difficulty ? `<span class="tag">${p.difficulty}</span>` : "";
   const end = p.endemic ? `<span class="tag endemic">endemic</span>` : "";
   const canTake = canTakeShift(p);
-  const line = stateLine(p, asOf.slot, Date.now());
+  const line = stateLine(p, Date.now());
   /* The endpoint sends a sentence with a patient it cannot describe. It is shown rather than
      summarised: a reader who wants to know why this one has no bed deserves the whole reason, and
      it is one line. */

@@ -299,6 +299,15 @@ impl WardChain {
         self.rpc.get_slot().map_err(why)
     }
 
+    /// When the chain says a slot's block was produced, in unix seconds.
+    ///
+    /// The one honest bridge between a chain's clock and a person's. `Err` for a slot that was
+    /// skipped or has been pruned out of the ledger — which is a slot the board shows no time for
+    /// rather than one it dates by arithmetic.
+    pub fn block_time(&self, slot: u64) -> Result<i64, String> {
+        self.rpc.get_block_time(slot).map_err(why)
+    }
+
     pub fn patient_pda(&self, patient_id: u64) -> Pubkey {
         patient_pda(&self.program_id, &self.operator, patient_id).0
     }
@@ -448,6 +457,48 @@ fn why(e: RpcError) -> String {
 /// delete at three in the morning is a cache that makes the census slow at three in the morning.
 pub const SHIFT_CACHE: &str = "ward_shifts";
 
+/// Where a slot's block time is kept, by slot. Written once and never again: a block's time is
+/// decided when the block is produced and never changes, so there is nothing here to expire.
+pub const SLOT_TIMES: &str = "ward_slot_time";
+
+/// How many slots one read will ask the chain to date. The cache makes this a cost paid once per
+/// slot for the life of the ward, and the cap is what keeps that first read — or the first after a
+/// store is moved — from being one request behind fifty round trips. Whatever is left over is
+/// dated by a later read, and until then those rows carry the slot and no time.
+const DATE_AT_MOST: usize = 24;
+
+/// The chain's own time for each of these slots, cached for ever.
+///
+/// Read from the store first, because a block's time never changes and the ward would otherwise
+/// ask the RPC the same question about the same slot for the rest of its life. At most
+/// `DATE_AT_MOST` new slots are asked for in one pass: the rest keep their place in the cache
+/// queue and are dated by a later read, and until then the rows about them carry the slot and no
+/// time. A slot the chain will not date — skipped, or pruned out of the ledger — is not cached
+/// and not guessed at.
+pub fn slot_times(
+    chain: &WardChain,
+    store: &crate::store::Store,
+    want: &std::collections::BTreeSet<u64>,
+) -> std::collections::BTreeMap<u64, i64> {
+    let mut out = std::collections::BTreeMap::new();
+    let mut asked = 0usize;
+    for slot in want {
+        if let Some(t) = store.get::<i64>(SLOT_TIMES, &slot.to_string()) {
+            out.insert(*slot, t);
+            continue;
+        }
+        if asked >= DATE_AT_MOST {
+            continue;
+        }
+        asked += 1;
+        if let Ok(t) = chain.block_time(*slot) {
+            let _ = store.put(SLOT_TIMES, &slot.to_string(), &t);
+            out.insert(*slot, t);
+        }
+    }
+    out
+}
+
 /// A week, in slots. `604800 / 0.4`.
 ///
 /// The window the endpoint calls *this week*. In slots rather than in hours because every other
@@ -501,6 +552,7 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
         shifts.extend(seen.shifts());
     }
 
+    let times = slot_times(chain, store, &crate::ward::slots_to_date(&patients, &shifts));
     let mut v = crate::ward::ward_payload(&crate::ward::WardRead {
         patients: &patients,
         shifts: &shifts,
@@ -514,6 +566,7 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
             .map(|d| d.as_secs())
             .unwrap_or(0),
         source: chain.source(),
+        times: &times,
     });
     // How many patients are waiting, which is the number the factory tops up against and the one
     // a reader of the board uses to tell "nobody is playing" from "nobody is left to play".

@@ -37,6 +37,7 @@ fn read<'a>(
 ) -> vitals_web::ward::WardRead<'a> {
     vitals_web::ward::WardRead {
         patients, shifts, packs, since, as_of_slot, now_unix: 1_760_000_000, source: "devnet:ABC",
+        times: nothing_dated(),
         // Every tape the chain names is here, which is the ward working. The one test about the
         // other case fills this in itself.
         unrebuildable: nothing_lost(),
@@ -45,6 +46,20 @@ fn read<'a>(
         // this in itself.
         cases: &[],
     }
+}
+
+/// The chain's dating of a handful of slots, as `slot_times` hands it to the payload.
+fn dated(entries: &[(u64, i64)]) -> std::collections::BTreeMap<u64, i64> {
+    entries.iter().copied().collect()
+}
+
+/// No slot has been dated by the chain yet — a `&'static` empty map, for the tests whose subject
+/// is not what time it was. A row then carries its slots and no wall time, which is exactly what
+/// the board does before the ward has asked the RPC for those blocks.
+fn nothing_dated() -> &'static std::collections::BTreeMap<u64, i64> {
+    static NONE: std::sync::OnceLock<std::collections::BTreeMap<u64, i64>> =
+        std::sync::OnceLock::new();
+    NONE.get_or_init(Default::default)
 }
 
 /// Nothing is missing — a `&'static` empty map, so every `WardRead` helper can borrow it.
@@ -617,11 +632,20 @@ fn the_globe_reads_every_field_it_renders() {
     });
 
     let now = 1_760_000_000u64;
+    // The chain's dating of the slot Ploy's lease was taken in — twenty minutes ago — and of the
+    // two admissions. Nothing here is derived from `now`: these are the numbers `getBlockTime`
+    // answered for those slots, and the payload may only repeat them.
+    let times = dated(&[
+        (lease_ends - vitals_program::LEASE_SLOTS, now as i64 - 20 * 60),
+        (10, now as i64 - 6 * 3600),
+        (20, now as i64 - 5 * 3600),
+        (900, now as i64 - 3600),
+    ]);
     let v = ward_payload(&vitals_web::ward::WardRead {
         cases: &[],
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 4_000, now_unix: now, source: "devnet:ABC",
-        unrebuildable: nothing_lost(),
+        unrebuildable: nothing_lost(), times: &times,
     });
 
     assert!(v["census"]["on_ward"].is_u64(),
@@ -636,11 +660,8 @@ fn the_globe_reads_every_field_it_renders() {
     // An instant, not a bare number: the page renders it in the reader's own zone and the string
     // means one moment to everybody. Checked against the clock the payload was built with.
     let since = ploy["on_shift_since"].as_str().expect("on shift since, as a UTC instant");
-    assert!(since.ends_with('Z'), "{since}");
-    assert!(since < vitals_web::ward::utc_iso(now).as_str()
-                && since > vitals_web::ward::utc_iso(now - 2 * 60 * 60).as_str(),
-            "her shift started a plausible time ago, derived from the lease rather than from a \
-             note this server kept: {since} against {}", vitals_web::ward::utc_iso(now));
+    assert_eq!(since, vitals_web::ward::utc_iso(now - 20 * 60),
+               "the chain's time for the slot the lease was taken in, repeated and not recomputed");
     assert_eq!(ploy["bed"], 1, "first of the open patients by admission");
     assert_eq!(ploy["age"], 34);
     assert_eq!(ploy["endemic"], true, "drawn from her country's list, and the pack says so");
@@ -671,7 +692,7 @@ fn the_globe_reads_every_field_it_renders() {
         cases: &[],
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: lease_ends + 1, now_unix: now, source: "devnet:ABC",
-        unrebuildable: nothing_lost(),
+        unrebuildable: nothing_lost(), times: &times,
     });
     let ploy = expired["patients"].as_array().unwrap().iter()
         .find(|p| p["patient_id"] == 7).cloned().unwrap();
@@ -880,6 +901,13 @@ fn every_time_the_ward_publishes_is_a_slot_or_a_z() {
             since: Some(1), as_of_slot: 4_000, now_unix: 1_760_000_000, source: "devnet:ABC",
         unrebuildable: nothing_lost(),
         cases: &[],
+            // Her admission, her discharge, and the slot the lease on patient 7 was taken in:
+            // every slot this payload turns into a time, so the walk below has one of each to
+            // look at rather than a page of nulls.
+            times: &dated(&[
+                (10, 1_759_996_000), (5, 1_759_995_000), (900, 1_759_997_000),
+                (lease_ends - vitals_program::LEASE_SLOTS, 1_759_999_000),
+            ]),
         }),
         ward_unavailable("devnet:ABC", "rpc timed out"),
     ];
@@ -995,7 +1023,7 @@ fn a_patient_the_ward_cannot_describe_holds_no_bed() {
         cases: &[],
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
-        unrebuildable: nothing_lost(),
+        unrebuildable: nothing_lost(), times: nothing_dated(),
     });
 
     assert_eq!(v["census"]["on_ward"], 3,
@@ -1048,7 +1076,7 @@ fn the_payload_publishes_how_many_are_in_beds_beside_how_many_are_on_the_chain()
         cases: &[],
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
-        unrebuildable: nothing_lost(),
+        unrebuildable: nothing_lost(), times: nothing_dated(),
     });
 
     assert_eq!(v["census"]["on_ward"], 3, "the census is what the chain says, unchanged");
@@ -1410,14 +1438,22 @@ fn the_board_says_when_she_was_last_handed_over() {
     ];
 
     let packs = nobody();
-    let v = ward_payload(&read(&patients, &shifts, &packs, None, as_of));
+    // The chain's time for each of the three slots her shifts landed in. The latest slot is the
+    // last hand-over — and it is the chain's dating of that slot that the row shows, never the
+    // distance from this read's own slot.
+    let times = dated(&[
+        (as_of - 900, now as i64 - 700), (as_of - 500, now as i64 - 400),
+        (as_of - 200, now as i64 - 90),
+    ]);
+    let mut r = read(&patients, &shifts, &packs, None, as_of);
+    r.times = &times;
+    let v = ward_payload(&r);
     let row = |id: u64| {
         v["patients"].as_array().unwrap().iter().find(|p| p["patient_id"] == id).unwrap().clone()
     };
 
     let handed = row(1)["handed_over"].as_str().expect("the last hand-over, as a time").to_string();
-    let want = vitals_web::ward::utc_iso(now - (200.0 * vitals_replay::SLOT_SECONDS) as u64);
-    assert_eq!(handed, want, "the latest of her shifts, carried to wall time");
+    assert_eq!(handed, vitals_web::ward::utc_iso(now - 90), "the latest of her shifts, as the chain dates it");
 
     // Nobody has finished a shift on her: the field is null, and the globe falls back to the
     // admission the way it always has. Null rather than her admission time, because "nobody has

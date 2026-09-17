@@ -13,7 +13,6 @@
 
 use std::collections::HashSet;
 use vitals_program::LEASE_SLOTS;
-use vitals_replay::SLOT_SECONDS;
 
 /// Beds on the ward. Three to start (CWF_PLAN.md's beds ruling); a release is automatic, so this
 /// is the only thing standing between the queue and the world.
@@ -204,6 +203,42 @@ pub fn utc_iso(secs: u64) -> String {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = yoe + era * 400 + i64::from(m <= 2);
     format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", rem / 3600, (rem % 3600) / 60, rem % 60)
+}
+
+/// When a chain event happened, as the chain itself dates the slot it landed in.
+///
+/// `None` for slot zero (the program's "never") and for a slot this ward has no block time for.
+/// A missing block time is not an invitation to work one out: the board carried times derived as
+/// "this read's slot, minus that slot, times 0.4 seconds, before now" and they were 38 hours early
+/// on a two-day-old admission, because a chain does not produce slots at its nominal rate for days
+/// on end. A row with no time says the state and stops.
+pub fn at_slot(times: &std::collections::BTreeMap<u64, i64>, slot: u64) -> Option<String> {
+    if slot == 0 {
+        return None;
+    }
+    times.get(&slot).map(|t| utc_iso((*t).max(0) as u64))
+}
+
+/// Every slot a payload of this read would want a time for, so the caller can ask the chain for
+/// them in one pass and cache them.
+///
+/// Admissions, closures, the slot each patient's latest shift was anchored in, and — for a patient
+/// somebody is with — the slot their lease was taken in, which is `lease_until_slot` less the
+/// lease's own length and is therefore a block that really was produced.
+pub fn slots_to_date(patients: &[PatientOnChain], shifts: &[ShiftOnChain]) -> std::collections::BTreeSet<u64> {
+    let mut want = std::collections::BTreeSet::new();
+    for p in patients {
+        want.insert(p.admitted_slot);
+        want.insert(p.closed_slot);
+        if p.lease_until_slot > 0 {
+            want.insert(p.lease_until_slot.saturating_sub(LEASE_SLOTS));
+        }
+        if let Some(last) = shifts.iter().filter(|s| s.patient_id == p.patient_id).map(|s| s.slot).max() {
+            want.insert(last);
+        }
+    }
+    want.remove(&0);
+    want
 }
 
 /// The case's persona with the ward's patient in it: her name, her age, nothing else.
@@ -623,9 +658,16 @@ pub struct WardRead<'a> {
     pub since: Option<u64>,
     /// The slot the chain was read at. A number without its read time is not evidence.
     pub as_of_slot: u64,
-    /// This server's wall clock, for the one field that needs one: *on shift since*, which a
-    /// browser renders as a time of day. Everything else on the payload comes off the chain.
+    /// This server's wall clock. Nothing a reader sees is measured from it any more — every time
+    /// on the board is the chain's own dating of a slot — and it stays for the arithmetic that is
+    /// about this server: how stale a remembered read is, and what "today" means to the funnel.
     pub now_unix: u64,
+    /// What the chain says the clock read at each slot this payload names, by slot.
+    ///
+    /// Filled by `ward_chain::slot_times`, which asks the RPC for `getBlockTime` once per slot and
+    /// keeps the answer for ever — a block's time never changes. A slot that is not in here has no
+    /// time on the board: see `at_slot`.
+    pub times: &'a std::collections::BTreeMap<u64, i64>,
     /// Which cluster and which program. "The chain says" means nothing until you know which.
     pub source: &'a str,
     /// The cases this ward holds, as the catalogue reads them.
@@ -726,13 +768,11 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                     _ => None,
                 },
                 // When the person in the room with her started, as a time a browser can render.
-                // Derived: the lease ends a known number of slots after it is taken, so the start
-                // is the end minus that, carried back to wall time through this read's own slot.
-                "on_shift_since": on_shift.then(|| {
-                    let took = p.lease_until_slot.saturating_sub(LEASE_SLOTS);
-                    let ago = as_of_slot.saturating_sub(took) as f64 * SLOT_SECONDS;
-                    utc_iso(r.now_unix.saturating_sub(ago as u64))
-                }),
+                // The lease ends a known number of slots after it is taken, so the start is the
+                // end minus that — a slot a block was really produced in, which the chain dates.
+                "on_shift_since": on_shift
+                    .then(|| at_slot(r.times, p.lease_until_slot.saturating_sub(LEASE_SLOTS)))
+                    .flatten(),
                 // When somebody last finished a shift on her, as a time a browser can render.
                 // The chain carries one leaf per anchored shift with the slot it landed in, so the
                 // latest of hers is the last hand-over — the max rather than the last in the list,
@@ -744,14 +784,16 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                     .filter(|s| s.patient_id == p.patient_id)
                     .map(|s| s.slot)
                     .max()
-                    .map(|slot| {
-                        let ago = as_of_slot.saturating_sub(slot) as f64 * SLOT_SECONDS;
-                        utc_iso(r.now_unix.saturating_sub(ago as u64))
-                    }),
+                    .and_then(|slot| at_slot(r.times, slot)),
                 "bed": bed_of(p.patient_id),
                 "shifts": p.shifts,
                 "admitted_slot": p.admitted_slot,
                 "closed_slot": (p.closed_slot > 0).then_some(p.closed_slot),
+                // The slots above are the chain's facts; these two are what a person reads, and
+                // they are the chain's own dating of those same slots rather than arithmetic on
+                // them. Null until the ward has asked for the block time.
+                "admitted_at": at_slot(r.times, p.admitted_slot),
+                "closed_at": at_slot(r.times, p.closed_slot),
                 "name": pack.map(|k| k.persona.name.clone()),
                 "age": pack.map(|k| k.persona.age),
                 "country": pack.map(|k| k.persona.country.clone()),
