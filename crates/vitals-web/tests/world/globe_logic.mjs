@@ -238,21 +238,23 @@ assert.equal(undated.text, 'on the ward',
 // than with what a viewer would see. The year slider has an invisible label and a bare number
 // beside it. All five are switches; none of them says so.
 //
-// What is asserted here is the part that lives in the file: the words, the on/off mark, and a
-// stylesheet that paints the two states differently. The rest — that a click flips one — is driven.
-assert.match(script, /doctor shortage/, 'the layer is named by what a viewer sees on it');
-assert.match(script, /patients in beds</, 'and so is the other one');
-assert.ok(!/>doctors</.test(script) && !/>ward</.test(script),
+// What is asserted here is the part that lives in the file — the words, the switch role, and a
+// stylesheet that paints both states — and it is read off the *page*, markup and CSS included,
+// rather than off the script the rest of this file pulls functions out of. The remaining half,
+// that a click flips one, is driven in a browser.
+assert.match(html, /doctor shortage/, 'the layer is named by what a viewer sees on it');
+assert.match(html, /patients in beds</, 'and so is the other one');
+assert.ok(!/>doctors</.test(html) && !/>ward</.test(html),
   'neither is named by the data set it comes from any more');
-assert.match(script, /role="switch"/, 'a switch says so to a screen reader, not only to an eye');
-assert.match(script, /aria-pressed="true"/, 'and keeps the pressed state the page already reads');
+assert.match(html, /role="switch"/, 'a switch says so to a screen reader, not only to an eye');
+assert.match(html, /aria-pressed="true"/, 'and keeps the pressed state the page already reads');
 // Both states painted, and differently: a control whose off state is "the absence of a colour" is
 // a control nobody can read in a screenshot, which is how the founder met these.
-assert.match(script, /\[aria-pressed="true"\]/);
-assert.match(script, /\[aria-pressed="false"\]/);
+assert.match(html, /\[aria-pressed="true"\]/);
+assert.match(html, /\[aria-pressed="false"\]/);
 // The year control says what it is and what it is set to.
-assert.match(script, /Year ·/, 'a labelled control, not a number beside a slider');
-assert.ok(!/<label for="year" class="sr">/.test(script),
+assert.match(html, /Year ·/, 'a labelled control, not a number beside a slider');
+assert.ok(!/<label for="year" class="sr">/.test(html),
   'the label is visible now — an invisible one is a label for everybody except the person looking');
 
 // ── a country's panel, in two groups ─────────────────────────────────────────

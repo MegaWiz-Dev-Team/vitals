@@ -93,8 +93,18 @@ canvas#globe.dragging{cursor:grabbing}
 .tip[hidden]{display:none}
 .tip .n{color:var(--proven);font-weight:600;margin-left:.4rem}
 .filters{display:flex;gap:.5rem;flex-wrap:wrap;margin:.9rem 0 0;align-items:center;font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-3);letter-spacing:.06em}
-.filters button{font:inherit;letter-spacing:.06em;cursor:pointer;padding:.35rem .7rem;border-radius:2rem;border:1px solid var(--rule);background:var(--surface);color:var(--ink-2)}
+.filters button{font:inherit;letter-spacing:.06em;cursor:pointer;padding:.35rem .7rem .35rem .55rem;
+  border-radius:2rem;border:1px solid var(--rule);background:var(--surface);color:var(--ink-2);
+  display:inline-flex;align-items:center;gap:.35rem}
+/* The mark before the word, so the state survives a screenshot and a colour-blind reader: a filled
+   dot for on, a hollow one for off. Both states are painted — a control whose off state is the
+   absence of a colour is one nobody can read (UX review A3). */
+.filters button::before{content:"";width:.55rem;height:.55rem;border-radius:50%;
+  border:1px solid currentColor;background:transparent;flex:0 0 auto}
 .filters button[aria-pressed="true"]{border-color:var(--proven);background:var(--proven-soft);color:var(--proven)}
+.filters button[aria-pressed="true"]::before{background:currentColor}
+.filters button[aria-pressed="false"]{color:var(--ink-3);border-color:var(--rule);background:var(--surface)}
+.filters button[aria-pressed="false"]::before{background:transparent}
 .filters button:focus-visible{outline:2px solid var(--proven);outline-offset:2px}
 .hint{font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-3);margin:.5rem 0 0;overflow-wrap:anywhere}
 .legend{margin:.7rem 0 0;font-family:"IBM Plex Mono",monospace;font-size:.68rem;color:var(--ink-3);letter-spacing:.04em}
@@ -121,6 +131,10 @@ canvas#globe.dragging{cursor:grabbing}
 .yearrow button{font:inherit;cursor:pointer;width:2rem;height:1.7rem;border-radius:.4rem;border:1px solid var(--rule);background:var(--surface);color:var(--proven);line-height:1}
 .yearrow button:focus-visible{outline:2px solid var(--proven);outline-offset:2px}
 .yearrow output{min-width:3.2em;font-weight:600;color:var(--ink);letter-spacing:.06em}
+/* The label says what the control is, where the person using it can see it. It was `class="sr"` —
+   a label for everybody except the one looking at it (UX review A4). */
+.yearrow label{display:inline-flex;gap:.25rem;align-items:baseline;white-space:nowrap;
+  letter-spacing:.1em;text-transform:uppercase;font-size:.64rem;color:var(--ink-3)}
 .yearrow .from{color:var(--ink-3)}
 .pdoc{margin:.6rem 0 0;padding:.55rem .7rem;border:1px solid var(--rule-soft);border-radius:.6rem;background:var(--ground)}
 /* The label above this card said "people per doctor · World Bank/WHO" over a card whose every line
@@ -246,17 +260,17 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
       <div class="tip" id="tip" hidden></div>
       <div class="filters" id="filters" role="group" aria-label="Show patients by difficulty">
         <span>SHOW</span>
-        <button type="button" data-d="student" aria-pressed="true">student</button>
-        <button type="button" data-d="intern" aria-pressed="true">intern</button>
-        <button type="button" data-d="resident" aria-pressed="true">resident</button>
+        <button type="button" role="switch" data-d="student" aria-pressed="true">student</button>
+        <button type="button" role="switch" data-d="intern" aria-pressed="true">intern</button>
+        <button type="button" role="switch" data-d="resident" aria-pressed="true">resident</button>
       </div>
       <!-- Two independent switches, both on. They were a radio, which made the two facts
            alternatives — and they are one sentence: this country is short of doctors, and this
            country has somebody on the ward right now. A viewer can still isolate either. -->
       <div class="filters" id="layers" role="group" aria-label="What the globe shows">
         <span>SHOWING</span>
-        <button type="button" data-layer="doctors" aria-pressed="true">doctors</button>
-        <button type="button" data-layer="ward" aria-pressed="true">ward</button>
+        <button type="button" role="switch" data-layer="doctors" aria-pressed="true">doctor shortage</button>
+        <button type="button" role="switch" data-layer="ward" aria-pressed="true">patients in beds</button>
       </div>
       <!-- Visible from the first paint: the doctors layer is on by default, and a ramp with no
            legend is a picture nobody can read. -->
@@ -266,9 +280,8 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
         <div class="bins" id="wardkey"><span class="bin"><i class="sw ring"></i>patients in beds here, and how many</span><span class="bin"><i class="sw ring on"></i>being treated right now</span><span class="bin" id="waitkey" hidden><i class="sw ring wait"></i>waiting for the door</span></div>
         <div class="yearrow">
           <button type="button" id="play" aria-label="Step a year per second" title="step a year per second">&#9654;</button>
-          <label for="year" class="sr">Year</label>
+          <label for="year" id="yearlabel">Year · <output id="yearout" for="year">2024</output></label>
           <input type="range" id="year" min="2000" max="2024" step="1" value="2024">
-          <output id="yearout" for="year">2024</output>
           <span class="from" id="yearfrom"></span>
         </div>
         <details class="note"><summary>About this map</summary>people per doctor = population per physician, not patients · each country at the chosen year, or its latest earlier value marked "(value from YEAR)" · no value = hatched, never coloured · the ward ring and its counts are today's whatever the year · World Bank SH.MED.PHYS.ZS (WHO data), CC BY 4.0</details>
