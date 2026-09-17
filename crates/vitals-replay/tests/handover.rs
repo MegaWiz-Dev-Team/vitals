@@ -112,7 +112,7 @@ fn the_verifier_still_sees_one_tape() {
 
 // ── the idle clock ──────────────────────────────────────────────────────────
 
-use vitals_replay::{idle_seconds, pass_idle, IDLE_SIM_PER_REAL, SLOT_SECONDS};
+use vitals_replay::{idle_sim_seconds, pass_idle, IDLE_SIM_PER_REAL};
 
 /// A patient nobody visits is not the patient you left.
 ///
@@ -124,11 +124,10 @@ fn a_gap_between_shifts_changes_her_and_a_short_one_does_not() {
     let sce = ep1();
 
     let (mut back_to_back, _) = resume(&sce, &first()).expect("shift one");
-    shift(&mut back_to_back, &second(), 0);
+    shift(&mut back_to_back, &second(), 0.0);
 
     let (mut after_a_night, _) = resume(&sce, &first()).expect("shift one");
-    let eight_hours_of_slots = (8.0 * 3600.0 / SLOT_SECONDS) as u64;
-    shift(&mut after_a_night, &second(), eight_hours_of_slots);
+    shift(&mut after_a_night, &second(), 8.0 * 3600.0);
 
     assert_ne!(seen(&back_to_back), seen(&after_a_night),
                "eight hours alone must leave a different patient than a straight handover");
@@ -142,33 +141,36 @@ fn a_gap_between_shifts_changes_her_and_a_short_one_does_not() {
 /// alone could deteriorate a patient and never kill one. The founder removed it: at 1:60 a patient
 /// nobody visits deteriorates as the engine says, and can arrest and die with nobody in the room.
 ///
-/// So the only thing left to pin is that the clock is linear and derivable from two numbers on the
-/// chain — the gap in slots and the ratio — because that is what lets a stranger with the chain
-/// and no account re-derive the same patient we did.
+/// **The gap is real seconds, and the chain is what says how many.** It was a slot count times
+/// 0.4 s, and devnet spent 17 ก.ย. producing slots at 0.166 s — so a patient left alone for ten
+/// real minutes was being advanced as though twenty-four had passed, and every death the ticker
+/// wrote down came 2.4× too early. The two block times are chain facts, cached and never
+/// recomputed, so a stranger who reads the two slots off the chain and asks the same RPC for their
+/// times re-derives the same patient.
 #[test]
 fn the_idle_clock_is_slow_linear_and_derivable() {
-    assert_eq!(idle_seconds(0), 0.0, "a handover with no gap adds nothing");
+    assert_eq!(idle_sim_seconds(0.0), 0.0, "a handover with no gap adds nothing");
 
-    // sixty real minutes of slots → one simulated minute
-    let sixty_minutes = (3600.0 / SLOT_SECONDS) as u64;
-    assert!((idle_seconds(sixty_minutes) - 60.0).abs() < 1.0,
+    // sixty real minutes → one simulated minute
+    assert!((idle_sim_seconds(3600.0) - 60.0).abs() < 1e-9,
             "the stated ratio is one simulated minute per sixty real ones");
     assert!((IDLE_SIM_PER_REAL - 1.0 / 60.0).abs() < 1e-9);
 
     // No ceiling: a weekend alone is a weekend alone, and how long we were away is exactly what
     // it costs her. Three days at 1:60 is seventy-two simulated minutes.
-    let three_days = (3.0 * 24.0 * 3600.0 / SLOT_SECONDS) as u64;
-    let two_hours = (7200.0 / SLOT_SECONDS) as u64;
-    assert!((idle_seconds(three_days) - 72.0 * 60.0).abs() < 1.0,
+    assert!((idle_sim_seconds(3.0 * 24.0 * 3600.0) - 72.0 * 60.0).abs() < 1e-6,
             "three days away is seventy-two simulated minutes, not a ceiling: {}",
-            idle_seconds(three_days));
-    assert!((idle_seconds(two_hours) - 120.0).abs() < 1.0,
+            idle_sim_seconds(3.0 * 24.0 * 3600.0));
+    assert!((idle_sim_seconds(7200.0) - 120.0).abs() < 1e-9,
             "and two real hours is two simulated minutes — the number the old cap froze at, which \
              is now a point on the line rather than the end of it: {}",
-            idle_seconds(two_hours));
-    assert!(idle_seconds(three_days) > idle_seconds(two_hours) * 30.0,
+            idle_sim_seconds(7200.0));
+    assert!(idle_sim_seconds(3.0 * 24.0 * 3600.0) > idle_sim_seconds(7200.0) * 30.0,
             "strictly longer gaps must cost strictly more, or 'she was alone all weekend' means \
              nothing the record can show");
+
+    // A negative span is a clock going backwards, never a patient getting younger.
+    assert_eq!(idle_sim_seconds(-90.0), 0.0);
 }
 
 #[test]
@@ -231,18 +233,15 @@ fn idle_time_passes_the_way_time_on_shift_passes() {
 /// likely to be moved again and the plan quotes these exact figures.
 #[test]
 fn an_hour_away_costs_her_a_minute() {
-    let one_real_hour = (3600.0 / SLOT_SECONDS) as u64;
-    assert!((idle_seconds(one_real_hour) - 60.0).abs() < 1e-6,
+    assert!((idle_sim_seconds(3600.0) - 60.0).abs() < 1e-6,
             "sixty real minutes must advance her exactly sixty simulated seconds, and this is \
              1:60 written where a reader can divide it themselves");
 
-    let ten_real_hours = (10.0 * 3600.0 / SLOT_SECONDS) as u64;
-    assert!((idle_seconds(ten_real_hours) - 600.0).abs() < 1e-3,
+    assert!((idle_sim_seconds(10.0 * 3600.0) - 600.0).abs() < 1e-3,
             "ten hours away is ten simulated minutes — and ten simulated minutes is past the \
              arrest of most of the catalogue, which is the founder's ruling of 16 ก.ย. and not a \
              side effect: a patient nobody visits can die of being nobody's patient");
 
-    let two_real_hours = (2.0 * 3600.0 / SLOT_SECONDS) as u64;
-    assert!((idle_seconds(two_real_hours) - 120.0).abs() < 1e-3,
+    assert!((idle_sim_seconds(2.0 * 3600.0) - 120.0).abs() < 1e-3,
             "two real hours is two simulated minutes: 1:60, written where a reader can divide it");
 }
