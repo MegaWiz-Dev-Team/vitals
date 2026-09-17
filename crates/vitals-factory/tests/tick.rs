@@ -801,7 +801,7 @@ fn a_childs_face_is_asked_for_as_a_photograph_of_a_child() {
         let child_words = prompt.starts_with("Documentary photograph, 35mm film") && prompt.contains(&format!("aged {age} from"));
         assert_eq!(child_words, age < 16, "{age}: {prompt}");
         if age < 16 {
-            let word = if age < 6 { "little" } else if age < 13 { "school" } else { "teenage" };
+            let word = if age < 6 { "little" } else if age < 10 { "school" } else if age < 13 { "adolescent" } else { "teenage" };
             assert!(prompt.contains(word), "{age}: a {word} child: {prompt}");
         }
         assert!(!prompt.contains("anime") && !prompt.contains("doll") && !prompt.contains("not a"), "no negatives, ever: {prompt}");
@@ -959,6 +959,69 @@ fn a_childs_face_must_look_her_age_and_an_adults_is_not_asked() {
     let asked_before = tools.asked.borrow().len();
     remake_face(&cfg, &tools, "PAK-0@57").expect("an adult passes on style alone");
     assert_eq!(tools.asked.borrow().len(), asked_before, "adults are not asked their age");
+}
+
+/// The first real tick, 17 Sep 2026 11:00–11:06, SSD-3 at 12, prompt "a schoolboy aged 12": the
+/// judge's three verdicts, verbatim from the log. Two faces were photographs of a child who looked
+/// five (band 10–14); one was refused on style. The refused pictures are in work/refused — a boy
+/// of about five to seven in every one. "Schoolboy" pins the look at primary-school age whatever
+/// the number after it says, as "an 8-year-old girl" pinned it at a toddler on 16 Sep.
+const KUOL_VERDICTS: [(bool, &str, Option<&str>); 3] = [
+    (true, "this is a photograph-style picture of exactly one person with natural human proportions, natural skin, and natural eyes. The image depicts a child lying in a hospital bed, and the rendering style is realistic.", Some("5")),
+    (true, "this is a photograph-style picture of exactly one person with natural human proportions, natural skin, and natural eyes. The image depicts a single child in what appears to be a hospital bed, with realistic features and lighting.", Some("5")),
+    (false, "The image is AI-generated and has an unnatural, overly smooth skin texture and a slightly doll-like quality to the eyes, which deviates from natural human proportions and appearance.", None),
+];
+
+/// A twelve-year-old is asked for as a young adolescent, not a schoolboy — the recorded verdicts
+/// are the reason — and when three faces fail the gate the sentence says what the verdicts said:
+/// how many looked the wrong age and at what, and how many were not photographs of a person.
+#[test]
+fn a_twelve_year_old_is_asked_for_as_a_young_adolescent_and_a_refusal_says_what_the_judge_said() {
+    use vitals_factory::prompts::{base, child_phrase};
+    use vitals_factory::sex::Sex;
+    // The brackets, from the calibration points: 6 and 8 as schoolchildren came out 6 and 7; 12
+    // as a schoolboy came out 5, 5 and 5-ish. Ten to twelve is adolescence's edge, and the word
+    // for it is the cue the painter needs.
+    assert_eq!(child_phrase(12, Sex::M), "a young adolescent boy aged 12");
+    assert_eq!(child_phrase(10, Sex::F), "a young adolescent girl aged 10");
+    assert_eq!(child_phrase(8, Sex::F), "a schoolgirl aged 8", "the 16 Sep calibration stands");
+    assert_eq!(child_phrase(6, Sex::F), "a schoolgirl aged 6");
+    assert_eq!(child_phrase(9, Sex::M), "a schoolboy aged 9");
+    assert_eq!(child_phrase(13, Sex::M), "a teenage boy aged 13");
+    assert_eq!(child_phrase(3, Sex::F), "a little girl aged 3");
+    assert!(base(12, Sex::M, "South Sudan").contains("a young adolescent boy aged 12 from South Sudan"));
+    assert!(!base(12, Sex::M, "South Sudan").contains("schoolboy"));
+
+    // The three verdicts replayed: the sentence names two wrong ages and one style refusal.
+    let dir = world("kuol");
+    let pool = read_pool(POOL).unwrap();
+    seed_manifest(&dir, &pool);
+    let tools = FakeTools::default();
+    let cfg = config(&dir, 20, 2);
+    for (ok, _, looks) in KUOL_VERDICTS {
+        tools.verdicts.borrow_mut().push_back(ok);
+        if let Some(n) = looks {
+            tools.ages.borrow_mut().push_back(n.to_string());
+        }
+    }
+    let (e, rep) = *remake_face(&cfg, &tools, "SSD-3@12").expect_err("three refusals");
+    assert!(e.contains("Kuol Mayen") && e.contains("SSD-3 at 12"), "{e}");
+    assert!(e.contains("three faces in a row failed the gate"), "{e}");
+    assert!(e.contains("2 looked the wrong age (5, 5; band 10\u{2013}14)"), "{e}");
+    assert!(e.contains("1 was not a photograph of a person"), "{e}");
+    assert!(!e.contains("three faces in a row were not photographs"), "the old sentence blamed style for all three: {e}");
+    assert_eq!(tools.seeds.borrow().len(), 3);
+    assert_eq!(tools.asked.borrow().len(), 2, "the age question is asked only of a face that passed on style");
+    assert!(rep.lines.iter().filter(|l| l.contains("looks 5 (band 10\u{2013}14) — a new seed")).count() == 2, "{:?}", rep.lines);
+    assert!(rep.lines.iter().any(|l| l.contains("photorealistic: no — a new seed")), "{:?}", rep.lines);
+    assert!(tools.paints.borrow().iter().all(|(p, _)| p.contains("a young adolescent boy aged 12")), "{:?}", tools.paints.borrow());
+    assert!(tools.uploads.borrow().is_empty(), "nothing of a refused face is uploaded");
+    // Three refusals on style alone say so, in the old words.
+    for _ in 0..3 {
+        tools.verdicts.borrow_mut().push_back(false);
+    }
+    let (e, _) = *remake_face(&cfg, &tools, "KOR-0@8").expect_err("three refusals");
+    assert!(e.contains("3 were not photographs of a person") && !e.contains("wrong age"), "{e}");
 }
 
 /// A face remade after she was admitted stays old on the board (add only), so her states are
