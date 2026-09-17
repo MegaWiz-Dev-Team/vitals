@@ -7009,6 +7009,44 @@ mod tests {
 
     // ── the face at the bedside ─────────────────────────────────────────────
 
+    /// **A shared link carries the patient, not the product.**
+    ///
+    /// UX review G5. `/ward/<id>` pasted into LINE, Slack or a tweet unfurls as "A shift on the
+    /// ward — Vitals World" with no picture: a card about a website, when what was shared was a
+    /// person somebody wants treated. The card should say who she is, where she is from, and what
+    /// is happening to her, with her own face on it.
+    ///
+    /// Built from the board — the same row the panel draws — so a card cannot say something the
+    /// ward does not. A patient the board has nothing about gets no tags at all rather than a card
+    /// about a stranger.
+    #[test]
+    fn a_shared_bed_unfurls_as_the_patient() {
+        let her = serde_json::json!({
+            "patient_id": 11, "name": "Nusrat Jahan", "age": 64, "country": "BGD",
+            "state": "on_ward", "bed": 1, "difficulty": "intern",
+            "portrait": "https://storage.googleapis.com/vitals-world-portraits/aa.webp"
+        });
+        let tags = og_tags(&her);
+        assert!(tags.contains("og:title\" content=\"Nusrat Jahan · 64 · Bangladesh"), "{tags}");
+        assert!(tags.contains("og:image\" content=\"https://storage.googleapis.com/vitals-world-portraits/aa.webp"),
+                "her own face, and an absolute URL because a card is fetched by somebody else: {tags}");
+        assert!(tags.contains("Nobody is with her"), "what is happening to her: {tags}");
+        assert!(tags.contains("summary_large_image"), "the face is the point of the card: {tags}");
+
+        // On shift, and after the stay: the same card, a different sentence.
+        let busy = serde_json::json!({ "name": "Park Ji-woo", "age": 8, "country": "KOR",
+                                       "state": "on_shift" });
+        assert!(og_tags(&busy).contains("Somebody is treating"), "{}", og_tags(&busy));
+        let gone = serde_json::json!({ "name": "Lee Seo-yeon", "age": 54, "country": "KOR",
+                                       "state": "died" });
+        assert!(og_tags(&gone).contains("stay has ended"), "{}", og_tags(&gone));
+
+        // Nothing known, nothing claimed.
+        assert_eq!(og_tags(&serde_json::Value::Null), "");
+        assert_eq!(og_tags(&serde_json::json!({ "state": "on_ward" })), "",
+                   "a row with no name is not a person to put on a card");
+    }
+
     /// **A refusal page offers the beds, as links a thumb can hit.**
     ///
     /// The rows themselves are `ward::beds_to_offer`'s and tested there. What is here is the
