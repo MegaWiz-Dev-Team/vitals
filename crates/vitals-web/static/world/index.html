@@ -74,6 +74,7 @@ canvas#globe.dragging{cursor:grabbing}
 .legend .sw{width:14px;height:10px;border-radius:2px;border:1px solid var(--land-edge);display:inline-block}
 .legend .sw.hatch{background:repeating-linear-gradient(135deg,var(--land) 0 2px,var(--land-edge) 2px 3px)}
 .legend .sw.ring{background:var(--ramp-1);border:2px solid var(--lit-edge)}
+.legend .sw.ring.on{background:var(--lit-edge);border-color:var(--lit-edge)}
 .legend .note{display:block;margin-top:.3rem;color:var(--ink-3)}
 .yearrow{display:flex;align-items:center;gap:.6rem;margin:.55rem 0 0;font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-2)}
 .yearrow input[type=range]{flex:1 1 10rem;min-width:8rem;max-width:22rem;accent-color:var(--proven)}
@@ -150,7 +151,7 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
   </div>
 
   <h1 id="h1">Spin the world. Find a patient. Take a shift.
-      <span class="second" id="h1b">Countries with someone on the ward are ringed.</span></h1>
+      <span class="second" id="h1b">Countries with somebody in a bed are ringed; a filled ring is a patient being treated right now.</span></h1>
   <p class="mission" id="mission" hidden></p>
   <p class="sub">Drag the globe, hover a country, click a ringed one to see who is waiting there. A shift is a few minutes at her bedside; the next stranger opens her where you stopped.</p>
 
@@ -177,7 +178,7 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
       <div class="legend" id="legend">
         <span class="k" id="legendk">people per doctor · World Bank/WHO, latest year</span>
         <div class="bins" id="bins"></div>
-        <div class="bins" id="wardkey"><span class="bin"><i class="sw ring"></i>somebody on the ward, and how many</span></div>
+        <div class="bins" id="wardkey"><span class="bin"><i class="sw ring"></i>patients in beds here, and how many</span><span class="bin"><i class="sw ring on"></i>being treated right now</span></div>
         <div class="yearrow">
           <button type="button" id="play" aria-label="Step a year per second" title="step a year per second">&#9654;</button>
           <label for="year" class="sr">Year</label>
@@ -251,13 +252,31 @@ function countryId(alpha3) {
 // omitted every resolved id counts, which is what the tests of the table alone want.
 function countryCounts(patients, drawable) {
   const byId = {};
+  const treatingById = {};
   let unknown = 0;
   for (const p of patients || []) {
     const id = countryId(p && p.country);
     if (id === null || (drawable && !drawable.has(id))) { unknown++; continue; }
     byId[id] = (byId[id] || 0) + 1;
+    // Somebody has this patient's head right now. Drawn differently, because "there is a patient
+    // here" and "a stranger is treating her as you watch" are the two things this page exists to
+    // say, and one ring said both.
+    if (stateOf(p) === "on_shift") treatingById[id] = (treatingById[id] || 0) + 1;
   }
-  return { byId, unknown };
+  return { byId, treatingById, unknown };
+}
+
+/* Who is in a bed.
+   A ring on the globe means "there is somebody here you can treat", so it counts the patients in
+   beds and nobody else: a patient who went home, died, or was admitted outside the ward is on the
+   chain and in the census, and lighting her country offers a stranger something that cannot be
+   done. The board showed five countries ringed over three beds until 17 ก.ย. for exactly that
+   reason. One place decides, so nothing downstream can put them back. */
+function inBeds(ps) {
+  return (ps || []).filter(p => {
+    const s = stateOf(p);
+    return s === "on_ward" || s === "on_shift";
+  });
 }
 
 // The difficulty toggles. A patient whose difficulty the page has no toggle for is shown, not
@@ -446,7 +465,10 @@ let filter = { student: true, intern: true, resident: true };
 /* Both layers, on, from the first paint (founder, 16 ก.ย.). Independent rather than exclusive:
    the ramp colours every country, the ward rings the ones with somebody in a bed. */
 let layers = { doctors: true, ward: true };
-let counts = { byId: {}, unknown: 0 };
+/* The shape `countryCounts` returns, so the first paint — which happens before any board has
+   arrived — reads the same fields as every paint after it. It did not carry `treatingById`, and the
+   globe threw on its first draw. */
+let counts = { byId: {}, treatingById: {}, unknown: 0 };
 let selected = null;       // atlas id
 let hovered = null;
 
@@ -460,7 +482,7 @@ function onBoard(ps) {
 }
 
 function recompute() {
-  counts = countryCounts(visible(patients, filter), DRAWABLE);
+  counts = countryCounts(inBeds(visible(patients, filter)), DRAWABLE);
   renderTray();
   if (selected) renderPanel(selected);
   draw();
@@ -824,6 +846,15 @@ function draw() {
     if (!paintOf(peopleOfId(id), counts.byId[id] || 0, layers).ring) continue;
     ctx.beginPath(); path(f); ctx.stroke();
   }
+  /* And a heavier ring where somebody has a patient's head right now. Two marks rather than two
+     colours: the ramp underneath is already carrying a colour that means something else, and a
+     second hue over it would be a third scale to learn. */
+  ctx.lineWidth = 4;
+  for (const f of countries) {
+    const id = String(f.id);
+    if (!layers.ward || !(counts.treatingById || {})[id]) continue;
+    ctx.beginPath(); path(f); ctx.stroke();
+  }
   if (layers.doctors) {
     // On the coloured globe a hover or a selection is an outline, so the colour underneath stays
     // readable as the number it is.
@@ -842,9 +873,12 @@ function draw() {
     const c = d3.geoCentroid(f);
     if (d3.geoDistance(c, [-rotation[0], -rotation[1]]) > Math.PI / 2 - 0.05) continue;   // on the far side
     const [x, y] = projection(c);
-    ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI * 2); ctx.fillStyle = css("--surface"); ctx.fill();
-    ctx.strokeStyle = litEdge; ctx.lineWidth = 1.2; ctx.stroke();
-    ctx.fillStyle = ink; ctx.fillText(String(n), x, y + 0.5);
+    // Filled where a stranger is treating somebody right now, hollow where the beds are waiting.
+    const busy = !!(counts.treatingById || {})[id];
+    ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI * 2);
+    ctx.fillStyle = busy ? litEdge : css("--surface"); ctx.fill();
+    ctx.strokeStyle = litEdge; ctx.lineWidth = busy ? 2 : 1.2; ctx.stroke();
+    ctx.fillStyle = busy ? css("--surface") : ink; ctx.fillText(String(n), x, y + 0.5);
   }
 }
 
