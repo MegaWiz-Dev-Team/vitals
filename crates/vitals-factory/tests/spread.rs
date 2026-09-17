@@ -293,6 +293,35 @@ fn over_two_hundred_draws_need_sets_the_shares_and_the_spread_holds() {
     );
 }
 
+/// Staging on 17 Sep, revision 00034: every placeable case is written for one of eighteen
+/// countries, none of them in Europe or Central Asia — and the ledger's run had never sent a
+/// European. The world rule then owes Europe a patient, keeps only European countries, and no
+/// European has a case: the rule must yield, with a note, and the draw go on to a country that
+/// can build — never a tick given up because a floor could not be met.
+#[test]
+fn a_soft_rule_yields_when_no_country_it_keeps_can_take_a_case() {
+    let pool = read_pool(POOL).unwrap();
+    let (cat, man) = (cases(), full_manifest(&pool));
+    let w = weights(PHYSICIANS, &pool).unwrap();
+    // Only the three endemic cases are placeable: THA, KEN and NPL can build, nobody else.
+    let only_endemic: Vec<WardCase> = cat.iter().filter(|c| c.endemic).cloned().collect();
+    // Thirty-nine sent, none from Europe, Central Asia, East Asia, Oceania or the Americas, so
+    // five regions are owed and the world rule fires on the fortieth draw.
+    let history: Vec<&str> = ["THA", "KEN", "NPL", "IDN", "EGY", "BGD", "NGA", "ETH", "MDG", "MOZ", "MLI", "UGA", "COD", "AGO", "GHA", "ZMB", "JAM", "HTI", "IND"].iter().copied().cycle().take(39).collect();
+    let ledger = waiting(&pool, &history);
+    let p = plan(&Inputs { cases: &only_endemic, pool: &pool, manifest: &man, ward: &empty_ward(), ledger: &ledger, weights: &w, beds: 60, want: 3, seed: 3 });
+    assert_eq!(p.packs.len(), 3, "the world rule yields and the draw goes on: {:?}", p.notes);
+    assert!(p.packs.iter().all(|pl| ["THA", "KEN", "NPL"].contains(&pl.pack.persona.country.as_str())), "{:?}", countries(&p));
+    assert!(p.notes.iter().any(|n| n.contains("the world rule") && n.contains("yields")), "{:?}", p.notes);
+    assert!(!p.exhausted);
+    // With a case for everyone the same history makes the world rule bind, not yield: the first
+    // draw is from a region the run has never shown.
+    let p = plan(&Inputs { cases: &cat, pool: &pool, manifest: &man, ward: &empty_ward(), ledger: &ledger, weights: &w, beds: 60, want: 1, seed: 3 });
+    let region = region_of(&p.packs[0].pack.persona.country).unwrap();
+    assert!(!regions(&history).contains(&region), "{:?} is owed: {:?}", region, p.notes);
+    assert!(p.notes.iter().all(|n| !n.contains("yields")), "{:?}", p.notes);
+}
+
 /// The bed rule and the queue rule together on a real board: three in beds, sixteen waiting, four
 /// to build — none from a bed's country, none beyond two in the last twenty, and the four are
 /// four.
