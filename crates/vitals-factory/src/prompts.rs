@@ -43,12 +43,17 @@ pub fn base(age: u16, sex: Sex, place: &str) -> String {
 
 /// Who the child is, in words the painter reads as an age. "An 8-year-old girl" comes out as a
 /// toddler (judged 3–4 on every seed tried); "a schoolgirl aged 8" comes out as a schoolgirl
-/// (judged 7; a schoolgirl aged 6 judged 6). Three brackets, because "schoolgirl aged 3" is not a
-/// thing and "schoolboy aged 14" is a younger boy than fourteen.
+/// (judged 7; a schoolgirl aged 6 judged 6). But "a schoolboy aged 12" came out as a boy of about
+/// five on all three seeds of the first real tick (17 Sep 2026, SSD-3 at 12: judged 5, 5, and the
+/// third refused on style; the pictures are in work/refused) — the word pins the look at
+/// primary-school age whatever the number after it says. So four brackets: little, school,
+/// young adolescent for ten to twelve, teenage from thirteen. The age gate is what proves the
+/// bracket, one face at a time.
 pub fn child_phrase(age: u16, sex: Sex) -> String {
     let (girl, boy) = match age {
         0..=5 => ("a little girl", "a little boy"),
-        6..=12 => ("a schoolgirl", "a schoolboy"),
+        6..=9 => ("a schoolgirl", "a schoolboy"),
+        10..=12 => ("a young adolescent girl", "a young adolescent boy"),
         _ => ("a teenage girl", "a teenage boy"),
     };
     format!("{} aged {age}", if sex == Sex::F { girl } else { boy })

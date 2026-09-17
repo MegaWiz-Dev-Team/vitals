@@ -726,6 +726,11 @@ fn make_face(cfg: &Config, tools: &dyn Tools, who: &Person, age: u16, place: &st
     // another FACTORY_SEED tries three new ones rather than the same three.
     let base_seed = sha256_hex(format!("{}@{age}/{}", who.key, cfg.seed).as_bytes())[..8].chars().fold(0u64, |a, c| a * 16 + c.to_digit(16).unwrap_or(0) as u64);
     let prompt = prompts::base(age, who.sex, place);
+    // What the gate said of each refused face, for the sentence at the end: the ages it looked
+    // when it was a photograph of a child, and how many were not photographs of a person.
+    let mut wrong_age: Vec<String> = Vec::new();
+    let mut not_photo = 0;
+    let mut band_words = String::new();
     for attempt in 0..FACE_ATTEMPTS {
         let seed = base_seed.wrapping_add(u64::from(attempt) * 7919);
         tools.paint(&prompt, seed, &png)?;
@@ -768,6 +773,13 @@ fn make_face(cfg: &Config, tools: &dyn Tools, who: &Person, age: u16, place: &st
         if ok && fits {
             return publish(cfg, tools, &webp);
         }
+        match &looks {
+            Some((n, band, _)) if ok => {
+                wrong_age.push(n.map_or("?".to_string(), |n| n.to_string()));
+                band_words = format!("{}\u{2013}{}", band.start(), band.end());
+            }
+            _ => not_photo += 1,
+        }
         // A refused face is kept locally, never uploaded, so a person can see what was refused
         // and why the gate is right or wrong. `work/refused` is safe to delete.
         let refused = work.join("refused");
@@ -775,9 +787,18 @@ fn make_face(cfg: &Config, tools: &dyn Tools, who: &Person, age: u16, place: &st
             let _ = std::fs::write(refused.join(format!("{}@{age}-{seed}.webp", who.key)), &webp);
         }
     }
+    let mut said: Vec<String> = Vec::new();
+    if !wrong_age.is_empty() {
+        said.push(format!("{} looked the wrong age ({}; band {band_words})", wrong_age.len(), wrong_age.join(", ")));
+    }
+    if not_photo > 0 {
+        said.push(format!("{not_photo} {} not {} of a person", if not_photo == 1 { "was" } else { "were" }, if not_photo == 1 { "a photograph" } else { "photographs" }));
+    }
     Err(format!(
-        "{} ({} at {age}): three faces in a row were not photographs of a person, and no pack is built on a rejected face",
-        who.name, who.key
+        "{} ({} at {age}): three faces in a row failed the gate — {} — and no pack is built on a rejected face",
+        who.name,
+        who.key,
+        said.join(", ")
     ))
 }
 
