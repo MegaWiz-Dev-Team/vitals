@@ -168,3 +168,52 @@ fn the_scanner_reads_past_a_lifetime() {
     assert!(found.iter().any(|l| l.contains("he is in here")), "{found:?}");
     assert_eq!(found.len(), 1, "a char literal is not a string: {found:?}");
 }
+
+/// **The pages, and the answers about a patient, name no pronoun either.**
+///
+/// The rule above covers `ward.rs` and `ward_chain.rs`, which is where it started. The receipt is
+/// built in `main.rs` and said "what she did" over Yonas Tesfaye for as long as it existed — the
+/// scanner had simply never been pointed at it (director, 17 ก.ย., D1).
+///
+/// Whole-file is the wrong scope for `main.rs`: it carries the pronoun table itself, the season's
+/// own episode titles, and scripted case text about patients whose sex the case wrote. So the scope
+/// is the functions that build a page a stranger reads, or an answer about one patient — the places
+/// that have an id and no persona, which is exactly where the rule came from.
+#[test]
+fn the_pages_about_a_patient_name_no_pronoun() {
+    let src = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/main.rs"),
+    )
+    .expect("main.rs");
+
+    for name in ["fn receipt_page", "fn ward_page_missing", "fn ward_chart", "fn ward_receipt",
+                 "fn open_shift", "fn open_review"] {
+        let i = src.find(name).unwrap_or_else(|| panic!("{name} is not in main.rs any more"));
+        let (mut depth, mut started, mut end) = (0i32, false, i);
+        for (k, c) in src[i..].char_indices() {
+            match c {
+                '{' => { depth += 1; started = true; }
+                '}' => { depth -= 1; if started && depth == 0 { end = i + k + 1; break; } }
+                _ => {}
+            }
+        }
+        for lit in literals(&src[i..end]) {
+            // A literal that is *only* a pronoun is a pronoun table — the page reading the
+            // persona and choosing, which is the thing this rule asks for rather than the thing it
+            // forbids. A pronoun among other words is a sentence.
+            if ["her", "she", "hers", "his", "him", "he", "the patient", "the patient's"]
+                .contains(&lit.trim().to_ascii_lowercase().as_str())
+            {
+                continue;
+            }
+            for word in ["her", "she", "hers", "his", "him", "he"] {
+                let bare = lit
+                    .split(|c: char| !c.is_ascii_alphabetic())
+                    .any(|w| w.eq_ignore_ascii_case(word));
+                assert!(!bare,
+                        "{name} says {word:?} about somebody it has not met — this code has a \
+                         patient id, and the page above it has a persona to ask: {lit:?}");
+            }
+        }
+    }
+}
