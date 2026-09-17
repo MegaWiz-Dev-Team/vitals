@@ -4222,8 +4222,10 @@ async function takeShift(){
      much: the controls open, and the clock runs. Without the clock a shift sits at 0:00 for ever
      and the idle span is the only time she has — the founder watched exactly that. */
   wardGate(); $('#cmd').focus(); run();
-  wardSay('the head is yours until you hand over. '+Cap(pro().p)+' chart is the chain — what you '+
-          'do here is on it, under your key.');
+  /* Two short sentences rather than one long one: this is the line a stranger reads at the moment
+     the controls open, and `plain_words.rs` holds every sentence on the strip to twelve words. */
+  wardSay('the head is yours until you hand over. What you do here is on '+pro().p+
+          ' chart, under your key.');
   armTheExit();
 }
 
