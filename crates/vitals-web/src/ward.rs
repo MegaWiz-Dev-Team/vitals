@@ -229,6 +229,30 @@ pub fn board_use(age: Option<std::time::Duration>, ttl: std::time::Duration) -> 
     }
 }
 
+/// The beds a stranger can take right now, off a board this host already has.
+///
+/// For the pages that say no. A refusal is read by somebody who came to treat a patient — they
+/// mistyped an id, or followed a link to a receipt nobody anchored — and a sentence plus a way back
+/// to the globe makes them start again. These are the same patients the panel offers, chosen by the
+/// same rule: a bed of her own, and nobody in the room with her.
+///
+/// In bed order, because that is the order the ward is arranged in and the order the board shows.
+/// An unreadable board offers nothing: on a page about something else, "we could not look" must not
+/// be dressed as "there are none".
+pub fn beds_to_offer(board: &serde_json::Value) -> Vec<serde_json::Value> {
+    let mut open: Vec<serde_json::Value> = board["patients"]
+        .as_array()
+        .map(|rows| {
+            rows.iter()
+                .filter(|p| p["state"] == "on_ward" && p["bed"].as_u64().is_some())
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+    open.sort_by_key(|p| p["bed"].as_u64().unwrap_or(u64::MAX));
+    open
+}
+
 /// Which heads the ward should take back, given when each page last beat.
 ///
 /// The page beats while it holds a head; the ward frees the head when the beats stop. Two missed

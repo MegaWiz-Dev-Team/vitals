@@ -2441,7 +2441,7 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
 
 /// The receipt as a page. Plain on purpose: it is a record, and a record that needs decoration to
 /// be believed is not one.
-fn receipt_page(r: &serde_json::Value) -> String {
+fn receipt_page(r: &serde_json::Value, board: &serde_json::Value) -> String {
     let esc = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
     if let Some(why) = r["error"].as_str() {
         return format!(
@@ -2450,8 +2450,12 @@ fn receipt_page(r: &serde_json::Value) -> String {
              <meta name=viewport content='width=device-width,initial-scale=1'>\
              <style>body{{font:16px/1.6 ui-sans-serif,system-ui,sans-serif;max-width:34rem;\
              margin:4rem auto;padding:0 1.2rem;color:#16302b;background:#fbfaf7}}a{{color:#0f6e5c}}\
-             </style><h1>No such shift</h1><p>{}</p><p><a href=/>← the globe</a></p>",
-            esc(why)
+             .k{{font:.72rem/1.5 ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;\
+             color:#7b8a86;margin:1.6rem 0 .3rem}}ul.beds{{list-style:none;padding:0;margin:0}}\
+             ul.beds li{{margin:.35rem 0}}\
+             </style><h1>No such shift</h1><p>{why}</p>{beds}<p><a href=/>← the globe</a></p>",
+            why = esc(why),
+            beds = beds_on_offer(board),
         );
     }
     // ── the shift, as a story a stranger can read ───────────────────────────
@@ -2682,14 +2686,58 @@ fn revision() -> String {
 }
 
 /// No such patient, or no readable chain — said in a sentence rather than as a status code alone.
-fn ward_page_missing(why: &str) -> String {
+/// The beds a stranger can take, as rows for a page that has just said no.
+///
+/// UX review F1: a refusal is read by somebody who came to treat a patient, and a sentence plus a
+/// way back to the globe makes them start again. `ward::beds_to_offer` decides which patients those
+/// are — off the board this host already holds, so this costs no chain read — and an empty list
+/// prints nothing at all rather than an empty heading.
+fn beds_on_offer(board: &serde_json::Value) -> String {
+    let esc = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+    let open = ward::beds_to_offer(board);
+    if open.is_empty() {
+        return String::new();
+    }
+    let rows = open
+        .iter()
+        .map(|p| {
+            let who = p["name"].as_str().unwrap_or("a patient");
+            let age = p["age"].as_u64().map(|a| format!(" · {a}")).unwrap_or_default();
+            let level = p["difficulty"].as_str().map(|d| format!(" · {d}")).unwrap_or_default();
+            let place = p["country"]
+                .as_str()
+                .and_then(|c| ward::persona_pool().into_iter().find(|x| x.country == c).map(|x| x.place))
+                .filter(|s| !s.is_empty())
+                .map(|s| format!(" · {s}"))
+                .unwrap_or_default();
+            format!(
+                "<li><a href=\"/ward/{id}\">bed {bed} — {who}{age}{place}{level}</a></li>",
+                id = p["patient_id"].as_u64().unwrap_or(0),
+                bed = p["bed"].as_u64().unwrap_or(0),
+                who = esc(who),
+                age = esc(&age),
+                place = esc(&place),
+                level = esc(&level),
+            )
+        })
+        .collect::<String>();
+    format!(
+        "<p class=k>beds you can take now</p><ul class=beds>{rows}</ul>"
+    )
+}
+
+fn ward_page_missing(why: &str, board: &serde_json::Value) -> String {
     format!(
         "<!doctype html><meta charset=utf-8><title>Not a patient — Vitals World</title>\
          <meta name=viewport content='width=device-width,initial-scale=1'>\
          <style>body{{font:16px/1.6 ui-sans-serif,system-ui,sans-serif;max-width:34rem;\
          margin:4rem auto;padding:0 1.2rem;color:#16302b;background:#fbfaf7}}a{{color:#0f6e5c}}\
-         </style><h1>Nobody here</h1><p>{}</p><p><a href=/>← the globe</a></p>",
-        why.replace('&', "&amp;").replace('<', "&lt;")
+         .k{{font:.72rem/1.5 ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;\
+         color:#7b8a86;margin:1.6rem 0 .3rem}}ul.beds{{list-style:none;padding:0;margin:0}}\
+         ul.beds li{{margin:.35rem 0}}\
+         </style><h1>Nobody here</h1><p>{why}</p>{beds}<p><a href=/>← the globe</a></p>",
+        why = why.replace('&', "&amp;").replace('<', "&lt;"),
+        beds = beds_on_offer(board),
     )
 }
 
@@ -4538,6 +4586,7 @@ fn main() {
                     _ => html(&ward_page_missing(
                         "no patient is waiting under that name. The queue is published on the \
                          board while the ward is opening, and every row on it is a link",
+                        &ward_now(&ward_view, &store, &state_dir),
                     ))
                     .with_status_code(404),
                 };
@@ -4564,9 +4613,10 @@ fn main() {
                     None if p == "/ward/review" || p == "/ward/review/" => compose(WARD_CASES),
                     None if ward::review_case_in_path(p).is_some() => compose(SHIFT),
                     None if p.starts_with("/ward/review/") => {
-                        ward_page_missing("that is not a case id")
+                        ward_page_missing("that is not a case id", &ward_now(&ward_view, &store, &state_dir))
                     }
-                    None => ward_page_missing("that is not a patient id"),
+                    None => ward_page_missing("that is not a patient id",
+                                              &ward_now(&ward_view, &store, &state_dir)),
                 };
                 let _ = req.respond(html(&body));
                 continue;
@@ -5884,7 +5934,11 @@ fn main() {
             }
             (Method::Get, p) if ward_mode() && p.starts_with("/shift/") => {
                 let hash = p.trim_start_matches("/shift/").to_string();
-                let _ = req.respond(html(&receipt_page(&ward_receipt(&store, &hash))));
+                let answer = ward_receipt(&store, &hash);
+                // A refusal here offers the beds that are open, off the board this host already
+                // holds — the person reading it came to treat somebody (UX review F1).
+                let board = answer["error"].is_string().then(|| ward_now(&ward_view, &store, &state_dir));
+                let _ = req.respond(html(&receipt_page(&answer, &board.unwrap_or(serde_json::Value::Null))));
                 continue;
             }
             // The ward's census. Public, and every figure on it carries where it came from —
@@ -6954,6 +7008,37 @@ mod tests {
     use super::*;
 
     // ── the face at the bedside ─────────────────────────────────────────────
+
+    /// **A refusal page offers the beds, as links a thumb can hit.**
+    ///
+    /// The rows themselves are `ward::beds_to_offer`'s and tested there. What is here is the
+    /// markup: one link per bed, addressed by patient id, carrying the bed number first because
+    /// that is how the ward is arranged, and the country's name rather than its code — a stranger
+    /// who mistyped an id is not owed "PAK".
+    #[test]
+    fn a_refusal_page_offers_the_open_beds_as_links() {
+        let board = serde_json::json!({
+            "patients": [
+                { "patient_id": 77, "state": "on_ward", "bed": 2, "name": "Ayesha Malik",
+                  "age": 57, "country": "PAK", "difficulty": "intern" },
+                { "patient_id": 11, "state": "on_ward", "bed": 1, "name": "Nusrat Jahan",
+                  "age": 64, "country": "BGD", "difficulty": "resident" },
+                { "patient_id": 22, "state": "on_shift", "bed": 3, "name": "Park Ji-woo", "age": 8 }
+            ]
+        });
+        let html = beds_on_offer(&board);
+        assert!(html.contains("beds you can take now"), "{html}");
+        assert!(html.contains("href=\"/ward/11\">bed 1 — Nusrat Jahan · 64 · Bangladesh · resident"),
+                "bed first, then who she is, then where she is from in words: {html}");
+        assert!(html.contains("href=\"/ward/77\">bed 2 — Ayesha Malik · 57 · Pakistan · intern"), "{html}");
+        assert!(!html.contains("Park Ji-woo"),
+                "somebody is in the room with her, so she is not a bed on offer: {html}");
+        assert!(html.find("bed 1").unwrap() < html.find("bed 2").unwrap(), "in bed order");
+
+        // A board nobody could read prints nothing — not an empty heading over nothing.
+        assert_eq!(beds_on_offer(&serde_json::json!({ "readable": false })), "");
+        assert_eq!(beds_on_offer(&serde_json::Value::Null), "");
+    }
 
     /// **"ไม่มีรูปผู้ป่วยหรอ"** — the founder, looking at Park Ji-woo on staging, 16 ก.ย.
     ///
@@ -8517,7 +8602,7 @@ mod tests {
             "tape": "/api/tape/9f2c",
             "judged_omitted": "AI-judged marks are not shown on a mid-stay shift",
         });
-        let page = receipt_page(&r);
+        let page = receipt_page(&r, &serde_json::Value::Null);
 
         // The story, in order.
         assert!(page.contains("Yonas Tesfaye"), "{page}");
@@ -8549,7 +8634,7 @@ mod tests {
         let mut anon = r.clone();
         anon["sex"] = serde_json::json!("");
         anon["did"]["outcome"] = serde_json::Value::Null;
-        let page = receipt_page(&anon);
+        let page = receipt_page(&anon, &serde_json::Value::Null);
         assert!(page.contains("handed on, still on the ward"), "{page}");
         assert!(!page.contains(" she ") && !page.contains(" he "), "{page}");
     }
