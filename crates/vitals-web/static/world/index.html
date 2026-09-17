@@ -512,7 +512,27 @@ function recompute() {
 // One consumer for the board, whatever carried it: the fetch below, or the stream's `ward`
 // event, which is the same payload pushed. `asOf` anchors the read's slot to the moment it
 // arrived, which is what every slot on the board is measured against.
+/* Has the ward been redeployed under this tab?
+   Only between two revisions the page has actually seen: a rollout serves two at once and a board
+   can arrive from either, so a page that reloaded on every difference would bounce between them
+   for as long as the rollout lasted. The caller remembers the one it came back for, which ends
+   that bounce after one turn. */
+function shouldReload(seen, now) {
+  return !!seen && !!now && seen !== now;
+}
+let BUILD_SEEN = "";
+
 function render(j) {
+  const rev = j && j.revision ? String(j.revision) : "";
+  if (shouldReload(BUILD_SEEN, rev)) {
+    let again = false;
+    try {
+      again = sessionStorage.getItem("vw-reloaded-for") === rev;
+      if (!again) sessionStorage.setItem("vw-reloaded-for", rev);
+    } catch (e) { /* a browser with no storage reloads once and lives with it */ }
+    if (!again) { location.reload(); return; }
+  }
+  if (rev && !BUILD_SEEN) BUILD_SEEN = rev;
   patients = onBoard(j && Array.isArray(j.patients) ? j.patients : []);
   census = j ? (j.census || j) : null;   // the census keys may sit at the top level or under `census`
   beds = j && typeof j.in_beds === "number" ? j.in_beds : null;

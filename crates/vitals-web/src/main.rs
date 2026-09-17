@@ -2598,7 +2598,7 @@ fn receipt_page(r: &serde_json::Value) -> String {
 /// so a judge who opens both in one minute cannot be shown two different wards.
 fn ward_now(held: &WardView, store: &store::Store) -> serde_json::Value {
     let mut cell = held.lock().unwrap();
-    match cell.as_ref().filter(|(at, _)| at.elapsed() < WARD_TTL) {
+    let mut v = match cell.as_ref().filter(|(at, _)| at.elapsed() < WARD_TTL) {
         Some((_, v)) => v.clone(),
         None => {
             let v = match ward_chain::WardChain::connect() {
@@ -2608,7 +2608,17 @@ fn ward_now(held: &WardView, store: &store::Store) -> serde_json::Value {
             *cell = Some((Instant::now(), v.clone()));
             v
         }
-    }
+    };
+    // Which deployment answered. A page keeps the first one it is told and reloads itself when a
+    // later board comes from a different one — the tab the founder had open was three hours behind
+    // a deploy and had no way to find out.
+    v["revision"] = serde_json::json!(revision());
+    v
+}
+
+/// Cloud Run's own name for the deployment answering, or this build when it is somewhere else.
+fn revision() -> String {
+    std::env::var("K_REVISION").unwrap_or_else(|_| BUILD.to_string())
 }
 
 /// No such patient, or no readable chain — said in a sentence rather than as a status code alone.
@@ -2623,6 +2633,16 @@ fn ward_page_missing(why: &str) -> String {
     )
 }
 
+
+/// Ask before you use this again.
+///
+/// Every page this server writes. Not "do not store": the browser keeps it and revalidates, which
+/// is one conditional request against the ETag beside it. What it stops is the thing that happened
+/// to the founder on 17 ก.ย. — a tab serving him a ward three hours out of date, with a deploy an
+/// hour old behind it and nothing in the answer telling his browser to ask.
+fn never_kept() -> Header {
+    Header::from_bytes(&b"Cache-Control"[..], &b"no-cache"[..]).expect("a static header")
+}
 
 /// A year, immutable — for the files whose URL carries the build stamp.
 ///
@@ -2694,9 +2714,23 @@ fn etag_of(body: &[u8]) -> String {
 }
 
 fn html(body: &str) -> Response<std::io::Cursor<Vec<u8>>> {
-    Response::from_string(body).with_header(
-        Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..]).unwrap(),
-    )
+    html_kept(body, "no-cache")
+}
+
+/// A page, and how long a browser may keep it.
+///
+/// `no-cache` for everything on the ward, and it does not mean "do not store": it means "ask me
+/// before you use this again", which is one conditional request against an ETag this server
+/// already sends. The founder read a ward three hours out of date in his own tab because the
+/// answer said nothing at all and his browser guessed — a document whose content is the state of a
+/// ward that changes every minute is not a document to guess about.
+///
+/// The apex is the exception and says so where it asks: it serves a landing page that changes when
+/// somebody writes it, and a proxy holding that for five minutes is right.
+fn html_kept(body: &str, cache: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+    Response::from_string(body)
+        .with_header(Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..]).unwrap())
+        .with_header(Header::from_bytes(&b"Cache-Control"[..], cache.as_bytes()).unwrap())
 }
 
 fn json(v: impl Serialize) -> Response<std::io::Cursor<Vec<u8>>> {
@@ -3317,9 +3351,7 @@ fn main() {
         // own short cache life so a proxy caching the apex never holds anything of the game's.
         if host_of(&req) == APEX {
             let resp = match apex_target(&url) {
-                None => html(&front_door(&path)).with_header(
-                    Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=300"[..]).unwrap(),
-                ),
+                None => html_kept(&front_door(&path), "public, max-age=300"),
                 Some(to) => Response::from_string("")
                     .with_status_code(301)
                     .with_header(Header::from_bytes(&b"Location"[..], to.as_bytes()).unwrap()),
@@ -3452,7 +3484,8 @@ fn main() {
                     usage.arrived(param(&url, "src").as_deref().and_then(usage::channel), &store);
                 }
                 let page = compose(if ward_mode() { WORLD } else { LANDING });
-                let resp = squeezed(&req, page.into_bytes(), b"text/html; charset=utf-8");
+                let resp = squeezed(&req, page.into_bytes(), b"text/html; charset=utf-8")
+                    .with_header(never_kept());
                 let _ = req.respond(resp);
                 continue;
             }
