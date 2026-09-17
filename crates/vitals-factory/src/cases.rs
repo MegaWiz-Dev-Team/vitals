@@ -6,9 +6,12 @@
 //!
 //! **Fit** ([`fits`]). A row states its patient — `patient: {age, sex}`, the sex spelled `male` /
 //! `female` (ward commit 92b4181) — or states nobody. Her sex must match the patient's; her age
-//! is within [`AGE_SLACK`] years of the patient's; a case under [`CHILD_UNDER`] takes a persona
-//! under it only, and a case of that age or more a persona of that age or more. A row with no
-//! patient fits any adult ([`ADULT_ANY`]) of either sex — never "no case".
+//! is inside the band around the patient's age ([`window_around`]): under 5, a year either side;
+//! 5 to 15, three either side inside 5–15; 16 to 39, eight below and ten above, never under 16;
+//! 40 and over, ten either side. Never below 1, never across the [`CHILD_UNDER`] line — a baby
+//! is never drawn for a schoolchild's case (coordinator, 17 Sep, after a one-year-old was queued
+//! for an eight-year-old's case under a flat ±12). A row with no patient fits any adult
+//! ([`ADULT_ANY`]) of either sex — never "no case".
 //!
 //! **Endemic** is the list's to say, not a file's: a country "has an endemic list" iff a placeable
 //! case is tagged endemic for it ([`has_endemic_list`]). The founder's one draw in
@@ -41,8 +44,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::RangeInclusive;
 use vitals_web::ward::ENDEMIC_IN;
 
-/// How far from the case's patient a persona's age may sit.
-pub const AGE_SLACK: u16 = 12;
 /// A case whose patient is younger than this takes a persona younger than this, and only such a
 /// persona; a case of this age or more takes nobody younger.
 pub const CHILD_UNDER: u16 = 16;
@@ -60,12 +61,21 @@ pub fn sex_of(case: &WardCase) -> Option<Sex> {
     }
 }
 
+/// The band around a patient's age that a persona's age may sit in.
+pub fn window_around(a: u16) -> RangeInclusive<u16> {
+    match a {
+        0..=4 => a.saturating_sub(1).max(1)..=a + 1,
+        5..=15 => a.saturating_sub(3).max(5)..=(a + 3).min(CHILD_UNDER - 1),
+        16..=39 => a.saturating_sub(8).max(CHILD_UNDER)..=a + 10,
+        _ => a - 10..=a + 10,
+    }
+}
+
 /// The ages a persona may be given for this case.
 pub fn age_window(case: &WardCase) -> RangeInclusive<u16> {
     match &case.patient {
         None => ADULT_ANY,
-        Some(p) if p.age < CHILD_UNDER => p.age.saturating_sub(AGE_SLACK).max(1)..=(p.age + AGE_SLACK).min(CHILD_UNDER - 1),
-        Some(p) => p.age.saturating_sub(AGE_SLACK).max(CHILD_UNDER)..=p.age + AGE_SLACK,
+        Some(p) => window_around(p.age),
     }
 }
 

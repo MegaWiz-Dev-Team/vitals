@@ -756,8 +756,8 @@ fn a_dry_run_prints_the_case_chosen_for_each_draw() {
 #[test]
 fn a_face_is_a_photograph_or_it_is_not_a_face() {
     let dir = world("gate");
-    let pool = read_pool(POOL).unwrap();
-    seed_manifest(&dir, &pool);
+    // No faces on file, so every pack needs one painted (a persona with a face already is only
+    // ever drawn near that face's age, and never painted anew).
     let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
     let tools = FakeTools::default();
     // The first face: no, no, yes. The second face: no, no, no. The cap counts paintings, and a
@@ -813,8 +813,7 @@ fn a_face_is_a_photograph_or_it_is_not_a_face() {
 #[test]
 fn a_childs_face_is_asked_for_as_a_photograph_of_a_child() {
     let dir = world("child");
-    let pool = read_pool(POOL).unwrap();
-    seed_manifest(&dir, &pool);
+    // No faces on file: every face is painted, children and adults alike.
     let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
     let tools = FakeTools::default();
     let r = tick(&config(&dir, 20, 20), &door, &tools);

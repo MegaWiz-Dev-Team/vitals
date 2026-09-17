@@ -118,6 +118,17 @@ impl Manifest {
             .min_by_key(|b| (u32::from(b.age).abs_diff(mid), b.key.clone()))
     }
 
+    /// Every age a face exists at for this person — her own entry (the batch age, or the age it
+    /// records) and every `<key>@<age>` — so a name is one person: she is only ever drawn within
+    /// two years of these.
+    pub fn ages_of(&self, key: &str) -> Vec<u16> {
+        let prefix = format!("{key}@");
+        let mut ages: Vec<u16> = self.entries.iter().filter(|(k, _)| k.as_str() == key || k.starts_with(&prefix)).filter_map(|(k, e)| Manifest::age_of(k, e)).collect();
+        ages.sort_unstable();
+        ages.dedup();
+        ages
+    }
+
     /// Record a base made for this person at this age. Under her own key when the batch age is
     /// hers and the entry is empty; under `<key>@<age>` otherwise.
     pub fn record_base(&mut self, key: &str, age: u16, url: &str, who: &Person) {

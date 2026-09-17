@@ -158,6 +158,15 @@ impl Ledger {
         self.sent.iter().filter(|(_, s)| s.patient_id.is_none()).collect()
     }
 
+    /// Every age this person was ever sent at — waiting, admitted or closed — so a name is one
+    /// person: she is only ever drawn again within two years of these.
+    pub fn ages_of(&self, key: &str) -> Vec<u16> {
+        let mut ages: Vec<u16> = self.sent.values().filter(|s| s.key == key).map(|s| s.age).collect();
+        ages.sort_unstable();
+        ages.dedup();
+        ages
+    }
+
     /// Everything sent, oldest first — the draw's own history. The spread rules in
     /// [`crate::plan`] read its tail: the last twenty sent are the queue the ward admits from,
     /// and the last forty are the run no region may be missing from. Ties in time go by pack id,

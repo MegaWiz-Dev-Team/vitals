@@ -40,10 +40,13 @@
 //!      window ([`crate::cases::fits`]); when nobody of that country fits the case, the next case
 //!      is tried, and when no case fits anybody free of that country, the country is passed over
 //!      for this pack — never forced.
-//!   6. **her age is the persona's, drawn to fit the case**: near her face's age when a face
-//!      already fits the window, so the picture and the number agree; when no face fits, one is
-//!      to be made at the age drawn inside the window, and the pack goes out without a picture
-//!      rather than with a wrong one.
+//!   6. **her age is the persona's, drawn to fit the case — and a persona is one person**: once
+//!      a face exists for her key at some age, on file or in the ledger (waiting, admitted or
+//!      closed), she is only ever drawn within [`NEAR_FACE`] years of it; a case whose window
+//!      cannot hold that is a case for somebody else of her country and sex, and when nobody is
+//!      free the draw is skipped with a note. Near her face's age when a face already fits, so
+//!      the picture and the number agree; when no face fits, one is to be made at the age drawn
+//!      inside the window, and the pack goes out without a picture rather than with a wrong one.
 
 use crate::cases::{age_window, endemic_draw, fits, placeable, rank, Mix};
 use crate::door::{WardCase, WardView};
@@ -59,8 +62,10 @@ use vitals_web::ward::{Pack, Persona};
 /// The three levels, in the ward's order.
 pub const LEVELS: [&str; 3] = ["student", "intern", "resident"];
 
-/// How far from a fitting face's age a pack's age may drift, so the picture and the number agree.
-pub const NEAR_FACE: u16 = 3;
+/// How far from the age a person already has — a face on file, or a pack ever sent — a pack's
+/// age may sit: a persona is one person, and "Ousmane Garba, 26" and "Ousmane Garba, 1" cannot
+/// both exist (coordinator, 17 Sep). The same bound keeps the number near the picture.
+pub const NEAR_FACE: u16 = 2;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Inputs<'a> {
@@ -101,6 +106,10 @@ pub const WORLD_WINDOW: usize = 40;
 
 /// One soft rule of the spread: its name, who it keeps, and why it refuses the rest.
 type SoftRule<'a> = (&'static str, Box<dyn Fn(&str) -> bool + 'a>, String);
+
+/// One choice of the draw: the person, the case, why that case, the face that fits if any, and
+/// the ages she may still be given.
+type Choice<'a> = (&'a Person, &'a WardCase, String, Option<crate::manifest::Base>, std::ops::RangeInclusive<u16>);
 
 /// One draw the spread would not take, done again.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -241,6 +250,18 @@ pub fn plan(i: &Inputs) -> Plan {
     }
     let mut relaxed: BTreeSet<String> = BTreeSet::new();
 
+    // A persona is one person: every age she already has, on file or in the ledger.
+    let anchors = |who: &Person| -> Vec<u16> {
+        let mut ages = i.manifest.ages_of(&who.key);
+        ages.extend(i.ledger.ages_of(&who.key));
+        ages.sort_unstable();
+        ages.dedup();
+        ages
+    };
+    // People held to the age they already have who fitted a case by sex but not by age this
+    // plan, and people whose ages are not one person at all — for one note each at the end.
+    let held: std::cell::RefCell<BTreeSet<String>> = std::cell::RefCell::new(BTreeSet::new());
+
     for slot in 0..i.want {
         // 1a. countries, by largest deficit against their share of everything sent so far; ties
         // go to the country with fewest in beds, then to the seed.
@@ -306,20 +327,40 @@ pub fn plan(i: &Inputs) -> Plan {
         // person whose face already fits the window is used before one whose face must be made,
         // then the seed decides. A choice is made without drawing an age, so a try that places
         // nobody moves the seed's numbers for nobody.
-        let choose = |countries: &[&str]| -> Option<(&Person, &WardCase, String, Option<crate::manifest::Base>)> {
+        // The ages a person may still be given: the case's window, narrowed to within NEAR_FACE
+        // of every age she already has. Empty when she cannot be this case's patient.
+        let allowed_ages = |who: &Person, window: &std::ops::RangeInclusive<u16>| -> Option<std::ops::RangeInclusive<u16>> {
+            let (mut lo, mut hi) = (*window.start(), *window.end());
+            for age in anchors(who) {
+                lo = lo.max(age.saturating_sub(NEAR_FACE));
+                hi = hi.min(age.saturating_add(NEAR_FACE));
+            }
+            (lo <= hi).then_some(lo..=hi)
+        };
+        let choose = |countries: &[&str]| -> Option<Choice<'_>> {
             for country in countries {
                 let ranked = rank(cases, country, &in_beds_cases, &mix, i.seed, slot, endemic_draw(cases, country, i.seed, slot));
                 for (case, why) in ranked {
                     let window = age_window(case);
-                    let mut people: Vec<(&Person, Option<crate::manifest::Base>)> = free
+                    let mut people: Vec<(&Person, std::ops::RangeInclusive<u16>, Option<crate::manifest::Base>)> = free
                         .iter()
                         .copied()
                         .filter(|p| p.country == *country && fits(case, p.sex, *window.start()))
-                        .map(|p| (p, i.manifest.base_for(&p.key, &window)))
+                        .filter_map(|p| {
+                            let ages = allowed_ages(p, &window);
+                            if ages.is_none() {
+                                held.borrow_mut().insert(p.key.clone());
+                            }
+                            ages.map(|ages| (p, ages))
+                        })
+                        .map(|(p, ages)| {
+                            let fit = i.manifest.base_for(&p.key, &ages);
+                            (p, ages, fit)
+                        })
                         .collect();
-                    people.sort_by_key(|(p, fit)| (fit.is_none(), shuffle_key(i.seed, slot, &p.key)));
-                    if let Some((who, fit)) = people.into_iter().next() {
-                        return Some((who, case, why, fit));
+                    people.sort_by_key(|(p, _, fit)| (fit.is_none(), shuffle_key(i.seed, slot, &p.key)));
+                    if let Some((who, ages, fit)) = people.into_iter().next() {
+                        return Some((who, case, why, fit, ages));
                     }
                 }
             }
@@ -343,8 +384,7 @@ pub fn plan(i: &Inputs) -> Plan {
                 out.notes.push(format!("{rule}: no other country is available — none it keeps can take a case the ward lists — so the rule yields for this tick"));
             }
         }
-        let placed = chosen.map(|(who, case, why, fit)| {
-            let window = age_window(case);
+        let placed = chosen.map(|(who, case, why, fit, window)| {
             let (base, age) = match fit {
                 Some(b) => {
                     let lo = (*window.start()).max(b.age.saturating_sub(NEAR_FACE));
@@ -415,6 +455,24 @@ pub fn plan(i: &Inputs) -> Plan {
                 ));
                 break;
             }
+        }
+    }
+    let held = held.into_inner();
+    if !held.is_empty() {
+        let mut split: Vec<String> = Vec::new();
+        let mut kept: Vec<String> = Vec::new();
+        for key in &held {
+            let Some(who) = i.pool.iter().find(|p| &p.key == key) else { continue };
+            let ages = anchors(who);
+            let one_person = ages.iter().all(|a| ages.iter().all(|b| a.abs_diff(*b) <= 2 * NEAR_FACE));
+            let words = format!("{key} {} ({})", who.name, ages.iter().map(u16::to_string).collect::<Vec<_>>().join(", "));
+            if one_person { kept.push(words) } else { split.push(words) }
+        }
+        if !kept.is_empty() {
+            out.notes.push(format!("{} held to the age they already have and not drawn for a case of another age this tick: {}", kept.len(), kept.join("; ")));
+        }
+        if !split.is_empty() {
+            out.notes.push(format!("{} with faces at ages that are not one person, never drawn again: {}", split.len(), split.join("; ")));
         }
     }
     if !out.redrawn.is_empty() {

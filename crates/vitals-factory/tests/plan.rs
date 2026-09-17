@@ -220,9 +220,12 @@ fn a_face_already_made_is_used_and_a_missing_one_is_made_at_her_age() {
     assert_eq!(p.packs.len(), 6);
     assert!(p.packs.iter().all(|pl| matches!(pl.base, Base::Have { .. })), "{:?}", p.packs.iter().map(|x| x.base.clone()).collect::<Vec<_>>());
     assert!(p.packs.iter().all(|pl| (18..=85).contains(&pl.pack.persona.age)));
-    // A child's case: no adult face fits, so one is to be made at the age drawn inside the
-    // window, and the pack goes out without a picture rather than with a wrong one.
+    // A child's case, for people who have no face yet: one is to be made at the age drawn inside
+    // the window, and the pack goes out without a picture rather than with a wrong one. (With
+    // the batch faces on file nobody could be a child — a persona is one person — so the
+    // manifest here is empty.)
     let child = only(&["world-asthma-child"]);
+    let man = Manifest::default();
     let p = plan(&Inputs { cases: &child, pool: &pool, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&pool), beds: 3, want: 2, seed: 4 });
     assert_eq!(p.packs.len(), 2);
     for pl in &p.packs {
@@ -278,9 +281,10 @@ fn a_persona_whose_sex_no_case_was_written_for_is_skipped_not_forced() {
     assert!(!p.packs.is_empty() && p.packs.len() <= men, "{} packs of {men} men", p.packs.len());
     assert!(p.exhausted, "and then the pool is exhausted for this list");
     // Viet Nam has two women and one man free: a men's case takes the man, and when he is busy
-    // the country is skipped for that case rather than a woman forced onto it.
+    // the country is skipped for that case rather than a woman forced onto it. No faces on file,
+    // so his age is free to be the case's.
     let vietnam: Vec<Person> = pool.iter().filter(|x| x.country == "VNM").cloned().collect();
-    let p = plan(&Inputs { cases: &men_only, pool: &vietnam, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&vietnam), beds: 3, want: 3, seed: 1 });
+    let p = plan(&Inputs { cases: &men_only, pool: &vietnam, manifest: &Manifest::default(), ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&vietnam), beds: 3, want: 3, seed: 1 });
     assert_eq!(p.packs.iter().map(|pl| pl.person.as_str()).collect::<Vec<_>>(), vec!["VNM-1"]);
     assert!(p.exhausted);
 }
@@ -296,16 +300,18 @@ fn a_persona_is_one_person_and_is_only_reused_within_two_years_of_the_age_a_face
     let thai: Vec<Person> = pool.iter().filter(|x| x.country == "THA").cloned().collect();
     let man = full_manifest(&pool);
     // The batch faces are 28, 45 and 63 by index. A woman of 55 (45–65): only the women whose
-    // face is 45 or 63 can be her — THA-2 (63) and THA-5 (45); THA-0, THA-3 and THA-7 have faces
-    // at 28 and are not painted again at fifty for the same name.
+    // face is 45 or 63 can be her — THA-2 (63), THA-5 and THA-7 (45); THA-0 and THA-3 have faces
+    // at 28 and are not painted again at fifty for the same name. Two packs (the queue cap for
+    // one country), both from the three, both on a face already made, and the note names the
+    // two held to their age.
     let sepsis = only(&["world-sepsis-woman"]);
-    let p = plan(&Inputs { cases: &sepsis, pool: &thai, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&thai), beds: 3, want: 5, seed: 4 });
-    let mut who: Vec<&str> = p.packs.iter().map(|pl| pl.person.as_str()).collect();
-    who.sort_unstable();
-    assert_eq!(who, vec!["THA-2", "THA-5"], "{:?}", p.notes);
+    let p = plan(&Inputs { cases: &sepsis, pool: &thai, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&thai), beds: 3, want: 2, seed: 4 });
+    let who: Vec<&str> = p.packs.iter().map(|pl| pl.person.as_str()).collect();
+    assert_eq!(who.len(), 2, "{:?}", p.notes);
+    assert!(who.iter().all(|k| ["THA-2", "THA-5", "THA-7"].contains(k)), "{who:?}");
     assert!(p.packs.iter().all(|pl| matches!(pl.base, Base::Have { .. })));
-    assert!(p.exhausted);
-    assert!(p.notes.iter().any(|n| n.contains("held to the age") && n.contains("THA-0") && n.contains("28")), "{:?}", p.notes);
+    assert!(p.packs.iter().all(|pl| (45..=65).contains(&pl.pack.persona.age)));
+    assert!(p.notes.iter().any(|n| n.contains("held to the age") && n.contains("THA-0") && n.contains("THA-3") && n.contains("28")), "{:?}", p.notes);
     // The ledger is an anchor too, closed or not: no faces on file, but THA-0 was sent at 66
     // and admitted and has left. A woman of 25 (17–35): THA-0 is not her; THA-3 is, with a face
     // to be made. A woman of 68 (58–78): THA-0 is, at 64–68, near the age she already had.
@@ -369,8 +375,8 @@ fn endemic_is_one_draw_in_five_from_the_wards_list_and_the_tag_follows() {
     // written for a country, nothing common. Then the case written for home is the only case
     // there is and is taken on every draw; a country with no case gets none; the plan says why.
     let only_endemic: Vec<WardCase> = cat.iter().filter(|c| c.endemic && !c.withdrawn).cloned().collect();
-    let p = plan(&Inputs { cases: &only_endemic, pool: &pool, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&pool), beds: 60, want: 6, seed: 5 });
-    assert_eq!(p.packs.len(), 6, "{:?}", p.notes);
+    let p = plan(&Inputs { cases: &only_endemic, pool: &pool, manifest: &Manifest::default(), ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&pool), beds: 60, want: 6, seed: 5 });
+    assert_eq!(p.packs.len(), 6, "two each from the three countries with a case, faces to be made: {:?}", p.notes);
     assert!(p.packs.iter().all(|pl| pl.pack.endemic && ["THA", "KEN", "NPL"].contains(&pl.pack.persona.country.as_str())), "{:?}", p.packs.iter().map(|x| (x.pack.persona.country.clone(), x.pack.case.clone())).collect::<Vec<_>>());
     assert!(p.packs.iter().any(|pl| pl.case_why.contains("only")), "{:?}", p.packs.iter().map(|x| x.case_why.clone()).collect::<Vec<_>>());
     // Nepal's altitude case has no stated patient: any Nepali adult, tagged.
