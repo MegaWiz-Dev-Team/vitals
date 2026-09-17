@@ -707,6 +707,13 @@ pub struct WardRead<'a> {
     /// on the board is the chain's own dating of a slot — and it stays for the arithmetic that is
     /// about this server: how stale a remembered read is, and what "today" means to the funnel.
     pub now_unix: u64,
+    /// How long a slot is taking on this chain right now, in seconds, when the ward has measured
+    /// it — two block times a few thousand slots apart, divided.
+    ///
+    /// `None` is "not measured here", and the payload then publishes the lease in slots and no
+    /// minutes at all. The nominal 0.4 s is not a fallback: it is the number that made the page say
+    /// twenty-three minutes about a lease that was running for nine.
+    pub seconds_per_slot: Option<f64>,
     /// What the chain says the clock read at each slot this payload names, by slot.
     ///
     /// Filled by `ward_chain::slot_times`, which asks the RPC for `getBlockTime` once per slot and
@@ -877,7 +884,7 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
         "week": w,
         "patients": board,
         "readable": true,
-        "policy": policy(Some(r.cases)),
+        "policy": policy(Some(r.cases), r.seconds_per_slot),
         "derivations": {
             "admitted": "patient accounts on chain, counted by admitted_slot",
             "in_beds": "open patients the ward holds a pack for, counted at this read. The \
@@ -998,13 +1005,29 @@ pub fn state_word(state: u8) -> &'static str {
 /// did not look", which is why the counts are null rather than zero there: an endpoint that
 /// answers `0` because it could not read the store looks exactly like a ward with no cases, and
 /// that zero would be read as a fact about the ward rather than about the answer.
-fn policy(cases: Option<&[crate::ward_case::CaseSummary]>) -> serde_json::Value {
+fn policy(
+    cases: Option<&[crate::ward_case::CaseSummary]>,
+    seconds_per_slot: Option<f64>,
+) -> serde_json::Value {
     let level = |want: &str| {
         cases.map(|c| c.iter().filter(|c| c.difficulty == want).count())
     };
     serde_json::json!({
         "beds": BEDS,
         "a_bed_frees_on": ["discharge", "death"],
+        // The lease, in the program's unit and in a person's. The slots never change; how long
+        // they take does — devnet was running at 0.166 s a slot on 17 ก.ย., which made this lease
+        // nine and a half minutes rather than the twenty-three the nominal rate implies. A ward
+        // that has not measured the rate says nothing about minutes.
+        "lease": {
+            "slots": vitals_program::LEASE_SLOTS,
+            "seconds_per_slot_now": seconds_per_slot,
+            "minutes_now": seconds_per_slot
+                .map(|s| (vitals_program::LEASE_SLOTS as f64 * s / 60.0).round() as u64),
+            "measured": "seconds a slot, from the block time of a recent slot and the block time \
+                         of one a few thousand slots earlier — both facts the chain publishes and \
+                         anybody can ask it for",
+        },
         "admissions_per_day": "as many as leave — a bed frees on discharge or death and on \
                                nothing else, so the rate is a consequence of how the ward is \
                                played rather than a number we choose. Read it off the census.",
@@ -1082,6 +1105,6 @@ pub fn ward_unavailable(source: &str, why: &str) -> serde_json::Value {
         "census": serde_json::Value::Null,
         "week": serde_json::Value::Null,
         // The rules are still true with no chain; the counts are not taken here, and say so.
-        "policy": policy(None),
+        "policy": policy(None, None),
     })
 }

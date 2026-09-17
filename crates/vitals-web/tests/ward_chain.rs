@@ -52,6 +52,8 @@ fn data_of(ix: &Instruction) -> Vec<u8> {
 }
 
 /// The account layout is shared with the program, and nothing at runtime checks that it still is.
+
+
 #[test]
 fn a_patient_account_decodes_into_exactly_what_the_census_counts() {
     let open = decode_patient(&a_patient(42, PATIENT_OPEN, 3, 100, 0)).expect("an open patient");
@@ -635,20 +637,20 @@ fn the_chain_decides_what_happened_to_her_and_in_what_order() {
     let chart = |h: &str| tapes.get(h).cloned();
 
     // Nobody has been yet.
-    let (fresh, n) = resumed(&sce, &[], &chart, 1_000_000, 1_000_000).expect("an unvisited patient");
+    let (fresh, n) = resumed(&sce, &[], &chart, 1_000_000, 1_000_000, &dated).expect("an unvisited patient");
     let (start, _) = replay_resume(&sce, &[]).expect("the scenario's start");
     assert_eq!(seen(&fresh), seen(&start));
     assert_eq!(n, 0);
 
     // Two shifts, anchored back to back. The chain of shifts equals the whole tape.
     let two = [anchored("one", 1_000_010), anchored("two", 1_000_020)];
-    let (rebuilt, n) = resumed(&sce, &two, &chart, 1_000_000, 1_000_020).expect("two shifts");
+    let (rebuilt, n) = resumed(&sce, &two, &chart, 1_000_000, 1_000_020, &dated).expect("two shifts");
     let whole: Vec<Step> = first.iter().chain(&second).cloned().collect();
     let (one_tape, _) = replay_resume(&sce, &whole).expect("one tape of both");
     // The chain of shifts equals the whole tape **plus the idle the chain's own gaps buy** — ten
     // slots from her admission to the first anchor and ten between the anchors. Not a tolerance: a
     // number, because every part of it is arithmetic a stranger repeats from two slot numbers.
-    let bought = vitals_replay::idle_seconds(10) * 2.0;
+    let bought = vitals_replay::idle_sim_seconds(10.0 * vitals_replay::SLOT_SECONDS) * 2.0;
     assert!((rebuilt.t_sec() - (one_tape.t_sec() + bought)).abs() < 1e-6,
             "the chain of shifts must equal the whole plus its own gaps — {} against {} + {bought}",
             rebuilt.t_sec(), one_tape.t_sec());
@@ -657,13 +659,13 @@ fn the_chain_decides_what_happened_to_her_and_in_what_order() {
     assert_eq!(n, 2);
 
     // A tape we hold but the chain never anchored is not part of her past.
-    let (same, _) = resumed(&sce, &two, &chart, 1_000_000, 1_000_020).expect("two shifts again");
+    let (same, _) = resumed(&sce, &two, &chart, 1_000_000, 1_000_020, &dated).expect("two shifts again");
     assert_eq!(seen(&same), seen(&rebuilt),
                "the store holds a third tape, and it changes nothing — only anchored work counts");
 
     // A tape the chain names and we cannot produce stops the rebuild, in words.
     let missing = [anchored("one", 1_000_010), anchored("gone", 1_000_020)];
-    let err = match resumed(&sce, &missing, &chart, 1_000_000, 1_000_020) {
+    let err = match resumed(&sce, &missing, &chart, 1_000_000, 1_000_020, &dated) {
         Err(e) => e,
         Ok(_) => panic!("a tape the chain names and we cannot produce must stop the rebuild"),
     };
@@ -674,15 +676,15 @@ fn the_chain_decides_what_happened_to_her_and_in_what_order() {
     // the last anchor to now — three spans, all of them chain arithmetic.
     let a_night = (10.0 * 3600.0 / SLOT_SECONDS) as u64;
     let apart = [anchored("one", 1_000_010), anchored("two", 1_000_010 + a_night)];
-    let (after_a_night, _) = resumed(&sce, &apart, &chart, 1_000_000, 1_000_010 + a_night).expect("a night apart");
+    let (after_a_night, _) = resumed(&sce, &apart, &chart, 1_000_000, 1_000_010 + a_night, &dated).expect("a night apart");
     assert_ne!(seen(&after_a_night), seen(&rebuilt),
                "ten hours between two anchors is time she spent untreated");
 
-    let (waiting, _) = resumed(&sce, &two, &chart, 1_000_000, 1_000_020 + a_night).expect("nobody since");
+    let (waiting, _) = resumed(&sce, &two, &chart, 1_000_000, 1_000_020 + a_night, &dated).expect("nobody since");
     assert_ne!(seen(&waiting), seen(&rebuilt),
                "and so is ten hours since the last stranger left");
 
-    let (admitted_early, _) = resumed(&sce, &two, &chart, 1_000_000 - a_night, 1_000_020).expect("admitted early");
+    let (admitted_early, _) = resumed(&sce, &two, &chart, 1_000_000 - a_night, 1_000_020, &dated).expect("admitted early");
     assert_ne!(seen(&admitted_early), seen(&rebuilt),
                "a patient nobody came to for ten hours after she was admitted is not the patient \
                 the first stranger would have found at once");
@@ -892,6 +894,18 @@ fn a_queued_face_may_be_replaced_and_an_admitted_one_may_not() {
 use vitals_web::ward::Pack as WardPack;
 use vitals_web::ward_chain::receipt;
 
+// ── the chain's clock, for tests written in slots ──────────────────────────
+/// The chain's clock, for tests written in slots.
+///
+/// Every gap below is a number of slots, and the ward no longer multiplies those by anything: it
+/// asks the chain when each block was produced. So the tests answer as a chain running at the
+/// nominal 0.4 s a slot would — the spans mean exactly what they always meant here, and what
+/// changed is where the ward gets them from. (The real devnet was at 0.166 s on 17 ก.ย., which is
+/// the whole reason this is asked rather than assumed.)
+fn dated(slot: u64) -> Option<i64> {
+    (slot != 0).then(|| 1_789_000_000 + (slot as i64 * 2) / 5)
+}
+
 /// **A shift can be checked by somebody who never played it.**
 ///
 /// The receipt is the ward's answer to "why should anyone believe you". It carries what the chain
@@ -925,7 +939,7 @@ fn a_shift_receipt_carries_what_the_chain_holds_and_what_anybody_can_recompute()
     };
     let shifts = [anchored("first", 1_000_010), anchored("mine", 1_000_020)];
 
-    let r = receipt(&sce, None, &shifts, &shifts[1], &chart, &pack, 1_000_000)
+    let r = receipt(&sce, None, &shifts, &shifts[1], &chart, &pack, 1_000_000, &dated)
         .expect("a receipt for a shift the chain names");
 
     assert_eq!(r["patient_id"], 42);
@@ -982,7 +996,7 @@ fn a_receipt_says_when_its_hash_names_more_than_one_shift() {
     second.signer = [9; 32];
     let shifts = [anchored("same", 1_000_010), second];
 
-    let r = receipt(&sce, None, &shifts, &shifts[0], &chart, &pack, 1_000_000).expect("a receipt");
+    let r = receipt(&sce, None, &shifts, &shifts[0], &chart, &pack, 1_000_000, &dated).expect("a receipt");
     assert_eq!(r["also_anchored"], 1,
                "one other shift on this ward has the same tape, and the receipt says so rather \
                 than presenting itself as the only one");
@@ -990,7 +1004,7 @@ fn a_receipt_says_when_its_hash_names_more_than_one_shift() {
     assert!(note.contains("same tape") || note.contains("same bytes"), "{note}");
 
     // A hash that names exactly one shift says nothing, because there is nothing to say.
-    let alone = receipt(&sce, None, &shifts[..1], &shifts[0], &chart, &pack, 1_000_000).unwrap();
+    let alone = receipt(&sce, None, &shifts[..1], &shifts[0], &chart, &pack, 1_000_000, &dated).unwrap();
     assert_eq!(alone["also_anchored"], 0);
     assert!(alone["also_anchored_note"].is_null());
 }
@@ -1099,7 +1113,7 @@ fn a_patient_nobody_came_back_to_is_closed_by_the_ward_and_not_by_the_next_stran
     // at 518 simulated seconds untended, which at 1:60 is a little under nine real hours.
     let admitted = 1_000_000u64;
     let nine_hours = (9.0 * 3600.0 / vitals_replay::SLOT_SECONDS) as u64;
-    let closed = died_unattended(&sce, &[], &chart, admitted, admitted + nine_hours)
+    let closed = died_unattended(&sce, &[], &chart, admitted, admitted + nine_hours, &dated)
         .expect("the chain reads")
         .expect("nine hours alone finishes EP1 — the whole point of the founder's ruling");
     assert!(closed.outcome.to_lowercase().contains("death"),
@@ -1113,7 +1127,7 @@ fn a_patient_nobody_came_back_to_is_closed_by_the_ward_and_not_by_the_next_stran
 
     // An hour is an hour. She is worse, and she is alive, and the ticker leaves her alone.
     let one_hour = (3600.0 / vitals_replay::SLOT_SECONDS) as u64;
-    assert!(died_unattended(&sce, &[], &chart, admitted, admitted + one_hour)
+    assert!(died_unattended(&sce, &[], &chart, admitted, admitted + one_hour, &dated)
                 .expect("the chain reads")
                 .is_none(),
             "a patient who is merely deteriorating is not a patient to close");
@@ -1123,11 +1137,11 @@ fn a_patient_nobody_came_back_to_is_closed_by_the_ward_and_not_by_the_next_stran
     // what moves is where the *next* span is measured from.
     let seen_at = admitted + one_hour;
     let recent = anchored("one", seen_at);
-    let after = died_unattended(&sce, std::slice::from_ref(&recent), &chart, admitted, seen_at + one_hour)
+    let after = died_unattended(&sce, std::slice::from_ref(&recent), &chart, admitted, seen_at + one_hour, &dated)
         .expect("the chain reads");
     assert!(after.is_none(), "an hour after a shift is an hour — two real hours has not killed her");
 
-    let long_after = died_unattended(&sce, &[recent], &chart, admitted, seen_at + nine_hours)
+    let long_after = died_unattended(&sce, &[recent], &chart, admitted, seen_at + nine_hours, &dated)
         .expect("the chain reads")
         .expect("nine hours after the last shift is nine hours");
     assert_eq!(long_after.since_slot, seen_at, "measured from the last anchor");
@@ -1136,7 +1150,7 @@ fn a_patient_nobody_came_back_to_is_closed_by_the_ward_and_not_by_the_next_stran
     // A tape the chain names and we have lost stops the reading. The alternative is closing a
     // patient on a chart nobody can rebuild, which is the one thing the ward may not do.
     let missing = anchored("never-stored", admitted + one_hour);
-    let err = died_unattended(&sce, &[missing], &|_| None, admitted, admitted + nine_hours * 2);
+    let err = died_unattended(&sce, &[missing], &|_| None, admitted, admitted + nine_hours * 2, &dated);
     assert!(err.is_err(),
             "her chart cannot be rebuilt, so the ward says so rather than closing her on a guess");
 }
@@ -1181,4 +1195,47 @@ fn a_receipt_address_this_ward_never_played_is_refused_without_reading_the_chain
     assert!(!worth_reading_the_chain_for(&store, "zzz"), "and a thing that is not a hash at all");
 
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// **The same real hour is the same patient, whatever the chain's slot rate.**
+///
+/// The ward turned a gap between two shifts into simulated time by multiplying the slot count by
+/// 0.4 s. Devnet spent 17 ก.ย. producing slots at 0.166 s — measured four ways against getBlockTime
+/// — so a patient left alone for ten real minutes was replayed as though twenty-four had passed,
+/// and the ticker's unattended deaths came 2.4× too early. Nobody would have seen it in a test:
+/// the arithmetic was self-consistent and wrong about the world.
+///
+/// Two chains here, one producing slots at 0.4 s and one at 0.166 s. The same *real* hour leaves
+/// the same patient on both, and the same *slot* gap leaves different ones — which is the whole
+/// change in one pair of assertions.
+#[test]
+fn the_same_real_hour_is_the_same_patient_on_any_chain() {
+    use vitals_web::ward_chain::resumed;
+    let sce = ep1();
+    let chart = |_: &str| Some(Vec::new());
+    let admitted = 1_000_000u64;
+
+    // Two clocks. `nominal` is 0.4 s a slot, `devnet` is what the chain was really doing.
+    let nominal = |slot: u64| (slot != 0).then(|| 1_789_000_000 + (slot as i64 * 2) / 5);
+    let devnet = |slot: u64| (slot != 0).then(|| 1_789_000_000 + (slot as i64 * 166) / 1000);
+
+    // One real hour on each chain: 9,000 slots at 0.4 s, 21,687 at 0.166 s.
+    let (a, _) = resumed(&sce, &[], &chart, admitted, admitted + 9_000, &nominal).expect("an hour");
+    let (b, _) = resumed(&sce, &[], &chart, admitted, admitted + 21_687, &devnet).expect("an hour");
+    assert!((a.t_sec() - b.t_sec()).abs() < 1.0,
+            "an hour is an hour: {} vs {} simulated seconds", a.t_sec(), b.t_sec());
+
+    // The same slot gap on the two chains is not the same span, and must not leave the same
+    // patient — this is the bug, stated as an inequality.
+    let (fast, _) = resumed(&sce, &[], &chart, admitted, admitted + 9_000, &devnet).expect("a gap");
+    assert!(fast.t_sec() < a.t_sec() - 1.0,
+            "nine thousand slots is an hour on one chain and twenty-five minutes on the other, and \
+             the patient has to be the one the clock says: {} vs {}", fast.t_sec(), a.t_sec());
+
+    // A slot this ward cannot date advances her by nothing rather than by a guess.
+    let (undated, _) = resumed(&sce, &[], &chart, admitted, admitted + 9_000, &|_| None)
+        .expect("a chain this ward cannot date");
+    assert_eq!(undated.t_sec(), 0.0,
+               "no block time, no idle time: the ticker asks again a minute later with the block \
+                times cached, and nothing false is written down in between");
 }

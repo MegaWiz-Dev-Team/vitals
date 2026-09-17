@@ -19,6 +19,18 @@ use vitals_replay::Step;
 use vitals_web::store::Store;
 use vitals_web::ward_chain::{keep_tape, tape_by_hash, StoredTape};
 
+// ── the chain's clock, for tests written in slots ──────────────────────────
+/// The chain's clock, for tests written in slots.
+///
+/// Every gap below is a number of slots, and the ward no longer multiplies those by anything: it
+/// asks the chain when each block was produced. So the tests answer as a chain running at the
+/// nominal 0.4 s a slot would — the spans mean exactly what they always meant here, and what
+/// changed is where the ward gets them from. (The real devnet was at 0.166 s on 17 ก.ย., which is
+/// the whole reason this is asked rather than assumed.)
+fn dated(slot: u64) -> Option<i64> {
+    (slot != 0).then(|| 1_789_000_000 + (slot as i64 * 2) / 5)
+}
+
 fn store(tag: &str) -> Store {
     let dir = std::env::temp_dir().join(format!("vitals-tape-{}-{tag}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -34,6 +46,8 @@ fn ep1() -> String {
 
 /// **The hand-over is the end of the shift**, and a step after it is a step onto a tape that has
 /// already been reduced.
+
+
 #[test]
 fn a_shift_that_has_been_handed_over_takes_no_more_steps() {
     use vitals_web::ward::may_step;
@@ -249,18 +263,18 @@ fn a_closing_shift_is_proven_to_be_the_empty_one() {
 
     // What the ticker built: resume to the last head, let the gap run, reduce an empty tape.
     let (mut st, _) = vitals_replay::resume(&sce, &[]).expect("scenario");
-    let r = vitals_replay::shift(&mut st, &[], died_at - admitted);
+    let r = vitals_replay::shift(&mut st, &[], (died_at - admitted) as f64 * vitals_replay::SLOT_SECONDS);
     let run_hash = vitals_replay::leaf(&vitals_replay::sce_hash(&sce), &[], &r);
     assert!(r.outcome.is_some(), "nine hours alone must finish her, or this proves nothing");
 
     let this = ShiftOnChain { patient_id: 1789528325, signer: [9; 32], slot: died_at, run_hash };
-    let found = closing_tape(&sce, &[], &|_| None, admitted, &this)
+    let found = closing_tape(&sce, &[], &|_| None, admitted, &this, &dated)
         .expect("the empty tape is what the chain's own numbers produce");
     assert!(found.is_empty(), "nobody did anything to her — that is what the record must say");
 
     // And it refuses when the numbers do not agree: a shift somebody played is not an empty one,
     // whoever signed it.
     let played = ShiftOnChain { run_hash: [7; 32], ..this };
-    assert!(closing_tape(&sce, &[], &|_| None, admitted, &played).is_none(),
+    assert!(closing_tape(&sce, &[], &|_| None, admitted, &played, &dated).is_none(),
             "an empty tape is filed only where the chain's own hash says it belongs");
 }

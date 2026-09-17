@@ -360,3 +360,23 @@ assert.ok(!/her|him|she|he\b/i.test(both[1]),
           `and it names no patient — it is about the shift, not about who is in the bed: ${both[1]}`);
 
 console.log('shift_logic: ok (and the two exits say what they do)');
+
+// ── how long the head is yours ───────────────────────────────────────────────
+//
+// The program holds a lease for 3,450 slots and the page said "23 minutes", because 3,450 × 0.4 s
+// is 23 minutes. Devnet was producing slots at 0.166 s on 17 ก.ย., so the lease was nine and a
+// half — which is when the director's abandoned bed freed itself, nine minutes before the page
+// said it would.
+//
+// The ward measures the rate and publishes the minutes; this page repeats them. A ward that has
+// not measured says nothing, and so does the page: a sentence with no number in it is better than
+// a number that is wrong about the chain it is describing.
+const { leaseWords } = new Function([grab('leaseWords'), 'return { leaseWords };'].join('\n'))();
+
+assert.equal(leaseWords(10), 'The lease runs about 10 minutes today.');
+assert.equal(leaseWords(23), 'The lease runs about 23 minutes today.');
+assert.equal(leaseWords(null), '', 'not measured, not said');
+assert.equal(leaseWords(0), '', 'and a zero is a measurement that failed, not a lease of no time');
+assert.equal(leaseWords(undefined), '');
+
+console.log('shift_logic: ok (and the lease is the one the chain is keeping today)');

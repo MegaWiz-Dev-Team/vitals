@@ -144,13 +144,16 @@ pub const IDLE_SIM_PER_REAL: f64 = 1.0 / 60.0;
 // `vitals-web`'s `an_unattended_patient_dies_when_the_engine_says_she_does` walks all sixteen
 // cases and holds both ends of the published range.
 
-/// Simulated seconds to advance for a gap of `slots` between two shifts.
+/// Simulated seconds to advance for a gap of `real` seconds between two shifts.
 ///
-/// Pure, and derived from a number the chain records — so a stranger who reads the two shift slots
-/// off the chain computes the same idle time we did, which is the whole reason the gap is measured
-/// in slots.
-pub fn idle_seconds(slots: u64) -> f64 {
-    (slots as f64) * SLOT_SECONDS * IDLE_SIM_PER_REAL
+/// Pure, and derived from two numbers the chain records — the block times of the two slots, which
+/// are facts about when those blocks were produced rather than a count multiplied by a nominal
+/// rate. It was that count: `slots × 0.4 s`, on a devnet producing slots at 0.166 s, which made
+/// every gap 2.4× longer than it was and killed unattended patients that much sooner.
+///
+/// A negative span is a clock disagreeing with itself, never a patient getting younger.
+pub fn idle_sim_seconds(real: f64) -> f64 {
+    if real <= 0.0 { 0.0 } else { real * IDLE_SIM_PER_REAL }
 }
 
 /// Let `seconds` of simulated time pass with nobody in the room.
@@ -194,13 +197,13 @@ pub fn pass_idle(st: &mut SceState, seconds: f64) {
 /// stay, so this reports only the ones this tape added. A stranger is scored on what they did, not
 /// on what they walked into. `outcome` is the stay's, because an outcome is a fact about the
 /// patient and the shift that reaches it is the shift that reached it.
-pub fn shift(st: &mut SceState, tape: &[Step], idle_slots: u64) -> Replay {
+pub fn shift(st: &mut SceState, tape: &[Step], idle_real_seconds: f64) -> Replay {
     // Her body first, then the shift. The idle time is the gap the chain records between the last
     // anchored shift and this one, so it is not ours to choose at play time — and it is applied
     // here, as the first thing, because a stranger's first action must land on the patient they
     // are actually looking at.
     //
-    pass_idle(st, idle_seconds(idle_slots));
+    pass_idle(st, idle_sim_seconds(idle_real_seconds));
     step_through(st, tape)
 }
 

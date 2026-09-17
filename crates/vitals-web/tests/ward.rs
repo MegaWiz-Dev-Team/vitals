@@ -37,7 +37,7 @@ fn read<'a>(
 ) -> vitals_web::ward::WardRead<'a> {
     vitals_web::ward::WardRead {
         patients, shifts, packs, since, as_of_slot, now_unix: 1_760_000_000, source: "devnet:ABC",
-        times: nothing_dated(),
+        times: nothing_dated(), seconds_per_slot: None,
         // Every tape the chain names is here, which is the ward working. The one test about the
         // other case fills this in itself.
         unrebuildable: nothing_lost(),
@@ -645,7 +645,7 @@ fn the_globe_reads_every_field_it_renders() {
         cases: &[],
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 4_000, now_unix: now, source: "devnet:ABC",
-        unrebuildable: nothing_lost(), times: &times,
+        unrebuildable: nothing_lost(), times: &times, seconds_per_slot: None,
     });
 
     assert!(v["census"]["on_ward"].is_u64(),
@@ -692,7 +692,7 @@ fn the_globe_reads_every_field_it_renders() {
         cases: &[],
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: lease_ends + 1, now_unix: now, source: "devnet:ABC",
-        unrebuildable: nothing_lost(), times: &times,
+        unrebuildable: nothing_lost(), times: &times, seconds_per_slot: None,
     });
     let ploy = expired["patients"].as_array().unwrap().iter()
         .find(|p| p["patient_id"] == 7).cloned().unwrap();
@@ -901,6 +901,7 @@ fn every_time_the_ward_publishes_is_a_slot_or_a_z() {
             since: Some(1), as_of_slot: 4_000, now_unix: 1_760_000_000, source: "devnet:ABC",
         unrebuildable: nothing_lost(),
         cases: &[],
+        seconds_per_slot: None,
             // Her admission, her discharge, and the slot the lease on patient 7 was taken in:
             // every slot this payload turns into a time, so the walk below has one of each to
             // look at rather than a page of nulls.
@@ -1023,7 +1024,7 @@ fn a_patient_the_ward_cannot_describe_holds_no_bed() {
         cases: &[],
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
-        unrebuildable: nothing_lost(), times: nothing_dated(),
+        unrebuildable: nothing_lost(), times: nothing_dated(), seconds_per_slot: None,
     });
 
     assert_eq!(v["census"]["on_ward"], 3,
@@ -1076,7 +1077,7 @@ fn the_payload_publishes_how_many_are_in_beds_beside_how_many_are_on_the_chain()
         cases: &[],
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
-        unrebuildable: nothing_lost(), times: nothing_dated(),
+        unrebuildable: nothing_lost(), times: nothing_dated(), seconds_per_slot: None,
     });
 
     assert_eq!(v["census"]["on_ward"], 3, "the census is what the chain says, unchanged");
@@ -1497,7 +1498,7 @@ fn a_time_on_the_board_is_the_slots_own_block_time() {
     let v = ward_payload(&vitals_web::ward::WardRead {
         patients: &patients, shifts: &shifts, packs: &packs, cases: &[],
         unrebuildable: nothing_lost(), since: None, as_of_slot: as_of,
-        now_unix: now, source: "devnet:ABC", times: &times,
+        now_unix: now, source: "devnet:ABC", times: &times, seconds_per_slot: None,
     });
     let row = |id: u64| {
         v["patients"].as_array().unwrap().iter().find(|p| p["patient_id"] == id).unwrap().clone()
@@ -1597,7 +1598,8 @@ fn a_board_is_served_while_the_next_one_is_read() {
 /// which is the one that was wrong.
 #[test]
 fn the_lease_says_how_long_it_is_today_or_says_nothing() {
-    let v = ward_payload(&read(&[], &[], &nobody(), None, 100));
+    let packs = nobody();
+    let v = ward_payload(&read(&[], &[], &packs, None, 100));
     let p = &v["policy"]["lease"];
     assert_eq!(p["slots"], vitals_program::LEASE_SLOTS,
                "the program's own constant, which is the same on every chain");
@@ -1607,16 +1609,17 @@ fn the_lease_says_how_long_it_is_today_or_says_nothing() {
             "and it says how the measurement is made, so a reader can make it themselves: {p}");
 
     // A chain running at devnet's real rate on 17 ก.ย.
-    let mut r = read(&[], &[], &nobody(), None, 100);
+    let mut r = read(&[], &[], &packs, None, 100);
     r.seconds_per_slot = Some(0.166);
     let fast = ward_payload(&r);
-    assert_eq!(fast["policy"]["lease"]["minutes_now"], 9,
-               "3,450 slots at 0.166 s is nine and a half minutes, and the page may not say 23");
+    assert_eq!(fast["policy"]["lease"]["minutes_now"], 10,
+               "3,450 slots at 0.166 s is nine and a half minutes — which a page says as about \
+                ten, and may not say as twenty-three");
     assert_eq!(fast["policy"]["lease"]["seconds_per_slot_now"], 0.166);
 
     // And at the nominal rate the old number is right — which is the point: it is a measurement,
     // not a correction.
-    let mut r = read(&[], &[], &nobody(), None, 100);
+    let mut r = read(&[], &[], &packs, None, 100);
     r.seconds_per_slot = Some(0.4);
     assert_eq!(ward_payload(&r)["policy"]["lease"]["minutes_now"], 23);
 }

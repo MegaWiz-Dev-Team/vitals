@@ -553,7 +553,9 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
     }
 
     let times = slot_times(chain, store, &crate::ward::slots_to_date(&patients, &shifts));
+    let rate = seconds_per_slot(chain, store, as_of);
     let mut v = crate::ward::ward_payload(&crate::ward::WardRead {
+        seconds_per_slot: rate,
         patients: &patients,
         shifts: &shifts,
         packs: &packs(store),
@@ -959,6 +961,50 @@ impl WardChain {
 }
 
 /// Where a patient's pack lives once the factory has queued her.
+/// How long a slot is taking on this chain, in seconds, measured between two block times.
+///
+/// Two lookups a few thousand slots apart, both cached for ever after the first read, so this
+/// costs one extra RPC call a deploy and nothing after that. `None` when either block cannot be
+/// dated — and then nothing on the ward says a number of minutes, because the only other way to
+/// get one is to multiply by a rate the chain is not keeping to.
+///
+/// Five thousand slots is the window: long enough that a few skipped slots do not move it, short
+/// enough that it is this chain today rather than this chain last week. Devnet answered 0.166 s
+/// over 1,000, 5,000, 20,000 and 60,000 slots on 17 ก.ย. — the window is not delicate.
+pub const RATE_WINDOW_SLOTS: u64 = 5_000;
+
+pub fn seconds_per_slot(chain: &WardChain, store: &crate::store::Store, now_slot: u64) -> Option<f64> {
+    let then = now_slot.checked_sub(RATE_WINDOW_SLOTS)?;
+    let times = slot_times(chain, store, &[then, now_slot].into_iter().collect());
+    let (a, b) = (times.get(&then)?, times.get(&now_slot)?);
+    let span = (b - a) as f64;
+    (span > 0.0).then(|| span / RATE_WINDOW_SLOTS as f64)
+}
+
+/// The chain's time for one slot, asked and kept. For the paths that hold a chain.
+pub fn dater<'a>(
+    chain: &'a WardChain,
+    store: &'a crate::store::Store,
+) -> impl Fn(u64) -> Option<i64> + 'a {
+    move |slot| {
+        if slot == 0 {
+            return None;
+        }
+        slot_times(chain, store, &[slot].into_iter().collect()).get(&slot).copied()
+    }
+}
+
+/// The chain's time for one slot if this ward has already asked for it. For the paths that have a
+/// store and no chain — a session restored at boot, a shift being reduced while the RPC is down.
+///
+/// `None` is "not known here", and a span with an unknown end does not advance the patient at all.
+/// That is the conservative direction on purpose: a gap counted as zero leaves her as the last
+/// shift left her, and the next read — the ticker's, a minute later, with the block times cached by
+/// then — advances her properly. A gap *guessed* at would write a deterioration nobody can check.
+pub fn cached_dater(store: &crate::store::Store) -> impl Fn(u64) -> Option<i64> + '_ {
+    move |slot| (slot != 0).then(|| store.get::<i64>(SLOT_TIMES, &slot.to_string())).flatten()
+}
+
 pub const PERSONA_STORE: &str = "ward_pack";
 
 /// The packs the ward knows about, by patient id.
@@ -1398,12 +1444,17 @@ pub fn closing_tape(
     tape_of: &dyn Fn(&str) -> Option<Vec<vitals_replay::Step>>,
     admitted_slot: u64,
     this: &crate::ward::ShiftOnChain,
+    dated: &dyn Fn(u64) -> Option<i64>,
 ) -> Option<Vec<vitals_replay::Step>> {
     let earlier: Vec<crate::ward::ShiftOnChain> =
         before.iter().filter(|s| s.slot < this.slot).copied().collect();
     let since = earlier.iter().map(|s| s.slot).max().unwrap_or(admitted_slot).max(admitted_slot);
-    let (mut st, _) = resumed(sce_json, &earlier, tape_of, admitted_slot, since).ok()?;
-    let r = vitals_replay::shift(&mut st, &[], this.slot.saturating_sub(since));
+    let (mut st, _) = resumed(sce_json, &earlier, tape_of, admitted_slot, since, dated).ok()?;
+    let gap = match (dated(since), dated(this.slot)) {
+        (Some(a), Some(b)) if b > a => (b - a) as f64,
+        _ => 0.0,
+    };
+    let r = vitals_replay::shift(&mut st, &[], gap);
     let would_be = vitals_replay::leaf(&vitals_replay::sce_hash(sce_json), &[], &r);
     (would_be == this.run_hash).then(Vec::new)
 }
@@ -1465,7 +1516,8 @@ pub fn repair_tapes(
                 // The ward's own closing shift: no steps, and the chain's numbers prove it.
                 let sce = sce.as_deref()?;
                 let this = shifts.iter().find(|s| hex32(&s.run_hash) == hash)?;
-                let tape = closing_tape(sce, &shifts, &|h| tape_by_hash(store, h), p.admitted_slot, this)?;
+                let tape = closing_tape(sce, &shifts, &|h| tape_by_hash(store, h), p.admitted_slot,
+                                        this, &dater(chain, store))?;
                 keep_tape(store, &StoredTape {
                     patient_id: p.patient_id,
                     run_hash: hash.clone(),
@@ -1577,6 +1629,7 @@ fn reap(
             &|h| tape_by_hash(store, h),
             p.admitted_slot,
             now_slot,
+            &dater(chain, store),
         );
         let closing = match found {
             Ok(Some(u)) => u,
@@ -1938,7 +1991,18 @@ pub fn resumed(
     tape_of: &dyn Fn(&str) -> Option<Vec<vitals_replay::Step>>,
     admitted_slot: u64,
     now_slot: u64,
+    dated: &dyn Fn(u64) -> Option<i64>,
 ) -> Result<(vitals_sce::runtime::SceState, usize), String> {
+    // How long she was alone between two slots, in real seconds, as the chain dates them. It was
+    // the slot count times 0.4 s — and devnet was producing slots at 0.166 s on 17 ก.ย., so every
+    // gap was replayed 2.4× longer than it lasted and unattended patients died that much sooner.
+    // A span either end of which this ward cannot date advances her by nothing: see `cached_dater`.
+    let span = |from: u64, to: u64| -> f64 {
+        match (dated(from), dated(to)) {
+            (Some(a), Some(b)) if b > a => (b - a) as f64,
+            _ => 0.0,
+        }
+    };
     let mut ordered: Vec<&crate::ward::ShiftOnChain> = shifts.iter().collect();
     ordered.sort_by_key(|s| s.slot);
 
@@ -1954,12 +2018,12 @@ pub fn resumed(
                 s.slot
             )
         })?;
-        vitals_replay::shift(&mut st, &steps, s.slot.saturating_sub(since));
+        vitals_replay::shift(&mut st, &steps, span(since, s.slot));
         since = s.slot;
     }
 
     // What has happened to her since the last anchor: nothing anybody did, and time.
-    vitals_replay::pass_idle(&mut st, vitals_replay::idle_seconds(now_slot.saturating_sub(since)));
+    vitals_replay::pass_idle(&mut st, vitals_replay::idle_sim_seconds(span(since, now_slot)));
     Ok((st, ordered.len()))
 }
 
@@ -1995,14 +2059,22 @@ pub fn died_unattended(
     tape_of: &dyn Fn(&str) -> Option<Vec<vitals_replay::Step>>,
     admitted_slot: u64,
     now_slot: u64,
+    dated: &dyn Fn(u64) -> Option<i64>,
 ) -> Result<Option<Unattended>, String> {
     // Where her chart stops: the last shift anybody anchored, or her admission if nobody has.
     let since = shifts.iter().map(|s| s.slot).max().unwrap_or(admitted_slot).max(admitted_slot);
-    let (mut st, _) = resumed(sce_json, shifts, tape_of, admitted_slot, since)?;
+    let (mut st, _) = resumed(sce_json, shifts, tape_of, admitted_slot, since, dated)?;
+    // The slots stay on the record — they are the chain's own name for the span, and what a
+    // stranger re-derives it from. What the engine is handed is what those two blocks say the span
+    // lasted in seconds.
     let idle_slots = now_slot.saturating_sub(since);
+    let idle_real = match (dated(since), dated(now_slot)) {
+        (Some(a), Some(b)) if b > a => (b - a) as f64,
+        _ => 0.0,
+    };
 
     // The span itself, as a shift with no steps in it — which is what happened.
-    let replay = vitals_replay::shift(&mut st, &[], idle_slots);
+    let replay = vitals_replay::shift(&mut st, &[], idle_real);
     let Some(outcome) = replay.outcome.clone() else { return Ok(None) };
     let finished = vitals_progress::record::Outcome::parse(&outcome).is_some_and(|o| {
         matches!(
@@ -2233,6 +2305,11 @@ pub fn refusal(err: &str) -> Option<&'static str> {
 /// **The harm is this shift's own.** `vitals_replay::shift` reports only what this tape added, so
 /// a stranger who walked into a patient somebody else hurt is answerable for what they did and
 /// nothing else.
+// Eight arguments, and every one of them is a different fact this function is not allowed to go
+// and find for itself: the case, the mark sheet, her chain, this shift, the tapes, the pack, the
+// slot she was admitted at, and how to date a slot. A struct here would be the same eight fields
+// with a name, and the callers would fill it in the same order.
+#[allow(clippy::too_many_arguments)]
 pub fn receipt(
     sce_json: &str,
     rubric_json: Option<&str>,
@@ -2241,6 +2318,7 @@ pub fn receipt(
     tape_of: &dyn Fn(&str) -> Option<Vec<vitals_replay::Step>>,
     pack: &crate::ward::Pack,
     admitted_slot: u64,
+    dated: &dyn Fn(u64) -> Option<i64>,
 ) -> Result<serde_json::Value, String> {
     let hash = hex32(&this.run_hash);
     let tape = tape_of(&hash).ok_or_else(|| {
@@ -2252,8 +2330,8 @@ pub fn receipt(
     // this one, and the idle time between them.
     let before: Vec<crate::ward::ShiftOnChain> =
         shifts.iter().filter(|s| s.slot < this.slot).copied().collect();
-    let (mut st, played) = resumed(sce_json, &before, tape_of, admitted_slot, this.slot)?;
-    let r = vitals_replay::shift(&mut st, &tape, 0);
+    let (mut st, played) = resumed(sce_json, &before, tape_of, admitted_slot, this.slot, dated)?;
+    let r = vitals_replay::shift(&mut st, &tape, 0.0);
 
     let det = rubric_json.and_then(|rj| vitals_osce::det_for_run(sce_json, &tape, rj).ok());
     // The rows of the mark sheet, so a stranger can see what the case paid for and what it did not.

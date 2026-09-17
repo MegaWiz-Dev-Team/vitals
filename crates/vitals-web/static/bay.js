@@ -3959,9 +3959,21 @@ function shiftLine(bed, shift, before, g){
 async function wardBed(){
   try{
     const w=await (await fetch('/api/ward')).json();
+    /* How long the lease runs *today*. The program counts in slots — 3,450 of them — and how long
+       that takes is the chain's business: devnet was at 0.166 s a slot on 17 ก.ย., which made the
+       lease nine and a half minutes while every sentence on this page said twenty-three. The ward
+       measures it and publishes it; this page repeats it and works nothing out. */
+    LEASEMIN=(w.policy&&w.policy.lease&&w.policy.lease.minutes_now)||null;
     const her=(w.patients||[]).find(p=>String(p.patient_id)===String(WARD));
     return her&&her.bed?her.bed:null;
   }catch(e){ return null; }
+}
+let LEASEMIN=null;
+/* What the ward says about how long a head is held for, or nothing at all.
+   Never a fixed number: the only honest sentence is the one the chain's own rate produces, and a
+   ward that has not measured its rate says nothing rather than twenty-three minutes. */
+function leaseWords(minutes){
+  return minutes ? 'The lease runs about '+minutes+' minutes today.' : '';
 }
 
 /* What the one button under the bedside card says.
@@ -4263,7 +4275,7 @@ async function takeShift(){
   /* Two short sentences rather than one long one: this is the line a stranger reads at the moment
      the controls open, and `plain_words.rs` holds every sentence on the strip to twelve words. */
   wardSay('the head is yours until you hand over. What you do here is on '+pro().p+
-          ' chart, under your key.');
+          ' chart, under your key. '+leaseWords(LEASEMIN));
   armTheExit();
 }
 

@@ -386,6 +386,7 @@ impl Session {
         saved: Saved,
         prior: Option<&WardRebuild>,
         tape_of: &dyn Fn(&str) -> Option<Vec<Step>>,
+        dated: &dyn Fn(u64) -> Option<i64>,
     ) -> Result<Session, String> {
         let sce_json = std::fs::read_to_string(scenario_path(&saved.ep)).map_err(|e| e.to_string())?;
         let want = hex(&sce_hash(&sce_json));
@@ -403,8 +404,12 @@ impl Session {
                     tape_of,
                     p.admitted_slot,
                     w.taken_slot,
+                    // Whatever this ward has already asked the chain about. A restored session is
+                    // rebuilt with no RPC in hand; a slot it cannot date advances her by nothing,
+                    // and the next read that can date it does.
+                    dated,
                 )?;
-                let r = vitals_replay::shift(&mut st, &saved.tape, 0);
+                let r = vitals_replay::shift(&mut st, &saved.tape, 0.0);
                 (st, r)
             }
             (Some(w), None) => {
@@ -2049,6 +2054,7 @@ fn open_shift(
         &|h| ward_chain::tape_by_hash(store, h),
         her.admitted_slot,
         now_slot,
+        &ward_chain::dater(&chain, store),
     )?;
 
     let head = hex(&her.head);
@@ -2385,6 +2391,7 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
         return bad("this ward does not hold that case, so this shift cannot be replayed");
     };
     let admitted = chain.patient(patient_id).ok().flatten().map(|p| p.admitted_slot).unwrap_or(0);
+    let dated = ward_chain::dater(&chain, store);
     match ward_chain::receipt(
         &sce_json,
         ward_chain::rubric_for(store, &root, &pack.case).as_deref(),
@@ -2393,6 +2400,7 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
         &|h| ward_chain::tape_by_hash(store, h),
         &pack,
         admitted,
+        &dated,
     ) {
         Ok(mut v) => {
             // The chain's own name for this shift, when the address was one or when this server
@@ -3073,7 +3081,8 @@ fn main() {
         // that is. Read here rather than inside `restore`, so the rebuild stays a function of its
         // arguments and this loop is the only thing that talks to a cluster.
         let prior = saved.ward.as_ref().and_then(|w| ward_rebuild(&store, w.patient_id));
-        match Session::restore(saved, prior.as_ref(), &|h| ward_chain::tape_by_hash(&store, h)) {
+        match Session::restore(saved, prior.as_ref(), &|h| ward_chain::tape_by_hash(&store, h),
+                               &ward_chain::cached_dater(&store)) {
             Ok(s) => {
                 restored.insert(id, s);
             }
@@ -5265,8 +5274,9 @@ fn main() {
                                 let r = match rebuild.as_ref().map(|b| ward_chain::resumed(
                                     &s.sce_json, &b.shifts,
                                     &|h| ward_chain::tape_by_hash(&store, h),
-                                    b.admitted_slot, w.taken_slot)) {
-                                    Some(Ok((mut st, _))) => vitals_replay::shift(&mut st, &s.tape, 0),
+                                    b.admitted_slot, w.taken_slot,
+                                    &ward_chain::cached_dater(&store))) {
+                                    Some(Ok((mut st, _))) => vitals_replay::shift(&mut st, &s.tape, 0.0),
                                     Some(Err(e)) => { drop(map);
                                         let _ = req.respond(json_code(
                                             serde_json::json!({ "error": e }), 409));
@@ -5521,9 +5531,10 @@ fn main() {
                     &|h| ward_chain::tape_by_hash(&store, h),
                     rebuild.admitted_slot,
                     w.taken_slot,
+                    &ward_chain::cached_dater(&store),
                 );
                 let r = match base {
-                    Ok((mut st, _)) => vitals_replay::shift(&mut st, &s.tape, 0),
+                    Ok((mut st, _)) => vitals_replay::shift(&mut st, &s.tape, 0.0),
                     Err(e) => {
                         let _ = req.respond(json_code(serde_json::json!({ "error": e }), 409));
                         continue;
