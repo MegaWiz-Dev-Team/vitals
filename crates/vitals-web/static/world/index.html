@@ -140,6 +140,10 @@ canvas#globe.dragging{cursor:grabbing}
 .panel .k{font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.1em;color:var(--ink-3);text-transform:uppercase}
 .panel .empty{color:var(--ink-2);font-size:.92rem;margin:.6rem 0 0}
 .plist{list-style:none;margin:.8rem 0 0;padding:0;display:flex;flex-direction:column;gap:.6rem}
+/* A group's own heading inside the list: which of the two this run of rows is, and how many. */
+.plist .ghead{font-family:"IBM Plex Mono",monospace;font-size:.64rem;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-3);margin:.3rem 0 -.2rem}
+.plist .ghead:first-child{margin-top:0}
 .prow{position:relative;display:grid;grid-template-columns:56px minmax(0,1fr) auto;grid-template-areas:"pic body act";gap:.15rem .6rem;align-items:center;padding:.5rem .6rem;border:1px solid var(--rule-soft);border-radius:.6rem;background:var(--ground);min-width:0}
 .prow>img,.prow>.ph{grid-area:pic;align-self:center}.prow>div{grid-area:body;min-width:0}
 .prow>a.take{grid-area:act;justify-self:end;align-self:center;white-space:nowrap}
@@ -758,6 +762,27 @@ function canTakeShift(p) {
    `in beds` and `on shift now` are the ward's own and are always there — nobody has to be admitted
    for "0 in beds" to be true. The chain's three are left out when the census does not carry them,
    because a number nobody counted is not a zero. */
+/* A country's patients, in the two groups a reader actually distinguishes.
+   The ring on the globe counts beds; a stay that ended is not a bed, and listing the two together
+   made the ring disagree with the list under it (founder, 18 ก.ย.: South Korea ringed 1 and listed
+   two). `inBeds` is the same function the beds panel uses, so the first group is the ring's own
+   number by construction rather than by a second count that could drift from it. */
+function countryGroups(list) {
+  const beds = inBeds(list || []);
+  const held = new Set(beds.map(p => p.patient_id));
+  return { inBeds: beds, left: (list || []).filter(p => !held.has(p.patient_id)) };
+}
+
+/* The panel's heading: the country, and both counts where there are both. The half that is zero is
+   left out — a country with nobody in a bed is not "0 in beds", it is a country whose patients
+   have been and gone. */
+function countryHeading(name, inBedsN, leftN) {
+  const parts = [name];
+  if (inBedsN) parts.push(inBedsN === 1 ? "1 in a bed" : `${inBedsN} in beds`);
+  if (leftN) parts.push(`${leftN} left`);
+  return parts.join(" · ");
+}
+
 /* Who is waiting for the door, by country, for the globe's second kind of ring.
    A waiting patient is not in a bed and must not be counted in the ring that counts beds — the
    two rings mean different things and the legend says so. A country the atlas cannot place is left
@@ -895,16 +920,37 @@ function renderDoctors(id) {
 function renderPanel(id) {
   selected = id;
   const list = visible(patients, filter).filter(p => placed(p) === id);
+  const groups = countryGroups(list);
+  const queued = DOOR === "preview"
+    ? WAITINGWHO.filter(w => countryId(w.country) === id && visibleLevel(w, filter))
+    : [];
   $("pk").textContent = nameOf[id] ? "country" : "";
-  $("ptitle").textContent = nameOf[id] || "Unknown";
+  /* Both counts, so the heading agrees with the ring beside it: the ring counts beds, and a stay
+     that ended is not a bed (founder, 18 ก.ย. — South Korea ringed 1 and listed two). */
+  $("ptitle").textContent = countryHeading(nameOf[id] || "Unknown",
+                                           groups.inBeds.length, groups.left.length);
   renderDoctors(id);
   $("plist").textContent = "";
-  if (!list.length) {
+  if (!list.length && !queued.length) {
     $("pempty").hidden = false;
     $("pempty").textContent = "Nobody from here on the ward right now" + (Object.values(filter).every(v => !v) ? " — every difficulty is switched off." : ".");
   } else {
     $("pempty").hidden = true;
-    for (const p of list) $("plist").appendChild(row(p));
+    /* Who is here now, then who has been here — and, while the ward is opening, who is queued for
+       a bed in it. Each group announces itself and its own count; a group with nobody in it is not
+       drawn at all rather than drawn empty. */
+    for (const [label, rows] of [["In beds", groups.inBeds],
+                                 ["Waiting for the door", queued],
+                                 ["Left the ward", groups.left]]) {
+      if (!rows.length) continue;
+      const head = document.createElement("li");
+      head.className = "ghead";
+      head.textContent = `${label} · ${rows.length}`;
+      $("plist").appendChild(head);
+      for (const p of rows) {
+        $("plist").appendChild(label === "Waiting for the door" ? waitingRow(p) : row(p));
+      }
+    }
   }
   $("panel").classList.add("open");
 }
