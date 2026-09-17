@@ -702,3 +702,68 @@ fn the_ask_bar_is_pinned_whatever_the_case_brought() {
     assert!(chips.contains("overflow-y:auto"),
             "a capped tray that does not scroll is a tray with its last drug hidden: {chips:?}");
 }
+
+/// **Before the head is taken, the page is a chart to read.**
+///
+/// From the director's UX pass on staging, 17 ก.ย.: a stranger who has not taken the shift is shown
+/// a red "⚠ nothing given yet", a NEWS2 banner reading HIGH RISK · emergency response, and a clock
+/// at 0:00. Every one of those is about an action that has not started — they are true of a shift
+/// in progress and are alarms about nothing before one. The page's own words already say what to do
+/// ("take the shift to treat her"); an alarm beside them says the opposite, that something is wrong
+/// and being ignored.
+///
+/// A review run is not in this state: its run is live from the first paint, so `untaken` is never
+/// on it and the monitor reads as it does at any bedside.
+#[test]
+fn nothing_alarms_before_the_shift_is_taken() {
+    let css = bay_css();
+    for hidden in ["#nudge", "#newsbox", "#clock"] {
+        let rule = css
+            .split("html.is-ward.untaken")
+            .any(|r| r.split('{').next().unwrap_or("").contains(hidden.trim_start_matches('#'))
+                     || r.starts_with(&format!(" {hidden}"))
+                     || r.starts_with(&format!(",{hidden}")));
+        assert!(rule || css.contains(&format!("html.is-ward.untaken {hidden}")),
+                "{hidden} is shown to somebody who has not taken the shift, and it is an alarm \
+                 about an action that has not started");
+    }
+
+    // And the empty-chart nudge is not even written before the head is taken: it is a cue for
+    // somebody treating a patient, not for somebody reading about one.
+    let js = bay_js();
+    let paint = without_comments(&body_of(&js, "paint"));
+    let nudge = paint.split("#nudge").nth(1).unwrap_or("").split(';').next().unwrap_or("");
+    assert!(nudge.contains("takeFirst") || nudge.contains("untaken"),
+            "the nudge does not ask whether this shift has been taken: {nudge}");
+}
+
+/// **The practice controls are the bay's, and a shift is not practice.**
+///
+/// "hold" stops the clock and "easy" picks how fast the patient deteriorates. Both are right for a
+/// learner practising alone and neither is a thing anybody does to a patient on a public ward: the
+/// clock is a lease on the chain and the deterioration is what the case says it is. They sat in the
+/// ward's bar until 17 ก.ย., beside a LIVE pill and a second copy of the wordmark that the page's
+/// own corner already carries.
+///
+/// A **review run** keeps them: it is practice, on nobody, and pausing to read is the whole point.
+/// So this is a rule about a shift rather than about the host.
+#[test]
+fn a_shift_does_not_carry_the_practice_controls() {
+    let css = bay_css();
+    for control in ["#pause", "#diff"] {
+        assert!(css.contains(&format!("html.is-ward:not(.is-review) {control}"))
+                    || css.contains(&format!("{control},")) && css.contains("is-review"),
+                "{control} is offered on a shift: the clock is a lease and the deterioration is \
+                 the case's");
+    }
+    assert!(css.contains("html.is-ward .bar .brand"),
+            "the wordmark is in the page's corner and in the bay's bar, so a shift page says it \
+             twice");
+
+    // The LIVE pill is the bay's own word for a run in progress. On a shift the strip says what is
+    // happening in words a stranger reads, and the pill is one more thing to decode.
+    let js = bay_js();
+    let paint = without_comments(&body_of(&js, "paint"));
+    assert!(paint.contains("WARDSURFACE?''") || paint.contains("!WARDSURFACE"),
+            "the LIVE pill is still drawn on the ward host: {paint}");
+}
