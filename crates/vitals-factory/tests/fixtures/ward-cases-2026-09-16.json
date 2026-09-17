@@ -1,5 +1,5 @@
 {
- "_note": "A snapshot shaped like the ward's case door, GET /api/ward/cases (0543ed7): {cases:[...], derivations:{...}}. Each row is archetype, case_id, country (alpha-3 or null), difficulty, endemic, provisional, title, version and — the ward owner's addition of 16 Sep — patient {age, sex} spelled male/female, absent on a case with no stated patient (which fits any adult). The eighteen cases are invented for the tests; the real door lists sixty-six.",
+ "_note": "A snapshot shaped like the ward's case door, GET /api/ward/cases (0543ed7): {cases:[...], derivations:{...}}. Each row is archetype, case_id, country (alpha-3 or null), difficulty, endemic, provisional, title, version and — the ward owner's addition of 16 Sep — patient {age, sex} spelled male/female, absent on a case with no stated patient (which fits any adult). The eighteen cases are invented for the tests; the real door lists sixty-six. Since 00034 each row also carries `withdrawn`; the door answers `?placeable=1` with the rows that are not, and the factory asks it that way. One withdrawn row is kept here to show it is never chosen even if it arrives.",
  "cases": [
   {
    "archetype": "chest-pain",
@@ -13,7 +13,8 @@
    "patient": {
     "age": 71,
     "sex": "male"
-   }
+   },
+   "withdrawn": false
   },
   {
    "archetype": "breathlessness",
@@ -27,7 +28,8 @@
    "patient": {
     "age": 68,
     "sex": "female"
-   }
+   },
+   "withdrawn": false
   },
   {
    "archetype": "chest-pain",
@@ -41,7 +43,8 @@
    "patient": {
     "age": 25,
     "sex": "male"
-   }
+   },
+   "withdrawn": false
   },
   {
    "archetype": "headache",
@@ -55,7 +58,8 @@
    "patient": {
     "age": 25,
     "sex": "female"
-   }
+   },
+   "withdrawn": false
   },
   {
    "archetype": "abdominal-pain",
@@ -69,7 +73,8 @@
    "patient": {
     "age": 14,
     "sex": "male"
-   }
+   },
+   "withdrawn": false
   },
   {
    "archetype": "fever",
@@ -83,7 +88,8 @@
    "patient": {
     "age": 3,
     "sex": "female"
-   }
+   },
+   "withdrawn": false
   },
   {
    "archetype": "asthma",
@@ -97,7 +103,8 @@
    "patient": {
     "age": 6,
     "sex": "female"
-   }
+   },
+   "withdrawn": false
   },
   {
    "archetype": "abdominal-pain",
@@ -111,7 +118,8 @@
    "patient": {
     "age": 53,
     "sex": "female"
-   }
+   },
+   "withdrawn": false
   },
   {
    "archetype": "stroke",
@@ -125,7 +133,8 @@
    "patient": {
     "age": 62,
     "sex": "male"
-   }
+   },
+   "withdrawn": false
   },
   {
    "archetype": "sepsis",
@@ -139,7 +148,8 @@
    "patient": {
     "age": 55,
     "sex": "female"
-   }
+   },
+   "withdrawn": false
   },
   {
    "archetype": "fall",
@@ -153,7 +163,8 @@
    "patient": {
     "age": 72,
     "sex": "female"
-   }
+   },
+   "withdrawn": false
   },
   {
    "archetype": "seizure",
@@ -167,7 +178,8 @@
    "patient": {
     "age": 6,
     "sex": "female"
-   }
+   },
+   "withdrawn": false
   },
   {
    "archetype": "trauma",
@@ -177,7 +189,8 @@
    "endemic": false,
    "provisional": false,
    "title": "Brought in from the road",
-   "version": 2
+   "version": 2,
+   "withdrawn": false
   },
   {
    "archetype": "syncope",
@@ -187,7 +200,8 @@
    "endemic": false,
    "provisional": false,
    "title": "Fainted in the queue",
-   "version": 1
+   "version": 1,
+   "withdrawn": false
   },
   {
    "archetype": "dengue",
@@ -201,7 +215,8 @@
    "patient": {
     "age": 26,
     "sex": "female"
-   }
+   },
+   "withdrawn": false
   },
   {
    "archetype": "altitude",
@@ -211,7 +226,8 @@
    "endemic": true,
    "provisional": true,
    "title": "Headache above four thousand metres",
-   "version": 1
+   "version": 1,
+   "withdrawn": false
   },
   {
    "archetype": "malaria",
@@ -225,7 +241,8 @@
    "patient": {
     "age": 31,
     "sex": "male"
-   }
+   },
+   "withdrawn": false
   },
   {
    "archetype": "tuberculosis",
@@ -238,6 +255,22 @@
    "version": 1,
    "patient": {
     "age": 40,
+    "sex": "male"
+   },
+   "withdrawn": false
+  },
+  {
+   "archetype": "chest-pain",
+   "case_id": "world-withdrawn-angina",
+   "country": null,
+   "difficulty": "student",
+   "endemic": false,
+   "provisional": true,
+   "title": "Withdrawn on review",
+   "version": "0.1.0",
+   "withdrawn": true,
+   "patient": {
+    "age": 60,
     "sex": "male"
    }
   }

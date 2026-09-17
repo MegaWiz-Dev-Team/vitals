@@ -602,8 +602,39 @@ fn every_pack_built_names_a_world_case_that_fits_and_carries_its_level() {
         assert!(s.difficulty.is_some());
     }
     let text = r.lines.join("\n");
-    assert!(text.contains("case door: 18 cases listed"), "{text}");
+    assert!(text.contains("case door: 18 cases listed"), "the withdrawn row is not counted: {text}");
     assert!(text.lines().filter(|l| l.starts_with("queued")).all(|l| l.contains(" · student") || l.contains(" · intern") || l.contains(" · resident")), "every queued line names the level:\n{text}");
+}
+
+/// The endemic list is the ward's, not a file: a checkout with the pool and the physicians series
+/// and nothing else — no endemic.json, no scenarios — is a checkout the factory runs from, and a
+/// withdrawn row that reaches the factory is never chosen.
+#[test]
+fn no_endemic_file_is_needed_and_a_withdrawn_case_is_never_chosen() {
+    let dir = world("no-endemic-file");
+    let pool = read_pool(POOL).unwrap();
+    seed_manifest(&dir, &pool);
+    let bare = dir.join("repo");
+    std::fs::create_dir_all(bare.join("crates/vitals-web/data")).unwrap();
+    for f in ["personas.json", "physicians.json"] {
+        std::fs::copy(repo_root().join("crates/vitals-web/data").join(f), bare.join("crates/vitals-web/data").join(f)).unwrap();
+    }
+    assert!(!bare.join("crates/vitals-web/data/endemic.json").exists());
+    let door = FakeDoor::new(WardView::parse(STAGING).unwrap());
+    let tools = FakeTools::default();
+    let cfg = Config { repo: bare, ..config(&dir, 20, 20) };
+    let r = tick(&cfg, &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert!(!r.lines.iter().any(|l| l.contains("endemic list")), "{:?}", r.lines);
+    let q = door.queue.borrow();
+    assert!(q.len() >= 10, "{}", q.len());
+    assert!(q.values().all(|p| p.case != "world-withdrawn-angina"), "a withdrawn row, never chosen");
+    let listed = parse_cases(CASES).unwrap();
+    for p in q.values() {
+        let w = listed.iter().find(|c| c.case_id == p.case).unwrap();
+        assert_eq!(p.endemic, w.endemic && w.country.as_deref() == Some(p.persona.country.as_str()), "{}: the tag is the list's", p.case);
+    }
+    assert!(r.lines.iter().any(|l| l.contains("case door: 18 cases listed") && l.contains("countries with an endemic list")), "{:?}", r.lines);
 }
 
 /// A ward that lists no cases: nothing is built, nothing season-shaped is sent, and the tick says

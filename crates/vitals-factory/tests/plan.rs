@@ -23,8 +23,9 @@ const POOL: &str = include_str!("../../vitals-web/data/personas.json");
 const PHYSICIANS: &str = include_str!("../../vitals-web/data/physicians.json");
 const CASES: &str = include_str!("fixtures/ward-cases-2026-09-16.json");
 
-/// The ward's list as the fixture has it: eighteen World cases, both sexes at every level, two
-/// children's cases, two with no stated patient, four written for a country.
+/// The ward's list as the fixture has it: eighteen placeable World cases, both sexes at every
+/// level, two children's cases, two with no stated patient, four written for a country — and one
+/// withdrawn row, which the plan must never choose.
 fn cases() -> Vec<WardCase> {
     parse_cases(CASES).expect("the fixture parses")
 }
@@ -109,6 +110,7 @@ fn every_pack_is_one_the_door_would_take_and_agrees_with_its_own_case() {
     for pl in &p.packs {
         let case = by_id(&cat, &pl.pack.case);
         assert!(!pl.pack.case.starts_with("osce-") && !pl.pack.case.starts_with("ep"), "{}: a season id", pl.pack.case);
+        assert!(!case.withdrawn, "{}: withdrawn, never chosen", case.case_id);
         let who = person(&pool, &pl.person);
         assert!(fits(case, who.sex, pl.pack.persona.age), "{}: {} {} does not fit {:?} {:?}", case.case_id, who.sex.word(), pl.pack.persona.age, case.patient, age_window(case));
         assert!(case.country.is_none() || case.country.as_deref() == Some(who.country.as_str()), "{}: another country's case on {}", case.case_id, who.name);
@@ -283,40 +285,49 @@ fn a_persona_whose_sex_no_case_was_written_for_is_skipped_not_forced() {
     assert!(p.exhausted);
 }
 
-/// The endemic tag is the case's, for her country, from the ward's own list: a Thai woman in the
-/// dengue window gets dengue and the tag; a Kenyan man in the malaria window gets malaria; nobody
-/// else gets either, and a case with no country never carries the tag.
+/// The factory's endemic knowledge is the ward's list: a country has an endemic list iff a
+/// placeable case is tagged endemic for it. One draw in five for such a country takes that case
+/// — the tag on the pack follows — and the other four are the common draw, in which place plays
+/// no part. Nobody gets another country's case; a case with no country never carries the tag.
 #[test]
-fn endemic_is_true_only_when_the_list_pairs_her_country_with_her_case() {
+fn endemic_is_one_draw_in_five_from_the_wards_list_and_the_tag_follows() {
     let pool = read_pool(POOL).unwrap();
     let (cat, man) = (cases(), full_manifest(&pool));
-    let mut endemic_seen = 0;
     for seed in 0..40 {
         let p = plan(&Inputs { cases: &cat, pool: &pool, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&pool), beds: 3, want: 12, seed });
         for pl in &p.packs {
             let case = by_id(&cat, &pl.pack.case);
-            if pl.pack.endemic {
-                endemic_seen += 1;
-                assert!(case.endemic && case.country.as_deref() == Some(pl.pack.persona.country.as_str()), "{:?}", pl.pack);
-            } else {
-                assert!(!(case.endemic && case.country.as_deref() == Some(pl.pack.persona.country.as_str())), "{:?} should carry the tag", pl.pack);
-            }
+            assert_eq!(pl.pack.endemic, case.endemic && case.country.as_deref() == Some(pl.pack.persona.country.as_str()), "{:?}", pl.pack);
+            assert!(case.country.is_none() || case.country.as_deref() == Some(pl.pack.persona.country.as_str()), "{:?}: another country's case", pl.pack);
         }
     }
-    assert!(endemic_seen > 0, "over forty seeds a Thai woman or a Kenyan man is drawn and gets the case written for home");
-    // Thailand alone, six packs: the first Thai woman drawn gets dengue, at an age inside 16–38,
-    // tagged; once dengue is waiting the next Thai women take the common draw — the case written
-    // for home comes first while it is not already on the ward or in the queue, so a queue of six
-    // Thais is not six dengues.
+    // Thailand alone, one pack per seed over forty seeds: dengue on about one draw in five, never
+    // on all — and each dengue pack a Thai woman in the window, tagged.
     let thai: Vec<Person> = pool.iter().filter(|x| x.country == "THA").cloned().collect();
-    let p = plan(&Inputs { cases: &cat, pool: &thai, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&thai), beds: 3, want: 6, seed: 5 });
-    let dengue: Vec<_> = p.packs.iter().filter(|pl| pl.pack.case == "world-dengue-thailand").collect();
-    assert_eq!(dengue.len(), 1, "{:?}", p.packs.iter().map(|x| x.pack.case.clone()).collect::<Vec<_>>());
-    assert_eq!(dengue[0].pack.case, p.packs[0].pack.case, "and it is the first");
-    assert!(dengue[0].pack.endemic && dengue[0].sex == Sex::F && (16..=38).contains(&dengue[0].pack.persona.age), "{:?}", dengue[0].pack);
+    let mut dengue = 0;
+    for seed in 0..40 {
+        let p = plan(&Inputs { cases: &cat, pool: &thai, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&thai), beds: 3, want: 1, seed });
+        let pl = &p.packs[0];
+        if pl.pack.case == "world-dengue-thailand" {
+            dengue += 1;
+            assert!(pl.pack.endemic && pl.sex == Sex::F && (16..=38).contains(&pl.pack.persona.age), "{:?}", pl.pack);
+            assert!(pl.case_why.contains("endemic in THA"), "{}", pl.case_why);
+        } else {
+            assert!(!pl.pack.endemic);
+        }
+    }
+    assert!((3..=16).contains(&dengue), "{dengue} of 40 first draws were dengue; one in five expected");
+    // The list as staging has it on 17 Sep (revision 00034): every placeable case endemic and
+    // written for a country, nothing common. Then the case written for home is the only case
+    // there is and is taken on every draw; a country with no case gets none; the plan says why.
+    let only_endemic: Vec<WardCase> = cat.iter().filter(|c| c.endemic && !c.withdrawn).cloned().collect();
+    let p = plan(&Inputs { cases: &only_endemic, pool: &pool, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&pool), beds: 60, want: 6, seed: 5 });
+    assert_eq!(p.packs.len(), 6, "{:?}", p.notes);
+    assert!(p.packs.iter().all(|pl| pl.pack.endemic && ["THA", "KEN", "NPL"].contains(&pl.pack.persona.country.as_str())), "{:?}", p.packs.iter().map(|x| (x.pack.persona.country.clone(), x.pack.case.clone())).collect::<Vec<_>>());
+    assert!(p.packs.iter().any(|pl| pl.case_why.contains("only")), "{:?}", p.packs.iter().map(|x| x.case_why.clone()).collect::<Vec<_>>());
     // Nepal's altitude case has no stated patient: any Nepali adult, tagged.
     let nepal: Vec<Person> = pool.iter().filter(|x| x.country == "NPL").cloned().collect();
-    let p = plan(&Inputs { cases: &cat, pool: &nepal, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&nepal), beds: 3, want: 1, seed: 5 });
+    let p = plan(&Inputs { cases: &only_endemic, pool: &nepal, manifest: &man, ward: &empty_ward(), ledger: &Ledger::default(), weights: &flat(&nepal), beds: 3, want: 1, seed: 5 });
     assert_eq!(p.packs[0].pack.case, "world-altitude-nepal");
     assert!(p.packs[0].pack.endemic && (18..=85).contains(&p.packs[0].pack.persona.age));
 }

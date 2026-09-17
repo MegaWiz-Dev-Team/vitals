@@ -79,8 +79,10 @@ fn one_shot_ward() -> String {
             let req = String::from_utf8_lossy(&buf[..n]).to_string();
             let (status, body) = if req.starts_with("GET /api/ward ") {
                 ("200 OK", STAGING.to_string())
-            } else if req.starts_with("GET /api/ward/cases ") {
+            } else if req.starts_with("GET /api/ward/cases?placeable=1 ") {
                 ("200 OK", CASES.to_string())
+            } else if req.starts_with("GET /api/ward/cases") {
+                ("500 Internal Server Error", r#"{"error":"the factory must ask for placeable cases only"}"#.to_string())
             } else {
                 ("500 Internal Server Error", r#"{"error":"a dry run must not POST"}"#.to_string())
             };
