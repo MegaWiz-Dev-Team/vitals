@@ -330,3 +330,33 @@ for (const name of ['openShift', 'openReview']) {
 }
 
 console.log('shift_logic: ok (and the way back is painted before the waiting)');
+
+// ── the two ways out of a shift, named by what they do ───────────────────────
+//
+// UX review C4: "hand her back" and "hand over" are one word apart and opposite in consequence —
+// one writes the shift to the chain under the stranger's key, the other throws it away. A learner
+// who reads the wrong one loses everything they just did to a patient, and there is nothing on the
+// page to get it back with.
+//
+// So the exits are named by what they do, not by what happens to the patient: "Hand over · record
+// this shift" and "Leave without recording". The leave asks once before it acts, in the page's own
+// press-again idiom — the same one the end button has used all along, rather than a browser
+// dialogue a stranger dismisses without reading.
+const { leaveWords } = new Function([grab('leaveWords'), 'return { leaveWords };'].join('\n'))();
+
+assert.equal(leaveWords(false).label, 'Leave without recording',
+             'what the button does, in the words of what it does');
+assert.equal(leaveWords(false).say, '', 'and nothing said until it is pressed');
+assert.equal(leaveWords(true).label, 'press again to leave');
+assert.equal(leaveWords(true).say, 'nothing you did will be kept — leave?',
+             'asked once, in words, where the strip already speaks');
+
+// The two exits must not read alike. This is the whole of C4: one of them is irreversible and the
+// other is a loss, and a stranger has to tell them apart at a glance.
+const both = [primaryLabel(true, false, 'Nusrat Jahan', her), leaveWords(false).label];
+assert.ok(!/leave/i.test(both[0]), `the recording exit never says leave: ${both[0]}`);
+assert.ok(!/hand/i.test(both[1]), `the discarding exit never says hand: ${both[1]}`);
+assert.ok(!/her|him|she|he\b/i.test(both[1]),
+          `and it names no patient — it is about the shift, not about who is in the bed: ${both[1]}`);
+
+console.log('shift_logic: ok (and the two exits say what they do)');
