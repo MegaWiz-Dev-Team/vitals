@@ -37,13 +37,13 @@ const grabConst = (name) => {
 };
 
 const sandbox = [grabConst('ALPHA3'), grabConst('STATE_LABEL'), grabConst('DOCTOR_BINS'), grab('countryId'), grab('countryCounts'), grab('visible'),
-  grab('stateOf'), grab('onBoard'), grab('inBeds'), grab('canTakeShift'), grab('censusFigures'), grab('paintOf'), grab('hoverText'), grab('countryGroups'), grab('countryHeading'), grab('waitingCounts'), grab('figuresFor'), grab('bedsEmptyWords'), grab('shouldReload'), grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
+  grab('stateOf'), grab('onBoard'), grab('inBeds'), grab('canTakeShift'), grab('censusFigures'), grab('paintOf'), grab('hoverText'), grab('openingCountry'), grab('openingLongitude'), grab('countryGroups'), grab('countryHeading'), grab('waitingCounts'), grab('figuresFor'), grab('bedsEmptyWords'), grab('shouldReload'), grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
   grab('peoplePerDoctor'), grab('latestOf'), grab('tenYearTrend'), grab('fmtTrend'), grab('fmtPeople'), grab('doctorLine'),
   grab('worldAverage'), grab('missionLine'), grab('doctorBin'),
   grab('yearValue'), grab('yearRange'), grab('doctorLineAt'), grab('worldAverageAt'), grab('missionLineAt'),
   grab('escapeHtml'), grab('portraitImg'),
-  'return { countryId, countryCounts, visible, inBeds, canTakeShift, censusFigures, ALPHA3, countryGroups, countryHeading, waitingCounts, figuresFor, bedsEmptyWords, shouldReload, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg };'].join('\n');
-const { countryId, countryCounts, inBeds, canTakeShift, censusFigures, visible, ALPHA3, countryGroups, countryHeading, waitingCounts, figuresFor, bedsEmptyWords, shouldReload, whenMs, relative, absolute, stateLine,
+  'return { countryId, countryCounts, visible, inBeds, canTakeShift, censusFigures, ALPHA3, openingCountry, openingLongitude, countryGroups, countryHeading, waitingCounts, figuresFor, bedsEmptyWords, shouldReload, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg };'].join('\n');
+const { countryId, countryCounts, inBeds, canTakeShift, censusFigures, visible, ALPHA3, openingCountry, openingLongitude, countryGroups, countryHeading, waitingCounts, figuresFor, bedsEmptyWords, shouldReload, whenMs, relative, absolute, stateLine,
   stateOf, onBoard, paintOf, hoverText, STATE_LABEL,
   DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin,
   yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg } = new Function(sandbox)();
@@ -230,6 +230,35 @@ assert.equal(bare.title, '');
 const undated = line({ state: 'on_ward', admitted_slot: 499_139_724, closed_slot: 0 });
 assert.equal(undated.text, 'on the ward',
   'a slot the chain has not dated for us is not a time we invent from the read\'s own slot');
+
+// ── where the globe opens ────────────────────────────────────────────────────
+//
+// UX review A2: the globe opens on a fixed rotation over Asia. It was chosen when the first
+// patients happened to be there, and it is a guess about where the ward is that stops being true
+// the moment the queue changes — a viewer in Lagos or São Paulo is shown somebody else's continent
+// and has to find their own.
+//
+// So it opens on the ward: the country of the patient in the first bed, or of the first person
+// waiting for the door when no bed is filled yet. With neither — a ward with nothing on it — it
+// opens on the viewer's own longitude, which their clock already tells us and which needs nothing
+// asked of them.
+assert.equal(openingCountry([{ bed: 2, country: "KEN", state: "on_ward" },
+                             { bed: 1, country: "BGD", state: "on_ward" }], []),
+             "BGD", "the first bed, not the first row");
+assert.equal(openingCountry([{ bed: null, country: "KEN", state: "went_home" }],
+                            [{ country: "THA" }]),
+             "THA", "nobody in a bed: the first person waiting for one");
+assert.equal(openingCountry([], [{ country: "PAK" }, { country: "THA" }]), "PAK");
+assert.equal(openingCountry([], []), null, "and with neither, it is not a country's business");
+assert.equal(openingCountry(null, null), null);
+
+// The viewer's own longitude, from the offset their browser reports. `getTimezoneOffset` is
+// minutes *behind* UTC, so Bangkok (UTC+7) reports −420 and sits at +105°.
+assert.equal(openingLongitude(-420), 105, "Bangkok");
+assert.equal(openingLongitude(0), 0, "London in winter");
+assert.equal(openingLongitude(300), -75, "New York in winter");
+assert.equal(openingLongitude(-660), 165, "and the far side of the date line");
+assert.equal(openingLongitude(null), -100, "an offset nobody reported leaves the old view alone");
 
 // ── the controls read as controls ────────────────────────────────────────────
 //
