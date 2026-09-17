@@ -1706,3 +1706,45 @@ fn a_waiting_patient_is_published_without_a_bed_and_without_her_case() {
         assert!(first[key].is_null(), "{key} is a fact about a patient on the ward: {first}");
     }
 }
+
+/// **A page that says "no" offers the beds that are open.**
+///
+/// UX review F1. `/ward/abc`, `/shift/zzz` and a pack id nobody queued all answer with one sentence
+/// and a link back to the globe. A stranger who mistyped a patient id, or followed a link to a
+/// receipt that does not exist, is somebody who came here to treat somebody — and the answer sends
+/// them back to a globe to start again.
+///
+/// So the refusal carries what the panel carries: the beds a stranger can take right now, in bed
+/// order, each a link. Taken off the board this host already holds, so a refusal costs no chain
+/// read; a ward whose board cannot be read offers nothing rather than guessing.
+#[test]
+fn a_refusal_offers_the_beds_that_are_open() {
+    use vitals_web::ward::beds_to_offer;
+
+    let board = serde_json::json!({
+        "patients": [
+            { "patient_id": 3, "state": "on_ward", "bed": 3, "name": "Ayesha Malik",
+              "age": 57, "country": "PAK", "difficulty": "intern" },
+            { "patient_id": 1, "state": "on_ward", "bed": 1, "name": "Nusrat Jahan",
+              "age": 64, "country": "BGD", "difficulty": "resident" },
+            // On shift: somebody is in the room with her, so she is not a bed to offer.
+            { "patient_id": 2, "state": "on_shift", "bed": 2, "name": "Park Ji-woo", "age": 8 },
+            // No bed: on the chain and unopenable here, which the board says in her own row.
+            { "patient_id": 4, "state": "off_ward", "bed": null, "name": "Yonas Haile", "age": 16 },
+            // Her stay ended.
+            { "patient_id": 5, "state": "went_home", "bed": null, "name": "Grace Wanjiru", "age": 27 }
+        ]
+    });
+
+    let open = beds_to_offer(&board);
+    assert_eq!(open.iter().map(|p| p["bed"].as_u64().unwrap_or(0)).collect::<Vec<_>>(), vec![1, 3],
+               "in bed order, and only the ones a stranger can actually take");
+    assert_eq!(open[0]["name"], "Nusrat Jahan");
+    assert_eq!(open[0]["patient_id"], 1, "the id is the link");
+
+    // A board that could not be read offers nothing. "We could not look" and "there are none" are
+    // different facts, and only one of them is ours to say on a page about something else.
+    assert!(beds_to_offer(&serde_json::json!({ "readable": false })).is_empty());
+    assert!(beds_to_offer(&serde_json::json!({})).is_empty());
+    assert!(beds_to_offer(&serde_json::json!({ "patients": [] })).is_empty());
+}
