@@ -1424,3 +1424,56 @@ fn the_board_says_when_she_was_last_handed_over() {
     // treated her yet" and "she was treated the moment she arrived" are different facts.
     assert!(row(2)["handed_over"].is_null(), "no shift, no hand-over: {}", row(2));
 }
+
+/// **A time on the board is the chain's own time for that slot.**
+///
+/// The board said Salma was admitted at `2026-09-14T15:13:09Z`. The chain says her admission
+/// landed in slot 499139724, and devnet dates that slot `2026-09-16T05:30:17Z`: the board was 38
+/// hours early, and the founder had been reading "admitted 3 days ago" over a patient admitted
+/// yesterday. Every date on a chart and every "… ago" on the globe carried the same error, because
+/// all of them were one subtraction — this read's slot minus that slot, times 0.4 seconds — and a
+/// chain does not produce slots at its nominal rate for days on end.
+///
+/// The rule this pins: a time shown for a chain event is that slot's block time, which the chain
+/// itself publishes and which never changes once the block exists. The slot count stays where it
+/// is honest — the ticker's idle arithmetic, which is in slots and never leaves them.
+///
+/// A slot the ward has no block time for shows no time at all. "We have not looked that slot up
+/// yet" and "it happened at 15:13" are different statements, and only one of them is ours to make.
+#[test]
+fn a_time_on_the_board_is_the_slots_own_block_time() {
+    let admitted = 499_139_724u64;
+    let handed = 499_201_815u64;
+    // What devnet answers for those two slots, asked on 17 ก.ย.: getBlockTime, the chain's own
+    // dating of its own blocks.
+    let times: std::collections::BTreeMap<u64, i64> =
+        [(admitted, 1_789_536_617i64), (handed, 1_789_546_902)].into_iter().collect();
+    let as_of = 499_734_346u64;
+    let now = 1_789_668_000u64;
+
+    let patients = vec![
+        patient(1, OPEN, 1, admitted, 0),
+        // Admitted in a slot nobody has looked up. Her row carries the slot and no time.
+        patient(2, OPEN, 0, admitted - 5_000, 0),
+    ];
+    let shifts = vec![shift_by(1, 7, handed)];
+    let packs = nobody();
+    let v = ward_payload(&vitals_web::ward::WardRead {
+        patients: &patients, shifts: &shifts, packs: &packs, cases: &[],
+        unrebuildable: nothing_lost(), since: None, as_of_slot: as_of,
+        now_unix: now, source: "devnet:ABC", times: &times,
+    });
+    let row = |id: u64| {
+        v["patients"].as_array().unwrap().iter().find(|p| p["patient_id"] == id).unwrap().clone()
+    };
+
+    assert_eq!(row(1)["admitted_at"], "2026-09-16T05:30:17Z",
+               "the chain's time for the slot she was admitted in, to the second");
+    assert_eq!(row(1)["handed_over"], "2026-09-16T08:21:42Z",
+               "and for the slot her last shift was anchored in");
+    assert_eq!(row(1)["admitted_slot"], admitted, "the slot itself stays on the row: it is the fact");
+
+    assert!(row(2)["admitted_at"].is_null(),
+            "a slot with no block time gets no time — never one worked out from the read's own \
+             slot, which is the 38-hour error: {}", row(2));
+}
