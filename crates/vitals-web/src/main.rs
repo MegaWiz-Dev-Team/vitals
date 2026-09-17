@@ -2003,19 +2003,22 @@ fn open_shift(
         return Err(wait);
     }
     if her.state != ward::OPEN {
+        // No pronoun: this is the chain's account of a patient whose pack has not been read yet,
+        // and the ward admits men. The page that renders her chart a moment later has her persona
+        // and says "He died" over a man.
         return Err(format!(
-            "patient {patient_id} has left the ward — {}, and a stay that ended is not one \
-             anybody can add to",
-            if her.state == ward::DISCHARGED { "she went home" } else { "she died" }
+            "patient {patient_id} has left the ward — that stay ended when the patient {}, and a \
+             stay that ended is not one anybody can add to",
+            if her.state == ward::DISCHARGED { "went home" } else { "died" }
         ));
     }
 
     let pack = ward_chain::packs(store)
         .remove(&patient_id)
         .ok_or_else(|| format!(
-            "we do not know who patient {patient_id} is yet — she reached a bed before her details \
-             did, and nobody can be treated by a chart with no name on it. Another bed will have \
-             somebody in it"
+            "we do not know who patient {patient_id} is yet — this patient reached a bed before \
+             the details did, and nobody can be treated by a chart with no name on it. Another bed \
+             will have somebody in it"
         ))?;
 
     let sce_json = ward_sce(store, &pack.case)?;
