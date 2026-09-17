@@ -201,17 +201,26 @@ assert.ok(abs.includes(String(hours)) || abs.includes(String(hours % 12 || 12)),
 
 // stateLine: the words under a patient, and the title behind them. Every branch reads a time the
 // payload carries; a row with the slot and no block time for it says the state and stops.
+//
+// Short on purpose. The pill read "on the ward · handed over 30 h ago" in a 300 px panel and ran
+// off the row's right edge — the founder's screenshot, 17 ก.ย. What a reader needs at a glance is
+// the state and how long ago; *which* event the time is about is a detail, and details go in the
+// title where a hover or a long press finds them.
 const line = (p) => stateLine(p, NOW);
 const iso = ms => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
 const onShift = line({ state: 'on_shift', on_shift_since: NOW / 1000 - 360, admitted_at: iso(NOW - 9_000_000) });
 assert.equal(onShift.text, 'on shift · 6 min');
 assert.equal(onShift.title, `since ${absolute(NOW - 360_000)}`);
 const waiting = line({ state: 'on_ward', on_shift_since: null, admitted_at: iso(NOW - 3 * 86_400_000) });
-assert.equal(waiting.text, 'on the ward · admitted 3 days ago');
-assert.equal(waiting.title, `admitted ${absolute(NOW - 3 * 86_400_000)}`);
+assert.equal(waiting.text, 'on the ward · 3 days');
+assert.equal(waiting.title, `admitted 3 days ago · ${absolute(NOW - 3 * 86_400_000)}`,
+  'the word that says which event it was lives in the title, with the moment itself');
+const handed = line({ state: 'on_ward', handed_over: iso(NOW - 30 * 3_600_000), admitted_at: iso(NOW - 3 * 86_400_000) });
+assert.equal(handed.text, 'on the ward · 30 h', 'the row the founder screenshotted, in the width it has');
+assert.equal(handed.title, `handed over 30 h ago · ${absolute(NOW - 30 * 3_600_000)}`);
 const home = line({ state: 'went_home', admitted_at: iso(NOW - 900_000_00), closed_at: iso(NOW - 6 * 3_600_000) });
-assert.equal(home.text, 'went home · 6 h ago');
-assert.equal(home.title, `left ${absolute(NOW - 6 * 3_600_000)}`);
+assert.equal(home.text, 'went home · 6 h');
+assert.equal(home.title, `left 6 h ago · ${absolute(NOW - 6 * 3_600_000)}`);
 const died = line({ state: 'died', admitted_at: iso(NOW - 900_000_00), closed_at: iso(NOW - 20_000) });
 assert.equal(died.text, 'died · just now');
 const bare = line({ state: 'on_ward' });
@@ -221,8 +230,6 @@ assert.equal(bare.title, '');
 const undated = line({ state: 'on_ward', admitted_slot: 499_139_724, closed_slot: 0 });
 assert.equal(undated.text, 'on the ward',
   'a slot the chain has not dated for us is not a time we invent from the read\'s own slot');
-const future = line({ state: 'on_ward', handed_over: '2026-09-16T06:00:00Z' });
-assert.equal(future.text, 'on the ward · handed over 6 h ago', 'a Z string the payload carries is read the same way');
 
 // ── the build under an open tab ───────────────────────────────────────────────
 // The founder read a ward three hours out of date in his own tab: the page had been fixed, his

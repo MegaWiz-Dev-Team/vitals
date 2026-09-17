@@ -1555,3 +1555,31 @@ fn a_head_whose_page_stopped_beating_is_taken_back() {
     assert!(heads_to_free(&future, now, grace).is_empty(),
             "a beat from the future is not a beat that stopped");
 }
+
+/// **A request never waits on a chain read when the ward already has a board.**
+///
+/// The founder opened the globe on 17 ก.ย. and asked where the patients had gone: the panel was
+/// empty while `/api/ward` sat behind a chain read. The board is fifteen seconds old at most and
+/// the read that refreshes it takes as long as devnet feels like taking — so the answer is to hand
+/// over what the ward has and go and get the new one, rather than to make the person wait for it.
+///
+/// Three cases and they are all different: no board at all (the first request after a boot, and
+/// the only one that waits), a board inside its life (serve it, touch nothing), and a board past
+/// it (serve it anyway, and refresh behind the answer).
+#[test]
+fn a_board_is_served_while_the_next_one_is_read() {
+    use std::time::Duration;
+    use vitals_web::ward::{board_use, Board};
+
+    let ttl = Duration::from_secs(15);
+    assert_eq!(board_use(None, ttl), Board::Wait,
+               "the first request after a boot is the one that waits, and it is the only one");
+    assert_eq!(board_use(Some(Duration::from_secs(3)), ttl), Board::Serve,
+               "a board inside its life is the answer and nothing else happens");
+    assert_eq!(board_use(Some(Duration::from_secs(16)), ttl), Board::ServeAndRefresh,
+               "a board past its life is still an answer — it says when it was read — and the \
+                reading happens behind it rather than in front of the person");
+    assert_eq!(board_use(Some(Duration::from_secs(600)), ttl), Board::ServeAndRefresh,
+               "however old it is: a board with its own `as_of` on it is a fact, and waiting ten \
+                minutes for a fresher one is not an improvement on it");
+}
