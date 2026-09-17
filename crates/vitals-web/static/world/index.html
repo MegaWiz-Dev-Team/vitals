@@ -106,6 +106,10 @@ canvas#globe.dragging{cursor:grabbing}
 .legend .sw.hatch{background:repeating-linear-gradient(135deg,var(--land) 0 2px,var(--land-edge) 2px 3px)}
 .legend .sw.ring{background:var(--ramp-1);border:2px solid var(--lit-edge)}
 .legend .sw.ring.on{background:var(--lit-edge);border-color:var(--lit-edge)}
+/* The third ring: dashed and hollow, for a patient who is not in a bed yet. */
+.legend .sw.ring.wait{background:transparent;border-style:dashed}
+.state.waiting{color:var(--ink-2);border-style:dashed}
+.prow.waiting{background:var(--surface)}
 .legend .note{display:block;margin-top:.35rem;color:var(--ink-3);line-height:1.5}
 .legend .note>summary{cursor:pointer;letter-spacing:.06em;text-transform:uppercase;font-size:.62rem;
   color:var(--ink-3);list-style:none}
@@ -255,7 +259,7 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
       <div class="legend" id="legend">
         <span class="k" id="legendk">people per doctor · World Bank/WHO, latest year</span>
         <div class="bins" id="bins"></div>
-        <div class="bins" id="wardkey"><span class="bin"><i class="sw ring"></i>patients in beds here, and how many</span><span class="bin"><i class="sw ring on"></i>being treated right now</span></div>
+        <div class="bins" id="wardkey"><span class="bin"><i class="sw ring"></i>patients in beds here, and how many</span><span class="bin"><i class="sw ring on"></i>being treated right now</span><span class="bin" id="waitkey" hidden><i class="sw ring wait"></i>waiting for the door</span></div>
         <div class="yearrow">
           <button type="button" id="play" aria-label="Step a year per second" title="step a year per second">&#9654;</button>
           <label for="year" class="sr">Year</label>
@@ -597,6 +601,9 @@ let BUILD_SEEN = "";
    the founder read "No patient is in a bed right now" while the request was still in flight and
    asked where the patients had gone. */
 let SAWBOARD = false;
+/* The door, and the people behind it. `closed` until a board says otherwise — the page must not
+   offer a ward it has not been told is open. */
+let DOOR = "closed", WAITING = 0, WAITINGWHO = [];
 
 function render(j) {
   const rev = j && j.revision ? String(j.revision) : "";
@@ -610,6 +617,12 @@ function render(j) {
   }
   if (rev && !BUILD_SEEN) BUILD_SEEN = rev;
   if (j && Array.isArray(j.patients)) SAWBOARD = true;
+  const q = (j && j.queue) || {};
+  DOOR = typeof q.door === "string" ? q.door : "closed";
+  WAITING = typeof q.waiting === "number" ? q.waiting : 0;
+  WAITINGWHO = Array.isArray(q.waiting_patients) ? q.waiting_patients : [];
+  // The legend's third key exists only where the thing it describes is on the globe.
+  if ($("waitkey")) $("waitkey").hidden = DOOR !== "preview" || !WAITINGWHO.length;
   patients = onBoard(j && Array.isArray(j.patients) ? j.patients : []);
   census = j ? (j.census || j) : null;   // the census keys may sit at the top level or under `census`
   beds = j && typeof j.in_beds === "number" ? j.in_beds : null;
@@ -642,7 +655,9 @@ function renderCensus() {
      says which is which — a reader who wants the chain's number can read the endpoint.
      The row lives under the headline rather than in the corner: these are the numbers this page
      exists to publish, and they were eleven pixels of monospace beside the wordmark. */
-  const figs = censusFigures(census, patients, beds);
+  /* What the door is doing is part of what these numbers mean: "0 in beds" on a ward with twenty
+     patients queued behind a door that has not opened reads as a ward that lost them. */
+  const figs = figuresFor(DOOR, census, patients, beds, WAITING);
   $("figures").innerHTML = figs
     .map(([k, v]) => `<span class="fig"><b>${v}</b>${k}</span>`).join("");
 }
@@ -743,6 +758,49 @@ function canTakeShift(p) {
    `in beds` and `on shift now` are the ward's own and are always there — nobody has to be admitted
    for "0 in beds" to be true. The chain's three are left out when the census does not carry them,
    because a number nobody counted is not a zero. */
+/* Who is waiting for the door, by country, for the globe's second kind of ring.
+   A waiting patient is not in a bed and must not be counted in the ring that counts beds — the
+   two rings mean different things and the legend says so. A country the atlas cannot place is left
+   out rather than drawn somewhere wrong; the tray under the globe is where she is listed. */
+function waitingCounts(waiting) {
+  const out = {};
+  for (const w of waiting || []) {
+    const id = countryId(w.country);
+    if (!id) continue;
+    out[id] = (out[id] || 0) + 1;
+  }
+  return out;
+}
+
+/* The figures row, which says what the door is doing.
+   "0 in beds" alone, over a ward with twenty patients queued behind a door that has not opened
+   yet, reads as a ward that lost its patients. A closed ward publishes no queue at all and has
+   nothing to put here. */
+function figuresFor(door, census, patients, beds, waiting) {
+  if (door === "closed") return [];
+  if (door === "preview") {
+    return [["in beds", typeof beds === "number" ? beds : 0],
+            ["waiting", typeof waiting === "number" ? waiting : 0],
+            ["opening", "soon"]];
+  }
+  return censusFigures(census, patients, beds);
+}
+
+/* What the panel says when nobody is in a bed — three facts, three sentences.
+   It was one sentence for all three, and the founder read "the ward admits from its queue every
+   minute" on a production ward whose door was shut and whose queue was empty. */
+function bedsEmptyWords(door, waiting) {
+  if (door === "closed") return "The door is closed · opening soon";
+  if (door === "preview") {
+    return waiting
+      ? `${waiting} patients are waiting · the ward opens soon`
+      : "The ward opens soon · the queue is filling";
+  }
+  return waiting
+    ? "No patient in a bed · the ward admits from its queue every minute"
+    : "No patient in a bed · the queue is empty";
+}
+
 function censusFigures(census, patients, beds) {
   const c = census || {};
   const n = k => (typeof c[k] === "number") ? c[k] : (c.all && typeof c.all[k] === "number" ? c.all[k] : null);
@@ -858,23 +916,58 @@ function renderPanel(id) {
 function renderBeds() {
   selected = null;
   const list = inBeds(visible(patients, filter));
-  $("pk").textContent = "on the ward now";
+  /* Before the door opens there are no beds and there are people: the queue is what this ward has,
+     and a panel saying "nobody is in a bed" over twenty patients already built is the founder
+     waiting for patients that had been waiting for him. */
+  const queued = DOOR === "preview" ? WAITINGWHO.filter(w => visibleLevel(w, filter)) : [];
+  const waitingPanel = !list.length && queued.length > 0;
+  $("pk").textContent = waitingPanel ? "waiting for the door" : "on the ward now";
   $("ptitle").textContent = !SAWBOARD ? "the beds"
-    : list.length === 1 ? "1 patient in a bed" : `${list.length} patients in beds`;
+    : waitingPanel
+      ? (queued.length === 1 ? "1 patient waiting for the door"
+                             : `${queued.length} patients waiting for the door`)
+      : list.length === 1 ? "1 patient in a bed" : `${list.length} patients in beds`;
   $("pdoc").hidden = true;
   $("plist").textContent = "";
-  if (!list.length) {
+  if (waitingPanel) {
+    $("pempty").hidden = true;
+    for (const w of queued) $("plist").appendChild(waitingRow(w));
+  } else if (!list.length) {
     $("pempty").hidden = false;
     $("pempty").textContent = !SAWBOARD
       ? "loading the beds…"
       : Object.values(filter).every(v => !v)
         ? "Every difficulty is switched off, so the beds are hidden rather than empty."
-        : "No patient is in a bed right now. The ward admits from its queue every minute.";
+        : bedsEmptyWords(DOOR, WAITING);
   } else {
     $("pempty").hidden = true;
     for (const p of list) $("plist").appendChild(row(p, true));
   }
   $("panel").classList.remove("open");
+}
+
+/* A waiting patient's row: the same shape as a bed's, and nothing on it to press. The button says
+   what will change rather than that it is disabled, and the row opens her page — which is a page
+   about a person with nothing on it to do to her. */
+function waitingRow(w) {
+  const li = document.createElement("li"); li.className = "prow waiting";
+  const cid = countryId(w.country);
+  const where = cid && nameOf[cid] ? `<span class="tag">${escapeHtml(nameOf[cid])}</span>` : "";
+  const age = w.age !== undefined && w.age !== null ? ` · ${w.age}` : "";
+  const diff = w.difficulty ? `<span class="tag">${escapeHtml(w.difficulty)}</span>` : "";
+  const end = w.endemic ? `<span class="tag endemic">endemic</span>` : "";
+  li.innerHTML = `${portraitImg(w)}<div>
+    <div class="who"><b>${escapeHtml(w.name || "a patient")}${age}</b></div>
+    <div class="meta"><span class="state waiting">waiting</span>${diff}${where}${end}</div></div>
+    <a class="take look" href="/ward/waiting/${encodeURIComponent(w.pack)}">opening soon</a>`;
+  if (w.case_title) li.title = w.case_title;
+  return li;
+}
+
+/* The difficulty switches apply to a waiting patient the way they apply to a bed: a stranger who
+   has asked for students only is asking about the ward, not only the part of it already admitted. */
+function visibleLevel(w, f) {
+  return !w.difficulty || !f || f[w.difficulty] !== false;
 }
 function clearPanel() {
   renderBeds();
@@ -1034,6 +1127,19 @@ function draw() {
     if (!layers.ward || !(counts.treatingById || {})[id]) continue;
     ctx.beginPath(); path(f); ctx.stroke();
   }
+  /* Waiting for the door: a dashed hollow ring, because she is not in a bed and the ring that
+     means "somebody you can treat" must not say she is. Preview only — on an open ward the queue
+     is a number on the figures row and the rings are about beds. */
+  const queuedBy = DOOR === "preview" && layers.ward ? waitingCounts(WAITINGWHO) : {};
+  if (Object.keys(queuedBy).length) {
+    ctx.save();
+    ctx.setLineDash([5, 4]); ctx.lineWidth = 2; ctx.strokeStyle = litEdge;
+    for (const f of countries) {
+      if (!queuedBy[String(f.id)]) continue;
+      ctx.beginPath(); path(f); ctx.stroke();
+    }
+    ctx.restore();
+  }
   if (layers.doctors) {
     // On the coloured globe a hover or a selection is an outline, so the colour underneath stays
     // readable as the number it is.
@@ -1047,16 +1153,23 @@ function draw() {
   // count badges on lit countries that face us
   ctx.font = "600 11px 'IBM Plex Mono', monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
   for (const f of countries) {
-    const id = String(f.id), n = layers.ward ? counts.byId[id] : 0;
+    const id = String(f.id);
+    const beds = layers.ward ? counts.byId[id] : 0;
+    const queued = queuedBy[id] || 0;
+    const n = beds || queued;
     if (!n) continue;   // and nothing at all when the ward layer is off: the badge IS the ward layer
     const c = d3.geoCentroid(f);
     if (d3.geoDistance(c, [-rotation[0], -rotation[1]]) > Math.PI / 2 - 0.05) continue;   // on the far side
     const [x, y] = projection(c);
-    // Filled where a stranger is treating somebody right now, hollow where the beds are waiting.
+    // Filled where a stranger is treating somebody right now, hollow where the beds are waiting,
+    // and dashed where nobody is in a bed at all yet and these are the people queued for one.
     const busy = !!(counts.treatingById || {})[id];
+    ctx.save();
+    if (!beds) ctx.setLineDash([4, 3]);
     ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI * 2);
     ctx.fillStyle = busy ? litEdge : css("--surface"); ctx.fill();
     ctx.strokeStyle = litEdge; ctx.lineWidth = busy ? 2 : 1.2; ctx.stroke();
+    ctx.restore();
     ctx.fillStyle = busy ? css("--surface") : ink; ctx.fillText(String(n), x, y + 0.5);
   }
 }

@@ -2633,7 +2633,11 @@ fn ward_now(held: &WardView, store: &store::Store, state: &str) -> serde_json::V
                     let fresh = match store::Store::open(std::path::PathBuf::from(&dir)) {
                         Ok(store) => match ward_chain::WardChain::connect() {
                             Ok(c) => Some(ward_chain::read_ward(&c, &store)),
-                            Err(e) => Some(ward::ward_unavailable("unconfigured", &e)),
+                            Err(e) => {
+                                let mut v = ward::ward_unavailable("unconfigured", &e);
+                                v["queue"] = ward_chain::queue_block(&store);
+                                Some(v)
+                            }
                         },
                         Err(e) => {
                             eprintln!("ward       the board could not be refreshed: {e}");
@@ -2653,7 +2657,13 @@ fn ward_now(held: &WardView, store: &store::Store, state: &str) -> serde_json::V
         _ => {
             let v = match ward_chain::WardChain::connect() {
                 Ok(c) => ward_chain::read_ward(&c, store),
-                Err(e) => ward::ward_unavailable("unconfigured", &e),
+                Err(e) => {
+                    // No chain to read, and still a door and a queue: both are facts about this
+                    // host. A page that branches on the door was getting nothing to branch on.
+                    let mut v = ward::ward_unavailable("unconfigured", &e);
+                    v["queue"] = ward_chain::queue_block(store);
+                    v
+                }
             };
             *held.lock().unwrap() = Some((Instant::now(), v.clone()));
             v
@@ -2683,6 +2693,68 @@ fn ward_page_missing(why: &str) -> String {
     )
 }
 
+
+/// A patient waiting for the door, as a page.
+///
+/// Founder's ruling, 18 ก.ย. In preview the board publishes the queue and every row is a link, and
+/// what opens is not a bed: she is not admitted, there is no chain account, no head, no lease and
+/// no tape. So this is the part of a chart that exists — her face, her name, her age, where she is
+/// from, the case she was built for and the level it is written at — and one sentence saying what
+/// she is waiting for.
+///
+/// Nothing on it does anything to her. No take, no clock, no monitor, and nothing of her case
+/// beyond its title: a page that offered any of those would be offering a patient nobody may
+/// treat. When the door opens she is admitted by the ticker like anybody else and her page becomes
+/// a bed, at a different address, with her chain behind it.
+fn waiting_page(pack: &ward::Pack, case: Option<&ward_case::CaseSummary>, door: ward_chain::Door) -> String {
+    let esc = |t: &str| t.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+    let place = ward::persona_pool()
+        .into_iter()
+        .find(|c| c.country == pack.persona.country)
+        .map(|c| c.place.to_string())
+        .filter(|p| !p.is_empty())
+        .unwrap_or_else(|| pack.persona.country.clone());
+    let face = ward::portrait_for(&pack.portrait, "stable")
+        .map(|u| format!(
+            "<img src=\"{}\" alt=\"{}\" width=160 height=160 \
+             style=\"border-radius:14px;object-fit:cover;display:block;margin:0 0 1rem\">",
+            esc(u), esc(&pack.persona.name)))
+        .unwrap_or_default();
+    let title = case
+        .map(|c| ward_case::fill_persona(&c.title, &ward_case::a_patient_of(c)))
+        .map(|t| format!("<p><b>{}</b></p>", esc(&t)))
+        .unwrap_or_default();
+    let level = pack
+        .difficulty
+        .clone()
+        .or_else(|| case.map(|c| c.difficulty.clone()))
+        .map(|d| format!(" · {}", esc(&d)))
+        .unwrap_or_default();
+    format!(
+        "<!doctype html><meta charset=utf-8>\
+         <title>{name} — waiting for the ward — Vitals World</title>\
+         <meta name=viewport content='width=device-width,initial-scale=1'>\
+         <link rel=\"icon\" type=\"image/svg+xml\" href=\"/world/favicon.svg\">\
+         <style>body{{font:16px/1.65 ui-sans-serif,system-ui,sans-serif;max-width:34rem;\
+         margin:3rem auto;padding:0 1.2rem;color:#16302b;background:#fbfaf7}}\
+         a{{color:#0f6e5c}}h1{{font-size:1.4rem;margin:0 0 .2rem}}\
+         .k{{font:.72rem/1.5 ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;\
+         color:#7b8a86}}.note{{color:#4A5B5E}}</style>\
+         <p class=k>waiting for the door</p>{face}<h1>{name}</h1>\
+         <p class=k>{age} · from {place}{level}</p>{title}\
+         <p class=note>This patient is waiting for the ward to open. Nothing has happened to them \
+         yet — no shift, no chart, nothing on the chain.</p>\
+         <p class=k>the door is {door}</p>\
+         <p><a href=/>← the globe</a></p>",
+        name = esc(&pack.persona.name),
+        age = pack.persona.age,
+        place = esc(&place),
+        level = level,
+        face = face,
+        title = title,
+        door = door.word(),
+    )
+}
 
 /// Ask before you use this again.
 ///
@@ -3267,7 +3339,11 @@ fn main() {
         println!(
             "ward       beds {} · door {} · refill every {}s",
             ward::BEDS,
-            if ward_chain::door_open_here() { "open" } else { "closed — packs are refused" },
+            match ward_chain::door_here() {
+                ward_chain::Door::Open => "open",
+                ward_chain::Door::Preview => "preview — packs are taken, nobody is admitted",
+                ward_chain::Door::Closed => "closed — packs are refused",
+            },
             WARD_TICK.as_secs(),
         );
         let state = state_dir.clone();
@@ -4444,6 +4520,30 @@ fn main() {
             // One patient's page — where the globe's "take a shift" points. The bay that plays
             // her opens in week 2; until then this answers with what the chain says about her,
             // which is more than a 404 and is true today.
+            // A patient in the queue, at the address the board publishes her under. Before the
+            // generic /ward/ route, which reads a patient id out of the path and would call a pack
+            // id "not a patient id".
+            (Method::Get, p) if ward_mode() && p.starts_with("/ward/waiting/") => {
+                let id = p.trim_start_matches("/ward/waiting/");
+                let door = ward_chain::door_here();
+                let held = store.get::<ward::Pack>(ward_chain::QUEUE_STORE, id);
+                let resp = match held {
+                    // A closed ward publishes no queue, so it has no pages about one either.
+                    Some(pack) if door != ward_chain::Door::Closed => {
+                        let case = ward_case::all(&store)
+                            .into_iter()
+                            .find(|c| c.case_id == pack.case);
+                        html(&waiting_page(&pack, case.as_ref(), door))
+                    }
+                    _ => html(&ward_page_missing(
+                        "no patient is waiting under that name. The queue is published on the \
+                         board while the ward is opening, and every row on it is a link",
+                    ))
+                    .with_status_code(404),
+                };
+                let _ = req.respond(resp);
+                continue;
+            }
             (Method::Get, p) if ward_mode() && p.starts_with("/ward/") => {
                 // Her page is **the bay** (producer's ruling, 16 ก.ย.): one page, one engine, one
                 // tape, with a start-state parameter. The page reads the id out of its own path,
@@ -5069,7 +5169,7 @@ fn main() {
                     // would read in its log as a pack it should stop building.
                     let _ = req.respond(
                         json(serde_json::json!({
-                            "door": "closed",
+                            "door": ward_chain::door_here().word(),
                             "why": "the ward is not open yet. It opens when the founder says so, \
                                     not when a deploy lands — this build carries the code with \
                                     the door shut on purpose",
@@ -5139,6 +5239,17 @@ fn main() {
                 && matches!(p, "/api/ward/open" | "/api/ward/take" | "/api/ward/declare"
                                | "/api/ward/anchor" | "/api/ward/release") =>
             {
+                // A door that is not open answers before anything else here: no key is read, no
+                // chain is reached, and nothing is prepared. In preview the ward is filling its
+                // queue and showing who is in it, and the one thing it does not do is let anybody
+                // put their hands on a patient.
+                let door = ward_chain::door_here();
+                if !door.plays() {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "refused": door.refusal(), "door": door.word()
+                    }), 409));
+                    continue;
+                }
                 let Some(who) = param(&url, "player").and_then(|k| pubkey(&k)) else {
                     let _ = req.respond(json_code(serde_json::json!({
                         "error": "no player key — the browser signs its own shift, so it has to \
@@ -5347,6 +5458,15 @@ fn main() {
             // already the secret every other control on that page is guarded by.
             (Method::Post, "/api/ward/beat") | (Method::Post, "/api/ward/left") if ward_mode() => {
                 let leaving = path == "/api/ward/left";
+                // Leaving frees a head, which is a hand on a patient; beating is a page saying it
+                // is still there, which is true whatever the door says.
+                let door = ward_chain::door_here();
+                if leaving && !door.plays() {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "refused": door.refusal(), "door": door.word()
+                    }), 409));
+                    continue;
+                }
                 let patient = param(&url, "id")
                     .and_then(|id| sessions.lock().unwrap().get(&id).and_then(|s| s.ward.as_ref().map(|w| w.patient_id)));
                 let Some(patient) = patient else {
@@ -5598,7 +5718,7 @@ fn main() {
                 if !ward_chain::door_open_here() {
                     let _ = req.respond(
                         json(serde_json::json!({
-                            "door": "closed",
+                            "door": ward_chain::door_here().word(),
                             "why": "the ward is not open yet, so the factory has nothing to do \
                                     here either"
                         }))

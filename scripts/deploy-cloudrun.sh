@@ -160,9 +160,13 @@ env_add "VITALS_KEYPAIR=/relay/id.json"
 WARD_DOOR="${VITALS_WARD_DOOR:-closed}"
 if [ "$SERVICE" = "vitals-world" ]; then
   env_add "VITALS_WARD_DOOR=$WARD_DOOR"
+  # Three words and every other spelling is shut, the same rule the binary keeps (`door_from`).
+  # `preview` is the founder's ruling of 18 ก.ย.: the factory fills the queue and the board shows
+  # who is in it, the ticker admits nobody, and nothing a stranger presses reaches a patient.
   case "$WARD_DOOR" in
-    open) echo "── door      OPEN — this deploy accepts packs and the ward can admit patients" ;;
-    *)    echo "── door      closed — packs are refused until a deploy sets VITALS_WARD_DOOR=open" ;;
+    open)    echo "── door      OPEN — this deploy accepts packs and the ward can admit patients" ;;
+    preview) echo "── door      PREVIEW — packs are taken and published; nobody is admitted and nobody plays" ;;
+    *)       echo "── door      closed — packs are refused until a deploy sets VITALS_WARD_DOOR=open or =preview" ;;
   esac
 fi
 [ -n "$VERTEX_URL" ] && env_add "VITALS_VERTEX_URL=$VERTEX_URL"

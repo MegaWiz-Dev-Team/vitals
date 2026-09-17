@@ -736,6 +736,42 @@ pub struct WardRead<'a> {
     pub unrebuildable: &'a std::collections::BTreeMap<u64, String>,
 }
 
+/// The queue, as people rather than a number.
+///
+/// One row per waiting pack: the pack id it is addressed by, who she is, the level she was built
+/// for, whether her case is endemic where she is from, and the face the pack arrived with. The
+/// case's own title too, filled with her name and age the way the catalogue fills it — a reader
+/// looking at a country wants to know what is waiting there, and "Young woman from Bangladesh,
+/// fever for 3 weeks" is that in the case author's words.
+///
+/// What is deliberately absent: a bed (she is in none), a patient id (she is not on the chain), a
+/// state (nothing has happened to her), and anything else from her case. The sce is the case, and
+/// the case is what a learner meets at a bedside rather than reads in a payload.
+pub fn waiting_rows(
+    waiting: &[(String, Pack)],
+    cases: &[crate::ward_case::CaseSummary],
+) -> Vec<serde_json::Value> {
+    waiting
+        .iter()
+        .map(|(id, pack)| {
+            let held = cases.iter().find(|c| c.case_id == pack.case);
+            serde_json::json!({
+                "pack": id,
+                "name": pack.persona.name,
+                "age": pack.persona.age,
+                "sex": pack.persona.sex,
+                "country": pack.persona.country,
+                "difficulty": pack.difficulty.clone().or_else(|| held.map(|c| c.difficulty.clone())),
+                "endemic": pack.endemic,
+                "case_title": held.map(|c| {
+                    crate::ward_case::fill_persona(&c.title, &crate::ward_case::a_patient_of(c))
+                }),
+                "portrait": portrait_for(&pack.portrait, "stable"),
+            })
+        })
+        .collect()
+}
+
 pub fn ward_payload(r: &WardRead) -> serde_json::Value {
     let (patients, shifts, packs, since, as_of_slot, source) =
         (r.patients, r.shifts, r.packs, r.since, r.as_of_slot, r.source);

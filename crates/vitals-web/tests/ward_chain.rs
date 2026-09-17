@@ -501,20 +501,28 @@ fn a_patient_id_is_never_reused() {
 /// a job on another machine that will push the moment it has packs. One mistaken push must not be
 /// what opens a public ward — so the door is shut unless something says otherwise, and the way it
 /// fails is closed.
+///
+/// There are three words now (`preview` since 18 ก.ย.) and what each of them allows is in
+/// `preview_door.rs`. What is here is the rule that did not change: everything that is not one of
+/// those words is a shut door, and `door_open_here` — the question both factory doors ask — is
+/// true for the two states that are filling a ward and false for the one that is not.
 #[test]
 fn the_door_is_shut_unless_somebody_opened_it() {
-    use vitals_web::ward_chain::door_is_open;
+    use vitals_web::ward_chain::{door_from, Door};
 
-    assert!(!door_is_open(None), "a deploy that says nothing has a closed door");
-    assert!(door_is_open(Some("open")), "and one word opens it");
-    assert!(door_is_open(Some("OPEN")), "however it is typed");
-    assert!(door_is_open(Some(" open ")), "and with whatever whitespace a shell adds");
+    assert_eq!(door_from(None), Door::Closed, "a deploy that says nothing has a closed door");
+    assert_eq!(door_from(Some("open")), Door::Open, "and one word opens it");
+    assert_eq!(door_from(Some("OPEN")), Door::Open, "however it is typed");
+    assert_eq!(door_from(Some(" open ")), Door::Open, "and with whatever whitespace a shell adds");
 
     for shut in ["", "closed", "false", "0", "no", "opened", "open the ward", "1", "true"] {
-        assert!(!door_is_open(Some(shut)),
-                "{shut:?} is not the word — anything that is not 'open' leaves it shut, because \
-                 the failure that matters is a ward that opened by accident");
+        assert_eq!(door_from(Some(shut)), Door::Closed,
+                   "{shut:?} is not one of the three words — anything else leaves it shut, \
+                    because the failure that matters is a ward that opened by accident");
+        assert!(!door_from(Some(shut)).takes_packs(), "{shut:?}");
     }
+    assert!(Door::Open.takes_packs() && Door::Preview.takes_packs(),
+            "both of the states that are filling a ward take packs");
 }
 
 /// The factory fills in her other states after she is admitted, and cannot overwrite one.

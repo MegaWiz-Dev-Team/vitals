@@ -1672,7 +1672,10 @@ fn a_waiting_patient_is_published_without_a_bed_and_without_her_case() {
         provisional: true,
         withdrawn: false,
         version: "0.1.0".into(),
-        title: "{name}, {age}, fever for 3 weeks and now a sudden abdominal pain".into(),
+        // The placeholders the catalogue actually writes: a case is authored about a patient, and
+        // which person arrives on it is the ward's business (`fill_persona` — no {name}, because a
+        // case author does not know her).
+        title: "A {sex_word} of {age}, fever for 3 weeks and now a sudden abdominal pain".into(),
     }];
 
     // The rows themselves, which is where the shape is decided. The board attaches them to its
@@ -1690,8 +1693,8 @@ fn a_waiting_patient_is_published_without_a_bed_and_without_her_case() {
     assert!(first["portrait"].as_str().unwrap_or_default().ends_with(".webp"),
             "her face, the one the pack arrived with: {first}");
     assert_eq!(first["case_title"],
-               "Nusrat Jahan, 64, fever for 3 weeks and now a sudden abdominal pain",
-               "the case's own title, filled with the person who is waiting on it");
+               "A woman of 64, fever for 3 weeks and now a sudden abdominal pain",
+               "the case's own title, filled for the person who is waiting on it");
     assert!(rows[1]["case_title"].is_null(),
             "and null for a pack whose case this ward does not hold: {}", rows[1]);
 

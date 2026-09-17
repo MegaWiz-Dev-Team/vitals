@@ -516,13 +516,22 @@ pub const WEEK_SLOTS: u64 = 1_512_000;
 ///
 /// Whatever *was* read still lands in the store, so the next pass does not re-walk it.
 pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::Value {
+    // The door and the queue are facts about this host and are known whatever the chain says. A
+    // ward that cannot read its chain still has a door and still has people waiting behind it, and
+    // a page that branches on the door was getting nothing to branch on.
+    let queue = queue_block(store);
+    let unavailable = |why: &str| {
+        let mut v = crate::ward::ward_unavailable(chain.source(), why);
+        v["queue"] = queue.clone();
+        v
+    };
     let as_of = match chain.slot() {
         Ok(s) => s,
-        Err(e) => return crate::ward::ward_unavailable(chain.source(), &e),
+        Err(e) => return unavailable(&e),
     };
     let patients = match chain.patients() {
         Ok(p) => p,
-        Err(e) => return crate::ward::ward_unavailable(chain.source(), &e),
+        Err(e) => return unavailable(&e),
     };
 
     let mut shifts = Vec::new();
@@ -538,10 +547,7 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
             let _ = store.put(SHIFT_CACHE, &key, &seen);
         }
         if let Err(e) = added {
-            return crate::ward::ward_unavailable(
-                chain.source(),
-                &format!("patient {}'s history could not be read: {e}", p.patient_id),
-            );
+            return unavailable(&format!("patient {}'s history could not be read: {e}", p.patient_id));
         }
         for s in seen.shifts() {
             let hash = hex32(&s.run_hash);
@@ -572,20 +578,45 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
     });
     // How many patients are waiting, which is the number the factory tops up against and the one
     // a reader of the board uses to tell "nobody is playing" from "nobody is left to play".
+    v["queue"] = queue;
+    v
+}
+
+/// The queue, as the board publishes it: how many are waiting, who they are, and which door they
+/// are behind.
+///
+/// Its own function because every answer `/api/ward` gives carries it — including the ones where
+/// the chain could not be read at all, which is exactly when a page most needs to know whether the
+/// ward is shut, filling, or open.
+pub fn queue_block(store: &crate::store::Store) -> serde_json::Value {
+    let door = door_here();
+    // A closed ward publishes no queue at all — it is not open, nobody is coming, and a list of
+    // people nobody can meet is a promise. Preview and open both publish it: the rows draw the
+    // same way, and "waiting" is not a secret on a public ward.
+    let queued: Vec<(String, crate::ward::Pack)> = if door == Door::Closed {
+        Vec::new()
+    } else {
+        store.list::<crate::ward::Pack>(QUEUE_STORE)
+    };
     let waiting = queue_depth(store);
-    v["queue"] = serde_json::json!({
+    let mut block = serde_json::json!({});
+    for (key, val) in [
         // Null, never zero, when the store cannot be listed — "nobody is waiting" and "we could
         // not look" are opposite facts and this endpoint has one rule about those.
-        "waiting": waiting.as_ref().ok(),
-        "waiting_unknown_because": waiting.as_ref().err(),
-        "beds": crate::ward::BEDS,
+        ("waiting", serde_json::json!(waiting.as_ref().ok())),
+        ("waiting_unknown_because", serde_json::json!(waiting.as_ref().err())),
+        ("beds", serde_json::json!(crate::ward::BEDS)),
         // Published, because "the queue is empty" and "the door is shut" look identical from
         // outside and mean opposite things about whether anybody should be doing anything.
-        "door": if door_open_here() { "open" } else { "closed" },
-        "filled_by": "a ticker on the ward host, every minute: a bed frees on discharge or death \
-                      and the next queued patient takes it. Nobody on the team touches anything",
-    });
-    v
+        ("door", serde_json::json!(door_here().word())),
+        ("filled_by", serde_json::json!("a ticker on the ward host, every minute: a bed frees on \
+                                         discharge or death and the next queued patient takes it. \
+                                         Nobody on the team touches anything")),
+        ("waiting_patients", serde_json::json!(crate::ward::waiting_rows(&queued, &crate::ward_case::all(store)))),
+    ] {
+        block[key] = val;
+    }
+    block
 }
 
 // ── the shift flow ──────────────────────────────────────────────────────────
@@ -1202,22 +1233,83 @@ pub fn pack_id(p: &crate::ward::Pack) -> String {
 /// The word that opens the ward, and the variable that carries it.
 pub const DOOR_ENV: &str = "VITALS_WARD_DOOR";
 
-/// Is the factory's door open?
+/// The three states of the ward's door.
 ///
-/// **Default closed, and every ambiguity resolves closed.** Production carries this code before
-/// the ward is meant to be open, and the factory is an unattended job that pushes the moment it
-/// has packs — so the thing that opens a public ward has to be somebody deciding, never a deploy
-/// landing or a job waking up.
+/// **Default closed, and every ambiguity resolves closed.** Production carries this code before the
+/// ward is meant to be open, and the factory is an unattended job that pushes the moment it has
+/// packs — so the thing that opens a public ward has to be somebody deciding, never a deploy
+/// landing or a job waking up. The asymmetry is the argument: a ward that stays shut an hour too
+/// long costs an hour, and a ward that opens by accident is strangers treating patients nobody
+/// chose to release.
 ///
-/// The asymmetry is the whole argument: a ward that stays shut an hour too long costs an hour, and
-/// a ward that opens by accident is strangers treating patients nobody chose to release.
-pub fn door_is_open(setting: Option<&str>) -> bool {
-    setting.is_some_and(|v| v.trim().eq_ignore_ascii_case("open"))
+/// `Preview` is the founder's ruling of 18 ก.ย. and is a set of permissions rather than a flag: the
+/// factory may fill the queue, the board may say who is in it, and nothing may put a hand on a
+/// patient. It exists because a shut ward with an empty board proves nothing in the week before the
+/// fair — the patients are built and nobody can see them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Door {
+    Closed,
+    Preview,
+    Open,
+}
+
+impl Door {
+    /// May the factory's doors take packs? Both states that are not shut.
+    pub fn takes_packs(self) -> bool {
+        matches!(self, Door::Open | Door::Preview)
+    }
+
+    /// May the ticker admit from the queue? Only an open ward — a bed filled in preview is a
+    /// patient nobody may treat.
+    pub fn admits(self) -> bool {
+        matches!(self, Door::Open)
+    }
+
+    /// May a stranger take a head, declare, anchor, release, or leave one behind them?
+    pub fn plays(self) -> bool {
+        matches!(self, Door::Open)
+    }
+
+    /// The word the board publishes, and the one every page branches on.
+    pub fn word(self) -> &'static str {
+        match self {
+            Door::Closed => "closed",
+            Door::Preview => "preview",
+            Door::Open => "open",
+        }
+    }
+
+    /// What a stranger is told when they press something this door does not allow.
+    ///
+    /// One sentence, and it says what will change rather than what is forbidden. A closed ward has
+    /// nothing on it to press, so this is the preview sentence and a spare for the shut case.
+    pub fn refusal(self) -> &'static str {
+        match self {
+            Door::Open => "",
+            Door::Preview => "the ward opens soon — nobody plays yet",
+            Door::Closed => "this ward is not open",
+        }
+    }
+}
+
+/// Read a door out of the word a deploy set.
+pub fn door_from(setting: Option<&str>) -> Door {
+    match setting.map(|v| v.trim().to_ascii_lowercase()).as_deref() {
+        Some("open") => Door::Open,
+        Some("preview") => Door::Preview,
+        _ => Door::Closed,
+    }
 }
 
 /// The door, as this process is configured.
+pub fn door_here() -> Door {
+    door_from(std::env::var(DOOR_ENV).ok().as_deref())
+}
+
+/// Is the factory's door open enough to take a pack? Kept as its own name because that is the
+/// question both factory doors ask, and they asked it before there were three states.
 pub fn door_open_here() -> bool {
-    door_is_open(std::env::var(DOOR_ENV).ok().as_deref())
+    door_here().takes_packs()
 }
 
 /// Where packs wait for a bed.
@@ -1760,6 +1852,19 @@ pub fn tick(
             return out;
         }
     };
+
+    // Nobody is admitted unless the door is open. In preview the queue grows, the board shows who
+    // is in it, and the beds stay empty — a patient admitted then is a patient nobody may treat,
+    // sitting on a bed with a chain account and a lease nobody can take.
+    let door = door_here();
+    if !door.admits() {
+        if depth > 0 {
+            out.notes.push(format!(
+                "the door is {} — {depth} waiting, nobody admitted", door.word()
+            ));
+        }
+        return out;
+    }
 
     for _ in 0..to_admit(out.open, BEDS, depth) {
         let queue = store.list::<crate::ward::Pack>(QUEUE_STORE);
