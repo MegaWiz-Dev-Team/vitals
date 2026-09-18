@@ -740,3 +740,36 @@ assert.match(html, /Vital Signs · 3 min · the patients are simulated, the shor
              'the caption says what it is and how long it takes, in the ward\'s own sentence');
 
 console.log('globe_logic: ok (and the film is embedded, not autoplayed)');
+
+// ── a patient the ward cannot open is still a patient on the page ───────────
+//
+// The first caseless fix reused `off_ward`, and this page runs its whole patient list through
+// `onBoard` — which drops every `off_ward` row, a rule written for the accounts that reached the
+// chain outside the queue and have no pack, no name and no face. So Park Ji-woo and Yonas Haile
+// vanished from the globe page altogether: two patients with names, charts and, in Yonas's case,
+// an anchored shift. A dead-end link was traded for a disappeared patient, which is worse — the
+// founder's first words when a patient went missing this week were "คนไข้ไปไหนละอ่ะ".
+//
+// So it is its own word. `off_ward` means the ward knows nothing about her, and says so in its
+// label: "admitted outside the ward". `caseless` is nearly the opposite — the ward has her pack,
+// her chart and her receipts, and cannot draw her case.
+assert.equal(STATE_LABEL.caseless, 'no case to open',
+             'the page has a word for her, and it is not the one that means the ward never knew her');
+assert.equal(stateOf({ state: 'caseless' }), 'caseless', 'and it survives the state reader');
+
+const shut = { patient_id: 1789528326, name: 'Park Ji-woo', state: 'caseless', bed: null,
+               openable: false, why_not: 'the ward no longer holds this case' };
+const gone = { patient_id: 1789490620, state: 'off_ward', bed: null };
+const kept = onBoard([shut, gone, { patient_id: 7, state: 'on_ward', bed: 1 }]);
+assert.deepEqual(kept.map(p => p.patient_id), [1789528326, 7],
+                 'she stays on the page; the account the ward never knew still does not');
+
+assert.equal(canTakeShift(shut), false, 'nobody is offered her, as before');
+
+// And her row says why, with no bed to hang it on.
+const li = row(shut, false);
+assert.ok(!/take a shift/.test(li.innerHTML), `no take link: ${li.innerHTML}`);
+assert.match(li.innerHTML, /no longer holds this case/,
+             `and the reason where a reader is already looking: ${li.innerHTML}`);
+
+console.log('globe_logic: ok (and a patient the ward cannot open is still on the page)');

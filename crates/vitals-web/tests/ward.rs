@@ -1839,8 +1839,13 @@ fn a_bed_whose_case_the_ward_cannot_draw_is_not_offered() {
     // ward, because the bed is the ward's furniture and not the chain's. So she is listed the way
     // the board already lists somebody on the chain and in no bed — and the reason is on her row.
     let shut = by_id(1);
-    assert_eq!(shut["state"], "off_ward",
-               "on the chain, in no bed: the board has a word for that and this is it");
+    // Her own word, not `off_ward`. That one means the ward knows nothing about her — no pack, no
+    // name, admitted outside the queue — and the globe page drops those rows on that understanding,
+    // which made two named patients with charts and receipts vanish from it. Hers says what is
+    // actually true: the ward has her, and cannot open her case.
+    assert_eq!(shut["state"], "caseless",
+               "the board has a word for a patient whose case it no longer holds, and it is not \
+                the one that means it never knew her");
     assert!(shut["bed"].is_null(), "the bed is back in service for the next patient");
     assert_eq!(v["in_beds"], 1, "so the figures count one bed taken, not two");
     assert_eq!(shut["openable"], false,
