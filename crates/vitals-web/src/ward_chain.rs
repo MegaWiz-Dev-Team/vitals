@@ -1969,8 +1969,12 @@ pub fn tick(
 
     // Beds, not chain rows: a patient the ward cannot describe holds none (`beds_taken`), so she
     // blocks no admission. Three test patients that reached the chain outside the queue wedged
-    // staging shut against a full queue on 16 ก.ย., and this is the rule that unwedges it.
-    out.open = crate::ward::beds_taken(&patients, &packs_now, &lost);
+    // staging shut against a full queue on 16 ก.ย., and this is the rule that unwedges it. The
+    // catalogue is passed for the same reason it is passed to the board: a patient whose case this
+    // ward no longer holds cannot be opened by anybody, so her bed goes back into service and this
+    // tick admits into it.
+    out.open = crate::ward::beds_taken(
+        &patients, &packs_now, &lost, &crate::ward_case::all(store));
     let depth = match queue_depth(store) {
         Ok(n) => {
             out.depth = Some(n);

@@ -1016,7 +1016,7 @@ fn a_patient_the_ward_cannot_describe_holds_no_bed() {
         endemic: false,
     });
 
-    assert_eq!(beds_taken(&patients, &packs, nothing_lost()), 1,
+    assert_eq!(beds_taken(&patients, &packs, nothing_lost(), &[]), 1,
                "one bed is taken — the two the ward cannot describe are on the chain and not in a \
                 bed, or they wedge the ward shut against a queue that is full");
 
@@ -1178,7 +1178,7 @@ fn a_patient_who_cannot_be_rebuilt_is_named_and_gives_up_the_bed() {
                 board is where the ward says what it can and cannot do with her");
 
     // The count the ticker refills against agrees with the board.
-    assert_eq!(beds_taken(&patients, &packs, &lost), 1);
+    assert_eq!(beds_taken(&patients, &packs, &lost, &[]), 1);
 }
 
 /// **At the bedside the frame is never empty.**
@@ -1237,12 +1237,12 @@ fn a_bed_is_kept_for_the_whole_stay() {
 
     // Three admitted in order; nobody has left.
     let three = vec![patient(1, OPEN, 0, 10, 0), patient(2, OPEN, 0, 20, 0), patient(3, OPEN, 0, 30, 0)];
-    let beds = beds_of(&three, &packs, &Default::default());
+    let beds = beds_of(&three, &packs, &Default::default(), &[]);
     assert_eq!((beds[&1], beds[&2], beds[&3]), (1, 2, 3), "in the order they arrived");
 
     // Salma goes home. Yonas keeps bed 3 — he was told it, and nothing about him changed.
     let after = vec![patient(1, OPEN, 0, 10, 0), patient(2, DISCHARGED, 1, 20, 40), patient(3, OPEN, 0, 30, 0)];
-    let beds = beds_of(&after, &packs, &Default::default());
+    let beds = beds_of(&after, &packs, &Default::default(), &[]);
     assert_eq!(beds.get(&2), None, "a patient who left holds no bed");
     assert_eq!((beds[&1], beds[&3]), (1, 3), "and nobody else moves");
 
@@ -1253,13 +1253,13 @@ fn a_bed_is_kept_for_the_whole_stay() {
     ];
     let mut packs4 = packs.clone();
     packs4.insert(4, pack("Kwame"));
-    let beds = beds_of(&next, &packs4, &Default::default());
+    let beds = beds_of(&next, &packs4, &Default::default(), &[]);
     assert_eq!(beds[&4], 2, "the freed bed is the one the ticker fills");
     assert_eq!((beds[&1], beds[&3]), (1, 3), "and the other two are where they were");
 
     // A patient the ward cannot describe or cannot rebuild holds no bed, as before.
     let lost: BTreeMap<u64, String> = [(3u64, "9".repeat(64))].into_iter().collect();
-    let beds = beds_of(&next, &packs4, &lost);
+    let beds = beds_of(&next, &packs4, &lost, &[]);
     assert_eq!(beds.get(&3), None, "unrebuildable holds nothing");
     assert_eq!(beds[&4], 2, "and the numbers of the others do not move because of it");
 }
@@ -1835,12 +1835,16 @@ fn a_bed_whose_case_the_ward_cannot_draw_is_not_offered() {
     let by_id = |id: u64| v["patients"].as_array().unwrap().iter()
         .find(|p| p["patient_id"] == id).cloned().expect("listed");
 
+    // The ruling that followed this test: she stays open on chain, and the *bed* goes back to the
+    // ward, because the bed is the ward's furniture and not the chain's. So she is listed the way
+    // the board already lists somebody on the chain and in no bed — and the reason is on her row.
     let shut = by_id(1);
-    assert_eq!(shut["state"], "on_ward", "she is in a bed and the board says so — that has not changed");
-    assert_eq!(shut["bed"], 1, "and she holds it");
-    assert_eq!(v["in_beds"], 2, "the rings and the figures count her, because she is in one");
+    assert_eq!(shut["state"], "off_ward",
+               "on the chain, in no bed: the board has a word for that and this is it");
+    assert!(shut["bed"].is_null(), "the bed is back in service for the next patient");
+    assert_eq!(v["in_beds"], 1, "so the figures count one bed taken, not two");
     assert_eq!(shut["openable"], false,
-               "but this ward cannot draw her case, so the bed is not offered to anybody");
+               "and nobody is offered her, because this ward cannot draw her case");
     let why = shut["why_not"].as_str().expect("a reason a reader can act on");
     assert!(why.contains("case"),
             "it says what is missing rather than that something went wrong: {why}");

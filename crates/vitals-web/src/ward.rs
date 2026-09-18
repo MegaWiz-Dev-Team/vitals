@@ -657,18 +657,41 @@ pub fn beds_taken(
     patients: &[PatientOnChain],
     packs: &std::collections::BTreeMap<u64, Pack>,
     unrebuildable: &std::collections::BTreeMap<u64, String>,
+    cases: &[crate::ward_case::CaseSummary],
 ) -> usize {
     patients
         .iter()
-        .filter(|p| {
-            p.state == OPEN
-                && packs.contains_key(&p.patient_id)
-                // A patient whose chart cannot be rebuilt holds no bed either: nobody can open
-                // her, so a bed kept for her is a bed the ward has taken out of service without
-                // saying so. The row says why, and the ticker fills the bed.
-                && !unrebuildable.contains_key(&p.patient_id)
-        })
+        .filter(|p| can_open(p, packs, unrebuildable, cases))
         .count()
+}
+
+/// Can this ward actually put somebody at this bedside?
+///
+/// Three ways the answer is no, and all three mean the same thing to a bed: nobody can open her, so
+/// a bed kept for her is a bed the ward has taken out of service without saying so. The row says
+/// why, and the ticker fills the bed.
+///
+///   * the ward has no pack for her — she was admitted by something other than the queue;
+///   * her chart cannot be rebuilt — the chain names a shift whose tape this ward does not have;
+///   * her pack names a case the catalogue no longer holds. Two patients sat in beds like this for
+///     two days on staging, admitted on the season's stations before the case door existed, with
+///     "take a shift" beside each of them and nothing behind it.
+///
+/// **An empty catalogue judges nobody.** A ward that has not loaded its cases yet has not lost
+/// anybody's case, and the alternative is a fresh instance shutting every bed before its first read
+/// finishes.
+pub fn can_open(
+    p: &PatientOnChain,
+    packs: &std::collections::BTreeMap<u64, Pack>,
+    unrebuildable: &std::collections::BTreeMap<u64, String>,
+    cases: &[crate::ward_case::CaseSummary],
+) -> bool {
+    p.state == OPEN
+        && !unrebuildable.contains_key(&p.patient_id)
+        && match packs.get(&p.patient_id) {
+            None => false,
+            Some(k) => cases.is_empty() || cases.iter().any(|c| c.case_id == k.case),
+        }
 }
 
 /// Which bed each open patient is in — and keeps for her whole stay.
@@ -687,12 +710,20 @@ pub fn beds_of(
     patients: &[PatientOnChain],
     packs: &std::collections::BTreeMap<u64, Pack>,
     unrebuildable: &std::collections::BTreeMap<u64, String>,
+    cases: &[crate::ward_case::CaseSummary],
 ) -> std::collections::BTreeMap<u64, usize> {
     // (slot, arriving, patient) — a closing at the same slot as an admission frees the bed first,
     // so the arrival can take it. `false < true` orders them that way.
     let mut events: Vec<(u64, bool, &PatientOnChain)> = Vec::new();
     for p in patients {
-        if !packs.contains_key(&p.patient_id) || unrebuildable.contains_key(&p.patient_id) {
+        // `can_open` asks about an open patient; the walk also needs the ones who have left,
+        // because a closing frees the bed it held. So the chart-level reasons are asked directly.
+        if !packs.contains_key(&p.patient_id)
+            || unrebuildable.contains_key(&p.patient_id)
+            || packs.get(&p.patient_id).is_some_and(|k| {
+                !cases.is_empty() && !cases.iter().any(|c| c.case_id == k.case)
+            })
+        {
             continue;
         }
         events.push((p.admitted_slot, true, p));
@@ -848,14 +879,8 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
     // they were admitted. A patient who leaves frees her number for the next admission, which is
     // what a bed is.
     // Only the patients the ward can describe are in beds — see `beds_taken`.
-    let mut open: Vec<&PatientOnChain> = patients
-        .iter()
-        .filter(|p| {
-            p.state == OPEN
-                && packs.contains_key(&p.patient_id)
-                && !lost.contains_key(&p.patient_id)
-        })
-        .collect();
+    let mut open: Vec<&PatientOnChain> =
+        patients.iter().filter(|p| can_open(p, packs, lost, r.cases)).collect();
     open.sort_by_key(|p| (p.admitted_slot, p.patient_id));
     let bed_of = |id: u64| open.iter().position(|p| p.patient_id == id).map(|i| i + 1);
 
@@ -894,13 +919,12 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                 // Whether a stranger can be offered this bed at all. The page asks it before it
                 // draws a link, so the answer lives here rather than being worked out twice.
                 "openable": !(stuck.is_some() || adrift || caseless),
-                "why_not": caseless.then(|| {
-                    "the ward no longer holds her case, so nothing here can open this bed"
-                }),
+                "why_not": caseless.then_some(
+                    "the ward no longer holds her case, so nothing here can open this bed"),
                 // Words, because the board is what reads this. A renderer switching on 0, 1 and 2
                 // would have to know the program's byte layout to draw a ward.
                 "state": if stuck.is_some() { "unrebuildable" }
-                         else if adrift { "off_ward" }
+                         else if adrift || caseless { "off_ward" }
                          else if on_shift { "on_shift" }
                          else { state_word(p.state) },
                 "note": match (stuck, adrift) {
@@ -976,7 +1000,7 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
         // Beside the census and never inside it: the census is what the chain says, and this is
         // what the ward can actually hand to a stranger. A rail that published only the first
         // would be telling somebody six when three of those six cannot be treated by anybody.
-        "in_beds": beds_taken(patients, packs, lost),
+        "in_beds": beds_taken(patients, packs, lost, r.cases),
         "beds": BEDS,
         "week": w,
         "patients": board,
