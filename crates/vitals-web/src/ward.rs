@@ -688,10 +688,22 @@ pub fn can_open(
 ) -> bool {
     p.state == OPEN
         && !unrebuildable.contains_key(&p.patient_id)
-        && match packs.get(&p.patient_id) {
-            None => false,
-            Some(k) => cases.is_empty() || cases.iter().any(|c| c.case_id == k.case),
-        }
+        && case_is_held(packs.get(&p.patient_id), cases)
+}
+
+/// Does this ward still hold the case this pack names?
+///
+/// The half of [`can_open`] that a chart page needs on its own: it is opened one patient at a time
+/// and holds an account rather than a board row, and the question it has to answer is the same one.
+/// One function for it, because a page and a row disagreeing about one patient is the bug this
+/// exists to prevent.
+///
+/// No pack is no case. An empty catalogue judges nobody — see [`can_open`].
+pub fn case_is_held(pack: Option<&Pack>, cases: &[crate::ward_case::CaseSummary]) -> bool {
+    match pack {
+        None => false,
+        Some(k) => cases.is_empty() || cases.iter().any(|c| c.case_id == k.case),
+    }
 }
 
 /// Which bed each open patient is in — and keeps for her whole stay.
@@ -925,8 +937,13 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                     "the ward no longer holds this case, so nothing here can open this bed"),
                 // Words, because the board is what reads this. A renderer switching on 0, 1 and 2
                 // would have to know the program's byte layout to draw a ward.
+                // Her own word. `off_ward` means this ward knows nothing about her — no pack,
+                // admitted outside the queue — and the globe page drops those rows on exactly that
+                // understanding. A patient whose case the catalogue lost is the opposite: the ward
+                // has her pack, her chart and her receipts. One word for each fact.
                 "state": if stuck.is_some() { "unrebuildable" }
-                         else if adrift || caseless { "off_ward" }
+                         else if caseless { "caseless" }
+                         else if adrift { "off_ward" }
                          else if on_shift { "on_shift" }
                          else { state_word(p.state) },
                 "note": match (stuck, adrift) {

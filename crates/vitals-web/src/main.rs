@@ -2324,9 +2324,21 @@ fn ward_chart(store: &store::Store, patient_id: u64) -> serde_json::Value {
         .collect();
     shifts.sort_by_key(|s| s.get("slot").and_then(|v| v.as_u64()).unwrap_or(0));
 
+    // Whether this ward can put anybody at her bedside, by the same rule the board uses — one
+    // function, so a page and a row cannot disagree about one patient. Her row read `off_ward`
+    // with "the ward no longer holds this case" while this endpoint said `on_ward`, and the page
+    // read that out as "She is on the ward".
+    let openable = her.state == ward::OPEN
+        && ward::case_is_held(pack.as_ref(), &ward_case::all(store));
     serde_json::json!({
         "patient_id": patient_id,
-        "state": ward::state_word(her.state),
+        // The board's word, not the chain's. The chain still calls her open and is not wrong;
+        // what it cannot know is that nothing here can draw her case.
+        "state": if her.state == ward::OPEN && !openable { "caseless" }
+                 else { ward::state_word(her.state) },
+        "openable": openable,
+        "why_not": (her.state == ward::OPEN && !openable).then_some(
+            "the ward no longer holds this case, so nothing here can open this bed"),
         "admitted_slot": her.admitted_slot,
         "closed_slot": (her.closed_slot > 0).then_some(her.closed_slot),
         "as_of_slot": as_of,

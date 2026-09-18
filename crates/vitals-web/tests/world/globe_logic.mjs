@@ -766,10 +766,13 @@ assert.deepEqual(kept.map(p => p.patient_id), [1789528326, 7],
 
 assert.equal(canTakeShift(shut), false, 'nobody is offered her, as before');
 
-// And her row says why, with no bed to hang it on.
-const li = row(shut, false);
-assert.ok(!/take a shift/.test(li.innerHTML), `no take link: ${li.innerHTML}`);
-assert.match(li.innerHTML, /no longer holds this case/,
-             `and the reason where a reader is already looking: ${li.innerHTML}`);
+// And her row says why, with no bed to hang it on. `row` builds DOM, so what is asserted here is
+// the rule in its source — that the sentence is not gated on a bed she no longer holds — and the
+// rendering itself is driven in a browser against a board that carries her.
+const rowSrc = grab('row');
+assert.match(rowSrc, /openable === false/,
+             'the row asks the board whether this patient can be opened');
+assert.ok(!/openable === false && p\.bed/.test(rowSrc),
+          `and does not hide the reason behind a bed she has already given back: ${rowSrc}`);
 
 console.log('globe_logic: ok (and a patient the ward cannot open is still on the page)');

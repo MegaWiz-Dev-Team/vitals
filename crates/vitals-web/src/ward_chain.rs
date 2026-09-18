@@ -2584,7 +2584,7 @@ pub fn labels_of(sce_json: &str) -> std::collections::BTreeMap<String, String> {
                 .filter_map(|i| {
                     let id = i.get("id").and_then(serde_json::Value::as_str)?;
                     let label = i.get("label").and_then(serde_json::Value::as_str)?;
-                    Some((id.to_string(), label.to_string()))
+                    Some((id.to_string(), without_its_row(label)))
                 })
                 .collect()
         })
@@ -2595,6 +2595,24 @@ pub fn labels_of(sce_json: &str) -> std::collections::BTreeMap<String, String> {
 /// a phrase for an id nobody wrote would be worse than one that shows the id.
 pub fn label_for(sce_json: &str, id: &str) -> Option<String> {
     labels_of(sce_json).remove(id)
+}
+
+/// A label without the row it is already under.
+///
+/// The compiler writes "Ask: Chest, abdominal and flank pain", and a receipt that has just printed
+/// ASKED in its own column does not need the label to say it again. The tray strips the same four
+/// words for the same reason (`chipText` in `bay.js`, where the rule is written for the page) —
+/// and anything else is left exactly as the author wrote it, including "Diagnosis:", which is part
+/// of what that label says rather than a row heading.
+fn without_its_row(label: &str) -> String {
+    let Some((head, rest)) = label.split_once(':') else {
+        return label.to_string();
+    };
+    let row = head.trim().to_ascii_lowercase();
+    if matches!(row.as_str(), "ask" | "examine" | "order" | "give") && !rest.trim().is_empty() {
+        return rest.trim().to_string();
+    }
+    label.to_string()
 }
 
 /// An id read as the words it already is, for a case that wrote none of its own.

@@ -4255,6 +4255,21 @@ async function openReview(){
 /* One patient's whole stay, for a patient who is not in a bed any more.
    Every state but "on the ward right now" was "Not this bed": no name, no face, no outcome, and no
    way to the shifts that treated her. The chart is the chain — this is where a stranger reads it. */
+/* What this patient's page says about where she is — in the board's words, not the chain's.
+   Her row on the globe said `off_ward` with "the ward no longer holds this case" while this page
+   said "She is on the ward": the board and the page disagreeing about one patient in one minute.
+   The chain still calls her open and is not wrong — nothing clinical happened to her — but what it
+   cannot know is that this ward can no longer put anybody at her bedside, and that is the fact her
+   reader needs. So `openable: false` wins the sentence.
+   An ending is still an ending: somebody who went home went home, whatever this ward can open. */
+function chartState(c, g){
+  if(c.state==='went_home')return 'went home';
+  if(c.state==='died')return 'died';
+  if(c.openable===false)return 'is off the ward · '+g.p+' chain stays open · no bed held';
+  if(c.state==='off_ward')return 'is on the chain and has no case here';
+  return 'is on the ward';
+}
+
 function chartPage(c, why){
   const g=/^m/i.test(c.sex||'')?PRO_M:(/^f/i.test(c.sex||'')?PRO_F:PRO_N);
   const when=t=>t?String(t).replace('T',' ').replace(/\.\d+Z?$/,'').replace('Z','')+' UTC':'';
@@ -4263,8 +4278,7 @@ function chartPage(c, why){
   const shifts=(c.shifts||[]).map((s,i)=>
     '<li>shift '+(i+1)+' · <a href="/shift/'+encodeURIComponent(s.run_hash)+'">the receipt</a>'
     +' · key '+esc(s.signer)+'…'+(s.kept?'':' · <i>tape not kept here</i>')+'</li>').join('');
-  const what=c.state==='went_home'?'went home':c.state==='died'?'died'
-            :c.state==='off_ward'?'is on the chain and has no case here':'is on the ward';
+  const what=chartState(c, g);
   wardPage(
     '<p class="bed">patient '+esc(c.patient_id)+'</p>'
     +face

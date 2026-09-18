@@ -643,6 +643,9 @@ let hovered = null;
    the sentence that says what she is — chain truth, readable by anybody — and she is not here.
    One place decides, so nothing downstream can put her back. */
 function onBoard(ps) {
+  /* Only the accounts this ward knows nothing about are dropped. A patient whose case it can no
+     longer draw stays: she has a name, a chart and receipts, and a page that quietly removes a
+     patient is worse than one that says it cannot open her. */
   return (ps || []).filter(p => stateOf(p) !== "off_ward");
 }
 
@@ -741,7 +744,11 @@ function renderCensus() {
    listed rather than hidden — the census counts her, and a board that dropped her would
    disagree with its own rail — and the label says what she is so nobody tries. */
 const STATE_LABEL = { on_ward: "on the ward", on_shift: "on shift", went_home: "went home",
-  died: "died", off_ward: "admitted outside the ward" };
+  died: "died", off_ward: "admitted outside the ward",
+  /* The ward has her pack, her chart and every receipt, and cannot draw her case — so she is on
+     this page with the rest, under "not on the map", and offered to nobody. Not `off_ward`, whose
+     label is true of an account this ward never knew and false of a patient it admitted itself. */
+  caseless: "no case to open" };
 function stateOf(p) {
   const s = String(p.state || "").toLowerCase().replace(/[\s-]+/g, "_");
   if (s === "open" || s === "0") return "on_ward";
@@ -957,8 +964,10 @@ function row(p, showCountry) {
   if (p.note) li.title = p.note;
   /* Said on the row, where the link used to be, rather than left as a gap somebody has to interpret:
      this bed is real, she is in it, and it cannot be opened from here. */
-  const shut = p.openable === false && p.bed !== undefined && p.bed !== null
-    ? `<div class="shut">this bed cannot be opened${p.why_not ? ` · ${escapeHtml(p.why_not)}` : ""}</div>`
+  /* Whether or not she still holds a bed: once the ward has given the bed back she is in the tray,
+     and that is exactly where somebody wonders what happened to her. */
+  const shut = p.openable === false
+    ? `<div class="shut">${p.bed !== undefined && p.bed !== null ? "this bed cannot be opened" : "no shift can be taken"}${p.why_not ? ` · ${escapeHtml(p.why_not)}` : ""}</div>`
     : "";
   /* Two lines and a button: who and where on the first, how they are on the second. The order is
      the order a stranger reads them in — the name is what they are looking for, the bed is how the
