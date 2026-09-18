@@ -2132,8 +2132,10 @@ enum WardWork {
     Take { patient_id: u64 },
     /// Declare the shift before it is played. The nonce never reaches the chain.
     Declare { session: String, hash: [u8; 32], nonce: [u8; 32] },
-    /// Append this shift's leaf to her chain, extending the head it named.
-    Anchor { session: String, patient_id: u64 },
+    /// Append this shift's leaf to her chain, extending the head it named. The leaf is kept so a
+    /// refusal can be read against the head the chain holds afterwards: if that head is this leaf,
+    /// the shift is anchored and the "somebody else moved it" sentence would be about us.
+    Anchor { session: String, patient_id: u64, leaf: [u8; 32] },
     /// Put the head down with nothing anchored. Her chart is untouched and this shift's tape is
     /// discarded — the next person gets her as this one found her.
     Release { session: String },
@@ -5528,6 +5530,18 @@ fn main() {
                                 ))
                             }
                             (Some(w), _) => {
+                                // A shift anchors once, and the server is where that is settled —
+                                // not the button. The page latches its two Hand over buttons, and
+                                // a reload gets past a latch; this is before any chain is read,
+                                // so a second anchor costs a sentence rather than a transaction
+                                // the program will refuse.
+                                if s.anchored {
+                                    drop(map);
+                                    let _ = req.respond(json_code(serde_json::json!({
+                                        "refused": ward_chain::ALREADY_ANCHORED
+                                    }), 409));
+                                    continue;
+                                }
                                 // The anchor. Everything it carries is rebuilt rather than
                                 // remembered: the reduction comes from the tape through the shared
                                 // reducer, so what lands on chain is what a verifier recomputes.
@@ -5586,7 +5600,8 @@ fn main() {
                                                 chain.program_id(), &chain.operator(), &who,
                                                 w.patient_id, ward_chain::WARD_TREE,
                                                 ward_chain::wire(&rec), prev_head),
-                                            WardWork::Anchor { session: id.clone(), patient_id: w.patient_id },
+                                            WardWork::Anchor { session: id.clone(), patient_id: w.patient_id,
+                                                               leaf: rec.leaf() },
                                         )),
                                     },
                                     Err(e) => Err(e),
@@ -5700,6 +5715,18 @@ fn main() {
                 };
                 let sent = chain.submit(&tx);
                 let answer = match (&work.work, sent) {
+                    (WardWork::Anchor { patient_id, leaf, .. }, Err(e)) => {
+                        // A stale head at the end of an anchor is either somebody else's shift or
+                        // our own, and only the chain can say which. Read once, here, at the
+                        // moment of the refusal — the head it holds now is the answer.
+                        let head_now = chain.patient(*patient_id).ok().flatten().map(|h| h.head);
+                        match ward_chain::anchor_refusal(&e, head_now, *leaf) {
+                            Some(said) => json_code(serde_json::json!({
+                                "refused": said, "by": "the ward's program, on chain"
+                            }), 409),
+                            None => json_code(serde_json::json!({ "error": e }), 503),
+                        }
+                    }
                     (_, Err(e)) => {
                         // A refusal is the program saying no and is answered in words; anything
                         // else is an outage and is answered as one.
@@ -5754,7 +5781,7 @@ fn main() {
                             "recorded": "nothing — the head is back and her chart is as you found it"
                         }))
                     }
-                    (WardWork::Anchor { session, patient_id }, Ok(sig)) => {
+                    (WardWork::Anchor { session, patient_id, .. }, Ok(sig)) => {
                         let mut map = sessions.lock().unwrap();
                         let now_long = map.get(session).and_then(|s| s.ward.as_ref()).map(|w| w.index + 1);
                         if let Some(s) = map.get_mut(session) {
@@ -5802,6 +5829,14 @@ fn main() {
                     }), 409));
                     continue;
                 };
+                // A shift the chain has already taken is not reduced again: the same minutes
+                // cannot be filed twice, and the sentence that says so is the ward's own.
+                if s.anchored {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "refused": ward_chain::ALREADY_ANCHORED
+                    }), 409));
+                    continue;
+                }
                 // Reduced from the patient this shift walked into, so the harm and the beats are
                 // this stranger's own and not the ones they inherited.
                 let Some(rebuild) = ward_rebuild(&store, w.patient_id) else {

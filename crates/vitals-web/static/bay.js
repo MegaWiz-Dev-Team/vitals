@@ -4020,6 +4020,25 @@ function primaryLabel(taken, over, name, g){
   return 'Hand over · record this shift';
 }
 
+/* Whether a shift is being handed over, and both buttons that do it.
+   One act, two buttons — the bedside card's and the strip's — so the latch is the shift's rather
+   than either button's: the founder pressed the bedside one twice on 18 ก.ย., the first press
+   anchored the shift and the second sent the same leaf at a head we had just moved ourselves. The
+   chain refused it, correctly, and the refusal was shown to somebody whose work was already on
+   the chain. */
+let HANDING=false;
+function handingOver(on){
+  HANDING=on;
+  ['#endrun','#wardprimary'].forEach(s=>{ const b=$(s); if(b)b.disabled=on; });
+}
+
+/* What a press of the bedside button does — including the press that does nothing.
+   Pure, so `shift_logic.mjs` can press it twice without a browser. */
+function pressPrimary(taken, handing){
+  if(handing) return 'nothing';
+  return taken ? 'handover' : 'take';
+}
+
 /* The bedside card's own button: the page's one action, under her face and her name, where the
    founder looked for it ("ปุ่มเข้ารักษาคนไข้มันไม่ค่อยเด่น"). The strip keeps a second copy — a
    stranger who has scrolled to the tray should not have to come back up. */
@@ -4030,8 +4049,12 @@ function paintPrimary(){
   b.hidden=false;
   b.textContent=primaryLabel(taken, over, (WARDSHIFT&&WARDSHIFT.name)||'', pro());
   b.className='btn go primary'+(taken?' handover':'');
-  b.onclick=()=>{ if(!taken){ takeShift().catch(e=>wardSay(esc(e&&e.message?e.message:e))); }
-                  else { endRun(); } };
+  /* The ward poll repaints this card. The latch has to outlive the repaint, or a shift that is
+     being handed over gets its second press handed back to it. */
+  b.disabled=HANDING;
+  b.onclick=()=>{ const act=pressPrimary(taken, HANDING);
+                  if(act==='take'){ takeShift().catch(e=>wardSay(esc(e&&e.message?e.message:e))); }
+                  else if(act==='handover'){ endRun(); } };
 }
 
 /* How tall the thing pinned over the transcript is, in the transcript's own column.
@@ -4448,19 +4471,28 @@ addEventListener('pagehide',()=>{
 });
 async function handOver(){
   if(!id)return;
+  /* Once. The chain takes one leaf per head and the second press could only ever earn a refusal
+     for work the first press had already recorded. */
+  if(HANDING)return;
+  handingOver(true);
   try{ await handOverInner(); }
   catch(e){
     /* The tape is on the server either way: a shift that fails to hand over is not a shift that
-       was lost, and telling somebody to open the patient again is better than a dead button. */
-    $('#endrun').disabled=false;
+       was lost, and telling somebody to open the patient again is better than a dead button.
+       This is the one path that unlatches: nothing reached the chain, so there is something left
+       to press. A refusal from the chain does not come back here — it is an answer, not a throw. */
+    handingOver(false);
     wardSay('that did not go through: '+esc(e&&e.message?e.message:e)+
             ' — <a href="/ward/'+WARD+'">open '+pro().o+' again</a>');
   }
 }
 async function handOverInner(){
-  disarmEnd(); $('#endrun').disabled=true;
+  disarmEnd(); handingOver(true);
   wardSay('reducing your shift…');
   const over_=await (await fetch('/api/handover?id='+id+asMe())).json();
+  /* The server refuses a shift it has already anchored, and says so in its own words — a reload
+     and a fresh press reach this before any chain is touched. */
+  if(over_.refused)return wardSay('<b>refused.</b> '+esc(over_.refused));
   if(over_.error)return wardSay(esc(over_.error));
   /* The tape has been reduced and the leaf named, so the clock stops here. It used to keep
      ticking through the anchor — each tick another step posted to /api/step — and the anchor then

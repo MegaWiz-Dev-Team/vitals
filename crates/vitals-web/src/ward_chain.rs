@@ -2383,9 +2383,7 @@ pub fn commit_ix(
 /// `None` for anything that is not one of ours: an outage is not a refusal, and telling a stranger
 /// their work was rejected when it was never sent is worse than saying the network failed.
 pub fn refusal(err: &str) -> Option<&'static str> {
-    let code = err.split("custom program error: 0x").nth(1)?;
-    let code: String = code.chars().take_while(|c| c.is_ascii_hexdigit()).collect();
-    Some(match u32::from_str_radix(&code, 16).ok()? {
+    Some(match program_code(err)? {
         16 => "this chart moved while you were at the bedside: somebody else anchored a shift on the head \
                you were extending. Your work is still on your tape — open the patient again and it will be \
                played on the chart as it is now",
@@ -2395,6 +2393,41 @@ pub fn refusal(err: &str) -> Option<&'static str> {
         19 => "the head is not yours to give back: somebody else holds this shift",
         _ => return None,
     })
+}
+
+/// The program's own number, out of whatever the cluster wrapped it in.
+fn program_code(err: &str) -> Option<u32> {
+    let code = err.split("custom program error: 0x").nth(1)?;
+    let code: String = code.chars().take_while(|c| c.is_ascii_hexdigit()).collect();
+    u32::from_str_radix(&code, 16).ok()
+}
+
+/// What the ward says when the head moved because *this shift* moved it.
+pub const ALREADY_ANCHORED: &str =
+    "this shift is already anchored: the chain has it, and the same minutes cannot be filed \
+     twice. Nothing was lost by pressing again";
+
+/// The same refusals, read against the head the chain is holding now.
+///
+/// `StaleHead` has two stories and the ward told one of them for both. "Somebody else anchored a
+/// shift on the head you were extending" is true when somebody else did; after a second press of
+/// Hand over that somebody else is us, and a stranger was shown a refusal for the shift the chain
+/// had just taken from them.
+///
+/// So: if the head on chain is this shift's own leaf, the shift is anchored and the words say that.
+/// If it is anybody else's — or the chain could not be read at the moment of the refusal — the
+/// general sentence stands, because a guess here would tell somebody their work is safe when it
+/// may not be.
+pub fn anchor_refusal(
+    err: &str,
+    head_now: Option<[u8; 32]>,
+    ours: [u8; 32],
+) -> Option<&'static str> {
+    let said = refusal(err)?;
+    if program_code(err) == Some(16) && head_now == Some(ours) {
+        return Some(ALREADY_ANCHORED);
+    }
+    Some(said)
 }
 
 /// What one shift was, for somebody who never played it.
