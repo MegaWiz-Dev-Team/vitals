@@ -1780,3 +1780,72 @@ fn a_fresh_instance_answers_from_the_board_its_predecessor_kept() {
     assert_eq!(board_use(Some(Duration::from_secs(3)), true, ttl), Board::Serve);
     assert_eq!(board_use(Some(Duration::from_secs(600)), true, ttl), Board::ServeAndRefresh);
 }
+
+/// **A bed whose case the ward no longer holds is not offered.**
+///
+/// Two of the three patients in beds on staging on 18 September could not be played at all: Park
+/// Ji-woo on `osce-c` and Yonas Haile on `osce-b2`, both admitted from the season's stations before
+/// the case door existed, both still in beds after the catalogue moved on without them. `/api/new`
+/// answered with no case content, so the page said "Not on this page yet" — *after* a stranger had
+/// pressed "take a shift" on the board. The globe was offering two dead ends out of three.
+///
+/// She is still in a bed and the census still counts her, because she is: the ward admitted her,
+/// her chart is on chain, and none of that changed. What changed is that this ward can no longer
+/// draw her case, so the one thing it must not do is offer a door onto a blank page.
+#[test]
+fn a_bed_whose_case_the_ward_cannot_draw_is_not_offered() {
+    use std::collections::BTreeMap;
+    use vitals_web::ward::{Pack, Persona, WardRead};
+    use vitals_web::ward_case::CaseSummary;
+
+    let held = |case: &str| Pack {
+        difficulty: None,
+        case: case.into(),
+        persona: Persona { name: "Park Ji-woo".into(), country: "KOR".into(), age: 8, sex: "f".into() },
+        portrait: Default::default(),
+        endemic: false,
+    };
+    let in_the_catalogue = |id: &str| CaseSummary {
+        case_id: id.into(),
+        archetype: "haemorrhagic_shock".into(),
+        country: Some("PHL".into()),
+        difficulty: "resident".into(),
+        endemic: false,
+        provisional: true,
+        withdrawn: false,
+        version: "1.0.0".into(),
+        title: "a case this ward holds".into(),
+        patient_age: Some(69),
+        patient_sex: Some("f".into()),
+    };
+
+    let patients = vec![patient(1, OPEN, 2, 10, 0), patient(2, OPEN, 2, 20, 0)];
+    let mut packs = BTreeMap::new();
+    packs.insert(1u64, held("osce-c"));
+    packs.insert(2u64, held("ddx-boerhaave-4-en"));
+    let catalogue = [in_the_catalogue("ddx-boerhaave-4-en")];
+
+    let v = ward_payload(&WardRead {
+        cases: &catalogue,
+        patients: &patients, shifts: &[], packs: &packs,
+        since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
+        unrebuildable: nothing_lost(), times: nothing_dated(), seconds_per_slot: None,
+    });
+
+    let by_id = |id: u64| v["patients"].as_array().unwrap().iter()
+        .find(|p| p["patient_id"] == id).cloned().expect("listed");
+
+    let shut = by_id(1);
+    assert_eq!(shut["state"], "on_ward", "she is in a bed and the board says so — that has not changed");
+    assert_eq!(shut["bed"], 1, "and she holds it");
+    assert_eq!(v["in_beds"], 2, "the rings and the figures count her, because she is in one");
+    assert_eq!(shut["openable"], false,
+               "but this ward cannot draw her case, so the bed is not offered to anybody");
+    let why = shut["why_not"].as_str().expect("a reason a reader can act on");
+    assert!(why.contains("case"),
+            "it says what is missing rather than that something went wrong: {why}");
+
+    let ok = by_id(2);
+    assert_eq!(ok["openable"], true, "a bed whose case the ward holds is offered as it always was");
+    assert!(ok["why_not"].is_null(), "and says nothing about why not — one broken bed closes no ward");
+}

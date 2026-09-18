@@ -698,3 +698,18 @@ assert.match(grab('countryAt'), /onTheGlobe/,
              'the hit test has to ask it — a guard nothing calls is a comment');
 
 console.log('globe_logic: ok (and the page is not Antarctica)');
+
+// ── a bed the ward cannot open is not offered ───────────────────────────────
+//
+// Park Ji-woo and Yonas Haile sat in beds 1 and 2 on staging with "take a shift" beside them, and
+// the ward could draw neither case: both rows were doors onto "Not on this page yet". The board now
+// says `openable: false` with the reason, and the page has to believe it — a row offering a shift
+// the server has already said cannot be taken is the worst kind of disagreement, because the
+// stranger finds out after they have committed.
+assert.equal(canTakeShift({ state: 'on_ward', bed: 1, openable: false }), false,
+             'the server says this bed cannot be opened, so the page does not offer it');
+assert.equal(canTakeShift({ state: 'on_ward', bed: 1, openable: true }), true);
+assert.equal(canTakeShift({ state: 'on_ward', bed: 1 }), true,
+             'a board that does not carry the field is an older ward, and its beds are takeable');
+
+console.log('globe_logic: ok (and a bed that cannot be opened is not offered)');
