@@ -1290,3 +1290,87 @@ fn a_head_this_shift_moved_itself_is_not_somebody_elses() {
     assert!(anchor_refusal("connection refused", Some(ours), ours).is_none(),
             "an outage is not a refusal here either");
 }
+
+/// **The chain dates every slot it hands us, and the ward used to throw the dates away.**
+///
+/// A receipt opened seconds after its own anchor took 21–61 s on staging with the page silent, and
+/// the shape of it is two passes over the same facts: `getSignaturesForAddress` answers with a
+/// block time beside every signature, the walk drops them, and then `slot_times` asks the chain for
+/// those same times one slot per round trip — measured at 0.11–1.03 s each against public devnet on
+/// 18 ก.ย., up to `DATE_AT_MOST` of them, in front of a reader looking at nothing.
+///
+/// So the ward keeps what it is given, at the moment it is given it. Written once, because a
+/// block's time is decided when the block is produced: a second answer for a slot is either the
+/// same answer or a wrong one.
+#[test]
+fn the_ward_keeps_the_block_times_the_chain_already_gave_it() {
+    use vitals_web::store::Store;
+    use vitals_web::ward_chain::{cached_dater, learn_slot_times};
+
+    let dir = std::env::temp_dir().join(format!("vitals-times-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store = Store::open(dir.clone()).expect("a store");
+
+    // A page of signatures as the chain hands it back: a slot, and a time it may or may not know.
+    let page = [
+        (500_000_001u64, Some(1_758_000_000i64)),
+        (500_000_002, None),
+        (500_000_003, Some(1_758_000_042)),
+    ];
+    assert_eq!(
+        learn_slot_times(&store, &page), 2,
+        "the two the chain dated are kept, and the one it did not is not guessed at"
+    );
+
+    let dated = cached_dater(&store);
+    assert_eq!(dated(500_000_001), Some(1_758_000_000));
+    assert_eq!(dated(500_000_003), Some(1_758_000_042));
+    assert_eq!(dated(500_000_002), None,
+               "an undated slot stays undated rather than becoming zero — a guessed date would \
+                write a deterioration nobody can check");
+
+    let again = [(500_000_001u64, Some(1_758_000_999i64))];
+    assert_eq!(learn_slot_times(&store, &again), 0, "nothing new to learn");
+    assert_eq!(cached_dater(&store)(500_000_001), Some(1_758_000_000),
+               "and the first answer stands: a block's time does not change");
+
+    // Slot 0 is not a slot. It is what a patient carries when the ward never learned when she was
+    // admitted, and dating it would put her admission at the epoch.
+    assert_eq!(learn_slot_times(&store, &[(0, Some(1_758_000_000))]), 0);
+    assert_eq!(cached_dater(&store)(0), None);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// **The one slot no transaction dates is the one she is opened at.**
+///
+/// Every other slot on a patient's chain is dated by the call that found it. `now_slot` is not: no
+/// transaction happened in it, so the ward used to ask `getBlockTime` — a round trip, with a reader
+/// waiting, to be told the time. The answer to "what time is the slot the chain is on right now" is
+/// *now*, and the honest failure here is the alternative: a span counted as zero leaves a patient
+/// exactly as the last shift left her, however long she has been alone, which is the bug the dating
+/// exists to prevent.
+#[test]
+fn the_slot_the_chain_is_on_now_is_dated_by_the_wards_own_clock() {
+    use vitals_web::store::Store;
+    use vitals_web::ward_chain::{dater_to_now, learn_slot_times};
+
+    let dir = std::env::temp_dir().join(format!("vitals-now-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store = Store::open(dir.clone()).expect("a store");
+    learn_slot_times(&store, &[(500_000_001, Some(1_758_000_000))]);
+
+    let now_unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let dated = dater_to_now(&store, 500_000_009);
+
+    let now = dated(500_000_009).expect("the slot the chain is on is dated");
+    assert!((now - now_unix).abs() <= 5, "and it is dated now, not at the epoch: {now}");
+    assert_eq!(dated(500_000_001), Some(1_758_000_000), "every other slot is the store's own");
+    assert_eq!(dated(500_000_002), None, "and a slot nothing has dated is still undated");
+    assert_eq!(dated(0), None, "slot 0 is not a slot, even when the ward is standing on it");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
