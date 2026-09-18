@@ -1,0 +1,151 @@
+1
+00:00:00,600 --> 00:00:04,200
+Vitals World — a public ward
+on Solana devnet.
+
+2
+00:00:04,600 --> 00:00:08,400
+Each country shaded by people per doctor
+— World Bank/WHO.
+
+3
+00:00:08,800 --> 00:00:12,400
+Ethiopia: 1 doctor per 6,990 people
+(World Bank, 2023).
+
+4
+00:00:12,800 --> 00:00:15,800
+The ring: 1 patient from Ethiopia
+in a bed right now.
+
+5
+00:00:18,200 --> 00:00:23,400
+The years 2005 → 2023:
+the map follows the slider.
+
+6
+00:00:25,600 --> 00:00:27,600
+The census: 31 shifts —
+/api/ward counts anchored leaves.
+
+7
+00:00:28,100 --> 00:00:31,800
+Three patients in beds, three countries —
+each row: take a shift.
+
+8
+00:00:32,300 --> 00:00:36,500
+Maria Bautista, 69, from the Philippines —
+a simulated patient.
+
+9
+00:00:37,100 --> 00:00:41,500
+One press takes the head — declared
+on chain before it is played.
+
+10
+00:00:42,300 --> 00:00:45,300
+On her chart, under your key —
+the lease runs about 10 minutes.
+
+11
+00:00:45,700 --> 00:00:49,500
+The case's own question, pressed —
+her scripted answer appears.
+
+12
+00:00:51,500 --> 00:00:56,700
+Two orders: oxygen,
+then source control.
+
+13
+00:00:57,900 --> 00:01:02,500
+Oxygen on: the saturation climbs,
+the monitor says Improving.
+
+14
+00:01:05,700 --> 00:01:10,300
+The chart: every order at its clock time,
+earlier shifts included.
+
+15
+00:01:12,300 --> 00:01:15,900
+Hand over: the shift reduces to a leaf,
+anchored on Solana devnet.
+
+16
+00:01:16,500 --> 00:01:20,300
+Handed over: her chain is 4 shifts long.
+Next: the receipt.
+
+17
+00:01:21,200 --> 00:01:24,200
+The receipt: what was asked and ordered,
+at its time.
+
+18
+00:01:28,100 --> 00:01:31,700
+6 of 40: deterministic marks,
+row by row, the case's own rubric.
+
+19
+00:01:32,100 --> 00:01:35,100
+Check it yourself: the devnet explorer,
+the tape to download.
+
+20
+00:01:35,500 --> 00:01:38,900
+The addresses: patient, case, slot,
+leaf, run hash, the player's key.
+
+21
+00:01:39,800 --> 00:01:42,600
+The transaction on Solana Explorer —
+a witness that is not us.
+
+22
+00:01:43,200 --> 00:01:47,000
+The program's own log:
+“anchored at leaf 31”.
+
+23
+00:01:47,800 --> 00:01:52,000
+A second key, the same bed:
+“chart rebuilt from 4 anchored shifts”.
+
+24
+00:01:52,600 --> 00:01:56,200
+The chart carries every earlier order,
+rebuilt from the chain.
+
+25
+00:01:57,100 --> 00:02:02,300
+A patient who left: she went home —
+two shifts, two receipts.
+
+26
+00:02:03,300 --> 00:02:05,900
+Every case the ward holds — provisional,
+each badged NOT REVIEWED.
+
+27
+00:02:06,300 --> 00:02:09,100
+Some cases are endemic to a country —
+this one: dengue, PHL.
+
+28
+00:02:10,500 --> 00:02:16,500
+A review run: read the case —
+nothing recorded, nobody in a bed.
+
+29
+00:02:17,600 --> 00:02:20,400
+Back on the globe: 32 shifts —
+the one you watched among them.
+
+30
+00:02:21,000 --> 00:02:25,200
+Vitals World · world.vitals.academy
+a public ward on Solana devnet
+patients simulated, the shortage is not
+
