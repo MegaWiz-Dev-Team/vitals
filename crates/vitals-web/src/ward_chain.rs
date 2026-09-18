@@ -350,7 +350,12 @@ impl WardChain {
     /// Returns how many shifts were new. A failed transaction is not a shift: the program refused
     /// it, so nothing was anchored, and counting it would publish work the chain says did not
     /// happen — which is precisely the refusal the ward is proud of.
-    pub fn refresh(&self, patient_id: u64, seen: &mut Seen) -> Result<usize, String> {
+    pub fn refresh(
+        &self,
+        patient_id: u64,
+        seen: &mut Seen,
+        store: &crate::store::Store,
+    ) -> Result<usize, String> {
         let pda = self.patient_pda(patient_id);
         let until = seen.until().and_then(|s| Signature::from_str(&s).ok());
         let sigs = self
@@ -364,6 +369,16 @@ impl WardChain {
                 },
             )
             .map_err(why)?;
+
+        // Every slot this answer names, dated by the answer that named it. The listing carries a
+        // block time beside each signature, and these are exactly the slots a receipt has to put a
+        // date on: her admission, every take, every anchor. Kept before the filter, because a
+        // refused transaction still happened at a time, and the slot it happened in is one a later
+        // read would otherwise pay a round trip for.
+        learn_slot_times(
+            store,
+            &sigs.iter().map(|s| (s.slot, s.block_time)).collect::<Vec<_>>(),
+        );
 
         // A failed transaction is not a shift: the program refused it, so nothing was anchored,
         // and counting it would publish work the chain says did not happen. Dropped here rather
@@ -381,6 +396,9 @@ impl WardChain {
                 .rpc
                 .get_transaction(&parsed, UiTransactionEncoding::Base64)
                 .map_err(why)?;
+            // The same fact from the other side: a listing that came back without a time for this
+            // slot may still be answered by the transaction itself.
+            learn_slot_times(store, &[(tx.slot, tx.block_time)]);
             signatures.insert(slot, sig.to_string());
             let Some(decoded) = tx.transaction.transaction.decode() else {
                 // Read, and not a transaction we can decode. Not a failure of the walk: it held no
@@ -467,6 +485,32 @@ pub const SLOT_TIMES: &str = "ward_slot_time";
 /// dated by a later read, and until then those rows carry the slot and no time.
 const DATE_AT_MOST: usize = 24;
 
+/// Keep every block time the chain has already handed us, and ask for none.
+///
+/// `getSignaturesForAddress` answers with a block time beside every signature and `getTransaction`
+/// carries one too, so every slot a patient's history touches is dated by the call that found it —
+/// her admission, every take, every anchor. Filing them at that moment is the difference between a
+/// receipt that renders from the store and one that asks the RPC for each slot in turn, at 0.11 to
+/// 1.03 s a call (measured against public devnet, 18 ก.ย.), in front of a reader looking at nothing.
+///
+/// Returns how many were new. Never overwrites: a block's time is decided when the block is
+/// produced, so a second answer for the same slot is either the same one or a wrong one. Slot 0 is
+/// not a slot — it is what a patient carries when the ward never learned when she was admitted, and
+/// dating it would put her admission at the epoch.
+pub fn learn_slot_times(store: &crate::store::Store, page: &[(u64, Option<i64>)]) -> usize {
+    let mut kept = 0;
+    for (slot, time) in page {
+        let (Some(t), true) = (time, *slot != 0) else { continue };
+        if store.get::<i64>(SLOT_TIMES, &slot.to_string()).is_some() {
+            continue;
+        }
+        if store.put(SLOT_TIMES, &slot.to_string(), t).is_ok() {
+            kept += 1;
+        }
+    }
+    kept
+}
+
 /// The chain's own time for each of these slots, cached for ever.
 ///
 /// Read from the store first, because a block's time never changes and the ward would otherwise
@@ -542,7 +586,7 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
     for p in &patients {
         let key = format!("p{}", p.patient_id);
         let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
-        let added = chain.refresh(p.patient_id, &mut seen);
+        let added = chain.refresh(p.patient_id, &mut seen, store);
         if matches!(added, Ok(n) if n > 0) {
             let _ = store.put(SHIFT_CACHE, &key, &seen);
         }
@@ -1034,6 +1078,35 @@ pub fn dater<'a>(
 /// then — advances her properly. A gap *guessed* at would write a deterioration nobody can check.
 pub fn cached_dater(store: &crate::store::Store) -> impl Fn(u64) -> Option<i64> + '_ {
     move |slot| (slot != 0).then(|| store.get::<i64>(SLOT_TIMES, &slot.to_string())).flatten()
+}
+
+/// The store's dates, and the ward's own clock for the slot the chain is on *now*.
+///
+/// Every slot in a patient's history is dated by the call that found it, and exactly one slot never
+/// is: the one she is being opened at. No transaction happened in it, so the only way to get it
+/// from the chain is `getBlockTime` — one round trip with a reader waiting on it, to be told the
+/// time, which this ward already knows.
+///
+/// So `now_slot` is answered from the clock. It is not a guess about the chain: `now_slot` was read
+/// from the chain a moment ago, and what `getBlockTime` would say about it is "about now". The
+/// error is the age of that read plus whatever the cluster's clock is behind by — seconds, against
+/// idle spans measured in hours — and it is in the honest direction: a span that would otherwise be
+/// counted as **zero**, leaving a patient exactly as the last shift left her however long she has
+/// been alone.
+pub fn dater_to_now(
+    store: &crate::store::Store,
+    now_slot: u64,
+) -> impl Fn(u64) -> Option<i64> + '_ {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    move |slot| {
+        if slot != 0 && slot == now_slot {
+            return Some(now);
+        }
+        (slot != 0).then(|| store.get::<i64>(SLOT_TIMES, &slot.to_string())).flatten()
+    }
 }
 
 pub const PERSONA_STORE: &str = "ward_pack";
@@ -1584,7 +1657,7 @@ pub fn repair_tapes(
     for p in patients {
         let key = format!("p{}", p.patient_id);
         let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
-        if chain.refresh(p.patient_id, &mut seen).is_err() {
+        if chain.refresh(p.patient_id, &mut seen, store).is_err() {
             continue;
         }
         let _ = store.put(SHIFT_CACHE, &key, &seen);
@@ -1655,7 +1728,7 @@ fn lost_tapes(
     for p in patients.iter().filter(|p| p.state == crate::ward::OPEN) {
         let key = format!("p{}", p.patient_id);
         let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
-        let _ = chain.refresh(p.patient_id, &mut seen);
+        let _ = chain.refresh(p.patient_id, &mut seen, store);
         for s in seen.shifts() {
             let hash = hex32(&s.run_hash);
             if is_shift_hash(&hash) && tape_by_hash(store, &hash).is_none() {
@@ -1709,7 +1782,7 @@ fn reap(
 
         let key = format!("p{}", p.patient_id);
         let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
-        if let Err(e) = chain.refresh(p.patient_id, &mut seen) {
+        if let Err(e) = chain.refresh(p.patient_id, &mut seen, store) {
             out.notes.push(format!("patient {}'s history could not be read: {e}", p.patient_id));
             continue;
         }
@@ -2611,7 +2684,7 @@ pub fn find_shift(
         for p in &patients {
             let key = format!("p{}", p.patient_id);
             let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
-            if refreshing && chain.refresh(p.patient_id, &mut seen).is_ok() {
+            if refreshing && chain.refresh(p.patient_id, &mut seen, store).is_ok() {
                 let _ = store.put(SHIFT_CACHE, &key, &seen);
             }
             // Skipped rather than matched: a cached row with an empty hash is a row about

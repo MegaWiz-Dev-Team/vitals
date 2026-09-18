@@ -1967,7 +1967,7 @@ fn ward_rebuild(store: &store::Store, patient_id: u64) -> Option<WardRebuild> {
     let mut seen: ward_chain::Seen = store
         .get(ward_chain::SHIFT_CACHE, &format!("p{patient_id}"))
         .unwrap_or_default();
-    let _ = chain.refresh(patient_id, &mut seen);
+    let _ = chain.refresh(patient_id, &mut seen, store);
     Some(WardRebuild { shifts: seen.shifts(), admitted_slot: her.admitted_slot })
 }
 
@@ -2045,7 +2045,7 @@ fn open_shift(
     // found by the hash its leaf commits to.
     let key = format!("p{patient_id}");
     let mut seen: ward_chain::Seen = store.get(ward_chain::SHIFT_CACHE, &key).unwrap_or_default();
-    if matches!(chain.refresh(patient_id, &mut seen), Ok(n) if n > 0) {
+    if matches!(chain.refresh(patient_id, &mut seen, store), Ok(n) if n > 0) {
         let _ = store.put(ward_chain::SHIFT_CACHE, &key, &seen);
     }
     let (state, played) = ward_chain::resumed(
@@ -2054,7 +2054,10 @@ fn open_shift(
         &|h| ward_chain::tape_by_hash(store, h),
         her.admitted_slot,
         now_slot,
-        &ward_chain::dater(&chain, store),
+        // From the store, and the clock for `now_slot` itself. The refresh above has just filed
+        // every slot on her chain from the listing that found them, so nothing here reaches the
+        // RPC — the open path used to spend a round trip per slot before a page could be answered.
+        &ward_chain::dater_to_now(store, now_slot),
     )?;
 
     let head = hex(&her.head);
@@ -2393,7 +2396,13 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
         return bad("this ward does not hold that case, so this shift cannot be replayed");
     };
     let admitted = chain.patient(patient_id).ok().flatten().map(|p| p.admitted_slot).unwrap_or(0);
-    let dated = ward_chain::dater(&chain, store);
+    // From the store, never from the chain. Every slot on this patient's chain was dated by the
+    // call that found it — `find_shift` above walks her history, and the walk files the block times
+    // the listing hands it — so this reads them rather than asking again, one round trip per slot,
+    // with a reader waiting on the answer. A slot nothing has dated yet carries no time and the row
+    // says so, which is the same thing this page has always done with a slot the chain would not
+    // date.
+    let dated = ward_chain::cached_dater(store);
     match ward_chain::receipt(
         &sce_json,
         ward_chain::rubric_for(store, &root, &pack.case).as_deref(),
