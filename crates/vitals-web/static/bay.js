@@ -4255,7 +4255,7 @@ async function openReview(){
 /* One patient's whole stay, for a patient who is not in a bed any more.
    Every state but "on the ward right now" was "Not this bed": no name, no face, no outcome, and no
    way to the shifts that treated her. The chart is the chain — this is where a stranger reads it. */
-function chartPage(c){
+function chartPage(c, why){
   const g=/^m/i.test(c.sex||'')?PRO_M:(/^f/i.test(c.sex||'')?PRO_F:PRO_N);
   const when=t=>t?String(t).replace('T',' ').replace(/\.\d+Z?$/,'').replace('Z','')+' UTC':'';
   const face=c.portrait?'<img src="'+esc(c.portrait)+'" alt="" width="128" height="128" '+
@@ -4272,6 +4272,7 @@ function chartPage(c){
     +'<p>'+[c.age?esc(c.age):'', c.country_name?'from '+esc(c.country_name):'',
             c.case_title?esc(c.case_title):'', c.difficulty?esc(c.difficulty):'']
         .filter(Boolean).join(' · ')+'</p>'
+    +(why?'<p class="bed">'+esc(why)+'</p>':'')
     +'<p><b>'+esc(cap(g.s))+' '+esc(what)+'</b>'
       +(c.closed_at?' · '+esc(when(c.closed_at)):'')
       +(c.admitted_at?'<br>admitted '+esc(when(c.admitted_at)):'')+'</p>'
@@ -4308,10 +4309,19 @@ async function openShift(){
      told the truth walks away, and a stranger shown another patient's name treats the wrong one. */
   const built=wardCard(r.ward.content);
   if(!built){
+    /* The ward cannot draw her case — withdrawn from the catalogue, or never in it. That is a fact
+       about this ward and not about her, so the page is her chart: who she is, what happened to her
+       and every shift that treated her, with one sentence saying why this bed cannot be opened.
+       "Not on this page yet" was a dead end printed *after* a stranger pressed "take a shift". */
+    const why='this bed cannot be opened · the ward no longer holds her case';
+    try{
+      const c=await (await fetch('/api/ward/patient/'+encodeURIComponent(WARD))).json();
+      if(c&&!c.error&&c.patient_id!==undefined){ chartPage(c, why); return; }
+    }catch(e){ /* the chart is not needed to say what happened */ }
     wardPage('<p class="bed">patient '+esc(WARD)+'</p>'
-      +'<h1>Not on this page yet</h1>'
-      +'<p>This patient’s case is not on this page yet. The chart is on chain and the bed is on '
-      +'the board — there is nothing here yet that can draw the case.</p>');
+      +'<h1>'+esc(why)+'</h1>'
+      +'<p>Her chart is on chain and her bed is on the board. This ward no longer holds the case '
+      +'she was admitted for, so there is nothing here that can draw it.</p>');
     return;
   }
   WARDCARD=built.entry; WARDCHIPS=built.chips; WARDLABEL=built.labels;

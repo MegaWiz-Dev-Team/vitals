@@ -159,6 +159,7 @@ canvas#globe.dragging{cursor:grabbing}
 .panel h2{font-family:Archivo,Arial,sans-serif;font-weight:700;font-size:1.05rem;margin:0;letter-spacing:-.01em}
 .panel .k{font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.1em;color:var(--ink-3);text-transform:uppercase}
 .panel .empty{color:var(--ink-2);font-size:.92rem;margin:.6rem 0 0}
+.prow .shut{font-size:.78rem;color:var(--ink-2);margin-top:.15rem}
 .plist{list-style:none;margin:.8rem 0 0;padding:0;display:flex;flex-direction:column;gap:.6rem}
 /* A group's own heading inside the list: which of the two this run of rows is, and how many. */
 .plist .ghead{font-family:"IBM Plex Mono",monospace;font-size:.64rem;letter-spacing:.1em;
@@ -794,7 +795,12 @@ function portraitImg(p) {
    gesture this page is asking for. Somebody already in the room is the other no: the head is held
    until it is anchored or its time runs out. */
 function canTakeShift(p) {
-  return stateOf(p) === "on_ward" && p && p.bed !== undefined && p.bed !== null;
+  /* `openable` is the board's own answer to this question and the page does not second-guess it: a
+     row that offers a shift the server has already refused is the worst kind of disagreement,
+     because the stranger finds out after they have pressed it. A board that does not carry the
+     field is an older ward, and its beds are takeable as they always were. */
+  return stateOf(p) === "on_ward" && p && p.bed !== undefined && p.bed !== null
+    && p.openable !== false;
 }
 
 /* The numbers under the headline: what this ward is doing, in the order a reader meets it.
@@ -920,12 +926,17 @@ function row(p, showCountry) {
      patient's own chart page exists to print it. */
   const note = "";
   if (p.note) li.title = p.note;
+  /* Said on the row, where the link used to be, rather than left as a gap somebody has to interpret:
+     this bed is real, she is in it, and it cannot be opened from here. */
+  const shut = p.openable === false && p.bed !== undefined && p.bed !== null
+    ? `<div class="shut">this bed cannot be opened${p.why_not ? ` · ${escapeHtml(p.why_not)}` : ""}</div>`
+    : "";
   /* Two lines and a button: who and where on the first, how they are on the second. The order is
      the order a stranger reads them in — the name is what they are looking for, the bed is how the
      ward is arranged, and the state is what decides whether to take this one. */
   li.innerHTML = `${img}<div>
     <div class="who"><b>${escapeHtml(p.name || ("patient " + p.patient_id))}${age}</b>${bed}</div>
-    <div class="meta"><span class="state ${st}" title="${escapeHtml(line.title)}">${escapeHtml(line.text)}</span>${diff}${where}${end}</div>${note}</div>
+    <div class="meta"><span class="state ${st}" title="${escapeHtml(line.title)}">${escapeHtml(line.text)}</span>${diff}${where}${end}</div>${shut}${note}</div>
     <a class="take${canTake ? "" : " look"}" href="/ward/${encodeURIComponent(p.patient_id)}">${canTake ? "take a shift" : "view"}</a>`;
   return li;
 }

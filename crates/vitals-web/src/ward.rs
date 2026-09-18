@@ -874,8 +874,29 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
             // not have, so nobody can rebuild the chart and nobody can take the bed. Said in her
             // own word rather than written to the chain as an ending she did not have.
             let stuck = (p.state == OPEN).then(|| lost.get(&p.patient_id)).flatten();
+            // Her pack names a case this ward no longer holds. Two patients sat in beds on staging
+            // like this for two days — admitted on the season's stations before the case door
+            // existed, still in beds after the catalogue moved on — and the board offered a shift
+            // on each. What a stranger got for pressing it was "Not on this page yet".
+            //
+            // She keeps her bed and the census keeps counting her, because she is in one and her
+            // chart is on chain. The board simply stops offering a door onto a page nothing can
+            // draw.
+            //
+            // A catalogue this ward has not loaded yet is not a catalogue that lost her case: with
+            // nothing in it, nothing is judged missing, or a fresh instance would shut every bed on
+            // the ward before its first read finished.
+            let caseless = p.state == OPEN
+                && !r.cases.is_empty()
+                && pack.is_some_and(|k| !r.cases.iter().any(|c| c.case_id == k.case));
             serde_json::json!({
                 "patient_id": p.patient_id,
+                // Whether a stranger can be offered this bed at all. The page asks it before it
+                // draws a link, so the answer lives here rather than being worked out twice.
+                "openable": !(stuck.is_some() || adrift || caseless),
+                "why_not": caseless.then(|| {
+                    "the ward no longer holds her case, so nothing here can open this bed"
+                }),
                 // Words, because the board is what reads this. A renderer switching on 0, 1 and 2
                 // would have to know the program's byte layout to draw a ward.
                 "state": if stuck.is_some() { "unrebuildable" }
