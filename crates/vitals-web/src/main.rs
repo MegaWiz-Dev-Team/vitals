@@ -2486,9 +2486,19 @@ fn receipt_page(r: &serde_json::Value, board: &serde_json::Value) -> String {
     .flatten()
     .collect::<Vec<_>>()
     .join(" · ");
+    /* What case this was, in the headline, whichever kind of case it is.
+       A compiled case carries its own title and level through the catalogue. A season case carries
+       neither — those live in the bay's own tables — and the line collapsed to nothing over
+       Yonas's receipt on 00048. `CATALOGUE` is the gate rather than a `title()` call for anything:
+       `title()` answers "EP1 · The Last Bite" for an id it does not know, so a compiled case handed
+       to it would be named as the wrong case, which is worse than being named as none. */
+    let case = r["case"].as_str().unwrap_or("");
+    let of_the_season = ward::CATALOGUE.contains(&case);
     let case_line = [
-        r["case_title"].as_str().map(&esc),
-        r["difficulty"].as_str().map(&esc),
+        r["case_title"].as_str().map(|t| esc(t))
+            .or_else(|| of_the_season.then(|| esc(&title(case)))),
+        r["difficulty"].as_str().map(|d| esc(d))
+            .or_else(|| of_the_season.then(|| ward::difficulty_of(case).map(esc)).flatten()),
     ]
     .into_iter()
     .flatten()
@@ -2528,11 +2538,34 @@ fn receipt_page(r: &serde_json::Value, board: &serde_json::Value) -> String {
     };
     let marks = match (&r["det"]["earned"], &r["det"]["max"]) {
         (serde_json::Value::Number(e), serde_json::Value::Number(m)) => {
-            let rows = r["items"].as_array().map(|items| items.iter().map(|i| format!(
-                "<li class=\"{}\"><b>{}</b> of {} · {}</li>",
-                if i["earned"].as_i64().unwrap_or(0) > 0 { "got" } else { "missed" },
-                i["earned"], i["points"], esc(i["label"].as_str().unwrap_or("")),
-            )).collect::<Vec<_>>().join("")).unwrap_or_default();
+            let rows = r["items"].as_array().map(|items| items.iter().map(|i| {
+                /* A `no_unindicated` row is a deduction, not a mark: it can only take. Printed as
+                   "0 of 0" it reads as a mark that was there to be earned and was missed, which is
+                   what the director read on Yonas's receipt. So it says what it took, and what for
+                   — the orders it charged are named, because a deduction a candidate cannot see the
+                   reason for teaches nothing. */
+                if i["kind"] == "no_unindicated" {
+                    let took = i["penalty"].as_i64().unwrap_or(0);
+                    let charged = i["charged"].as_array().map(|c| c.len()).unwrap_or(0);
+                    return if took == 0 {
+                        "<li class=got>no penalty · nothing ordered off the list</li>".to_string()
+                    } else {
+                        let named = i["charged"].as_array().map(|c| c.iter()
+                            .filter_map(|x| x.as_str())
+                            .map(|x| esc(x))
+                            .collect::<Vec<_>>().join(", ")).unwrap_or_default();
+                        format!(
+                            "<li class=missed>−{took} · {charged} order{} off the list: {named}</li>",
+                            if charged == 1 { "" } else { "s" },
+                        )
+                    };
+                }
+                format!(
+                    "<li class=\"{}\"><b>{}</b> of {} · {}</li>",
+                    if i["earned"].as_i64().unwrap_or(0) > 0 { "got" } else { "missed" },
+                    i["earned"], i["points"], esc(i["label"].as_str().unwrap_or("")),
+                )
+            }).collect::<Vec<_>>().join("")).unwrap_or_default();
             format!("<p class=score><b>{e}</b> of {m}</p><ul class=marks>{rows}</ul>")
         }
         _ => "<p class=note>This case carries no mark sheet.</p>".to_string(),
@@ -2785,6 +2818,26 @@ fn ward_page_missing(why: &str, board: &serde_json::Value) -> String {
     )
 }
 
+
+/// The strip a shift page is served with.
+///
+/// The same ids and the same shape `bay.js`'s `wardBar` builds, because the page *adopts* this one
+/// and wires it rather than building a second. It is here so that a stranger on a slow link reads
+/// the patient's own strip — the way back and the one thing to press — at first paint rather than
+/// two seconds later when the script has parsed. Measured on the globe's panel on 18 ก.ย.: 0.23 s
+/// to served words, 2.16 s to script-drawn ones.
+///
+/// Only for `/ward/<id>`. A review run's strip carries different controls and the markup cannot
+/// tell the two paths apart, so that one stays the script's.
+const WARD_STRIP: &str = "<div id=\"wardbar\" style=\"display:flex;gap:.8rem;align-items:center;\
+     flex-wrap:wrap;padding:.6rem .9rem;margin-bottom:.6rem;border:1px solid var(--rule,#d8ded9);\
+     border-radius:.5rem;background:rgba(15,110,92,.06)\">\
+     <b id=\"wardwho\">…</b><span id=\"wardsay\" style=\"flex:1\">reading the ward…</span>\
+     <span id=\"leaseclock\" class=\"leaseclock\"></span>\
+     <button class=\"btn go\" id=\"wardtake\" disabled>take this shift</button>\
+     <button class=\"btn quiet\" id=\"wardback-shift\" style=\"display:none\">\
+     Leave without recording</button>\
+     <a class=\"btn\" id=\"wardback\" href=\"/\">← the globe</a></div>";
 
 /// A patient waiting for the door, as a page.
 ///
@@ -4658,7 +4711,17 @@ fn main() {
                             .as_array()
                             .and_then(|rows| rows.iter().find(|p| p["patient_id"] == id).cloned())
                             .unwrap_or(serde_json::Value::Null);
-                        compose(SHIFT).replace("<!--OG-->", &og_tags(&her))
+                        // The strip goes *inside* the cockpit, where the script would have put
+                        // it, and the cockpit is served in its waiting state rather than hidden:
+                        // both are true about this page from the moment it is served, and `hide`
+                        // on `#game` is what made the served strip invisible when it was first
+                        // tried here. The page then drops `waiting` as the case lands.
+                        compose(SHIFT)
+                            .replace("<!--OG-->", &og_tags(&her))
+                            .replace(
+                                "<div class=\"app hide\" id=\"game\">",
+                                &format!("<div class=\"app waiting\" id=\"game\">{WARD_STRIP}"),
+                            )
                     }
                     // The reviewer's two: the list of cases the ward holds, and one case opened to
                     // be read. The run is the same play surface as a shift — one page, one engine,

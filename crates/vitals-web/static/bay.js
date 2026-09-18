@@ -4083,25 +4083,34 @@ function wardSay(html){ const b=$('#wardbar'); if(b)$('#wardsay').innerHTML=html
    ids are read by `wardSay` and by `wardGate` and a second copy of them would be two elements with
    one name — which is what `page.rs::no_id_is_declared_twice` refuses. */
 function wardBar(){
-  if($('#wardbar'))return;
-  const tint=REVIEW?'rgba(198,143,31,.09)':'rgba(15,110,92,.06)';
-  const controls=REVIEW
-    ? '<a class="btn" href="/ward/review">open another case</a>'
-    : '<button class="btn go" id="wardtake" disabled>take this shift</button>'
-      +'<button class="btn quiet" id="wardback-shift" style="display:none">'
-      +leaveWords(false).label+'</button>';
-  $('#game').insertAdjacentHTML('afterbegin',
-    '<div id="wardbar" style="display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;'+
-    'padding:.6rem .9rem;margin-bottom:.6rem;border:1px solid var(--rule,#d8ded9);'+
-    'border-radius:.5rem;background:'+tint+'">'+
-    '<b id="wardwho">…</b><span id="wardsay" style="flex:1">reading the ward…</span>'+
-    '<span id="leaseclock" class="leaseclock"></span>'+controls+
-    '<a class="btn" id="wardback" href="/">← the globe</a></div>');
+  /* The strip a shift page is *served* with is the one a stranger reads first: on a 1.5 Mbit link
+     the script does not run for about two seconds, and until it does the page is a header over
+     nothing (measured 18 ก.ย. on the globe's own panel, which had the same shape of bug). So the
+     server writes this one into `/ward/<id>` and the page adopts it; a review run, which the server
+     cannot tell apart from a shift by its markup alone, still gets its own built here.
+
+     Adopting means wiring, not returning: the early return that used to be here left a served
+     strip with no handler on its button, which is a page that looks finished and does nothing. */
+  if(!$('#wardbar')){
+    const tint=REVIEW?'rgba(198,143,31,.09)':'rgba(15,110,92,.06)';
+    const controls=REVIEW
+      ? '<a class="btn" href="/ward/review">open another case</a>'
+      : '<button class="btn go" id="wardtake" disabled>take this shift</button>'
+        +'<button class="btn quiet" id="wardback-shift" style="display:none">'
+        +leaveWords(false).label+'</button>';
+    $('#game').insertAdjacentHTML('afterbegin',
+      '<div id="wardbar" style="display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;'+
+      'padding:.6rem .9rem;margin-bottom:.6rem;border:1px solid var(--rule,#d8ded9);'+
+      'border-radius:.5rem;background:'+tint+'">'+
+      '<b id="wardwho">…</b><span id="wardsay" style="flex:1">reading the ward…</span>'+
+      '<span id="leaseclock" class="leaseclock"></span>'+controls+
+      '<a class="btn" id="wardback" href="/">← the globe</a></div>');
+  }
   /* `#game` ships hidden and the strip goes inside it, so a way back in there is a way back
      nobody can press. `waiting` shows the strip and hides the cockpit under it, which has no
      patient in it yet; the run drops the class when the case lands. */
   const g=$('#game'); g.classList.remove('hide'); g.classList.add('waiting');
-  if(REVIEW)return;
+  if(REVIEW||!$('#wardback-shift'))return;
   /* Wrapped, because a button that throws is a button that does nothing and says nothing. One
      driven run ended with the strip showing its opening line and no sign that the press had been
      received; I could not reproduce it, and the fix for the class is to make any failure in here

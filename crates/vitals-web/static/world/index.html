@@ -311,10 +311,15 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
        after the figures, before the globe, where a thumb reaches it first. -->
   <aside class="panel" id="panel" aria-live="polite">
     <button type="button" class="close" id="close" aria-label="Close">close</button>
-    <span class="k" id="pk">pick a country</span>
-    <h2 id="ptitle">Nobody selected</h2>
+    <!-- The panel's first paint is *served*, not drawn by the script. At 1.5 Mbit the script does
+         not run for about two seconds (measured 18 ก.ย.: 0.27 s to first paint, 2.16 s to the
+         script, 4.23 s to the rows on a slow board) — and for those two seconds the page said
+         "Nobody selected · Click a ringed country on the globe", which is the sentence the loading
+         frame was added to replace. The words a stranger reads first are the ones in the file. -->
+    <span class="k" id="pk">on the ward now</span>
+    <h2 id="ptitle">the beds</h2>
     <div class="pdoc" id="pdoc" hidden></div>
-    <p class="empty" id="pempty">Click a ringed country on the globe. Patients from a country the map cannot place are listed below the globe.</p>
+    <p class="empty" id="pempty">loading the beds…</p>
     <ul class="plist" id="plist"></ul>
   </aside>
 

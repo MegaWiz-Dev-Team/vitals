@@ -2493,14 +2493,20 @@ pub fn receipt(
             "mark": i.mark.as_str(),
             "points": i.points,
             "earned": i.earned_points(),
+            // What the row *took*, and what for. Zero for every check but `no_unindicated`, which
+            // is the only one that deducts — and the receipt prints it as a deduction rather than
+            // as a mark of zero out of zero.
+            "penalty": i.penalty,
+            "charged": i.charged,
         })).collect::<Vec<_>>()),
         "pass_bps": sheet.as_ref().map(|(r, _)| r.pass_bps),
         "timeline": timeline,
         "status_after": format!("{:?}", st.status),
         "judged": serde_json::Value::Null,
-        "judged_omitted": "a judged score belongs to a finished case. This is one shift in the \
-                           middle of a stay, and a number that cannot mean what a reader assumes \
-                           is worse than no number",
+        // One line on the receipt. The reasoning — a judged score belongs to a finished case, and
+        // a number that cannot mean what a reader assumes is worse than no number — is in
+        // docs/CWF_PLAN.md, where a reader who wants it can find it.
+        "judged_omitted": "No AI-judged marks on a mid-stay shift.",
         "also_anchored": sharing,
         "also_anchored_note": (sharing > 0).then(|| format!(
             "{sharing} other shift{} on this ward anchored the same tape — the same bytes, played \
