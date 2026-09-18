@@ -621,3 +621,60 @@ since Eternal?"* (the ward, and the git history that starts at `cwf-start`), *"w
 chain?"* (because the next stranger must be able to disbelieve us and still arrive at the same
 patient), and *"what stops someone ruining her?"* (nothing — and the record says who did it, which
 is the answer a hospital would recognise).
+
+## Shifts we anchored ourselves
+
+**Every shift on the staging ward so far was played by this team or anchored by the ticker.** No
+stranger has taken a head on it yet. Any count a judge reads — the census's `shifts`, the globe's
+"32 shifts", a patient's "rebuilt from N anchored shifts" — includes these, and says nothing about
+strangers until strangers arrive. Say so wherever the numbers are quoted.
+
+Addresses are public chain facts on devnet, program `4YpyZ2oM8jtxM9GwC61kUsnhMFvWkYatrWVZpiafqypz`,
+and every one of them opens without a key. `signer` is the first eight hex of the key that signed
+the leaf — a browser profile for a played shift, and the ward's own key for a closing one.
+
+### Played by hand, on Maria Bautista (patient `1789663069`)
+
+| shift | slot | signer | what it was for | receipt |
+|---|---|---|---|---|
+| 1 | 500140274 | `fbe30ddd` | demo capture take 1, 18 Sep — not used (the bedside *Hand over* was pressed twice; the chain refused the second, and the strip overwrote the receipt line) | [`5d357984…`](https://vitals-world-jak4wea54q-as.a.run.app/shift/5d3579842e4e129a9e90a3e8c8415e32a8d2a605762218bf01f13ae389d74cd4) |
+| 2 | 500141435 | `fbe30ddd` | demo capture take 2 — not used (her answer was off-screen at 1440×810) | [`2f0a0c97…`](https://vitals-world-jak4wea54q-as.a.run.app/shift/2f0a0c9762daba3878cb0b576ce72915322b817f6bb4fea8beba65bc010253c6) |
+| 3 | 500143963 | `fbe30ddd` | demo capture take 3 — not used (the transcript stayed behind the action bar) | [`e34655b9…`](https://vitals-world-jak4wea54q-as.a.run.app/shift/e34655b9b5524af3b0da943b4f7cceff8cf781d2906d00e259eb837b91377080) |
+| 4 | 500146752 | `ea345094` | **the shift in the demo cut**, 18 Sep — leaf `e7ec3a09…`, the one the video's receipt shot shows | [`407ade65…`](https://vitals-world-jak4wea54q-as.a.run.app/shift/407ade653944e690c1631bd224d66072df273cf0d5c8e8c45f4e3b21b3c3a9b5) |
+| 5 | 500274136 | `451e9a50` | the founder's-clock measurement **before** the block-time fix, rev 00050 — 72.29 s from "handed over" to the receipt's first paint | [leaf `2c6f0563…`](https://vitals-world-jak4wea54q-as.a.run.app/shift/2c6f0563d021d3664af4d6fef4cc07fe101cbdbcd918cbcdd1c99c8edffe35c5) |
+| 6 | 500283436 | `827035d9` | the same measurement **after**, rev 00051 — 1.37 s | [leaf `24e8c73f…`](https://vitals-world-jak4wea54q-as.a.run.app/shift/24e8c73f9836d40d9542519652ead6abc8dc07dddc842c1309da32f7a48fa9b2) |
+
+Shifts 5 and 6 share one **run hash** (`bd099cec…`) and have different leaves, which is the receipt
+page's "this is one of three" case happening on purpose: both were driven by the same script, so
+both tapes are the same tape — same take, same single order, same hand over — and a run hash is the
+hash of a tape. The leaf is what tells them apart, because a leaf carries the player and the
+commitment. Address these two by leaf; addressing them by run hash reaches whichever the ward
+resolves first.
+
+### Played by hand, elsewhere
+
+| patient | shift | slot | signer | when | receipt |
+|---|---|---|---|---|---|
+| Yonas Haile `1789541426` | 1 | 499173693 | `a7e3b05b` | 16 Sep | [`e5a5f9b3…`](https://vitals-world-jak4wea54q-as.a.run.app/shift/e5a5f9b34726865a535a96d3024c46daa2d004081e9fa75a85e97a1bb06a848e) |
+| Salma Gaber `1789536607` | 1 | 499161727 | `3e270698` | 16 Sep | [`91b6b387…`](https://vitals-world-jak4wea54q-as.a.run.app/shift/91b6b387ed17bb6dcc016eb6d63f241b4b3ef3594da4cfe9628431bf89fc769d) |
+| Salma Gaber | 2 | 499201815 | `367a5391` | 16 Sep — the shift that closed her stay; she went home | [`b471c3a6…`](https://vitals-world-jak4wea54q-as.a.run.app/shift/b471c3a66e2b555757124e588fc3903bb175ba572b0695b3cb46bed7222d0b0c) |
+
+Two more patients carry early test shifts from before the ward had a name worth recording
+(`1789488342`, two shifts, signers `1375bed7` and `61f13f69`; `1789538329` Abebe Tadesse, one,
+`5cc6b0cd`). They are the team's too.
+
+### The ward's own
+
+Ten patients died unattended and the ticker anchored a closing shift for each — one shift, no
+player, the ward's own key `cf1c64c7` on every one of them: Anita Shrestha `1789528325`
+([`b6f69924…`](https://vitals-world-jak4wea54q-as.a.run.app/shift/b6f69924b84686c8e574eea34083fb842a2c24ba9648678bd57fc07190e5eb4a)),
+Rafael Moreira `1789528327`
+([`b7ffe9cc…`](https://vitals-world-jak4wea54q-as.a.run.app/shift/b7ffe9cca402e4512d5f0f43c2680d58fc944beb7d2131b0a77d8f87445e5735)),
+Valeria Ortiz, Nusrat Jahan, Emily Novak, Lee Seo-yeon, Samuel Girma, Aoi Nakamura, Kavitha
+Subramaniam, Ayesha Malik. Anita's and Valeria's closing shifts share a run hash for the same reason
+Maria's 5 and 6 do: an unattended death is the same tape every time.
+
+A death nobody attended is the ward working, not the ward failing — the patient deteriorated for as
+long as the chain says she was alone, and the closing shift is the ward writing that down under its
+own key rather than leaving her open for ever. It is still a number a judge will read as a death
+rate, so it is said here first.
