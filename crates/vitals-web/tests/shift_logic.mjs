@@ -414,3 +414,25 @@ assert.equal(leaseLine(null), '');
 assert.equal(leaseLine(undefined), '');
 
 console.log('shift_logic: ok (and the clock says what it is counting)');
+
+// ── the second press of Hand over ───────────────────────────────────────────
+//
+// Demo capture, item 2: the founder pressed the bedside "Hand over" twice — the first press
+// anchored the shift, the second sent the same leaf at the same head, and the chain refused it as a
+// head that had moved. Which it had: we moved it. The page showed a stranger a refusal for the
+// work it had just recorded for them.
+//
+// So the press is a decision the page can make on its own, and it is made here: while a hand-over
+// is in flight or finished, a press does nothing at all. The bedside button and the strip's button
+// are the same act, so the latch is not the button's own state — it is the shift's.
+const { pressPrimary } = new Function([grab('pressPrimary'), 'return { pressPrimary };'].join('\n'))();
+
+assert.equal(pressPrimary(false, false), 'take', 'no head taken: the one thing to ask for');
+assert.equal(pressPrimary(true, false), 'handover', 'the head is theirs: the one act left');
+assert.equal(pressPrimary(true, true), 'nothing',
+             'and the second press of a hand-over already under way does nothing — that press is \
+              the one that earned a refusal for work the chain had already taken');
+assert.equal(pressPrimary(false, true), 'nothing',
+             'a latched shift is latched whatever else the page believes about the head');
+
+console.log('shift_logic: ok (and Hand over is pressed once)');

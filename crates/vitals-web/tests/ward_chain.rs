@@ -1252,3 +1252,41 @@ fn the_same_real_hour_is_the_same_patient_on_any_chain() {
                "no block time, no idle time: the ticker asks again a minute later with the block \
                 times cached, and nothing false is written down in between");
 }
+
+/// **A head that moved because *we* anchored it says so.**
+///
+/// `StaleHead` has two stories and the ward told one of them for both: "somebody else anchored a
+/// shift on the head you were extending". After a double press of Hand over that somebody else is
+/// us — the head on chain is the leaf this shift just filed — and the sentence accused a stranger
+/// of losing a race they had won. Demo capture, item 2.
+///
+/// So the refusal is read against the head the chain is holding now. If that head is this shift's
+/// own leaf, the shift is anchored and the words say exactly that; if it is anybody else's, or the
+/// chain cannot be read at the moment of the refusal, the general sentence stands rather than a
+/// guess.
+#[test]
+fn a_head_this_shift_moved_itself_is_not_somebody_elses() {
+    use vitals_web::ward_chain::anchor_refusal;
+    let stale = "Error processing Instruction 0: custom program error: 0x10";
+    let ours = [7u8; 32];
+
+    let mine = anchor_refusal(stale, Some(ours), ours).expect("StaleHead is 16");
+    assert!(mine.contains("already anchored"),
+            "the words the founder has to read are that this shift is already anchored: {mine}");
+
+    let theirs = anchor_refusal(stale, Some([9u8; 32]), ours).expect("StaleHead is 16");
+    assert!(!theirs.contains("already anchored"),
+            "a head somebody else moved is still somebody else's: {theirs}");
+    assert_eq!(theirs, refusal(stale).unwrap(),
+               "and it is the same sentence the ward already had");
+
+    assert_eq!(anchor_refusal(stale, None, ours), refusal(stale),
+               "a chain that could not be read at the moment of the refusal does not get to \
+                claim the head is ours");
+
+    let held = "… custom program error: 0x11";
+    assert_eq!(anchor_refusal(held, Some(ours), ours), refusal(held),
+               "every other refusal passes through untouched — only the stale head has two stories");
+    assert!(anchor_refusal("connection refused", Some(ours), ours).is_none(),
+            "an outage is not a refusal here either");
+}

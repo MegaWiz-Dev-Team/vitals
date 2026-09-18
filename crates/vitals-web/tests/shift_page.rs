@@ -891,3 +891,40 @@ fn the_stage_reserves_the_action_bars_own_height() {
             "the reservation belongs beside the rule that pins the bar, so the next reader of one \
              meets the other");
 }
+
+/// **Hand over is pressed once, and stays pressed.**
+///
+/// Two buttons do this one act — the bedside card's (`#wardprimary`, under the face, where the
+/// founder looked for it) and the strip's (`#endrun`) — and only the strip's was ever disabled.
+/// So the bedside one stayed live through the anchor, and a second press sent the same leaf at a
+/// head we had just moved ourselves: the chain refused it, correctly, and the page showed that
+/// refusal to somebody whose shift was already on the chain.
+///
+/// The latch therefore belongs to the shift and not to either button: one function disables both,
+/// and the repaint that redraws the card reads it rather than resetting it.
+#[test]
+fn the_hand_over_is_latched_by_the_shift_and_not_by_its_button() {
+    let js = bay_js();
+
+    let latch = without_comments(&body_of(&js, "handingOver"));
+    for b in ["#endrun", "#wardprimary"] {
+        assert!(latch.contains(b),
+                "both buttons that hand a shift over have to go down together, and {b} is not in \
+                 the latch: {latch}");
+    }
+
+    // The hand-over latches before it does anything else: the press that follows it is the one
+    // being defended against, and it arrives while the first is still awaiting the chain.
+    let inner = without_comments(&body_of(&js, "handOverInner"));
+    assert!(inner.contains("handingOver(true)"),
+            "the hand-over has to latch the shift, not just its own button: {inner}");
+
+    // And the card's repaint spends the latch rather than clearing it. `paintPrimary` runs on
+    // every ward poll, so a repaint that re-enabled the button would hand the second press back.
+    let paint = without_comments(&body_of(&js, "paintPrimary"));
+    assert!(paint.contains("disabled=HANDING") || paint.contains("disabled = HANDING"),
+            "a repaint must not unlatch a shift that is being handed over: {paint}");
+    assert!(paint.contains("pressPrimary"),
+            "and the press is the decision pressPrimary makes, so the test of it is the test of \
+             the button: {paint}");
+}
