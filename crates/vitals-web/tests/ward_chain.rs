@@ -1374,3 +1374,46 @@ fn the_slot_the_chain_is_on_now_is_dated_by_the_wards_own_clock() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// **The last board outlives the instance that read it.**
+///
+/// A derived value with its own `as_of`, so keeping it is safe and serving a minute-old one is a
+/// fact a reader can see. What must not happen is the two failure shapes:
+///
+///   * a `ward_unavailable` — the answer given when the chain could not be read — overwriting a
+///     good board, which would turn one bad minute into a permanently empty ward;
+///   * a build serving a board whose payload shape it does not understand. The stored record
+///     carries a version for exactly that, and a mismatch is refused rather than parsed hopefully.
+#[test]
+fn the_last_board_outlives_the_instance_that_read_it() {
+    use vitals_web::store::Store;
+    use vitals_web::ward_chain::{keep_board, last_board, BOARD_VERSION};
+
+    let dir = std::env::temp_dir().join(format!("vitals-board-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store = Store::open(dir.clone()).expect("a store");
+
+    assert!(last_board(&store).is_none(), "a ward that has never read the chain has no board");
+
+    let good = serde_json::json!({ "readable": true, "as_of_slot": 500_283_135, "patients": [] });
+    assert!(keep_board(&store, &good, "vitals-world-00051-4rd"), "a readable board is kept");
+    let (age, back) = last_board(&store).expect("and comes back");
+    assert_eq!(back["as_of_slot"], 500_283_135, "as the board it was, with its own as_of");
+    assert!(age.as_secs() < 5, "dated by when it was kept: {age:?}");
+
+    let bad = serde_json::json!({ "readable": false, "why": "devnet said no" });
+    assert!(!keep_board(&store, &bad, "vitals-world-00051-4rd"),
+            "a ward that could not read its chain has not read a board");
+    assert_eq!(last_board(&store).expect("the good one stands").1["as_of_slot"], 500_283_135,
+               "an outage must never displace the last thing this ward actually saw");
+
+    // A build that does not know this shape refuses it rather than parsing it hopefully.
+    let mut wrong = store
+        .get::<serde_json::Value>(vitals_web::ward_chain::BOARD_STORE, "last")
+        .expect("the stored record");
+    wrong["version"] = serde_json::json!(BOARD_VERSION + 1);
+    store.put(vitals_web::ward_chain::BOARD_STORE, "last", &wrong).expect("write it back");
+    assert!(last_board(&store).is_none(), "a board from a shape this build does not know is not served");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

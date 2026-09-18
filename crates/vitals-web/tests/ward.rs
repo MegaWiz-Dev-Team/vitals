@@ -1571,16 +1571,18 @@ fn a_head_whose_page_stopped_beating_is_taken_back() {
 fn a_board_is_served_while_the_next_one_is_read() {
     use std::time::Duration;
     use vitals_web::ward::{board_use, Board};
+    // Nothing in the store, so this is the old question: what does the board in memory say?
+    let stored = false;
 
     let ttl = Duration::from_secs(15);
-    assert_eq!(board_use(None, ttl), Board::Wait,
+    assert_eq!(board_use(None, stored, ttl), Board::Wait,
                "the first request after a boot is the one that waits, and it is the only one");
-    assert_eq!(board_use(Some(Duration::from_secs(3)), ttl), Board::Serve,
+    assert_eq!(board_use(Some(Duration::from_secs(3)), stored, ttl), Board::Serve,
                "a board inside its life is the answer and nothing else happens");
-    assert_eq!(board_use(Some(Duration::from_secs(16)), ttl), Board::ServeAndRefresh,
+    assert_eq!(board_use(Some(Duration::from_secs(16)), stored, ttl), Board::ServeAndRefresh,
                "a board past its life is still an answer — it says when it was read — and the \
                 reading happens behind it rather than in front of the person");
-    assert_eq!(board_use(Some(Duration::from_secs(600)), ttl), Board::ServeAndRefresh,
+    assert_eq!(board_use(Some(Duration::from_secs(600)), stored, ttl), Board::ServeAndRefresh,
                "however old it is: a board with its own `as_of` on it is a fact, and waiting ten \
                 minutes for a fresher one is not an improvement on it");
 }
@@ -1747,4 +1749,34 @@ fn a_refusal_offers_the_beds_that_are_open() {
     assert!(beds_to_offer(&serde_json::json!({ "readable": false })).is_empty());
     assert!(beds_to_offer(&serde_json::json!({})).is_empty());
     assert!(beds_to_offer(&serde_json::json!({ "patients": [] })).is_empty());
+}
+
+/// **A fresh instance answers from the board its predecessor kept.**
+///
+/// Measured on staging, 18 ก.ย.: the first `/api/ward` against a cold instance took **123.33 s** —
+/// eighteen patients' signature listings, in turn, with a reader watching a blank panel. The board
+/// is held in memory, so at MIN_INSTANCES=0 every cold start has exactly one visitor paying for it,
+/// and `board_use`'s own comment admits as much: "the first request after a boot pays for the read,
+/// and it is the only one that does".
+///
+/// It does not have to be anyone. The board is a derived value with its own `as_of`, so the last
+/// one this ward read can be kept in the store and served by whichever instance starts next —
+/// answered immediately, refreshed behind the answer. `Wait` then means what it should: this ward
+/// has never read the chain at all.
+#[test]
+fn a_fresh_instance_answers_from_the_board_its_predecessor_kept() {
+    use std::time::Duration;
+    use vitals_web::ward::{board_use, Board};
+    let ttl = Duration::from_secs(30);
+
+    assert_eq!(board_use(None, true, ttl), Board::ServeStoredAndRefresh,
+               "nothing in memory and a board in the store: answer with it and read behind it — \
+                the visitor who happens to be first must not pay for a chain read");
+    assert_eq!(board_use(None, false, ttl), Board::Wait,
+               "and only a ward that has never read the chain at all makes anybody wait");
+
+    // Memory wins over the store whatever the store holds: it is this instance's own read, and it
+    // is never older than the one it started from.
+    assert_eq!(board_use(Some(Duration::from_secs(3)), true, ttl), Board::Serve);
+    assert_eq!(board_use(Some(Duration::from_secs(600)), true, ttl), Board::ServeAndRefresh);
 }
