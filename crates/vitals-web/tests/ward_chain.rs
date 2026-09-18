@@ -1483,3 +1483,53 @@ fn a_receipt_never_reads_an_id_out_loud() {
     assert_eq!(id_as_words("weird_id_no_prefix"), "weird id no prefix",
                "and an id from a vocabulary this ward does not know still opens its underscores");
 }
+
+/// **The words a stranger reads on a receipt are never an id.**
+///
+/// The director's rule, and the assertion is on the words rather than on the document: the id stays
+/// beside them in small monospace, because a receipt is a thing a stranger checks and the id is what
+/// they would check it with. What must never happen is the id standing *as* the words, which is what
+/// "0:47 ORDERED tx_source_control" was.
+///
+/// Added after the fix at the director's request, and verified against the old behaviour before
+/// being kept: with the fallback removed, `said` comes back as the raw id and this fails.
+#[test]
+fn the_words_a_stranger_reads_are_never_an_id() {
+    let sce = ep1();
+    let mine = vec![
+        Step::Tick(20.0),
+        Step::Do("tx_source_control".into()),
+        Step::Tick(10.0),
+        Step::Ask("ask_chest_and_flank_pain".into()),
+    ];
+    let mut tapes: BTreeMap<String, Vec<Step>> = BTreeMap::new();
+    tapes.insert(hex_of("mine"), mine.clone());
+    let chart = |h: &str| tapes.get(h).cloned();
+    let pack = WardPack {
+        difficulty: None,
+        case: "ep1".into(),
+        persona: Persona { name: "Ing".into(), country: "THA".into(), age: 19, sex: "f".into() },
+        portrait: Default::default(),
+        endemic: false,
+    };
+    let shifts = [anchored("mine", 1_000_020)];
+    let r = receipt(&sce, None, &shifts, &shifts[0], &chart, &pack, 1_000_000, &dated)
+        .expect("a receipt");
+
+    let rows = r["timeline"].as_array().expect("a timeline");
+    assert_eq!(rows.len(), 2, "one order and one question: {rows:?}");
+    for row in rows {
+        let said = row["said"].as_str().expect("every row carries the words it is read as");
+        for raw in ["tx_", "ask_", "ix_", "dx_", "exam_"] {
+            assert!(!said.contains(raw),
+                    "the words a stranger reads are an id: {said:?} in {row:?}");
+        }
+        assert!(!said.contains('_'), "and no underscore survives into them: {said:?}");
+    }
+    assert_eq!(rows[0]["said"], "source control");
+    assert_eq!(rows[1]["said"], "chest and flank pain");
+
+    // The id itself stays, because that is what somebody checking this would check it with.
+    assert_eq!(rows[0]["text"], "tx_source_control");
+    assert_eq!(rows[1]["text"], "ask_chest_and_flank_pain");
+}

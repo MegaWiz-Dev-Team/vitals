@@ -2597,6 +2597,24 @@ pub fn label_for(sce_json: &str, id: &str) -> Option<String> {
     labels_of(sce_json).remove(id)
 }
 
+/// An id read as the words it already is, for a case that wrote none of its own.
+///
+/// `tx_source_control` is not a phrase to invent around: it is "source control" with the compiler's
+/// row prefix on the front and underscores between. Dropping the prefix and opening the underscores
+/// reads it; it does not add anything that was not in it. That is the whole licence — a receipt must
+/// never make up a phrase for an id nobody wrote, and must never print `tx_source_control` at a
+/// reader either.
+///
+/// A typed order is not an id and comes back untouched: "oxygen face mask 15 lpm" is what somebody
+/// wrote, and what the tape kept.
+pub fn id_as_words(id: &str) -> String {
+    let body = id
+        .split_once('_')
+        .filter(|(row, _)| matches!(*row, "ask" | "exam" | "ix" | "tx" | "dx"))
+        .map_or(id, |(_, rest)| rest);
+    body.replace('_', " ")
+}
+
 /// What one shift was, for somebody who never played it.
 ///
 /// Everything here is either on the chain or recomputed in front of the reader from bytes the
@@ -2653,7 +2671,9 @@ pub fn receipt(
     // done; the id stays beside it, because it is what a verifier re-runs and what the marks are
     // keyed by. A step the case wrote no words for keeps the tape's text and nothing is invented.
     let labels = labels_of(sce_json);
-    let said = |key: &str| labels.get(key).cloned();
+    // The case's own words where it wrote them, and the id read as words where it did not. Never
+    // the raw id: it is the key the matcher rules on, which is true and unreadable.
+    let said = |key: &str| Some(labels.get(key).cloned().unwrap_or_else(|| id_as_words(key)));
     for step in &tape {
         match step {
             vitals_replay::Step::Tick(dt) => at += dt,
