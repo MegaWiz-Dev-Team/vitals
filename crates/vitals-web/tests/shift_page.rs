@@ -531,8 +531,15 @@ fn a_world_case_is_drawn_from_the_payload_and_never_from_the_season() {
     assert!(!open.contains("SEASON"),
             "the opener still consults the page's table of the season's sixteen, which on the ward \
              host is a table of sixteen patients who are not in this bed: {open}");
-    assert!(open.contains("not on this page yet"),
+    // The sentence changed on 18 September and the rule did not: a case the payload cannot describe
+    // is a sentence, and now it is the true one. "Not on this page yet" was printed *after* a
+    // stranger pressed "take a shift" on the board, and said nothing about why or what to do; the
+    // board refuses the offer now, and this page says what happened and shows the chart.
+    assert!(open.contains("cannot be opened"),
             "a case the payload could not describe has to be a sentence: {open}");
+    assert!(open.contains("chartPage("),
+            "and the sentence rides her own chart — who she is, and every shift that treated her, \
+             which is the one thing this page can still honestly show: {open}");
 
     // One place answers "which case is this", and on a shift the answer is the ward's card. The
     // season's shelf keeps its own lookup — this is a page that serves two hosts, not a feature
