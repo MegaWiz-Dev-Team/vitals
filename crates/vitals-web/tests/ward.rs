@@ -1849,3 +1849,53 @@ fn a_bed_whose_case_the_ward_cannot_draw_is_not_offered() {
     assert_eq!(ok["openable"], true, "a bed whose case the ward holds is offered as it always was");
     assert!(ok["why_not"].is_null(), "and says nothing about why not — one broken bed closes no ward");
 }
+
+/// **A bed the ward cannot open is given back to the ward.**
+///
+/// Director's ruling, 18 September: she stays open on chain — nothing clinical happened to her and
+/// the program must not be told otherwise — but the bed is the ward's, not the chain's, so the
+/// ticker takes it back and admits somebody into it. She is listed as off the ward with the reason.
+///
+/// The precedent is already here: a patient whose chart cannot be rebuilt holds no bed, "because a
+/// bed kept for her is a bed the ward has taken out of service without saying so". A patient whose
+/// case the ward no longer holds is the same fact with a different cause.
+#[test]
+fn a_bed_the_ward_cannot_open_is_given_back_to_the_ward() {
+    use std::collections::BTreeMap;
+    use vitals_web::ward::{beds_of, beds_taken, Pack, Persona};
+    use vitals_web::ward_case::CaseSummary;
+
+    let held = |case: &str| Pack {
+        difficulty: None,
+        case: case.into(),
+        persona: Persona { name: "Park Ji-woo".into(), country: "KOR".into(), age: 8, sex: "f".into() },
+        portrait: Default::default(),
+        endemic: false,
+    };
+    let summary = |id: &str| CaseSummary {
+        case_id: id.into(), archetype: "airway_obstruction".into(), country: None,
+        difficulty: "intern".into(), endemic: false, provisional: true, withdrawn: false,
+        version: "1.0.0".into(), title: "one the ward holds".into(),
+        patient_age: None, patient_sex: None,
+    };
+
+    // She was admitted first and has the oldest slot, so she held bed 1 for two days.
+    let patients = vec![patient(1, OPEN, 2, 10, 0), patient(2, OPEN, 0, 20, 0)];
+    let mut packs = BTreeMap::new();
+    packs.insert(1u64, held("osce-c"));
+    packs.insert(2u64, held("ddx-boerhaave-4-en"));
+    let catalogue = [summary("ddx-boerhaave-4-en")];
+
+    assert_eq!(beds_taken(&patients, &packs, nothing_lost(), &catalogue), 1,
+               "one bed is taken: hers is not, because nobody can open it");
+
+    let beds = beds_of(&patients, &packs, nothing_lost(), &catalogue);
+    assert!(!beds.contains_key(&1), "she holds no bed, so the ticker can fill it");
+    assert_eq!(beds.get(&2), Some(&1),
+               "and the patient behind her takes bed 1 — a bed nobody can open is not a bed kept \
+                warm out of politeness");
+
+    // The guard that matters on a fresh instance: an empty catalogue judges nobody.
+    assert_eq!(beds_taken(&patients, &packs, nothing_lost(), &[]), 2,
+               "a ward that has not loaded its catalogue has not lost anybody's case");
+}
