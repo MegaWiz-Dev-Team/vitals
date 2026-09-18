@@ -41,12 +41,12 @@ const sandbox = [grabConst('ALPHA3'), grabConst('STATE_LABEL'), grabConst('DOCTO
   grab('peoplePerDoctor'), grab('latestOf'), grab('tenYearTrend'), grab('fmtTrend'), grab('fmtPeople'), grab('doctorLine'),
   grab('worldAverage'), grab('missionLine'), grab('doctorBin'),
   grab('yearValue'), grab('yearRange'), grab('doctorLineAt'), grab('worldAverageAt'), grab('missionLineAt'),
-  grab('escapeHtml'), grab('portraitImg'),
-  'return { countryId, countryCounts, visible, inBeds, canTakeShift, censusFigures, ALPHA3, openingCountry, openingLongitude, countryGroups, countryHeading, waitingCounts, figuresFor, bedsEmptyWords, shouldReload, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg };'].join('\n');
+  grab('escapeHtml'), grab('portraitImg'), grab('onTheGlobe'),
+  'return { countryId, countryCounts, visible, inBeds, canTakeShift, censusFigures, ALPHA3, openingCountry, openingLongitude, countryGroups, countryHeading, waitingCounts, figuresFor, bedsEmptyWords, shouldReload, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg, onTheGlobe };'].join('\n');
 const { countryId, countryCounts, inBeds, canTakeShift, censusFigures, visible, ALPHA3, openingCountry, openingLongitude, countryGroups, countryHeading, waitingCounts, figuresFor, bedsEmptyWords, shouldReload, whenMs, relative, absolute, stateLine,
   stateOf, onBoard, paintOf, hoverText, STATE_LABEL,
   DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin,
-  yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg } = new Function(sandbox)();
+  yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg, onTheGlobe } = new Function(sandbox)();
 
 // ── countryId ────────────────────────────────────────────────────────────────
 // world-atlas 110m keys its shapes by ISO numeric, as strings ("764"); the ward sends alpha-3.
@@ -675,3 +675,26 @@ assert.match(script, /Escape[\s\S]{0,160}clearPanel/,
              'Escape returns to the beds — a panel with one way out has one way out for a mouse');
 
 console.log('globe_logic: ok (and the panel can be left)');
+
+// ── a pointer off the globe is over the page, not over Antarctica ───────────
+//
+// Demo capture, item 6: hovering below the globe named Antarctica. d3's orthographic `invert`
+// answers for points outside the disc too — it hands back the nearest point on the limb — and the
+// limb below a globe tilted the way this one is tilted is the far south. The guard that was there
+// compared the inverted point against the centre, and a limb point is exactly π/2 away, which is
+// not *greater than* π/2.
+//
+// So the question is asked in the space the pointer is actually in: the disc the globe is drawn
+// in, which is the projection's translate and scale.
+assert.equal(onTheGlobe([200, 200], [200, 200], 150), true, 'the middle of the world');
+assert.equal(onTheGlobe([200, 349], [200, 200], 150), true, 'a pixel inside the limb is still land or sea');
+assert.equal(onTheGlobe([200, 350], [200, 200], 150), true, 'the limb itself belongs to the globe');
+assert.equal(onTheGlobe([200, 351], [200, 200], 150), false, 'and one pixel past it is the page');
+assert.equal(onTheGlobe([200, 420], [200, 200], 150), false, 'seventy px south of the limb is not Antarctica');
+assert.equal(onTheGlobe([80, 80], [200, 200], 150), false, 'the corners of the box are not the globe either');
+assert.equal(onTheGlobe([94, 94], [200, 200], 150), true, 'and a corner inside the disc is');
+
+assert.match(grab('countryAt'), /onTheGlobe/,
+             'the hit test has to ask it — a guard nothing calls is a comment');
+
+console.log('globe_logic: ok (and the page is not Antarctica)');

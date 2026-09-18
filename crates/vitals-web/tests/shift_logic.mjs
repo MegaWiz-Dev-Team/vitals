@@ -436,3 +436,50 @@ assert.equal(pressPrimary(false, true), 'nothing',
              'a latched shift is latched whatever else the page believes about the head');
 
 console.log('shift_logic: ok (and Hand over is pressed once)');
+
+// ── a clock that never says :60 ─────────────────────────────────────────────
+//
+// Demo capture, item 6: the chart printed `15:60`. The minutes were floored and the seconds were
+// *rounded*, so 959.6 s read as 15 minutes and a sixtieth second — a minute the clock never rolled.
+// Floor both, and there is no remainder that can reach 60.
+//
+// One function for every clock on the page (the chart's `fmt`, the debrief's `F`, the mark sheet's
+// `mmss` were three copies of the same arithmetic, and only one of them had this bug), so there is
+// one place left for it to be wrong.
+// Asked before it is pulled out, so a page that still has the arithmetic inline fails with the
+// reason rather than with a parse error from a half-grabbed arrow.
+assert.match(script, /function fmt\(/,
+             'the chart clock is a function of its own — one clock on this page, and one place for \
+              it to be wrong');
+const { fmt } = new Function([grab('fmt'), 'return { fmt };'].join('\n'))();
+
+assert.equal(fmt(959.6), '15:59', 'the capture printed 15:60 for this very number');
+assert.equal(fmt(59.999), '0:59', 'and nothing rolls a minute early');
+assert.equal(fmt(60), '1:00');
+assert.equal(fmt(0), '0:00');
+assert.equal(fmt(3599.9), '59:59');
+assert.equal(fmt(3600), '60:00', 'an hour on the ward is 60:00 — the chart counts minutes, not hours');
+assert.equal(fmt(-3), '0:00', 'a clock before the clock started reads zero, never -1:-3');
+
+// And the page keeps one copy of it: a second formatter is a second chance to round a remainder.
+const clocks = (uncommented(script).match(/Math\.(floor|round)\(\w+ ?% ?60\)/g) || []);
+assert.ok(clocks.length <= 2,
+          `the page has ${clocks.length} copies of minutes-and-seconds arithmetic: ${clocks}`);
+
+// ── the room goes red for somebody who is holding her ───────────────────────
+//
+// Demo capture, item 6: the alarm vignette pulsed over a Critical patient before the head was
+// taken. Nobody is treating her yet, nothing the reader does can answer it, and the page's own
+// rule two hundred lines below already says this about the nudge — "not before the head is taken".
+const { shouldAlarm } = new Function([grab('shouldAlarm'), 'return { shouldAlarm };'].join('\n'))();
+
+assert.equal(shouldAlarm(3, 1, false, true), true, 'she got worse on a shift somebody is holding');
+assert.equal(shouldAlarm(3, 1, false, false), false,
+             'and not before the head is taken — the room going red is a call to act, and there \
+              is nothing this reader may do to her yet');
+assert.equal(shouldAlarm(1, 0, false, true), false, 'only past the second rank: a rank 1 is not an alarm');
+assert.equal(shouldAlarm(3, 3, false, true), false, 'only when it moves — a fact that has not changed is furniture');
+assert.equal(shouldAlarm(1, 3, false, true), false, 'and only downward: an alarm on good news is one nobody reads');
+assert.equal(shouldAlarm(3, 1, true, true), false, 'never after the bell — the border is a warning, not a verdict');
+
+console.log('shift_logic: ok (and the clock rolls its own minutes)');
