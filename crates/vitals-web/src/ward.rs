@@ -919,8 +919,10 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                 // Whether a stranger can be offered this bed at all. The page asks it before it
                 // draws a link, so the answer lives here rather than being worked out twice.
                 "openable": !(stuck.is_some() || adrift || caseless),
+                // No pronoun: this code has a patient id, not a persona, and the ward admits men
+                // and women. `plain_words.rs` holds every sentence in this file to that.
                 "why_not": caseless.then_some(
-                    "the ward no longer holds her case, so nothing here can open this bed"),
+                    "the ward no longer holds this case, so nothing here can open this bed"),
                 // Words, because the board is what reads this. A renderer switching on 0, 1 and 2
                 // would have to know the program's byte layout to draw a ward.
                 "state": if stuck.is_some() { "unrebuildable" }

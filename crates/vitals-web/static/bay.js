@@ -4313,15 +4313,15 @@ async function openShift(){
        about this ward and not about her, so the page is her chart: who she is, what happened to her
        and every shift that treated her, with one sentence saying why this bed cannot be opened.
        "Not on this page yet" was a dead end printed *after* a stranger pressed "take a shift". */
-    const why='this bed cannot be opened · the ward no longer holds her case';
+    const why='this bed cannot be opened · the ward no longer holds this case';
     try{
       const c=await (await fetch('/api/ward/patient/'+encodeURIComponent(WARD))).json();
       if(c&&!c.error&&c.patient_id!==undefined){ chartPage(c, why); return; }
     }catch(e){ /* the chart is not needed to say what happened */ }
     wardPage('<p class="bed">patient '+esc(WARD)+'</p>'
       +'<h1>'+esc(why)+'</h1>'
-      +'<p>Her chart is on chain and her bed is on the board. This ward no longer holds the case '
-      +'she was admitted for, so there is nothing here that can draw it.</p>');
+      +'<p>The chart is on chain and the bed is on the board. This ward no longer holds the case '
+      +'this patient was admitted for, so there is nothing here that can draw it.</p>');
     return;
   }
   WARDCARD=built.entry; WARDCHIPS=built.chips; WARDLABEL=built.labels;
