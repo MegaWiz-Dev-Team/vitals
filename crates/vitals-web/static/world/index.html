@@ -233,7 +233,6 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
      when something is selected meant the patients were not on the page at all. */
   .panel{position:static;transform:none;max-height:none;overflow:visible;border-radius:.9rem;
     box-shadow:none;z-index:auto}
-  .panel .close{display:none}
   .tray{margin-bottom:.5rem}
 }
 /* Narrow enough that the button on the row leaves the name and the pill nothing: at 358 px the
@@ -244,6 +243,12 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
   .prow>a.take{justify-self:end;margin-top:.3rem}
 }
 .panel .close{display:none;float:right;font:inherit;background:none;border:1px solid var(--rule);border-radius:.4rem;color:var(--ink-2);padding:.15rem .5rem;cursor:pointer}
+/* Shown when there is somewhere to go back from, which is exactly when a country is selected: the
+   resting state of this panel is the beds, and a "back to the beds" over the beds is furniture.
+   At every width — the sheet this used to be had no room for it on a phone, and the section it is
+   now does. */
+.panel.open .close{display:inline-block}
+.panel .close:hover{border-color:var(--ink-3);color:var(--ink)}
 .panel .close:focus-visible{outline:2px solid var(--proven);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){.panel{transition:none}}
 </style>
@@ -310,7 +315,9 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
        lets it take a column of its own on a wide screen and a place of its own on a phone — right
        after the figures, before the globe, where a thumb reaches it first. -->
   <aside class="panel" id="panel" aria-live="polite">
-    <button type="button" class="close" id="close" aria-label="Close">close</button>
+    <!-- Says where it goes, not that it shuts: what a reader wants back is the beds, which is
+         what this panel holds when nothing is selected. -->
+    <button type="button" class="close" id="close" aria-label="Back to the beds">&larr; the beds</button>
     <!-- The panel's first paint is *served*, not drawn by the script. At 1.5 Mbit the script does
          not run for about two seconds (measured 18 ก.ย.: 0.27 s to first paint, 2.16 s to the
          script, 4.23 s to the rows on a slow board) — and for those two seconds the page said
@@ -1087,6 +1094,9 @@ function renderTray() {
   for (const p of list) $("traylist").appendChild(row(p, true));
 }
 $("close").addEventListener("click", clearPanel);
+/* And from the keyboard. Only while a country is selected: Escape over the beds would be a key
+   that does nothing, and Escape is the key a reader presses when a thing is in the way. */
+addEventListener("keydown", e => { if (e.key === "Escape" && selected) clearPanel(); });
 $("filters").addEventListener("click", e => {
   const b = e.target.closest("button[data-d]"); if (!b) return;
   filter[b.dataset.d] = !filter[b.dataset.d];
