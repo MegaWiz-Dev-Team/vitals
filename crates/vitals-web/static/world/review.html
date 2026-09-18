@@ -23,6 +23,7 @@
   .rv{max-width:62rem;margin:1.6rem auto 4rem;padding:0 1.2rem}
   .rv h1{font-family:Archivo,system-ui,sans-serif;font-size:1.5rem;margin:0 0 .3rem}
   .rv .lede{color:var(--ink-2,#4A5B5E);margin:0 0 1.4rem;max-width:44rem;line-height:1.6}
+  .rv .lede.state{font-weight:600;color:var(--ink,#16302b)}
   .rv h2{font:600 .82rem/1.6 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.12em;
     text-transform:uppercase;color:var(--ink-3,#7b8a86);margin:1.8rem 0 .6rem}
   .rv ul{list-style:none;margin:0;padding:0;display:grid;gap:.5rem}
@@ -37,8 +38,16 @@
     text-transform:uppercase;border:1px solid var(--line,#DDE5E4);border-radius:999px;
     padding:.1rem .5rem;color:var(--ink-2,#4A5B5E);white-space:nowrap}
   .rv .tag.gone{border-color:#e0c3c3;color:#a4453f}
+  .rv .tag.ok{border-color:#bfd9cf;color:#0f6e5c}
   .rv .tag.endemic{border-color:#bfd9cf;color:#0f6e5c}
   .rv .none{color:var(--ink-3,#7b8a86)}
+  /* The withdrawn, folded. Quiet enough that it reads as a drawer rather than a section: what is
+     in it is out of placement, and a reviewer opens it on purpose or never. */
+  .rv details{margin-top:1.8rem;border-top:1px solid var(--line,#DDE5E4);padding-top:.9rem}
+  .rv summary{font:600 .82rem/1.6 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--ink-3,#7b8a86);cursor:pointer}
+  .rv summary:focus-visible{outline:2px solid #0f6e5c;outline-offset:3px}
+  .rv details ul{margin-top:.6rem}
   .rv footer{margin-top:2.4rem;font-size:.85rem}
   .rv footer a{color:#0f6e5c}
 </style>
@@ -55,6 +64,7 @@
   <p class="lede">Open one to read it as a learner meets it — the patient's words, the examination,
     the orders it pays for. A review run is not on the ward and not on the chain: nobody is
     admitted, nothing is recorded, and the board does not move.</p>
+  <p class="lede state" id="review-state"></p>
   <div id="list"><p class="none">reading the catalogue…</p></div>
   <footer><a href="/">← the globe</a></footer>
 </main>
@@ -71,7 +81,12 @@ function row(c) {
   const tags = [];
   if (c.country) tags.push(`<span class="tag">${esc(c.country)}</span>`);
   if (c.endemic) tags.push(`<span class="tag endemic">endemic</span>`);
-  if (c.provisional) tags.push(`<span class="tag">not reviewed</span>`);
+  /* Only where this case differs from what the page has already said about all of them. Every
+     case the ward holds is provisional today (138 of 138 on 18 ก.ย.), so "NOT REVIEWED" on every
+     row distinguished nothing and read as a fault being shown to the reviewer; the lede says it
+     once. The badge is kept for `reviewed`, which is the state worth spotting from across a list
+     and the one this page exists to produce. */
+  if (!c.provisional) tags.push(`<span class="tag ok">reviewed</span>`);
   if (c.withdrawn) tags.push(`<span class="tag gone">withdrawn</span>`);
   const who = c.patient && c.patient.age != null
     ? `<span class="tag">${esc(String(c.patient.sex || "").slice(0, 1).toUpperCase())} ${esc(c.patient.age)}</span>`
@@ -79,6 +94,33 @@ function row(c) {
   return `<li><a class="case" href="/ward/review/${encodeURIComponent(c.case_id)}">
       <span class="ttl">${esc(c.title || c.case_id)}</span>${who}${tags.join("")}
       <span class="id">${esc(c.case_id)}</span></a></li>`;
+}
+
+/* How the list is grouped: by level, because that is what a case is offered at — and everything
+   withdrawn in one fold at the bottom. The ward holds every case it was ever sent (withdrawing one
+   takes it out of placement rather than deleting it, because shifts already played on it still
+   have to replay), and on 18 ก.ย. that was 60 of 138 sitting in the bands in the same weight as
+   the live ones. Withdrawn is a fact about a case's future, not a fourth difficulty. */
+/* What the whole catalogue is, in one sentence, so that no row has to repeat it.
+   Every case the ward holds is provisional today — 138 of 138, read off /api/ward/cases on
+   18 ก.ย. — and a badge that is on every row distinguishes nothing. Inside twelve words, like
+   every other sentence a reader acts on here. */
+function reviewLede(cases) {
+  const live = cases.filter(c => !c.withdrawn);
+  if (!live.length) return "";
+  const prov = live.filter(c => c.provisional).length;
+  if (prov === live.length) return "No case here is clinically reviewed yet — all provisional.";
+  if (prov === 0) return "Every case here is clinically reviewed.";
+  return `${prov} of ${live.length} here are provisional; the rest are reviewed.`;
+}
+
+function groupsOf(cases) {
+  const live = cases.filter(c => !c.withdrawn);
+  const bands = LEVELS.map(level => [level, live.filter(c => c.difficulty === level)])
+    .filter(([, list]) => list.length);
+  const other = live.filter(c => !LEVELS.includes(c.difficulty));
+  if (other.length) bands.push(["other", other]);
+  return { bands, withdrawn: cases.filter(c => c.withdrawn) };
 }
 
 fetch("/api/ward/cases").then(r => r.json()).then(d => {
@@ -89,12 +131,15 @@ fetch("/api/ward/cases").then(r => r.json()).then(d => {
       door, from the case factory.</p>`;
     return;
   }
-  const bands = LEVELS.map(level => [level, cases.filter(c => c.difficulty === level)])
-    .filter(([, list]) => list.length);
-  const other = cases.filter(c => !LEVELS.includes(c.difficulty));
-  if (other.length) bands.push(["other", other]);
+  const { bands, withdrawn } = groupsOf(cases);
+  const lede = reviewLede(cases);
+  if (lede) document.getElementById("review-state").textContent = lede;
   el.innerHTML = bands.map(([level, list]) =>
-    `<h2>${esc(level)} · ${list.length}</h2><ul>${list.map(row).join("")}</ul>`).join("");
+    `<h2>${esc(level)} · ${list.length}</h2><ul>${list.map(row).join("")}</ul>`).join("")
+    + (withdrawn.length
+        ? `<details><summary>withdrawn · ${withdrawn.length}</summary>
+             <ul>${withdrawn.map(row).join("")}</ul></details>`
+        : "");
 }).catch(() => {
   document.getElementById("list").innerHTML =
     `<p class="none">The catalogue could not be read just now.</p>`;
