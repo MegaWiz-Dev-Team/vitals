@@ -2495,9 +2495,9 @@ fn receipt_page(r: &serde_json::Value, board: &serde_json::Value) -> String {
     let case = r["case"].as_str().unwrap_or("");
     let of_the_season = ward::CATALOGUE.contains(&case);
     let case_line = [
-        r["case_title"].as_str().map(|t| esc(t))
+        r["case_title"].as_str().map(esc)
             .or_else(|| of_the_season.then(|| esc(&title(case)))),
-        r["difficulty"].as_str().map(|d| esc(d))
+        r["difficulty"].as_str().map(esc)
             .or_else(|| of_the_season.then(|| ward::difficulty_of(case).map(esc)).flatten()),
     ]
     .into_iter()
@@ -2552,7 +2552,7 @@ fn receipt_page(r: &serde_json::Value, board: &serde_json::Value) -> String {
                     } else {
                         let named = i["charged"].as_array().map(|c| c.iter()
                             .filter_map(|x| x.as_str())
-                            .map(|x| esc(x))
+                            .map(esc)
                             .collect::<Vec<_>>().join(", ")).unwrap_or_default();
                         format!(
                             "<li class=missed>−{took} · {charged} order{} off the list: {named}</li>",

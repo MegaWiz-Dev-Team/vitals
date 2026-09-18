@@ -964,8 +964,13 @@ fn a_shift_receipt_carries_what_the_chain_holds_and_what_anybody_can_recompute()
 
     assert!(r["judged"].is_null(), "no judged score on a shift");
     let why = r["judged_omitted"].as_str().expect("and it says why rather than leaving a hole");
-    assert!(why.contains("finished case") || why.contains("whole case"),
-            "the reason has to be the reason: {why}");
+    /* It said why at length — "a judged score belongs to a finished case…" — and the director cut
+       it to one line on 18 ก.ย.: a receipt is a record, and the reasoning belongs in the plan where
+       somebody looking for it can find it. What the payload still has to do is say *what* is absent
+       and *where*, in a sentence short enough for the strip's own rule. */
+    assert!(why.contains("mid-stay"),
+            "it has to say where the marks are missing from, not only that they are: {why}");
+    assert!(why.split_whitespace().count() <= 12, "one line on a receipt: {why}");
 
     // The tape is offered, addressed by the hash the leaf commits to, so a stranger can replay it
     // without asking us for anything.
