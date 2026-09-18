@@ -126,11 +126,14 @@ fn ratio(a: &str, b: &str) -> f64 {
     (hi + 0.05) / (lo + 0.05)
 }
 
+/// One pair to check: the token used for text, the token under it, and where to look if it fails.
+type Pair = (&'static str, &'static str, &'static str);
+
 #[test]
 fn the_contrast_of_every_text_colour_on_every_ground_it_sits_on() {
     // Each pair is one the pages really make: the token used for text, the token under it, and
     // where to look if it fails.
-    let pages: &[(&str, &[(&str, &str, &str)])] = &[
+    let pages: &[(&str, &[Pair])] = &[
         ("static/world/index.html", &[
             ("--ink", "--ground", "the headline and the body text"),
             ("--ink-2", "--ground", "the mission line, the intro, the panel's empty state"),
