@@ -725,8 +725,9 @@ const film = iframes[0];
 
 assert.match(film, /src="https:\/\/www\.youtube-nocookie\.com\/embed\/uOpv-_d7-s0[?"]/,
              `from the no-cookie host, and the film the founder named: ${film}`);
-assert.match(film, /[?&]rel=0/, `no other channel's videos at the end of ours: ${film}`);
-assert.match(film, /[?&]modestbranding=1/, film);
+assert.match(film, /[?&](amp;)?rel=0/, `no other channel's videos at the end of ours: ${film}`);
+// `&amp;` is how an ampersand is written in an attribute, so the separator is either.
+assert.match(film, /[?&](amp;)?modestbranding=1/, film);
 assert.ok(!/autoplay/i.test(film),
           `nothing plays at somebody who has not asked for it: ${film}`);
 assert.match(film, /loading="lazy"/,

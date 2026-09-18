@@ -70,8 +70,12 @@ h1 .second{display:block;color:var(--proven);font-size:.72em;font-weight:600;mar
    panel never goes under 380 px, which is the width the rows were overflowing at. */
 @media (min-width:1280px){
   .wrap{display:grid;grid-template-columns:minmax(0,620px) minmax(380px,1fr);gap:0 1.6rem;
-    grid-template-areas:"rail rail" "head panel" "mission panel" "figs panel" "sub panel"
+    grid-template-areas:"rail rail" "head film" "mission film" "figs film" "sub panel"
       "stage panel" "tray panel" "links links";align-items:start}
+  /* The film takes the top of the right column and the beds sit under it. Measured at 1460×900
+     before this was kept: the panel's top has to stay inside the first screen, or the film goes
+     under the globe instead and the beds keep the column. */
+  .wrap>.film{grid-area:film;margin-top:1.2rem}
   .wrap>.rail{grid-area:rail}
   .wrap>h1{grid-area:head;margin-top:1.2rem}
   .wrap>.mission{grid-area:mission}
@@ -160,6 +164,12 @@ canvas#globe.dragging{cursor:grabbing}
 .panel .k{font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.1em;color:var(--ink-3);text-transform:uppercase}
 .panel .empty{color:var(--ink-2);font-size:.92rem;margin:.6rem 0 0}
 .prow .shut{font-size:.78rem;color:var(--ink-2);margin-top:.15rem}
+/* A 16:9 box the width of whatever column it is in, so the frame never decides the layout. */
+.film{margin:1.2rem 0 0;padding:0}
+.film-box{position:relative;aspect-ratio:16/9;max-width:100%;border-radius:.75rem;overflow:hidden;
+  border:1px solid var(--rule);background:#000}
+.film-box iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
+.film figcaption{margin:.45rem 0 0;color:var(--ink-2);font-size:.85rem}
 .plist{list-style:none;margin:.8rem 0 0;padding:0;display:flex;flex-direction:column;gap:.6rem}
 /* A group's own heading inside the list: which of the two this run of rows is, and how many. */
 .plist .ghead{font-family:"IBM Plex Mono",monospace;font-size:.64rem;letter-spacing:.1em;
@@ -222,7 +232,8 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
      headline. */
   .wrap>*{order:9}
   .wrap>.rail{order:0} .wrap>h1{order:1} .wrap>.mission{order:2} .wrap>.figures{order:3}
-  .wrap>.panel{order:4;margin:.2rem 0 .2rem} .wrap>.sub{order:5} .wrap>.stage{order:6}
+  .wrap>.panel{order:4;margin:.2rem 0 .2rem} .wrap>.film{order:5} .wrap>.sub{order:6}
+  .wrap>.stage{order:7}
   .wrap>.tray{order:7} .wrap>.links{order:8}
   .globe-wrap{max-width:100%}
   a.take{padding:.3rem .45rem}
@@ -270,6 +281,24 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
        now` are the ward's own; the other three are the chain's and are left out when the census
        does not carry them. -->
   <div class="figures" id="figures" aria-live="polite"></div>
+
+  <!-- The film. This iframe is the only thing on this page that fetches from a server other than
+       ours, and the privacy page names it beside the typefaces for that reason. `youtube-nocookie`
+       sets no cookie until somebody presses play, `loading="lazy"` means nothing is requested until
+       the box is near the screen, `rel=0` keeps another channel's videos off the end card, and
+       there is no autoplay — in the query or in `allow` — because nothing here plays at a reader
+       who has not asked. A content blocker removes the frame and every other thing on this page
+       still works. -->
+  <figure class="film">
+    <div class="film-box">
+      <iframe src="https://www.youtube-nocookie.com/embed/uOpv-_d7-s0?rel=0&amp;modestbranding=1"
+              title="Vital Signs — a Vitals World film" loading="lazy"
+              allow="accelerometer; encrypted-media; picture-in-picture; web-share"
+              referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+    </div>
+    <figcaption>Vital Signs · 3 min · the patients are simulated, the shortage is not.</figcaption>
+  </figure>
+
   <p class="sub">Drag the globe · hover a country · click a ring</p>
 
   <div class="stage">

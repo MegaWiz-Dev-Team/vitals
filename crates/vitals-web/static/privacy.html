@@ -389,6 +389,17 @@ so a control that could ever render something a learner typed cannot report it.<
 <span class="mono">fonts.googleapis.com</span> and <span class="mono">fonts.gstatic.com</span>. That
 is a request from your browser to Google, it happens before any banner, and consent does not gate
 it. A content blocker stops it and every page still reads fine.</p>
+<h3>The film on the front page</h3>
+<p>The globe page carries one embedded film, from
+<span class="mono">www.youtube-nocookie.com</span>. That is the second request this site makes to a
+server other than ours, and the first that carries a player. It is fetched when the box comes near
+your screen rather than when the page opens, it sets no cookie until you press play &mdash; which is
+what that host is for &mdash; and nothing about it plays on its own. A content blocker removes the
+frame and the rest of the page is unchanged.</p>
+<p>Pressing play is a request to Google, and from that moment Google&rsquo;s terms and not ours
+describe what they keep. We are told nothing about who watched: no name, no address, no count that
+reaches this server.</p>
+
 <p>Four do not, and they are worth naming because they are the ones that reach nothing at all: the
 three bedside device screens — <span class="mono">/device/monitor</span>,
 <span class="mono">/device/vent</span> and <span class="mono">/device/pump</span> — and the deck.
