@@ -1455,3 +1455,31 @@ fn a_receipt_names_what_was_done_and_keeps_the_id() {
     assert_eq!(label_for("not json at all", "tx_oxygen"), None,
                "and an unreadable case is not an excuse to invent one");
 }
+
+/// **A receipt never reads an id out loud, even when the case wrote no words for it.**
+///
+/// `label_for` covers the cases that carry labels, which is all of the factory's. What is left is
+/// the case that does not — a season station, an older pack, an order the author never named — and
+/// there the receipt printed the tape's own text, which for an intervention is its id:
+/// "0:47 ORDERED tx_source_control".
+///
+/// The id is not a phrase to invent around; it is words already, with the compiler's row prefix on
+/// the front and underscores between. So it is read as what it is. A typed order is not an id and
+/// is not touched — "oxygen face mask 15 lpm" is what somebody wrote and what the tape kept.
+#[test]
+fn a_receipt_never_reads_an_id_out_loud() {
+    use vitals_web::ward_chain::id_as_words;
+
+    assert_eq!(id_as_words("tx_source_control"), "source control");
+    assert_eq!(id_as_words("ask_chest_abdominal_and_flank_pain"), "chest abdominal and flank pain");
+    assert_eq!(id_as_words("exam_neck"), "neck");
+    assert_eq!(id_as_words("ix_cxr"), "cxr");
+    assert_eq!(id_as_words("dx_boerhaave"), "boerhaave");
+
+    assert_eq!(id_as_words("oxygen face mask 15 lpm"), "oxygen face mask 15 lpm",
+               "a typed order is not an id: it is what somebody wrote, and the tape kept it");
+    assert_eq!(id_as_words("shock"), "shock", "one word with no prefix is already words");
+    assert_eq!(id_as_words("tx_"), "", "a prefix and nothing else says nothing, rather than \"tx_\"");
+    assert_eq!(id_as_words("weird_id_no_prefix"), "weird id no prefix",
+               "and an id from a vocabulary this ward does not know still opens its underscores");
+}
