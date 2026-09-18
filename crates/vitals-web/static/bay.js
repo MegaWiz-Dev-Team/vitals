@@ -4034,6 +4034,29 @@ function paintPrimary(){
                   else { endRun(); } };
 }
 
+/* How tall the thing pinned over the transcript is, in the transcript's own column.
+   The action bar is sticky at the foot of the stage, so the stage has to end above it — and the
+   bar's height is not a number a stylesheet can hold: it grows when the tray wraps and when the
+   chips open. So the page measures it and keeps measuring it, and the stylesheet spends the answer
+   (`--actsh`, in `html.is-ward .stage`). Measured on the demo capture at 1440×810: the bar was 184
+   px tall over 14 px of reservation, and the last 269 px of the transcript were behind it. */
+function reserveTheBar(){
+  const bar=document.querySelector('.acts');
+  if(!bar)return;
+  const h=Math.ceil(bar.getBoundingClientRect().height);
+  if(h>0)document.documentElement.style.setProperty('--actsh', h+'px');
+}
+if(typeof ResizeObserver==='function'){
+  /* The bar changes height without the window changing size — a tray that wraps, a "+ N more"
+     that opens — which is why this watches the element rather than the viewport. */
+  addEventListener('load',()=>{
+    const bar=document.querySelector('.acts');
+    if(bar)new ResizeObserver(reserveTheBar).observe(bar);
+    reserveTheBar();
+  });
+}
+addEventListener('resize', reserveTheBar);
+
 /* The monitor, where a thumb can see it.
    On a phone the rail is under the transcript and the tray, six thousand pixels down a shift page:
    a learner deciding what to do next had to scroll past everything they had already read to see a

@@ -1456,6 +1456,17 @@ a.give:hover{filter:brightness(1.06)}
      line you type into is on the screen whatever the case brought with it, and the sheet above
      scrolls behind it. */
   html.is-ward .acts{position:sticky;bottom:0;z-index:2}
+  /* And what is pinned over the column has to be reserved *in* the column, or it covers the end of
+     the transcript: measured 18 ก.ย. at 1440×810, the bar hid the last 269 px of it at every
+     scroll position (278 px at 1280×800) against 14 px of reservation. `--actsh` is the bar's own
+     measured height — the page sets it and keeps setting it, because the bar grows when the tray
+     wraps and when the chips open, and a constant here would be right until somebody pressed
+     "+ N more". */
+  /* On the transcript, not on the stage: a sticky element rests *inside* its container's padding,
+     so padding on the stage lifted the bar by its own height and hid 454 px instead of 269. What
+     has to exist is empty space between the transcript and the bar's resting place — then, scrolled
+     to the end, the transcript's last line stops exactly where the bar begins. */
+  html.is-ward .chat{margin-bottom:var(--actsh,0px)}
   html.is-ward .chips{max-height:7.5rem;min-height:0;overflow-y:auto;overscroll-behavior:contain}
   html.is-ward #cmdf,html.is-ward .modes{flex:none}
   .rail{min-height:0;overflow-y:auto;overscroll-behavior:contain;gap:.55rem}
