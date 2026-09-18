@@ -543,6 +543,60 @@ pub fn slot_times(
     out
 }
 
+/// Where the last board this ward read is kept, so the next process to start has one to answer
+/// with. One row, rewritten each time the chain is read.
+pub const BOARD_STORE: &str = "ward_board";
+
+/// The shape of the record in [`BOARD_STORE`].
+///
+/// A board is a payload built by `ward::ward_payload`, and a build that has changed that shape must
+/// not serve one written by a build that had not. Bumped when the payload changes in a way a page
+/// would notice; a mismatch is refused rather than parsed hopefully.
+pub const BOARD_VERSION: u32 = 1;
+
+/// Keep this board for whoever starts next. `true` when it was kept.
+///
+/// **An outage is not a board.** `read_ward` answers `ward_unavailable` when the chain cannot be
+/// read, and writing that over the last good board would turn one bad minute into a ward that is
+/// empty until the next successful read — which on a cold instance is the thing being fixed. So
+/// only a readable board is kept, and the revision that wrote it is kept beside it.
+pub fn keep_board(store: &crate::store::Store, board: &serde_json::Value, revision: &str) -> bool {
+    if board.get("readable").and_then(serde_json::Value::as_bool) != Some(true) {
+        return false;
+    }
+    let row = serde_json::json!({
+        "version": BOARD_VERSION,
+        "at_unix": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0),
+        "revision": revision,
+        "board": board,
+    });
+    store.put(BOARD_STORE, "last", &row).is_ok()
+}
+
+/// The last board this ward read, and how long ago it read it.
+///
+/// `None` when there is none, when its shape is not this build's, or when it is not readable — all
+/// three mean the same thing to a caller: there is nothing here to answer with.
+pub fn last_board(store: &crate::store::Store) -> Option<(std::time::Duration, serde_json::Value)> {
+    let row: serde_json::Value = store.get(BOARD_STORE, "last")?;
+    if row.get("version").and_then(serde_json::Value::as_u64) != Some(BOARD_VERSION as u64) {
+        return None;
+    }
+    let board = row.get("board")?.clone();
+    if board.get("readable").and_then(serde_json::Value::as_bool) != Some(true) {
+        return None;
+    }
+    let at = row.get("at_unix").and_then(serde_json::Value::as_u64)?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    Some((std::time::Duration::from_secs(now.saturating_sub(at)), board))
+}
+
 /// A week, in slots. `604800 / 0.4`.
 ///
 /// The window the endpoint calls *this week*. In slots rather than in hours because every other
@@ -623,6 +677,10 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
     // How many patients are waiting, which is the number the factory tops up against and the one
     // a reader of the board uses to tell "nobody is playing" from "nobody is left to play".
     v["queue"] = queue;
+    // Kept for whoever starts next. Every path that reads the chain successfully comes through
+    // here — the ticker's, the refresh behind an answer, and the one request on a ward that has
+    // never read at all — so this is the only place that has to remember to do it.
+    keep_board(store, &v, &std::env::var("K_REVISION").unwrap_or_default());
     v
 }
 

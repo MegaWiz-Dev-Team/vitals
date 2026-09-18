@@ -2671,37 +2671,29 @@ fn ward_now(held: &WardView, store: &store::Store, state: &str) -> serde_json::V
             None => (None, None),
         }
     };
-    let mut v = match (ward::board_use(age, WARD_TTL), cached) {
+    // What the last process to run here left behind, when this one has nothing of its own. Read
+    // once, and only when memory is empty: the store is the fallback, never the hot path.
+    let kept = cached.is_none().then(|| ward_chain::last_board(store)).flatten();
+    let mut v = match (ward::board_use(age, kept.is_some(), WARD_TTL), cached) {
         (ward::Board::Serve, Some(v)) => v,
         (ward::Board::ServeAndRefresh, Some(v)) => {
-            if !BOARD_READING.swap(true, std::sync::atomic::Ordering::SeqCst) {
-                let view = Arc::clone(held);
-                let dir = state.to_string();
-                std::thread::spawn(move || {
-                    let fresh = match store::Store::open(std::path::PathBuf::from(&dir)) {
-                        Ok(store) => match ward_chain::WardChain::connect() {
-                            Ok(c) => Some(ward_chain::read_ward(&c, &store)),
-                            Err(e) => {
-                                let mut v = ward::ward_unavailable("unconfigured", &e);
-                                v["queue"] = ward_chain::queue_block(&store);
-                                Some(v)
-                            }
-                        },
-                        Err(e) => {
-                            eprintln!("ward       the board could not be refreshed: {e}");
-                            None
-                        }
-                    };
-                    if let Some(fresh) = fresh {
-                        *view.lock().unwrap() = Some((Instant::now(), fresh));
-                    }
-                    BOARD_READING.store(false, std::sync::atomic::Ordering::SeqCst);
-                });
-            }
+            refresh_behind(held, state);
             v
         }
-        // Nothing to serve. The first request after a boot pays for the read, and it is the only
-        // one that does.
+        // The board the last process left. Answered now; the chain is read behind it by the same
+        // thread the stale-board path uses, so a cold instance costs its first visitor nothing.
+        // Memory is seeded with the board's *real* age, so this instance treats it exactly as it
+        // would treat its own read of that age — including refreshing it again when it expires.
+        (ward::Board::ServeStoredAndRefresh, _) => {
+            let (age, board) = kept.expect("ServeStoredAndRefresh means there is one");
+            if let Some(then) = Instant::now().checked_sub(age) {
+                *held.lock().unwrap() = Some((then, board.clone()));
+            }
+            refresh_behind(held, state);
+            board
+        }
+        // Nothing anywhere. The first request on a ward that has never read the chain pays for the
+        // read, and it is the only one that ever does.
         _ => {
             let v = match ward_chain::WardChain::connect() {
                 Ok(c) => ward_chain::read_ward(&c, store),
@@ -2722,6 +2714,49 @@ fn ward_now(held: &WardView, store: &store::Store, state: &str) -> serde_json::V
     // a deploy and had no way to find out.
     v["revision"] = serde_json::json!(revision());
     v
+}
+
+/// Read the chain behind an answer that has already gone out.
+///
+/// Never in front of one. Both callers have just handed a reader a board — this instance's own, or
+/// the one the last process left in the store — and this is what makes the next answer fresher. The
+/// guard means one read at a time however many requests arrive during it.
+///
+/// The read's own duration is printed rather than waited on, because it is the number that decides
+/// whether the ward is keeping up: measured at 123 s on a cold staging instance with eighteen
+/// patients, which is what a visitor used to pay.
+fn refresh_behind(held: &WardView, state: &str) {
+    if BOARD_READING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let view = Arc::clone(held);
+    let dir = state.to_string();
+    std::thread::spawn(move || {
+        let began = Instant::now();
+        let fresh = match store::Store::open(std::path::PathBuf::from(&dir)) {
+            Ok(store) => match ward_chain::WardChain::connect() {
+                Ok(c) => Some(ward_chain::read_ward(&c, &store)),
+                Err(e) => {
+                    let mut v = ward::ward_unavailable("unconfigured", &e);
+                    v["queue"] = ward_chain::queue_block(&store);
+                    Some(v)
+                }
+            },
+            Err(e) => {
+                eprintln!("ward       the board could not be refreshed: {e}");
+                None
+            }
+        };
+        if let Some(fresh) = fresh {
+            let beds = fresh["patients"].as_array().map(Vec::len).unwrap_or(0);
+            println!(
+                "ward       board refreshed behind the answer in {:.1}s — {beds} patients",
+                began.elapsed().as_secs_f64()
+            );
+            *view.lock().unwrap() = Some((Instant::now(), fresh));
+        }
+        BOARD_READING.store(false, std::sync::atomic::Ordering::SeqCst);
+    });
 }
 
 /// Cloud Run's own name for the deployment answering, or this build when it is somewhere else.

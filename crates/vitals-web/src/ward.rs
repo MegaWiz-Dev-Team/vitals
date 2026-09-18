@@ -213,19 +213,35 @@ pub fn utc_iso(secs: u64) -> String {
 /// for devnet is a blank panel and the founder asking where the patients went.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Board {
-    /// Nothing to serve: read the chain now. The first request after a boot, and only that one.
+    /// Nothing anywhere: read the chain now. The only request that ever waits, on a ward that has
+    /// never read the chain at all.
     Wait,
     /// Inside its life. Answer with it and touch nothing.
     Serve,
     /// Past its life. Answer with it anyway, and read the chain behind the answer.
     ServeAndRefresh,
+    /// Nothing in this instance's memory, and the last board this ward read is in its store: answer
+    /// with that and read the chain behind it.
+    ///
+    /// A process that has just started has no board of its own, and the visitor who happens to
+    /// knock first must not pay for one — 123 s of signature listings on staging, measured, with a
+    /// blank panel in front of them. The stored board says when it was read, which is a fact a
+    /// reader can see; a wait is not.
+    ServeStoredAndRefresh,
 }
 
-pub fn board_use(age: Option<std::time::Duration>, ttl: std::time::Duration) -> Board {
-    match age {
-        None => Board::Wait,
-        Some(a) if a < ttl => Board::Serve,
-        Some(_) => Board::ServeAndRefresh,
+pub fn board_use(
+    age: Option<std::time::Duration>,
+    stored: bool,
+    ttl: std::time::Duration,
+) -> Board {
+    match (age, stored) {
+        // Memory first, always: it is this instance's own read and never older than the board it
+        // started from.
+        (Some(a), _) if a < ttl => Board::Serve,
+        (Some(_), _) => Board::ServeAndRefresh,
+        (None, true) => Board::ServeStoredAndRefresh,
+        (None, false) => Board::Wait,
     }
 }
 
