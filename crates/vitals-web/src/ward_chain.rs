@@ -573,14 +573,35 @@ pub fn keep_board(store: &crate::store::Store, board: &serde_json::Value, revisi
         "revision": revision,
         "board": board,
     });
-    store.put(BOARD_STORE, "last", &row).is_ok()
+    match store.put(BOARD_STORE, "last", &row) {
+        Ok(()) => true,
+        Err(e) => {
+            // Said out loud rather than swallowed by an `is_ok()`. A board that cannot be kept means
+            // the next process to start pays for a chain read in front of whoever knocks first, and
+            // a silent cache miss is exactly the kind of thing that costs an afternoon to find.
+            eprintln!(
+                "ward       the board could not be kept ({} bytes to {BOARD_STORE}/last): {e}",
+                serde_json::to_string(&row).map(|s| s.len()).unwrap_or(0)
+            );
+            false
+        }
+    }
 }
 
 /// The last board this ward read, and how long ago it read it.
 ///
 /// `None` when there is none, when its shape is not this build's, or when it is not readable — all
 /// three mean the same thing to a caller: there is nothing here to answer with.
-pub fn last_board(store: &crate::store::Store) -> Option<(std::time::Duration, serde_json::Value)> {
+pub struct Kept {
+    /// How long ago the board was read from the chain.
+    pub age: std::time::Duration,
+    /// The revision that read it. Named in the answer, so a slow first request can be attributed to
+    /// a deploy rather than guessed at.
+    pub revision: String,
+    pub board: serde_json::Value,
+}
+
+pub fn last_board(store: &crate::store::Store) -> Option<Kept> {
     let row: serde_json::Value = store.get(BOARD_STORE, "last")?;
     if row.get("version").and_then(serde_json::Value::as_u64) != Some(BOARD_VERSION as u64) {
         return None;
@@ -594,7 +615,15 @@ pub fn last_board(store: &crate::store::Store) -> Option<(std::time::Duration, s
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    Some((std::time::Duration::from_secs(now.saturating_sub(at)), board))
+    Some(Kept {
+        age: std::time::Duration::from_secs(now.saturating_sub(at)),
+        revision: row
+            .get("revision")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        board,
+    })
 }
 
 /// A week, in slots. `604800 / 0.4`.

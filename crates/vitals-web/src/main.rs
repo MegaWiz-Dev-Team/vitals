@@ -2697,7 +2697,18 @@ fn ward_now(held: &WardView, store: &store::Store, state: &str) -> serde_json::V
     // What the last process to run here left behind, when this one has nothing of its own. Read
     // once, and only when memory is empty: the store is the fallback, never the hot path.
     let kept = cached.is_none().then(|| ward_chain::last_board(store)).flatten();
-    let mut v = match (ward::board_use(age, kept.is_some(), WARD_TTL), cached) {
+    // What the answer will say about itself: which of the three sources it came from, how old that
+    // is, and — when it is somebody else's — which revision wrote it.
+    let decided = ward::board_use(age, kept.is_some(), WARD_TTL);
+    let note = ward::board_note(
+        decided,
+        match &kept {
+            Some(k) => Some(k.age),
+            None => age,
+        },
+        kept.as_ref().map(|k| k.revision.as_str()).filter(|r| !r.is_empty()),
+    );
+    let mut v = match (decided, cached) {
         (ward::Board::Serve, Some(v)) => v,
         (ward::Board::ServeAndRefresh, Some(v)) => {
             refresh_behind(held, state);
@@ -2708,12 +2719,17 @@ fn ward_now(held: &WardView, store: &store::Store, state: &str) -> serde_json::V
         // Memory is seeded with the board's *real* age, so this instance treats it exactly as it
         // would treat its own read of that age — including refreshing it again when it expires.
         (ward::Board::ServeStoredAndRefresh, _) => {
-            let (age, board) = kept.expect("ServeStoredAndRefresh means there is one");
-            if let Some(then) = Instant::now().checked_sub(age) {
-                *held.lock().unwrap() = Some((then, board.clone()));
+            let kept = kept.expect("ServeStoredAndRefresh means there is one");
+            println!(
+                "ward       answered from the board {} kept {}s ago",
+                if kept.revision.is_empty() { "a previous process" } else { &kept.revision },
+                kept.age.as_secs()
+            );
+            if let Some(then) = Instant::now().checked_sub(kept.age) {
+                *held.lock().unwrap() = Some((then, kept.board.clone()));
             }
             refresh_behind(held, state);
-            board
+            kept.board
         }
         // Nothing anywhere. The first request on a ward that has never read the chain pays for the
         // read, and it is the only one that ever does.
@@ -2736,6 +2752,7 @@ fn ward_now(held: &WardView, store: &store::Store, state: &str) -> serde_json::V
     // later board comes from a different one — the tab the founder had open was three hours behind
     // a deploy and had no way to find out.
     v["revision"] = serde_json::json!(revision());
+    v["board"] = note;
     v
 }
 
@@ -3296,6 +3313,11 @@ fn now_secs() -> u64 {
 }
 
 fn main() {
+    // How long this process takes to become answerable, stage by stage. On Cloud Run at
+    // MIN_INSTANCES=0 a request that arrives during a start is *held* until the container listens,
+    // so every second of this is a second in somebody's first `/api/ward` — 112 s of it on
+    // 18 September, with nothing in the logs able to say which second belonged to what.
+    let booted = Instant::now();
     // Not 8090. On the machine this is developed on that port is already three things — a
     // syn-sentry web app, an eir-fhir container publishing on the host, and the service port the
     // hermodr fleet uses inside the cluster. A default that collides with the neighbours is a
@@ -3331,6 +3353,9 @@ fn main() {
     let state_dir = std::env::var("VITALS_STATE_DIR").unwrap_or_else(|_| "state".into());
     let store = store::Store::open(std::path::PathBuf::from(&state_dir))
         .unwrap_or_else(|e| panic!("cannot open {state_dir}: {e}"));
+    // Timed on its own because on Firestore this is a token fetch against the metadata server
+    // before it is a store, and that is a network call on a cold container.
+    println!("boot       store +{:.1}s", booted.elapsed().as_secs_f64());
     // A run nobody has touched in a day is a closed tab, not a patient.
     let swept = store.sweep(SESSIONS, std::time::Duration::from_secs(24 * 60 * 60));
 
@@ -3402,6 +3427,7 @@ fn main() {
 
     // What this bay may spend, resumed from the store so a deploy does not reset the month.
     let mut meter = meter::Meter::open(&store);
+    println!("boot       meter +{:.1}s", booted.elapsed().as_secs_f64());
     println!("meter      {}", meter.describe());
 
     // Runs opened and runs finished, resumed from the store. Deliberately not a count of
@@ -3533,6 +3559,7 @@ fn main() {
     // read by the server rather than the browser (CORS, and a public RPC rate-limits per caller)
     // and cached, because this endpoint is public and ungated by design.
     let mut fuel = fuel::Fuel::open();
+    println!("boot       chain +{:.1}s", booted.elapsed().as_secs_f64());
     println!("fuel       {}", fuel.describe());
     // Signed halves waiting on the browser, keyed by player. Never persisted: a blockhash goes
     // stale in about a minute, so a pending transaction that outlives the process is worthless.
@@ -3673,6 +3700,7 @@ fn main() {
         .to_ip()
         .map(|a| a.to_string())
         .unwrap_or_else(|| addr.clone());
+    println!("boot       listening +{:.1}s", booted.elapsed().as_secs_f64());
     println!("Vitals — play at http://{bound}");
 
     // One slow local model, and /api/say holds a worker for as long as it takes. Without a

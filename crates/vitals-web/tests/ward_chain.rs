@@ -1397,14 +1397,17 @@ fn the_last_board_outlives_the_instance_that_read_it() {
 
     let good = serde_json::json!({ "readable": true, "as_of_slot": 500_283_135, "patients": [] });
     assert!(keep_board(&store, &good, "vitals-world-00051-4rd"), "a readable board is kept");
-    let (age, back) = last_board(&store).expect("and comes back");
-    assert_eq!(back["as_of_slot"], 500_283_135, "as the board it was, with its own as_of");
-    assert!(age.as_secs() < 5, "dated by when it was kept: {age:?}");
+    let kept = last_board(&store).expect("and comes back");
+    assert_eq!(kept.board["as_of_slot"], 500_283_135, "as the board it was, with its own as_of");
+    assert!(kept.age.as_secs() < 5, "dated by when it was kept: {:?}", kept.age);
+    assert_eq!(kept.revision, "vitals-world-00051-4rd",
+               "and it names the revision that read it, so a slow first request can be attributed \
+                to a deploy rather than guessed at");
 
     let bad = serde_json::json!({ "readable": false, "why": "devnet said no" });
     assert!(!keep_board(&store, &bad, "vitals-world-00051-4rd"),
             "a ward that could not read its chain has not read a board");
-    assert_eq!(last_board(&store).expect("the good one stands").1["as_of_slot"], 500_283_135,
+    assert_eq!(last_board(&store).expect("the good one stands").board["as_of_slot"], 500_283_135,
                "an outage must never displace the last thing this ward actually saw");
 
     // A build that does not know this shape refuses it rather than parsing it hopefully.

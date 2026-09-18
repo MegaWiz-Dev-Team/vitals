@@ -230,6 +230,29 @@ pub enum Board {
     ServeStoredAndRefresh,
 }
 
+/// Where the board in an answer came from, how old it is, and who wrote it.
+///
+/// Published on every `/api/ward`, because the alternative is what we had: a first read that took
+/// 112 s and an answer that could not say whether it had been served from the store, rebuilt from
+/// the chain, or simply waited on a container that was still starting. A reader gets it too — a
+/// board two minutes old is a fact, and leaving its age out would not make it fresher.
+pub fn board_note(
+    from: Board,
+    age: Option<std::time::Duration>,
+    kept_by: Option<&str>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "from": match from {
+            // Whether it is inside its life or past it, this process read it itself.
+            Board::Serve | Board::ServeAndRefresh => "memory",
+            Board::ServeStoredAndRefresh => "store",
+            Board::Wait => "chain",
+        },
+        "age_seconds": age.map(|a| a.as_secs()),
+        "kept_by": kept_by,
+    })
+}
+
 pub fn board_use(
     age: Option<std::time::Duration>,
     stored: bool,
