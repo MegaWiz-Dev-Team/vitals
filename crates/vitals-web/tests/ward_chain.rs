@@ -1533,3 +1533,38 @@ fn the_words_a_stranger_reads_are_never_an_id() {
     assert_eq!(rows[0]["text"], "tx_source_control");
     assert_eq!(rows[1]["text"], "ask_chest_and_flank_pain");
 }
+
+/// **A label does not say which row it is in twice.**
+///
+/// The compiler prefixes every intervention label with its row — "Ask: …", "Examine: …" — and the
+/// tray strips it, because under a tab that already says ASK twenty chips opening with "Ask:" are
+/// twenty chips a learner reads the fourth word of (`chipText`). The receipt did not strip it, so
+/// its timeline read "asked · Ask: Chest, abdominal and flank pain" — the row said twice, once by
+/// the receipt and once by the label.
+#[test]
+fn a_label_does_not_repeat_the_row_it_is_in() {
+    use vitals_web::ward_chain::label_for;
+
+    let sce = serde_json::json!({
+        "interventions": [
+            { "id": "ask_flank", "label": "Ask: Chest, abdominal and flank pain" },
+            { "id": "exam_neck", "label": "Examine: Subcutaneous emphysema in the lower neck" },
+            { "id": "ix_cxr", "label": "Order: Chest X-ray (erect PA)" },
+            { "id": "tx_o2", "label": "Give: Oxygen by face mask, 15 L/min" },
+            { "id": "tx_plain", "label": "Crystalloid bolus, reassessed" },
+            { "id": "dx_odd", "label": "Diagnosis: Boerhaave syndrome" },
+        ]
+    })
+    .to_string();
+
+    assert_eq!(label_for(&sce, "ask_flank").as_deref(), Some("Chest, abdominal and flank pain"));
+    assert_eq!(label_for(&sce, "exam_neck").as_deref(),
+               Some("Subcutaneous emphysema in the lower neck"));
+    assert_eq!(label_for(&sce, "ix_cxr").as_deref(), Some("Chest X-ray (erect PA)"));
+    assert_eq!(label_for(&sce, "tx_o2").as_deref(), Some("Oxygen by face mask, 15 L/min"));
+    assert_eq!(label_for(&sce, "tx_plain").as_deref(), Some("Crystalloid bolus, reassessed"),
+               "a label with no prefix is untouched");
+    assert_eq!(label_for(&sce, "dx_odd").as_deref(), Some("Diagnosis: Boerhaave syndrome"),
+               "and a word the tray does not strip is not stripped here either — one rule, in one \
+                place, and `chipText` is where it is written");
+}

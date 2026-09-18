@@ -483,3 +483,33 @@ assert.equal(shouldAlarm(1, 3, false, true), false, 'and only downward: an alarm
 assert.equal(shouldAlarm(3, 1, true, true), false, 'never after the bell — the border is a warning, not a verdict');
 
 console.log('shift_logic: ok (and the clock rolls its own minutes)');
+
+// ── a chart page does not contradict the board ──────────────────────────────
+//
+// Park Ji-woo's row on the globe read `off_ward` with "the ward no longer holds this case", and her
+// own chart page read "She is on the ward" — the board and the page disagreeing about the same
+// patient, in the same minute, which is the class of bug the whole day went on removing. The page's
+// sentence comes from the payload's own words now, and `openable: false` is the one that wins:
+// whatever the chain says about her stay, this ward cannot put anybody at her bedside.
+const { chartState } = new Function([grab('chartState'), 'return { chartState };'].join('\n'))();
+const she = { s: 'she', o: 'her', p: 'her' };
+const he = { s: 'he', o: 'him', p: 'his' };
+
+assert.equal(chartState({ state: 'on_ward' }, she), 'is on the ward');
+assert.equal(chartState({ state: 'went_home' }, she), 'went home');
+assert.equal(chartState({ state: 'died' }, he), 'died');
+
+const shut = chartState({ state: 'off_ward', openable: false,
+                          why_not: 'the ward no longer holds this case' }, she);
+assert.match(shut, /off the ward/, `it says where she is: ${shut}`);
+assert.match(shut, /chain/, `and that the chain is untouched, which is the part that matters: ${shut}`);
+assert.ok(!/is on the ward/.test(shut), `and never the thing her row denies: ${shut}`);
+
+// The case that caused it: the chain still calls her open, and the page must not read that out as
+// "on the ward" when the board has already said nobody can open her.
+const arguing = chartState({ state: 'on_ward', openable: false,
+                             why_not: 'the ward no longer holds this case' }, she);
+assert.ok(!/is on the ward/.test(arguing),
+          `the page agreed with the chain and contradicted the board: ${arguing}`);
+
+console.log('shift_logic: ok (and a chart page agrees with the board)');
