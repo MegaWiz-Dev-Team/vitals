@@ -645,3 +645,33 @@ console.log('globe_logic: ok');
     "with the doctors layer off the line is the ward's alone");
 }
 
+
+// ── the way back to the beds ─────────────────────────────────────────────────
+//
+// Demo capture, item 3: a country panel on a desktop had no way out of it. The page ships a
+// control and wires it (`$("close")` → `clearPanel`), and the stylesheet hid it at every width —
+// `.panel .close{display:none}` in the sheet and again in the phone block — so the only way back
+// to the beds was to find the country again on a globe that had turned since.
+//
+// The resting state of this panel *is* the beds, so the control is shown when there is somewhere
+// to go back from: when a country is selected and the panel carries `.open`.
+assert.ok(!html.includes('.panel .close{display:none}'),
+          'nothing may hide the way out of the panel outright — it is the whole control');
+
+const openClose = html.match(/\.panel\.open \.close\{([^}]*)\}/);
+assert.ok(openClose, 'a country panel has to show its way back to the beds, at every width');
+assert.ok(!/display: *none/.test(openClose[1]),
+          `and showing it means showing it: ${openClose[1]}`);
+
+const closeBtn = html.match(/<button[^>]*id="close"[^>]*>([^<]*)<\/button>/);
+assert.ok(closeBtn, 'the panel ships the control');
+assert.match(closeBtn[1], /beds/,
+             'it says where it goes rather than "close": the beds are what it goes back to');
+assert.match(closeBtn[0], /aria-label="[^"]*beds/i,
+             'and a screen reader is told the same thing, not "Close"');
+
+// A keyboard gets out too, at every width, and only when there is something to get out of.
+assert.match(script, /Escape[\s\S]{0,160}clearPanel/,
+             'Escape returns to the beds — a panel with one way out has one way out for a mouse');
+
+console.log('globe_logic: ok (and the panel can be left)');
