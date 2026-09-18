@@ -1186,3 +1186,21 @@ fn the_cleared_pill_says_what_it_counts() {
         "the pill stopped being fed from the cleared list, so its title is wrong again"
     );
 }
+
+/// **The privacy page names every server this site asks your browser to talk to.**
+///
+/// It already does this for type: "Most pages here, this one included, load their typefaces from
+/// fonts.googleapis.com and fonts.gstatic.com. That is a request from your browser to Google, it
+/// happens before any banner, and consent does not gate it." The film on the front page is the
+/// second such request and the first that carries a player, so the page is incomplete until it says
+/// so — and that page invites exactly this correction: "If this page and the code disagree, one of
+/// them is a bug and we want to hear which."
+#[test]
+fn the_privacy_page_names_the_film_it_embeds() {
+    let src = static_page("privacy.html");
+    assert!(src.contains("youtube-nocookie"),
+            "the front page embeds a film from youtube-nocookie.com and this page does not mention it");
+    let low = src.to_lowercase();
+    assert!(low.contains("press play") || low.contains("until you play") || low.contains("before you play"),
+            "and it has to say when the cookie happens, which is the whole reason for that host");
+}

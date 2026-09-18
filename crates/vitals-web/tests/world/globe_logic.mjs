@@ -713,3 +713,29 @@ assert.equal(canTakeShift({ state: 'on_ward', bed: 1 }), true,
              'a board that does not carry the field is an older ward, and its beds are takeable');
 
 console.log('globe_logic: ok (and a bed that cannot be opened is not offered)');
+
+// ── the film on the front page ──────────────────────────────────────────────
+//
+// Founder's ruling, 18 September: the film is an embed on the globe page, not a button. It is also
+// the only thing on this page that fetches from somebody else's server, which is why every rule
+// about it is checked here rather than trusted.
+const iframes = html.match(/<iframe\b[^>]*>/g) || [];
+assert.equal(iframes.length, 1, `the page carries exactly one embed: ${iframes.length}`);
+const film = iframes[0];
+
+assert.match(film, /src="https:\/\/www\.youtube-nocookie\.com\/embed\/uOpv-_d7-s0[?"]/,
+             `from the no-cookie host, and the film the founder named: ${film}`);
+assert.match(film, /[?&]rel=0/, `no other channel's videos at the end of ours: ${film}`);
+assert.match(film, /[?&]modestbranding=1/, film);
+assert.ok(!/autoplay/i.test(film),
+          `nothing plays at somebody who has not asked for it: ${film}`);
+assert.match(film, /loading="lazy"/,
+             `and nothing is fetched from Google until the box is near the screen: ${film}`);
+assert.match(film, /title="[^"]*Vital Signs[^"]*"/,
+             `a screen reader is told what the frame is: ${film}`);
+assert.ok(!/allow="[^"]*autoplay/.test(film), `not even permitted to: ${film}`);
+
+assert.match(html, /Vital Signs · 3 min · the patients are simulated, the shortage is not\./,
+             'the caption says what it is and how long it takes, in the ward\'s own sentence');
+
+console.log('globe_logic: ok (and the film is embedded, not autoplayed)');
