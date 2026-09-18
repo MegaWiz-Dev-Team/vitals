@@ -774,7 +774,17 @@ const visBeats=v=>examMode()?(v.beats||[]).filter(b=>!b.startsWith('harm:')):(v.
    separates one tick from the next. `tail` is the node to hang it off when the paint that owned
    it wrote no beat of its own. */
 let PAINTS=[];
-const fmt=s=>`${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,'0')}`;
+/* Every clock on this page, and the only arithmetic here a person reads as a time.
+   Floor, not round: the demo capture printed `15:60`, because the minutes were floored and the
+   seconds rounded — 959.6 s is 15 minutes and 59.6 seconds, and a rounded remainder is a minute
+   the clock never rolled. Clamped at zero because a paint that arrives before the clock starts
+   would otherwise read `-1:-30`.
+   One function, spent by the debrief's `F` and the mark sheet's `mmss` too: they were three copies
+   of the same sum and only one of them had this bug, which is exactly how it survived. */
+function fmt(s){
+  const t=Math.max(0, Math.floor(Number(s)||0));
+  return `${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`;
+}
 
 let clockNow=0;
 function wake(){ const c=$('#chat'); c.classList.remove('empty'); const e=c.querySelector('.empty-in'); if(e)e.remove(); }
@@ -1285,7 +1295,9 @@ function paint(v,named){
      fact; the room going red twice is the alarm the bay would actually be making. Only
      downward, and never after the bell — the border is a warning, not a verdict. */
   const rk=RANK[v.status]||0;
-  if(rk>lastRank&&rk>=2&&!over&&!v.over)alarmPulse();
+  /* `takeFirst` rather than a flag: it is the one place the page decides whose shift this is, and
+     the nudge below asks it the same way. */
+  if(shouldAlarm(rk, lastRank, over||v.over, !takeFirst(WARD, id, null)))alarmPulse();
   lastRank=rk;
   $('#clock').textContent=fmt(v.elapsed); clockNow=v.elapsed;
 
@@ -2135,7 +2147,7 @@ onLobby('#anchor','onclick',async()=>{
 async function showDebrief(){
   const d=await (await fetch('/api/debrief?id='+id+asMe())).json();
   if(d.error){ $('#db').innerHTML=''; return; }
-  const F=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+  const F=fmt;
   let h='';
 
   if(d.expected.length){
@@ -2205,7 +2217,7 @@ async function showDebrief(){
       only thing exam mode changes is that the sheet waits for the bell like everything
       else. */
 const MKG={hit:'✓',partial:'◐',miss:'✗'};
-const mmss=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+const mmss=fmt;
 /* What a row says under its label. Only where it adds a fact the label does not already
    carry: a window that was missed or met, or the moment an avoided harm actually fired. */
 function markNote(it){
@@ -3427,6 +3439,14 @@ function drawTrace(v){
    an alarm, and an alarm that cries on good news is an alarm nobody reads. */
 const RANK={Stable:0,Improving:0,Recovered:0,Deteriorating:2,Critical:3,Arrest:4,Dead:5};
 let lastRank=0;
+/* Does the room go red? Only on the way down, only past the second rank, never after the bell —
+   and never before the head is taken. The demo capture opened a Critical patient nobody had taken
+   and the page alarmed at her: an alarm is a call to act, and a reader who has not taken the shift
+   may do nothing to her at all. The nudge two hundred lines up already says this in its own words
+   ("not before the head is taken"); this is the same rule for the louder half of the page. */
+function shouldAlarm(rank, was, over, mine){
+  return !!mine && !over && rank >= 2 && rank > was;
+}
 function alarmPulse(){
   const a=$('#alarm'); if(!a)return;
   a.className='alarmv'; void a.offsetWidth;

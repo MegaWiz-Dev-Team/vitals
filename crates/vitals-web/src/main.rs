@@ -2525,12 +2525,22 @@ fn receipt_page(r: &serde_json::Value, board: &serde_json::Value) -> String {
         if steps.is_empty() {
             "<p class=note>Nothing was ordered or asked on this shift.</p>".to_string()
         } else {
-            let rows = steps.iter().map(|s| format!(
-                "<li><span class=at>{}</span> <span class=kind>{}</span> {}</li>",
-                mins(s["at"].as_f64().unwrap_or(0.0)),
-                if s["kind"] == "asked" { "asked" } else { "ordered" },
-                esc(s["text"].as_str().unwrap_or("")),
-            )).collect::<Vec<_>>().join("");
+            // The case's own words for what was done, with the id beside them in small type. The
+            // words are what a reader came for; the id is what they would need to check it, and
+            // `tx_oxygen` alone — which is what this printed — is neither.
+            let rows = steps.iter().map(|s| {
+                let text = s["text"].as_str().unwrap_or("");
+                let said = s["said"].as_str();
+                let body = match said {
+                    Some(words) => format!("{} <span class=raw>{}</span>", esc(words), esc(text)),
+                    None => esc(text),
+                };
+                format!(
+                    "<li><span class=at>{}</span> <span class=kind>{}</span> {body}</li>",
+                    mins(s["at"].as_f64().unwrap_or(0.0)),
+                    if s["kind"] == "asked" { "asked" } else { "ordered" },
+                )
+            }).collect::<Vec<_>>().join("");
             format!("<ol class=tl>{rows}</ol>")
         }
     }).unwrap_or_default();
@@ -2616,6 +2626,7 @@ fn receipt_page(r: &serde_json::Value, board: &serde_json::Value) -> String {
          .at{{font:600 .78rem ui-monospace,monospace;color:#5d6f6d;margin-right:.5rem}}\
          .kind{{font:600 .7rem ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;\
          color:#0f6e5c;margin-right:.4rem}}\
+         .raw{{font:.72rem ui-monospace,monospace;color:#8a9a96;margin-left:.4rem}}\
          p.score{{font-size:1.6rem;margin:.2rem 0}}ul.marks{{list-style:none;padding:0;margin:.4rem 0}}\
          ul.marks li{{padding:.1rem 0}}ul.marks li.missed{{color:#8a9a96}}\
          details{{margin:1.4rem 0}}summary{{cursor:pointer;color:#5d6f6d}}\

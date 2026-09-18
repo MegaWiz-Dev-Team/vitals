@@ -2561,6 +2561,38 @@ pub fn anchor_refusal(
     Some(said)
 }
 
+/// The words a case wrote beside each of its own intervention ids.
+///
+/// A tape carries ids — `tx_oxygen`, `ask_chest_abdominal_and_flank_pain` — because that is what
+/// the case is keyed by, what the matcher ruled on, and what a verifier re-runs; it is the same run
+/// in any language. None of that is a reason to show them to a reader. The case carries the words
+/// beside the id and a receipt is built with the case in hand.
+///
+/// Empty for a case that cannot be read: an unreadable case is not a licence to invent phrases.
+pub fn labels_of(sce_json: &str) -> std::collections::BTreeMap<String, String> {
+    let Ok(sce) = serde_json::from_str::<serde_json::Value>(sce_json) else {
+        return Default::default();
+    };
+    sce.get("interventions")
+        .and_then(serde_json::Value::as_array)
+        .map(|list| {
+            list.iter()
+                .filter_map(|i| {
+                    let id = i.get("id").and_then(serde_json::Value::as_str)?;
+                    let label = i.get("label").and_then(serde_json::Value::as_str)?;
+                    Some((id.to_string(), label.to_string()))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The words for one id, or `None` — which means the tape's own text stands. A receipt that invented
+/// a phrase for an id nobody wrote would be worse than one that shows the id.
+pub fn label_for(sce_json: &str, id: &str) -> Option<String> {
+    labels_of(sce_json).remove(id)
+}
+
 /// What one shift was, for somebody who never played it.
 ///
 /// Everything here is either on the chain or recomputed in front of the reader from bytes the
@@ -2613,15 +2645,21 @@ pub fn receipt(
     // reader the shape of the shift and nothing about it.
     let mut at = 0.0f64;
     let mut timeline: Vec<serde_json::Value> = Vec::new();
+    // Read once for the whole tape rather than per row. `said` is the case's own words for what was
+    // done; the id stays beside it, because it is what a verifier re-runs and what the marks are
+    // keyed by. A step the case wrote no words for keeps the tape's text and nothing is invented.
+    let labels = labels_of(sce_json);
+    let said = |key: &str| labels.get(key).cloned();
     for step in &tape {
         match step {
             vitals_replay::Step::Tick(dt) => at += dt,
             vitals_replay::Step::Do(text) => timeline.push(serde_json::json!({
-                "at": at, "kind": "order", "text": text })),
+                "at": at, "kind": "order", "text": text, "said": said(text) })),
             vitals_replay::Step::Act { text, id } => timeline.push(serde_json::json!({
-                "at": at, "kind": "order", "text": text, "id": id })),
+                "at": at, "kind": "order", "text": text, "id": id,
+                "said": said(id).or_else(|| said(text)) })),
             vitals_replay::Step::Ask(q) => timeline.push(serde_json::json!({
-                "at": at, "kind": "asked", "text": q })),
+                "at": at, "kind": "asked", "text": q, "said": said(q) })),
             _ => {}
         }
     }

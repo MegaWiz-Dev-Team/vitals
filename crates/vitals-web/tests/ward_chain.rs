@@ -1417,3 +1417,41 @@ fn the_last_board_outlives_the_instance_that_read_it() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// **A receipt says what was done, not what the id for it is.**
+///
+/// The demo capture's receipt reads "0:39 ordered `tx_oxygen`", "0:17 asked
+/// `ask_chest_abdominal_and_flank_pain`". Those are intervention ids, and they are on the tape on
+/// purpose: the page sends the id because that is what the case is keyed by, what the matcher rules
+/// on, and what a verifier re-runs — the same run in any language. None of that is a reason to show
+/// them to a reader.
+///
+/// The case carries the words beside the id (`sce.interventions[].label`) and the receipt is built
+/// with the case in hand, so it can print the words and keep the id. An order the case has no label
+/// for keeps what the tape says: a receipt that invented a phrase for an id nobody wrote would be
+/// worse than one that shows the id.
+#[test]
+fn a_receipt_names_what_was_done_and_keeps_the_id() {
+    use vitals_web::ward_chain::label_for;
+
+    let sce = serde_json::json!({
+        "interventions": [
+            { "id": "tx_oxygen", "label": "Oxygen by face mask, 15 L/min" },
+            { "id": "ask_chest_abdominal_and_flank_pain", "label": "Asked about: chest and flank pain" },
+            { "id": "tx_nolabel" },
+        ]
+    })
+    .to_string();
+
+    assert_eq!(label_for(&sce, "tx_oxygen").as_deref(), Some("Oxygen by face mask, 15 L/min"),
+               "the case's own words for its own intervention");
+    assert_eq!(label_for(&sce, "ask_chest_abdominal_and_flank_pain").as_deref(),
+               Some("Asked about: chest and flank pain"));
+    assert_eq!(label_for(&sce, "tx_nolabel"), None,
+               "an intervention with no words keeps the id rather than being given a phrase");
+    assert_eq!(label_for(&sce, "tx_nothing_like_it"), None,
+               "and an id this case never wrote is not guessed at");
+    assert_eq!(label_for("{}", "tx_oxygen"), None, "a case with no interventions says nothing");
+    assert_eq!(label_for("not json at all", "tx_oxygen"), None,
+               "and an unreadable case is not an excuse to invent one");
+}

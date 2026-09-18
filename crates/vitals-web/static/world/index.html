@@ -1306,7 +1306,18 @@ function draw() {
 let dragging = false, last = null, moved = 0, idleSince = performance.now();
 const v = 0.03;   // degrees per ms when idle (slow)
 function pos(e) { const r = canvas.getBoundingClientRect(); const t = e.touches ? e.touches[0] : e; return [t.clientX - r.left, t.clientY - r.top]; }
+/* Is this pointer over the globe at all?
+   In the space the pointer is actually in — the disc the globe is drawn in — because d3's
+   orthographic `invert` answers for points outside it too: it hands back the nearest point on the
+   limb. Hovering below the globe therefore inverted to the bottom of the limb and `geoContains`
+   named whatever is there, which on the demo capture was Antarctica. The distance guard below
+   cannot catch it: a limb point is exactly π/2 from the centre, and π/2 is not greater than π/2. */
+function onTheGlobe(xy, translate, radius) {
+  const dx = xy[0] - translate[0], dy = xy[1] - translate[1];
+  return dx * dx + dy * dy <= radius * radius;
+}
 function countryAt(xy) {
+  if (!onTheGlobe(xy, projection.translate(), projection.scale())) return null;
   const ll = projection.invert(xy); if (!ll) return null;
   if (d3.geoDistance(ll, [-rotation[0], -rotation[1]]) > Math.PI / 2) return null;
   for (const f of countries) if (d3.geoContains(f, ll)) return String(f.id);
