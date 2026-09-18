@@ -1908,3 +1908,43 @@ fn a_bed_the_ward_cannot_open_is_given_back_to_the_ward() {
     assert_eq!(beds_taken(&patients, &packs, nothing_lost(), &[]), 2,
                "a ward that has not loaded its catalogue has not lost anybody's case");
 }
+
+/// **Every board says where it came from.**
+///
+/// The first `/api/ward` against a fresh staging instance took 112 s and answered with the board the
+/// previous revision had kept; a second read 90 s later answered the same board in 0.11 s. So the
+/// keeping works and the serving works, and the 112 s is somewhere in front of both — and nothing in
+/// the answer said which, so it could only be guessed at.
+///
+/// It says now: served from this process's own memory, from the board the last one left, or read
+/// from the chain by the request that happened to knock first — with how old it is, and which
+/// revision wrote it. A reader can see it too, which is the honest half: a board with an `as_of`
+/// two minutes old is a fact, and hiding that it is two minutes old would not make it fresher.
+#[test]
+fn every_board_says_where_it_came_from() {
+    use std::time::Duration;
+    use vitals_web::ward::{board_note, Board};
+
+    let own = board_note(Board::Serve, Some(Duration::from_secs(12)), None);
+    assert_eq!(own["from"], "memory");
+    assert_eq!(own["age_seconds"], 12);
+    assert!(own["kept_by"].is_null(), "this process read it: there is nobody else to name");
+
+    let stale = board_note(Board::ServeAndRefresh, Some(Duration::from_secs(41)), None);
+    assert_eq!(stale["from"], "memory", "past its life is still this process's own read");
+    assert_eq!(stale["age_seconds"], 41);
+
+    let kept = board_note(
+        Board::ServeStoredAndRefresh,
+        Some(Duration::from_secs(400)),
+        Some("vitals-world-00056-h8k"),
+    );
+    assert_eq!(kept["from"], "store", "a fresh instance says so");
+    assert_eq!(kept["age_seconds"], 400, "and how old the thing it served is");
+    assert_eq!(kept["kept_by"], "vitals-world-00056-h8k", "and who wrote it, which is the deploy");
+
+    let paid = board_note(Board::Wait, None, None);
+    assert_eq!(paid["from"], "chain",
+               "the one request that ever pays for a read says that, so it can be counted");
+    assert!(paid["age_seconds"].is_null(), "a board read just now has no age to report");
+}
