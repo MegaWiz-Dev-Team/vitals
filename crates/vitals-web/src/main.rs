@@ -8662,6 +8662,72 @@ mod tests {
     }
 
 
+    /// **A receipt on a season case still names the case, and a penalty row says what it took.**
+    ///
+    /// Three things the director found on Yonas's receipt on 00048:
+    ///
+    ///   * the headline read "Yonas Haile · 16 · from Ethiopia" and nothing about the case. He is
+    ///     on a season case, whose title lives in the bay's own table rather than in the catalogue,
+    ///     so `case_title` is null and the line collapsed to nothing. The ruling was title and
+    ///     level in the headline, and where the title comes from is our problem, not a reader's.
+    ///   * a `no_unindicated` row read "0 of 0 · Ordered nothing this pericardium did not need".
+    ///     It is a deduction, not a mark: on a run that ordered nothing off the list it took
+    ///     nothing, and "0 of 0" reads as a mark that was available and missed.
+    ///   * the judged-score line was the long explanation of why a mid-stay shift has no AI marks.
+    ///     On a receipt it is one line.
+    #[test]
+    fn a_season_receipt_names_its_case_and_a_penalty_row_says_what_it_took() {
+        let r = serde_json::json!({
+            "patient_id": 1789528998,
+            "shift": 1,
+            "name": "Yonas Haile",
+            "sex": "m",
+            "age": 16,
+            "country_name": "Ethiopia",
+            // A season case: the catalogue has no title or level for it.
+            "case": "ep3",
+            "case_title": serde_json::Value::Null,
+            "difficulty": serde_json::Value::Null,
+            "run_hash": "77aa",
+            "slot": 499000000,
+            "player": "7FAEbbbb",
+            "did": { "steps": 5, "beats": 2, "harm": [], "outcome": serde_json::Value::Null },
+            "det": { "earned": 8, "max": 40 },
+            "items": [
+                { "label": "Pericardiocentesis", "kind": "action", "points": 6, "earned": 6,
+                  "penalty": 0, "charged": [] },
+                { "label": "Ordered nothing this pericardium did not need", "kind": "no_unindicated",
+                  "points": 0, "earned": 0, "penalty": 0, "charged": [] }
+            ],
+            "timeline": [{ "at": 30.0, "kind": "order", "text": "pericardiocentesis" }],
+            "tape": "/api/tape/77aa",
+            "judged_omitted": "No AI-judged marks on a mid-stay shift.",
+        });
+        let page = receipt_page(&r, &serde_json::Value::Null);
+
+        // The case, from the season's own table, with its level beside it.
+        assert!(page.contains("EP3 · Don't Make Him Cry"),
+                "a season case's title comes from the bay's table when the catalogue has none");
+        assert!(page.contains("resident"), "and its level with it: {page}");
+
+        // The deduction row, as a deduction.
+        assert!(page.contains("no penalty · nothing ordered off the list"),
+                "a no_unindicated row that took nothing says so: {page}");
+        assert!(!page.contains("0</b> of 0"),
+                "and never as a mark that was available and missed");
+
+        // One line about the judged score.
+        assert!(page.contains("No AI-judged marks on a mid-stay shift."), "{page}");
+
+        // A compiled case must not borrow the season's fallback title — `title()` answers EP1 for
+        // anything it does not know, which on a receipt would name the wrong case entirely.
+        let mut compiled = r.clone();
+        compiled["case"] = serde_json::json!("embla-dengue-shock-student");
+        let page = receipt_page(&compiled, &serde_json::Value::Null);
+        assert!(!page.contains("The Last Bite"),
+                "a case the season does not know is not EP1: {page}");
+    }
+
     /// **The receipt tells a stranger what happened, in the right person's pronoun.**
     ///
     /// It read "13 orders · 0 beats" and "8 of 40" under a case id, with no list of what was done,
