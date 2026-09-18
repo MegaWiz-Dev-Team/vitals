@@ -852,3 +852,42 @@ fn a_beacon_only_ever_posts_to_a_route_that_answers_post() {
                  always a POST, so this request lands nowhere and the page has no way to find out");
     }
 }
+
+/// **The bar pinned over the transcript has its height reserved below it.**
+///
+/// The demo capture, 18 ก.ย., at 1440×810: the action bar covers the last 269 px of the transcript
+/// at every scroll position — 278 px at 1280×800 — because the bar is `position: sticky` at the
+/// foot of the stage and the transcript reserves 14 px for something 184 px tall. Whatever was
+/// last said at the bedside is behind the thing you type into.
+///
+/// The height cannot be a constant in the stylesheet: the bar grows as the tray wraps and as the
+/// chips open, and every constant would be right until somebody pressed "+ N more". So the page
+/// measures the bar and the stage reserves exactly that — `--actsh`, kept current by a
+/// `ResizeObserver`, which is the only way the reservation stays true while the bar changes shape.
+///
+/// What this test can hold is that both halves exist and agree on the variable's name. The
+/// geometry itself is driven in a browser at both of the founder's sizes (`barcheck2.py`), because
+/// no repository test here can lay out a page.
+#[test]
+fn the_stage_reserves_the_action_bars_own_height() {
+    let js = without_comments(&bay_js());
+    let css = bay_css();
+
+    assert!(js.contains("--actsh"),
+            "the page has to measure the bar: no stylesheet can know how tall it is right now");
+    assert!(js.contains("ResizeObserver"),
+            "and keep measuring it — the bar changes height when the tray wraps or the chips open");
+    let setter = body_of(&js, "reserveTheBar");
+    assert!(setter.contains("setProperty") && setter.contains("getBoundingClientRect"),
+            "the reservation is the bar's measured height, not a guess: {setter}");
+
+    assert!(css.contains("var(--actsh"),
+            "and the stylesheet has to spend it, or the measurement is a number nobody reads");
+    // The rule has to be inside the ward's own cockpit, where the bar is sticky. On the Eternal
+    // entry the stage scrolls as a page and nothing is pinned over anything.
+    let pinned = css.find("html.is-ward .acts{position:sticky").expect("the ward's sticky bar");
+    let spent = css.find("var(--actsh").expect("the reservation");
+    assert!(spent > pinned.saturating_sub(4000) && spent < pinned + 4000,
+            "the reservation belongs beside the rule that pins the bar, so the next reader of one \
+             meets the other");
+}
