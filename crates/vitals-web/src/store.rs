@@ -159,6 +159,13 @@ pub enum Class {
 /// The default is the point. A kind added later reaches `sweep` before anyone remembers to
 /// classify it; defaulting to expiry makes that oversight delete data, while defaulting to
 /// keeping makes it use disk — which gets noticed, and can be fixed after the fact.
+/// How many expired documents one sweep may delete.
+///
+/// Bounded because this runs at boot, and boot is where a request waits. Two hundred is a few
+/// seconds of deletes at Firestore's latency and clears a day of staging's sessions in one pass;
+/// what it does not clear, the next boot does.
+const SWEEP_AT_MOST: usize = 200;
+
 pub fn class_of(kind: &str) -> Class {
     match kind {
         // Both spellings: the server stores runs under "sessions", and the mismatch with the
@@ -167,6 +174,54 @@ pub fn class_of(kind: &str) -> Class {
         "sess" | "sessions" => Class::Ephemeral,
         _ => Class::Durable,
     }
+}
+
+/// A Firestore timestamp as a unix second. `None` for anything that is not one.
+///
+/// `2026-09-18T01:02:03.456789Z` — fixed width to the second, with a fraction Firestore adds and
+/// this drops. Written out rather than pulled in: the one thing needed from a date library here is
+/// twenty lines, and a record is never deleted on a timestamp that failed to parse.
+pub fn unix_from_rfc3339(t: &str) -> Option<i64> {
+    let b = t.as_bytes();
+    if b.len() < 20 || b[4] != b'-' || b[7] != b'-' || b[10] != b'T' || b[13] != b':' || b[16] != b':' {
+        return None;
+    }
+    let num = |from: usize, to: usize| t.get(from..to)?.parse::<i64>().ok();
+    let (y, m, d) = (num(0, 4)?, num(5, 7)?, num(8, 10)?);
+    let (hh, mm, ss) = (num(11, 13)?, num(14, 16)?, num(17, 19)?);
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) || hh > 23 || mm > 59 || ss > 60 {
+        return None;
+    }
+    // Days from the civil epoch — Howard Hinnant's algorithm, the same arithmetic `ward::at_slot`
+    // runs in the other direction to print one.
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let mp = (m + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    Some(days * 86_400 + hh * 3600 + mm * 60 + ss)
+}
+
+/// Which of these documents are old enough to delete — at most `limit`, longest-dead first.
+///
+/// The bound is not a detail. A sweep that deletes everything it finds at boot is the next two
+/// minutes in somebody's first request, which is the thing being fixed two commits up. A document
+/// with no timestamp is never chosen: deleting on a guess is how the only copy of something goes.
+pub fn stale_docs(
+    docs: &[(String, Option<i64>)],
+    now: i64,
+    max_age: std::time::Duration,
+    limit: usize,
+) -> Vec<String> {
+    let cutoff = now - max_age.as_secs() as i64;
+    let mut old: Vec<(&String, i64)> = docs
+        .iter()
+        .filter_map(|(name, at)| at.filter(|t| *t < cutoff).map(|t| (name, t)))
+        .collect();
+    old.sort_by_key(|(_, t)| *t);
+    old.into_iter().take(limit).map(|(name, _)| name.clone()).collect()
 }
 
 /// Where this deployment's leaf list lives.
@@ -495,10 +550,53 @@ impl Store {
         if class_of(kind) == Class::Durable {
             return 0;
         }
-        if matches!(self.backend, Backend::Firestore { .. }) {
-            return 0;
+        match &self.backend {
+            Backend::Firestore { .. } => self.sweep_firestore(kind, max_age, SWEEP_AT_MOST),
+            Backend::Disk { .. } => self.sweep_disk(kind, max_age),
         }
-        self.sweep_disk(kind, max_age)
+    }
+
+    /// The same sweep, where the records are documents rather than files.
+    ///
+    /// This returned 0 without looking for as long as the Firestore backend has existed — and
+    /// Firestore is the only backend Cloud Run uses, so nothing was ever swept in the two places
+    /// that run all day. A session that restored cleanly stayed for ever; only the ones the boot
+    /// restore *failed* on were ever deleted, by the code that failed on them.
+    ///
+    /// One page, at most `limit` deletions, longest-dead first: the next boot takes the next batch.
+    /// A sweep that clears everything it finds is the next two-minute boot, which is the fault this
+    /// sits next to.
+    fn sweep_firestore(&self, kind: &str, max_age: std::time::Duration, limit: usize) -> usize {
+        let Backend::Firestore { base } = &self.backend else { return 0 };
+        let url = format!("{base}/{kind}?pageSize=300");
+        let Ok(r) = self.with_token(|tok| {
+            ureq::get(&url).set("Authorization", &format!("Bearer {tok}")).call()
+        }) else {
+            return 0;
+        };
+        let Ok(v): Result<serde_json::Value, _> = r.into_json() else { return 0 };
+        let empty = Vec::new();
+        let docs: Vec<(String, Option<i64>)> = v["documents"]
+            .as_array()
+            .unwrap_or(&empty)
+            .iter()
+            .filter_map(|d| {
+                let name = d["name"].as_str()?.rsplit('/').next()?.to_string();
+                // Firestore's own record of when it last wrote the document — the disk sweep reads
+                // mtime for exactly this.
+                Some((name, d["updateTime"].as_str().and_then(unix_from_rfc3339)))
+            })
+            .collect();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let mut gone = 0;
+        for key in stale_docs(&docs, now, max_age, limit) {
+            self.del(kind, &key);
+            gone += 1;
+        }
+        gone
     }
 
     fn sweep_disk(&self, kind: &str, max_age: std::time::Duration) -> usize {
