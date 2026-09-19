@@ -236,19 +236,34 @@ pub enum Board {
 /// 112 s and an answer that could not say whether it had been served from the store, rebuilt from
 /// the chain, or simply waited on a container that was still starting. A reader gets it too — a
 /// board two minutes old is a fact, and leaving its age out would not make it fresher.
-pub fn board_note(
-    from: Board,
-    age: Option<std::time::Duration>,
-    kept_by: Option<&str>,
-) -> serde_json::Value {
+/// Where a board came from — a fact about the board, not about the answer carrying it.
+///
+/// The difference is the whole bug. "Served from memory" describes *this request*, and the same
+/// board answers `chain` once and `memory` for ever after, so its bytes change between two reads of
+/// one board. Memory is not an origin; it is a cache. A board is read from the chain by this
+/// process, or inherited from the one the last process left, and it stays whichever it was.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Origin {
+    /// This process read it from the chain.
+    Chain,
+    /// It was kept in the store by an earlier process, and this one served it rather than making
+    /// somebody wait for a read.
+    Store,
+}
+
+/// Stamped onto a board once, when it enters this process — never assembled per answer.
+///
+/// **No field on `/api/ward` may change between two reads of the same board.** The payload's ETag
+/// is its bytes, and a field that ticks gives every open page a fresh download on every poll, on
+/// the one endpoint whose caching exists because a room full of people opens it at once. An age
+/// ticked; "served from memory" flipped on the second request. `egress.rs` holds the line by
+/// pairing two assertions — a gzip response decodes to exactly the uncompressed bytes, and a second
+/// request carrying the tag gets a 304 — and any field added here has to survive both.
+pub fn board_note(from: Origin, kept_at: u64, kept_by: Option<&str>) -> serde_json::Value {
     serde_json::json!({
-        "from": match from {
-            // Whether it is inside its life or past it, this process read it itself.
-            Board::Serve | Board::ServeAndRefresh => "memory",
-            Board::ServeStoredAndRefresh => "store",
-            Board::Wait => "chain",
-        },
-        "age_seconds": age.map(|a| a.as_secs()),
+        "from": match from { Origin::Chain => "chain", Origin::Store => "store" },
+        // When it was read, not how long ago: a reader who wants the age subtracts.
+        "kept_at": kept_at,
         "kept_by": kept_by,
     })
 }

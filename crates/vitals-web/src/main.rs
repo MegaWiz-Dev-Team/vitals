@@ -543,6 +543,8 @@ type AuthorCounts = Arc<Mutex<Option<(Instant, ChainView)>>>;
 const WARD_TTL: Duration = Duration::from_secs(30);
 
 /// The held ward census.
+/// The board this process last read, and when. Its provenance is stamped into the board itself —
+/// see [`ward::board_note`] — so every answer carrying one board carries identical bytes.
 type WardView = Arc<Mutex<Option<(Instant, serde_json::Value)>>>;
 
 /// How often the ward looks at itself: a bed that freed, a queue that has somebody in it.
@@ -2697,18 +2699,7 @@ fn ward_now(held: &WardView, store: &store::Store, state: &str) -> serde_json::V
     // What the last process to run here left behind, when this one has nothing of its own. Read
     // once, and only when memory is empty: the store is the fallback, never the hot path.
     let kept = cached.is_none().then(|| ward_chain::last_board(store)).flatten();
-    // What the answer will say about itself: which of the three sources it came from, how old that
-    // is, and — when it is somebody else's — which revision wrote it.
-    let decided = ward::board_use(age, kept.is_some(), WARD_TTL);
-    let note = ward::board_note(
-        decided,
-        match &kept {
-            Some(k) => Some(k.age),
-            None => age,
-        },
-        kept.as_ref().map(|k| k.revision.as_str()).filter(|r| !r.is_empty()),
-    );
-    let mut v = match (decided, cached) {
+    let mut v = match (ward::board_use(age, kept.is_some(), WARD_TTL), cached) {
         (ward::Board::Serve, Some(v)) => v,
         (ward::Board::ServeAndRefresh, Some(v)) => {
             refresh_behind(held, state);
@@ -2725,11 +2716,19 @@ fn ward_now(held: &WardView, store: &store::Store, state: &str) -> serde_json::V
                 if kept.revision.is_empty() { "a previous process" } else { &kept.revision },
                 kept.age.as_secs()
             );
+            // Stamped once, here, where this board enters the process — not per answer, or the
+            // same board would describe itself differently on its second read.
+            let mut board = kept.board;
+            board["board"] = ward::board_note(
+                ward::Origin::Store,
+                kept.at_unix,
+                Some(&kept.revision).filter(|r| !r.is_empty()).map(String::as_str),
+            );
             if let Some(then) = Instant::now().checked_sub(kept.age) {
-                *held.lock().unwrap() = Some((then, kept.board.clone()));
+                *held.lock().unwrap() = Some((then, board.clone()));
             }
             refresh_behind(held, state);
-            kept.board
+            board
         }
         // Nothing anywhere. The first request on a ward that has never read the chain pays for the
         // read, and it is the only one that ever does.
@@ -2744,6 +2743,8 @@ fn ward_now(held: &WardView, store: &store::Store, state: &str) -> serde_json::V
                     v
                 }
             };
+            let mut v = v;
+            v["board"] = ward::board_note(ward::Origin::Chain, now_ms() / 1000, None);
             *held.lock().unwrap() = Some((Instant::now(), v.clone()));
             v
         }
@@ -2752,7 +2753,6 @@ fn ward_now(held: &WardView, store: &store::Store, state: &str) -> serde_json::V
     // later board comes from a different one — the tab the founder had open was three hours behind
     // a deploy and had no way to find out.
     v["revision"] = serde_json::json!(revision());
-    v["board"] = note;
     v
 }
 
@@ -2787,8 +2787,10 @@ fn refresh_behind(held: &WardView, state: &str) {
                 None
             }
         };
-        if let Some(fresh) = fresh {
+        if let Some(mut fresh) = fresh {
             let beds = fresh["patients"].as_array().map(Vec::len).unwrap_or(0);
+            // This process read it, so that is what it says — for as long as it is the board.
+            fresh["board"] = ward::board_note(ward::Origin::Chain, now_ms() / 1000, None);
             println!(
                 "ward       board refreshed behind the answer in {:.1}s — {beds} patients",
                 began.elapsed().as_secs_f64()

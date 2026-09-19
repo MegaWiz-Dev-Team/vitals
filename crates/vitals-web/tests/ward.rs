@@ -1909,42 +1909,36 @@ fn a_bed_the_ward_cannot_open_is_given_back_to_the_ward() {
                "a ward that has not loaded its catalogue has not lost anybody's case");
 }
 
-/// **Every board says where it came from.**
+/// **Every board says where it came from — and says the same thing every time it is asked.**
 ///
 /// The first `/api/ward` against a fresh staging instance took 112 s and answered with the board the
 /// previous revision had kept; a second read 90 s later answered the same board in 0.11 s. So the
-/// keeping works and the serving works, and the 112 s is somewhere in front of both — and nothing in
-/// the answer said which, so it could only be guessed at.
+/// keeping works and the serving works, and the time sits in front of both — and nothing in the
+/// answer said which, so it could only be guessed at.
 ///
-/// It says now: served from this process's own memory, from the board the last one left, or read
-/// from the chain by the request that happened to knock first — with how old it is, and which
-/// revision wrote it. A reader can see it too, which is the honest half: a board with an `as_of`
-/// two minutes old is a fact, and hiding that it is two minutes old would not make it fresher.
+/// The first attempt at saying it published an age, and the second published where the *answer*
+/// came from. Both changed between two reads of one board, and `egress.rs` refused them: this
+/// payload's ETag is its bytes, so a field that moves gives every open page a fresh download on
+/// every poll — on the endpoint whose caching exists because a room full of people opens it at
+/// once. Memory is not an origin; it is a cache. A board is read from the chain by this process or
+/// inherited from the last one, and it stays whichever it was for as long as it is the board.
 #[test]
 fn every_board_says_where_it_came_from() {
-    use std::time::Duration;
-    use vitals_web::ward::{board_note, Board};
+    use vitals_web::ward::{board_note, Origin};
 
-    let own = board_note(Board::Serve, Some(Duration::from_secs(12)), None);
-    assert_eq!(own["from"], "memory");
-    assert_eq!(own["age_seconds"], 12);
-    assert!(own["kept_by"].is_null(), "this process read it: there is nobody else to name");
+    let mine = board_note(Origin::Chain, 1_789_740_000, None);
+    assert_eq!(mine["from"], "chain", "this process read it");
+    assert_eq!(mine["kept_at"], 1_789_740_000, "when, not how long ago: an age ticks");
+    assert!(mine["kept_by"].is_null(), "and there is nobody else to name");
 
-    let stale = board_note(Board::ServeAndRefresh, Some(Duration::from_secs(41)), None);
-    assert_eq!(stale["from"], "memory", "past its life is still this process's own read");
-    assert_eq!(stale["age_seconds"], 41);
+    let inherited = board_note(Origin::Store, 1_789_730_000, Some("vitals-world-00056-h8k"));
+    assert_eq!(inherited["from"], "store", "a fresh instance served what the last one left");
+    assert_eq!(inherited["kept_at"], 1_789_730_000);
+    assert_eq!(inherited["kept_by"], "vitals-world-00056-h8k",
+               "and names the deploy that read it, so a slow first request can be attributed");
 
-    let kept = board_note(
-        Board::ServeStoredAndRefresh,
-        Some(Duration::from_secs(400)),
-        Some("vitals-world-00056-h8k"),
-    );
-    assert_eq!(kept["from"], "store", "a fresh instance says so");
-    assert_eq!(kept["age_seconds"], 400, "and how old the thing it served is");
-    assert_eq!(kept["kept_by"], "vitals-world-00056-h8k", "and who wrote it, which is the deploy");
-
-    let paid = board_note(Board::Wait, None, None);
-    assert_eq!(paid["from"], "chain",
-               "the one request that ever pays for a read says that, so it can be counted");
-    assert!(paid["age_seconds"].is_null(), "a board read just now has no age to report");
+    // The property the ETag rests on, and the one both earlier attempts broke.
+    assert_eq!(board_note(Origin::Store, 1_789_730_000, Some("r")),
+               board_note(Origin::Store, 1_789_730_000, Some("r")),
+               "one board, one set of bytes — however many times it is asked for");
 }

@@ -595,6 +595,10 @@ pub fn keep_board(store: &crate::store::Store, board: &serde_json::Value, revisi
 pub struct Kept {
     /// How long ago the board was read from the chain.
     pub age: std::time::Duration,
+    /// The second it was read, as the chain's own clock would have it. Published rather than the
+    /// age, because an age ticks — and a board whose bytes change every second has a new ETag every
+    /// second, which is every polling page downloading the whole board for ever.
+    pub at_unix: u64,
     /// The revision that read it. Named in the answer, so a slow first request can be attributed to
     /// a deploy rather than guessed at.
     pub revision: String,
@@ -617,6 +621,7 @@ pub fn last_board(store: &crate::store::Store) -> Option<Kept> {
         .unwrap_or(0);
     Some(Kept {
         age: std::time::Duration::from_secs(now.saturating_sub(at)),
+        at_unix: at,
         revision: row
             .get("revision")
             .and_then(serde_json::Value::as_str)
