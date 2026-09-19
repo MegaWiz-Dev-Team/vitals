@@ -16,6 +16,57 @@ use std::path::PathBuf;
 
 pub struct Store {
     backend: Backend,
+    tokens: Tokens,
+}
+
+/// When to go back for a new access token: 80% of its life, or five minutes before it ends,
+/// whichever comes first.
+///
+/// Both halves earn their place. The percentage keeps a long token from being held to its last
+/// second; the five minutes keep a short one from being held at all, because a token that expires
+/// in the middle of a request is a request that fails for no reason the caller can act on.
+pub fn refresh_after(expires_in: u64) -> std::time::Duration {
+    let eighty = expires_in.saturating_mul(4) / 5;
+    let five_early = expires_in.saturating_sub(300);
+    std::time::Duration::from_secs(eighty.min(five_early))
+}
+
+/// The access token this store is using, and when to stop using it.
+///
+/// One fetch per window rather than one per call. Every Firestore operation used to ask the
+/// metadata server first — five call sites, no cache — which on a boot that restores sessions in
+/// series is the difference between two minutes and two seconds.
+#[derive(Default)]
+pub struct Tokens {
+    held: std::sync::Mutex<Option<(String, std::time::Instant)>>,
+}
+
+impl Tokens {
+    /// The token, fetching one only if there is none or the one in hand is near its end.
+    ///
+    /// The lock is held across the fetch on purpose: it is the cheapest way to say "one in flight
+    /// at a time", and the alternative — a thundering herd of metadata requests on a cold instance
+    /// — is the thing being fixed. A fetch that fails is not remembered, or one bad second would
+    /// become an hour of a store that cannot read.
+    pub fn get(
+        &self,
+        fetch: impl FnOnce() -> Result<(String, u64), String>,
+    ) -> Result<String, String> {
+        let mut held = self.held.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((token, until)) = held.as_ref() {
+            if std::time::Instant::now() < *until {
+                return Ok(token.clone());
+            }
+        }
+        let (token, expires_in) = fetch()?;
+        *held = Some((token.clone(), std::time::Instant::now() + refresh_after(expires_in)));
+        Ok(token)
+    }
+
+    /// Forget it. Called when the store is told the token is no good — a 401 and nothing else.
+    pub fn invalidate(&self) {
+        *self.held.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
 }
 
 /// Where records actually live.
@@ -163,7 +214,7 @@ impl Store {
         if let Backend::Disk { root } = &backend {
             std::fs::create_dir_all(root)?;
         }
-        Ok(Store { backend })
+        Ok(Store { backend, tokens: Tokens::default() })
     }
 
     /// A record as Firestore wants it: one JSON string in one field.
@@ -209,32 +260,60 @@ impl Store {
                 return Ok(t);
             }
         }
-        let r = ureq::get(
-            "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
-        )
-        .set("Metadata-Flavor", "Google")
-        .timeout(std::time::Duration::from_secs(5))
-        .call()
-        .map_err(|e| e.to_string())?;
-        let v: serde_json::Value = r.into_json().map_err(|e| e.to_string())?;
-        v["access_token"].as_str().map(str::to_string).ok_or_else(|| "no access_token".into())
+        self.tokens.get(|| {
+            let r = ureq::get(
+                "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+            )
+            .set("Metadata-Flavor", "Google")
+            .timeout(std::time::Duration::from_secs(5))
+            .call()
+            .map_err(|e| e.to_string())?;
+            let v: serde_json::Value = r.into_json().map_err(|e| e.to_string())?;
+            let token = v["access_token"]
+                .as_str()
+                .map(str::to_string)
+                .ok_or_else(|| "no access_token".to_string())?;
+            // What the metadata server says it is good for. A response without it is treated as
+            // the shortest useful life rather than as for ever.
+            let expires_in = v["expires_in"].as_u64().unwrap_or(600);
+            Ok((token, expires_in))
+        })
+    }
+
+    /// Run a Firestore call with the held token, and give it exactly one more go with a fresh one
+    /// if the answer is 401.
+    ///
+    /// 401 is the single failure a new token can fix, and a token can go stale between the moment
+    /// it is checked and the moment it is used. Anything else — a 404, a 500, a socket that dies —
+    /// is not made truer by asking twice.
+    fn with_token<T>(
+        &self,
+        mut run: impl FnMut(&str) -> Result<T, ureq::Error>,
+    ) -> Result<T, String> {
+        let token = self.token()?;
+        match run(&token) {
+            Ok(v) => Ok(v),
+            Err(ureq::Error::Status(401, _)) => {
+                self.tokens.invalidate();
+                let token = self.token()?;
+                run(&token).map_err(|e| e.to_string())
+            }
+            Err(e) => Err(e.to_string()),
+        }
     }
 
     fn fs_put(&self, url: &str, body: serde_json::Value) -> Result<(), String> {
-        let tok = self.token()?;
         // PATCH creates or replaces. POST would refuse the second write to the same id.
-        ureq::patch(url)
-            .set("Authorization", &format!("Bearer {tok}"))
-            .send_json(body)
-            .map(|_| ())
-            .map_err(|e| e.to_string())
+        self.with_token(|tok| {
+            ureq::patch(url)
+                .set("Authorization", &format!("Bearer {tok}"))
+                .send_json(body.clone())
+                .map(|_| ())
+        })
     }
 
     fn fs_get(&self, url: &str) -> Option<serde_json::Value> {
-        let tok = self.token().ok()?;
-        ureq::get(url)
-            .set("Authorization", &format!("Bearer {tok}"))
-            .call()
+        self.with_token(|tok| ureq::get(url).set("Authorization", &format!("Bearer {tok}")).call())
             .ok()?
             .into_json()
             .ok()
@@ -294,14 +373,17 @@ impl Store {
     /// Every record under `kind` that still parses, from either backend.
     pub fn list<T: DeserializeOwned>(&self, kind: &str) -> Vec<(String, T)> {
         if let Backend::Firestore { base } = &self.backend {
-            let Ok(tok) = self.token() else { return Vec::new() };
             let mut out = Vec::new();
             let mut page = String::new();
             // Firestore pages at 300 by default. A server that silently read the first page and
             // called it "every run" would resume some of them and drop the rest.
             loop {
                 let url = format!("{base}/{kind}?pageSize=300{page}");
-                let Ok(r) = ureq::get(&url).set("Authorization", &format!("Bearer {tok}")).call() else {
+                // Through the same one-retry path as every other call: a long paged list is
+                // exactly where a token can go stale halfway.
+                let Ok(r) = self.with_token(|tok| {
+                    ureq::get(&url).set("Authorization", &format!("Bearer {tok}")).call()
+                }) else {
                     break;
                 };
                 let Ok(v): Result<serde_json::Value, _> = r.into_json() else { break };
