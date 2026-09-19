@@ -49,3 +49,49 @@ fn a_token_is_fetched_once_for_the_window_it_is_good_for() {
     assert_eq!(after.expect("it tries again"), "recovered",
                "a failure is not remembered as an answer");
 }
+
+/// **An expired session is swept on the Firestore backend too.**
+///
+/// `sweep` returned 0 for Firestore before doing anything — so on Cloud Run, which is the only place
+/// that backend runs, no session was ever swept. Nothing collected them: the boot restore deleted
+/// only the ones it could not rebuild, and every session that restored *fine* stayed for ever.
+/// Found while reading why a boot took two minutes; it is its own bug and it goes first.
+///
+/// A Firestore document carries its own `updateTime`, which is what the disk sweep uses mtime for.
+/// The bound matters as much as the rule: a sweep that deletes an unbounded number of documents at
+/// boot is the next two minutes.
+#[test]
+fn an_expired_session_is_swept_on_the_firestore_backend() {
+    use vitals_web::store::{stale_docs, unix_from_rfc3339};
+
+    // What Firestore puts on a document, to the second and with the fraction it likes to add.
+    assert_eq!(unix_from_rfc3339("1970-01-01T00:00:00Z"), Some(0));
+    assert_eq!(unix_from_rfc3339("2026-09-18T01:02:03Z"), Some(1_789_693_323));
+    assert_eq!(unix_from_rfc3339("2026-09-18T01:02:03.456789Z"), Some(1_789_693_323),
+               "the fraction is dropped rather than refused");
+    assert_eq!(unix_from_rfc3339("not a time"), None);
+    assert_eq!(unix_from_rfc3339(""), None);
+
+    let day = Duration::from_secs(24 * 60 * 60);
+    let now = 1_789_693_323;
+    let docs = vec![
+        ("fresh".to_string(), Some(now - 60)),
+        ("old".to_string(), Some(now - 2 * 24 * 60 * 60)),
+        ("older".to_string(), Some(now - 9 * 24 * 60 * 60)),
+        ("undated".to_string(), None),
+    ];
+
+    let gone = stale_docs(&docs, now, day, 10);
+    assert!(gone.contains(&"old".to_string()) && gone.contains(&"older".to_string()),
+            "a run nobody has touched in a day is a closed tab: {gone:?}");
+    assert!(!gone.contains(&"fresh".to_string()), "and one from a minute ago is somebody's shift");
+    assert!(!gone.contains(&"undated".to_string()),
+            "a document with no time on it is not guessed at — deleting on a guess is how the only \\
+             copy of something goes: {gone:?}");
+
+    // Bounded, and the oldest first, so a sweep can never itself become the two minutes.
+    let capped = stale_docs(&docs, now, day, 1);
+    assert_eq!(capped, vec!["older".to_string()],
+               "at most the limit, and the longest-dead first: {capped:?}");
+    assert!(stale_docs(&docs, now, day, 0).is_empty(), "a limit of none deletes none");
+}
