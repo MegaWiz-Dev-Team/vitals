@@ -513,3 +513,22 @@ assert.ok(!/is on the ward/.test(arguing),
           `the page agreed with the chain and contradicted the board: ${arguing}`);
 
 console.log('shift_logic: ok (and a chart page agrees with the board)');
+
+// ── a shift that cannot be rebuilt lets go of the bed ───────────────────────
+//
+// Sessions are rebuilt when their id is asked for rather than at boot, so the first thing a page
+// hears after a deploy can be "this one will not replay". If it keeps beating, the head stays held
+// for the whole ten-minute lease by somebody who cannot play on it; if it stops, the server frees
+// the bed after seventy-five seconds of silence. So the page has to hear that answer and act on it
+// — and say, at the bedside, that nothing it did was recorded.
+const { shouldStopBeating } = new Function([grab('shouldStopBeating'), 'return { shouldStopBeating };'].join('\n'))();
+
+assert.equal(shouldStopBeating({ stop_beating: true, error: 'the tape is not here' }), true,
+             'the server said this shift is gone: stop holding the bed');
+assert.equal(shouldStopBeating({ error: 'no such session' }), false,
+             'an ordinary refusal is not a reason to drop a head somebody may still be holding');
+assert.equal(shouldStopBeating({}), false);
+assert.equal(shouldStopBeating(null), false, 'and a torn answer is not an instruction');
+assert.equal(shouldStopBeating({ stop_beating: false }), false);
+
+console.log('shift_logic: ok (and a shift that cannot be rebuilt lets go)');
