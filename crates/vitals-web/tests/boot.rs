@@ -58,6 +58,17 @@ fn a_boot_marker_names_the_span_it_times() {
             "and what it threw away is counted, because a boot that silently deletes runs is how \
              a tape for a leaf already on chain disappears");
 
+    // The two that shared the sessions span and were read as it. `boot sessions +30.2s` was taken —
+    // reasonably — as the restore, and the restore had already been removed: what was in that span
+    // was the sweep and the tape repair. The same lesson as the meter, one level down, so each gets
+    // its own mark and its own counts before anybody reasons about where 30 s went.
+    assert!(src.contains(r#"mark("sweep""#),
+            "the sweep deletes documents one at a time and is not timed");
+    assert!(src.contains(r#"mark("repair""#),
+            "the tape repair refreshes every patient from the chain and is not timed");
+    assert!(src.contains("patients checked"),
+            "and the repair says how many patients it walked, because that is what its cost is per");
+
     // The rule this whole item exists to serve, where the next person to add boot work will read it.
     assert!(src.to_lowercase().contains("a request never waits on boot work it does not need"),
             "the invariant is not written in the boot function's own doc comment");
