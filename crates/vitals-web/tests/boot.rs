@@ -42,8 +42,18 @@ fn a_boot_marker_names_the_span_it_times() {
     // word for it: a reader could see the total climb and not what had climbed.
     assert!(src.contains(r#"mark("sessions""#),
             "the session restore is the expensive step and it is not named in the log");
-    assert!(src.contains("· restored {} · dropped {broken}"),
-            "and the counts come after the timings, or a reader ties the seconds to the wrong number");
+    // The counts ride in the note, which the printer puts *after* the timings. Asserted on the
+    // shape rather than on the words: what is counted changed when the boot stopped replaying
+    // sessions — restored/dropped became a census of what is in the store — and the rule that
+    // survives both is where the numbers sit, because a reader who meets them first ties the
+    // seconds to the wrong one.
+    let sessions_mark = src
+        .split(r#"mark("sessions""#)
+        .nth(1)
+        .and_then(|s| s.split(");").next())
+        .expect("the sessions mark");
+    assert!(sessions_mark.contains(r#"" · "#) || sessions_mark.contains("\" · {}\""),
+            "the counts have to follow the timings, not lead them: {sessions_mark}");
     assert!(src.contains("dropped {"),
             "and what it threw away is counted, because a boot that silently deletes runs is how \
              a tape for a leaf already on chain disappears");

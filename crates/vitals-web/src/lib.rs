@@ -19,6 +19,7 @@ pub mod news2;
 pub mod patient;
 pub mod payout;
 pub mod reading;
+pub mod rebuild;
 pub mod review;
 pub mod store;
 pub mod usage;

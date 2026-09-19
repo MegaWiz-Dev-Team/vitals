@@ -9,8 +9,8 @@
 
 mod chain;
 use vitals_web::{
-    archive, authors, fuel, lang, meter, news2, patient, payout, reading, review, store, usage,
-    ward, ward_case, ward_chain,
+    archive, authors, fuel, lang, meter, news2, patient, payout, reading, rebuild, review, store,
+    usage, ward, ward_case, ward_chain,
 };
 
 use serde::Serialize;
@@ -3377,8 +3377,14 @@ fn main() {
     // A run nobody has touched in a day is a closed tab, not a patient.
     let swept = store.sweep(SESSIONS, std::time::Duration::from_secs(24 * 60 * 60));
 
-    let mut restored = HashMap::new();
-    let mut broken = 0usize;
+    // Nothing is rebuilt here. A session is replayed when somebody asks for its id — see
+    // `rebuild` — because nothing outside a request has ever read one, and 22 of them cost 79.7 s
+    // of a boot whose first real reader waited 62 s for the door.
+    //
+    // The repair below stays where it is. It guards the only copy of a tape for a leaf already on
+    // chain, it is not what the 79.7 s was, and the ticker's own call to `repair_tapes` is a minute
+    // away rather than in front of a reader.
+    let restored: HashMap<String, Session> = HashMap::new();
     // ── before anything is dropped ──────────────────────────────────────────────────────────
     //
     // A ward session is restored by rebuilding its patient from the chain, so a session whose own
@@ -3405,40 +3411,37 @@ fn main() {
         }
     }
 
-    for (id, saved) in store.list::<Saved>(SESSIONS) {
-        // A ward shift is rebuilt on the patient it was played on, and the chain is what says who
-        // that is. Read here rather than inside `restore`, so the rebuild stays a function of its
-        // arguments and this loop is the only thing that talks to a cluster.
-        let prior = saved.ward.as_ref().and_then(|w| ward_rebuild(&store, w.patient_id));
-        match Session::restore(saved, prior.as_ref(), &|h| ward_chain::tape_by_hash(&store, h),
-                               &ward_chain::cached_dater(&store)) {
-            Ok(s) => {
-                restored.insert(id, s);
-            }
-            Err(e) => {
-                // Loud, and dropped. A run that will not replay is exactly the thing this repo
-                // must not paper over: it means the tape and the automaton disagree.
-                eprintln!("dropping session {id}: {e}");
-                store.del(SESSIONS, &id);
-                broken += 1;
-            }
-        }
-    }
-    // The step that was 137 s of a 137.8 s boot with no name in the log. Counted as well as timed:
-    // a boot that drops runs is how the only copy of a tape for a leaf already on chain disappears,
-    // and a number nobody prints is a number nobody misses.
-    mark("sessions", &format!(" · restored {} · dropped {broken}", restored.len()));
+    // What is in the store, counted from the records themselves — one list, no chain, no replay.
+    // Not "in a bed": a bed is derived from the board, and asking the chain for one here is the
+    // work being removed.
+    let kinds: Vec<rebuild::Kind> = store
+        .list::<Saved>(SESSIONS)
+        .into_iter()
+        .map(|(_, sv)| match (&sv.review, &sv.ward) {
+            (Some(_), _) => rebuild::Kind::Review,
+            (None, Some(_)) if sv.anchored || sv.handed_over => rebuild::Kind::WardFinished,
+            (None, Some(_)) => rebuild::Kind::WardLive,
+            _ => rebuild::Kind::Other,
+        })
+        .collect();
+    mark("sessions", &format!(" · {}", rebuild::census(&kinds)));
 
     // No counter to carry across a restart any more: ids are random, so a restored run cannot
     // collide with a fresh one and there is nothing to resume from.
+    // What boot knows, and nothing it does not. "N run(s) resumed" would print 0 for ever now and
+    // read as "there are none"; the census line above says what is actually in the store, and a
+    // run that cannot be replayed is discovered by the person who asks for it rather than here.
     println!(
-        "state      {} · {} run(s) resumed{}{}",
+        "state      {} · sessions rebuilt when their id is asked for{}",
         store.describe(),
-        restored.len(),
         if swept > 0 { format!(" · {swept} expired") } else { String::new() },
-        if broken > 0 { format!(" · {broken} unreplayable") } else { String::new() },
     );
     let sessions: Arc<Mutex<HashMap<String, Session>>> = Arc::new(Mutex::new(restored));
+    // One rebuild per id at a time, and a memory of the ones that will not come back — so a page
+    // retrying every thirty seconds does not replay a chain it cannot use, thirty seconds apart,
+    // for ever.
+    let rebuilds = rebuild::Rebuilds::default();
+    let unrebuildable: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
 
     /// When each page holding a head last said it was still there, by patient.
     ///
@@ -3736,6 +3739,58 @@ fn main() {
     for mut req in server.incoming_requests() {
         let url = req.url().to_string();
         let path = url.split('?').next().unwrap_or("/").to_string();
+
+        // A session is rebuilt here, the first time its id is asked for, rather than all of them at
+        // boot. One place instead of the twenty handlers that take an `id`, so no route can forget.
+        //
+        // An id nobody saved falls through and is answered "no such session" as it always was. An
+        // id that *is* saved and cannot be replayed is answered here, because the answer has to
+        // reach the page whatever it was asking for: it tells it to stop beating, which turns a bed
+        // held for the ten-minute lease into one freed in seventy-five seconds.
+        if let Some(id) = param(&url, "id") {
+            let why = {
+                let known = unrebuildable.lock().unwrap().get(&id).cloned();
+                match known {
+                    Some(why) => Some(why),
+                    None => {
+                        rebuilds.once(
+                            &id,
+                            || sessions.lock().unwrap().contains_key(&id),
+                            || {
+                                let Some(saved) = store.get::<Saved>(SESSIONS, &id) else { return };
+                                let prior = saved
+                                    .ward
+                                    .as_ref()
+                                    .and_then(|w| ward_rebuild(&store, w.patient_id));
+                                match Session::restore(
+                                    saved,
+                                    prior.as_ref(),
+                                    &|h| ward_chain::tape_by_hash(&store, h),
+                                    &ward_chain::cached_dater(&store),
+                                ) {
+                                    Ok(s) => {
+                                        sessions.lock().unwrap().insert(id.clone(), s);
+                                    }
+                                    Err(e) => {
+                                        // Kept rather than deleted. The tape is the only copy of
+                                        // what somebody did, and a run that will not replay is a
+                                        // thing to look at, not to tidy away at three in the
+                                        // morning. The sweep collects it when nobody comes back.
+                                        eprintln!("session {id} will not replay: {e}");
+                                        unrebuildable.lock().unwrap().insert(id.clone(), e);
+                                    }
+                                }
+                            },
+                        );
+                        unrebuildable.lock().unwrap().get(&id).cloned()
+                    }
+                }
+            };
+            if let Some(why) = why {
+                let _ = req.respond(json_code(rebuild::cannot_rebuild(&why), 409));
+                continue;
+            }
+        }
 
         // The apex answers with the front door — the landing, and the two documents about the
         // company — and anything deeper moves permanently to the game origin. 301 on purpose:

@@ -1825,6 +1825,7 @@ function unsealBeats(v){
 async function step(q,named){
   if(!id)return;
   const v=await (await fetch('/api/step?id='+id+q+asMe()+langQ())).json();
+  if(heed(v))return;
   if(v.error)return ev('note','—',v.error);
   paint(v,named);
 }
@@ -4138,6 +4139,9 @@ async function wardDo(path){
   const me=await identity();
   if(!me)return {error:'this browser has no Ed25519 — try Chrome, Safari 17+ or Firefox 129+'};
   const r=await (await fetch(path+(path.includes('?')?'&':'?')+'player='+me.pub)).json();
+  /* Before anything else is read from it: the server may be saying this shift is gone, and the bed
+     it is holding matters more than the call that was being made. */
+  if(heed(r))return r;
   if(r.error||!r.sign)return r;
   return await (await fetch('/api/ward/submit?player='+me.pub+'&sig='+await sign(r.sign))).json();
 }
@@ -4513,6 +4517,30 @@ addEventListener('pagehide',()=>{
   if(!id||!WARD)return;
   navigator.sendBeacon('/api/ward/left?id='+encodeURIComponent(id));
 });
+/* Has the server just told this page that its shift is gone?
+   Sessions are rebuilt when their id is first asked for, so after a deploy the answer to anything
+   can be "this one will not replay". Only that instruction counts: an ordinary refusal must never
+   drop a head somebody may still be holding, and a torn answer is not an instruction at all. */
+function shouldStopBeating(v){
+  return !!(v && v.stop_beating === true);
+}
+
+/* Act on it, once, wherever it arrives. The bed is the point: a page that keeps beating holds the
+   head for the whole lease, and a page that stops has it freed in seventy-five seconds. */
+function heed(v){
+  if(!shouldStopBeating(v))return false;
+  stopBeating(); leaseStop(); stop();
+  const cmd=$('#cmd'), send=$('#send');
+  if(cmd){ cmd.disabled=true; cmd.placeholder='this shift could not be rebuilt'; }
+  if(send)send.disabled=true;
+  handingOver(true);
+  const back=$('#wardback-shift'); if(back)back.style.display='';
+  wardSay('<b>this shift could not be rebuilt.</b> '+esc(v.error||'')+
+          ' Nothing you did here was recorded. Leave without recording, or '+
+          '<a href="/ward/'+WARD+'">open the bed again</a>.');
+  return true;
+}
+
 async function handOver(){
   if(!id)return;
   /* Once. The chain takes one leaf per head and the second press could only ever earn a refusal
@@ -4534,6 +4562,7 @@ async function handOverInner(){
   disarmEnd(); handingOver(true);
   wardSay('reducing your shift…');
   const over_=await (await fetch('/api/handover?id='+id+asMe())).json();
+  if(heed(over_))return;
   /* The server refuses a shift it has already anchored, and says so in its own words — a reload
      and a fresh press reach this before any chain is touched. */
   if(over_.refused)return wardSay('<b>refused.</b> '+esc(over_.refused));
