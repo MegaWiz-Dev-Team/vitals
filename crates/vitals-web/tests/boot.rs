@@ -34,19 +34,21 @@ fn a_boot_marker_names_the_span_it_times() {
     assert!(printer.contains("booted.elapsed()"), "the running total: {printer}");
     assert!(printer.contains("since"), "and the step itself, named as such: {printer}");
 
-    for step in ["mark(\"store\")", "mark(\"meter\")", "mark(\"chain\")", "mark(\"listening\")"] {
+    for step in ["mark(\"store\"", "mark(\"meter\"", "mark(\"chain\"", "mark(\"listening\""] {
         assert!(src.contains(step), "{step} is not marked, so its cost cannot be seen");
     }
 
     // The expensive one is named and counted. 137 s of a 137.8 s boot went here and the log had no
     // word for it: a reader could see the total climb and not what had climbed.
-    assert!(src.contains("sessions · restored"),
+    assert!(src.contains(r#"mark("sessions""#),
             "the session restore is the expensive step and it is not named in the log");
+    assert!(src.contains("· restored {} · dropped {broken}"),
+            "and the counts come after the timings, or a reader ties the seconds to the wrong number");
     assert!(src.contains("dropped {"),
             "and what it threw away is counted, because a boot that silently deletes runs is how \
              a tape for a leaf already on chain disappears");
 
     // The rule this whole item exists to serve, where the next person to add boot work will read it.
-    assert!(src.contains("a request never waits on boot work it does not need"),
+    assert!(src.to_lowercase().contains("a request never waits on boot work it does not need"),
             "the invariant is not written in the boot function's own doc comment");
 }

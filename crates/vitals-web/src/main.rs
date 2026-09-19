@@ -3315,11 +3315,27 @@ fn now_secs() -> u64 {
 }
 
 fn main() {
-    // How long this process takes to become answerable, stage by stage. On Cloud Run at
-    // MIN_INSTANCES=0 a request that arrives during a start is *held* until the container listens,
-    // so every second of this is a second in somebody's first `/api/ward` — 112 s of it on
-    // 18 September, with nothing in the logs able to say which second belonged to what.
+    // How long this process takes to become answerable, stage by stage.
+    //
+    // **A request never waits on boot work it does not need.** On Cloud Run at MIN_INSTANCES=0 a
+    // request that arrives during a start is *held* until the container listens, so every second
+    // spent here is a second in somebody's first `/api/ward`: 118 s of one on 18 September, and
+    // 137 s of that boot was restoring sessions nobody had asked for.
+    //
+    // Every mark carries two numbers — the running total, and how long that step itself took. The
+    // first version printed only the total, `boot meter +137.6s` was read as "the meter took two
+    // minutes", and the meter reads one document.
     let booted = Instant::now();
+    let mut last = booted;
+    let mut mark = |what: &str, note: &str| {
+        let now = Instant::now();
+        println!(
+            "boot       {what} +{:.1}s (since the last mark: {:.1}s){note}",
+            booted.elapsed().as_secs_f64(),
+            now.duration_since(last).as_secs_f64()
+        );
+        last = now;
+    };
     // Not 8090. On the machine this is developed on that port is already three things — a
     // syn-sentry web app, an eir-fhir container publishing on the host, and the service port the
     // hermodr fleet uses inside the cluster. A default that collides with the neighbours is a
@@ -3357,7 +3373,7 @@ fn main() {
         .unwrap_or_else(|e| panic!("cannot open {state_dir}: {e}"));
     // Timed on its own because on Firestore this is a token fetch against the metadata server
     // before it is a store, and that is a network call on a cold container.
-    println!("boot       store +{:.1}s", booted.elapsed().as_secs_f64());
+    mark("store", "");
     // A run nobody has touched in a day is a closed tab, not a patient.
     let swept = store.sweep(SESSIONS, std::time::Duration::from_secs(24 * 60 * 60));
 
@@ -3408,6 +3424,11 @@ fn main() {
             }
         }
     }
+    // The step that was 137 s of a 137.8 s boot with no name in the log. Counted as well as timed:
+    // a boot that drops runs is how the only copy of a tape for a leaf already on chain disappears,
+    // and a number nobody prints is a number nobody misses.
+    mark("sessions", &format!(" · restored {} · dropped {broken}", restored.len()));
+
     // No counter to carry across a restart any more: ids are random, so a restored run cannot
     // collide with a fresh one and there is nothing to resume from.
     println!(
@@ -3429,7 +3450,7 @@ fn main() {
 
     // What this bay may spend, resumed from the store so a deploy does not reset the month.
     let mut meter = meter::Meter::open(&store);
-    println!("boot       meter +{:.1}s", booted.elapsed().as_secs_f64());
+    mark("meter", "");
     println!("meter      {}", meter.describe());
 
     // Runs opened and runs finished, resumed from the store. Deliberately not a count of
@@ -3561,7 +3582,7 @@ fn main() {
     // read by the server rather than the browser (CORS, and a public RPC rate-limits per caller)
     // and cached, because this endpoint is public and ungated by design.
     let mut fuel = fuel::Fuel::open();
-    println!("boot       chain +{:.1}s", booted.elapsed().as_secs_f64());
+    mark("chain", "");
     println!("fuel       {}", fuel.describe());
     // Signed halves waiting on the browser, keyed by player. Never persisted: a blockhash goes
     // stale in about a minute, so a pending transaction that outlives the process is worthless.
@@ -3702,7 +3723,7 @@ fn main() {
         .to_ip()
         .map(|a| a.to_string())
         .unwrap_or_else(|| addr.clone());
-    println!("boot       listening +{:.1}s", booted.elapsed().as_secs_f64());
+    mark("listening", "");
     println!("Vitals — play at http://{bound}");
 
     // One slow local model, and /api/say holds a worker for as long as it takes. Without a
