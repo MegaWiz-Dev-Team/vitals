@@ -175,7 +175,7 @@ fn the_token_is_never_printed() {
 #[test]
 fn preview_takes_packs_like_open_and_closed_does_not() {
     for (door, takes) in [("open", true), ("preview", true), ("closed", false), ("", false), ("shut", false)] {
-        let q = Queue { waiting: 4, beds: 3, door: door.into() };
+        let q = Queue { waiting: 4, beds: 3, door: door.into(), waiting_patients: vec![] };
         assert_eq!(q.takes_packs(), takes, "{door:?}");
     }
     let body = r#"{"readable": true, "source": "devnet:x", "policy": {"beds": 3, "catalogue": []}, "queue": {"waiting": 7, "beds": 3, "door": "preview"}, "patients": []}"#;
@@ -203,4 +203,38 @@ fn the_factory_speaks_to_four_routes_and_never_takes() {
     routes.dedup();
     assert_eq!(routes, vec!["/api/ward", "/api/ward/cases?placeable=1", "/api/ward/pack", "/api/ward/queue"], "{routes:?}");
     assert!(!src.contains("/take") && !src.contains("/admit"), "no take-style route, ever");
+}
+
+/// The queue block lists who is waiting — `waiting_patients`, one row per pack, as the ward's
+/// `waiting_rows` writes them: the pack id she is addressed by, who she is, and the one face her
+/// pack shows. No patient id, because she is not on the chain: her pictures go through the same
+/// route as a bed's (`POST /api/ward/pack/<id>`), which reads a 64-hex id as a waiting pack and
+/// digits as a patient. A block from before the rows parses with nobody listed, not as an error.
+#[test]
+fn the_queue_block_lists_who_is_waiting_by_pack_id() {
+    let body = r#"{"readable": true, "source": "devnet:x", "policy": {"beds": 3, "catalogue": []}, "patients": [],
+      "queue": {"waiting": 2, "beds": 3, "door": "preview", "filled_by": "a ticker", "waiting_unknown_because": null,
+        "waiting_patients": [
+          {"pack": "0900aa0fcc205a7bcd8511d542de7942e27511495ee55d99911d6e2985a81f0d", "name": "Eric Habimana", "age": 60, "sex": "m",
+           "country": "RWA", "difficulty": "resident", "endemic": false, "case_title": "Cirrhotic patient with confusion and low-grade fever",
+           "portrait": "https://storage.googleapis.com/vitals-world-portraits/7133df8cad5160d12f9bf62cbcda3ac16a7cb14219b806b886cb4589115c946a.webp"},
+          {"pack": "112bc97c1abe361d4129f87f48ec5edff8120b8266171a98736685b82a805224", "name": "Juma Shabani", "age": 40, "sex": "m",
+           "country": "TZA", "difficulty": null, "endemic": true, "case_title": null, "portrait": null}
+        ]}}"#;
+    let w = WardView::parse(body).expect("parses");
+    let q = w.queue.as_ref().expect("a queue block");
+    assert_eq!((q.waiting, q.door.as_str()), (2, "preview"));
+    assert_eq!(q.waiting_patients.len(), 2);
+    let eric = &q.waiting_patients[0];
+    assert_eq!(eric.pack, "0900aa0fcc205a7bcd8511d542de7942e27511495ee55d99911d6e2985a81f0d", "the address her pictures go to");
+    assert_eq!((eric.name.as_deref(), eric.age, eric.country.as_deref()), (Some("Eric Habimana"), Some(60), Some("RWA")));
+    assert!(eric.portrait.as_deref().is_some_and(|u| u.ends_with("115c946a.webp")), "the one face the pack shows");
+    let juma = &q.waiting_patients[1];
+    assert!(juma.portrait.is_none() && juma.endemic && juma.difficulty.is_none());
+    assert_eq!(w.waiting().map(|p| p.pack.as_str()).collect::<Vec<_>>(), vec![eric.pack.as_str(), juma.pack.as_str()], "in the order the ward lists them");
+    // Before the rows shipped (17 Sep): a block with no list is nobody listed, and still a queue.
+    let older = r#"{"readable": true, "source": "devnet:x", "policy": {"beds": 3, "catalogue": []}, "queue": {"waiting": 7, "beds": 3, "door": "preview"}, "patients": []}"#;
+    let w = WardView::parse(older).unwrap();
+    let q = w.queue.as_ref().unwrap();
+    assert!(q.waiting_patients.is_empty() && q.waiting == 7 && w.waiting().count() == 0, "{q:?}");
 }

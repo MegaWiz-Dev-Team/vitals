@@ -12,7 +12,7 @@ use std::collections::VecDeque;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use vitals_factory::cases::fits;
-use vitals_factory::door::{parse_cases, Door, FillReply, Filled, Outbound, Pushed, Queue, Queued, Token, WardCase, WardView};
+use vitals_factory::door::{parse_cases, Door, FillReply, Filled, Outbound, Pushed, Queue, Queued, Token, WaitingPatient, WardCase, WardView};
 use vitals_factory::ledger::Ledger;
 use vitals_factory::manifest::{batch_age, Manifest};
 use vitals_factory::pool::{read_pool, Person};
@@ -151,8 +151,31 @@ impl FakeDoor {
 }
 
 impl Door for FakeDoor {
+    /// The board as the test set it, and — when the test gave the ward a queue block — the rows
+    /// the ward's `waiting_rows` would publish for the packs this door holds: the pack id, who she
+    /// is, and the one face the pack shows. `waiting` stays the number the test said, as the count
+    /// the factory tops up against.
     fn read_ward(&self) -> Result<WardView, String> {
-        Ok(self.ward.borrow().clone())
+        let mut w = self.ward.borrow().clone();
+        if let Some(q) = w.queue.as_mut() {
+            q.waiting_patients = self
+                .queue
+                .borrow()
+                .iter()
+                .map(|(id, p)| WaitingPatient {
+                    pack: id.clone(),
+                    name: Some(p.persona.name.clone()),
+                    age: Some(p.persona.age),
+                    sex: Some(p.persona.sex.clone()),
+                    country: Some(p.persona.country.clone()),
+                    difficulty: None,
+                    endemic: p.endemic,
+                    case_title: None,
+                    portrait: vitals_web::ward::portrait_for(&p.portrait, "stable").map(str::to_string),
+                })
+                .collect();
+        }
+        Ok(w)
     }
     fn read_cases(&self) -> Result<Vec<WardCase>, String> {
         Ok(self.cases.borrow().clone())
@@ -423,7 +446,7 @@ fn a_preview_door_takes_packs_like_an_open_one_and_a_closed_one_waits() {
     let pool = read_pool(POOL).unwrap();
     seed_manifest(&dir, &pool);
     let mut ward = WardView::parse(STAGING).unwrap();
-    ward.queue = Some(Queue { waiting: 4, beds: 3, door: "preview".into() });
+    ward.queue = Some(Queue { waiting: 4, beds: 3, door: "preview".into(), waiting_patients: vec![] });
     let door = FakeDoor::new(ward.clone());
     let tools = FakeTools::default();
     let r = tick(&config(&dir, 6, 2), &door, &tools);
@@ -435,7 +458,7 @@ fn a_preview_door_takes_packs_like_an_open_one_and_a_closed_one_waits() {
     // Closed: nothing sent, one line, no error, not even a probe.
     let dir2 = world("preview-closed");
     seed_manifest(&dir2, &pool);
-    ward.queue = Some(Queue { waiting: 4, beds: 3, door: "closed".into() });
+    ward.queue = Some(Queue { waiting: 4, beds: 3, door: "closed".into(), waiting_patients: vec![] });
     let door = FakeDoor::new(ward.clone());
     let tools = FakeTools::default();
     let r = tick(&config(&dir2, 6, 2), &door, &tools);
@@ -594,6 +617,139 @@ fn a_dry_run_prints_the_next_twenty_draws_with_country_and_region() {
     assert!(spread.contains(&format!("{} countries", distinct.len())) && spread.contains(&format!("{} regions", regions.len())), "{spread}");
     // Still a dry run: nothing pushed, no token, no file.
     assert!(door.pushes.borrow().is_empty() && *tools.token_fetches.borrow() == 0 && !dir.join("factory-ledger.json").exists());
+}
+
+// ── the queue's faces ────────────────────────────────────────────────────────
+// 20 Sep 2026: the production ward had twenty patients waiting behind a door in preview, nineteen
+// of them with only their stable on file, and nothing made their states — faces were completed for
+// patients in beds only, so on opening day the first admitted would have shown the stable face for
+// every state until a later tick caught up. The queue block names who is waiting, by pack id; a
+// waiting patient's states are made the same way and carried to her pack through the same route,
+// `POST /api/ward/pack/<pack id>` (she has no patient id; the ward reads a 64-hex id as a waiting
+// pack and replaces), after every bed is complete, one model patient per tick, and the ledger
+// records what her pack carries so it is done once.
+
+#[test]
+fn the_states_of_a_waiting_patient_are_made_after_the_beds_and_carried_to_her_pack() {
+    let dir = world("waiting-states");
+    let pool = read_pool(POOL).unwrap();
+    let mut man = seed_manifest(&dir, &pool);
+    // Anan (THA-1) waits with a made stable on file and nothing else; Budi (IDN-1) is in a bed
+    // with only his stable.
+    let anan = pool.iter().find(|p| p.key == "THA-1").unwrap();
+    let budi = pool.iter().find(|p| p.key == "IDN-1").unwrap();
+    let anan_stable = sha_url(b"THA-1/stable-made");
+    man.record_stable("THA-1", &anan_stable);
+    man.save(&dir.join("portraits.json")).unwrap();
+    let budi_stable = man.entries["IDN-1"].portrait["stable"].clone();
+
+    let mut ward = WardView::parse(STAGING).unwrap();
+    ward.queue = Some(Queue { waiting: 1, beds: 3, door: "preview".into(), waiting_patients: vec![] });
+    let p = &mut ward.patients[0];
+    p.name = Some(budi.name.clone()); p.country = Some("IDN".into()); p.case = Some("world-stroke-man".into()); p.age = Some(63);
+    p.portrait = Some(budi_stable.clone()); p.portraits = BTreeMap::from([("stable".to_string(), budi_stable.clone())]);
+    let door = FakeDoor::new(ward);
+    let tools = FakeTools::default();
+    let cfg = config(&dir, 0, 0);
+    let mut sent = vitals_factory::ledger::Sent::new("world-acs-elderly-man", anan, 70, false, Some(anan_stable.clone()), cfg.now, &cfg.ward);
+    sent.sex = "m".into();
+    sent.variants_sent = true;
+    let pack = sent.to_pack();
+    let id = pack_id(&pack);
+    door.push(&Token::new("t".into()), std::slice::from_ref(&Outbound::plain(pack.clone()))).unwrap();
+    let mut ledger = Ledger::default();
+    ledger.sent.insert(id.clone(), sent);
+    ledger.save(&dir.join("factory-ledger.json")).unwrap();
+
+    // First tick: the bed first. Budi's five states are made; Anan's wait, and a line says so.
+    let r = tick(&cfg, &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert_eq!(tools.edits.borrow().len(), 5, "one model patient per tick, and the bed comes first: {:?}", tools.edits.borrow());
+    assert_eq!(door.fills.borrow().len(), 1, "Budi's set went through his own door");
+    assert!(door.replaces.borrow().is_empty(), "nothing for Anan's pack yet: {:?}", door.replaces.borrow());
+    assert!(r.lines.iter().any(|l| l.contains("waiting pack") && l.contains(&anan.name) && l.contains("next tick")), "{:?}", r.lines);
+
+    // Second tick: Budi is complete on the board, so it is Anan's turn — five states edited from
+    // the base his stable was made from, each with its sibling, through the replace door under
+    // the pack id the queue row publishes, and filed under his entry for the next ward.
+    let r = tick(&cfg, &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert_eq!(tools.edits.borrow().len(), 10, "{:?}", tools.edits.borrow());
+    let reps = door.replaces.borrow();
+    assert_eq!(reps.len(), 1, "{reps:?}");
+    assert_eq!(reps[0].0, id, "addressed by the pack id the queue row publishes");
+    let keys: Vec<&String> = reps[0].1.keys().collect();
+    for st in ["improving", "deteriorating", "critical", "arrest", "recovered"] {
+        assert!(keys.iter().any(|k| *k == st) && keys.iter().any(|k| **k == format!("{st}_256")), "{st} and its sibling: {keys:?}");
+    }
+    assert!(!keys.iter().any(|k| *k == "stable"), "his stable is not sent again: {keys:?}");
+    assert_eq!(door.fills.borrow().len(), 1, "and never through a patient door he does not have");
+    drop(reps);
+    assert_eq!(door.queue.borrow()[&id].portrait.len(), 11, "the pack carries the whole set: {:?}", door.queue.borrow()[&id].portrait.keys());
+    let man2 = Manifest::load(&dir.join("portraits.json")).unwrap();
+    assert_eq!(man2.entries["THA-1"].portrait.len(), 7, "base, stable and the five: {:?}", man2.entries["THA-1"].portrait.keys());
+    let l2 = Ledger::load(&dir.join("factory-ledger.json")).unwrap();
+    assert_eq!(l2.sent[&id].carried.len(), 10, "the ledger says what his pack carries: {:?}", l2.sent[&id].carried);
+    assert!(r.lines.iter().any(|l| l.contains("waiting pack") && l.contains(&anan.name) && l.contains("added")), "{:?}", r.lines);
+
+    // Third tick: nothing left to make, nothing sent twice.
+    let r = tick(&cfg, &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert_eq!(tools.edits.borrow().len(), 10, "not made again");
+    assert_eq!(door.replaces.borrow().len(), 1, "not sent again");
+}
+
+/// The dry run says what it would do about the queue, so the operator can read the plan before
+/// installing the job: how many waiting patients lack states and who they are, and whom it would
+/// complete this tick — the first, after the beds. A waiting patient whose set is on file already
+/// is not among those who lack: hers would be pushed from the file, and a line says so.
+#[test]
+fn a_dry_run_says_which_waiting_patients_lack_states_and_whom_it_would_complete() {
+    let dir = world("dry-waiting");
+    let pool = read_pool(POOL).unwrap();
+    let mut man = seed_manifest(&dir, &pool);
+    for st in ["improving", "deteriorating", "critical", "arrest", "recovered"] {
+        man.record_state("THA-0", st, &sha_url(format!("THA-0/{st}").as_bytes()));
+    }
+    man.save(&dir.join("portraits.json")).unwrap();
+    // Three beds, nobody named in them; three waiting: Ploy (THA-0) with her set on file, Anan
+    // (THA-1) and Kanya (THA-2) with only their stables.
+    let mut ward = WardView::parse(STAGING).unwrap();
+    ward.queue = Some(Queue { waiting: 3, beds: 3, door: "preview".into(), waiting_patients: vec![] });
+    let door = FakeDoor::new(ward);
+    let tools = FakeTools::default();
+    let cfg = Config { dry_run: true, ..config(&dir, 0, 0) };
+    let mut ledger = Ledger::default();
+    let mut ids: BTreeMap<String, String> = BTreeMap::new();
+    for (key, case, age) in [("THA-0", "world-cholecystitis-woman", 50), ("THA-1", "world-acs-elderly-man", 70), ("THA-2", "world-migraine-woman", 25)] {
+        let who = pool.iter().find(|p| p.key == key).unwrap();
+        let mut sent = vitals_factory::ledger::Sent::new(case, who, age, false, Some(man.entries[key].portrait["stable"].clone()), cfg.now, &cfg.ward);
+        sent.sex = who.sex.letter().into();
+        let pack = sent.to_pack();
+        let id = pack_id(&pack);
+        door.push(&Token::new("t".into()), std::slice::from_ref(&Outbound::plain(pack))).unwrap();
+        ids.insert(key.into(), id.clone());
+        ledger.sent.insert(id, sent);
+    }
+    ledger.save(&dir.join("factory-ledger.json")).unwrap();
+    assert_eq!(door.queue.borrow().len(), 3);
+
+    let r = tick(&cfg, &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let text = r.lines.join("\n");
+    let faces = r.lines.iter().find(|l| l.starts_with("faces:")).unwrap_or_else(|| panic!("a faces line:\n{text}"));
+    assert!(faces.contains("2 waiting patient(s) lack states"), "{faces}");
+    assert!(faces.contains("Anan Thepwong") && faces.contains("Kanya Phonsri") && !faces.contains("Ploy"), "names the ones who lack, not the one on file: {faces}");
+    // The first in the queue's order — the rows come by pack id, as the ward lists them.
+    let first = if ids["THA-1"] < ids["THA-2"] { "Anan Thepwong" } else { "Kanya Phonsri" };
+    assert!(faces.contains(&format!("would complete {first}")) && faces.contains("this tick"), "{faces}");
+    assert!(r.lines.iter().any(|l| l.contains("would push 5 state(s) on file") && l.contains("waiting pack") && l.contains("Ploy Siriwattana")), "{text}");
+    assert!(r.lines.iter().any(|l| l.contains("would make") && l.contains("waiting pack") && l.contains(first)), "{text}");
+    // Still a dry run: no token, nothing sent, nothing made, nothing written.
+    assert!(door.replaces.borrow().is_empty() && door.fills.borrow().is_empty(), "nothing sent");
+    assert_eq!(*tools.token_fetches.borrow(), 0);
+    assert!(tools.edits.borrow().is_empty() && tools.uploads.borrow().is_empty());
+    assert_eq!(Manifest::load(&dir.join("portraits.json")).unwrap().entries["THA-1"].portrait.len(), 1, "nothing recorded");
 }
 
 // ── the case door ────────────────────────────────────────────────────────────
