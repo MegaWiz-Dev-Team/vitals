@@ -341,14 +341,18 @@ impl Store {
     /// 401 is the single failure a new token can fix, and a token can go stale between the moment
     /// it is checked and the moment it is used. Anything else — a 404, a 500, a socket that dies —
     /// is not made truer by asking twice.
+    ///
+    /// The closure's error is boxed: `ureq::Error` is 272 bytes and every `Ok` would otherwise be
+    /// carried in a slot that size (clippy 1.98's `result_large_err`). The caller pays one
+    /// `map_err(Box::new)` and the 401 branch reads through the box.
     fn with_token<T>(
         &self,
-        mut run: impl FnMut(&str) -> Result<T, ureq::Error>,
+        mut run: impl FnMut(&str) -> Result<T, Box<ureq::Error>>,
     ) -> Result<T, String> {
         let token = self.token()?;
         match run(&token) {
             Ok(v) => Ok(v),
-            Err(ureq::Error::Status(401, _)) => {
+            Err(e) if matches!(*e, ureq::Error::Status(401, _)) => {
                 self.tokens.invalidate();
                 let token = self.token()?;
                 run(&token).map_err(|e| e.to_string())
@@ -364,11 +368,14 @@ impl Store {
                 .set("Authorization", &format!("Bearer {tok}"))
                 .send_json(body.clone())
                 .map(|_| ())
+                .map_err(Box::new)
         })
     }
 
     fn fs_get(&self, url: &str) -> Option<serde_json::Value> {
-        self.with_token(|tok| ureq::get(url).set("Authorization", &format!("Bearer {tok}")).call())
+        self.with_token(|tok| {
+            ureq::get(url).set("Authorization", &format!("Bearer {tok}")).call().map_err(Box::new)
+        })
             .ok()?
             .into_json()
             .ok()
@@ -437,7 +444,7 @@ impl Store {
                 // Through the same one-retry path as every other call: a long paged list is
                 // exactly where a token can go stale halfway.
                 let Ok(r) = self.with_token(|tok| {
-                    ureq::get(&url).set("Authorization", &format!("Bearer {tok}")).call()
+                    ureq::get(&url).set("Authorization", &format!("Bearer {tok}")).call().map_err(Box::new)
                 }) else {
                     break;
                 };
@@ -570,7 +577,7 @@ impl Store {
         let Backend::Firestore { base } = &self.backend else { return 0 };
         let url = format!("{base}/{kind}?pageSize=300");
         let Ok(r) = self.with_token(|tok| {
-            ureq::get(&url).set("Authorization", &format!("Bearer {tok}")).call()
+            ureq::get(&url).set("Authorization", &format!("Bearer {tok}")).call().map_err(Box::new)
         }) else {
             return 0;
         };
