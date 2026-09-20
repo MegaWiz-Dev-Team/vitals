@@ -1,4 +1,6 @@
-//! One tick of the factory: read the ward, top the queue up, complete one patient's faces.
+//! One tick of the factory: read the ward, top the queue up, complete one patient's faces — a
+//! patient in a bed first, then one waiting, so the first patients admitted on opening day do not
+//! show their stable face for every state until a later tick catches up.
 //!
 //! The order is the order of what can go wrong. The ward is read first, and a ward that cannot be
 //! read ends the tick with nothing built — a factory that pushed against a board it had not seen
@@ -388,7 +390,7 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
         for n in &next.notes {
             r.say(format!("over the {}: {n}", QUEUE_WINDOW));
         }
-        dry_run_faces(cfg, &mut r, &ward, &pool, &manifest);
+        dry_run_faces(cfg, &mut r, &ward, &pool, &manifest, &ledger);
         return r;
     }
 
@@ -416,6 +418,13 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
                 r.queued += q.queued;
                 r.duplicates += q.duplicates;
                 lost += q.queued;
+                // Put back, so with her stable alone: whatever was carried to the pack the door
+                // lost is carried again below, from the file.
+                if q.queued > 0 {
+                    if let Some(s) = ledger.sent.get_mut(id) {
+                        s.carried.clear();
+                    }
+                }
                 if let Some(why) = q.rejected.first() {
                     r.door_rejected += 1;
                     r.fail(format!("the door now refuses {} ({}, sent earlier): {why} — dropped from the ledger", out.pack.persona.name, out.pack.case));
@@ -889,22 +898,52 @@ fn board_stable(p: &crate::door::BoardPatient) -> Option<String> {
 }
 
 fn entry_for(manifest: &Manifest, who: &Person, p: &crate::door::BoardPatient) -> Option<String> {
-    if let Some(url) = board_stable(p) {
-        if let Some((k, _)) = manifest.entry_with_stable(&url) {
+    entry_near(manifest, who, board_stable(p).as_deref(), p.age)
+}
+
+/// The entry the ward's picture of her was filed under, else her face nearest the age the ward
+/// gives her — which is how a waiting pack's row, with one picture and an age, is traced back too.
+fn entry_near(manifest: &Manifest, who: &Person, shown: Option<&str>, age: Option<u16>) -> Option<String> {
+    if let Some(url) = shown {
+        if let Some((k, _)) = manifest.entry_with_stable(url) {
             return Some(k.clone());
         }
     }
-    let age = p.age?;
+    let age = age?;
     manifest.base_for(&who.key, &(age.saturating_sub(NEAR_FACE)..=age.saturating_add(NEAR_FACE))).map(|b| b.key)
 }
 
-/// The states a patient on the board still lacks, and where each would come from.
+/// Where her pictures go — and how a line names her.
+#[derive(Debug, Clone, PartialEq)]
+enum At {
+    /// A bed: `POST /api/ward/pack/<patient id>`, add only — the board has shown her.
+    Bed(u64),
+    /// The queue: `POST /api/ward/pack/<pack id>`, the same route, which reads a 64-hex id as a
+    /// waiting pack and replaces. She has no patient id until a bed opens for her.
+    Waiting(String),
+}
+
+impl At {
+    fn words(&self) -> String {
+        match self {
+            At::Bed(id) => format!("patient {id}"),
+            At::Waiting(id) => format!("waiting pack {}", short(id)),
+        }
+    }
+}
+
+/// The first twelve of a pack id, as every line of the log writes one.
+fn short(id: &str) -> &str {
+    &id[..12.min(id.len())]
+}
+
+/// The states a patient still lacks, and where each would come from.
 struct Gap {
-    patient_id: u64,
+    at: At,
     who: Person,
     key: String,
     /// The full-size face the states are edited from and judged against: the entry's base when
-    /// the board shows a face from this entry, else the face the board shows.
+    /// the ward shows a face from this entry, else the face the ward shows.
     reference: String,
     /// On file already: push these.
     from_manifest: BTreeMap<String, String>,
@@ -913,16 +952,55 @@ struct Gap {
     /// Pictures the board shows (full size) that have no 256 px sibling on the board or on file:
     /// made from the board's own picture, under its sha. No model, no filing.
     siblings_from_board: Vec<(String, String)>,
-    /// Her age on the board, for the choice of wording: a child's states are asked for gently.
+    /// Her age on the ward, for the choice of wording: a child's states are asked for gently.
     age: Option<u16>,
-    /// Whether the manifest entry under `key` holds the very face the board shows. When a face was
+    /// Whether the manifest entry under `key` holds the very face the ward shows. When a face was
     /// remade after she was admitted the board keeps the old one (add only), the states are edited
     /// from the board's face, and recording them under the new face's entry would file one
     /// woman's expressions under another's picture. So they are pushed and not recorded.
     record: bool,
 }
 
-fn gaps(ward: &WardView, pool: &[Person], manifest: &Manifest, r: &mut Report) -> Vec<Gap> {
+/// The states she lacks: from the file when the file's face is hers (`record`), each 256 px
+/// sibling the file has and she does not beside them; to make otherwise.
+fn short_of(entry: &crate::manifest::Entry, record: bool, has: impl Fn(&str) -> bool) -> (BTreeMap<String, String>, Vec<&'static str>) {
+    let mut from_manifest = BTreeMap::new();
+    let mut to_make = Vec::new();
+    for st in prompts::STATES {
+        if has(st) {
+            continue;
+        }
+        match entry.portrait.get(st).filter(|_| record) {
+            Some(url) => {
+                from_manifest.insert(st.to_string(), url.clone());
+            }
+            None => to_make.push(st),
+        }
+    }
+    if record {
+        for (st, v) in &entry.portrait_256 {
+            let k = format!("{st}_256");
+            if !has(&k) {
+                from_manifest.insert(k, v.clone());
+            }
+        }
+    }
+    (from_manifest, to_make)
+}
+
+/// Whether the entry's face is the one the ward shows, and the face the states are edited from:
+/// the painted base when it is, else the ward's own picture. A patient admitted before the rule
+/// shows her base as her stable, and that is her reference too.
+fn reference_of(entry: &crate::manifest::Entry, shown: &str) -> (bool, String) {
+    let record = entry.portrait.get("stable").map(String::as_str) == Some(shown) || entry.portrait.get("base").map(String::as_str) == Some(shown);
+    let reference = if record { entry.base().cloned().unwrap_or_else(|| shown.to_string()) } else { shown.to_string() };
+    (record, reference)
+}
+
+/// Every patient short of a state, in the order they are completed: the beds first, then the
+/// queue in the ward's own order — so a bed is always completed before a waiting patient, and a
+/// waiting patient is complete before a bed opens for her rather than after.
+fn gaps(ward: &WardView, pool: &[Person], manifest: &Manifest, ledger: &Ledger, r: &mut Report) -> Vec<Gap> {
     let mut out = Vec::new();
     for p in ward.open() {
         let (Some(name), Some(country)) = (&p.name, &p.country) else {
@@ -944,39 +1022,15 @@ fn gaps(ward: &WardView, pool: &[Person], manifest: &Manifest, r: &mut Report) -
         let Some(stable) = board_stable(p).or_else(|| entry.portrait.get("stable").cloned()) else {
             continue;
         };
-        let has = |st: &str| p.portraits.contains_key(st);
-        let record = entry.portrait.get("stable") == Some(&stable) || entry.portrait.get("base") == Some(&stable);
-        // The reference is the painted base when the board's face is this entry's; a patient
-        // admitted before the rule shows her base as her stable, and that is her reference too.
-        let reference = if record { entry.base().cloned().unwrap_or_else(|| stable.clone()) } else { stable.clone() };
-        let mut from_manifest = BTreeMap::new();
-        let mut to_make = Vec::new();
-        for st in prompts::STATES {
-            if has(st) {
-                continue;
-            }
-            match entry.portrait.get(st).filter(|_| record) {
-                Some(url) => {
-                    from_manifest.insert(st.to_string(), url.clone());
-                }
-                None => to_make.push(st),
-            }
-        }
+        let (record, reference) = reference_of(entry, &stable);
+        let (mut from_manifest, to_make) = short_of(entry, record, |st| p.portraits.contains_key(st));
         if p.portraits.is_empty() && p.portrait.is_none() {
             // A build that publishes no set at all: the stable is pushed too, so the board can show her.
             from_manifest.insert("stable".into(), stable.clone());
         }
-        // The 256 px siblings of every state she has on file that the board does not show yet.
-        if record {
-            for (st, v) in &entry.portrait_256 {
-                let k = format!("{st}_256");
-                if !p.portraits.contains_key(&k) {
-                    from_manifest.insert(k, v.clone());
-                }
-            }
-        }
-        // And of every full-size picture the board shows that neither the board nor the file has
-        // a sibling for — states edited from a face the board kept, pushed and never filed.
+        // The 256 px sibling of every full-size picture the board shows that neither the board
+        // nor the file has one for — states edited from a face the board kept, pushed and never
+        // filed.
         let mut siblings_from_board = Vec::new();
         for (st, url) in &p.portraits {
             if st.ends_with("_256") || !is_full_url(url) {
@@ -991,33 +1045,82 @@ fn gaps(ward: &WardView, pool: &[Person], manifest: &Manifest, r: &mut Report) -
         if from_manifest.is_empty() && to_make.is_empty() && siblings_from_board.is_empty() {
             continue;
         }
-        out.push(Gap { patient_id: p.patient_id, who: who.clone(), key, reference, from_manifest, to_make, siblings_from_board, age: p.age, record });
+        out.push(Gap { at: At::Bed(p.patient_id), who: who.clone(), key, reference, from_manifest, to_make, siblings_from_board, age: p.age, record });
+    }
+    // The queue row shows one picture, her stable; what else her pack carries is what this
+    // ledger carried to it (and her stable's sibling, `variants_sent`). A pack this ledger never
+    // sent has no such record here, and pushing blind every tick is not a record either.
+    for w in ward.waiting() {
+        let (Some(name), Some(country)) = (&w.name, &w.country) else {
+            r.say(format!("waiting pack {} names nobody, so there is nobody to put a face on", short(&w.pack)));
+            continue;
+        };
+        let Some(who) = person_for(pool, name, country) else {
+            r.say(format!("waiting pack {} ({name}, {country}) is nobody in the pool; not this factory's", short(&w.pack)));
+            continue;
+        };
+        let Some(sent) = ledger.sent.get(&w.pack) else {
+            r.say(format!("waiting pack {} ({name}) is not in this ledger, so what it carries is not known here; left to the ward", short(&w.pack)));
+            continue;
+        };
+        let shown = w.portrait.as_deref().map(full_of);
+        let Some(key) = entry_near(manifest, who, shown.as_deref(), w.age) else {
+            r.say(format!("waiting pack {} ({name}) has no face on file to make the others from", short(&w.pack)));
+            continue;
+        };
+        let entry = &manifest.entries[&key];
+        let Some(stable) = shown.or_else(|| entry.portrait.get("stable").cloned()) else {
+            continue;
+        };
+        let (record, reference) = reference_of(entry, &stable);
+        let (from_manifest, to_make) = short_of(entry, record, |st| st == prompts::STABLE || (st == "stable_256" && sent.variants_sent) || sent.carried.contains_key(st));
+        if from_manifest.is_empty() && to_make.is_empty() {
+            continue;
+        }
+        out.push(Gap { at: At::Waiting(w.pack.clone()), who: who.clone(), key, reference, from_manifest, to_make, siblings_from_board: Vec::new(), age: w.age, record });
     }
     out
 }
 
-fn dry_run_faces(cfg: &Config, r: &mut Report, ward: &WardView, pool: &[Person], manifest: &Manifest) {
+fn dry_run_faces(cfg: &Config, r: &mut Report, ward: &WardView, pool: &[Person], manifest: &Manifest, ledger: &Ledger) {
+    let found = gaps(ward, pool, manifest, ledger, r);
     let mut made_one = false;
-    for g in gaps(ward, pool, manifest, r) {
+    for g in &found {
         if !g.from_manifest.is_empty() {
-            r.say(format!("would push {} state(s) on file for patient {} ({}): {:?}", g.from_manifest.len(), g.patient_id, g.who.name, g.from_manifest.keys().collect::<Vec<_>>()));
+            r.say(format!("would push {} state(s) on file for {} ({}): {:?}", g.from_manifest.len(), g.at.words(), g.who.name, g.from_manifest.keys().collect::<Vec<_>>()));
         }
         if !g.to_make.is_empty() {
             if made_one {
-                r.say(format!("patient {} ({}) also lacks {:?}; would wait for a later tick", g.patient_id, g.who.name, g.to_make));
+                r.say(format!("{} ({}) also lacks {:?}; would wait for a later tick", g.at.words(), g.who.name, g.to_make));
             } else {
-                r.say(format!("would make {:?} for patient {} ({}) from {} with {} and push them", g.to_make, g.patient_id, g.who.name, g.reference, cfg.model));
+                r.say(format!("would make {:?} for {} ({}) from {} with {} and push them", g.to_make, g.at.words(), g.who.name, g.reference, cfg.model));
                 made_one = true;
             }
         }
+    }
+    // The queue in one line, for the operator reading the plan before the job is installed: how
+    // many waiting patients the model still has to work for, who, and whose turn it is — which
+    // is a bed's while any bed is short.
+    if ward.queue.is_some() {
+        let lacking: Vec<&str> = found.iter().filter(|g| matches!(g.at, At::Waiting(_)) && !g.to_make.is_empty()).map(|g| g.who.name.as_str()).collect();
+        r.say(format!(
+            "faces: {} waiting patient(s) lack states{}; {}",
+            lacking.len(),
+            if lacking.is_empty() { String::new() } else { format!(" ({})", lacking.join(", ")) },
+            match found.iter().find(|g| !g.to_make.is_empty()) {
+                Some(g) => format!("would complete {} ({}) this tick", g.who.name, g.at.words()),
+                None => "nothing to complete this tick".to_string(),
+            }
+        ));
     }
 }
 
 #[allow(clippy::too_many_arguments)]
 fn complete_faces(cfg: &Config, door: &dyn Door, tools: &dyn Tools, token: &Token, ward: &WardView, pool: &[Person], manifest: &mut Manifest, ledger: &mut Ledger, r: &mut Report) {
     let mut made_one = false;
-    let found = gaps(ward, pool, manifest, r);
+    let found = gaps(ward, pool, manifest, ledger, r);
     for g in found {
+        let name = g.at.words();
         let mut set = g.from_manifest.clone();
         // Siblings of the board's own pictures: fetched, resized, uploaded under their sha. No
         // model is called, so this is not the one-patient-per-tick step.
@@ -1030,21 +1133,25 @@ fn complete_faces(cfg: &Config, door: &dyn Door, tools: &dyn Tools, token: &Toke
                 Ok(small) => {
                     set.insert(format!("{st}_256"), small);
                 }
-                Err(e) => r.fail(format!("patient {} ({}): the sibling of {st} could not be made: {e}", g.patient_id, g.who.name)),
+                Err(e) => r.fail(format!("{name} ({}): the sibling of {st} could not be made: {e}", g.who.name)),
             }
         }
         if !g.to_make.is_empty() {
             if made_one {
-                r.say(format!("patient {} ({}) still lacks {:?}; next tick", g.patient_id, g.who.name, g.to_make));
+                r.say(format!("{name} ({}) still lacks {:?}; next tick", g.who.name, g.to_make));
             } else {
                 made_one = true;
                 let made = make_states(cfg, tools, &g, manifest, r);
                 set.extend(made.set);
                 for (st, e) in made.failed {
-                    r.fail(format!("patient {} ({}): {st} could not be made: {e}", g.patient_id, g.who.name));
+                    r.fail(format!("{name} ({}): {st} could not be made: {e}", g.who.name));
                 }
                 if !made.refused.is_empty() {
-                    if let Some(sent) = ledger.sent.values_mut().find(|s| s.patient_id == Some(g.patient_id)) {
+                    let sent = match &g.at {
+                        At::Bed(id) => ledger.sent.values_mut().find(|s| s.patient_id == Some(*id)),
+                        At::Waiting(pack) => ledger.sent.get_mut(pack),
+                    };
+                    if let Some(sent) = sent {
                         sent.refused.extend(made.refused);
                     }
                 }
@@ -1053,9 +1160,23 @@ fn complete_faces(cfg: &Config, door: &dyn Door, tools: &dyn Tools, token: &Toke
         if set.is_empty() {
             continue;
         }
-        match door.fill(token, g.patient_id, &set) {
+        // One route, two addresses: a bed's pictures are added by patient id, a waiting pack's
+        // replaced by pack id — the ward reads the shape of the id.
+        let reply = match &g.at {
+            At::Bed(id) => door.fill(token, *id, &set),
+            At::Waiting(pack) => door.replace(token, pack, &set),
+        };
+        match reply {
             Ok(FillReply::Filled(f)) => {
-                r.say(format!("patient {} ({}): {} added, {} kept, now {:?}", g.patient_id, g.who.name, f.added, f.kept, f.states));
+                r.say(format!("{name} ({}): {} added, {} kept, now {:?}", g.who.name, f.added, f.kept, f.states));
+                // What the door says the pack carries now is what the ledger records — and it
+                // is recorded the moment it is true, so a crash after this costs nothing twice.
+                if let At::Waiting(pack) = &g.at {
+                    if let Some(sent) = ledger.sent.get_mut(pack) {
+                        sent.carried.extend(set.iter().filter(|(k, _)| f.states.contains(k)).map(|(k, v)| (k.clone(), v.clone())));
+                    }
+                    save_ledger(cfg, ledger, r);
+                }
                 let mut said_256 = false;
                 for why in f.rejected {
                     if refuses_256(&why) {
@@ -1065,15 +1186,15 @@ fn complete_faces(cfg: &Config, door: &dyn Door, tools: &dyn Tools, token: &Toke
                         }
                         continue;
                     }
-                    r.fail(format!("patient {}: {why}", g.patient_id));
+                    r.fail(format!("{name}: {why}"));
                 }
             }
             Ok(FillReply::Closed { why }) => {
                 r.say(format!("door closed: {why}"));
                 return;
             }
-            Ok(FillReply::Refused { error }) => r.fail(format!("patient {}: {error}", g.patient_id)),
-            Err(e) => r.fail(format!("patient {}: {e}", g.patient_id)),
+            Ok(FillReply::Refused { error }) => r.fail(format!("{name}: {error}")),
+            Err(e) => r.fail(format!("{name}: {e}")),
         }
     }
 }

@@ -3,9 +3,10 @@
 //!
 //! The door is already content-addressed — the same pack pushed twice is one patient — so the
 //! ledger is the factory's half of the same promise, and the half the door cannot keep: the queue
-//! is not published pack by pack, so who is *waiting* is known only here. A pack is `unseen`
-//! from the moment it is sent until the board shows her; then it carries her patient id; then,
-//! when the board says she went home or died, it is `closed` and her face is free again.
+//! block lists who is waiting by pack id, but shows one picture per pack, so what each waiting
+//! pack *carries* is known only here. A pack is `unseen` from the moment it is sent until the
+//! board shows her; then it carries her patient id; then, when the board says she went home or
+//! died, it is `closed` and her face is free again.
 //!
 //! Resending an unseen pack is safe and is what a tick does first: the door answers `duplicates`
 //! if she is still queued and `queued` if the queue lost her, and either is right.
@@ -42,6 +43,12 @@ pub struct Sent {
     /// Set once her waiting pack carries the 256 px siblings — the door that takes them accepted.
     #[serde(default)]
     pub variants_sent: bool,
+    /// The states carried to her pack while she waits, state → url, as the door answered they
+    /// were on it — so they are not made or sent again while she waits. The queue row shows one
+    /// picture, so this is the only record of the rest; once she is in a bed the board itself
+    /// says what she has. Empty for a pack sent with her stable alone.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub carried: BTreeMap<String, String>,
     /// States the judge refused twice and the factory left out — "critical: <why>" — so a person
     /// can see which pictures the board falls back on, and why.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -71,6 +78,7 @@ impl Sent {
             patient_id: None,
             closed: false,
             variants_sent: false,
+            carried: BTreeMap::new(),
             refused: Vec::new(),
             case_id: None,
             difficulty: None,

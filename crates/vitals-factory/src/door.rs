@@ -2,8 +2,9 @@
 //!
 //! Four requests, all against `crates/vitals-web/src/main.rs` as it is on `cwf/ward`:
 //!
-//!   * `GET /api/ward` — the census, the policy, the board, and (once that build ships) the
-//!     queue block;
+//!   * `GET /api/ward` — the census, the policy, the board, and the queue block: how many wait,
+//!     which door they are behind, and (since the ward's `waiting_rows`) who they are, one row per
+//!     pack with the pack id it is addressed by;
 //!   * `GET /api/ward/cases?placeable=1` — the cases the ward holds and will place (7b's case
 //!     door, 16 Sep; `placeable` since 00034): case_id, country or null, difficulty, endemic,
 //!     provisional, title, version, patient, withdrawn. An older ward has no such door and
@@ -11,7 +12,10 @@
 //!   * `POST /api/ward/queue` — a page of packs, behind the token. Each pack may carry a
 //!     `case_id` and a `difficulty` beside the ward's own fields ([`Outbound`]); the door that
 //!     reads them is landing, and the one before it ignores them;
-//!   * `POST /api/ward/pack/<id>` — more of one patient's pictures, add only, same token.
+//!   * `POST /api/ward/pack/<id>` — more of one patient's pictures, same token. The ward reads the
+//!     id's shape: digits are a patient in a bed, whose pictures are add only (the board has shown
+//!     them); 64 hex is a pack still waiting, whose pictures are replaced (nobody has seen her).
+//!     A waiting patient has no patient id, so hers go under the pack id the queue row publishes.
 //!
 //! Those four and no other. The factory never takes, admits or frees a bed — the ward's ticker
 //! does — so a 409 from a take-style route is nothing it can receive, and nothing it would act
@@ -56,6 +60,38 @@ pub struct Queue {
     /// `open` (packs taken, patients admitted), `preview` (packs taken, nobody admitted — since
     /// 17 Sep, the queue fills while the founder looks) or `closed`.
     pub door: String,
+    /// Who is waiting, one row per pack, in the order the ward lists them (by pack id, which is
+    /// also how its ticker breaks ties when a bed frees). Empty on a build before the rows.
+    #[serde(default)]
+    pub waiting_patients: Vec<WaitingPatient>,
+}
+
+/// One row of the queue, as the ward's `waiting_rows` writes it: the pack id she is addressed
+/// by, who she is, and the one face her pack shows. What is deliberately absent is what she does
+/// not have yet — a bed, a patient id (she is not on the chain), a state — and the rest of her
+/// set: the row shows one picture, so which states her pack carries is known only to whoever
+/// carried them ([`crate::ledger::Sent::carried`]).
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct WaitingPatient {
+    /// 64 hex: the content address her pictures are replaced under.
+    pub pack: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub age: Option<u16>,
+    #[serde(default)]
+    pub sex: Option<String>,
+    #[serde(default)]
+    pub country: Option<String>,
+    #[serde(default)]
+    pub difficulty: Option<String>,
+    #[serde(default)]
+    pub endemic: bool,
+    #[serde(default)]
+    pub case_title: Option<String>,
+    /// The face the pack arrived with — its `stable`, full size or the 256 px sibling.
+    #[serde(default)]
+    pub portrait: Option<String>,
 }
 
 impl Queue {
@@ -234,6 +270,12 @@ impl WardView {
     /// The patients in beds.
     pub fn open(&self) -> impl Iterator<Item = &BoardPatient> {
         self.patients.iter().filter(|p| p.is_open())
+    }
+
+    /// The patients waiting for one, as the queue block lists them; nobody on a build that
+    /// publishes no rows.
+    pub fn waiting(&self) -> impl Iterator<Item = &WaitingPatient> {
+        self.queue.iter().flat_map(|q| q.waiting_patients.iter())
     }
 }
 
