@@ -98,8 +98,12 @@ pub struct Pack {
     pub tags: Vec<String>,
     /// True when the case is tagged `endemic` — drawn from a country's list, never the common draw.
     pub endemic: bool,
-    /// Always true from this compiler. Cleared by a clinician, never by code.
+    /// True until the case's own `world.review` block says the advisor has read it — then
+    /// false, with the ruling beside it in `review`. Cleared by a clinician's ruling recorded
+    /// in the library, never by code.
     pub provisional: bool,
+    /// The ruling the flag was read from, when the case carried one.
+    pub review: Option<source::Review>,
     /// The case's own version string.
     pub version: String,
     /// Which archetype compiled it.
@@ -146,10 +150,22 @@ fn refuse(id: &str, reason: impl Into<String>) -> Refusal {
     Refusal { case_id: id.to_string(), reason: reason.into() }
 }
 
-/// Compile one case. `Ok` is a pack that passed every gate; `Err` says why it did not.
+/// Compile one case with no ruling beside it: the pack is provisional.
 pub fn compile(case_json: &str, source: Source) -> Result<Pack, Refusal> {
+    compile_with(case_json, source, None)
+}
+
+/// Compile one case. `Ok` is a pack that passed every gate; `Err` says why it did not. `review`
+/// is the case's `world.review` block when the library carries one: `reviewed` clears the
+/// pack's `provisional` flag and names the reviewer and the date on its notes; `rejected` is a
+/// refusal; anything else, or nothing, is provisional.
+pub fn compile_with(case_json: &str, source: Source, review: Option<source::Review>) -> Result<Pack, Refusal> {
     let case = embla::parse_case(case_json).map_err(|e| refuse("?", e))?;
     let id = case.meta.id.clone();
+    if let Some(r) = review.as_ref().filter(|r| r.rejected()) {
+        return Err(refuse(&id, format!("{} — not compiled", r.sentence())));
+    }
+    let provisional = !review.as_ref().is_some_and(source::Review::reviewed);
 
     // The language gate comes first: a Thai story rendered under a persona from elsewhere is a
     // wrong sheet, and there is no translation step yet. Only English compiles; a case that says
@@ -212,7 +228,7 @@ pub fn compile(case_json: &str, source: Source) -> Result<Pack, Refusal> {
 
     let built = interventions::build(&case, &mapped, a);
     let sim = scenario::build(&case, a, &v0, &mapped, &built);
-    let rubric::Derived { rubric, criteria } = rubric::derive(&case, a, &mapped, &built, &sim, &source.sha256);
+    let rubric::Derived { rubric, criteria } = rubric::derive(&case, a, &mapped, &built, &sim, &source.sha256, review.as_ref());
 
     // the management path: gates, then every critical order in the plan's order, twenty
     // seconds apart; then everything else the rubric pays for — the supportive orders, the
@@ -278,6 +294,15 @@ pub fn compile(case_json: &str, source: Source) -> Result<Pack, Refusal> {
     let persona = text::Persona::new(age, sex.as_deref());
     let dp = |t: &str| persona.depersonalise(&text::scrub(t, &case.patient.name));
     let mut sce_value = sim.sce.clone();
+    if let Some(r) = review.as_ref().filter(|r| r.reviewed()) {
+        // the scenario's own note says the same as the sheet's: read, by whom, when
+        if let Some(note) = sce_value["_note"].as_str() {
+            let reviewed = note
+                .replace("Provisional: clinically shaped by a deterministic compiler, not clinically reviewed.", &format!("Clinically {}; shaped by a deterministic compiler.", r.sentence()))
+                .replace("Provisional: shaped by a deterministic compiler on the ACLS algorithm, not clinically reviewed.", &format!("Clinically {}; shaped by a deterministic compiler on the ACLS algorithm.", r.sentence()));
+            sce_value["_note"] = serde_json::Value::String(reviewed);
+        }
+    }
     prose::rewrite(&mut sce_value, &dp);
     let mut rubric_value = rubric.clone();
     prose::rewrite(&mut rubric_value, &dp);
@@ -321,7 +346,8 @@ pub fn compile(case_json: &str, source: Source) -> Result<Pack, Refusal> {
         language: case.meta.language.clone(),
         tags: case.meta.search_tags.clone(),
         endemic,
-        provisional: true,
+        provisional,
+        review,
         version: case.meta.version.clone().unwrap_or_else(|| "0.0.0".into()),
         archetype: a.id().to_string(),
         archetype_label: a.label().to_string(),

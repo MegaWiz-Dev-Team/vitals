@@ -5,9 +5,98 @@
 //! `git show`, so a case on a branch nobody has checked out compiles without anyone touching
 //! the library's working tree. Nothing here writes, checks out, or stashes.
 
+use serde::Serialize;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+/// The advisor's ruling on a case — the `world.review` block of its `case.meta.yaml`, as the
+/// library's own `tools/world-meta.py review` writes it: a status, a reviewing *role* (never a
+/// name) and a date. `reviewed` is the only status that clears a pack's `provisional` flag.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Default)]
+pub struct Review {
+    /// `provisional` | `reviewed` | `rejected`
+    pub status: String,
+    /// A role — `clinical-advisor`, `paediatrician`, … — as the library's validator allows.
+    pub by: Option<String>,
+    /// `YYYY-MM-DD`
+    pub date: Option<String>,
+}
+
+impl Review {
+    pub fn reviewed(&self) -> bool {
+        self.status == "reviewed"
+    }
+    pub fn rejected(&self) -> bool {
+        self.status == "rejected"
+    }
+    /// "the clinical advisor", from the role the block names; "the reviewer" when it names none.
+    pub fn who(&self) -> String {
+        match self.by.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
+            Some(role) => format!("the {}", role.replace(['-', '_'], " ")),
+            None => "the reviewer".to_string(),
+        }
+    }
+    /// "reviewed by the clinical advisor on 2026-09-20" — the sentence the pack's notes carry.
+    pub fn sentence(&self) -> String {
+        format!("{} by {} on {}", self.status, self.who(), self.date.as_deref().unwrap_or("an unrecorded date"))
+    }
+}
+
+/// Read `world.review` out of a `case.meta.yaml`. The block is written in one canonical shape by
+/// the library's tools (`world:` at the margin, its keys two spaces in, `review:` with `status`,
+/// `by`, `date` four spaces in — or `review: null`), so this reads that shape and nothing more
+/// general: the `review:` line under `provenance:` is prose and is never the ruling. `None` when
+/// the case is not on the World lane or its review is null.
+pub fn parse_world_review(yaml: &str) -> Option<Review> {
+    let mut in_world = false;
+    let mut in_review = false;
+    let mut review: Option<Review> = None;
+    for raw in yaml.lines() {
+        let line = raw.trim_end();
+        if line.is_empty() || line.trim_start().starts_with('#') {
+            continue;
+        }
+        let indent = line.len() - line.trim_start().len();
+        if indent == 0 {
+            if in_world {
+                break;
+            }
+            in_world = line == "world:";
+            continue;
+        }
+        if !in_world {
+            continue;
+        }
+        if indent == 2 {
+            let body = line.trim_start();
+            if body == "review:" {
+                in_review = true;
+                review = Some(Review::default());
+            } else {
+                in_review = false;
+                if body.starts_with("review:") {
+                    // `review: null` — or anything else on one line — is no ruling
+                    review = None;
+                }
+            }
+            continue;
+        }
+        if in_review && indent == 4 {
+            if let (Some(r), Some((k, v))) = (review.as_mut(), line.trim_start().split_once(':')) {
+                let v = v.trim().trim_matches('"').trim_matches('\'').to_string();
+                let v = if v.is_empty() || v == "null" || v == "~" { None } else { Some(v) };
+                match k.trim() {
+                    "status" => r.status = v.unwrap_or_default(),
+                    "by" => r.by = v,
+                    "date" => r.date = v,
+                    _ => {}
+                }
+            }
+        }
+    }
+    review.filter(|r| !r.status.is_empty())
+}
 
 /// The deployment target whose cases are the season's. World never carries them.
 pub const SEASON_TARGET: &str = "vitals";
@@ -67,6 +156,22 @@ impl Library {
                 String::from_utf8(out.stdout).map_err(|e| format!("{spec}: not utf-8: {e}"))
             }
         }
+    }
+
+    /// The advisor's ruling on one case, from `cases/<id>/case.meta.yaml` beside the case —
+    /// `None` when there is no meta file, no world block, or no review.
+    pub fn review(&self, id: &str) -> Option<Review> {
+        let text = match &self.git_ref {
+            None => std::fs::read_to_string(self.dir.join("cases").join(id).join("case.meta.yaml")).ok()?,
+            Some(r) => {
+                let out = Command::new("git").arg("-C").arg(&self.dir).arg("show").arg(format!("{r}:cases/{id}/case.meta.yaml")).output().ok()?;
+                if !out.status.success() {
+                    return None;
+                }
+                String::from_utf8(out.stdout).ok()?
+            }
+        };
+        parse_world_review(&text)
     }
 
     /// The raw text of a file at the library root, from the working tree or the ref.

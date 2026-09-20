@@ -12,7 +12,7 @@
 use std::path::PathBuf;
 use vitals_casefactory::report::{render, Outcome};
 use vitals_casefactory::source::Library;
-use vitals_casefactory::{compile, Source};
+use vitals_casefactory::{compile_with, Source};
 
 const USAGE: &str = "usage:
   vitals-casefactory compile --cases <dir | dir@ref> --id <case_id> --out <dir>
@@ -72,7 +72,7 @@ fn main() {
         } else {
             match lib.read(&id) {
             Err(e) => Outcome::Refused(vitals_casefactory::Refusal { case_id: id.clone(), reason: e }),
-            Ok(json) => match compile(&json, Source::of("embla-cases", &git_ref, &json)) {
+            Ok(json) => match compile_with(&json, Source::of("embla-cases", &git_ref, &json), lib.review(&id)) {
                 Ok(pack) => {
                     let path = out.join(format!("{}.pack.json", pack.case_id));
                     match serde_json::to_string_pretty(&pack) {

@@ -70,7 +70,7 @@ pub struct Derived {
     pub criteria: Vec<PlanStep>,
 }
 
-pub fn derive(case: &Case, a: Archetype, mapped: &Mapped, built: &Built, sim: &Sim, source_sha: &str) -> Derived {
+pub fn derive(case: &Case, a: Archetype, mapped: &Mapped, built: &Built, sim: &Sim, source_sha: &str, review: Option<&crate::source::Review>) -> Derived {
     // ── history: the lines worth digging for ─────────────────────────────────────
     let mut history: Vec<Value> = Vec::new();
     for pass in ["on_direct_ask", "on_ask"] {
@@ -287,11 +287,17 @@ pub fn derive(case: &Case, a: Archetype, mapped: &Mapped, built: &Built, sim: &S
     // different exam (the clinical advisor's ruling 3.1, 20 Sep 2026).
     let pass_bps = vitals_progress::STAR_PASS_BPS;
     let osce_mark = case.hidden.rubric.pass_mark.map(|p| format!("{p:.0} %")).unwrap_or_else(|| "unset".into());
+    // "provisional … Not clinically reviewed." until the case's own review block says otherwise;
+    // then the sheet opens with the ruling and closes by naming the reviewer and the date.
+    let (opening, closing) = match review.filter(|r| r.reviewed()) {
+        Some(r) => (r.sentence(), format!("Clinically {}.", r.sentence())),
+        None => ("provisional".to_string(), "Not clinically reviewed.".to_string()),
+    };
     let rubric = json!({
         "case": case.meta.id,
         "pass_bps": pass_bps,
         "status": format!(
-            "provisional — compiled by vitals-casefactory from embla-cases {} v{} (sha256:{}) under the {} archetype: management_plan→action/action_by, red_flags→no_harm, correct_diagnosis→action, expected_workup→action, outcome from the replay. Judged dimensions dropped (communication). Points scaled to 40 from the case's rubric dimension weights. Pass mark {} % — the ward's, not the case's OSCE mark of {}. Not clinically reviewed.",
+            "{opening} — compiled by vitals-casefactory from embla-cases {} v{} (sha256:{}) under the {} archetype: management_plan→action/action_by, red_flags→no_harm, correct_diagnosis→action, expected_workup→action, outcome from the replay. Judged dimensions dropped (communication). Points scaled to 40 from the case's rubric dimension weights. Pass mark {} % — the ward's, not the case's OSCE mark of {}. {closing}",
             case.meta.id,
             case.meta.version.as_deref().unwrap_or("?"),
             &source_sha[..source_sha.len().min(16)],
