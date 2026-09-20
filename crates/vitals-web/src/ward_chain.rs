@@ -156,11 +156,17 @@ impl Seen {
     /// of transactions and loses nothing.
     pub fn walk(
         page: Vec<(String, u64)>,
+        budget: &Budget,
         mut read: impl FnMut(&str, u64) -> Result<Vec<crate::ward::ShiftOnChain>, String>,
     ) -> (Vec<crate::ward::ShiftOnChain>, Option<(String, u64)>, Option<String>) {
         let mut got = Vec::new();
         let mut cursor = None;
-        for (sig, slot) in page.into_iter().rev() {
+        for (read_so_far, (sig, slot)) in page.into_iter().rev().enumerate() {
+            // Asked before the round trip, not after: the budget is there to stop the ward paying
+            // for one more, and a check that runs afterwards has already paid for it.
+            if let Some(why) = budget.spent(read_so_far, std::time::Instant::now()) {
+                return (got, cursor, Some(why));
+            }
             match read(&sig, slot) {
                 Ok(shifts) => {
                     got.extend(shifts);
@@ -228,9 +234,10 @@ impl Seen {
 /// drives with a page carrying a null.
 pub fn walk_history(
     page: Vec<(String, u64)>,
+    budget: &Budget,
     read: impl FnMut(&str, u64) -> Result<Vec<crate::ward::ShiftOnChain>, String>,
 ) -> (Vec<crate::ward::ShiftOnChain>, Option<(String, u64)>, Option<String>) {
-    Seen::walk(page, read)
+    Seen::walk(page, budget, read)
 }
 
 /// The chain, as the ward reads it.
@@ -355,6 +362,7 @@ impl WardChain {
         patient_id: u64,
         seen: &mut Seen,
         store: &crate::store::Store,
+        budget: &Budget,
     ) -> Result<Reading, String> {
         let pda = self.patient_pda(patient_id);
         let until = seen.until().and_then(|s| Signature::from_str(&s).ok());
@@ -390,7 +398,7 @@ impl WardChain {
             .collect();
 
         let mut signatures: std::collections::BTreeMap<u64, String> = Default::default();
-        let (shifts, cursor, trouble) = Seen::walk(page, |sig, slot| {
+        let (shifts, cursor, trouble) = Seen::walk(page, budget, |sig, slot| {
             let parsed = Signature::from_str(sig).map_err(|e| format!("{sig} is not a signature: {e}"))?;
             let tx = self
                 .rpc
@@ -675,7 +683,7 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
     for p in &patients {
         let key = format!("p{}", p.patient_id);
         let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
-        let added = chain.refresh(p.patient_id, &mut seen, store);
+        let added = chain.refresh(p.patient_id, &mut seen, store, &Budget::whole_history());
         if matches!(added, Ok(ref r) if r.added > 0) {
             let _ = store.put(SHIFT_CACHE, &key, &seen);
         }
@@ -1878,9 +1886,22 @@ pub fn repair_tapes(
 ) -> Repaired {
     let mut out = Repaired::default();
     let packs_now = packs(store);
+    // **Made once for the whole pass, and the two legs then mean different things — deliberately.**
+    // `until` is an absolute instant, so sharing one budget makes the deadline *pass-wide*: the pass
+    // is bounded at ten seconds however many patients need listing. `entries` is counted from zero
+    // for each patient, so it stays a per-patient cap. A deadline given to each patient separately
+    // would bound nobody — twenty-six patients at ten seconds each is four minutes, which is the
+    // thing being fixed.
+    //
+    // A patient who gets no time this pass keeps the cache she had, is flagged incomplete, and is
+    // first in line next pass: the ones ahead of her are up to date by then and `needs_listing`
+    // skips them before the budget is consulted at all. So the turn rotates without anybody
+    // tracking whose turn it is.
+    let budget = Budget::pass();
     for p in patients {
         let began = std::time::Instant::now();
-        let (notes, listed, seen, read) = repair_one(chain, store, root, p, held, &packs_now);
+        let (notes, listed, seen, read) =
+            repair_one(chain, store, root, p, held, &packs_now, &budget);
         out.notes.extend(notes);
         out.listed += usize::from(listed);
         out.cached.seen.insert(p.patient_id, seen);
@@ -1907,6 +1928,59 @@ pub struct Repaired {
     pub listed: usize,
     /// One entry per patient walked, in the order the chain listed them. Read through [`pace`].
     pub each_ms: Vec<u64>,
+}
+
+/// What one patient's history may cost one pass.
+///
+/// **Two legs, and a count alone would not do.** Unthrottled a `get_transaction` is about 40 ms;
+/// throttled it is about a second. So an entry count is 8 s on a good day and 200 s on a bad one,
+/// and the bad day is the one this exists for — 00067 spent 51 s inside one history. The clock is
+/// what bounds the pass. The entry count is the belt to its braces: it keeps one absurd history
+/// from queueing behind a clock that has not run out yet.
+///
+/// Stopping is not a failure and shares the path that a failure takes — what was read is kept, the
+/// cursor stops at it, the next pass resumes there, and nothing is decided on a part of a history.
+/// That path was already there; a budget is what reaches it deliberately rather than by accident.
+pub struct Budget {
+    /// Transactions this pass may read for one patient.
+    pub entries: usize,
+    /// When this patient's turn is over, or `None` for a caller that must read to the end.
+    pub until: Option<std::time::Instant>,
+}
+
+impl Budget {
+    /// The ticker's pass: bounded so a long history costs several passes and holds the ward for
+    /// none of them. Ten seconds because the pass runs every sixty and answers nobody while it is
+    /// working; two hundred entries because at a shift a minute nothing real comes close.
+    pub fn pass() -> Budget {
+        Budget {
+            entries: 200,
+            until: Some(std::time::Instant::now() + std::time::Duration::from_secs(10)),
+        }
+    }
+
+    /// For a caller that needs the whole history and will wait for it.
+    pub fn whole_history() -> Budget {
+        Budget { entries: usize::MAX, until: None }
+    }
+
+    /// Why this patient's turn is over, or `None` to keep reading. Pure: `now` is given, not read.
+    pub fn spent(&self, read_so_far: usize, now: std::time::Instant) -> Option<String> {
+        if read_so_far >= self.entries {
+            return Some(format!(
+                "this pass's {} transactions for one history are spent — the rest is the next \
+                 pass's",
+                self.entries
+            ));
+        }
+        if self.until.is_some_and(|end| now >= end) {
+            return Some(format!(
+                "this pass's time for one history ran out after {read_so_far} transactions — the \
+                 chain is answering slowly, and the rest is the next pass's"
+            ));
+        }
+        None
+    }
 }
 
 /// What one read of a patient's history managed.
@@ -1971,6 +2045,7 @@ fn repair_one(
     p: &crate::ward::PatientOnChain,
     held: &[(String, Vec<vitals_replay::Step>)],
     packs_now: &std::collections::BTreeMap<u64, crate::ward::Pack>,
+    budget: &Budget,
 ) -> (Vec<String>, bool, Seen, bool) {
     let mut notes = Vec::new();
     let key = format!("p{}", p.patient_id);
@@ -1993,7 +2068,7 @@ fn repair_one(
     //
     // Persistence and trust are separate decisions. Conflating them is what the old code did in
     // both directions at once: it persisted a partial history *and* trusted it.
-    let whole = match chain.refresh(p.patient_id, &mut seen, store) {
+    let whole = match chain.refresh(p.patient_id, &mut seen, store, budget) {
         Err(e) => {
             notes.push(format!("patient {}'s history could not be read: {e}", p.patient_id));
             return (notes, true, seen, false);
@@ -3160,7 +3235,9 @@ pub fn find_shift(
         for p in &patients {
             let key = format!("p{}", p.patient_id);
             let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
-            if refreshing && chain.refresh(p.patient_id, &mut seen, store).is_ok() {
+            if refreshing
+                && chain.refresh(p.patient_id, &mut seen, store, &Budget::whole_history()).is_ok()
+            {
                 let _ = store.put(SHIFT_CACHE, &key, &seen);
             }
             // Skipped rather than matched: a cached row with an empty hash is a row about

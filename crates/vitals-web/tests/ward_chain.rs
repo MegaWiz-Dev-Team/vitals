@@ -777,7 +777,7 @@ fn a_stranger_opens_an_account_and_declares_before_playing() {
 #[test]
 fn an_unreadable_entry_stops_the_walk_rather_than_being_skipped() {
     use vitals_web::ward::ShiftOnChain;
-    use vitals_web::ward_chain::{walk_history, Seen};
+    use vitals_web::ward_chain::{walk_history, Budget, Seen};
 
     // Newest first, the way getSignaturesForAddress answers.
     let page = vec![("s5".to_string(), 500u64), ("s4".into(), 400), ("s3".into(), 300),
@@ -795,7 +795,8 @@ fn an_unreadable_entry_stops_the_walk_rather_than_being_skipped() {
             _ => Ok(vec![shift_at(slot)]),
         }
     };
-    let (got, cursor, trouble) = walk_history(page.clone(), read);
+    // Read to the end: this test is about the entry that cannot be read, not about a budget.
+    let (got, cursor, trouble) = walk_history(page.clone(), &Budget::whole_history(), read);
 
     assert_eq!(got.len(), 1, "only s1 produced a shift, and s2 produced none");
     assert_eq!(cursor.as_ref().map(|(s, _)| s.as_str()), Some("s2"),
@@ -1839,8 +1840,8 @@ fn a_pass_spends_only_so_long_on_one_history() {
 
     assert_eq!(b.spent(0, now), None, "nothing read yet and the clock has not started");
     assert_eq!(b.spent(199, now), None, "199 of 200, with time in hand");
-    assert_eq!(b.spent(200, now - Duration::from_secs(1)), None,
-               "and `now` is what decides, not when the budget was made");
+    assert_eq!(b.spent(3, now - Duration::from_secs(1)), None,
+               "the clock leg reads the `now` it is given, not the one the budget was made at");
 
     let entries = b.spent(200, now).expect("the entry leg is spent at 200");
     assert!(entries.contains("200"), "it says how many it read: {entries}");
@@ -1874,4 +1875,44 @@ fn a_pass_spends_only_so_long_on_one_history() {
         assert!(passes <= 8, "four expected, and anything unbounded is the bug this guards");
     }
     assert_eq!(passes, 4);
+}
+
+/// **A budget stop and an unreadable entry leave the walk in the same state.**
+///
+/// The point of putting the budget in the walk rather than beside it: the partial-read path already
+/// existed, was already tested by the test above, and is now — since `Reading` — already distrusted
+/// for writes and already persisted. A budget is the deliberate way into it. If a budget stop left a
+/// different state behind, that would be a second path with a second set of bugs.
+#[test]
+fn a_budget_stop_leaves_the_walk_where_a_failure_would() {
+    use vitals_web::ward::ShiftOnChain;
+    use vitals_web::ward_chain::{walk_history, Budget, Seen};
+
+    let page = vec![("s5".to_string(), 500u64), ("s4".into(), 400), ("s3".into(), 300),
+                    ("s2".into(), 200), ("s1".into(), 100)];
+    let shift_at = |slot: u64| ShiftOnChain {
+        patient_id: 42, signer: [1; 32], slot, run_hash: [slot as u8; 32],
+    };
+    let mut asked = Vec::new();
+    let read = |sig: &str, slot: u64| -> Result<Vec<ShiftOnChain>, String> {
+        asked.push(sig.to_string());
+        Ok(vec![shift_at(slot)])
+    };
+
+    // Two transactions, then the pass's turn for this patient is over.
+    let (got, cursor, stopped) =
+        walk_history(page.clone(), &Budget { entries: 2, until: None }, read);
+
+    assert_eq!(asked, ["s1", "s2"], "oldest first, and it stopped before paying for a third");
+    assert_eq!(got.len(), 2);
+    assert_eq!(cursor.as_ref().map(|(s, _)| s.as_str()), Some("s2"),
+               "the cursor is the newest entry fully read — the same rule as a failure stop, so \
+                the next pass begins at s3 and nothing is walked twice");
+    let why = stopped.expect("a stop says why");
+    assert!(why.contains("transactions"), "and says it was a budget, not a broken entry: {why}");
+
+    // Which is what makes it converge: absorb, and the next listing starts after s2.
+    let mut seen = Seen::default();
+    seen.absorb(got.into_iter().map(|s| (s, "sig".to_string())).collect(), cursor);
+    assert_eq!(seen.until().as_deref(), Some("s2"));
 }

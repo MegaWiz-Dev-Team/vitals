@@ -1969,7 +1969,7 @@ fn ward_rebuild(store: &store::Store, patient_id: u64) -> Option<WardRebuild> {
     let mut seen: ward_chain::Seen = store
         .get(ward_chain::SHIFT_CACHE, &format!("p{patient_id}"))
         .unwrap_or_default();
-    let _ = chain.refresh(patient_id, &mut seen, store);
+    let _ = chain.refresh(patient_id, &mut seen, store, &ward_chain::Budget::whole_history());
     Some(WardRebuild { shifts: seen.shifts(), admitted_slot: her.admitted_slot })
 }
 
@@ -2047,7 +2047,8 @@ fn open_shift(
     // found by the hash its leaf commits to.
     let key = format!("p{patient_id}");
     let mut seen: ward_chain::Seen = store.get(ward_chain::SHIFT_CACHE, &key).unwrap_or_default();
-    if matches!(chain.refresh(patient_id, &mut seen, store), Ok(r) if r.added > 0) {
+    let read = chain.refresh(patient_id, &mut seen, store, &ward_chain::Budget::whole_history());
+    if matches!(read, Ok(r) if r.added > 0) {
         let _ = store.put(ward_chain::SHIFT_CACHE, &key, &seen);
     }
     let (state, played) = ward_chain::resumed(
