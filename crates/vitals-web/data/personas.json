@@ -278,7 +278,7 @@
       { "name": "Mamy Andrianarivo", "sex": "m" },
       { "name": "Tiana Razafindrakoto", "sex": "f" },
       { "name": "Rija Ravelomanantsoa", "sex": "m" } ] },
-    { "country": "COD", "place": "Dem. Rep. Congo", "personas": [
+    { "country": "COD", "place": "Democratic Republic of the Congo", "personas": [
       { "name": "Grace Mwamba", "local": "Grâce Mwamba", "sex": "f" },
       { "name": "Patrick Ilunga", "sex": "m" },
       { "name": "Esperance Kasongo", "local": "Espérance Kasongo", "sex": "f" },
@@ -400,7 +400,7 @@
       { "name": "Ousmane Garba", "sex": "m" },
       { "name": "Ramatou Idrissa", "sex": "f" },
       { "name": "Souleymane Adamou", "sex": "m" } ] },
-    { "country": "SSD", "place": "S. Sudan", "personas": [
+    { "country": "SSD", "place": "South Sudan", "personas": [
       { "name": "Achol Deng", "sex": "f" },
       { "name": "Mading Alier", "sex": "m" },
       { "name": "Nyagoah Gatluak", "sex": "f" },
