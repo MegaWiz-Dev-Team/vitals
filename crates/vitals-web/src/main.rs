@@ -2766,12 +2766,15 @@ fn ward_now(held: &WardView, store: &store::Store, state: &str) -> serde_json::V
 /// whether the ward is keeping up: measured at 123 s on a cold staging instance with eighteen
 /// patients, which is what a visitor used to pay.
 fn refresh_behind(held: &WardView, state: &str) {
-    if BOARD_READING.swap(true, std::sync::atomic::Ordering::SeqCst) {
-        return;
-    }
+    // Taken here and moved into the thread, so every way out gives it back: an early return, a
+    // panic in the chain read, a poisoned view mutex, or a thread that could not be spawned at all.
+    // It used to be given back by the last line of the thread body, which meant one panic left the
+    // board unrefreshable for the life of the process, silently.
+    let Some(gate) = rebuild::take(&BOARD_READING) else { return };
     let view = Arc::clone(held);
     let dir = state.to_string();
     std::thread::spawn(move || {
+        let _gate = gate;
         let began = Instant::now();
         let fresh = match store::Store::open(std::path::PathBuf::from(&dir)) {
             Ok(store) => match ward_chain::WardChain::connect() {
@@ -2797,7 +2800,6 @@ fn refresh_behind(held: &WardView, state: &str) {
             );
             *view.lock().unwrap() = Some((Instant::now(), fresh));
         }
-        BOARD_READING.store(false, std::sync::atomic::Ordering::SeqCst);
     });
 }
 

@@ -14,6 +14,37 @@
 
 use std::collections::HashSet;
 use std::sync::{Condvar, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// One-at-a-time work, where a second caller is **refused** rather than made to wait.
+///
+/// [`Rebuilds::once`] is the other shape: a second caller for the same id waits and then takes what
+/// the first produced, which is right when the answer is worth having. This one is for work where a
+/// second run is not wanted at all — a pass that writes to the chain, where two of them closing the
+/// same patient would anchor her twice. The caller gets `None` and says so; it never queues.
+///
+/// **The gate comes back from a `Drop`, and that is the whole reason this type exists.** The board
+/// refresh took its flag with a `swap(true)` and gave it back with a `store(false)` on the last line
+/// of its thread — so a panic anywhere above, in a chain read or on a poisoned mutex, left the flag
+/// set for the life of the process. Nothing refreshed the board again, with no error and no log:
+/// just a ward quietly getting older while every reader was told it was being refreshed. Held from
+/// a guard, every way out of the work gives the gate back, panics and early returns alike.
+///
+/// Take it *before* spawning and move the guard into the thread. Then a thread that cannot be
+/// spawned drops the closure, the guard goes with it, and the gate is free — no branch needed for a
+/// case that only happens when the machine is already in trouble.
+pub struct Held(&'static AtomicBool);
+
+/// Take the gate, or `None` if somebody already has it.
+pub fn take(flag: &'static AtomicBool) -> Option<Held> {
+    (!flag.swap(true, Ordering::SeqCst)).then_some(Held(flag))
+}
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
 
 /// One rebuild per id at a time.
 ///

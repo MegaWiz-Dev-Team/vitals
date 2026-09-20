@@ -119,8 +119,10 @@ fn a_gate_is_given_back_even_when_the_worker_panics() {
     }));
     assert!(died.is_err(), "the panic is real, not swallowed by the test");
 
-    assert!(take(&FLAG).is_some(),
-            "and the next worker gets in — a process that panicked once is not a process that \
-             stops refreshing its board until somebody notices a stale ward");
-    assert!(FLAG.load(Ordering::SeqCst), "…and now holds it");
+    let next = take(&FLAG).expect(
+        "the next worker gets in — a process that panicked once is not a process that stops \
+         refreshing its board until somebody notices a stale ward");
+    assert!(FLAG.load(Ordering::SeqCst), "and while it works, the gate reads as taken");
+    drop(next);
+    assert!(!FLAG.load(Ordering::SeqCst), "and it gives the gate back on the ordinary way out too");
 }
