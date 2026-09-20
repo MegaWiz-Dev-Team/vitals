@@ -1815,3 +1815,63 @@ fn a_partial_history_is_kept_and_never_decided_on() {
             "and a patient this pass has no reading of at all is not a patient to close: absence \
              of a history is not evidence of an idle one");
 }
+
+/// **A pass spends only so long on one patient's history, and the rest is the next pass's.**
+///
+/// 00067: 69.2 s, of which `repair` was 66.9 s — two listings, one of them 51 s. The listing itself
+/// is a single call; the time is in what follows it, one `get_transaction` per signature with
+/// nothing bounding how many. One patient with a long unread history holds the whole ward.
+///
+/// **Two legs, because a count alone does not bound a pass.** Unthrottled a transaction is ~40 ms;
+/// throttled it is ~1 s. A budget of 200 entries is 8 s on a good day and 200 s on a bad one — and
+/// the bad day is the one this exists for. The clock is what bounds the pass; the entry count keeps
+/// one absurd history from queueing behind a clock that has not run out yet.
+///
+/// `spent` takes `now` rather than reading it, so the whole decision is pure: no sleeping, no
+/// validator, and the two legs can be tested at the boundary rather than near it.
+#[test]
+fn a_pass_spends_only_so_long_on_one_history() {
+    use std::time::{Duration, Instant};
+    use vitals_web::ward_chain::Budget;
+
+    let now = Instant::now();
+    let b = Budget { entries: 200, until: Some(now + Duration::from_secs(10)) };
+
+    assert_eq!(b.spent(0, now), None, "nothing read yet and the clock has not started");
+    assert_eq!(b.spent(199, now), None, "199 of 200, with time in hand");
+    assert_eq!(b.spent(200, now - Duration::from_secs(1)), None,
+               "and `now` is what decides, not when the budget was made");
+
+    let entries = b.spent(200, now).expect("the entry leg is spent at 200");
+    assert!(entries.contains("200"), "it says how many it read: {entries}");
+
+    let clock = b.spent(3, now + Duration::from_secs(11)).expect("the clock leg has run out");
+    assert!(clock.contains('3'), "and how far it got when the time went: {clock}");
+
+    assert_ne!(entries, clock,
+               "the two legs read differently — a history too long and a chain too slow are \
+                different facts about the ward and the log is where somebody tells them apart");
+
+    // A caller that must read to the end says so, and then only the entry leg can stop it.
+    let no_clock = Budget { entries: 2, until: None };
+    assert_eq!(no_clock.spent(1, now + Duration::from_secs(600)), None,
+               "no deadline means no deadline, however long the caller has been at it");
+    assert!(no_clock.spent(2, now).is_some());
+
+    // **It has to converge, or `may_close` never lets a long history end a stay.** The walk goes
+    // oldest-first and the cursor stops at the newest entry fully read, so each pass resumes where
+    // the last stopped: 200 signatures at 50 a pass is four passes, and then nothing is left over
+    // and the reading is whole. A budget that did not advance the cursor would have turned item 1's
+    // refusal into a patient who can never be closed at all.
+    let small = Budget { entries: 50, until: None };
+    let mut left = 200usize;
+    let mut passes = 0;
+    while left > 0 {
+        let took = (1..=left).take_while(|n| small.spent(n - 1, now).is_none()).count();
+        assert!(took > 0, "a pass that reads nothing is a pass that never converges");
+        left -= took;
+        passes += 1;
+        assert!(passes <= 8, "four expected, and anything unbounded is the bug this guards");
+    }
+    assert_eq!(passes, 4);
+}
