@@ -1571,3 +1571,63 @@ fn a_label_does_not_repeat_the_row_it_is_in() {
                "and a word the tray does not strip is not stripped here either — one rule, in one \
                 place, and `chipText` is where it is written");
 }
+
+/// **A slow pass says how the time was spread, because that is what names the cause.**
+///
+/// 00063: the first ticker pass took 100.1 s over the same 26 patients that boot's repair had
+/// walked in 38.3 s four minutes earlier — same chain, same data, same code. Two candidate causes
+/// with opposite fixes:
+///
+///   * Cloud Run allocates CPU only while a request is being processed, so a background thread on
+///     an idle instance is throttled. Then **every patient costs the same slowed amount**.
+///   * devnet rate-limits the signature listings and the retries back off. Then **most patients
+///     are quick and a few are very slow**.
+///
+/// A total cannot tell those apart and neither can a mean — a mean of 3.8 s is what you get from
+/// twenty-six patients at 3.8 s and from twenty-four at 0.4 s plus two at 44 s. The median against
+/// the max separates them on sight, which is the whole reason this line exists rather than a
+/// stopwatch on the total.
+#[test]
+fn a_slow_pass_says_how_the_time_was_spread() {
+    use std::time::Duration;
+    use vitals_web::ward_chain::{pace, slow_pass_note, Pace, SLOW_PASS};
+
+    assert_eq!(pace(&[]), None, "a pass that walked nobody has no shape to report");
+    assert_eq!(pace(&[700]), Some(Pace { patients: 1, median_ms: 700, max_ms: 700 }));
+    assert_eq!(pace(&[100, 200, 300]), Some(Pace { patients: 3, median_ms: 200, max_ms: 300 }),
+               "odd: the middle one");
+    assert_eq!(pace(&[100, 200, 300, 400]), Some(Pace { patients: 4, median_ms: 250, max_ms: 400 }),
+               "even: the two middle ones averaged");
+    assert_eq!(pace(&[300, 100, 200]), Some(Pace { patients: 3, median_ms: 200, max_ms: 300 }),
+               "patients arrive in the order the chain lists them, not in order of cost");
+
+    // The two shapes, as they would actually arrive.
+    let throttled = pace(&[3_800; 26]).expect("26 patients");
+    assert_eq!((throttled.median_ms, throttled.max_ms), (3_800, 3_800));
+    let mut limited = vec![400u64; 24];
+    limited.extend([44_000, 44_000]);
+    let limited = pace(&limited).expect("26 patients");
+    assert_eq!((limited.median_ms, limited.max_ms), (400, 44_000),
+               "same 100 s total, and the pair says at a glance which of the two it was");
+
+    // Nothing is said about a pass that was not slow. A line every minute is a line nobody reads,
+    // and the ticker runs on a ward that is usually quiet.
+    assert_eq!(slow_pass_note(Duration::from_secs(9), Some(throttled)), None,
+               "under the threshold the pass is silent");
+    assert_eq!(slow_pass_note(SLOW_PASS - Duration::from_millis(1), Some(throttled)), None);
+    assert_eq!(slow_pass_note(Duration::from_secs(100), None), None,
+               "and a pass with nobody to walk is silent however long it took — the time went to \
+                the sweep or the refill, and a per-patient figure over zero patients is a lie");
+
+    let said = slow_pass_note(Duration::from_millis(100_100), Some(throttled))
+        .expect("a pass over the threshold says something");
+    assert!(said.contains("100.1s"), "the duration, one decimal: {said}");
+    assert!(said.contains("26 patients checked"), "how many it walked: {said}");
+    assert!(said.contains("3800ms") || said.contains("3.8s"),
+            "the median, so the shape can be read: {said}");
+    assert!(said.to_lowercase().contains("median") && said.to_lowercase().contains("max"),
+            "both named, because the reader is comparing them: {said}");
+
+    let lumpy = slow_pass_note(Duration::from_millis(100_100), Some(limited)).expect("also slow");
+    assert_ne!(said, lumpy, "the two shapes cannot print the same line");
+}
