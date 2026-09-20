@@ -1767,3 +1767,51 @@ fn one_pass_asks_the_chain_about_a_patient_at_most_once() {
             "the repair is where a pass asks the chain, and it asks only when `needs_listing` says \
              the answer could have changed");
 }
+
+/// **A history read only as far as it got is kept, and never decided on.**
+///
+/// `walk_history` has always stopped at the first entry it could not read and kept everything
+/// before it — the test above pins that. What `refresh` did with the answer is the defect:
+///
+///     let added = seen.absorb(named, cursor);
+///     if let Some(why) = trouble { eprintln!("…read as far as it could be — {why}"); }
+///     Ok(added)
+///
+/// `trouble` was logged and swallowed, so `refresh` returned `Ok` for a history read to its end and
+/// `Ok` for one that stopped a third of the way through, and no caller could tell them apart. The
+/// consequence is not cosmetic: `repair_one` persisted the partial history and marked her
+/// confirmed, and `reap` was then free to decide she died unattended on a history missing her most
+/// recent shifts — a chain write, on a reading the function's own comment says is incomplete. Under
+/// rate limiting the walk stops early more often, so the failure gets likelier exactly when the
+/// ward is busiest.
+///
+/// **Persistence and trust are separate decisions**, which is the whole rule here. The progress is
+/// always kept — it was paid for in round trips, and throwing it away means the next pass re-walks
+/// the same transactions from the same place, for ever. The trust is withheld whenever the history
+/// is not known whole.
+#[test]
+fn a_partial_history_is_kept_and_never_decided_on() {
+    use std::collections::{BTreeMap, BTreeSet};
+    use vitals_web::ward_chain::{may_close, Cached, Reading, Seen};
+
+    let whole = Reading { added: 3, stopped: None };
+    let partial = Reading { added: 2, stopped: Some("s3: invalid type: null".into()) };
+    assert!(whole.whole(), "a history read to its end can be decided on");
+    assert!(!partial.whole(),
+            "and one that stopped cannot — the shifts past the stop are the recent ones, and a \
+             patient missing her recent shifts is a patient who looks idle");
+
+    // The pass's own record of who it may write about.
+    let mut cached = Cached { seen: BTreeMap::new(), unread: BTreeSet::new() };
+    cached.seen.insert(1, Seen::default());
+    cached.seen.insert(2, Seen::default());
+    cached.unread.insert(2);
+
+    assert!(may_close(&cached, 1), "a patient whose history this pass read whole");
+    assert!(!may_close(&cached, 2),
+            "a patient whose history failed or stopped short — her cache is still there to answer \
+             local questions, and it may not end her stay");
+    assert!(!may_close(&cached, 3),
+            "and a patient this pass has no reading of at all is not a patient to close: absence \
+             of a history is not evidence of an idle one");
+}
