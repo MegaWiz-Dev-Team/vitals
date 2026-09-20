@@ -729,6 +729,20 @@ pub fn can_open(
         && case_is_held(packs.get(&p.patient_id), cases)
 }
 
+/// May this key declare on this patient?
+///
+/// Only the key the chain says is holding her — and **a head nobody holds is held by nobody**, not
+/// by the one caller whose bytes happen to be the sentinel's. `lease_holder` is `[0; 32]` when the
+/// bed is free, and the base58 key `1111…1` decodes to exactly those bytes, so a straight equality
+/// told that caller to go ahead. Forseti VW-API-23a sends that key and had never once tested the
+/// rule it is named for: it passed only while somebody else held the bed.
+///
+/// The zero test comes first everywhere else this is asked — `PatientAccount::lease_free` in the
+/// program, `on_shift` below — and now here too.
+pub fn may_declare(lease_holder: [u8; 32], who: [u8; 32]) -> bool {
+    lease_holder != [0; 32] && lease_holder == who
+}
+
 /// Does this ward still hold the case this pack names?
 ///
 /// The half of [`can_open`] that a chart page needs on its own: it is opened one patient at a time

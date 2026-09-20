@@ -5673,7 +5673,8 @@ fn main() {
                                 // rather than on every step, and a client that skipped the take
                                 // is refused before it has a tape rather than at the anchor.
                                 match chain.patient(w.patient_id) {
-                                    Ok(Some(p)) if p.lease_holder == who.to_bytes() => {}
+                                    Ok(Some(p))
+                                        if ward::may_declare(p.lease_holder, who.to_bytes()) => {}
                                     Ok(Some(_)) => {
                                         drop(map);
                                         let _ = req.respond(json_code(serde_json::json!({
