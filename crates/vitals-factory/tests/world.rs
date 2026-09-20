@@ -129,3 +129,46 @@ fn the_region_table_places_every_country_in_the_pool_and_names_ten_regions() {
     assert_eq!(region_of("ATA"), None, "a code the table does not place is nobody's region, not a guess");
     assert_eq!(region_of("eth"), None, "alpha-3 is upper case");
 }
+
+/// A country's `place` is what the globe's atlas polygon is called — nothing else. The ward
+/// publishes it as `country_name`, prints it at the bedside ("· from South Korea"), says it on the
+/// no-JS pages, and hands it to this factory's portrait prompt (`pool.rs`), so a label the atlas
+/// spells another way is a country that reads as two places on one screen. developer-7b corrected
+/// the ward's twenty-country file on `cwf/ward` (f9b8e33); this is the seventy-four-country file,
+/// which wins at the merge, held to the same rule against the same atlas — the 110m TopoJSON the
+/// globe page embeds, joined on ISO3 through its `ALPHA3` table, as every join on that page is.
+/// Every mismatch is listed, not the first.
+#[test]
+fn every_place_in_the_pool_is_what_the_globes_atlas_calls_that_country() {
+    let page = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../vitals-web/static/world/index.html")).expect("the globe page");
+    // The atlas: `<script id="atlas" type="application/json">{…}</script>`, numeric ids.
+    let open = "<script id=\"atlas\" type=\"application/json\">";
+    let at = page.find(open).expect("the page embeds the atlas") + open.len();
+    let end = at + page[at..].find("</script>").expect("the atlas closes");
+    let atlas: serde_json::Value = serde_json::from_str(&page[at..end]).expect("the atlas is JSON");
+    let mut polygon: BTreeMap<String, String> = BTreeMap::new();
+    for g in atlas["objects"]["countries"]["geometries"].as_array().expect("geometries") {
+        // Three polygons carry no id (N. Cyprus, Somaliland, Kosovo); nothing in the pool is one.
+        if let (Some(id), Some(name)) = (g["id"].as_str(), g["properties"]["name"].as_str()) {
+            polygon.insert(id.to_string(), name.to_string());
+        }
+    }
+    assert!(polygon.len() > 150, "the 110m atlas has some 174 named polygons, not {}", polygon.len());
+    // The join: `ALPHA3 = {"AFG":"004", …}` — alpha-3 to the atlas's numeric id.
+    let at = page.find("ALPHA3 = {").expect("the page joins on an ALPHA3 table") + "ALPHA3 = ".len();
+    let end = at + page[at..].find('}').expect("the table closes") + 1;
+    let alpha3: BTreeMap<String, String> = serde_json::from_str(&page[at..end]).expect("the ALPHA3 table is JSON");
+
+    let file: serde_json::Value = serde_json::from_str(POOL).unwrap();
+    let mut wrong: Vec<String> = Vec::new();
+    for c in file["countries"].as_array().unwrap() {
+        let code = c["country"].as_str().unwrap();
+        let place = c["place"].as_str().unwrap_or("");
+        match alpha3.get(code).and_then(|id| polygon.get(id)) {
+            None => wrong.push(format!("{code}: {place:?} — the atlas has no polygon for {code}, so the globe cannot place it")),
+            Some(name) if name != place => wrong.push(format!("{code}: place is {place:?}, the atlas polygon is {name:?}")),
+            Some(_) => {}
+        }
+    }
+    assert!(wrong.is_empty(), "{} place label(s) differ from the globe's atlas — `place` is printed at the bedside, said by the no-JS pages and read into the portrait prompt, so it says what the map says:\n  {}", wrong.len(), wrong.join("\n  "));
+}
