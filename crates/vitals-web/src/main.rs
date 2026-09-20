@@ -2684,6 +2684,17 @@ fn receipt_page(r: &serde_json::Value, board: &serde_json::Value) -> String {
 /// read, and twenty tabs on the globe would be twenty reads of the same thing.
 static BOARD_READING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// Is a ward pass running right now — in the ticker thread, or inside a scheduler's request?
+///
+/// One at a time, and a second asker is **refused, never queued**: the pass writes to the chain,
+/// and two passes closing the same patient would anchor a closing shift twice. Held through
+/// `rebuild::take`, so a pass that panics gives it back.
+static TICKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// The session sweep runs once per process, after the first pass's repair — whichever caller ran
+/// that pass. A flag rather than a local in the thread, so a scheduler that always wins the gate
+/// does not leave the sweep never run.
+static SWEPT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// The ward as this host last read it — answered now, refreshed behind the answer.
 ///
 /// `ward::board_use` is the decision and the reasoning is there. The shape here is the part that
@@ -3250,6 +3261,9 @@ fn door(path: &str) -> bool {
     // `/api/ward/case` is the case factory's, and `/api/ward/cases` — a letter apart — is the
     // catalogue anybody may read. Exact match on the first, which is why this is not a prefix.
     path == "/api/ward/queue"
+        // The pass, asked for by Cloud Scheduler every minute — an operator's route, so the door's
+        // secret and never the page's. Exact match: nothing else starts with it.
+        || path == "/api/ward/tick"
         || path == "/api/ward/case"
         // `/api/ward/case/<id>/withdraw` — taking a case out of service is the factory's door too,
         // and a public one would let a stranger empty the ward's catalogue.
@@ -3604,59 +3618,19 @@ fn main() {
             };
             // The same complaint every minute is noise; a complaint that changed is news.
             let mut last_trouble = String::new();
-            // Once per process, which is the cadence boot had: moving this work did not make it
-            // more frequent, only later than the moment somebody is waiting.
-            let mut swept_yet = false;
             loop {
                 std::thread::sleep(WARD_TICK);
-                match ward_chain::WardChain::connect() {
-                    Ok(chain) => {
-                        // What this server still holds, for the repair: every stored run's
-                        // scenario and tape. A leaf the chain names whose tape is lost is
-                        // recoverable only from here, and only while these are still on disk.
-                        let held: Vec<(String, Vec<Step>)> = store
-                            .list::<Saved>(SESSIONS)
-                            .into_iter()
-                            .filter_map(|(_, sv)| {
-                                let p = scenario_path(&sv.ep);
-                                std::fs::read_to_string(p).ok().map(|sce| (sce, sv.tape))
-                            })
-                            .collect();
-                        let began = Instant::now();
-                        let t = ward_chain::tick(&chain, &store, &root, now_secs(), &held);
-                        for note in &t.notes {
-                            println!("ward       {note}");
-                        }
-                        // **Repair first, then sweep, and never the other way.** `tick` repairs at
-                        // its top; the sweep runs only after it has returned. The repair recovers a
-                        // lost tape *from* the stored runs and the sweep deletes stored runs older
-                        // than a day — so sweeping first can delete the only copy of a tape for a
-                        // leaf already on chain, which is the thing the repair exists to put back.
-                        // Boot did them in that wrong order until 20 ก.ย.
-                        if !swept_yet {
-                            let swept = store
-                                .sweep(SESSIONS, std::time::Duration::from_secs(24 * 60 * 60));
-                            swept_yet = true;
-                            println!(
-                                "ward       first pass · {} of {} patients needed a signature \
-                                 listing · swept {swept} expired, after the repair and never \
-                                 before it",
-                                t.listed, t.checked
-                            );
-                        }
-                        // Any pass that took more than ten seconds, not only the first, and the
-                        // sentence is `ward_chain`'s so the shape can be tested without a deploy.
-                        if let Some(note) = ward_chain::slow_pass_note(began.elapsed(), t.pace, &t.spans) {
-                            println!("ward       {note}");
-                        }
-                        last_trouble.clear();
-                    }
-                    Err(e) => {
+                // The one pass, shared with `POST /api/ward/tick`. `None` means a scheduler's
+                // request holds the gate this minute, which is the pass happening — not a fault.
+                match one_pass(&store, &root) {
+                    Some(Err(e)) => {
                         if e != last_trouble {
                             eprintln!("ward       no chain, so no refill: {e}");
                             last_trouble = e;
                         }
                     }
+                    Some(Ok(_)) => last_trouble.clear(),
+                    None => {}
                 }
             }
         });
@@ -5501,6 +5475,34 @@ fn main() {
                 })));
                 continue;
             }
+            (Method::Post, "/api/ward/tick") => {
+                if !ward_mode() {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "ward": "not on this host",
+                        "the_ward_is": "https://world.vitals.academy/api/ward/tick"
+                    }), 404));
+                    continue;
+                }
+                // The pass runs *inside* this request on purpose: with min-instances 0, Cloud Run
+                // gives the container CPU only while a request is being served, so a pass spawned
+                // and answered 202 would stall the moment the response went out. The budget in
+                // `Budget::pass` is what makes a synchronous pass tolerable on a server that
+                // answers one request at a time.
+                let began = Instant::now();
+                let ran = match one_pass(&store, &scenario_root()) {
+                    None => None,
+                    Some(Ok(t)) => Some(t),
+                    // No chain is a pass that ran and admitted nobody, with the reason in its
+                    // notes — 200, because the route did its job and the ward is saying why.
+                    Some(Err(e)) => Some(ward_chain::Ticked {
+                        notes: vec![format!("the chain could not be read, so nobody was admitted: {e}")],
+                        ..Default::default()
+                    }),
+                };
+                let (code, body) = ward_chain::tick_response(ran, began.elapsed());
+                let _ = req.respond(json_code(body, code));
+                continue;
+            }
             (Method::Post, "/api/ward/queue") => {
                 if !ward_mode() {
                     let _ = req.respond(json(serde_json::json!({
@@ -7321,6 +7323,56 @@ fn settle(
             }
         }
     });
+}
+
+/// One pass of the ward — the ticker's and the scheduler's, the same function.
+///
+/// `None`: the gate is held, a pass is already running; the caller does not wait. `Some(Err)`: no
+/// chain to read. `Some(Ok)`: the pass, with its notes already printed here so both callers log
+/// identically. Defined after the refill thread on purpose — `tests/boot.rs` reads the straight-line
+/// boot as everything before that thread and must not find the sweep or the tick on it — and
+/// before the test module, because clippy refuses items after one.
+fn one_pass(store: &store::Store, root: &std::path::Path) -> Option<Result<ward_chain::Ticked, String>> {
+    let _gate = rebuild::take(&TICKING)?;
+    let chain = match ward_chain::WardChain::connect() {
+        Ok(c) => c,
+        Err(e) => return Some(Err(e)),
+    };
+    // What this server still holds, for the repair: every stored run's scenario and tape. A leaf
+    // the chain names whose tape is lost is recoverable only from here, and only while these are
+    // still on disk.
+    let held: Vec<(String, Vec<Step>)> = store
+        .list::<Saved>(SESSIONS)
+        .into_iter()
+        .filter_map(|(_, sv)| {
+            let p = scenario_path(&sv.ep);
+            std::fs::read_to_string(p).ok().map(|sce| (sce, sv.tape))
+        })
+        .collect();
+    let began = Instant::now();
+    let t = ward_chain::tick(&chain, store, root, now_secs(), &held);
+    for note in &t.notes {
+        println!("ward       {note}");
+    }
+    // **Repair first, then sweep, and never the other way.** `tick` repairs at its top; the sweep
+    // runs only after it has returned. The repair recovers a lost tape *from* the stored runs and
+    // the sweep deletes stored runs older than a day — so sweeping first can delete the only copy
+    // of a tape for a leaf already on chain, which is the thing the repair exists to put back.
+    // Boot did them in that wrong order until 20 ก.ย. Once per process, whichever caller got here.
+    if !SWEPT.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        let swept = store.sweep(SESSIONS, std::time::Duration::from_secs(24 * 60 * 60));
+        println!(
+            "ward       first pass · {} of {} patients needed a signature listing · swept {swept} \
+             expired, after the repair and never before it",
+            t.listed, t.checked
+        );
+    }
+    // Any pass that took more than ten seconds, not only the first; the sentence is `ward_chain`'s
+    // so the shape can be tested without a deploy.
+    if let Some(note) = ward_chain::slow_pass_note(began.elapsed(), t.pace, &t.spans) {
+        println!("ward       {note}");
+    }
+    Some(Ok(t))
 }
 
 #[cfg(test)]

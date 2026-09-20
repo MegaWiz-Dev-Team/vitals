@@ -1897,6 +1897,38 @@ pub fn needs_listing(chain_shifts: u32, cached_shifts: usize, tapes_all_present:
     chain_shifts as usize != cached_shifts || !tapes_all_present
 }
 
+/// What `POST /api/ward/tick` answers, given what the gate gave it.
+///
+/// `None` is the gate held — a pass is already running, in the ticker thread or an earlier
+/// request — and the answer is **409, never a wait**: the pass writes to the chain (`reap` anchors
+/// closing shifts), so two at once could close one patient twice, and a request that blocked
+/// would hold the ward's only request thread. The scheduler tries again next minute.
+///
+/// `Some` is the pass, and the body is the instrument: the same facts the slow-pass line prints,
+/// so Cloud Scheduler's own response log shows every pass's shape without anybody reading
+/// container logs. Pure so both answers can be pinned without a race in the test.
+pub fn tick_response(ran: Option<Ticked>, took: std::time::Duration) -> (u16, serde_json::Value) {
+    match ran {
+        None => (409, serde_json::json!({
+            "error": "a pass is already running on this ward — the ticker or an earlier request \
+                      holds it. Not queued: the pass writes to the chain and two at once could \
+                      close the same patient twice. Ask again next minute",
+        })),
+        Some(t) => (200, serde_json::json!({
+            "took_ms": took.as_millis() as u64,
+            "patients": t.checked,
+            "listed": t.listed,
+            "admitted": t.admitted,
+            "closed": t.closed,
+            "open": t.open,
+            "depth": t.depth,
+            "pace": t.pace,
+            "spans": t.spans,
+            "notes": t.notes,
+        })),
+    }
+}
+
 /// A pass worth a line, and the passes that are not.
 ///
 /// Every minute on a ward that is usually quiet, so a line per pass is a line nobody reads.
