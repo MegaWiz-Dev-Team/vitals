@@ -647,6 +647,116 @@ pub fn last_board(store: &crate::store::Store) -> Option<Kept> {
 /// with itself.
 pub const WEEK_SLOTS: u64 = 1_512_000;
 
+/// Every patient's history for the board: from the cache, refreshed only where the chain says it
+/// moved, and never a reason to have no board.
+pub struct Histories {
+    pub shifts: Vec<crate::ward::ShiftOnChain>,
+    /// Patients whose chain names a shift this ward has no tape for, and the leaf it stopped at.
+    pub lost: std::collections::BTreeMap<u64, String>,
+    /// Patients whose history could not be refreshed this read, and why. Their account was read —
+    /// that is how they are on the list at all — so their row is right and their chart may be a
+    /// shift behind. Said on the row; never a reason to say the ward is unreadable.
+    pub unread: std::collections::BTreeMap<u64, String>,
+    /// How many cost a signature listing. On a quiet ward this is zero.
+    pub listed: usize,
+}
+
+/// The per-patient loop of [`read_ward`], behind an injected `refresh` so it can be driven without a
+/// validator.
+///
+/// **A failed listing is one patient's stale chart, not a blacked-out ward.** Staging answered
+/// `readable: false` for over an hour on 20 ก.ย. because this loop did `return unavailable(...)` on
+/// one 429 — throwing away twenty-six accounts that had just been read correctly in a single
+/// `getProgramAccounts`. Now the failure is recorded against the patient and the loop goes on.
+///
+/// And it asks before it pays: [`needs_listing`] on the chain's own shift count and the tapes on
+/// disk, the same as the ticker's pass. A patient nothing has happened to is never listed, so on a
+/// quiet ward the board rebuild makes no listings at all and there is nothing to 429.
+pub fn histories(
+    store: &crate::store::Store,
+    patients: &[crate::ward::PatientOnChain],
+    mut refresh: impl FnMut(u64, &mut Seen) -> Result<Reading, String>,
+) -> Histories {
+    let mut h = Histories {
+        shifts: Vec::new(),
+        lost: Default::default(),
+        unread: Default::default(),
+        listed: 0,
+    };
+    for p in patients {
+        let key = format!("p{}", p.patient_id);
+        let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
+        let known = seen.shifts();
+        if needs_listing(p.shifts, known.len(), missing_tapes(store, &known).is_empty()) {
+            h.listed += 1;
+            match refresh(p.patient_id, &mut seen) {
+                Ok(read) => {
+                    if read.added > 0 {
+                        let _ = store.put(SHIFT_CACHE, &key, &seen);
+                    }
+                    // Read only as far as it got: kept, and said. The shifts past a stop are the
+                    // recent ones, so this chart may be behind exactly like a failed one.
+                    if let Some(why) = read.stopped {
+                        h.unread.insert(p.patient_id, why);
+                    }
+                }
+                Err(e) => {
+                    h.unread.insert(p.patient_id, e);
+                }
+            }
+        }
+        // Who this ward cannot rebuild, found while it is already holding every patient's shifts:
+        // a leaf on chain whose tape is not here. The board says so in the row; nothing is written
+        // to the chain about it, because "we lost the tape" is a fact about this ward.
+        for s in seen.shifts() {
+            let hash = hex32(&s.run_hash);
+            if is_shift_hash(&hash) && tape_by_hash(store, &hash).is_none() {
+                h.lost.entry(p.patient_id).or_insert(hash);
+            }
+        }
+        h.shifts.extend(seen.shifts());
+    }
+    h
+}
+
+/// The board to serve when there is no fresh one: the last one this host kept, saying so.
+///
+/// `getProgramAccounts` failing means there is no fresh account for anybody — the other half of
+/// the same incident. But [`keep_board`] has kept every readable board this host ever built, so
+/// there is almost always one a minute or two old that is far more true than "nothing". It is
+/// served `from: store` with its own `kept_at` — the time it was read, never the time it was served,
+/// because an age ticks and a ticking field is a new ETag every second — and the reason a fresh one
+/// could not be had. The queue is this host's own fact and is current whatever the chain did.
+///
+/// With nothing kept, unreadable and honest: a board is not invented.
+pub fn fall_back(
+    kept: Option<Kept>,
+    source: &str,
+    queue: serde_json::Value,
+    why: &str,
+) -> serde_json::Value {
+    match kept {
+        Some(k) => {
+            let mut board = k.board;
+            board["board"] = crate::ward::board_note(
+                crate::ward::Origin::Store,
+                k.at_unix,
+                Some(k.revision.as_str()).filter(|r| !r.is_empty()),
+            );
+            board["stale"] = serde_json::json!(format!(
+                "served from the last board this host kept, because a fresh one could not be read — {why}"
+            ));
+            board["queue"] = queue;
+            board
+        }
+        None => {
+            let mut v = crate::ward::ward_unavailable(source, why);
+            v["queue"] = queue;
+            v
+        }
+    }
+}
+
 /// One pass over the whole ward: the patients, whatever is new in their histories, and the
 /// payload built from both.
 ///
@@ -661,44 +771,21 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
     // ward that cannot read its chain still has a door and still has people waiting behind it, and
     // a page that branches on the door was getting nothing to branch on.
     let queue = queue_block(store);
-    let unavailable = |why: &str| {
-        let mut v = crate::ward::ward_unavailable(chain.source(), why);
-        v["queue"] = queue.clone();
-        v
-    };
+    // No fresh board at all: serve the last one this host kept, saying so. Never `unavailable`
+    // while a readable board a minute old is sitting in the store.
     let as_of = match chain.slot() {
         Ok(s) => s,
-        Err(e) => return unavailable(&e),
+        Err(e) => return fall_back(last_board(store), chain.source(), queue, &e),
     };
     let patients = match chain.patients() {
         Ok(p) => p,
-        Err(e) => return unavailable(&e),
+        Err(e) => return fall_back(last_board(store), chain.source(), queue, &e),
     };
 
-    let mut shifts = Vec::new();
-    // Who this ward cannot rebuild, found while it is already walking every patient's shifts: a
-    // leaf on chain whose tape is not here. The board says so in her own row; nothing is written
-    // to the chain about it, because "we lost the tape" is a fact about this ward.
-    let mut lost: std::collections::BTreeMap<u64, String> = std::collections::BTreeMap::new();
-    for p in &patients {
-        let key = format!("p{}", p.patient_id);
-        let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
-        let added = chain.refresh(p.patient_id, &mut seen, store, &Budget::whole_history());
-        if matches!(added, Ok(ref r) if r.added > 0) {
-            let _ = store.put(SHIFT_CACHE, &key, &seen);
-        }
-        if let Err(e) = &added {
-            return unavailable(&format!("patient {}'s history could not be read: {e}", p.patient_id));
-        }
-        for s in seen.shifts() {
-            let hash = hex32(&s.run_hash);
-            if is_shift_hash(&hash) && tape_by_hash(store, &hash).is_none() {
-                lost.entry(p.patient_id).or_insert(hash);
-            }
-        }
-        shifts.extend(seen.shifts());
-    }
-
+    let h = histories(store, &patients, |id, seen| {
+        chain.refresh(id, seen, store, &Budget::whole_history())
+    });
+    let (shifts, lost) = (h.shifts, h.lost);
     let times = slot_times(chain, store, &crate::ward::slots_to_date(&patients, &shifts));
     let rate = seconds_per_slot(chain, store, as_of);
     let mut v = crate::ward::ward_payload(&crate::ward::WardRead {
@@ -708,6 +795,7 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
         packs: &packs(store),
         cases: &crate::ward_case::all(store),
         unrebuildable: &lost,
+        unread: &h.unread,
         since: Some(as_of.saturating_sub(WEEK_SLOTS)),
         as_of_slot: as_of,
         now_unix: std::time::SystemTime::now()
@@ -720,6 +808,17 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
     // How many patients are waiting, which is the number the factory tops up against and the one
     // a reader of the board uses to tell "nobody is playing" from "nobody is left to play".
     v["queue"] = queue;
+    // This process read it, so that is what it says — stamped here, where the board is made, so a
+    // board that came from the store instead (see `fall_back`) keeps its own provenance and is
+    // never relabelled as fresh by whoever happens to serve it.
+    v["board"] = crate::ward::board_note(
+        crate::ward::Origin::Chain,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0),
+        None,
+    );
     // Kept for whoever starts next. Every path that reads the chain successfully comes through
     // here — the ticker's, the refresh behind an answer, and the one request on a ward that has
     // never read at all — so this is the only place that has to remember to do it.

@@ -984,12 +984,16 @@ function row(p, showCountry) {
   const shut = p.openable === false
     ? `<div class="shut">${p.bed !== undefined && p.bed !== null ? "this bed cannot be opened" : "no shift can be taken"}${p.why_not ? ` · ${escapeHtml(p.why_not)}` : ""}</div>`
     : "";
+  /* The chart may be a shift behind — the board's own words, from the history that could not be
+     refreshed this read. Said on the row so a stranger opening the bedside knows before pressing
+     anything. Not tied to `openable`: a stale chart is not a shut bed. */
+  const stale = p.history ? `<div class="shut">${escapeHtml(p.history)}</div>` : "";
   /* Two lines and a button: who and where on the first, how they are on the second. The order is
      the order a stranger reads them in — the name is what they are looking for, the bed is how the
      ward is arranged, and the state is what decides whether to take this one. */
   li.innerHTML = `${img}<div>
     <div class="who"><b>${escapeHtml(p.name || ("patient " + p.patient_id))}${age}</b>${bed}</div>
-    <div class="meta"><span class="state ${st}" title="${escapeHtml(line.title)}">${escapeHtml(line.text)}</span>${diff}${where}${end}</div>${shut}${note}</div>
+    <div class="meta"><span class="state ${st}" title="${escapeHtml(line.title)}">${escapeHtml(line.text)}</span>${diff}${where}${end}</div>${shut}${stale}${note}</div>
     <a class="take${canTake ? "" : " look"}" href="/ward/${encodeURIComponent(p.patient_id)}">${canTake ? "take a shift" : "view"}</a>`;
   return li;
 }

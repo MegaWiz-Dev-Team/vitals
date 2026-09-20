@@ -2791,10 +2791,11 @@ fn refresh_behind(held: &WardView, state: &str) {
                 None
             }
         };
-        if let Some(mut fresh) = fresh {
+        if let Some(fresh) = fresh {
             let beds = fresh["patients"].as_array().map(Vec::len).unwrap_or(0);
-            // This process read it, so that is what it says — for as long as it is the board.
-            fresh["board"] = ward::board_note(ward::Origin::Chain, now_ms() / 1000, None);
+            // Provenance is stamped by `read_ward` itself now, where the board is made: a board
+            // it had to serve from the store (`fall_back`) arrives saying `from: store`, and
+            // restamping it here as `chain` would relabel a stale board as fresh.
             println!(
                 "ward       board refreshed behind the answer in {:.1}s — {beds} patients",
                 began.elapsed().as_secs_f64()

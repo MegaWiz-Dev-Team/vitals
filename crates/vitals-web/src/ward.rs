@@ -878,6 +878,13 @@ pub struct WardRead<'a> {
     /// about them — so it is said on the board, in words, and never written to the chain as an
     /// ending they did not have.
     pub unrebuildable: &'a std::collections::BTreeMap<u64, String>,
+    /// Patients whose history could not be refreshed this read, and why.
+    ///
+    /// Their account was read — that is how they are on the list — so the row is right and the bed
+    /// is still offered. The chart may be a shift behind, and the row says so before a stranger
+    /// presses anything. Never a reason for the board to be unreadable: one rate-limited listing
+    /// blacked out staging for an hour on 20 ก.ย., and this is the field that replaced the blackout.
+    pub unread: &'a std::collections::BTreeMap<u64, String>,
 }
 
 /// The queue, as people rather than a number.
@@ -996,6 +1003,10 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                 // and women. `plain_words.rs` holds every sentence in this file to that.
                 "why_not": caseless.then_some(
                     "the ward no longer holds this case, so nothing here can open this bed"),
+                // The chart may be a shift behind; the bed is not shut for it. The account that
+                // says there is a bed was read fine — it is the history that was not.
+                "history": r.unread.contains_key(&p.patient_id)
+                    .then_some("history not refreshed this minute"),
                 // Words, because the board is what reads this. A renderer switching on 0, 1 and 2
                 // would have to know the program's byte layout to draw a ward.
                 // Her own word. `off_ward` means this ward knows nothing about her — no pack,
@@ -1084,6 +1095,12 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
         "beds": BEDS,
         "week": w,
         "patients": board,
+        // Every patient whose history could not be refreshed this read, by id and reason. An empty
+        // list on a good read rather than an absent field: the payload's shape does not change with
+        // the weather, and neither does its ETag between two reads of one board.
+        "unread": r.unread.iter()
+            .map(|(id, why)| format!("patient {id}: {why}"))
+            .collect::<Vec<_>>(),
         "readable": true,
         "policy": policy(Some(r.cases), r.seconds_per_slot),
         "derivations": {

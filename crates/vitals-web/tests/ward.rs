@@ -40,7 +40,7 @@ fn read<'a>(
         times: nothing_dated(), seconds_per_slot: None,
         // Every tape the chain names is here, which is the ward working. The one test about the
         // other case fills this in itself.
-        unrebuildable: nothing_lost(),
+        unrebuildable: nothing_lost(), unread: nothing_unread(),
         // No cases through the door: a level then comes from the season's table, which is what
         // the patients still mid-stay on season cases have. The test about a compiled case fills
         // this in itself.
@@ -67,6 +67,12 @@ fn nothing_lost() -> &'static std::collections::BTreeMap<u64, String> {
     static NONE: std::sync::OnceLock<std::collections::BTreeMap<u64, String>> =
         std::sync::OnceLock::new();
     NONE.get_or_init(Default::default)
+}
+
+/// Every history refreshed this read, which is the ward on a good minute. The one test about a
+/// listing that failed fills this in itself.
+fn nothing_unread() -> &'static std::collections::BTreeMap<u64, String> {
+    nothing_lost()
 }
 
 /// No pack has been queued for anyone — the state every test but one is written against, and the
@@ -645,7 +651,7 @@ fn the_globe_reads_every_field_it_renders() {
         cases: &[],
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 4_000, now_unix: now, source: "devnet:ABC",
-        unrebuildable: nothing_lost(), times: &times, seconds_per_slot: None,
+        unrebuildable: nothing_lost(), unread: nothing_unread(), times: &times, seconds_per_slot: None,
     });
 
     assert!(v["census"]["on_ward"].is_u64(),
@@ -692,7 +698,7 @@ fn the_globe_reads_every_field_it_renders() {
         cases: &[],
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: lease_ends + 1, now_unix: now, source: "devnet:ABC",
-        unrebuildable: nothing_lost(), times: &times, seconds_per_slot: None,
+        unrebuildable: nothing_lost(), unread: nothing_unread(), times: &times, seconds_per_slot: None,
     });
     let ploy = expired["patients"].as_array().unwrap().iter()
         .find(|p| p["patient_id"] == 7).cloned().unwrap();
@@ -899,7 +905,7 @@ fn every_time_the_ward_publishes_is_a_slot_or_a_z() {
         ward_payload(&vitals_web::ward::WardRead {
             patients: &patients, shifts: &[], packs: &packs,
             since: Some(1), as_of_slot: 4_000, now_unix: 1_760_000_000, source: "devnet:ABC",
-        unrebuildable: nothing_lost(),
+        unrebuildable: nothing_lost(), unread: nothing_unread(),
         cases: &[],
         seconds_per_slot: None,
             // Her admission, her discharge, and the slot the lease on patient 7 was taken in:
@@ -1024,7 +1030,7 @@ fn a_patient_the_ward_cannot_describe_holds_no_bed() {
         cases: &[],
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
-        unrebuildable: nothing_lost(), times: nothing_dated(), seconds_per_slot: None,
+        unrebuildable: nothing_lost(), unread: nothing_unread(), times: nothing_dated(), seconds_per_slot: None,
     });
 
     assert_eq!(v["census"]["on_ward"], 3,
@@ -1077,7 +1083,7 @@ fn the_payload_publishes_how_many_are_in_beds_beside_how_many_are_on_the_chain()
         cases: &[],
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
-        unrebuildable: nothing_lost(), times: nothing_dated(), seconds_per_slot: None,
+        unrebuildable: nothing_lost(), unread: nothing_unread(), times: nothing_dated(), seconds_per_slot: None,
     });
 
     assert_eq!(v["census"]["on_ward"], 3, "the census is what the chain says, unchanged");
@@ -1497,7 +1503,7 @@ fn a_time_on_the_board_is_the_slots_own_block_time() {
     let packs = nobody();
     let v = ward_payload(&vitals_web::ward::WardRead {
         patients: &patients, shifts: &shifts, packs: &packs, cases: &[],
-        unrebuildable: nothing_lost(), since: None, as_of_slot: as_of,
+        unrebuildable: nothing_lost(), unread: nothing_unread(), since: None, as_of_slot: as_of,
         now_unix: now, source: "devnet:ABC", times: &times, seconds_per_slot: None,
     });
     let row = |id: u64| {
@@ -1829,7 +1835,7 @@ fn a_bed_whose_case_the_ward_cannot_draw_is_not_offered() {
         cases: &catalogue,
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
-        unrebuildable: nothing_lost(), times: nothing_dated(), seconds_per_slot: None,
+        unrebuildable: nothing_lost(), unread: nothing_unread(), times: nothing_dated(), seconds_per_slot: None,
     });
 
     let by_id = |id: u64| v["patients"].as_array().unwrap().iter()
