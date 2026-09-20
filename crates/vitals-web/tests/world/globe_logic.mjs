@@ -20,6 +20,12 @@ const html = readFileSync(process.argv[2], 'utf8');
 const script = (html.match(/<script id="globe">([\s\S]*?)<\/script>/) || [])[1];
 assert.ok(script, 'the page has no <script id="globe"> block');
 
+// The committed data files, reached from the page's path: both the pool and the physicians series
+// are read here and held against what the page ships.
+const dataFile = (name) => new URL(`../../data/${name}`,
+  new URL('file://' + process.argv[2].replace(/^(?!\/)/, process.cwd() + '/')))
+  .pathname.replace('/static/world/../../data', '/data');
+
 function grab(name) {
   const i = script.indexOf(`function ${name}(`);
   assert.notEqual(i, -1, `${name} is not in the page`);
@@ -75,6 +81,44 @@ assert.ok(atlasIds.has('764') && atlasIds.has('360') && atlasIds.has('156'), 'TH
 // HKG must still resolve — to the tray, named — rather than fall off the map as an unknown code.
 assert.equal(countryId('HKG'), '344');
 assert.ok(!atlasIds.has('344'), 'if 110m ever draws HK on its own, the tray rule for HKG should be revisited');
+
+// ── the pool's label says what the screen says ────────────────────────────────
+//
+// Three files name a country and only one of them reaches a reader: the panel heading is built
+// from the atlas polygon's own `properties.name` (`nameOf`, then `countryHeading`), and every join
+// is on the alpha-3 through ALPHA3 — so a name that disagrees cannot break a lookup. What it can
+// do is confuse a person, and it did: `personas.json` said `KOR: "Korea"` while the globe said
+// South Korea, and an hour went into asking which of the two was wrong. Neither was; they were
+// answering different questions.
+//
+// `place` exists for whoever opens the pool file (ward.rs:593 — "for a reader of the file rather
+// than for the product"); the published Persona carries only the code. So the rule that makes that
+// hour impossible again is: the label is the words the product says out loud.
+//
+// The World Bank names in physicians.json are deliberately **not** held to this. "Korea, Rep." is
+// an indicator label from a source the footer credits, and editing it would misquote that source.
+//
+// This will speak up at the cwf/factory merge after 26 ก.ย., where a 74-country pool arrives
+// (the founder's "patients from the whole world", 16 ก.ย.). That is the point of it: any label
+// that differs is one string, and the alternative is a merge resolving the divergence silently.
+const poolPath = dataFile('personas.json');
+const pool = JSON.parse(readFileSync(poolPath, 'utf8')).countries;
+const atlasName = new Map(topo.objects.countries.geometries
+  .filter(g => g.id !== undefined && g.id !== null)
+  .map(g => [String(g.id), (g.properties || {}).name]));
+assert.ok(pool.length >= 20, `the pool has its countries: ${pool.length}`);
+for (const e of pool) {
+  const id = countryId(e.country);
+  assert.notEqual(id, null, `${e.country}: a code the globe can place`);
+  const drawn = atlasName.get(id);
+  // A code with no polygon at this scale (HKG inside China's outline) has no on-screen name to
+  // agree with — she is named in the tray and the label is free. Only a country the map draws is
+  // held to what the map calls it.
+  if (drawn === undefined) continue;
+  assert.equal(e.place, drawn,
+               `${e.country}: the pool calls it ${JSON.stringify(e.place)} and the globe says ` +
+               `${JSON.stringify(drawn)} — one of them is what a reader sees, and it is the globe`);
+}
 
 // ── countryCounts ────────────────────────────────────────────────────────────
 const P = (id, country, extra = {}) => ({ patient_id: id, name: `p${id}`, country, state: 'on_ward',
@@ -460,8 +504,7 @@ assert.equal(doctorBin(null), null, 'no data is not a bin');
 
 // The data the page ships: the fetch script's output, committed, and inlined into the page so
 // it stays one file. Both are read here and held equal.
-const dataPath = new URL('../../data/physicians.json', new URL('file://' + process.argv[2].replace(/^(?!\/)/, process.cwd() + '/'))).pathname.replace('/static/world/../../data', '/data');
-const data = JSON.parse(readFileSync(dataPath, 'utf8'));
+const data = JSON.parse(readFileSync(dataFile('physicians.json'), 'utf8'));
 for (const k of ['indicator', 'source', 'licence', 'fetched', 'note']) assert.equal(typeof data[k], 'string', `${k} is stated`);
 assert.match(data.indicator, /^SH\.MED\.PHYS\.ZS/);
 assert.equal(data.licence, 'CC BY 4.0');
