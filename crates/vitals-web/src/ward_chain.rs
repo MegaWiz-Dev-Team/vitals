@@ -1879,9 +1879,13 @@ pub fn repair_tapes(
     let packs_now = packs(store);
     for p in patients {
         let began = std::time::Instant::now();
-        let (notes, listed) = repair_one(chain, store, root, p, held, &packs_now);
+        let (notes, listed, seen, read) = repair_one(chain, store, root, p, held, &packs_now);
         out.notes.extend(notes);
         out.listed += usize::from(listed);
+        out.cached.seen.insert(p.patient_id, seen);
+        if !read {
+            out.cached.unread.insert(p.patient_id);
+        }
         // Every patient walked, including the ones that were skipped without a listing. What costs
         // the time is the listing, and a shape drawn only from the patients that needed work would
         // report a fast pass — but a skipped patient's own few milliseconds belong in the shape
@@ -1895,11 +1899,32 @@ pub fn repair_tapes(
 #[derive(Debug, Default)]
 pub struct Repaired {
     pub notes: Vec<String>,
+    /// What the rest of the pass reads instead of asking the chain again.
+    pub cached: Cached,
     /// How many of them actually cost a signature listing — the number the rate limit is charged
     /// against, and the one that says whether [`needs_listing`] is earning its keep.
     pub listed: usize,
     /// One entry per patient walked, in the order the chain listed them. Read through [`pace`].
     pub each_ms: Vec<u64>,
+}
+
+/// The shift caches the repair leaves behind, and which of them it could not confirm.
+///
+/// **One type rather than two parameters, because the two facts are only safe together.** `seen`
+/// alone invites a caller to read an entry the chain refused to confirm, and `reap` ends a stay
+/// with a chain write — the first version of this refactor passed them separately and dropped
+/// `reap`'s refusal without noticing. Kept as a pair, a caller that has the cache also has the
+/// warning about it.
+#[derive(Debug, Default)]
+pub struct Cached {
+    /// Every patient, current by fetch for the ones that were listed and current by inference for
+    /// the ones that were skipped — the skip's own premise is that the chain's leaf count already
+    /// matches the cache.
+    pub seen: std::collections::BTreeMap<u64, Seen>,
+    /// The patients whose listing failed. Their `seen` entry is whatever was on disk, which answers
+    /// a local question (is a tape missing under a leaf we already know?) and must not answer one
+    /// that writes.
+    pub unread: std::collections::BTreeSet<u64>,
 }
 
 /// One patient's repair — the unit the pass's cost is measured in.
@@ -1913,7 +1938,7 @@ fn repair_one(
     p: &crate::ward::PatientOnChain,
     held: &[(String, Vec<vitals_replay::Step>)],
     packs_now: &std::collections::BTreeMap<u64, crate::ward::Pack>,
-) -> (Vec<String>, bool) {
+) -> (Vec<String>, bool, Seen, bool) {
     let mut notes = Vec::new();
     let key = format!("p{}", p.patient_id);
     let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
@@ -1921,16 +1946,21 @@ fn repair_one(
     // listing below is the one that waits on devnet's mood.
     let known = seen.shifts();
     if !needs_listing(p.shifts, known.len(), missing_tapes(store, &known).is_empty()) {
-        return (notes, false);
+        return (notes, false, seen, true);
     }
-    if chain.refresh(p.patient_id, &mut seen, store).is_err() {
-        return (notes, true);
+    if let Err(e) = chain.refresh(p.patient_id, &mut seen, store) {
+        // The cache goes on — a tape missing under a leaf we already know about is a local fact and
+        // does not depend on the listing — but it is flagged as unconfirmed, and `reap` will not
+        // end a stay on a history it could not read. That refusal was `reap`'s own before the cache
+        // was shared, and sharing it must not quietly drop it.
+        notes.push(format!("patient {}'s history could not be read: {e}", p.patient_id));
+        return (notes, true, seen, false);
     }
     let _ = store.put(SHIFT_CACHE, &key, &seen);
     let shifts = seen.shifts();
     let missing = missing_tapes(store, &shifts);
     if missing.is_empty() {
-        return (notes, true);
+        return (notes, true, seen, true);
     }
     // Her case, for the closing-shift recovery. Without a pack there is no scenario to replay
     // against and nothing can be re-derived — which is itself worth one line, not ten.
@@ -1984,7 +2014,7 @@ fn repair_one(
             gone.join(", ")
         ));
     }
-    (notes, true)
+    (notes, true, seen, true)
 }
 
 /// Which open patients this ward cannot rebuild, and the leaf each one stopped at.
@@ -1993,15 +2023,15 @@ fn repair_one(
 /// take is refilled rather than held. Cheap: the shift cache is already on disk and the tapes are
 /// looked up by hash.
 fn lost_tapes(
-    chain: &WardChain,
     store: &crate::store::Store,
     patients: &[crate::ward::PatientOnChain],
+    cached: &Cached,
 ) -> std::collections::BTreeMap<u64, String> {
     let mut lost = std::collections::BTreeMap::new();
     for p in patients.iter().filter(|p| p.state == crate::ward::OPEN) {
-        let key = format!("p{}", p.patient_id);
-        let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
-        let _ = chain.refresh(p.patient_id, &mut seen, store);
+        // The repair's own cache for her, not another listing. It ran moments ago over every
+        // patient and this is what it ended holding.
+        let Some(seen) = cached.seen.get(&p.patient_id) else { continue };
         for s in seen.shifts() {
             let hash = hex32(&s.run_hash);
             if is_shift_hash(&hash) && tape_by_hash(store, &hash).is_none() {
@@ -2023,6 +2053,7 @@ fn reap(
     root: &std::path::Path,
     patients: &[crate::ward::PatientOnChain],
     packs_now: &std::collections::BTreeMap<u64, crate::ward::Pack>,
+    cached: &Cached,
     out: &mut Ticked,
 ) {
     use crate::ward::OPEN;
@@ -2053,13 +2084,15 @@ fn reap(
             continue;
         };
 
-        let key = format!("p{}", p.patient_id);
-        let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
-        if let Err(e) = chain.refresh(p.patient_id, &mut seen, store) {
-            out.notes.push(format!("patient {}'s history could not be read: {e}", p.patient_id));
+        // The repair's cache again, not a third listing. A patient it could not read is one it
+        // has no entry for, and closing a stay on a history nobody could read is the thing this
+        // function refuses to do anywhere else — so she is left alone and named.
+        // A stay is ended with a chain write, so it is ended only on a history this pass actually
+        // read. The repair already said so in the notes; nothing is added here for the same patient.
+        if cached.unread.contains(&p.patient_id) {
             continue;
         }
-        let _ = store.put(SHIFT_CACHE, &key, &seen);
+        let Some(seen) = cached.seen.get(&p.patient_id) else { continue };
 
         let found = died_unattended(
             &sce,
@@ -2210,9 +2243,9 @@ pub fn tick(
     span(&mut out, "repair");
     // Asked once, after the repair has had its go: the tapes it put back are not missing any more,
     // and the beds it could not save are the ones this tick must give up.
-    let lost = lost_tapes(chain, store, &patients);
+    let lost = lost_tapes(store, &patients, &repaired.cached);
     span(&mut out, "lost");
-    reap(chain, store, root, &patients, &packs_now, &mut out);
+    reap(chain, store, root, &patients, &packs_now, &repaired.cached, &mut out);
     span(&mut out, "reap");
 
     // Beds, not chain rows: a patient the ward cannot describe holds none (`beds_taken`), so she
