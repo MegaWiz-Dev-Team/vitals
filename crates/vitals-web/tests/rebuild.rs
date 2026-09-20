@@ -89,3 +89,38 @@ fn a_session_that_cannot_be_rebuilt_frees_its_bed() {
             "which say what happened rather than naming a status code: {says}");
     assert!(!says.contains("panic") && !says.contains("unwrap"), "{says}");
 }
+
+/// **A one-at-a-time gate is given back however the worker leaves, panics included.**
+///
+/// `refresh_behind` took `BOARD_READING` with a `swap(true)` and gave it back with a
+/// `store(false)` on the last line of the spawned thread. Every line above it could panic — a
+/// chain read, or the `view.lock().unwrap()` that panics on a poisoned mutex, which is exactly why
+/// the rest of this file uses `unwrap_or_else(|e| e.into_inner())` instead. One panic there and the
+/// flag stays set for the life of the process: nothing refreshes the board again, and the symptom
+/// is the worst kind there is — no error, no log, just a ward that quietly gets older while every
+/// request is told it is being refreshed behind the answer.
+///
+/// `Rebuilds` already learned this one level up and gives its gate back from a `Drop`. This is that
+/// lesson for a flag, so the two are the same shape and neither can be the exception.
+#[test]
+fn a_gate_is_given_back_even_when_the_worker_panics() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use vitals_web::rebuild::take;
+
+    static FLAG: AtomicBool = AtomicBool::new(false);
+
+    let held = take(&FLAG).expect("a free gate is taken");
+    assert!(take(&FLAG).is_none(), "a second taker is refused outright, never queued behind it");
+
+    // The worker dies the way a chain read dies: mid-flight, with the gate in hand.
+    let died = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        let _gate = held;
+        panic!("the chain read blew up");
+    }));
+    assert!(died.is_err(), "the panic is real, not swallowed by the test");
+
+    assert!(take(&FLAG).is_some(),
+            "and the next worker gets in — a process that panicked once is not a process that \
+             stops refreshing its board until somebody notices a stale ward");
+    assert!(FLAG.load(Ordering::SeqCst), "…and now holds it");
+}
