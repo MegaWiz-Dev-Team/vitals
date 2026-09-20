@@ -3376,6 +3376,7 @@ fn main() {
     mark("store", "");
     // A run nobody has touched in a day is a closed tab, not a patient.
     let swept = store.sweep(SESSIONS, std::time::Duration::from_secs(24 * 60 * 60));
+    mark("sweep", &format!(" · {swept} expired"));
 
     // Nothing is rebuilt here. A session is replayed when somebody asks for its id — see
     // `rebuild` — because nothing outside a request has ever read one, and 22 of them cost 79.7 s
@@ -3401,15 +3402,22 @@ fn main() {
             std::fs::read_to_string(scenario_path(&sv.ep)).ok().map(|sce| (sce, sv.tape))
         })
         .collect();
+    // Counted by patients rather than by leaves: `repair_tapes` walks the patients and refreshes
+    // each one from the chain — a signature listing apiece — so patients are what its cost is per.
+    let mut checked = 0usize;
+    let mut repaired = 0usize;
     if !held.is_empty() {
         if let Ok(chain) = ward_chain::WardChain::connect() {
             if let Ok(patients) = chain.patients() {
+                checked = patients.len();
                 for note in ward_chain::repair_tapes(&chain, &store, &scenario_root(), &patients, &held) {
                     println!("ward       {note}");
+                    repaired += 1;
                 }
             }
         }
     }
+    mark("repair", &format!(" · {checked} patients checked · {repaired} repaired"));
 
     // What is in the store, counted from the records themselves — one list, no chain, no replay.
     // Not "in a bed": a bed is derived from the board, and asking the chain for one here is the
