@@ -1631,3 +1631,36 @@ fn a_slow_pass_says_how_the_time_was_spread() {
     let lumpy = slow_pass_note(Duration::from_millis(100_100), Some(limited)).expect("also slow");
     assert_ne!(said, lumpy, "the two shapes cannot print the same line");
 }
+
+/// **A patient the chain has not moved is not listed.**
+///
+/// 00064: the pass spent 99.8 s over 26 patients, median 674 ms and max 10.7 s — devnet rate-limits
+/// the signature listings and roughly half of them sat in a multi-second backoff. The cheapest fix
+/// is not to make the listings faster but to stop making most of them.
+///
+/// The chain already says how many leaves a patient has: `PatientOnChain::shifts`, read for every
+/// patient in the one `chain.patients()` call the tick makes anyway. So the question costs nothing
+/// that is not already being paid, and nothing is kept in memory between passes — deliberately,
+/// because staging redeploys on every commit and an in-memory note would be empty on exactly the
+/// pass that matters, the first one after a start.
+///
+/// Both halves are needed. The count alone would miss a tape that disappeared from the store while
+/// the chain stood still, which is the failure the repair exists for in the first place.
+#[test]
+fn a_patient_the_chain_has_not_moved_is_not_listed() {
+    use vitals_web::ward_chain::needs_listing;
+
+    assert!(!needs_listing(3, 3, true),
+            "three leaves on chain, three in the cache, every tape here — a listing cannot add \
+             anything, and asking costs ten seconds when devnet is in a mood");
+    assert!(!needs_listing(0, 0, true), "and a patient nobody has treated yet is not listed either");
+
+    assert!(needs_listing(4, 3, true), "a new leaf on chain: her cache is behind and must catch up");
+    assert!(needs_listing(3, 3, false),
+            "the counts agree and a tape is gone from the store — the case the repair exists for, \
+             and the reason the count alone is not the whole condition");
+    assert!(needs_listing(4, 3, false), "both at once is still listed, once");
+    assert!(needs_listing(3, 4, true),
+            "more in the cache than the chain says exist is an anomaly, and an anomaly is listed \
+             rather than trusted — a duplicate in the cache would otherwise hide a real leaf");
+}
