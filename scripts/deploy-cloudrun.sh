@@ -87,7 +87,15 @@ case "$WHO" in
   "")
     echo "   gcloud has no active account at all. gcloud auth login first." >&2
     exit 1 ;;
-  *gserviceaccount.com)
+  # The one identity allowed to deploy without a person: `vitals-ops`, in each project, approved by
+  # the founder on 20 ก.ย. 2026 so that a 03:00 deploy or a factory run does not need his login,
+  # which expires about every twelve hours. Exactly these two names — an allowlist by name, never
+  # by suffix, or the next stray credential deploys production because it ends in the right domain.
+  vitals-ops@vitals-academy.iam.gserviceaccount.com|vitals-ops@vitals-academy-dev.iam.gserviceaccount.com)
+    echo "   the ops service account — allowed to deploy unattended" ;;
+  # Contains, not ends-with: a suffix glob let a look-alike that merely contained the domain walk
+  # through to a full build (scripts/deploy-cloudrun-test.sh pins that case).
+  *gserviceaccount.com*)
     echo "   that is a service account, not you. gcloud auth login first." >&2
     exit 1 ;;
 esac

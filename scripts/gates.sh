@@ -32,6 +32,7 @@ gate "workspace tests"     cargo test --workspace --offline
 # silently, on a machine without node.
 if command -v node >/dev/null 2>&1; then
   gate "globe logic" node crates/vitals-web/tests/world/globe_logic.mjs crates/vitals-web/static/world/index.html
+  gate "deploy script"  bash scripts/deploy-cloudrun-test.sh
 else
   printf '  \033[33mskip\033[0m  globe logic — node not installed (CI still runs it)\n'
 fi
