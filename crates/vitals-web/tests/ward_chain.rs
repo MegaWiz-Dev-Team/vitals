@@ -1719,3 +1719,51 @@ fn the_parts_of_a_pass_add_up_to_the_pass() {
     assert_eq!(spans_line(Duration::from_millis(500), &[]), "",
                "a pass with no named parts says nothing rather than claiming it is all elsewhere");
 }
+
+/// **One pass, one listing per patient — and the repair is the only place that asks.**
+///
+/// 00066 spent 35.5 s: `lost` 15.7 s and `reap` 14.6 s, next to a `repair` of 4.3 s that had just
+/// skipped 24 of its 26 listings. The reason was not subtle. `lost_tapes` opens its loop with
+/// `let _ = chain.refresh(...)` and `reap` does the same a few lines later, so the listing item 1
+/// skipped was being made twice more, unconditionally, on every open patient. Eight listings went
+/// out in one burst and devnet's limiter charges the later ones hardest — which is also why two
+/// passes over identical work differed by seven seconds.
+///
+/// By the time either runs, the cache is current: `repair_tapes` refreshed it for any patient it
+/// listed, and for the ones it skipped the skip's own premise is that the chain's leaf count already
+/// matches the cache. So nobody needs to ask again inside one pass. This is `cb23269`'s own rule —
+/// *"the question asked once and shared … the boot, the ticker and the board all ask it of the same
+/// shifts and cannot answer it differently"* — applied to the listing rather than to the tapes.
+///
+/// **Why this is a source test and `boot.rs`'s "patients checked" grep was not.** That one was a
+/// proxy for something a real test could reach, so it was deleted when the real test arrived. This
+/// rule cannot be driven without a validator — gates skips the chain gate — and the counting is the
+/// whole invariant, so reading the source is the only executable form it has. Scoped to the two
+/// functions in the ticker's pass: `read_ward` and `find_shift` refresh legitimately, once each,
+/// for a board read and a single-patient lookup, and this must not forbid them.
+#[test]
+fn one_pass_asks_the_chain_about_a_patient_at_most_once() {
+    let src = std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/ward_chain.rs"))
+        .expect("src/ward_chain.rs");
+
+    // A function's source, from its signature to the next one that starts at column zero.
+    let body = |name: &str| -> String {
+        let at = src.find(name).unwrap_or_else(|| panic!("{name} is not in ward_chain.rs"));
+        let rest = &src[at + name.len()..];
+        let end = rest.find("\nfn ").unwrap_or(rest.len())
+            .min(rest.find("\npub fn ").unwrap_or(rest.len()));
+        rest[..end].to_string()
+    };
+
+    for asked in ["fn lost_tapes(", "fn reap("] {
+        assert!(!body(asked).contains("chain.refresh("),
+                "{asked} lists a patient's signatures again — the repair already did it this pass, \
+                 and on a rate-limited endpoint the second and third asks wear the backoff the \
+                 first one earned");
+    }
+
+    assert!(body("fn repair_one(").contains("chain.refresh("),
+            "the repair is where a pass asks the chain, and it asks only when `needs_listing` says \
+             the answer could have changed");
+}
