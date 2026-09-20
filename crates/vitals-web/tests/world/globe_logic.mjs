@@ -84,16 +84,17 @@ assert.ok(!atlasIds.has('344'), 'if 110m ever draws HK on its own, the tray rule
 
 // ── the pool's label says what the screen says ────────────────────────────────
 //
-// Three files name a country and only one of them reaches a reader: the panel heading is built
-// from the atlas polygon's own `properties.name` (`nameOf`, then `countryHeading`), and every join
-// is on the alpha-3 through ALPHA3 — so a name that disagrees cannot break a lookup. What it can
-// do is confuse a person, and it did: `personas.json` said `KOR: "Korea"` while the globe said
-// South Korea, and an hour went into asking which of the two was wrong. Neither was; they were
-// answering different questions.
+// Three files name a country. `personas.json` said `KOR: "Korea"` while the globe said South
+// Korea, and an hour went into asking which was wrong. Every join is on the alpha-3 through
+// ALPHA3, so a disagreeing name cannot break a lookup — which is why nothing had caught it.
 //
-// `place` exists for whoever opens the pool file (ward.rs:593 — "for a reader of the file rather
-// than for the product"); the published Persona carries only the code. So the rule that makes that
-// hour impossible again is: the label is the words the product says out loud.
+// **Both names are on screens.** The panel heading is the atlas polygon's own `properties.name`
+// (`nameOf`, then `countryHeading`). The pool's `place` is published as `country_name` and the bay
+// prints it — "· from South Korea" — and the no-JS pages, the meta description and the factory's
+// portrait prompt all say it too. `ward.rs` claimed `place` was for a reader of the file rather
+// than for the product; it was not, and that stale sentence is what made two people look for the
+// defect in the wrong file. So this is not a tidying rule: a patient can be from Korea in the bay
+// and from South Korea on the globe, in the same session, over the same person.
 //
 // The World Bank names in physicians.json are deliberately **not** held to this. "Korea, Rep." is
 // an indicator label from a source the footer credits, and editing it would misquote that source.

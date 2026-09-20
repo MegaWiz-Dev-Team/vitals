@@ -590,7 +590,16 @@ pub struct PoolPerson {
 pub struct PoolCountry {
     /// ISO 3166-1 alpha-3, and only a code the globe can place.
     pub country: String,
-    /// What the place is called, for a reader of the file rather than for the product.
+    /// What the place is called — published as `country_name`, and read.
+    ///
+    /// This comment said "for a reader of the file rather than for the product" and that was
+    /// false: the string reaches a learner. It is what `/api/ward`, the shift endpoint and the
+    /// chart publish as `country_name`, what the bay prints as "· from South Korea", what the
+    /// no-JS pages and the meta description say, and what the factory hands to a portrait prompt.
+    ///
+    /// So it is held equal to the name the atlas draws for the same code
+    /// (`tests/world/globe_logic.mjs`): nobody is from Korea on one screen and South Korea on the
+    /// next. A code with no polygon at 110m has no on-screen name to agree with and is free.
     #[serde(default)]
     pub place: String,
     pub personas: Vec<PoolPerson>,
