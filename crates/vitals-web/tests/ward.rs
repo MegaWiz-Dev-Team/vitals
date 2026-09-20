@@ -1974,3 +1974,62 @@ fn a_head_nobody_holds_is_held_by_nobody() {
             "least of all by the key whose bytes are the same zeros the sentinel uses — this is \
              the one that answered 200 on staging");
 }
+
+/// **A patient whose history could not be refreshed says so on the row, and keeps the bed.**
+///
+/// The board is built from every patient's account (one `getProgramAccounts`, which succeeded) and
+/// each patient's history (one signature listing each, one of which 429'd). Her account is right —
+/// state, bed, lease, count — so the bed stays offered and nothing about `openable` changes. Her
+/// chart may be a shift behind, so a stranger opening the bedside is told, in the row, before they
+/// press anything. No pronoun: this code has a patient id, not a persona.
+///
+/// The sentence rides on the row and the list rides on the top level, so the page can show it where
+/// the row is and a reader of the raw payload can see at a glance how much of the board is fresh.
+#[test]
+fn an_unrefreshed_history_is_said_on_the_row_and_the_bed_stays_offered() {
+    use std::collections::BTreeMap;
+    use vitals_web::ward::{ward_payload, PatientOnChain, WardRead, OPEN};
+
+    let patients = vec![
+        PatientOnChain { patient_id: 1, state: OPEN, shifts: 1, admitted_slot: 50, closed_slot: 0,
+                         lease_holder: [0; 32], lease_until_slot: 0 },
+        PatientOnChain { patient_id: 2, state: OPEN, shifts: 1, admitted_slot: 50, closed_slot: 0,
+                         lease_holder: [0; 32], lease_until_slot: 0 },
+    ];
+    let mut unread = BTreeMap::new();
+    unread.insert(2u64, "HTTP status client error (429 Too Many Requests)".to_string());
+
+    let v = ward_payload(&WardRead {
+        patients: &patients, shifts: &[], packs: &BTreeMap::new(), since: None, as_of_slot: 1_000,
+        now_unix: 1_760_000_000, source: "devnet:ABC", times: &BTreeMap::new(),
+        seconds_per_slot: None, unrebuildable: &BTreeMap::new(), cases: &[],
+        unread: &unread,
+    });
+
+    let rows = v["patients"].as_array().expect("rows");
+    let fresh = rows.iter().find(|r| r["patient_id"] == 1).expect("patient 1");
+    let stale = rows.iter().find(|r| r["patient_id"] == 2).expect("patient 2");
+
+    assert!(fresh["history"].is_null(), "a fresh history has nothing to add to the row");
+    assert_eq!(stale["history"], "history not refreshed this minute",
+               "and a stale one is said in words a stranger can act on");
+    assert_eq!(stale["openable"], fresh["openable"],
+               "the bed is not shut for a stale chart — the account that says there is a bed was \
+                read fine, and it is the chart, not the bed, that may be behind");
+
+    let listed = v["unread"].as_array().expect("the top level names every unrefreshed patient");
+    assert_eq!(listed.len(), 1);
+    assert!(listed[0].as_str().unwrap_or("").contains("2"),
+            "by id, so the raw payload says how much of the board is fresh: {}", listed[0]);
+    assert!(listed[0].as_str().unwrap_or("").contains("429"), "and why");
+
+    let quiet = ward_payload(&WardRead {
+        patients: &patients, shifts: &[], packs: &BTreeMap::new(), since: None, as_of_slot: 1_000,
+        now_unix: 1_760_000_000, source: "devnet:ABC", times: &BTreeMap::new(),
+        seconds_per_slot: None, unrebuildable: &BTreeMap::new(), cases: &[],
+        unread: &BTreeMap::new(),
+    });
+    assert_eq!(quiet["unread"].as_array().map(Vec::len), Some(0),
+               "an empty list on a good read, not an absent field — the shape of the payload does \
+                not change with the weather, and neither does its ETag between two reads of one board");
+}

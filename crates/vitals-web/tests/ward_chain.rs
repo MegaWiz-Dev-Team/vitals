@@ -1916,3 +1916,142 @@ fn a_budget_stop_leaves_the_walk_where_a_failure_would() {
     seen.absorb(got.into_iter().map(|s| (s, "sig".to_string())).collect(), cursor);
     assert_eq!(seen.until().as_deref(), Some("s2"));
 }
+
+/// **One patient's history failing to refresh does not black out the board.**
+///
+/// Staging, 20 ก.ย. from 14:26 UTC: `/api/ward` answered `readable: false` for over an hour with
+/// `why: "patient 1789488342's history could not be read: 429 Too Many Requests"`. No patients, no
+/// beds, nothing — because `read_ward` did `return unavailable(...)` inside its per-patient loop.
+/// One rate-limited signature listing on one patient, and twenty-six correct accounts that had just
+/// been read in a single successful `getProgramAccounts` were thrown away with it. The unreadable
+/// board then went into the served view for the next minute.
+///
+/// Her *account* was read — that is how her id is known at all. Her state, bed, lease and shift
+/// count are correct. Only her history (the signature walk, for the chart) is stale. So the board
+/// keeps going: her cached history as it stands, her row flagged, everyone else fresh. The same
+/// rule as the ticker's: **persistence and trust are separate**, and a failed listing withholds trust
+/// from one history rather than from the whole ward.
+///
+/// And it asks before it pays, the way the pass does since `daeeea3`: a patient whose chain count
+/// matches the cache and whose tapes are present is never listed at all. On a quiet ward the board
+/// rebuild then makes zero listings, and there is nothing for the free endpoint to 429.
+#[test]
+fn one_patients_failed_history_does_not_black_out_the_board() {
+    use std::cell::RefCell;
+    use std::collections::HashSet;
+    use vitals_web::store::Store;
+    use vitals_web::ward::{PatientOnChain, ShiftOnChain, OPEN};
+    use vitals_web::ward_chain::{histories, keep_tape, Reading, Seen, StoredTape, SHIFT_CACHE};
+
+    let dir = std::env::temp_dir().join(format!("vitals-histories-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store = Store::open(dir.clone()).expect("a store");
+
+    // One cached shift each, with its tape present, so "tapes all present" is true for everybody
+    // and the only thing deciding a listing is the chain's count against the cache's.
+    let hex = |b: u8| -> String { (0..32).map(|_| format!("{b:02x}")).collect() };
+    let seed = |id: u64, b: u8| {
+        let shift = ShiftOnChain { patient_id: id, signer: [1; 32], slot: 100, run_hash: [b; 32] };
+        let mut seen = Seen::default();
+        seen.absorb(vec![(shift, "sig1".to_string())], Some(("sig1".to_string(), 100)));
+        store.put(SHIFT_CACHE, &format!("p{id}"), &seen).expect("cached");
+        keep_tape(&store, &StoredTape { patient_id: id, run_hash: hex(b), steps: vec![] })
+            .expect("tape kept");
+    };
+    seed(1, 0x11);
+    seed(2, 0x22);
+    seed(3, 0x33);
+
+    let on_chain = |id: u64, shifts: u32| PatientOnChain {
+        patient_id: id, state: OPEN, shifts, admitted_slot: 50, closed_slot: 0,
+        lease_holder: [0; 32], lease_until_slot: 0,
+    };
+    // 1: the chain says one shift and the cache has one — nothing to ask.
+    // 2: the chain says two — her cache is behind, so she is listed, and the listing succeeds.
+    // 3: the chain says five — listed, and the listing is the 429.
+    let patients = [on_chain(1, 1), on_chain(2, 2), on_chain(3, 5)];
+
+    let asked = RefCell::new(Vec::new());
+    let h = histories(&store, &patients, |id, seen: &mut Seen| {
+        asked.borrow_mut().push(id);
+        match id {
+            2 => {
+                let extra = ShiftOnChain { patient_id: 2, signer: [1; 32], slot: 200, run_hash: [0x2a; 32] };
+                seen.absorb(vec![(extra, "sig2".to_string())], Some(("sig2".to_string(), 200)));
+                Ok(Reading { added: 1, stopped: None })
+            }
+            _ => Err("HTTP status client error (429 Too Many Requests)".into()),
+        }
+    });
+
+    assert_eq!(*asked.borrow(), vec![2, 3],
+               "patient 1 is never asked about: the chain's count matched the cache and every tape \
+                was present, so a listing could not have told the board anything");
+    assert_eq!(h.listed, 2);
+
+    // The board is built from all three — the failure took one history's freshness, not the ward.
+    let ids: HashSet<u64> = h.shifts.iter().map(|s| s.patient_id).collect();
+    assert_eq!(ids, [1, 2, 3].into_iter().collect(),
+               "every patient's shifts are on the board, including the one whose listing failed");
+    assert_eq!(h.shifts.iter().filter(|s| s.patient_id == 2).count(), 2,
+               "and patient 2's fresh shift is there, because her listing worked");
+    assert_eq!(h.shifts.iter().filter(|s| s.patient_id == 3).count(), 1,
+               "patient 3 has her cached shift — stale, kept, and not pretended to be more");
+
+    // The failure is named against the patient, not raised against the ward.
+    assert_eq!(h.unread.len(), 1);
+    let why = h.unread.get(&3).expect("patient 3 is the one that could not be refreshed");
+    assert!(why.contains("429"), "and the reason is the chain's own words: {why}");
+
+    // Her fresh cache was persisted; the failed one was left as it was.
+    let two: Seen = store.get(SHIFT_CACHE, "p2").expect("cache");
+    assert_eq!(two.shifts().len(), 2, "a successful listing is kept for the next read");
+    let three: Seen = store.get(SHIFT_CACHE, "p3").expect("cache");
+    assert_eq!(three.shifts().len(), 1, "a failed one leaves the cache untouched");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// **When there is no fresh board at all, the last kept one is served, and says so.**
+///
+/// The other half of the same incident. `histories` covers one patient failing; this covers
+/// `getProgramAccounts` itself failing, when there is no fresh account for anybody. Today that is
+/// `unavailable` — no patients, no beds. But `keep_board` has kept every readable board this host
+/// ever built, so there is almost always a board a minute or two old that is far more true than
+/// "nothing". Served with `from: store`, its own `kept_at`, and the error named — never relabelled
+/// as fresh, never pretended to be nothing.
+#[test]
+fn with_no_fresh_board_the_kept_one_is_served_and_says_so() {
+    use vitals_web::ward_chain::{fall_back, Kept};
+
+    let queue = serde_json::json!({ "waiting": 4 });
+    let kept = Kept {
+        age: std::time::Duration::from_secs(90),
+        at_unix: 1_789_915_933,
+        revision: "vitals-world-00067".into(),
+        board: serde_json::json!({
+            "readable": true, "patients": [{ "patient_id": 7 }], "census": { "open": 1 },
+            "board": { "from": "chain", "kept_at": 1_789_915_933, "kept_by": null },
+            "queue": { "waiting": 2 }
+        }),
+    };
+
+    let served = fall_back(Some(kept), "devnet:ABC", queue.clone(), "the chain could not be read: 429");
+    assert_eq!(served["readable"], true, "a kept board is a readable board");
+    assert_eq!(served["patients"][0]["patient_id"], 7, "with the patients it had");
+    assert_eq!(served["board"]["from"], "store", "and it says where it came from");
+    assert_eq!(served["board"]["kept_at"], 1_789_915_933_u64,
+               "with the time it was actually read, not the time it was served — an age ticks and \
+                a ticking field is a new ETag every second");
+    assert_eq!(served["board"]["kept_by"], "vitals-world-00067");
+    assert!(served["stale"].as_str().unwrap_or("").contains("429"),
+            "and the reason a fresh one could not be had: {}", served["stale"]);
+    assert_eq!(served["queue"], queue,
+               "the queue is this host's own fact and is current whatever the chain did");
+
+    let nothing = fall_back(None, "devnet:ABC", queue, "the chain could not be read: 429");
+    assert_eq!(nothing["readable"], false,
+               "with nothing kept there is nothing to serve, and the board says so rather than \
+                inventing one");
+    assert!(nothing["why"].as_str().unwrap_or("").contains("429"));
+}

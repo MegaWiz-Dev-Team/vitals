@@ -849,3 +849,17 @@ assert.ok(!/openable === false && p\.bed/.test(rowSrc),
           `and does not hide the reason behind a bed she has already given back: ${rowSrc}`);
 
 console.log('globe_logic: ok (and a patient the ward cannot open is still on the page)');
+
+// ── a stale history is said on the row ───────────────────────────────────────
+//
+// /api/ward now carries `history: "history not refreshed this minute"` on a patient whose signature
+// listing failed this read — her account was read, her chart may be a shift behind. The board says
+// it; the row has to show it, where `why_not` already is, or the payload knows something the page
+// does not and a stranger opens a bedside a shift behind without being told. `row` builds DOM, so
+// what is asserted is the rule in its source, the same way the `openable === false` rule is.
+const rowSrcStale = grab('row');
+assert.match(rowSrcStale, /p\.history/,
+             'the row reads the history note off the board');
+assert.ok(!/p\.history\s*&&\s*p\.openable/.test(rowSrcStale) && !/p\.openable\s*&&\s*p\.history/.test(rowSrcStale),
+          `and does not tie it to openable — a stale chart is not a shut bed: ${rowSrcStale}`);
+console.log('globe_logic: ok (and a stale history is said on the row)');
