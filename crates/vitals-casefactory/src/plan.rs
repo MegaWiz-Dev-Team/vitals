@@ -71,7 +71,7 @@ impl Mapped {
 /// Roles every case carries whether or not the plan spells them out.
 const ALWAYS: &[&str] = &["oxygen", "admit", "monitor", "explain"];
 
-fn positive_hit(role: &Role, sentence: &str) -> bool {
+pub fn positive_hit(role: &Role, sentence: &str) -> bool {
     fragments(sentence).iter().any(|f| !negated(f) && role.kw.iter().any(|k| contains_kw(f, k)))
 }
 
@@ -115,7 +115,7 @@ pub fn map(case: &Case, archetype: Archetype) -> Mapped {
     for role in archetype.intrinsic_harms() {
         add(*role, None);
     }
-    for role in NEGATED_HARMS {
+    for role in NEGATED_HARMS.iter().chain(archetype.negated_harms().iter()) {
         let hit = plan.iter().chain(flags.iter()).any(|s| negated_hit(role, s));
         if hit {
             add(*role, None);

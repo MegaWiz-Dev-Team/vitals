@@ -195,9 +195,28 @@ pub const NEGATED_HARMS: &[Role] = &[
         "a non-steroidal given where bleeding or the kidney forbids it",
         &[n("sbp", -3.0)]),
     harm("steroids", "Corticosteroid",
-        &["corticosteroid*", "steroid*", "dexamethasone", "hydrocortisone", "mannitol", "สเตียรอยด์"],
+        &["corticosteroid*", "steroid*", "dexamethasone", "hydrocortisone", "prednisolone", "prednisone", "methylprednisolone", "mannitol", "สเตียรอยด์"],
         "a corticosteroid given where the evidence says it harms rather than helps",
         &[n("gcs", -1.0)]),
+    // The specific steroid a case forbids beside the one it allows: meningococcal disease takes
+    // hydrocortisone for refractory shock and forbids dexamethasone for the meningitis. Listed
+    // early so the drug's own name beats the class word (see `interventions::EARLY_HARMS`).
+    harm("dexamethasone", "Dexamethasone",
+        &["dexamethasone"],
+        "dexamethasone given where this case forbids it — the steroid this patient may take, if any, is a different one",
+        &[n("gcs", -1.0)]),
+    harm("neostigmine", "Anticholinesterase trial",
+        &["neostigmine", "anticholinesterase", "edrophonium", "tensilon"],
+        "an anticholinesterase given for a presynaptic paralysis — it cannot respond, and the test delayed the airway",
+        &[n("spo2", -2.0)]),
+    harm("succinylcholine", "Suxamethonium for the induction",
+        &["succinylcholine", "suxamethonium", "scoline"],
+        "suxamethonium for the induction with rhabdomyolysis and a rising potassium — a hyperkalaemic arrest on the table",
+        &[n("hr", -20.0), n("sbp", -8.0)]),
+    harm("full_anticoagulation", "Full anticoagulation",
+        &["full anticoag*", "full-dose anticoag*", "full dose anticoag*", "therapeutic anticoag*", "therapeutic dose*", "therapeutic enoxaparin", "therapeutic heparin", "treatment dose*", "heparin infusion", "unfractionated heparin infusion", "1 mg/kg twice"],
+        "full anticoagulation where only a prophylactic dose was allowed — an effusion bleeds into the pericardium",
+        &[n("sbp", -6.0)]),
     harm("im_injection", "Intramuscular injection",
         &["intramuscular", "im injection*"],
         "an intramuscular injection into a bleeding patient — a haematoma and an exposed needle",
@@ -284,7 +303,7 @@ const ELECTROLYTES: Role = role("electrolytes", "Correct the electrolytes", &["p
     "electrolytes corrected under ECG monitoring", &[]);
 const ISOLATE: Role = role("isolate", "Isolate and protect staff", &["isolat*", "ppe", "personal protective", "precaution*", "แยกผู้ป่วย"], Kind::Gate,
     "isolation room, full protective equipment, a contact log started", &[]);
-const HAEMOSTASIS: Role = role("haemostasis", "Stop the bleeding", &["tranexamic", "endoscop*", "egd", "gastroscopy", "banding", "sclerotherapy", "surgery", "surgical haemostasis", "surgical intervention", "surgical consult*", "source control", "laparotomy", "uterotonic*", "oxytocin", "ergometrine", "misoprostol", "uterine massage", "balloon", "pressure dressing*", "embolis*", "ligat*", "ผ่าตัด", "ห้ามเลือด", "ส่องกล้อง"], Kind::Critical,
+const HAEMOSTASIS: Role = role("haemostasis", "Stop the bleeding", &["endoscop*", "egd", "gastroscopy", "banding", "sclerotherapy", "surgery", "surgical haemostasis", "surgical intervention", "surgical consult*", "source control", "laparotomy", "uterotonic*", "oxytocin", "ergometrine", "misoprostol", "uterine massage", "balloon", "pressure dressing*", "embolis*", "ligat*", "ผ่าตัด", "ห้ามเลือด", "ส่องกล้อง"], Kind::Critical,
     "the bleeding point is being dealt with — pressure, drugs, or the theatre", &[n("sbp", 4.0)]);
 const ANTIVIRAL: Role = role("antiviral", "Antiviral", ANTIVIRAL_KW, Kind::Supportive,
     "antiviral given", &[]);
@@ -320,7 +339,9 @@ const NEOSTIGMINE: Role = role("neostigmine", "Atropine-neostigmine trial", &["n
 const ANAPHYLAXIS_READY: Role = role("adrenaline_ready", "Adrenaline drawn up at the bedside", &["adrenaline 1:1000", "drawn up", "antivenom reaction"], Kind::Supportive,
     "adrenaline drawn up beside the infusion", &[]);
 const LIGATURE: Role = role("ligature", "Release the ligature safely", &["ligature", "tourniquet"], Kind::Supportive,
-    "the ligature is released slowly, now that the antidote is running", &[]);
+    "the ligature is released slowly, now that the antidote is running and the airway is secured", &[]);
+const LIGATURE_EARLY_HARM: &str = "the ligature was released before the antivenom was running and the airway secured — a surge of venom into a failing chest";
+const ORS_EARLY_HARM: &str = "oral rehydration for a patient in shock who cannot drink — the volume must go in the vein first";
 const TETANUS: Role = role("tetanus", "Tetanus toxoid", &["tetanus"], Kind::Supportive,
     "tetanus toxoid given", &[]);
 const ANTICONVULSANT: Role = role("anticonvulsant", "Treat a seizure", &["lorazepam", "diazepam", "phenytoin", "levetiracetam", "anticonvulsant*", "seizure treatment", "ยากันชัก"], Kind::Supportive,
@@ -341,6 +362,12 @@ const ADRENALINE_NEB: Role = role("adrenaline_nebulised", "Nebulised adrenaline"
     "nebulised adrenaline — the stridor softens for now", &[n("spo2", 3.0)]);
 const IV_ACCESS: Role = role("iv_access", "Vascular access", &["intraosseous", "iv lines", "iv access", "two large-bore", "large-bore"], Kind::Supportive,
     "two lines in", &[]);
+/// The adjunct beside the uterotonics: its own order, so a learner who stops the bleeding with
+/// oxytocin alone has not also given the tranexamic acid the first three hours ask for.
+const TRANEXAMIC: Role = role("tranexamic", "Tranexamic acid", &["tranexamic", "txa"], Kind::Supportive,
+    "tranexamic acid 1 g over ten minutes — inside the three hours", &[]);
+const VITAMIN_A: Role = role("vitamin_a", "Vitamin A", &["vitamin a", "retinol", "วิตามินเอ"], Kind::Supportive,
+    "vitamin A given — today and again tomorrow", &[]);
 
 // ── the ACLS family's tools and turns ─────────────────────────────────────────────────
 const CPR: Role = role("cpr", "Chest compressions", &["cpr", "chest compression*", "compressions", "ปั๊มหัวใจ", "กดหน้าอก"], Kind::Rescue,
@@ -425,6 +452,15 @@ const ORS: Role = role("ors", "Oral rehydration once able to drink", &["oral reh
 const ZINC: Role = role("zinc", "Zinc", &["zinc"], Kind::Supportive, "zinc given", &[]);
 const ANTIMOTILITY_HARM: Role = harm("antimotility", "Antimotility drug", &["loperamide", "antimotility", "anti-motility", "diphenoxylate"],
     "an antimotility drug for a secretory diarrhoea — the toxin stays in and the gut distends", &[n("sbp", -3.0)]);
+
+/// The bolus a malnourished or leaking child and a comatose child must not be given (FEAST).
+/// Scoped to the shapes where a bolus is the harm rather than the therapy, and present only
+/// when the case's own words forbid it. The keywords name a *bolus of fluid* and never a bare
+/// "bolus" or "20 mL/kg" — artesunate is pushed as a bolus and whole blood is 20 mL/kg.
+const RAPID_BOLUS_HARM: Role = harm("rapid_bolus", "Rapid fluid bolus",
+    &["rapid bolus*", "rapid large bolus*", "large bolus*", "fluid bolus*", "rapid fluid bolus*", "aggressive fluid*", "aggressive bolus*", "saline bolus*", "crystalloid bolus*", "bolus of crystalloid", "bolus of saline", "bolus of fluid*", "20 ml/kg bolus*", "bolus of 20 ml/kg", "20 ml/kg fluid*", "20 ml/kg crystalloid", "20 ml/kg saline", "20 ml/kg ringer*", "20 ml/kg of"],
+    "a rapid fluid bolus into a child the trial says not to bolus — the heart fails and the lungs fill",
+    &[n("spo2", -5.0), n("rr", 6.0)]);
 
 // intrinsic harms — present in the archetype whether or not the plan mentions them
 const FLUID_BOLUS_HARM: Role = harm("fluid_bolus", "Fluid bolus", FLUIDS_KW,
@@ -677,8 +713,9 @@ impl Archetype {
     pub fn roles(self) -> &'static [Role] {
         match self {
             Archetype::SepticShock => &[FLUIDS, ANTIBIOTICS, PRESSOR, SOURCE_CONTROL, CULTURES, TRANSFUSION_SUPPORT, ELECTROLYTES, DEXTROSE_SUPPORT, STEROIDS_SUPPORT, ANTICOAG, PPI, ANTIVIRAL, IV_ACCESS],
-            Archetype::HaemorrhagicShock => &[ISOLATE, FLUIDS, TRANSFUSION, HAEMOSTASIS, SPECIFIC, PRESSOR_SUPPORT, ANTIBIOTICS_SUPPORT, CULTURES, ELECTROLYTES, PPI, IV_ACCESS],
-            Archetype::CardiogenicShock => &[INOTROPE, PRESSOR, REPERFUSION, SPECIFIC, DIURETIC, NIV, PACING, ANTIPLATELET, ANTIARRHYTHMIC, ANTICOAG, PERICARDIOCENTESIS, ELECTROLYTES, AIRWAY_SUPPORT],
+            Archetype::HaemorrhagicShock => &[ISOLATE, FLUIDS, TRANSFUSION, HAEMOSTASIS, SPECIFIC, TRANEXAMIC, PRESSOR_SUPPORT, ANTIBIOTICS_SUPPORT, CULTURES, ELECTROLYTES, PPI, IV_ACCESS],
+            // the antibiotic rides as support: a rheumatic carditis takes its penicillin, a myocarditis its cover
+            Archetype::CardiogenicShock => &[INOTROPE, PRESSOR, REPERFUSION, SPECIFIC, DIURETIC, NIV, PACING, ANTIPLATELET, ANTIARRHYTHMIC, ANTICOAG, PERICARDIOCENTESIS, ELECTROLYTES, ANTIBIOTICS_SUPPORT, AIRWAY_SUPPORT],
             Archetype::NeuromuscularRespiratoryFailure => &[AIRWAY, SPECIFIC, NEOSTIGMINE, ANAPHYLAXIS_READY, LIGATURE, TETANUS, ELECTROLYTES, IV_ACCESS],
             Archetype::CnsDepressionHypoglycaemia => &[DEXTROSE, SPECIFIC, AIRWAY_SUPPORT, ANTICONVULSANT, FLUIDS_CAUTIOUS, TRANSFUSION_SUPPORT, ANTIBIOTICS_SUPPORT, ANTIVIRAL, CULTURES, LUMBAR_PUNCTURE, ELECTROLYTES],
             // glucose and antibiotics are as critical as the measured fluid when the plan names them (SAM, cholera)
@@ -686,7 +723,7 @@ impl Archetype {
             // the specific therapy (antitoxin), the transfusion (acute chest syndrome) and the isolation gate
             // (measles, diphtheria) are the roles the authors found missing; the airway turns critical for an
             // upper-airway diagnosis (see `critical_override`)
-            Archetype::HypoxicRespiratoryFailure => &[ISOLATE, SPECIFIC, TRANSFUSION, BRONCHODILATOR, CHEST_DRAIN, ANTICOAG_CRITICAL, ANTIBIOTICS, DIURETIC_CRITICAL, ADRENALINE_NEB, STEROIDS_SUPPORT, ANTIVIRAL, MAGNESIUM, NIV, NITRATE, AIRWAY_SUPPORT, CULTURES, IV_ACCESS],
+            Archetype::HypoxicRespiratoryFailure => &[ISOLATE, SPECIFIC, TRANSFUSION, BRONCHODILATOR, CHEST_DRAIN, ANTICOAG_CRITICAL, ANTIBIOTICS, DIURETIC_CRITICAL, ADRENALINE_NEB, STEROIDS_SUPPORT, ANTIVIRAL, VITAMIN_A, MAGNESIUM, NIV, NITRATE, AIRWAY_SUPPORT, CULTURES, IV_ACCESS],
             Archetype::AclsCardiacArrest => &[AIRWAY_SUPPORT, REVERSIBLE_CAUSES, POST_ROSC, ELECTROLYTES, IV_ACCESS],
             Archetype::AclsTachycardiaSvt => &[VAGAL, ADENOSINE, RATE_CONTROL_SUPPORT, AIRWAY_SUPPORT, IV_ACCESS, ELECTROLYTES],
             Archetype::AclsTachycardiaAf => &[RATE_CONTROL, ANTICOAG_AF, DIURETIC, NIV, THYROID, AIRWAY_SUPPORT, IV_ACCESS, ELECTROLYTES],
@@ -710,14 +747,37 @@ impl Archetype {
     }
 
     /// Effects that ask about the state for roles outside the ACLS family: oral rehydration
-    /// before the drip is in is harm; once perfusing it is right.
+    /// before the drip is in is harm; once perfusing it is right. The ligature on a bitten limb
+    /// comes off only once the antivenom is running and the airway is secured.
     pub fn branch_effects(self, role_id: &str) -> Option<Vec<serde_json::Value>> {
         use serde_json::json;
         match (self, role_id) {
             (Archetype::HypovolaemicShock, "ors") => Some(vec![json!({ "branch": [
                 { "if": { "flag": "fluids_rapid_given" }, "then": [ { "flag": "ors_given" }, { "beat": "oral rehydration started — the drinking continues alongside the drip" } ] }
-            ], "else": [ { "harm": "oral rehydration for a patient in shock who cannot drink — the volume must go in the vein first" } ] })]),
+            ], "else": [ { "harm": ORS_EARLY_HARM } ] })]),
+            (Archetype::NeuromuscularRespiratoryFailure, "ligature") => Some(vec![json!({ "branch": [
+                { "if": { "all": [ { "flag": "airway_given" }, { "flag": "specific_therapy_given" } ] }, "then": [ { "flag": "ligature_given" }, { "beat": LIGATURE.beat } ] }
+            ], "else": [ { "harm": LIGATURE_EARLY_HARM }, { "delta": { "spo2": -4.0 }, "floor": 40.0 } ] })]),
             _ => None,
+        }
+    }
+
+    /// The harms a branch in [`branch_effects`] can fire for this role — priced by the rubric
+    /// like a trigger's harm, so the sheet names them.
+    pub fn branch_harms(self, role_id: &str) -> &'static [&'static str] {
+        match (self, role_id) {
+            (Archetype::HypovolaemicShock, "ors") => &[ORS_EARLY_HARM],
+            (Archetype::NeuromuscularRespiratoryFailure, "ligature") => &[LIGATURE_EARLY_HARM],
+            _ => &[],
+        }
+    }
+
+    /// Orders that hurt in this shape *when the case forbids them* — [`NEGATED_HARMS`] scoped to
+    /// the shapes where the same words are harm rather than therapy.
+    pub fn negated_harms(self) -> &'static [Role] {
+        match self {
+            Archetype::PaediatricCompensatedShock | Archetype::CnsDepressionHypoglycaemia => &[RAPID_BOLUS_HARM],
+            _ => &[],
         }
     }
 

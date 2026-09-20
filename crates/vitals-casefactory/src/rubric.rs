@@ -6,7 +6,7 @@
 use crate::archetype::Archetype;
 use crate::embla::Case;
 use crate::interventions::Built;
-use crate::plan::Mapped;
+use crate::plan::{Mapped, PlanStep};
 use crate::scenario::Sim;
 use serde_json::{json, Value};
 
@@ -54,11 +54,23 @@ fn split(total: u32, weights: &[f64], min: u32) -> Vec<u32> {
     shares
 }
 
+/// The case's own checklist under one rubric dimension, trimmed, blanks dropped.
+fn dimension_criteria<'a>(case: &'a Case, key: &str) -> impl Iterator<Item = &'a String> {
+    let key = key.to_string();
+    case.hidden.rubric.dimensions.iter().filter(move |d| d.key == key).flat_map(|d| d.criteria.iter()).filter(|c| !c.trim().is_empty())
+}
+
 fn weight(case: &Case, key: &str, default: f64) -> f64 {
     case.hidden.rubric.dimensions.iter().find(|d| d.key == key).map(|d| d.weight).unwrap_or(default)
 }
 
-pub fn derive(case: &Case, a: Archetype, mapped: &Mapped, built: &Built, sim: &Sim, source_sha: &str) -> Value {
+/// The mark sheet, and the case's management checklist with what each criterion was paid on.
+pub struct Derived {
+    pub rubric: Value,
+    pub criteria: Vec<PlanStep>,
+}
+
+pub fn derive(case: &Case, a: Archetype, mapped: &Mapped, built: &Built, sim: &Sim, source_sha: &str) -> Derived {
     // ── history: the lines worth digging for ─────────────────────────────────────
     let mut history: Vec<Value> = Vec::new();
     for pass in ["on_direct_ask", "on_ask"] {
@@ -128,26 +140,92 @@ pub fn derive(case: &Case, a: Archetype, mapped: &Mapped, built: &Built, sim: &S
             None => tx.push(json!({ "label": p.role.label, "type": "action", "needle": id })),
         }
     }
+    // ── the case's own management checklist: paid, never required ──────────────
+    // A `management_safety` criterion names an order the reviewer wants marked even though it
+    // does not turn the trajectory — the empirical antibiotic beside the antimalarial, the
+    // vitamin A in measles, the tranexamic acid beside the uterotonics. The first present,
+    // non-harmful role its words name is paid as an `action` under the criterion's own label;
+    // a role the turn already pays for is not paid twice; a criterion that names no order is
+    // listed with nothing under it, so the reviewer sees it was not placed.
+    let mut criteria: Vec<PlanStep> = Vec::new();
+    for c in dimension_criteria(case, "management_safety") {
+        // every present order the criterion's words name; the first not already paid is the one
+        // it pays, so "release the tourniquet after the airway" pays the release, not the airway
+        let hits: Vec<&crate::plan::Present> = mapped
+            .present
+            .iter()
+            .filter(|p| p.role.kind != crate::archetype::Kind::Harmful)
+            .filter(|p| crate::plan::positive_hit(&p.role, c))
+            .collect();
+        let unpaid = hits.iter().find(|p| !tx.iter().any(|it| it["needle"] == p.tx_id()));
+        let mut placed: Vec<String> = Vec::new();
+        match (unpaid, hits.first()) {
+            (Some(p), _) => {
+                let id = p.tx_id();
+                tx.push(json!({ "label": c.trim(), "type": "action", "needle": id }));
+                placed.push(id);
+            }
+            (None, Some(p)) => placed.push(p.tx_id()),
+            (None, None) => {}
+        }
+        criteria.push(PlanStep { step: c.clone(), interventions: placed });
+    }
     let outcome = vec![json!({ "label": match sim.win { "win_icu" => "The patient survives to intensive care", _ => "The patient survives to discharge" }, "type": "outcome", "any_of": [sim.win] })];
 
     // ── red flags: the harms the case defines, and the ones the clock defines ─────
+    // The bucket holds as many items as it has points, first come first kept — so the case's
+    // own `red_flag_recognition` checklist goes first: a criterion that names a harm the pack
+    // can fire (by the forbidden order's own words, or by the order a trigger guards) puts
+    // that harm at the head of the list, in the checklist's order. Everything else follows in
+    // the order the archetype lists it.
     let mut no_harm: Vec<Value> = Vec::new();
+    let mut named: Vec<String> = Vec::new();
+    let harm_item = |p: &crate::plan::Present| p.role.harm.map(|h| json!({ "label": format!("Did not give: {}", p.role.label.to_lowercase()), "type": "no_harm", "needle": h }));
+    let trigger_item = |text: &str| json!({ "label": format!("Avoided: {}", text.split(" — ").next().unwrap_or(text)), "type": "no_harm", "needle": text });
+    // the longest keyword the criterion contains names the harm it means: "releasing the
+    // tourniquet before the airway" is about the tourniquet, not the airway's clock
+    let kw_len = |role: &crate::archetype::Role, c: &str| role.kw.iter().filter(|k| crate::text::contains_kw(&c.to_lowercase(), k)).map(|k| k.len()).max();
+    for c in dimension_criteria(case, "red_flag_recognition") {
+        let mut candidates: Vec<(usize, String, Value)> = Vec::new();
+        for p in mapped.harmful() {
+            if let (Some(len), Some(it)) = (kw_len(&p.role, c), harm_item(p)) {
+                candidates.push((len, p.role.harm.unwrap_or_default().to_string(), it));
+            }
+        }
+        for (id, text) in &sim.trigger_harms {
+            let role_id = id.split_once('_').map(|(_, r)| r).unwrap_or(id);
+            if let Some(len) = mapped.get(role_id).and_then(|p| kw_len(&p.role, c)) {
+                candidates.push((len, text.clone(), trigger_item(text)));
+            }
+        }
+        if let Some((_, needle, it)) = candidates.into_iter().max_by_key(|(len, _, _)| *len) {
+            if !named.contains(&needle) {
+                named.push(needle);
+                no_harm.push(it);
+            }
+        }
+    }
     for p in mapped.harmful() {
-        if let Some(h) = p.role.harm {
-            no_harm.push(json!({ "label": format!("Did not give: {}", p.role.label.to_lowercase()), "type": "no_harm", "needle": h }));
+        if let Some(it) = harm_item(p) {
+            if !named.contains(&p.role.harm.unwrap_or_default().to_string()) {
+                no_harm.push(it);
+            }
         }
     }
     // The clock's harms come after the case's own, and at most two of them: the timed
     // `action_by` items already score timeliness, so these are the reminder, not the mark.
     let mut late_items = 0;
     for (id, text) in &sim.trigger_harms {
+        if named.contains(text) {
+            continue;
+        }
         if id.starts_with("late_") {
             late_items += 1;
             if late_items > 2 {
                 continue;
             }
         }
-        no_harm.push(json!({ "label": format!("Avoided: {}", text.split(" — ").next().unwrap_or(text)), "type": "no_harm", "needle": text }));
+        no_harm.push(trigger_item(text));
     }
     no_harm.truncate(6);
 
@@ -200,7 +278,7 @@ pub fn derive(case: &Case, a: Archetype, mapped: &Mapped, built: &Built, sim: &S
     items.push(json!({ "label": "Ordered nothing this patient did not need", "type": "no_unindicated", "per_item": 2, "max_penalty": 6, "allow": allow }));
 
     let pass_bps = case.hidden.rubric.pass_mark.map(|p| (p * 100.0).round() as u32).unwrap_or(6000).clamp(3000, 9000);
-    json!({
+    let rubric = json!({
         "case": case.meta.id,
         "pass_bps": pass_bps,
         "status": format!(
@@ -211,5 +289,6 @@ pub fn derive(case: &Case, a: Archetype, mapped: &Mapped, built: &Built, sim: &S
             a.id()
         ),
         "items": items,
-    })
+    });
+    Derived { rubric, criteria }
 }

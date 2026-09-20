@@ -15,7 +15,13 @@ use vitals_sce::{Sce, SceState};
 
 const SYNTHETIC: &str = include_str!("fixtures/synthetic-septic-shock.json");
 
+#[allow(clippy::too_many_arguments)]
 fn case(id: &str, dx: &str, tags: &[&str], age: u32, vitals: &[&str], plan: &[&str], red: &[&str], criteria: &[&str]) -> String {
+    case_with_harms(id, dx, tags, age, vitals, plan, red, criteria, &[])
+}
+
+#[allow(clippy::too_many_arguments)]
+fn case_with_harms(id: &str, dx: &str, tags: &[&str], age: u32, vitals: &[&str], plan: &[&str], red: &[&str], criteria: &[&str], harm_criteria: &[&str]) -> String {
     let mut v: serde_json::Value = serde_json::from_str(SYNTHETIC).unwrap();
     v["meta"]["id"] = serde_json::json!(id);
     v["meta"]["title"] = serde_json::json!("test");
@@ -27,10 +33,14 @@ fn case(id: &str, dx: &str, tags: &[&str], age: u32, vitals: &[&str], plan: &[&s
     for (i, val) in vitals.iter().enumerate() {
         v["exam_findings"][i]["value"] = serde_json::json!(val);
     }
+    let dims = v["hidden"]["rubric"]["dimensions"].as_array_mut().unwrap();
     if !criteria.is_empty() {
-        let dims = v["hidden"]["rubric"]["dimensions"].as_array_mut().unwrap();
         let d = dims.iter_mut().find(|d| d["key"] == "management_safety").unwrap();
         d["criteria"] = serde_json::json!(criteria);
+    }
+    if !harm_criteria.is_empty() {
+        let d = dims.iter_mut().find(|d| d["key"] == "red_flag_recognition").unwrap();
+        d["criteria"] = serde_json::json!(harm_criteria);
     }
     v.to_string()
 }
@@ -39,11 +49,19 @@ fn pack_of(s: &str) -> vitals_casefactory::Pack {
     compile(s, Source::of("embla-cases", "test", s)).unwrap_or_else(|e| panic!("{}: {}", e.case_id, e.reason))
 }
 
+/// Every order the sheet pays for, with the label it pays under — `action`, `action_by`, and
+/// each member of an `action_any`.
 fn paid(pack: &vitals_casefactory::Pack) -> Vec<(String, String)> {
-    pack.rubric["items"].as_array().unwrap().iter()
-        .filter(|i| i["type"] == "action" || i["type"] == "action_by")
-        .map(|i| (i["needle"].as_str().unwrap().to_string(), i["label"].as_str().unwrap().to_string()))
-        .collect()
+    let mut out = Vec::new();
+    for i in pack.rubric["items"].as_array().unwrap() {
+        let label = i["label"].as_str().unwrap_or_default().to_string();
+        match i["type"].as_str() {
+            Some("action") | Some("action_by") => out.push((i["needle"].as_str().unwrap().to_string(), label)),
+            Some("action_any") => out.extend(i["any_of"].as_array().unwrap().iter().map(|n| (n.as_str().unwrap().to_string(), label.clone()))),
+            _ => {}
+        }
+    }
+    out
 }
 
 fn no_harm(pack: &vitals_casefactory::Pack) -> Vec<String> {
@@ -243,13 +261,35 @@ fn prednisolone_is_a_steroid_harm_where_the_case_forbids_steroids_in_shock() {
 }
 
 #[test]
+fn the_red_flag_checklist_puts_the_harm_it_names_at_the_head_of_a_full_sheet() {
+    // six harms the case forbids and five points to price them: without the checklist the
+    // bolus, listed last, falls off the sheet
+    let plan = &["50% dextrose 50 mL IV at once", "IV artesunate 2.4 mg/kg at 0, 12 and 24 hours",
+        "If hypovolaemic give 500 mL isotonic crystalloid over 30 minutes and reassess (no rapid large boluses)",
+        "No NSAIDs; no corticosteroids or mannitol; no oral antimalarials alone while vomiting; no prophylactic phenobarbital; no sedatives before the airway"];
+    let vitals = &["96/58 mmHg", "118/min", "24/min", "95%", "39.1 °C", "GCS 9 (E2 V3 M4)"];
+    let without = case("synthetic-bolus-order", "Cerebral malaria with hypoglycaemia", &["malaria"], 30, vitals, plan, &[], &[]);
+    let pack = pack_of(&without);
+    assert!(harmful(&pack).contains(&"tx_rapid_bolus".to_string()), "{:?}", harmful(&pack));
+    assert!(!no_harm(&pack).iter().any(|n| n.contains("bolus")), "the sheet is full and the bolus is last: {:?}", no_harm(&pack));
+    let with = case_with_harms("synthetic-bolus-order", "Cerebral malaria with hypoglycaemia", &["malaria"], 30, vitals, plan, &[], &[],
+        &["No aggressive or rapid fluid bolus"]);
+    let pack = pack_of(&with);
+    let nh = no_harm(&pack);
+    assert!(nh[0].contains("bolus"), "{nh:?}");
+    assert_eq!(pack.replay.golden_score.earned, pack.replay.golden_score.max);
+}
+
+#[test]
 fn releasing_the_ligature_before_the_antivenom_and_the_airway_is_a_priced_harm() {
-    let s = case("synthetic-ligature", "Common krait envenoming with neuromuscular respiratory failure", &["envenoming", "krait"], 34,
+    let s = case_with_harms("synthetic-ligature", "Common krait envenoming with neuromuscular respiratory failure", &["envenoming", "krait"], 34,
         &["118/76 mmHg", "110/min", "26/min", "90% on room air"],
         &["Airway first: intubate and ventilate", "Indian polyvalent anti-snake venom 10 vials over 30-60 minutes",
-          "Release the ankle ligature slowly only after antivenom is running and the airway is secured"],
+          "Release the ankle ligature slowly only after antivenom is running and the airway is secured",
+          "No NSAIDs or intramuscular injections; no incision or suction at the bite; no sedatives before the airway"],
         &["The ankle ligature must be released only after antivenom is running and the airway is secured — sudden release can precipitate deterioration"],
-        &["Release the tourniquet only after the airway is secured and antivenom has started"]);
+        &["Release the tourniquet only after the airway is secured and antivenom has started"],
+        &["Do not release the tourniquet before the airway and the antivenom"]);
     let pack = pack_of(&s);
     assert!(!typed(&pack, &[], "release the tourniquet").is_empty(), "released first: harm");
     assert!(!typed(&pack, &["tx_airway"], "release the tourniquet").is_empty(), "released before the antivenom: harm");

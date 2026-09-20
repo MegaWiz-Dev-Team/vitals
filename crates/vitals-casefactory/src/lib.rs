@@ -117,6 +117,9 @@ pub struct Pack {
     pub voice: BTreeMap<String, interventions::VoiceLine>,
     /// The plan, step by step, with what each compiled into.
     pub management: Vec<plan::PlanStep>,
+    /// The case's own `management_safety` checklist, criterion by criterion, with the order each
+    /// one is paid on — empty where the pack could place it nowhere.
+    pub criteria: Vec<plan::PlanStep>,
     /// The roles a sentence pinned to the clock.
     pub timed: BTreeMap<String, TimedRole>,
     /// Vital signs the case did not give, filled with resting defaults.
@@ -195,7 +198,7 @@ pub fn compile(case_json: &str, source: Source) -> Result<Pack, Refusal> {
 
     let built = interventions::build(&case, &mapped, a);
     let sim = scenario::build(&case, a, &v0, &mapped, &built);
-    let rubric = rubric::derive(&case, a, &mapped, &built, &sim, &source.sha256);
+    let rubric::Derived { rubric, criteria } = rubric::derive(&case, a, &mapped, &built, &sim, &source.sha256);
 
     // the management path: gates, then every critical order in the plan's order, twenty
     // seconds apart; then everything else the rubric pays for — the supportive orders, the
@@ -313,6 +316,7 @@ pub fn compile(case_json: &str, source: Source) -> Result<Pack, Refusal> {
         rubric: rubric_value.clone(),
         voice,
         management: mapped.steps.clone(),
+        criteria,
         timed,
         vitals_assumed: v0.assumed.clone(),
         placeholders,

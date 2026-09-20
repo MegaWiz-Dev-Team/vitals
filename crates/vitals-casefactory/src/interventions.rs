@@ -138,8 +138,10 @@ fn id_for(prefix: &str, display: &str, n: usize, taken: &mut BTreeSet<String>) -
 }
 
 /// Harmful orders whose keywords are a *more specific* form of a therapy's — the IV push of the
-/// drug that is right IM. Listed before everything else so the specific phrase wins the match.
-const EARLY_HARMS: &[&str] = &["adrenaline_iv_push"];
+/// drug that is right IM, the steroid forbidden beside the one allowed, the full dose where the
+/// prophylactic one is right, the bolus where the measured fluid is right. Listed before
+/// everything else so the specific phrase wins the match.
+const EARLY_HARMS: &[&str] = &["adrenaline_iv_push", "dexamethasone", "full_anticoagulation", "rapid_bolus"];
 
 /// Build the whole list, treatments first — the matcher takes the first intervention whose
 /// keywords hit, and a drug name must beat a display word.

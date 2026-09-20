@@ -350,6 +350,13 @@ pub fn build(case: &Case, a: Archetype, v: &Vitals0, mapped: &Mapped, built: &Bu
         trigger_harms.push(("antihistamine_first".into(), text));
     }
 
+    // the harms a branch can fire — an order right after another and wrong before it
+    for p in &mapped.present {
+        for h in a.branch_harms(p.role.id) {
+            trigger_harms.push((format!("early_{}", p.role.id), h.to_string()));
+        }
+    }
+
     // too much of a good thing: the child who is filled past the leak
     if a == Archetype::PaediatricCompensatedShock {
         let text = "fluid overload — puffy eyelids, a rising respiratory rate, crackles, the effusion grows".to_string();
