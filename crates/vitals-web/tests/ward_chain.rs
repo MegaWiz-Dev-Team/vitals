@@ -1664,3 +1664,47 @@ fn a_patient_the_chain_has_not_moved_is_not_listed() {
             "more in the cache than the chain says exist is an anomaly, and an anomaly is listed \
              rather than trusted — a duplicate in the cache would otherwise hide a real leaf");
 }
+
+/// **The parts of a pass add up to the pass, and the line says so when they do not.**
+///
+/// 00065, after the listings were skipped: 28.3 s over 26 patients, median 36 ms, max 1025 ms. The
+/// per-patient shape accounts for about three seconds of it. The other twenty-five are somewhere
+/// the instrument cannot see, and a number nobody can attribute is the exact shape of the two
+/// incidents this project has already had — `boot meter +137.6s` and `boot sessions +30.2s`, both
+/// true, both read as something they were not, both an hour lost.
+///
+/// So the spans are named *and* reconciled: whatever the named parts do not account for is printed
+/// as `elsewhere`, which is the line admitting what it does not know. A future span added to the
+/// pass and left unnamed shows up there rather than silently inflating its neighbour.
+#[test]
+fn the_parts_of_a_pass_add_up_to_the_pass() {
+    use std::time::Duration;
+    use vitals_web::ward_chain::{spans_line, Span};
+
+    let named = [Span { what: "repair", ms: 3_100 }, Span { what: "reap", ms: 24_000 }];
+
+    assert_eq!(spans_line(Duration::from_millis(27_100), &named), "repair 3.1s · reap 24.0s",
+               "when the parts account for the whole, nothing is added");
+    assert_eq!(spans_line(Duration::from_millis(28_300), &named),
+               "repair 3.1s · reap 24.0s · elsewhere 1.2s",
+               "and when they do not, the gap is named rather than left for a reader to subtract");
+
+    // Under a second reads in milliseconds: a span of "0.1s" and a span of "0.0s" look alike and
+    // one of them is forty times the other.
+    assert_eq!(spans_line(Duration::from_millis(80), &[Span { what: "queue", ms: 80 }]), "queue 80ms");
+    assert_eq!(spans_line(Duration::from_millis(3), &[Span { what: "queue", ms: 3 }]), "queue 3ms");
+
+    // Occurrence order, like the boot marks, because the reader is following the pass through.
+    let ordered = [Span { what: "patients", ms: 200 }, Span { what: "packs", ms: 1_500 },
+                   Span { what: "repair", ms: 50 }];
+    assert_eq!(spans_line(Duration::from_millis(1_750), &ordered),
+               "patients 200ms · packs 1.5s · repair 50ms");
+
+    // Rounding must not manufacture an `elsewhere`. Three spans of 1 ms against a 4 ms pass is not
+    // a finding, and a line that cried about it every minute would be a line nobody reads.
+    let dust = [Span { what: "a", ms: 1 }, Span { what: "b", ms: 1 }, Span { what: "c", ms: 1 }];
+    assert_eq!(spans_line(Duration::from_millis(4), &dust), "a 1ms · b 1ms · c 1ms");
+
+    assert_eq!(spans_line(Duration::from_millis(500), &[]), "",
+               "a pass with no named parts says nothing rather than claiming it is all elsewhere");
+}
