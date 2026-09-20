@@ -42,7 +42,7 @@ const grabConst = (name) => {
   return `${m[1]} ${name} = ${m[2]};`;
 };
 
-const sandbox = [grabConst('ALPHA3'), grabConst('STATE_LABEL'), grabConst('DOCTOR_BINS'), grab('countryId'), grab('countryCounts'), grab('visible'),
+const sandbox = [grabConst('ALPHA3'), grabConst('FULL_NAME'), grab('displayName'), grabConst('STATE_LABEL'), grabConst('DOCTOR_BINS'), grab('countryId'), grab('countryCounts'), grab('visible'),
   grab('stateOf'), grab('onBoard'), grab('inBeds'), grab('canTakeShift'), grab('censusFigures'), grab('paintOf'), grab('hoverText'), grab('openingCountry'), grab('openingLongitude'), grab('countryGroups'), grab('countryHeading'), grab('waitingCounts'), grab('figuresFor'), grab('bedsEmptyWords'), grab('shouldReload'), grab('whenMs'), grab('relative'), grab('absolute'), grab('stateLine'),
   grab('peoplePerDoctor'), grab('latestOf'), grab('tenYearTrend'), grab('fmtTrend'), grab('fmtPeople'), grab('doctorLine'),
   grab('worldAverage'), grab('missionLine'), grab('doctorBin'),
@@ -71,6 +71,10 @@ assert.equal(countryId(''), null);
 // never light. The atlas ids are read from the page's own embedded topology.
 const topo = JSON.parse(html.match(/<script id="atlas" type="application\/json">([\s\S]*?)<\/script>/)[1]);
 const atlasIds = new Set(topo.objects.countries.geometries.map(g => String(g.id)));
+// What each polygon is labelled in the file, before the product has a say.
+const polygonName = new Map(topo.objects.countries.geometries
+  .filter(g => g.id !== undefined && g.id !== null)
+  .map(g => [String(g.id), (g.properties || {}).name]));
 const reachable = new Set(Object.values(ALPHA3).map(String));
 const orphans = [...atlasIds].filter(id => !reachable.has(id));
 // 110m draws a few territories with no ISO alpha-3 of their own (e.g. N. Cyprus, Somaliland,
@@ -81,6 +85,32 @@ assert.ok(atlasIds.has('764') && atlasIds.has('360') && atlasIds.has('156'), 'TH
 // HKG must still resolve — to the tray, named — rather than fall off the map as an unknown code.
 assert.equal(countryId('HKG'), '344');
 assert.ok(!atlasIds.has('344'), 'if 110m ever draws HK on its own, the tray rule for HKG should be revisited');
+
+// ── the product says the full name; the atlas abbreviates to fit a label ──────
+//
+// 110m shortens ten of its labels so they fit on a map: "S. Sudan", "Dem. Rep. Congo",
+// "Bosnia and Herz.", "Eq. Guinea". That is cartography, not what a country is called, and it was
+// reaching people — the queue chip read "S. Sudan" while the bedside read "South Sudan", the same
+// person under two names in one session. Worse, the first version of the pool-label rule below
+// pinned `place` to the raw polygon string, which would have pushed the abbreviation the other way
+// and put "a man from Dem. Rep. Congo" into a portrait prompt.
+//
+// So the expansion lives in one place and `nameOf` is its only reader: nothing downstream needs to
+// know the atlas abbreviates at all.
+assert.equal(displayName('728', 'S. Sudan'), 'South Sudan');
+assert.equal(displayName('180', 'Dem. Rep. Congo'), 'Democratic Republic of the Congo');
+assert.equal(displayName('070', 'Bosnia and Herz.'), 'Bosnia and Herzegovina');
+assert.equal(displayName('764', 'Thailand'), 'Thailand', 'a name that needs nothing is untouched');
+assert.equal(displayName('999', undefined), '999',
+             'and an id the atlas does not draw still answers with something');
+
+// **No name this product can reach is an abbreviation.** The assertion that catches the next atlas
+// bump: a new "St. Vincent" arrives, and the expansion table has to grow with it or this fails.
+const shortened = [...new Set(Object.values(ALPHA3))]
+  .map(id => displayName(id, polygonName.get(id)))
+  .filter(n => n && /\.(\s|$)/.test(n));
+assert.deepEqual(shortened, [],
+                 `the product would say these abbreviated: ${shortened.join(', ')}`);
 
 // ── the pool's label says what the screen says ────────────────────────────────
 //
@@ -104,14 +134,13 @@ assert.ok(!atlasIds.has('344'), 'if 110m ever draws HK on its own, the tray rule
 // that differs is one string, and the alternative is a merge resolving the divergence silently.
 const poolPath = dataFile('personas.json');
 const pool = JSON.parse(readFileSync(poolPath, 'utf8')).countries;
-const atlasName = new Map(topo.objects.countries.geometries
-  .filter(g => g.id !== undefined && g.id !== null)
-  .map(g => [String(g.id), (g.properties || {}).name]));
 assert.ok(pool.length >= 20, `the pool has its countries: ${pool.length}`);
 for (const e of pool) {
   const id = countryId(e.country);
   assert.notEqual(id, null, `${e.country}: a code the globe can place`);
-  const drawn = atlasName.get(id);
+  // The **displayed** name, not the polygon's label. Pinning the pool to the raw string would
+  // force the atlas's label-fitting abbreviations into the bedside and the portrait prompt.
+  const drawn = polygonName.has(id) ? displayName(id, polygonName.get(id)) : undefined;
   // A code with no polygon at this scale (HKG inside China's outline) has no on-screen name to
   // agree with — she is named in the tray and the label is free. Only a country the map draws is
   // held to what the map calls it.
