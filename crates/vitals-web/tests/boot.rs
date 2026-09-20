@@ -62,10 +62,27 @@ fn a_boot_marker_names_the_span_it_times() {
     // reasonably — as the restore, and the restore had already been removed: what was in that span
     // was the sweep and the tape repair. The same lesson as the meter, one level down, so each gets
     // its own mark and its own counts before anybody reasons about where 30 s went.
-    assert!(src.contains(r#"mark("sweep""#),
-            "the sweep deletes documents one at a time and is not timed");
-    assert!(src.contains(r#"mark("repair""#),
-            "the tape repair refreshes every patient from the chain and is not timed");
+    // Measured on staging 00062, once each had its own mark: repair 38.3 s of a 41.6 s boot
+    // (26 patients, one signature listing each) and the sweep 2.8 s. Both are work for nobody who
+    // is knocking, and a request that arrives during a start waits for all of it — 22.2 s on that
+    // deploy. So they move behind the listener, to the ticker's first pass.
+    let listening = src.find(r#"mark("listening""#).expect("the listening mark");
+    let boot = &src[..listening];
+    assert!(!boot.contains("repair_tapes("),
+            "boot reads tapes from the chain before it will answer anybody");
+    assert!(!boot.contains(".sweep("),
+            "boot deletes documents before it will answer anybody");
+
+    // **Repair before sweep, and it is not a preference.** The repair recovers a lost tape from the
+    // stored runs; the sweep deletes stored runs older than a day. Sweeping first can delete the
+    // only copy of a tape for a leaf already on chain — the exact thing the repair exists to put
+    // back. Boot did them in that order until today.
+    let tick = src.find("ward_chain::tick(").expect("the ticker's pass");
+    let sweep = src.find(".sweep(").expect("the sweep");
+    assert!(tick > listening, "the repair must happen after the door is open, not before it");
+    assert!(sweep > tick,
+            "the sweep must run after the repair has had its go, or it can delete the evidence");
+
     assert!(src.contains("patients checked"),
             "and the repair says how many patients it walked, because that is what its cost is per");
 
