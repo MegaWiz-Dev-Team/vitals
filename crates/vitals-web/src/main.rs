@@ -3374,10 +3374,6 @@ fn main() {
     // Timed on its own because on Firestore this is a token fetch against the metadata server
     // before it is a store, and that is a network call on a cold container.
     mark("store", "");
-    // A run nobody has touched in a day is a closed tab, not a patient.
-    let swept = store.sweep(SESSIONS, std::time::Duration::from_secs(24 * 60 * 60));
-    mark("sweep", &format!(" · {swept} expired"));
-
     // Nothing is rebuilt here. A session is replayed when somebody asks for its id — see
     // `rebuild` — because nothing outside a request has ever read one, and 22 of them cost 79.7 s
     // of a boot whose first real reader waited 62 s for the door.
@@ -3386,38 +3382,10 @@ fn main() {
     // chain, it is not what the 79.7 s was, and the ticker's own call to `repair_tapes` is a minute
     // away rather than in front of a reader.
     let restored: HashMap<String, Session> = HashMap::new();
-    // ── before anything is dropped ──────────────────────────────────────────────────────────
-    //
-    // A ward session is restored by rebuilding its patient from the chain, so a session whose own
-    // shift is the one with the missing tape is exactly the session that fails to restore — and
-    // the loop below then deletes it, loudly, as a run that will not replay. That is the only copy
-    // of the tape for a leaf already on chain, thrown away by the code that found the problem.
-    // Staging redeploys on every commit, and each boot swept the evidence.
-    //
-    // So the repair goes first, over every stored run, through the function the ticker uses.
-    let held: Vec<(String, Vec<Step>)> = store
-        .list::<Saved>(SESSIONS)
-        .into_iter()
-        .filter_map(|(_, sv)| {
-            std::fs::read_to_string(scenario_path(&sv.ep)).ok().map(|sce| (sce, sv.tape))
-        })
-        .collect();
-    // Counted by patients rather than by leaves: `repair_tapes` walks the patients and refreshes
-    // each one from the chain — a signature listing apiece — so patients are what its cost is per.
-    let mut checked = 0usize;
-    let mut repaired = 0usize;
-    if !held.is_empty() {
-        if let Ok(chain) = ward_chain::WardChain::connect() {
-            if let Ok(patients) = chain.patients() {
-                checked = patients.len();
-                for note in ward_chain::repair_tapes(&chain, &store, &scenario_root(), &patients, &held) {
-                    println!("ward       {note}");
-                    repaired += 1;
-                }
-            }
-        }
-    }
-    mark("repair", &format!(" · {checked} patients checked · {repaired} repaired"));
+    // The tape repair and the session sweep used to run here, in that order — 38.3 s and 2.8 s of
+    // a 41.6 s boot on staging 00062, with the first reader held 22.2 s behind them. Both are now
+    // the ticker's first pass: see the refill thread, which already ran the same repair a minute
+    // later. Nothing is read from the chain and nothing is deleted before this process will answer.
 
     // What is in the store, counted from the records themselves — one list, no chain, no replay.
     // Not "in a bed": a bed is derived from the board, and asking the chain for one here is the
@@ -3440,9 +3408,8 @@ fn main() {
     // read as "there are none"; the census line above says what is actually in the store, and a
     // run that cannot be replayed is discovered by the person who asks for it rather than here.
     println!(
-        "state      {} · sessions rebuilt when their id is asked for{}",
+        "state      {} · sessions rebuilt when their id is asked for",
         store.describe(),
-        if swept > 0 { format!(" · {swept} expired") } else { String::new() },
     );
     let sessions: Arc<Mutex<HashMap<String, Session>>> = Arc::new(Mutex::new(restored));
     // One rebuild per id at a time, and a memory of the ones that will not come back — so a page
@@ -3633,6 +3600,9 @@ fn main() {
             };
             // The same complaint every minute is noise; a complaint that changed is news.
             let mut last_trouble = String::new();
+            // Once per process, which is the cadence boot had: moving this work did not make it
+            // more frequent, only later than the moment somebody is waiting.
+            let mut swept_yet = false;
             loop {
                 std::thread::sleep(WARD_TICK);
                 match ward_chain::WardChain::connect() {
@@ -3648,9 +3618,28 @@ fn main() {
                                 std::fs::read_to_string(p).ok().map(|sce| (sce, sv.tape))
                             })
                             .collect();
+                        let began = Instant::now();
                         let t = ward_chain::tick(&chain, &store, &root, now_secs(), &held);
                         for note in &t.notes {
                             println!("ward       {note}");
+                        }
+                        // **Repair first, then sweep, and never the other way.** `tick` repairs at
+                        // its top; the sweep runs only after it has returned. The repair recovers a
+                        // lost tape *from* the stored runs and the sweep deletes stored runs older
+                        // than a day — so sweeping first can delete the only copy of a tape for a
+                        // leaf already on chain, which is the thing the repair exists to put back.
+                        // Boot did them in that wrong order until 20 ก.ย.
+                        if !swept_yet {
+                            let swept = store
+                                .sweep(SESSIONS, std::time::Duration::from_secs(24 * 60 * 60));
+                            swept_yet = true;
+                            println!(
+                                "ward       first pass · repair and refill {:.1}s over {} \
+                                 patients checked · swept {swept} expired, after the repair and \
+                                 never before it",
+                                began.elapsed().as_secs_f64(),
+                                t.checked
+                            );
                         }
                         last_trouble.clear();
                     }

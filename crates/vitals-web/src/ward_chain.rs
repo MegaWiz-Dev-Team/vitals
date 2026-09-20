@@ -1767,7 +1767,7 @@ pub fn repair_tapes(
                     .or_else(|| std::fs::read_to_string(case_path(root, &k.case)).ok())
             });
 
-        let (mut back, mut gone) = (0usize, Vec::new());
+        let (mut back, mut gone) = (Vec::new(), Vec::new());
         for hash in missing {
             let found = recover_tape(store, p.patient_id, &hash, held).or_else(|| {
                 // The ward's own closing shift: no steps, and the chain's numbers prove it.
@@ -1784,14 +1784,22 @@ pub fn repair_tapes(
                 Some(tape)
             });
             match found {
-                Some(_) => back += 1,
+                Some(_) => back.push(hash),
                 None => gone.push(hash),
             }
         }
         // One line per patient per pass. The boot printed the same sentence ten times for one old
         // test patient, which is ten times less readable than saying it once with the count.
-        if back > 0 {
-            notes.push(format!("patient {}: {back} missing tape(s) put back", p.patient_id));
+        // Named, not counted. A tape put back is a leaf on chain that had nothing under it until
+        // this pass — the ward is saying it nearly lost the only record of what somebody did, and
+        // "2 repaired" does not let anybody check which two or go and look at them.
+        if !back.is_empty() {
+            notes.push(format!(
+                "patient {}: {} missing tape(s) put back — {}",
+                p.patient_id,
+                back.len(),
+                back.join(", ")
+            ));
         }
         if !gone.is_empty() {
             notes.push(format!(
@@ -1944,6 +1952,12 @@ pub struct Ticked {
     pub depth: Option<usize>,
     /// The patients the ward closed this tick because time alone had finished them.
     pub closed: Vec<u64>,
+    /// How many patients this pass walked.
+    ///
+    /// The repair's cost is *per patient* — 38.3 s over 26 of them on staging 00062, one chain
+    /// signature listing each — so the line that reports how long the pass took is unreadable
+    /// without it. A reader who sees only the seconds cannot tell a slow ward from a full one.
+    pub checked: usize,
 }
 
 /// One tick: free beds, and fill them from the queue.
@@ -1995,6 +2009,7 @@ pub fn tick(
     // anybody sees that somebody died there, and it is the ward the founder chose.
     // Before anything else: a leaf on chain whose tape this ward has lost. She cannot be opened,
     // rebuilt or closed until it is back, so the repair runs ahead of the reaping that needs it.
+    out.checked = patients.len();
     out.notes.extend(repair_tapes(chain, store, root, &patients, held));
     // Asked once, after the repair has had its go: the tapes it put back are not missing any more,
     // and the beds it could not save are the ones this tick must give up.
