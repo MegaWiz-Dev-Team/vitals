@@ -3634,12 +3634,14 @@ fn main() {
                                 .sweep(SESSIONS, std::time::Duration::from_secs(24 * 60 * 60));
                             swept_yet = true;
                             println!(
-                                "ward       first pass · repair and refill {:.1}s over {} \
-                                 patients checked · swept {swept} expired, after the repair and \
-                                 never before it",
-                                began.elapsed().as_secs_f64(),
-                                t.checked
+                                "ward       first pass · swept {swept} expired, after the repair \
+                                 and never before it"
                             );
+                        }
+                        // Any pass that took more than ten seconds, not only the first, and the
+                        // sentence is `ward_chain`'s so the shape can be tested without a deploy.
+                        if let Some(note) = ward_chain::slow_pass_note(began.elapsed(), t.pace) {
+                            println!("ward       {note}");
                         }
                         last_trouble.clear();
                     }

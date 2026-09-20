@@ -87,8 +87,11 @@ fn a_boot_marker_names_the_span_it_times() {
     assert!(sweep > tick,
             "the sweep must run after the repair has had its go, or it deletes the evidence");
 
-    assert!(src.contains("patients checked"),
-            "and the repair says how many patients it walked, because that is what its cost is per");
+    // How many patients the pass walked, and how the time was spread across them, used to be
+    // asserted here by grepping this file for "patients checked". That sentence now belongs to
+    // `ward_chain::slow_pass_note`, where `tests/ward_chain.rs` drives the real function over both
+    // shapes it exists to tell apart. A behavioural test replaced a source-text one, so the
+    // assertion is gone from here rather than rewritten to grep a different file.
 
     // The rule this whole item exists to serve, where the next person to add boot work will read it.
     assert!(src.to_lowercase().contains("a request never waits on boot work it does not need"),
