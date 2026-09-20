@@ -2047,7 +2047,7 @@ fn open_shift(
     // found by the hash its leaf commits to.
     let key = format!("p{patient_id}");
     let mut seen: ward_chain::Seen = store.get(ward_chain::SHIFT_CACHE, &key).unwrap_or_default();
-    if matches!(chain.refresh(patient_id, &mut seen, store), Ok(n) if n > 0) {
+    if matches!(chain.refresh(patient_id, &mut seen, store), Ok(r) if r.added > 0) {
         let _ = store.put(ward_chain::SHIFT_CACHE, &key, &seen);
     }
     let (state, played) = ward_chain::resumed(

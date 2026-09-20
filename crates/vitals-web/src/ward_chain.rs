@@ -355,7 +355,7 @@ impl WardChain {
         patient_id: u64,
         seen: &mut Seen,
         store: &crate::store::Store,
-    ) -> Result<usize, String> {
+    ) -> Result<Reading, String> {
         let pda = self.patient_pda(patient_id);
         let until = seen.until().and_then(|s| Signature::from_str(&s).ok());
         let sigs = self
@@ -437,10 +437,11 @@ impl WardChain {
 
         // A page that stopped early is not an error: what was read is kept, the cursor stops at
         // it, and the next read begins there. The ward stays readable and loses nothing.
-        if let Some(why) = trouble {
+        if let Some(why) = &trouble {
             eprintln!("ward       patient {patient_id}'s history was read as far as it could be — {why}");
         }
-        Ok(added)
+        // Kept either way; `stopped` is what says whether anything may be decided on it.
+        Ok(Reading { added, stopped: trouble })
     }
 }
 
@@ -673,40 +674,40 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
     let mut lost: std::collections::BTreeMap<u64, String> = std::collections::BTreeMap::new();
     for p in &patients {
         let key = format!("p{}", p.patient_id);
-    let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
-    let added = chain.refresh(p.patient_id, &mut seen, store);
-    if matches!(added, Ok(n) if n > 0) {
-        let _ = store.put(SHIFT_CACHE, &key, &seen);
-    }
-    if let Err(e) = added {
-        return unavailable(&format!("patient {}'s history could not be read: {e}", p.patient_id));
-    }
-    for s in seen.shifts() {
-        let hash = hex32(&s.run_hash);
-        if is_shift_hash(&hash) && tape_by_hash(store, &hash).is_none() {
-            lost.entry(p.patient_id).or_insert(hash);
+        let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
+        let added = chain.refresh(p.patient_id, &mut seen, store);
+        if matches!(added, Ok(ref r) if r.added > 0) {
+            let _ = store.put(SHIFT_CACHE, &key, &seen);
         }
-    }
-    shifts.extend(seen.shifts());
+        if let Err(e) = &added {
+            return unavailable(&format!("patient {}'s history could not be read: {e}", p.patient_id));
+        }
+        for s in seen.shifts() {
+            let hash = hex32(&s.run_hash);
+            if is_shift_hash(&hash) && tape_by_hash(store, &hash).is_none() {
+                lost.entry(p.patient_id).or_insert(hash);
+            }
+        }
+        shifts.extend(seen.shifts());
     }
 
     let times = slot_times(chain, store, &crate::ward::slots_to_date(&patients, &shifts));
     let rate = seconds_per_slot(chain, store, as_of);
     let mut v = crate::ward::ward_payload(&crate::ward::WardRead {
-    seconds_per_slot: rate,
-    patients: &patients,
-    shifts: &shifts,
-    packs: &packs(store),
-    cases: &crate::ward_case::all(store),
-    unrebuildable: &lost,
-    since: Some(as_of.saturating_sub(WEEK_SLOTS)),
-    as_of_slot: as_of,
-    now_unix: std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0),
-    source: chain.source(),
-    times: &times,
+        seconds_per_slot: rate,
+        patients: &patients,
+        shifts: &shifts,
+        packs: &packs(store),
+        cases: &crate::ward_case::all(store),
+        unrebuildable: &lost,
+        since: Some(as_of.saturating_sub(WEEK_SLOTS)),
+        as_of_slot: as_of,
+        now_unix: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0),
+        source: chain.source(),
+        times: &times,
     });
     // How many patients are waiting, which is the number the factory tops up against and the one
     // a reader of the board uses to tell "nobody is playing" from "nobody is left to play".
@@ -730,27 +731,27 @@ pub fn queue_block(store: &crate::store::Store) -> serde_json::Value {
     // people nobody can meet is a promise. Preview and open both publish it: the rows draw the
     // same way, and "waiting" is not a secret on a public ward.
     let queued: Vec<(String, crate::ward::Pack)> = if door == Door::Closed {
-    Vec::new()
+        Vec::new()
     } else {
-    store.list::<crate::ward::Pack>(QUEUE_STORE)
+        store.list::<crate::ward::Pack>(QUEUE_STORE)
     };
     let waiting = queue_depth(store);
     let mut block = serde_json::json!({});
     for (key, val) in [
-    // Null, never zero, when the store cannot be listed — "nobody is waiting" and "we could
-    // not look" are opposite facts and this endpoint has one rule about those.
-    ("waiting", serde_json::json!(waiting.as_ref().ok())),
-    ("waiting_unknown_because", serde_json::json!(waiting.as_ref().err())),
-    ("beds", serde_json::json!(crate::ward::BEDS)),
-    // Published, because "the queue is empty" and "the door is shut" look identical from
-    // outside and mean opposite things about whether anybody should be doing anything.
-    ("door", serde_json::json!(door_here().word())),
-    ("filled_by", serde_json::json!("a ticker on the ward host, every minute: a bed frees on \
-                                     discharge or death and the next queued patient takes it. \
-                                     Nobody on the team touches anything")),
-    ("waiting_patients", serde_json::json!(crate::ward::waiting_rows(&queued, &crate::ward_case::all(store)))),
+        // Null, never zero, when the store cannot be listed — "nobody is waiting" and "we could
+        // not look" are opposite facts and this endpoint has one rule about those.
+        ("waiting", serde_json::json!(waiting.as_ref().ok())),
+        ("waiting_unknown_because", serde_json::json!(waiting.as_ref().err())),
+        ("beds", serde_json::json!(crate::ward::BEDS)),
+        // Published, because "the queue is empty" and "the door is shut" look identical from
+        // outside and mean opposite things about whether anybody should be doing anything.
+        ("door", serde_json::json!(door_here().word())),
+        ("filled_by", serde_json::json!("a ticker on the ward host, every minute: a bed frees on \
+                                         discharge or death and the next queued patient takes it. \
+                                         Nobody on the team touches anything")),
+        ("waiting_patients", serde_json::json!(crate::ward::waiting_rows(&queued, &crate::ward_case::all(store)))),
     ] {
-    block[key] = val;
+        block[key] = val;
     }
     block
 }
@@ -777,13 +778,13 @@ pub fn take_shift_ix(
     patient_id: u64,
 ) -> SolInstruction {
     SolInstruction::new_with_borsh(
-    *program_id,
-    &Instruction::TakeShift { patient_id },
-    vec![
-        AccountMeta::new_readonly(*player, true),
-        AccountMeta::new_readonly(account_pda(program_id, player), false),
-        AccountMeta::new(patient_pda(program_id, operator, patient_id).0, false),
-    ],
+        *program_id,
+        &Instruction::TakeShift { patient_id },
+        vec![
+            AccountMeta::new_readonly(*player, true),
+            AccountMeta::new_readonly(account_pda(program_id, player), false),
+            AccountMeta::new(patient_pda(program_id, operator, patient_id).0, false),
+        ],
     )
 }
 
@@ -799,12 +800,12 @@ pub fn take_shift_ix(
 /// worth about twenty-six seconds, and the silence worth acting on is longer than that.
 pub fn free_shift_ix(program_id: &Pubkey, operator: &Pubkey, patient_id: u64) -> SolInstruction {
     SolInstruction::new_with_borsh(
-    *program_id,
-    &Instruction::FreeShift { patient_id },
-    vec![
-        AccountMeta::new_readonly(*operator, true),
-        AccountMeta::new(patient_pda(program_id, operator, patient_id).0, false),
-    ],
+        *program_id,
+        &Instruction::FreeShift { patient_id },
+        vec![
+            AccountMeta::new_readonly(*operator, true),
+            AccountMeta::new(patient_pda(program_id, operator, patient_id).0, false),
+        ],
     )
 }
 
@@ -826,13 +827,13 @@ pub fn release_shift_ix(
     patient_id: u64,
 ) -> SolInstruction {
     SolInstruction::new_with_borsh(
-    *program_id,
-    &Instruction::ReleaseShift { patient_id },
-    vec![
-        AccountMeta::new_readonly(*player, true),
-        AccountMeta::new_readonly(account_pda(program_id, player), false),
-        AccountMeta::new(patient_pda(program_id, operator, patient_id).0, false),
-    ],
+        *program_id,
+        &Instruction::ReleaseShift { patient_id },
+        vec![
+            AccountMeta::new_readonly(*player, true),
+            AccountMeta::new_readonly(account_pda(program_id, player), false),
+            AccountMeta::new(patient_pda(program_id, operator, patient_id).0, false),
+        ],
     )
 }
 
@@ -854,17 +855,17 @@ pub fn anchor_shift_ix(
     prev_head: [u8; 32],
 ) -> SolInstruction {
     SolInstruction::new_with_borsh(
-    *program_id,
-    &Instruction::AnchorShift { tree_id, patient_id, record, prev_head },
-    vec![
-        AccountMeta::new(*operator, true),
-        AccountMeta::new_readonly(*player, true),
-        AccountMeta::new(account_pda(program_id, player), false),
-        AccountMeta::new(tree_pda(program_id, operator, tree_id).0, false),
-        AccountMeta::new(commitment_pda(program_id, &player.to_bytes()).0, false),
-        AccountMeta::new(patient_pda(program_id, operator, patient_id).0, false),
-        AccountMeta::new_readonly(system_program::id(), false),
-    ],
+        *program_id,
+        &Instruction::AnchorShift { tree_id, patient_id, record, prev_head },
+        vec![
+            AccountMeta::new(*operator, true),
+            AccountMeta::new_readonly(*player, true),
+            AccountMeta::new(account_pda(program_id, player), false),
+            AccountMeta::new(tree_pda(program_id, operator, tree_id).0, false),
+            AccountMeta::new(commitment_pda(program_id, &player.to_bytes()).0, false),
+            AccountMeta::new(patient_pda(program_id, operator, patient_id).0, false),
+            AccountMeta::new_readonly(system_program::id(), false),
+        ],
     )
 }
 
@@ -887,7 +888,7 @@ pub struct Pending {
 impl Pending {
     /// The bytes the player's key must sign.
     pub fn message(&self) -> Vec<u8> {
-    self.tx.message_data()
+        self.tx.message_data()
     }
 
     /// Drop the player's signature into its slot and hand back a transaction that will verify.
@@ -896,11 +897,11 @@ impl Pending {
     /// key that plays this shift signed for it", and a signature from any other key is refused
     /// here rather than by the cluster a second later.
     pub fn signed(self, sig: &[u8; 64]) -> Result<Transaction, String> {
-    let mut tx = self.tx;
-    tx.signatures[self.slot] = Signature::from(*sig);
-    tx.verify()
-        .map_err(|_| "that signature does not match this transaction".to_string())?;
-    Ok(tx)
+        let mut tx = self.tx;
+        tx.signatures[self.slot] = Signature::from(*sig);
+        tx.verify()
+            .map_err(|_| "that signature does not match this transaction".to_string())?;
+        Ok(tx)
     }
 }
 
@@ -918,13 +919,13 @@ pub fn prepare_for(
     let msg = Message::new(&[ix], Some(&relay.pubkey()));
     let mut tx = Transaction::new_unsigned(msg);
     let slot = tx
-    .message
-    .account_keys
-    .iter()
-    .position(|k| k == player)
-    .ok_or("this instruction does not name the player, so there is nothing for them to sign")?;
+        .message
+        .account_keys
+        .iter()
+        .position(|k| k == player)
+        .ok_or("this instruction does not name the player, so there is nothing for them to sign")?;
     tx.try_partial_sign(&[relay], blockhash)
-    .map_err(|e| format!("the relay could not sign: {e}"))?;
+        .map_err(|e| format!("the relay could not sign: {e}"))?;
     Ok(Pending { tx, slot })
 }
 
@@ -934,25 +935,25 @@ impl WardChain {
     /// Read back rather than assumed: the slot was assigned on chain and the record anchored later
     /// must carry the same one, or the leaf the server builds is not the leaf the program checks.
     pub fn commitment(&self, player: &Pubkey) -> Option<vitals_program::Commitment> {
-    let pda = commitment_pda(&self.program_id, &player.to_bytes()).0;
-    let data = self.rpc.get_account_data(&pda).ok()?;
-    borsh::BorshDeserialize::deserialize(&mut &data[..]).ok()
+        let pda = commitment_pda(&self.program_id, &player.to_bytes()).0;
+        let data = self.rpc.get_account_data(&pda).ok()?;
+        borsh::BorshDeserialize::deserialize(&mut &data[..]).ok()
     }
 
     /// Does this key already have an account here? A stranger's first shift begins with one.
     pub fn has_account(&self, player: &Pubkey) -> bool {
-    self.rpc.get_account_data(&account_pda(&self.program_id, player)).is_ok()
+        self.rpc.get_account_data(&account_pda(&self.program_id, player)).is_ok()
     }
 
     /// The key that pays, if this host holds one. The ward board shows it so a stranger can check
     /// the balance that is funding their shift rather than take our word that one exists.
     pub fn relay_pubkey(&self) -> Option<String> {
-    self.relay.as_ref().map(|k| k.pubkey().to_string())
+        self.relay.as_ref().map(|k| k.pubkey().to_string())
     }
 
     /// The operator these patients are seeded on.
     pub fn operator(&self) -> Pubkey {
-    self.operator
+        self.operator
     }
 
     /// One patient's account as it stands: her head, her lease, whether she is still open.
@@ -961,30 +962,30 @@ impl WardChain {
     /// that could not be read — and the two must not collapse into one answer, because the first
     /// is a bad patient id and the second is an outage.
     pub fn patient(&self, patient_id: u64) -> Result<Option<PatientAccount>, String> {
-    match self.rpc.get_account_data(&self.patient_pda(patient_id)) {
-        Ok(data) => PatientAccount::deserialize(&mut &data[..])
-            .map(Some)
-            .map_err(|e| format!("patient {patient_id} does not decode: {e}")),
-        // Not found is the ordinary answer for a patient who does not exist yet, and the RPC
-        // reports it as an error like any other. Everything else is an outage.
-        Err(e) if e.to_string().contains("AccountNotFound") => Ok(None),
-        Err(e) => Err(why(e)),
-    }
+        match self.rpc.get_account_data(&self.patient_pda(patient_id)) {
+            Ok(data) => PatientAccount::deserialize(&mut &data[..])
+                .map(Some)
+                .map_err(|e| format!("patient {patient_id} does not decode: {e}")),
+            // Not found is the ordinary answer for a patient who does not exist yet, and the RPC
+            // reports it as an error like any other. Everything else is an outage.
+            Err(e) if e.to_string().contains("AccountNotFound") => Ok(None),
+            Err(e) => Err(why(e)),
+        }
     }
 
     /// Half-sign an instruction for a player to finish in their browser.
     pub fn prepare(&self, ix: SolInstruction, player: &Pubkey) -> Result<Pending, String> {
-    let relay = self
-        .relay
-        .as_ref()
-        .ok_or("this host holds no relay key, so it can read the ward but not pay for a shift")?;
-    let blockhash = self.rpc.get_latest_blockhash().map_err(why)?;
-    prepare_for(relay, ix, player, blockhash)
+        let relay = self
+            .relay
+            .as_ref()
+            .ok_or("this host holds no relay key, so it can read the ward but not pay for a shift")?;
+        let blockhash = self.rpc.get_latest_blockhash().map_err(why)?;
+        prepare_for(relay, ix, player, blockhash)
     }
 
     /// Take the head of a patient's chain — prepared here, signed in the browser.
     pub fn take_shift(&self, player: &Pubkey, patient_id: u64) -> Result<Pending, String> {
-    self.prepare(take_shift_ix(&self.program_id, &self.operator, player, patient_id), player)
+        self.prepare(take_shift_ix(&self.program_id, &self.operator, player, patient_id), player)
     }
 
     /// Take a head back, because the page holding it has stopped beating.
@@ -994,22 +995,22 @@ impl WardChain {
     /// the patient was admitted by, which is a read-only deployment publishing somebody else's
     /// ward and must not be able to move anything on it.
     pub fn free_shift(&self, patient_id: u64) -> Result<String, String> {
-    self.now(free_shift_ix(&self.program_id, &self.operator, patient_id))
+        self.now(free_shift_ix(&self.program_id, &self.operator, patient_id))
     }
 
     /// Anchor the shift that was played, onto the head it claims to extend.
     pub fn anchor_shift(
-    &self,
-    player: &Pubkey,
-    patient_id: u64,
-    tree_id: u64,
-    record: RecordWire,
-    prev_head: [u8; 32],
+        &self,
+        player: &Pubkey,
+        patient_id: u64,
+        tree_id: u64,
+        record: RecordWire,
+        prev_head: [u8; 32],
     ) -> Result<Pending, String> {
-    self.prepare(
-        anchor_shift_ix(&self.program_id, &self.operator, player, patient_id, tree_id, record, prev_head),
-        player,
-    )
+        self.prepare(
+            anchor_shift_ix(&self.program_id, &self.operator, player, patient_id, tree_id, record, prev_head),
+            player,
+        )
     }
 
     /// Send a transaction the player has finished signing, and wait for it to land.
@@ -1018,10 +1019,10 @@ impl WardChain {
     /// re-deriving her chart from the chain: telling a stranger their shift landed and then
     /// showing them a chart without it is worse than telling them it failed.
     pub fn submit(&self, tx: &Transaction) -> Result<String, String> {
-    self.rpc
-        .send_and_confirm_transaction(tx)
-        .map(|s| s.to_string())
-        .map_err(why)
+        self.rpc
+            .send_and_confirm_transaction(tx)
+            .map(|s| s.to_string())
+            .map_err(why)
     }
 
     /// Close a patient the ward finished while nobody was in the room.
@@ -1041,66 +1042,66 @@ impl WardChain {
     /// funder and device here, which is the one thing that differs and the reason this is the only
     /// place it happens.
     pub fn close_unattended(
-    &self,
-    store: &crate::store::Store,
-    patient_id: u64,
-    sce_json: &str,
-    difficulty: vitals_progress::Difficulty,
-    replay: &vitals_replay::Replay,
-    prev_head: [u8; 32],
+        &self,
+        store: &crate::store::Store,
+        patient_id: u64,
+        sce_json: &str,
+        difficulty: vitals_progress::Difficulty,
+        replay: &vitals_replay::Replay,
+        prev_head: [u8; 32],
     ) -> Result<String, String> {
-    use solana_sdk::signature::Signer;
-    let relay = self
-        .relay
-        .as_ref()
-        .ok_or("this host holds no relay key, so it cannot close a patient")?;
-    let me = relay.pubkey();
+        use solana_sdk::signature::Signer;
+        let relay = self
+            .relay
+            .as_ref()
+            .ok_or("this host holds no relay key, so it cannot close a patient")?;
+        let me = relay.pubkey();
 
-    // A key that has closed a patient here before already has an account; the program says so
-    // rather than making a second one, and "already" is not a failure.
-    if !self.has_account(&me) {
-        if let Err(e) = self.now(open_account_ix(&self.program_id, &self.operator, &me)) {
-            if !e.to_lowercase().contains("already") {
-                return Err(format!("the ward has no account of its own to close this patient with: {e}"));
+        // A key that has closed a patient here before already has an account; the program says so
+        // rather than making a second one, and "already" is not a failure.
+        if !self.has_account(&me) {
+            if let Err(e) = self.now(open_account_ix(&self.program_id, &self.operator, &me)) {
+                if !e.to_lowercase().contains("already") {
+                    return Err(format!("the ward has no account of its own to close this patient with: {e}"));
+                }
             }
         }
-    }
-    self.now(take_shift_ix(&self.program_id, &self.operator, &me, patient_id))
-        .map_err(|e| format!("the ward could not take the head to close this patient: {e}"))?;
+        self.now(take_shift_ix(&self.program_id, &self.operator, &me, patient_id))
+            .map_err(|e| format!("the ward could not take the head to close this patient: {e}"))?;
 
-    // Declared before it is anchored, like every other shift. There is nothing to hide in a
-    // shift nobody played, and the point is that the program's one path is the path.
-    let nonce = solana_sdk::signature::Keypair::new().pubkey().to_bytes();
-    let sce = vitals_replay::sce_hash(sce_json);
-    let hash = vitals_progress::record::commitment_hash(&sce, &me.to_bytes(), &nonce, 0);
-    self.now(commit_ix(&self.program_id, &self.operator, &me, hash))
-        .map_err(|e| format!("the ward could not declare the closing shift: {e}"))?;
-    let slot = self
-        .commitment(&me)
-        .map(|c| c.slot)
-        .ok_or("the declaration did not land, so there is nothing to anchor against")?;
+        // Declared before it is anchored, like every other shift. There is nothing to hide in a
+        // shift nobody played, and the point is that the program's one path is the path.
+        let nonce = solana_sdk::signature::Keypair::new().pubkey().to_bytes();
+        let sce = vitals_replay::sce_hash(sce_json);
+        let hash = vitals_progress::record::commitment_hash(&sce, &me.to_bytes(), &nonce, 0);
+        self.now(commit_ix(&self.program_id, &self.operator, &me, hash))
+            .map_err(|e| format!("the ward could not declare the closing shift: {e}"))?;
+        let slot = self
+            .commitment(&me)
+            .map(|c| c.slot)
+            .ok_or("the declaration did not land, so there is nothing to anchor against")?;
 
-    let rec = vitals_replay::record_for(
-        me.to_bytes(), sce, sce, difficulty, false, &[], replay, hash, slot,
-    )?;
-    // The tape first, as everywhere else that writes to this chain: no steps, because nobody
-    // did anything to her, filed under the record's own hash. Without it the death is on chain
-    // and cannot be shown — which is what happened to the first two the ticker closed.
-    keep_for_anchor(store, patient_id, &rec, &[])?;
-    self.now(anchor_shift_ix(
-        &self.program_id, &self.operator, &me, patient_id, WARD_TREE, wire(&rec), prev_head,
-    ))
-    .map_err(|e| format!("the closing shift would not anchor: {e}"))
+        let rec = vitals_replay::record_for(
+            me.to_bytes(), sce, sce, difficulty, false, &[], replay, hash, slot,
+        )?;
+        // The tape first, as everywhere else that writes to this chain: no steps, because nobody
+        // did anything to her, filed under the record's own hash. Without it the death is on chain
+        // and cannot be shown — which is what happened to the first two the ticker closed.
+        keep_for_anchor(store, patient_id, &rec, &[])?;
+        self.now(anchor_shift_ix(
+            &self.program_id, &self.operator, &me, patient_id, WARD_TREE, wire(&rec), prev_head,
+        ))
+        .map_err(|e| format!("the closing shift would not anchor: {e}"))
     }
 
     /// One instruction, signed here and sent now. The host's key is funder and device both, which
     /// is true of nothing else on this ward.
     fn now(&self, ix: SolInstruction) -> Result<String, String> {
-    use solana_sdk::signature::Signer;
-    let relay = self.relay.as_ref().ok_or("this host holds no relay key")?;
-    let blockhash = self.rpc.get_latest_blockhash().map_err(why)?;
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&relay.pubkey()), &[relay], blockhash);
-    self.submit(&tx)
+        use solana_sdk::signature::Signer;
+        let relay = self.relay.as_ref().ok_or("this host holds no relay key")?;
+        let blockhash = self.rpc.get_latest_blockhash().map_err(why)?;
+        let tx = Transaction::new_signed_with_payer(&[ix], Some(&relay.pubkey()), &[relay], blockhash);
+        self.submit(&tx)
     }
 
     /// Release a patient onto the ward. The operator's own instruction: no player, no lease.
@@ -1108,22 +1109,22 @@ impl WardChain {
     /// The whole signature is ours, so this is the one place the ward acts rather than pays — and
     /// it is deliberately the only one. Admitting is a thing an operator does; treating is not.
     pub fn admit(&self, patient_id: u64, scenario_hash: [u8; 32]) -> Result<String, String> {
-    let relay = self
-        .relay
-        .as_ref()
-        .ok_or("this host holds no relay key, so it cannot admit a patient")?;
-    let ix = SolInstruction::new_with_borsh(
-        self.program_id,
-        &Instruction::AdmitPatient { patient_id, scenario_hash },
-        vec![
-            AccountMeta::new(self.operator, true),
-            AccountMeta::new(self.patient_pda(patient_id), false),
-            AccountMeta::new_readonly(system_program::id(), false),
-        ],
-    );
-    let blockhash = self.rpc.get_latest_blockhash().map_err(why)?;
-    let tx = Transaction::new_signed_with_payer(&[ix], Some(&relay.pubkey()), &[relay], blockhash);
-    self.submit(&tx)
+        let relay = self
+            .relay
+            .as_ref()
+            .ok_or("this host holds no relay key, so it cannot admit a patient")?;
+        let ix = SolInstruction::new_with_borsh(
+            self.program_id,
+            &Instruction::AdmitPatient { patient_id, scenario_hash },
+            vec![
+                AccountMeta::new(self.operator, true),
+                AccountMeta::new(self.patient_pda(patient_id), false),
+                AccountMeta::new_readonly(system_program::id(), false),
+            ],
+        );
+        let blockhash = self.rpc.get_latest_blockhash().map_err(why)?;
+        let tx = Transaction::new_signed_with_payer(&[ix], Some(&relay.pubkey()), &[relay], blockhash);
+        self.submit(&tx)
     }
 }
 
@@ -1154,10 +1155,10 @@ pub fn dater<'a>(
     store: &'a crate::store::Store,
 ) -> impl Fn(u64) -> Option<i64> + 'a {
     move |slot| {
-    if slot == 0 {
-        return None;
-    }
-    slot_times(chain, store, &[slot].into_iter().collect()).get(&slot).copied()
+        if slot == 0 {
+            return None;
+        }
+        slot_times(chain, store, &[slot].into_iter().collect()).get(&slot).copied()
     }
 }
 
@@ -1190,14 +1191,14 @@ pub fn dater_to_now(
     now_slot: u64,
 ) -> impl Fn(u64) -> Option<i64> + '_ {
     let now = std::time::SystemTime::now()
-    .duration_since(std::time::UNIX_EPOCH)
-    .map(|d| d.as_secs() as i64)
-    .unwrap_or(0);
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
     move |slot| {
-    if slot != 0 && slot == now_slot {
-        return Some(now);
-    }
-    (slot != 0).then(|| store.get::<i64>(SLOT_TIMES, &slot.to_string())).flatten()
+        if slot != 0 && slot == now_slot {
+            return Some(now);
+        }
+        (slot != 0).then(|| store.get::<i64>(SLOT_TIMES, &slot.to_string())).flatten()
     }
 }
 
@@ -1210,10 +1211,10 @@ pub const PERSONA_STORE: &str = "ward_pack";
 /// pack has not arrived is still a patient somebody can treat.
 pub fn packs(store: &crate::store::Store) -> std::collections::BTreeMap<u64, crate::ward::Pack> {
     store
-    .list::<crate::ward::Pack>(PERSONA_STORE)
-    .into_iter()
-    .filter_map(|(k, v)| k.trim_start_matches('p').parse::<u64>().ok().map(|id| (id, v)))
-    .collect()
+        .list::<crate::ward::Pack>(PERSONA_STORE)
+        .into_iter()
+        .filter_map(|(k, v)| k.trim_start_matches('p').parse::<u64>().ok().map(|id| (id, v)))
+        .collect()
 }
 
 // ── the factory's door ──────────────────────────────────────────────────────
@@ -1241,31 +1242,31 @@ pub fn validate_pack(p: &crate::ward::Pack) -> Result<(), String> {
     // ward holds, or name none and let the ward place her; whether it *is* held is asked at the
     // door, where the store is.
     if CATALOGUE.contains(&p.case.as_str()) {
-    return Err(format!(
-        "{} is one of the season's cases, and the ward plays none of them — cases come \
-         through /api/ward/case from the case factory",
-        p.case
-    ));
-    }
-    if let Some(level) = &p.difficulty {
-    if !crate::ward_case::LEVELS.contains(&level.as_str()) {
         return Err(format!(
-            "{level} is not a level this ward offers — {:?}, or leave it out",
-            crate::ward_case::LEVELS
+            "{} is one of the season's cases, and the ward plays none of them — cases come \
+             through /api/ward/case from the case factory",
+            p.case
         ));
     }
+    if let Some(level) = &p.difficulty {
+        if !crate::ward_case::LEVELS.contains(&level.as_str()) {
+            return Err(format!(
+                "{level} is not a level this ward offers — {:?}, or leave it out",
+                crate::ward_case::LEVELS
+            ));
+        }
     }
     if !p.persona.country_is_alpha3() {
-    return Err(format!(
-        "{} is not an ISO 3166-1 alpha-3 country code, and the globe matches on alpha-3",
-        p.persona.country
-    ));
+        return Err(format!(
+            "{} is not an ISO 3166-1 alpha-3 country code, and the globe matches on alpha-3",
+            p.persona.country
+        ));
     }
     if p.persona.name.trim().is_empty() {
-    return Err("a patient with no name is a patient nobody can talk about".into());
+        return Err("a patient with no name is a patient nobody can talk about".into());
     }
     if !AGE_RANGE.contains(&p.persona.age) {
-    return Err(format!("nobody is {}", p.persona.age));
+        return Err(format!("nobody is {}", p.persona.age));
     }
     // The case's own patient, where the case has one. The ward renames her and moves her country
     // — that is the premise — but it may not change what the case was written about.
@@ -1274,23 +1275,23 @@ pub fn validate_pack(p: &crate::ward::Pack) -> Result<(), String> {
     // compiles: a compiled pack carries `patient{age,sex}` and the ward's persona overrides it by
     // ruling. It is kept for the patients still mid-stay on season cases and goes with them.
     if let Some(theirs) = crate::ward::case_patient(&p.case) {
-    if p.persona.sex != theirs.sex {
-        return Err(format!(
-            "{} is written for a patient who is {}, and this pack says {} — the dialogue, the \
-             examination and the differential are all written for it",
-            p.case, theirs.sex, p.persona.sex
-        ));
-    }
-    let band = crate::ward::age_band(theirs.age);
-    if !band.contains(&p.persona.age) {
-        return Err(format!(
-            "{} is written about a patient of {}, so a pack for it must be {}–{}, not {}",
-            p.case, theirs.age, band.start(), band.end(), p.persona.age
-        ));
-    }
+        if p.persona.sex != theirs.sex {
+            return Err(format!(
+                "{} is written for a patient who is {}, and this pack says {} — the dialogue, the \
+                 examination and the differential are all written for it",
+                p.case, theirs.sex, p.persona.sex
+            ));
+        }
+        let band = crate::ward::age_band(theirs.age);
+        if !band.contains(&p.persona.age) {
+            return Err(format!(
+                "{} is written about a patient of {}, so a pack for it must be {}–{}, not {}",
+                p.case, theirs.age, band.start(), band.end(), p.persona.age
+            ));
+        }
     }
     for (state, src) in &p.portrait {
-    portrait_entry(state, src)?;
+        portrait_entry(state, src)?;
     }
     // The endemic claim is not checked here: it is a question about the catalogue — whether the
     // case this pack names is tagged endemic, and for which country — and the catalogue lives in
@@ -1322,8 +1323,8 @@ pub fn portrait_size(src: &str) -> Option<bool> {
     let name = src.strip_prefix(PORTRAITS).and_then(|r| r.strip_prefix('/'))?;
     let stem = name.strip_suffix(".webp")?;
     let (sha, small) = match stem.strip_suffix("-256") {
-    Some(sha) => (sha, true),
-    None => (stem, false),
+        Some(sha) => (sha, true),
+        None => (stem, false),
     };
     let hex = sha.len() == 64 && sha.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
     hex.then_some(small)
@@ -1336,36 +1337,36 @@ pub fn portrait_size(src: &str) -> Option<bool> {
 /// keep in step.
 pub fn portrait_entry(state: &str, src: &str) -> Result<(String, bool), String> {
     let (at, small) = match state.strip_suffix(crate::ward::SMALL) {
-    Some(at) => (at, true),
-    None => (state, false),
+        Some(at) => (at, true),
+        None => (state, false),
     };
     if at == "dead" {
-    return Err("no picture of a dead patient is made — the board shows the last living \
-                state and says died in words"
-        .into());
+        return Err("no picture of a dead patient is made — the board shows the last living \
+                    state and says died in words"
+            .into());
     }
     if !crate::ward::PORTRAIT_LADDER.contains(&at) {
-    return Err(format!(
-        "{state} is not a state the engine reports, so nothing would ever draw it. The \
-         keys are {:?}, each optionally with {}",
-        crate::ward::PORTRAIT_LADDER,
-        crate::ward::SMALL
-    ));
+        return Err(format!(
+            "{state} is not a state the engine reports, so nothing would ever draw it. The \
+             keys are {:?}, each optionally with {}",
+            crate::ward::PORTRAIT_LADDER,
+            crate::ward::SMALL
+        ));
     }
     match portrait_size(src) {
-    None => Err(format!(
-        "a portrait must be {PORTRAITS}/<sha256>.webp or the same name with -256 before the \
-         extension, not {src} — the board renders this as an image on a page strangers open, \
-         so the ward publishes two shapes and refuses every other"
-    )),
-    Some(is_small) if is_small != small => Err(format!(
-        "{state} is filed as the {} and {src} is the {} — a thumbnail under the full-size key \
-         draws correctly and defeats the point of having two, so the key and the address have \
-         to agree",
-        if small { "256 px sibling" } else { "full-size picture" },
-        if is_small { "256 px sibling" } else { "full-size picture" }
-    )),
-    Some(_) => Ok((at.to_string(), small)),
+        None => Err(format!(
+            "a portrait must be {PORTRAITS}/<sha256>.webp or the same name with -256 before the \
+             extension, not {src} — the board renders this as an image on a page strangers open, \
+             so the ward publishes two shapes and refuses every other"
+        )),
+        Some(is_small) if is_small != small => Err(format!(
+            "{state} is filed as the {} and {src} is the {} — a thumbnail under the full-size key \
+             draws correctly and defeats the point of having two, so the key and the address have \
+             to agree",
+            if small { "256 px sibling" } else { "full-size picture" },
+            if is_small { "256 px sibling" } else { "full-size picture" }
+        )),
+        Some(_) => Ok((at.to_string(), small)),
     }
 }
 
@@ -1380,14 +1381,14 @@ pub fn pack_id(p: &crate::ward::Pack) -> String {
     let mut h = Sha256::new();
     h.update(b"vitals.ward.pack.v1\n");
     for field in [
-    p.case.as_str(),
-    p.persona.name.as_str(),
-    p.persona.country.as_str(),
-    &p.persona.age.to_string(),
-    if p.endemic { "endemic" } else { "drawn" },
+        p.case.as_str(),
+        p.persona.name.as_str(),
+        p.persona.country.as_str(),
+        &p.persona.age.to_string(),
+        if p.endemic { "endemic" } else { "drawn" },
     ] {
-    h.update(field.as_bytes());
-    h.update(b"\n");
+        h.update(field.as_bytes());
+        h.update(b"\n");
     }
     // The portraits are **not** hashed. She is the same patient whether or not the picture of her
     // getting worse has been made yet, and the factory adds those to a pack it has already queued
@@ -1421,27 +1422,27 @@ pub enum Door {
 impl Door {
     /// May the factory's doors take packs? Both states that are not shut.
     pub fn takes_packs(self) -> bool {
-    matches!(self, Door::Open | Door::Preview)
+        matches!(self, Door::Open | Door::Preview)
     }
 
     /// May the ticker admit from the queue? Only an open ward — a bed filled in preview is a
     /// patient nobody may treat.
     pub fn admits(self) -> bool {
-    matches!(self, Door::Open)
+        matches!(self, Door::Open)
     }
 
     /// May a stranger take a head, declare, anchor, release, or leave one behind them?
     pub fn plays(self) -> bool {
-    matches!(self, Door::Open)
+        matches!(self, Door::Open)
     }
 
     /// The word the board publishes, and the one every page branches on.
     pub fn word(self) -> &'static str {
-    match self {
-        Door::Closed => "closed",
-        Door::Preview => "preview",
-        Door::Open => "open",
-    }
+        match self {
+            Door::Closed => "closed",
+            Door::Preview => "preview",
+            Door::Open => "open",
+        }
     }
 
     /// What a stranger is told when they press something this door does not allow.
@@ -1449,20 +1450,20 @@ impl Door {
     /// One sentence, and it says what will change rather than what is forbidden. A closed ward has
     /// nothing on it to press, so this is the preview sentence and a spare for the shut case.
     pub fn refusal(self) -> &'static str {
-    match self {
-        Door::Open => "",
-        Door::Preview => "the ward opens soon — nobody plays yet",
-        Door::Closed => "this ward is not open",
-    }
+        match self {
+            Door::Open => "",
+            Door::Preview => "the ward opens soon — nobody plays yet",
+            Door::Closed => "this ward is not open",
+        }
     }
 }
 
 /// Read a door out of the word a deploy set.
 pub fn door_from(setting: Option<&str>) -> Door {
     match setting.map(|v| v.trim().to_ascii_lowercase()).as_deref() {
-    Some("open") => Door::Open,
-    Some("preview") => Door::Preview,
-    _ => Door::Closed,
+        Some("open") => Door::Open,
+        Some("preview") => Door::Preview,
+        _ => Door::Closed,
     }
 }
 
@@ -1525,23 +1526,23 @@ pub fn queue_depth(store: &crate::store::Store) -> Result<usize, String> {
 /// case it picks is exactly what would make the claim true or false.
 fn endemic_claim(pack: &crate::ward::Pack, held: &[crate::ward_case::CaseSummary]) -> Option<String> {
     if pack.case.is_empty() {
-    return Some(
-        "this pack calls itself endemic and names no case — the ward picks the case for a pack \
-         that names none, and which case it picks is what would make the claim true or false"
-            .to_string(),
-    );
+        return Some(
+            "this pack calls itself endemic and names no case — the ward picks the case for a pack \
+             that names none, and which case it picks is what would make the claim true or false"
+                .to_string(),
+        );
     }
     let case = held.iter().find(|c| c.case_id == pack.case)?;
     let where_it_is = match (case.endemic, case.country.as_deref()) {
-    (true, Some(country)) if country == pack.persona.country => return None,
-    (true, Some(country)) => format!("it is endemic in {country}"),
-    (true, None) => "it is endemic in no country the catalogue names".to_string(),
-    (false, _) => "the catalogue does not tag it endemic anywhere".to_string(),
+        (true, Some(country)) if country == pack.persona.country => return None,
+        (true, Some(country)) => format!("it is endemic in {country}"),
+        (true, None) => "it is endemic in no country the catalogue names".to_string(),
+        (false, _) => "the catalogue does not tag it endemic anywhere".to_string(),
     };
     Some(format!(
-    "this pack calls itself endemic for {} and {where_it_is} — an endemic tag nothing backs is \
-     the claim the rule exists to prevent. The case is {}",
-    pack.persona.country, pack.case
+        "this pack calls itself endemic for {} and {where_it_is} — an endemic tag nothing backs is \
+         the claim the rule exists to prevent. The case is {}",
+        pack.persona.country, pack.case
     ))
 }
 
@@ -1549,68 +1550,68 @@ pub fn enqueue(store: &crate::store::Store, packs: Vec<crate::ward::Pack>) -> Qu
     let mut out = Queued::default();
     let held = crate::ward_case::all(store);
     for pack in packs {
-    if let Err(why) = validate_pack(&pack) {
-        out.rejected.push(why);
-        continue;
-    }
-    // Whether this ward holds the case she was built for. Asked here rather than in the pack's
-    // own shape because it is a question about this ward at this moment: the same pack is good
-    // the minute after the compiler sends that case, which is why the packs already waiting
-    // are left alone rather than deleted.
-    // The rule the ward places by, applied to the case the factory named. It held for the
-    // patients the ward placed and not for the ones the factory placed, which is the half the
-    // factory uses — and a person on a case written about somebody else is a page telling a
-    // stranger they are treating a child while the board beside it says sixty-six.
-    if let Some(named) = held.iter().find(|c| c.case_id == pack.case) {
-        if let Some(why) = crate::ward_case::contradicts(named, &pack.persona) {
+        if let Err(why) = validate_pack(&pack) {
             out.rejected.push(why);
             continue;
         }
-    }
-    // A pack's endemic claim is a claim about a pairing, and the catalogue is where that
-    // pairing lives. It was read from `data/endemic.json` — six country→case pairs written for
-    // the season's sixteen, empty today — so the first real factory tick had every endemic
-    // patient it built turned away at the door: eighteen of the cases this ward holds are
-    // tagged endemic by the compiler that wrote them, and the door could not see one of them.
-    if pack.endemic {
-        if let Some(why) = endemic_claim(&pack, &held) {
-            out.rejected.push(why);
+        // Whether this ward holds the case she was built for. Asked here rather than in the pack's
+        // own shape because it is a question about this ward at this moment: the same pack is good
+        // the minute after the compiler sends that case, which is why the packs already waiting
+        // are left alone rather than deleted.
+        // The rule the ward places by, applied to the case the factory named. It held for the
+        // patients the ward placed and not for the ones the factory placed, which is the half the
+        // factory uses — and a person on a case written about somebody else is a page telling a
+        // stranger they are treating a child while the board beside it says sixty-six.
+        if let Some(named) = held.iter().find(|c| c.case_id == pack.case) {
+            if let Some(why) = crate::ward_case::contradicts(named, &pack.persona) {
+                out.rejected.push(why);
+                continue;
+            }
+        }
+        // A pack's endemic claim is a claim about a pairing, and the catalogue is where that
+        // pairing lives. It was read from `data/endemic.json` — six country→case pairs written for
+        // the season's sixteen, empty today — so the first real factory tick had every endemic
+        // patient it built turned away at the door: eighteen of the cases this ward holds are
+        // tagged endemic by the compiler that wrote them, and the door could not see one of them.
+        if pack.endemic {
+            if let Some(why) = endemic_claim(&pack, &held) {
+                out.rejected.push(why);
+                continue;
+            }
+        }
+        // Out of service. The pack is still in the store and the patients on it still open; what a
+        // withdrawn case does not get is anybody new.
+        if let Some(gone) = held.iter().find(|c| c.case_id == pack.case && c.withdrawn) {
+            out.rejected.push(format!(
+                "{} has been withdrawn — it stays for the patients already on it, and nobody new \
+                 is put on it. Leave the pack's case empty and let the ward choose one",
+                gone.case_id
+            ));
             continue;
         }
-    }
-    // Out of service. The pack is still in the store and the patients on it still open; what a
-    // withdrawn case does not get is anybody new.
-    if let Some(gone) = held.iter().find(|c| c.case_id == pack.case && c.withdrawn) {
-        out.rejected.push(format!(
-            "{} has been withdrawn — it stays for the patients already on it, and nobody new \
-             is put on it. Leave the pack's case empty and let the ward choose one",
-            gone.case_id
-        ));
-        continue;
-    }
-    if !pack.case.is_empty() && !held.iter().any(|c| c.case_id == pack.case) {
-        out.rejected.push(format!(
-            "{} is not a case this ward holds — send it through /api/ward/case first, or \
-             leave the pack's case empty and let the ward choose one",
-            pack.case
-        ));
-        continue;
-    }
-    let id = pack_id(&pack);
-    if store.get::<crate::ward::Pack>(QUEUE_STORE, &id).is_some() {
-        out.duplicates += 1;
-        continue;
-    }
-    match store.put(QUEUE_STORE, &id, &pack) {
-        Ok(()) => out.queued += 1,
-        // A write that failed is not a queued patient, and saying so is the difference between
-        // a factory that tops the queue up and one that believes it already did.
-        Err(e) => out.rejected.push(format!("could not queue {id}: {e}")),
-    }
+        if !pack.case.is_empty() && !held.iter().any(|c| c.case_id == pack.case) {
+            out.rejected.push(format!(
+                "{} is not a case this ward holds — send it through /api/ward/case first, or \
+                 leave the pack's case empty and let the ward choose one",
+                pack.case
+            ));
+            continue;
+        }
+        let id = pack_id(&pack);
+        if store.get::<crate::ward::Pack>(QUEUE_STORE, &id).is_some() {
+            out.duplicates += 1;
+            continue;
+        }
+        match store.put(QUEUE_STORE, &id, &pack) {
+            Ok(()) => out.queued += 1,
+            // A write that failed is not a queued patient, and saying so is the difference between
+            // a factory that tops the queue up and one that believes it already did.
+            Err(e) => out.rejected.push(format!("could not queue {id}: {e}")),
+        }
     }
     match queue_depth(store) {
-    Ok(n) => out.depth = Some(n),
-    Err(e) => out.depth_error = Some(e),
+        Ok(n) => out.depth = Some(n),
+        Err(e) => out.depth_error = Some(e),
     }
     out
 }
@@ -1630,15 +1631,15 @@ pub fn enqueue(store: &crate::store::Store, packs: Vec<crate::ward::Pack>) -> Qu
 pub fn choose_next(queue: &[(String, crate::ward::Pack)], on_ward_cases: &[String]) -> Option<String> {
     use crate::ward::difficulty_of;
     let band_load = |band: &str| {
-    on_ward_cases.iter().filter(|c| difficulty_of(c) == Some(band)).count()
+        on_ward_cases.iter().filter(|c| difficulty_of(c) == Some(band)).count()
     };
     queue
-    .iter()
-    .filter(|(_, p)| !on_ward_cases.iter().any(|c| c == &p.case))
-    .min_by_key(|(id, p)| {
-        (difficulty_of(&p.case).map(band_load).unwrap_or(usize::MAX), id.clone())
-    })
-    .map(|(id, _)| id.clone())
+        .iter()
+        .filter(|(_, p)| !on_ward_cases.iter().any(|c| c == &p.case))
+        .min_by_key(|(id, p)| {
+            (difficulty_of(&p.case).map(band_load).unwrap_or(usize::MAX), id.clone())
+        })
+        .map(|(id, _)| id.clone())
 }
 
 /// A patient id nobody has used: the clock, or the next free second after it.
@@ -1650,7 +1651,7 @@ pub fn choose_next(queue: &[(String, crate::ward::Pack)], on_ward_cases: &[Strin
 pub fn next_patient_id(now_unix: u64, taken: &[u64]) -> u64 {
     let mut id = now_unix;
     while taken.contains(&id) {
-    id += 1;
+        id += 1;
     }
     id
 }
@@ -1662,16 +1663,16 @@ pub fn next_patient_id(now_unix: u64, taken: &[u64]) -> u64 {
 /// that found the wrong file would admit a patient whose chart is a different disease.
 pub fn case_path(root: &std::path::Path, case: &str) -> std::path::PathBuf {
     match case {
-    // The episodes are shelved under short ids and stored under long filenames, and both
-    // spellings are load-bearing: the id is what every table keys on, the filename is what is
-    // on disk. `the_ward_and_the_bay_resolve_a_case_to_the_same_file` holds these against the
-    // bay's own resolver, because two functions that disagree here play a different patient
-    // under the same name.
-    "ep2" => root.join("demo/scenarios/ep2-stemi.json"),
-    "ep3" => root.join("demo/scenarios/ep3-epiglottitis.json"),
-    "ep4" => root.join("demo/scenarios/ep4-pulmonary-embolism.json"),
-    "ep5" => root.join("demo/scenarios/ep5-the-night-the-stars-fell.json"),
-    _ => root.join("demo/stations").join(format!("{case}.sce.json")),
+        // The episodes are shelved under short ids and stored under long filenames, and both
+        // spellings are load-bearing: the id is what every table keys on, the filename is what is
+        // on disk. `the_ward_and_the_bay_resolve_a_case_to_the_same_file` holds these against the
+        // bay's own resolver, because two functions that disagree here play a different patient
+        // under the same name.
+        "ep2" => root.join("demo/scenarios/ep2-stemi.json"),
+        "ep3" => root.join("demo/scenarios/ep3-epiglottitis.json"),
+        "ep4" => root.join("demo/scenarios/ep4-pulmonary-embolism.json"),
+        "ep5" => root.join("demo/scenarios/ep5-the-night-the-stars-fell.json"),
+        _ => root.join("demo/stations").join(format!("{case}.sce.json")),
     }
 }
 
@@ -1704,12 +1705,12 @@ pub fn closing_tape(
     dated: &dyn Fn(u64) -> Option<i64>,
 ) -> Option<Vec<vitals_replay::Step>> {
     let earlier: Vec<crate::ward::ShiftOnChain> =
-    before.iter().filter(|s| s.slot < this.slot).copied().collect();
+        before.iter().filter(|s| s.slot < this.slot).copied().collect();
     let since = earlier.iter().map(|s| s.slot).max().unwrap_or(admitted_slot).max(admitted_slot);
     let (mut st, _) = resumed(sce_json, &earlier, tape_of, admitted_slot, since, dated).ok()?;
     let gap = match (dated(since), dated(this.slot)) {
-    (Some(a), Some(b)) if b > a => (b - a) as f64,
-    _ => 0.0,
+        (Some(a), Some(b)) if b > a => (b - a) as f64,
+        _ => 0.0,
     };
     let r = vitals_replay::shift(&mut st, &[], gap);
     let would_be = vitals_replay::leaf(&vitals_replay::sce_hash(sce_json), &[], &r);
@@ -1725,10 +1726,10 @@ pub fn missing_tapes(
     shifts: &[crate::ward::ShiftOnChain],
 ) -> Vec<String> {
     shifts
-    .iter()
-    .map(|s| hex32(&s.run_hash))
-    .filter(|h| is_shift_hash(h) && tape_by_hash(store, h).is_none())
-    .collect()
+        .iter()
+        .map(|s| hex32(&s.run_hash))
+        .filter(|h| is_shift_hash(h) && tape_by_hash(store, h).is_none())
+        .collect()
 }
 
 /// One named part of a pass, and how long it took.
@@ -1908,6 +1909,38 @@ pub struct Repaired {
     pub each_ms: Vec<u64>,
 }
 
+/// What one read of a patient's history managed.
+///
+/// `refresh` used to return `Result<usize, String>`, so a history read to its end and one that
+/// stopped a third of the way through both came back as `Ok` and no caller could honour the
+/// distinction the walk's own comment makes. The shifts past a stop are the *recent* ones, so a
+/// partial history is precisely a history that makes a patient look idle — and `reap` ends a stay
+/// on that judgement with a chain write.
+pub struct Reading {
+    /// Shifts new to the cache this read.
+    pub added: usize,
+    /// Why the walk stopped early, or `None` when the history was read to its end.
+    pub stopped: Option<String>,
+}
+
+impl Reading {
+    /// Whether a decision that writes may be made on this history.
+    ///
+    /// Separate from whether it is worth keeping, which it always is: the progress cost one RPC
+    /// round trip per signature, and throwing it away means the next pass walks the same
+    /// transactions from the same place again.
+    pub fn whole(&self) -> bool {
+        self.stopped.is_none()
+    }
+}
+
+/// Whether this pass may end a stay on what it read about her.
+///
+/// No entry at all is a refusal too: absence of a history is not evidence of an idle one.
+pub fn may_close(cached: &Cached, patient_id: u64) -> bool {
+    cached.seen.contains_key(&patient_id) && !cached.unread.contains(&patient_id)
+}
+
 /// The shift caches the repair leaves behind, and which of them it could not confirm.
 ///
 /// **One type rather than two parameters, because the two facts are only safe together.** `seen`
@@ -1948,19 +1981,39 @@ fn repair_one(
     if !needs_listing(p.shifts, known.len(), missing_tapes(store, &known).is_empty()) {
         return (notes, false, seen, true);
     }
-    if let Err(e) = chain.refresh(p.patient_id, &mut seen, store) {
-        // The cache goes on — a tape missing under a leaf we already know about is a local fact and
-        // does not depend on the listing — but it is flagged as unconfirmed, and `reap` will not
-        // end a stay on a history it could not read. That refusal was `reap`'s own before the cache
-        // was shared, and sharing it must not quietly drop it.
-        notes.push(format!("patient {}'s history could not be read: {e}", p.patient_id));
-        return (notes, true, seen, false);
-    }
+    // Three outcomes, and the two that are not a clean read are different from each other.
+    //
+    //   * **Failed** — nothing was read, so nothing is persisted and nothing may be decided.
+    //   * **Stopped short** — some of her history was read and the cursor advanced. That progress
+    //     cost one round trip per signature and is kept, or the next pass walks the same
+    //     transactions from the same place again, for ever. But the shifts past the stop are the
+    //     *recent* ones, so she is exactly the patient an incomplete reading makes look idle, and
+    //     `reap` must not end her stay on it.
+    //   * **Whole** — persisted, and safe to decide on.
+    //
+    // Persistence and trust are separate decisions. Conflating them is what the old code did in
+    // both directions at once: it persisted a partial history *and* trusted it.
+    let whole = match chain.refresh(p.patient_id, &mut seen, store) {
+        Err(e) => {
+            notes.push(format!("patient {}'s history could not be read: {e}", p.patient_id));
+            return (notes, true, seen, false);
+        }
+        Ok(reading) => {
+            if let Some(why) = &reading.stopped {
+                notes.push(format!(
+                    "patient {}: history read only as far as it could be ({why}) — what was \
+                     read is kept, and no stay is ended on part of a history",
+                    p.patient_id
+                ));
+            }
+            reading.whole()
+        }
+    };
     let _ = store.put(SHIFT_CACHE, &key, &seen);
     let shifts = seen.shifts();
     let missing = missing_tapes(store, &shifts);
     if missing.is_empty() {
-        return (notes, true, seen, true);
+        return (notes, true, seen, whole);
     }
     // Her case, for the closing-shift recovery. Without a pack there is no scenario to replay
     // against and nothing can be re-derived — which is itself worth one line, not ten.
@@ -2014,7 +2067,7 @@ fn repair_one(
             gone.join(", ")
         ));
     }
-    (notes, true, seen, true)
+    (notes, true, seen, whole)
 }
 
 /// Which open patients this ward cannot rebuild, and the leaf each one stopped at.
@@ -2089,7 +2142,7 @@ fn reap(
         // function refuses to do anywhere else — so she is left alone and named.
         // A stay is ended with a chain write, so it is ended only on a history this pass actually
         // read. The repair already said so in the notes; nothing is added here for the same patient.
-        if cached.unread.contains(&p.patient_id) {
+        if !may_close(cached, p.patient_id) {
             continue;
         }
         let Some(seen) = cached.seen.get(&p.patient_id) else { continue };
