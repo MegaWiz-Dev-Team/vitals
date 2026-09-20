@@ -98,7 +98,7 @@ fn the_page_token_does_not_open_the_factorys_doors() {
             "the page token is printed into bay.js — if that ever stops being true this test is \
              about a danger that no longer exists and should be re-read, not deleted");
 
-    for door in ["/api/ward/queue", "/api/ward/pack/42", "/api/ward/case"] {
+    for door in ["/api/ward/queue", "/api/ward/pack/42", "/api/ward/case", "/api/ward/tick"] {
         let (code, body) = s.post(door, Some("the-page-token"), A_PACK);
         assert_eq!(code, 401,
                    "{door} accepted the token that is printed into a public page: {body}");
@@ -138,7 +138,7 @@ fn the_players_own_routes_still_answer_to_the_page() {
 #[test]
 fn a_ward_with_no_door_token_does_not_open_the_doors_at_all() {
     let s = Server::start(None);
-    for door in ["/api/ward/queue", "/api/ward/pack/42", "/api/ward/case"] {
+    for door in ["/api/ward/queue", "/api/ward/pack/42", "/api/ward/case", "/api/ward/tick"] {
         let (code, body) = s.post(door, Some("the-page-token"), A_PACK);
         assert_eq!(code, 503,
                    "{door} must say it has no secret to check against, and never fall back to the \
@@ -147,4 +147,38 @@ fn a_ward_with_no_door_token_does_not_open_the_doors_at_all() {
                 "and the sentence has to name what is missing, because the person reading it is \
                  the one who can set it: {body}");
     }
+}
+
+/// **The ward's pass can be asked for by a scheduler, and answers with the pass itself.**
+///
+/// min-instances 0 plus Cloud Run's CPU-only-during-a-request means an in-process ticker on a
+/// quiet ward has no CPU to tick with: a bed freed at 03:00 refills when somebody knocks, not on
+/// the minute. Ruling 11 says the refill is an event, not a person noticing. So the pass is also a
+/// route — `POST /api/ward/tick`, behind the factory's door token like the other operator routes,
+/// called by Cloud Scheduler every minute — and the pass runs *inside* the request, because that
+/// is the only time the container is given CPU. The in-process ticker stays as the fallback and
+/// takes the same gate, so the two can never run one pass twice.
+///
+/// The body is the instrument: the same facts the slow-pass line prints, so the Scheduler's own
+/// response log shows a pass's shape without anybody reading container logs.
+#[test]
+fn a_scheduler_can_ask_for_the_pass_and_gets_the_pass_back() {
+    let s = Server::start(Some("door-secret"));
+
+    let (code, body) = s.post("/api/ward/tick", Some("door-secret"), "");
+    assert_eq!(code, 200, "the door's own token runs the pass: {body}");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap_or_else(|e| panic!("{e}: {body}"));
+    for field in ["took_ms", "patients", "listed", "pace", "spans", "notes"] {
+        assert!(v.get(field).is_some(),
+                "the answer carries `{field}` — the pass's own instrument, in the Scheduler's log");
+    }
+    // No chain on this host, so the pass says so rather than pretending: that is a pass that ran,
+    // not a failure of the route, and the caller gets 200 with the sentence in `notes`.
+    assert!(v["notes"].as_array().is_some_and(|n| !n.is_empty()),
+            "a ward with no chain says why nobody was admitted: {body}");
+
+    // Idempotent for a scheduler that retries: a second ask after the first finished is another
+    // pass, not an error.
+    let (again, _) = s.post("/api/ward/tick", Some("door-secret"), "");
+    assert_eq!(again, 200);
 }

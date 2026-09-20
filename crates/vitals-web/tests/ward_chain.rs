@@ -2055,3 +2055,32 @@ fn with_no_fresh_board_the_kept_one_is_served_and_says_so() {
                 inventing one");
     assert!(nothing["why"].as_str().unwrap_or("").contains("429"));
 }
+
+/// **A second pass asked for while one is running is refused, never queued.**
+///
+/// The pass writes to the chain — `reap` anchors closing shifts — so two of them at once could
+/// close the same patient twice. When the Scheduler's request finds the in-process ticker (or an
+/// earlier request) mid-pass, the answer is 409 with a sentence, and the caller tries again next
+/// minute. Never a wait: a request that blocks holds the ward's only request thread, which is the
+/// thing this whole day has been about not doing.
+///
+/// Pure at the seam so the two answers can be pinned without a race in the test: the route hands
+/// this whatever the gate gave it.
+#[test]
+fn a_second_pass_is_refused_not_queued() {
+    use vitals_web::ward_chain::{tick_response, Ticked};
+
+    let (code, body) = tick_response(None, std::time::Duration::from_millis(0));
+    assert_eq!(code, 409, "the gate was held");
+    assert!(body["error"].as_str().unwrap_or("").contains("already running"),
+            "and the caller is told why, in words: {body}");
+
+    let ran = Ticked { checked: 26, listed: 2, ..Default::default() };
+    let (code, body) = tick_response(Some(ran), std::time::Duration::from_millis(2_140));
+    assert_eq!(code, 200);
+    assert_eq!(body["took_ms"], 2_140, "how long the pass took, for the Scheduler's log");
+    assert_eq!(body["patients"], 26);
+    assert_eq!(body["listed"], 2, "and how many cost a listing — the number the rate limit sees");
+    assert!(body.get("pace").is_some() && body.get("spans").is_some() && body.get("notes").is_some(),
+            "the same facts the slow-pass line prints: {body}");
+}
