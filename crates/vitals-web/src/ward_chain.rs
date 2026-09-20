@@ -1731,6 +1731,28 @@ pub fn missing_tapes(
     .collect()
 }
 
+/// Whether this patient's signatures have to be listed at all.
+///
+/// The listing is what devnet charges for: 00064 spent 99.8 s over 26 patients, median 674 ms and
+/// max 10.7 s, with roughly half of them in a multi-second backoff. So the pass asks first whether
+/// a listing could tell it anything, using two facts it already has:
+///
+///   * `chain_shifts` — [`crate::ward::PatientOnChain::shifts`], the chain's own count of her
+///     leaves, which arrives in the one `patients()` call the tick makes for everybody anyway;
+///   * `tapes_all_present` — a local question about the store, no RPC.
+///
+/// Nothing is remembered between passes on purpose. An in-memory note of the last signature would
+/// be empty on the first pass after a start, and on a service that redeploys every commit the first
+/// pass is the one worth making fast.
+///
+/// Both halves are needed: the count alone misses a tape that left the store while the chain stood
+/// still, which is the failure the repair exists for. A cache holding *more* than the chain says
+/// exists is listed rather than trusted, because a duplicate could otherwise hide a real leaf
+/// behind a count that happens to match.
+pub fn needs_listing(chain_shifts: u32, cached_shifts: usize, tapes_all_present: bool) -> bool {
+    chain_shifts as usize != cached_shifts || !tapes_all_present
+}
+
 /// A pass worth a line, and the passes that are not.
 ///
 /// Every minute on a ward that is usually quiet, so a line per pass is a line nobody reads.
@@ -1808,12 +1830,15 @@ pub fn repair_tapes(
     let mut out = Repaired::default();
     let packs_now = packs(store);
     for p in patients {
-    let began = std::time::Instant::now();
-    out.notes.extend(repair_one(chain, store, root, p, held, &packs_now));
-    // Every patient walked, including the ones that needed nothing. What costs the time is the
-    // signature listing, and that happens whether or not a tape turns out to be missing — a
-    // shape drawn only from the patients that needed work would say the pass was fast.
-    out.each_ms.push(began.elapsed().as_millis() as u64);
+        let began = std::time::Instant::now();
+        let (notes, listed) = repair_one(chain, store, root, p, held, &packs_now);
+        out.notes.extend(notes);
+        out.listed += usize::from(listed);
+        // Every patient walked, including the ones that were skipped without a listing. What costs
+        // the time is the listing, and a shape drawn only from the patients that needed work would
+        // report a fast pass — but a skipped patient's own few milliseconds belong in the shape
+        // too, because they are what the skip is worth.
+        out.each_ms.push(began.elapsed().as_millis() as u64);
     }
     out
 }
@@ -1822,6 +1847,9 @@ pub fn repair_tapes(
 #[derive(Debug, Default)]
 pub struct Repaired {
     pub notes: Vec<String>,
+    /// How many of them actually cost a signature listing — the number the rate limit is charged
+    /// against, and the one that says whether [`needs_listing`] is earning its keep.
+    pub listed: usize,
     /// One entry per patient walked, in the order the chain listed them. Read through [`pace`].
     pub each_ms: Vec<u64>,
 }
@@ -1837,18 +1865,24 @@ fn repair_one(
     p: &crate::ward::PatientOnChain,
     held: &[(String, Vec<vitals_replay::Step>)],
     packs_now: &std::collections::BTreeMap<u64, crate::ward::Pack>,
-) -> Vec<String> {
+) -> (Vec<String>, bool) {
     let mut notes = Vec::new();
     let key = format!("p{}", p.patient_id);
     let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
+    // Ask before paying. `p.shifts` came free with the patient, and the tape check is local; the
+    // listing below is the one that waits on devnet's mood.
+    let known = seen.shifts();
+    if !needs_listing(p.shifts, known.len(), missing_tapes(store, &known).is_empty()) {
+        return (notes, false);
+    }
     if chain.refresh(p.patient_id, &mut seen, store).is_err() {
-        return notes;
+        return (notes, true);
     }
     let _ = store.put(SHIFT_CACHE, &key, &seen);
     let shifts = seen.shifts();
     let missing = missing_tapes(store, &shifts);
     if missing.is_empty() {
-        return notes;
+        return (notes, true);
     }
     // Her case, for the closing-shift recovery. Without a pack there is no scenario to replay
     // against and nothing can be re-derived — which is itself worth one line, not ten.
@@ -1902,7 +1936,7 @@ fn repair_one(
             gone.join(", ")
         ));
     }
-    notes
+    (notes, true)
 }
 
 /// Which open patients this ward cannot rebuild, and the leaf each one stopped at.
@@ -2048,6 +2082,9 @@ pub struct Ticked {
     /// The line printed from this is what tells a throttled thread from a rate-limited listing,
     /// and [`Pace`] says why it is a median and a max rather than an average.
     pub pace: Option<Pace>,
+    /// How many of them cost a signature listing, which is what devnet rate-limits. The gap
+    /// between this and `checked` is what [`needs_listing`] saved.
+    pub listed: usize,
     /// How many patients this pass walked.
     ///
     /// The repair's cost is *per patient* — 38.3 s over 26 of them on staging 00062, one chain
@@ -2108,6 +2145,7 @@ pub fn tick(
     out.checked = patients.len();
     let repaired = repair_tapes(chain, store, root, &patients, held);
     out.pace = pace(&repaired.each_ms);
+    out.listed = repaired.listed;
     out.notes.extend(repaired.notes);
     // Asked once, after the repair has had its go: the tapes it put back are not missing any more,
     // and the beds it could not save are the ones this tick must give up.

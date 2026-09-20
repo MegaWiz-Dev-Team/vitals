@@ -3634,8 +3634,10 @@ fn main() {
                                 .sweep(SESSIONS, std::time::Duration::from_secs(24 * 60 * 60));
                             swept_yet = true;
                             println!(
-                                "ward       first pass · swept {swept} expired, after the repair \
-                                 and never before it"
+                                "ward       first pass · {} of {} patients needed a signature \
+                                 listing · swept {swept} expired, after the repair and never \
+                                 before it",
+                                t.listed, t.checked
                             );
                         }
                         // Any pass that took more than ten seconds, not only the first, and the
