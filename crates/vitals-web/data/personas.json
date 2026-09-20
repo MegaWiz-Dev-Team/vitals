@@ -37,7 +37,7 @@
       { "name": "Rowena Villanueva", "sex": "f" },
       { "name": "Ramon Santos", "sex": "m" },
       { "name": "Dante Villegas", "sex": "m" } ] },
-    { "country": "VNM", "place": "Viet Nam", "personas": [
+    { "country": "VNM", "place": "Vietnam", "personas": [
       { "name": "Nguyen Thi Lan", "local": "Nguyễn Thị Lan", "sex": "f" },
       { "name": "Tran Van Minh", "local": "Trần Văn Minh", "sex": "m" },
       { "name": "Pham Thu Ha", "local": "Phạm Thu Hà", "sex": "f" } ] },
@@ -78,7 +78,7 @@
       { "name": "Yuki Tanaka", "local": "田中 由紀", "sex": "f" },
       { "name": "Haruto Sasaki", "local": "佐々木 陽翔", "sex": "m" },
       { "name": "Aoi Nakamura", "local": "中村 葵", "sex": "f" } ] },
-    { "country": "KOR", "place": "Korea", "personas": [
+    { "country": "KOR", "place": "South Korea", "personas": [
       { "name": "Park Ji-woo", "local": "박지우", "sex": "f" },
       { "name": "Kim Min-jun", "local": "김민준", "sex": "m" },
       { "name": "Lee Seo-yeon", "local": "이서연", "sex": "f" } ] },
@@ -131,7 +131,7 @@
       { "name": "Lucia Hernandez", "local": "Lucía Hernández", "sex": "f" },
       { "name": "Miguel Ramirez", "local": "Miguel Ramírez", "sex": "m" },
       { "name": "Valeria Ortiz", "sex": "f" } ] },
-    { "country": "USA", "place": "United States", "personas": [
+    { "country": "USA", "place": "United States of America", "personas": [
       { "name": "Danielle Carter", "sex": "f" },
       { "name": "Marcus Reed", "sex": "m" },
       { "name": "Emily Novak", "sex": "f" } ] },
@@ -278,7 +278,7 @@
       { "name": "Mamy Andrianarivo", "sex": "m" },
       { "name": "Tiana Razafindrakoto", "sex": "f" },
       { "name": "Rija Ravelomanantsoa", "sex": "m" } ] },
-    { "country": "COD", "place": "Democratic Republic of the Congo", "personas": [
+    { "country": "COD", "place": "Dem. Rep. Congo", "personas": [
       { "name": "Grace Mwamba", "local": "Grâce Mwamba", "sex": "f" },
       { "name": "Patrick Ilunga", "sex": "m" },
       { "name": "Esperance Kasongo", "local": "Espérance Kasongo", "sex": "f" },
@@ -400,7 +400,7 @@
       { "name": "Ousmane Garba", "sex": "m" },
       { "name": "Ramatou Idrissa", "sex": "f" },
       { "name": "Souleymane Adamou", "sex": "m" } ] },
-    { "country": "SSD", "place": "South Sudan", "personas": [
+    { "country": "SSD", "place": "S. Sudan", "personas": [
       { "name": "Achol Deng", "sex": "f" },
       { "name": "Mading Alier", "sex": "m" },
       { "name": "Nyagoah Gatluak", "sex": "f" },
