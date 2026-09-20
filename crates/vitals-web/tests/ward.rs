@@ -1942,3 +1942,35 @@ fn every_board_says_where_it_came_from() {
                board_note(Origin::Store, 1_789_730_000, Some("r")),
                "one board, one set of bytes — however many times it is asked for");
 }
+
+/// **A head nobody holds is held by nobody — not by the key whose bytes happen to be zero.**
+///
+/// `/api/ward/declare` refuses anybody who is not holding the patient, by comparing the chain's
+/// `lease_holder` against the caller's key. A patient nobody holds carries `[0; 32]` there, and the
+/// base58 key `1111…1` (32 ones) *is* thirty-two zero bytes — so that one caller matched the
+/// sentinel and was told to go ahead.
+///
+/// Found by Forseti VW-API-23a, which has used that placeholder since it was written. It only
+/// failed now because the bed happened to be free: for as long as somebody else held the head, the
+/// comparison failed for the right reason and the scenario passed for the wrong one.
+///
+/// Not exploitable — nobody signs with the zero key, and the program refuses the anchor anyway
+/// (`AnchorShift` checks `lease_holder != account.id`). It is the ward saying "go ahead" where it
+/// means "take the shift first", which is a sentence about a bed and therefore worth being right.
+/// The program has known this all along: `PatientAccount::lease_free` tests the zero sentinel
+/// first, and `ward::on_shift` does the same.
+#[test]
+fn a_head_nobody_holds_is_held_by_nobody() {
+    use vitals_web::ward::may_declare;
+
+    let alice = [7u8; 32];
+    let bob = [9u8; 32];
+    let nobody = [0u8; 32];
+
+    assert!(may_declare(alice, alice), "the key the chain says is holding her may declare");
+    assert!(!may_declare(alice, bob), "and nobody else may");
+    assert!(!may_declare(nobody, alice), "a head nobody holds cannot be declared on");
+    assert!(!may_declare(nobody, nobody),
+            "least of all by the key whose bytes are the same zeros the sentinel uses — this is \
+             the one that answered 200 on staging");
+}
