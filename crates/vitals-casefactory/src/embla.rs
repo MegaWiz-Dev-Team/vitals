@@ -156,6 +156,30 @@ pub struct Presentation {
     pub hpi: String,
     #[serde(default)]
     pub setting: Option<String>,
+    /// The past history, read for what the heart already carries; never written to a pack.
+    /// A case writes it as coded entries or as plain strings — both are read.
+    #[serde(default, skip_serializing, deserialize_with = "names_or_strings")]
+    pub pmh: Vec<Named>,
+}
+
+/// A list whose items are `{"display": ...}` objects or bare strings, read as [`Named`].
+fn names_or_strings<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<Named>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Item {
+        Named(Named),
+        Text(String),
+        Other(serde::de::IgnoredAny),
+    }
+    let items: Vec<Item> = Vec::deserialize(d)?;
+    Ok(items
+        .into_iter()
+        .map(|i| match i {
+            Item::Named(n) => n,
+            Item::Text(t) => Named { display: t },
+            Item::Other(_) => Named::default(),
+        })
+        .collect())
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

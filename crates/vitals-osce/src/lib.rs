@@ -287,6 +287,35 @@ impl DetResult {
 /// `kind` is matched exactly, which is what makes `action_refused` invisible to every `action`
 /// check in every rubric without one of them being edited: the cath lab that answered "the lab
 /// wants an ecg before it spins up" is on the event log, and it is not an action.
+/// An order the sheet pays for, by the second it was given.
+///
+/// An `action` row, as ever — and, for a needle that names the defibrillator, the engine's own
+/// `shock` row when it went into a shockable rhythm. The kit button and the typed order reach the
+/// same physiology (`SceState::defibrillate`) but only the typed order leaves an `action` row, so
+/// a learner who pressed the button on a VF earned nothing for the shock the case is about. The
+/// clinical advisor ruled (3.5, 20 Sep 2026) that the button scores. A shock into asystole or a
+/// pulse is not the shock the item is for and stays a harm; a needle that names anything else
+/// never reads a shock row.
+fn hit_action(events: &[Event], needle: &str) -> Option<f64> {
+    let typed = hit(events, "action", needle);
+    let n = canon(needle).to_lowercase();
+    if !(n.contains("defibrillat") || n.contains("unsynchronised shock") || n.contains("unsynchronized shock")) {
+        return typed;
+    }
+    let button = events
+        .iter()
+        .filter(|e| e.kind == vitals_sce::runtime::SHOCK)
+        .find(|e| {
+            let t = canon(&e.text).to_lowercase();
+            t.contains("into vf") || t.contains("into vt")
+        })
+        .map(|e| e.t_sec);
+    match (typed, button) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    }
+}
+
 fn hit(events: &[Event], kind: &str, needle: &str) -> Option<f64> {
     let n = canon(needle).to_lowercase();
     events
@@ -400,11 +429,11 @@ pub fn score(events: &[Event], rubric: &Rubric, ended: Option<Outcome>) -> DetRe
         let mut charged: Vec<String> = Vec::new();
         let (ok, at, within) = match &it.check {
             Check::Action { needle, .. } => {
-                let at = hit(events, "action", needle);
+                let at = hit_action(events, needle);
                 (at.is_some(), at, None)
             }
             Check::ActionBy { needle, by_sec, .. } => {
-                let at = hit(events, "action", needle);
+                let at = hit_action(events, needle);
                 (at.is_some_and(|t| t <= *by_sec), at, Some(*by_sec))
             }
             Check::ActionAny { any_of, .. } => {

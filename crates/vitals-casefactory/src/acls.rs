@@ -123,10 +123,45 @@ fn converted_hr(a: Archetype) -> f64 {
     }
 }
 
+/// Words that say the heart is structurally diseased — a valve, a cardiomyopathy, a reduced
+/// ejection fraction, a congenital defect, an old infarct. Read in the case's own sentences and
+/// never inside a negated one, so "no structural heart disease" on the echo says what it says.
+const STRUCTURAL_KW: &[&str] = &[
+    "structural heart disease", "structural abnormalit*", "cardiomyopathy", "valvular", "valve disease", "mitral stenosis", "mitral regurgitation",
+    "aortic stenosis", "aortic regurgitation", "rheumatic heart", "reduced ejection fraction", "reduced systolic function", "reduced ef",
+    "lvef 2*", "lvef 3*", "lvef 4*", "ef 2*%", "ef 3*%", "ef 4*%", "congenital heart", "ventricular septal defect", "vsd", "atrial septal defect",
+    "ischaemic heart disease", "ischemic heart disease", "coronary artery disease", "prior myocardial infarction", "previous myocardial infarction",
+    "old myocardial infarction", "hypertrophic", "left ventricular hypertrophy",
+];
+
+/// Does this case carry a structural heart disease? The clinical advisor's ruling 3.2 (20 Sep
+/// 2026): a converted rhythm on a structurally sound heart goes home; on a diseased one it goes
+/// to intensive care.
+pub fn structural_heart_disease(case: &Case) -> bool {
+    let mut sentences: Vec<String> = vec![case.haystack()];
+    sentences.extend(case.hidden.management_plan.iter().cloned());
+    sentences.extend(case.presentation.pmh.iter().map(|p| p.display.clone()));
+    for i in &case.investigations {
+        sentences.push(i.result.value.to_string());
+        if let Some(r) = &i.result.report {
+            sentences.push(r.clone());
+        }
+    }
+    sentences.iter().flat_map(|s| crate::text::fragments(s)).any(|f| !crate::text::negated(&f) && STRUCTURAL_KW.iter().any(|k| crate::text::contains_kw(&f, k)))
+}
+
 pub fn build(case: &Case, a: Archetype, v: &Vitals0, mapped: &Mapped, built: &Built) -> Sim {
     let e = entry(case, a, v);
-    let win = win_outcome(case);
     let with_pulse = !matches!(e, Entry::Vf | Entry::Pea | Entry::Asystole);
+    // A tachycardia's ending is decided by how it was turned (the advisor's ruling 3.2): home
+    // when the drugs converted it and the heart is sound; intensive care when it arrived
+    // unstable (cardioversion was what it needed), when the heart is structurally diseased, or
+    // — decided at the bedside — when the learner cardioverted it. Everything else keeps the
+    // case's own ending.
+    let tachy = matches!(e, Entry::TachyStable | Entry::TachyUnstable);
+    let icu_fixed = tachy && (e == Entry::TachyUnstable || structural_heart_disease(case));
+    let win = if tachy { if icu_fixed { "win_icu" } else { "win_discharge" } } else { win_outcome(case) };
+    let wins: Vec<&'static str> = if tachy { vec!["win_discharge", "win_icu"] } else { vec![win] };
 
     // perfusion: the no-flow clock of an arrest. Twenty a minute with nobody on the chest,
     // four with compressions running — three minutes to nothing, or fifteen.
@@ -296,10 +331,15 @@ pub fn build(case: &Case, a: Archetype, v: &Vitals0, mapped: &Mapped, built: &Bu
 
     for (state, id) in [("rosc", "recovered"), ("converted", "recovered_converted")] {
         if states.iter().any(|s| s["id"] == state) {
+            let ending: Vec<Value> = if state == "converted" && tachy && !icu_fixed {
+                vec![json!({ "branch": [ { "if": { "flag": "cardioversion_given" }, "then": [ { "outcome": "win_icu" } ] } ], "else": [ { "outcome": "win_discharge" } ] })]
+            } else {
+                vec![json!({ "outcome": win })]
+            };
             triggers.push(json!({
                 "id": id, "once": true,
                 "when": { "all": [ { "in_state": state }, { "var": "t_in_state", "op": "ge", "value": a.recovery_sec() } ] },
-                "do": [ { "outcome": win } ]
+                "do": ending
             }));
         }
     }
@@ -345,14 +385,25 @@ pub fn build(case: &Case, a: Archetype, v: &Vitals0, mapped: &Mapped, built: &Bu
         (0.0, 0.0, 0.0, 0.0, 0.0, 3)
     };
 
-    let win_label = match win {
+    let label_of = |w: &str| match w {
         "win_icu" => "A pulse, a pressure and a plan — handed to intensive care",
         _ => "Converted and observed — home with a plan",
+    };
+    let mut outcomes: Vec<Value> = wins.iter().map(|w| json!({ "id": w, "kind": "win", "label": label_of(w) })).collect();
+    outcomes.push(json!({ "id": "death_arrest", "kind": "death", "label": "The no-flow time ran out — the arrest could not be reversed" }));
+
+    // the algorithm's tools the sheet pays for: compressions and adrenaline in every arrest, the
+    // shock only where the rhythm at the door is shockable — a shock into PEA is the harm, not
+    // the item
+    let paid_rescue: Vec<&'static str> = match e {
+        Entry::Vf => vec!["cpr", "defibrillate", "adrenaline_iv"],
+        Entry::Pea | Entry::Asystole => vec!["cpr", "adrenaline_iv"],
+        _ => Vec::new(),
     };
 
     // the debrief: what the algorithm expects, timed where it times it
     let mut expect: Vec<Value> = Vec::new();
-    for p in mapped.present.iter().filter(|p| matches!(p.role.kind, Kind::Critical | Kind::Gate) || (p.role.kind == Kind::Rescue && a.paid_rescue().contains(&p.role.id))) {
+    for p in mapped.present.iter().filter(|p| matches!(p.role.kind, Kind::Critical | Kind::Gate) || (p.role.kind == Kind::Rescue && paid_rescue.contains(&p.role.id))) {
         let mut ex = json!({ "id": p.tx_id(), "label": p.role.label });
         if let Some((_, by)) = late.iter().find(|(id, _)| id == p.role.id) {
             ex["within_sec"] = json!(by);
@@ -373,17 +424,14 @@ pub fn build(case: &Case, a: Archetype, v: &Vitals0, mapped: &Mapped, built: &Bu
         "states": states,
         "interventions": built.interventions,
         "triggers": triggers,
-        "outcomes": [
-            { "id": win, "kind": "win", "label": win_label },
-            { "id": "death_arrest", "kind": "death", "label": "The no-flow time ran out — the arrest could not be reversed" }
-        ],
+        "outcomes": outcomes,
         "debrief": {
             "expect": expect,
             "avoid": mapped.harmful().iter().map(|p| json!({ "id": p.tx_id(), "label": p.role.label, "why": p.role.harm })).collect::<Vec<_>>()
         }
     });
 
-    Sim { sce, win, late, trigger_harms }
+    Sim { sce, win, wins, paid_rescue, late, trigger_harms }
 }
 
 pub const NOT_SHOCKABLE: &str = "unsynchronised shock into a rhythm that is not shockable — compressions and adrenaline lost";

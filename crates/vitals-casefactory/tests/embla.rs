@@ -76,3 +76,18 @@ fn the_two_of_spo2_is_not_a_saturation() {
     assert_eq!((v.sbp, v.hr, v.spo2), (80.0, 120.0, 85.0));
     assert_eq!(v.assumed, vec!["rr", "temp", "gcs"]);
 }
+
+#[test]
+fn a_past_history_of_plain_strings_parses_like_one_of_coded_entries() {
+    let mut v: serde_json::Value = serde_json::from_str(include_str!("fixtures/synthetic-septic-shock.json")).unwrap();
+    v["presentation"]["pmh"] = serde_json::json!(["Hypertension", "Type 2 diabetes"]);
+    let case = vitals_casefactory::embla::parse_case(&v.to_string()).unwrap();
+    assert_eq!(case.presentation.pmh.iter().map(|p| p.display.as_str()).collect::<Vec<_>>(), vec!["Hypertension", "Type 2 diabetes"]);
+    v["presentation"]["pmh"] = serde_json::json!([{ "display": "Hypertension", "icd10_who": "I10" }]);
+    let case = vitals_casefactory::embla::parse_case(&v.to_string()).unwrap();
+    assert_eq!(case.presentation.pmh[0].display, "Hypertension");
+    // and the pack never carries it
+    let s = v.to_string();
+    let pack = vitals_casefactory::compile(&s, vitals_casefactory::Source::of("embla-cases", "test", &s)).unwrap();
+    assert!(serde_json::to_value(&pack).unwrap()["presentation"].get("pmh").is_none());
+}

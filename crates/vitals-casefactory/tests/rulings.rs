@@ -43,6 +43,7 @@ fn rhythm_case(id: &str, dx: &str, aliases: &[&str], vitals: &[&str], plan: &[&s
     v["meta"]["clinical_tier"] = serde_json::json!(4);
     v["meta"]["search_tags"] = serde_json::json!(["synthetic", "test"]);
     v["patient"]["age"] = serde_json::json!(age);
+    v["patient"]["name"] = serde_json::json!("Zuzanna Quix"); // the fixture's "Beta" would trip the name scan on "beta-blocker"
     v["hidden"]["correct_diagnosis"] = serde_json::json!({ "display": dx, "aliases": aliases });
     v["hidden"]["red_flags"] = serde_json::json!(["Palpitations with a narrow regular tachycardia — treat the rhythm"]);
     v["hidden"]["management_plan"] = serde_json::json!(plan);

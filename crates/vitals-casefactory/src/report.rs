@@ -24,6 +24,8 @@ pub fn reason_family(reason: &str) -> String {
         "season source (the season's content, excluded by rule)".into()
     } else if r.starts_with("the prose still states") {
         "prose still states the patient's age or sex (placeholder pass missed it)".into()
+    } else if r.starts_with("presenting vitals within normal") {
+        "presenting vitals within normal (NEWS2 low — cut by the advisor's rule 3.7)".into()
     } else if r.starts_with("no archetype fits: ") && !r.contains("names no deterioration") {
         // a diagnosis the library knows it cannot model yet — keep the shape's name
         let why = r.trim_start_matches("no archetype fits: ");
@@ -85,6 +87,30 @@ pub fn render(results: &[(String, Outcome)], library: &str, git_ref: &str, commi
         let lo = deaths.iter().cloned().fold(f64::INFINITY, f64::min);
         let hi = deaths.iter().cloned().fold(0.0, f64::max);
         s.push_str(&format!("| {a} | {} | {endemic} | {lo:.0}–{hi:.0} |\n", packs.len()));
+    }
+
+    // the ACLS scenarios, in the order the advisor asked the first three to be taught (3.4):
+    // VF/pVT, then PEA/asystole, then a bradycardia with a pulse — the tachycardias after.
+    // This orders the report only: the ward draws a case by the patient's country, level and
+    // the pack's version, and the patient factory names the case it built her for.
+    let acls_rank = |p: &Pack| -> Option<(u8, &'static str)> {
+        match p.sce["initial_state"].as_str().unwrap_or("") {
+            "arrest_vf" => Some((1, "VF/pVT")),
+            "arrest_pea" | "arrest_asystole" => Some((2, "PEA/asystole")),
+            "brady_unstable" => Some((3, "bradycardia with a pulse")),
+            s if s.starts_with("tachy_") => Some((4, "tachycardia with a pulse (SVT/AF)")),
+            _ => None,
+        }
+    };
+    let mut acls: Vec<(u8, &'static str, &String, &Pack)> = compiled.iter().filter_map(|(id, p)| acls_rank(p).map(|(r, l)| (r, l, *id, *p))).collect();
+    if !acls.is_empty() {
+        acls.sort_by(|a, b| a.0.cmp(&b.0).then(a.2.cmp(b.2)));
+        s.push_str("\n## ACLS scenarios, in teaching order\n\n");
+        s.push_str("The clinical advisor's order (3.4, 20 Sep 2026): VF/pVT first, PEA/asystole second, bradycardia with a pulse third; the tachycardias with a pulse follow. The rhythm is spoken in words on the chart. This orders the report — the ward draws by the patient's country, level and the pack's version, and the patient factory names her case.\n\n| # | scenario | case | entry | wins |\n|---|---|---|---|---|\n");
+        for (rank, label, id, p) in &acls {
+            let wins: Vec<&str> = p.sce["outcomes"].as_array().map(|o| o.iter().filter(|o| o["kind"] == "win").filter_map(|o| o["id"].as_str()).collect()).unwrap_or_default();
+            s.push_str(&format!("| {rank} | {label} | `{id}` | {} | {} |\n", p.sce["initial_state"].as_str().unwrap_or("?"), wins.join(", ")));
+        }
     }
 
     // refused by language: how many World-ready library cases are not in English

@@ -656,7 +656,7 @@ impl Archetype {
             .collect();
         // Stable: ties keep ALL's order, which is the clinical priority (a child's shock before
         // an adult's, a failing pump before a leaking vessel before an infection).
-        scored.sort_by(|a, b| b.0.cmp(&a.0));
+        scored.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
         scored
     }
 
@@ -786,14 +786,6 @@ impl Archetype {
         match self {
             Archetype::AclsCardiacArrest => &[CPR, DEFIBRILLATE, ADRENALINE_IV, AMIODARONE],
             Archetype::AclsTachycardiaSvt | Archetype::AclsTachycardiaAf | Archetype::AclsBradycardia => &[CARDIOVERSION, CPR, DEFIBRILLATE, ADRENALINE_IV, AMIODARONE],
-            _ => &[],
-        }
-    }
-
-    /// Rescue roles the rubric pays for, because the algorithm times them.
-    pub fn paid_rescue(self) -> &'static [&'static str] {
-        match self {
-            Archetype::AclsCardiacArrest => &["cpr", "defibrillate", "adrenaline_iv"],
             _ => &[],
         }
     }

@@ -21,6 +21,7 @@ pub mod rubric;
 pub mod scenario;
 pub mod source;
 pub mod text;
+pub mod triage;
 pub mod validate;
 
 use archetype::{Archetype, Kind};
@@ -186,6 +187,19 @@ pub fn compile(case_json: &str, source: Source) -> Result<Pack, Refusal> {
         }
     };
     let a = Archetype::detect(&case, &v0).map_err(|e| refuse(&id, e))?;
+    // The shape fits, but do the numbers at the door show anything? An adult whose presenting
+    // vitals the ward's own early-warning score calls low, with nothing red, has no
+    // deterioration a shift can honestly stage — the ramp would be the compiler's, not the
+    // case's. Cut by name (the clinical advisor's ruling 3.7, 20 Sep 2026). A child is left to
+    // the paediatric gate; a patient without a pulse is not "low".
+    if !v0.is_arrest() {
+        if let Some((total, worst)) = triage::news2_low(&v0, case.patient.age) {
+            return Err(refuse(&id, format!(
+                "presenting vitals within normal: NEWS2 {total} (worst parameter {worst}, none at 3) at SBP {:.0}, HR {:.0}, RR {:.0}, SpO2 {:.0}, GCS {} — the shift would show no deterioration the case describes; cut by the clinical advisor's rule 3.7 (20 Sep 2026)",
+                v0.sbp, v0.hr, v0.rr, v0.spo2, v0.gcs
+            )));
+        }
+    }
     let mapped = plan::map(&case, a);
     // An arrest is turned by the algorithm's own tools, which every arrest case carries.
     if mapped.critical().is_empty() && a != Archetype::AclsCardiacArrest {
@@ -277,6 +291,7 @@ pub fn compile(case_json: &str, source: Source) -> Result<Pack, Refusal> {
         chief_complaint: dp(&case.presentation.chief_complaint),
         hpi: dp(&case.presentation.hpi),
         setting: case.presentation.setting.as_deref().map(dp),
+        pmh: Vec::new(),
     };
     let placeholders = prose::count(&[
         serde_json::Value::String(title.clone()),

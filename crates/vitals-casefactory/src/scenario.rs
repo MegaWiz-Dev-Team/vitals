@@ -183,7 +183,13 @@ pub fn by_sec(a: Archetype, named_sec: f64) -> f64 {
 
 pub struct Sim {
     pub sce: Value,
+    /// The win the golden path reaches.
     pub win: &'static str,
+    /// Every win the scenario can end in — one, or two where the ending is decided at the bedside.
+    pub wins: Vec<&'static str>,
+    /// The algorithm's tools the sheet pays for in *this* case: the shock only where the rhythm
+    /// at the door is shockable (the advisor's 3.5 — indicated, and on time).
+    pub paid_rescue: Vec<&'static str>,
     /// `(role id, by_sec)` for every critical role a sentence pinned to the clock.
     pub late: Vec<(String, f64)>,
     /// The harm sentences the triggers can fire, for the rubric's `no_harm` items.
@@ -415,5 +421,5 @@ pub fn build(case: &Case, a: Archetype, v: &Vitals0, mapped: &Mapped, built: &Bu
         }
     });
 
-    Sim { sce, win, late, trigger_harms }
+    Sim { sce, win, wins: vec![win], paid_rescue: Vec::new(), late, trigger_harms }
 }
