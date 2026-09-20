@@ -15,6 +15,13 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 TARGET="$PWD/scripts/deploy-cloudrun.sh"
+# The script refuses SERVICE=vitals from a cwf/* branch and SERVICE=vitals-world from anywhere
+# else (its branch guard), and it refuses before it reaches anything these cases are about. So the
+# harness names the service the branch is allowed to deploy — otherwise every case here dies at
+# that guard and reports "never said …", which is what happened the first time it was run from
+# cwf/ward. A harness nobody runs is a harness that rots; this one is now in gates.
+BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+case "$BRANCH" in cwf/*) SERVICE=vitals-world ;; *) SERVICE=vitals ;; esac
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -104,6 +111,8 @@ run() {
       HOME="$sandbox" TMPDIR="$sandbox" \
       VITALS_GCP_PROJECT=vitals-academy \
       VITALS_PROGRAM_ID=535FMHHZ4rp5hNmvSmdNFoaatLX82cCXHfRg3hpyBTSG \
+      SERVICE="$SERVICE" \
+      VITALS_NO_VOICE="${VITALS_NO_VOICE-1}" \
       "$@" \
       bash "$TARGET" 2>&1 </dev/null)"
   rc=$?
@@ -136,10 +145,29 @@ run "expired credentials, before the build" rejects "gcloud auth login" \
 run "expired credentials cost no build" rejects "will not refresh" \
   -- STUB_AUTH_FAIL=1 STUB_BUILD_FAIL=1
 
+# The voice guard (a mute deploy on 30 Aug–4 Sep — patients who could not speak for five days)
+# refuses a deploy with neither VITALS_VERTEX_URL nor HEIMDALL_API_URL. Stubbed runs say
+# VITALS_NO_VOICE=1 on purpose, so this one case is where the guard is seen to fire.
+run "a bay whose patients cannot speak is refused" rejects "cannot speak" \
+  -- VITALS_NO_VOICE=
+
 run "no account at all" rejects "no active account" \
   -- STUB_ACCOUNT=
 run "a service account is still not you" rejects "not you" \
   -- STUB_ACCOUNT=deployer@x.iam.gserviceaccount.com
+# The founder approved one deploy/factory identity on 20 ก.ย. — `vitals-ops` in each project — so
+# that a 03:00 deploy does not need his login, which expires in about twelve hours. Exactly those
+# two names pass the guard. Every other service account is refused as before: an allowlist by
+# name, never by suffix, or the next stray credential deploys production because it ends in the
+# right domain.
+run "the ops service account may deploy (prod project)" accepts "vitals-ops@vitals-academy.iam.gserviceaccount.com" \
+  -- STUB_ACCOUNT=vitals-ops@vitals-academy.iam.gserviceaccount.com
+run "the ops service account may deploy (dev project)" accepts "vitals-ops@vitals-academy-dev.iam.gserviceaccount.com" \
+  -- STUB_ACCOUNT=vitals-ops@vitals-academy-dev.iam.gserviceaccount.com VITALS_GCP_PROJECT=vitals-academy-dev
+run "the same name in another project is still not you" rejects "not you" \
+  -- STUB_ACCOUNT=vitals-ops@some-other-project.iam.gserviceaccount.com
+run "a look-alike is still not you" rejects "not you" \
+  -- STUB_ACCOUNT=vitals-ops@vitals-academy.iam.gserviceaccount.com.evil.example
 
 run "a build that names no image" rejects "no image digest" \
   -- STUB_BUILD_DIGEST= STUB_BUILD_LOG=0
