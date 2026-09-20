@@ -3642,7 +3642,7 @@ fn main() {
                         }
                         // Any pass that took more than ten seconds, not only the first, and the
                         // sentence is `ward_chain`'s so the shape can be tested without a deploy.
-                        if let Some(note) = ward_chain::slow_pass_note(began.elapsed(), t.pace) {
+                        if let Some(note) = ward_chain::slow_pass_note(began.elapsed(), t.pace, &t.spans) {
                             println!("ward       {note}");
                         }
                         last_trouble.clear();

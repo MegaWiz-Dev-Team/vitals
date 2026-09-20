@@ -1612,14 +1612,14 @@ fn a_slow_pass_says_how_the_time_was_spread() {
 
     // Nothing is said about a pass that was not slow. A line every minute is a line nobody reads,
     // and the ticker runs on a ward that is usually quiet.
-    assert_eq!(slow_pass_note(Duration::from_secs(9), Some(throttled)), None,
+    assert_eq!(slow_pass_note(Duration::from_secs(9), Some(throttled), &[]), None,
                "under the threshold the pass is silent");
-    assert_eq!(slow_pass_note(SLOW_PASS - Duration::from_millis(1), Some(throttled)), None);
-    assert_eq!(slow_pass_note(Duration::from_secs(100), None), None,
+    assert_eq!(slow_pass_note(SLOW_PASS - Duration::from_millis(1), Some(throttled), &[]), None);
+    assert_eq!(slow_pass_note(Duration::from_secs(100), None, &[]), None,
                "and a pass with nobody to walk is silent however long it took — the time went to \
                 the sweep or the refill, and a per-patient figure over zero patients is a lie");
 
-    let said = slow_pass_note(Duration::from_millis(100_100), Some(throttled))
+    let said = slow_pass_note(Duration::from_millis(100_100), Some(throttled), &[])
         .expect("a pass over the threshold says something");
     assert!(said.contains("100.1s"), "the duration, one decimal: {said}");
     assert!(said.contains("26 patients checked"), "how many it walked: {said}");
@@ -1628,8 +1628,19 @@ fn a_slow_pass_says_how_the_time_was_spread() {
     assert!(said.to_lowercase().contains("median") && said.to_lowercase().contains("max"),
             "both named, because the reader is comparing them: {said}");
 
-    let lumpy = slow_pass_note(Duration::from_millis(100_100), Some(limited)).expect("also slow");
+    let lumpy = slow_pass_note(Duration::from_millis(100_100), Some(limited), &[]).expect("also slow");
     assert_ne!(said, lumpy, "the two shapes cannot print the same line");
+
+    // And the line carries the pass's own parts, so "which patients" and "which part of the pass"
+    // are answered by one reading. 00065 needed both: the per-patient shape accounted for three
+    // seconds of a 28 s pass, and only the spans could say where the rest went.
+    use vitals_web::ward_chain::Span;
+    let with_parts = slow_pass_note(Duration::from_millis(28_300), Some(throttled),
+                                    &[Span { what: "repair", ms: 3_100 },
+                                      Span { what: "reap", ms: 24_000 }])
+        .expect("slow");
+    assert!(with_parts.contains("repair 3.1s · reap 24.0s · elsewhere 1.2s"),
+            "the parts and the unaccounted remainder ride on the same line: {with_parts}");
 }
 
 /// **A patient the chain has not moved is not listed.**

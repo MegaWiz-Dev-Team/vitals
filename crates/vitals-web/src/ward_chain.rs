@@ -1731,6 +1731,42 @@ pub fn missing_tapes(
     .collect()
 }
 
+/// One named part of a pass, and how long it took.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct Span {
+    pub what: &'static str,
+    pub ms: u64,
+}
+
+/// The parts of a pass, in the order they happened, with whatever they do not account for.
+///
+/// **The reconciliation is the point, not the list.** Both timing incidents here were a true number
+/// nobody could attribute — `boot meter +137.6s` timed 150 lines of unrelated work, and
+/// `boot sessions +30.2s` turned out to contain the sweep and the tape repair. Each cost an hour
+/// and each looked like a correct instrument. So this one prints `elsewhere` for the remainder: a
+/// part added to the pass later and left unnamed appears there instead of silently inflating
+/// whichever neighbour it sits beside.
+///
+/// Under a second reads in milliseconds. "0.1s" and "0.0s" look alike and one is forty times the
+/// other, which is the same class of mistake one layer down.
+pub fn spans_line(took: std::time::Duration, spans: &[Span]) -> String {
+    if spans.is_empty() {
+        return String::new();
+    }
+    let say = |what: &str, ms: u64| {
+        if ms >= 1_000 { format!("{what} {:.1}s", ms as f64 / 1000.0) } else { format!("{what} {ms}ms") }
+    };
+    let mut parts: Vec<String> = spans.iter().map(|s| say(s.what, s.ms)).collect();
+    // Rounding dust is not a finding: each span is truncated to whole milliseconds, so a pass of
+    // n named parts can be short by up to n milliseconds without anything being unaccounted for.
+    let named: u64 = spans.iter().map(|s| s.ms).sum();
+    let gap = (took.as_millis() as u64).saturating_sub(named);
+    if gap > spans.len() as u64 && gap >= 100 {
+        parts.push(say("elsewhere", gap));
+    }
+    parts.join(" · ")
+}
+
 /// Whether this patient's signatures have to be listed at all.
 ///
 /// The listing is what devnet charges for: 00064 spent 99.8 s over 26 patients, median 674 ms and
@@ -1798,20 +1834,32 @@ pub fn pace(each_ms: &[u64]) -> Option<Pace> {
 ///
 /// Silent below [`SLOW_PASS`], and silent over no patients however long the pass took: a
 /// per-patient figure over nobody is a lie, and that time went to the sweep or the refill.
-pub fn slow_pass_note(took: std::time::Duration, pace: Option<Pace>) -> Option<String> {
+pub fn slow_pass_note(
+    took: std::time::Duration,
+    pace: Option<Pace>,
+    spans: &[Span],
+) -> Option<String> {
     if took < SLOW_PASS {
-    return None;
+        return None;
     }
     let p = pace?;
-    Some(format!(
-    "slow pass · repair and refill {:.1}s over {} patients checked · median {}ms · max {}ms \
-     each — even means the thread is being throttled, lumpy means the listings are being \
-     rate-limited",
-    took.as_secs_f64(),
-    p.patients,
-    p.median_ms,
-    p.max_ms
-    ))
+    let mut said = format!(
+        "slow pass · {:.1}s over {} patients checked · median {}ms · max {}ms each",
+        took.as_secs_f64(),
+        p.patients,
+        p.median_ms,
+        p.max_ms
+    );
+    // Two different questions, one line. The per-patient shape answers "is one patient expensive
+    // or are they all" — even is a throttled thread, lumpy is a rate-limited listing. The spans
+    // answer "which part of the pass", which on 00065 was the question that mattered: the shape
+    // accounted for three seconds of a pass that took twenty-eight.
+    let parts = spans_line(took, spans);
+    if !parts.is_empty() {
+        said.push_str(" · ");
+        said.push_str(&parts);
+    }
+    Some(said)
 }
 
 /// Put back every tape the chain names and this ward has lost, from what the server still holds.
@@ -2082,6 +2130,9 @@ pub struct Ticked {
     /// The line printed from this is what tells a throttled thread from a rate-limited listing,
     /// and [`Pace`] says why it is a median and a max rather than an average.
     pub pace: Option<Pace>,
+    /// Each named part of the pass and its duration, in the order they happened. Read through
+    /// [`spans_line`], which also prints whatever they do not account for.
+    pub spans: Vec<Span>,
     /// How many of them cost a signature listing, which is what devnet rate-limits. The gap
     /// between this and `checked` is what [`needs_listing`] saved.
     pub listed: usize,
@@ -2114,6 +2165,13 @@ pub fn tick(
 ) -> Ticked {
     use crate::ward::{to_admit, BEDS, OPEN};
     let mut out = Ticked::default();
+    // Every part of the pass is timed and named, and `spans_line` reconciles them against the
+    // whole — the rule the two boot-marker incidents cost an hour each to learn.
+    let mut at = std::time::Instant::now();
+    let mut span = |out: &mut Ticked, what: &'static str| {
+        out.spans.push(Span { what, ms: at.elapsed().as_millis() as u64 });
+        at = std::time::Instant::now();
+    };
 
     let patients = match chain.patients() {
         Ok(p) => p,
@@ -2122,8 +2180,10 @@ pub fn tick(
             return out;
         }
     };
+    span(&mut out, "patients");
     let mut taken: Vec<u64> = patients.iter().map(|p| p.patient_id).collect();
     let packs_now = packs(store);
+    span(&mut out, "packs");
     let mut on_ward_cases: Vec<String> = patients
         .iter()
         .filter(|p| p.state == OPEN)
@@ -2147,10 +2207,13 @@ pub fn tick(
     out.pace = pace(&repaired.each_ms);
     out.listed = repaired.listed;
     out.notes.extend(repaired.notes);
+    span(&mut out, "repair");
     // Asked once, after the repair has had its go: the tapes it put back are not missing any more,
     // and the beds it could not save are the ones this tick must give up.
     let lost = lost_tapes(chain, store, &patients);
+    span(&mut out, "lost");
     reap(chain, store, root, &patients, &packs_now, &mut out);
+    span(&mut out, "reap");
 
     // Beds, not chain rows: a patient the ward cannot describe holds none (`beds_taken`), so she
     // blocks no admission. Three test patients that reached the chain outside the queue wedged
@@ -2160,6 +2223,7 @@ pub fn tick(
     // tick admits into it.
     out.open = crate::ward::beds_taken(
         &patients, &packs_now, &lost, &crate::ward_case::all(store));
+    span(&mut out, "beds");
     let depth = match queue_depth(store) {
         Ok(n) => {
             out.depth = Some(n);
@@ -2258,12 +2322,15 @@ pub fn tick(
         }
     }
 
+    span(&mut out, "admissions");
+
     // Read again at the end: the tick just took packs out of it, and the number the factory tops
     // up against should be the one after this tick rather than before it.
     match queue_depth(store) {
         Ok(n) => out.depth = Some(n),
         Err(e) => out.notes.push(format!("the queue's depth could not be read: {e}")),
     }
+    span(&mut out, "queue");
     out
 }
 
