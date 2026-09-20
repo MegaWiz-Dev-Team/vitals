@@ -17,6 +17,9 @@ regex = "1"
 vitals-sce = { path = "../vitals-sce" }
 vitals-replay = { path = "../vitals-replay" }
 vitals-osce = { path = "../vitals-osce" }
+# The one pass bar for the whole system: a World pack's rubric carries the ward's 70 %, not the
+# case's own OSCE pass mark (the clinical advisor's ruling 3.1, 20 Sep 2026).
+vitals-progress = { path = "../vitals-progress" }
 
 [lib]
 name = "vitals_casefactory"

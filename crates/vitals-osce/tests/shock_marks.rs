@@ -135,3 +135,54 @@ fn the_other_three_sheets_are_silent_about_a_shock_and_this_test_says_so_out_lou
         assert_eq!(a.max, 40, "{case}: the sheet no longer sums to forty");
     }
 }
+
+// ── the shock that is *right*, paid — the clinical advisor's ruling 3.5 (20 Sep 2026) ──
+//
+// A World pack compiled for a VF arrest carries a timed item for the shock, `action_by` on the
+// needle `tx_defibrillate`. The typed order earns it: the scenario claims the words and records
+// an `action`. The kit button reached the same physiology by `SceState::defibrillate` and wrote
+// a `shock` row — and earned nothing, because the action checks read only `action` rows. The
+// advisor ruled that the button scores. So an action needle that names the defibrillator is
+// also satisfied by a `shock` row that went into a shockable rhythm: same shock, same VF, same
+// second — and never by one into asystole or a pulse, which is not the shock the item is for.
+
+fn shock_sheet(rubric_json: &str, tape: &[Step]) -> Vec<(String, bool)> {
+    let (_, det) = sheet_for_run(&read("demo/scenarios/ep2-stemi.json"), tape, rubric_json).expect("mark sheet");
+    det.items.iter().map(|i| (i.label.clone(), i.earned)).collect()
+}
+
+const SHOCK_RUBRIC: &str = r#"{ "case": "ep2-stemi", "pass_bps": 7000, "items": [
+    { "label": "Shocked the VF within four and a half minutes", "type": "action_by", "needle": "tx_defibrillate", "by_sec": 270, "points": 20 },
+    { "label": "Shocked the VF at all", "type": "action", "needle": "defibrillate", "points": 20 }
+] }"#;
+
+#[test]
+fn a_kit_shock_into_vf_earns_an_action_item_that_names_the_defibrillator() {
+    let sheet = shock_sheet(SHOCK_RUBRIC, &ep2_tape(Some(Step::Shock(200.0))));
+    assert!(sheet.iter().all(|(_, e)| *e), "the button's shock into VF earns both: {sheet:?}");
+}
+
+#[test]
+fn a_kit_shock_after_the_window_is_partial_on_the_timed_item_and_full_on_the_untimed_one() {
+    let sheet = shock_sheet(SHOCK_RUBRIC, &[Step::Tick(240.0), Step::Tick(60.0), Step::Shock(200.0)]);
+    assert_eq!(sheet, vec![("Shocked the VF within four and a half minutes".to_string(), false), ("Shocked the VF at all".to_string(), true)]);
+}
+
+#[test]
+fn a_kit_shock_into_asystole_or_a_pulse_earns_no_defibrillation_item() {
+    for tape in [
+        vec![Step::Tick(240.0), Step::Tick(90.0), Step::Shock(200.0), Step::Tick(30.0)], // asystole
+        vec![Step::Tick(60.0), Step::Shock(200.0), Step::Tick(30.0)],                   // a pulse
+    ] {
+        let sheet = shock_sheet(SHOCK_RUBRIC, &tape);
+        assert!(sheet.iter().all(|(_, e)| !*e), "an unindicated shock is not the item: {sheet:?}");
+    }
+}
+
+#[test]
+fn an_action_needle_that_does_not_name_the_defibrillator_never_reads_a_shock_row() {
+    let rubric = r#"{ "case": "ep2-stemi", "pass_bps": 7000, "items": [
+        { "label": "Aspirin", "type": "action", "needle": "aspirin", "points": 40 } ] }"#;
+    let sheet = shock_sheet(rubric, &ep2_tape(Some(Step::Shock(200.0))));
+    assert_eq!(sheet, vec![("Aspirin".to_string(), false)]);
+}
