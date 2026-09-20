@@ -138,6 +138,11 @@ fn the_region_table_places_every_country_in_the_pool_and_names_ten_regions() {
 /// which wins at the merge, held to the same rule against the same atlas — the 110m TopoJSON the
 /// globe page embeds, joined on ISO3 through its `ALPHA3` table, as every join on that page is.
 /// Every mismatch is listed, not the first.
+///
+/// The rule is what the map *displays as the country's name*, not the raw string in the 110m
+/// file: that file abbreviates a few names so a label fits its polygon, and the product says the
+/// full name — "from S. Sudan" at a bedside and "a man from Dem. Rep. Congo" in a portrait prompt
+/// are both wrong. [`ATLAS_ABBREVIATES`] expands them before the comparison.
 #[test]
 fn every_place_in_the_pool_is_what_the_globes_atlas_calls_that_country() {
     let page = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../vitals-web/static/world/index.html")).expect("the globe page");
@@ -164,11 +169,25 @@ fn every_place_in_the_pool_is_what_the_globes_atlas_calls_that_country() {
     for c in file["countries"].as_array().unwrap() {
         let code = c["country"].as_str().unwrap();
         let place = c["place"].as_str().unwrap_or("");
-        match alpha3.get(code).and_then(|id| polygon.get(id)) {
+        match alpha3.get(code).and_then(|id| polygon.get(id)).map(|n| atlas_name(n)) {
             None => wrong.push(format!("{code}: {place:?} — the atlas has no polygon for {code}, so the globe cannot place it")),
-            Some(name) if name != place => wrong.push(format!("{code}: place is {place:?}, the atlas polygon is {name:?}")),
+            Some(name) if name != place => wrong.push(format!("{code}: place is {place:?}, the map's name is {name:?}")),
             Some(_) => {}
         }
     }
     assert!(wrong.is_empty(), "{} place label(s) differ from the globe's atlas — `place` is printed at the bedside, said by the no-JS pages and read into the portrait prompt, so it says what the map says:\n  {}", wrong.len(), wrong.join("\n  "));
+}
+
+/// The names the 110m atlas abbreviates so a label fits its polygon, and the full name the
+/// product says for each — a rendering shortcut of the map file, not the country's name. Whole
+/// names, not a prefix rule: "S. " would also rewrite "Fr. S. Antarctic Lands". Only the two that
+/// touch the seventy-four are here; the atlas also carries Bosnia and Herz., Central African Rep.,
+/// Dominican Rep., W. Sahara, Falkland Is., Eq. Guinea, Solomon Is. and Fr. S. Antarctic Lands
+/// (Côte d'Ivoire is spelled out, with its accents), none of them pooled — pooling one fails the
+/// test with the abbreviation in the message, which is the prompt to add its row.
+const ATLAS_ABBREVIATES: [(&str, &str); 2] = [("S. Sudan", "South Sudan"), ("Dem. Rep. Congo", "Democratic Republic of the Congo")];
+
+/// What the map displays as the country's name: the polygon's, expanded where the atlas abbreviates.
+fn atlas_name(polygon: &str) -> String {
+    ATLAS_ABBREVIATES.iter().find(|(short, _)| *short == polygon).map_or(polygon, |(_, full)| full).to_string()
 }
