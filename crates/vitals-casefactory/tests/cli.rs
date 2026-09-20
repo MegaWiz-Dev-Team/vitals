@@ -124,3 +124,32 @@ fn a_season_source_is_refused_even_when_asked_for_by_id() {
     assert!(!out.join("synthetic-season-source-test.pack.json").exists());
     assert!((stdout + &stderr).contains("season source"));
 }
+
+#[test]
+fn the_binary_reads_the_review_block_beside_the_case_and_clears_the_flag_only_when_reviewed() {
+    let root = scratch("review");
+    let lib = library(&root);
+    std::fs::write(
+        lib.join("cases").join("synthetic-septic-shock-test").join("case.meta.yaml"),
+        "id: synthetic-septic-shock-test\nversion: 0.0.1\nworld:\n  world_ready: true\n  country: ZZZ\n  endemic: false\n  review:\n    status: reviewed\n    by: clinical-advisor\n    date: 2026-09-20\n  compiled: null\ndeployments: []\n",
+    )
+    .unwrap();
+    let out = root.join("out");
+    let (ok, stdout, stderr) = run(&["compile", "--cases", lib.to_str().unwrap(), "--id", "synthetic-septic-shock-test", "--out", out.to_str().unwrap()]);
+    assert!(ok, "stdout: {stdout}\nstderr: {stderr}");
+    let pack: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(out.join("synthetic-septic-shock-test.pack.json")).unwrap()).unwrap();
+    assert_eq!(pack["provisional"], false);
+    assert_eq!(pack["review"]["by"], "clinical-advisor");
+    assert!(pack["rubric"]["status"].as_str().unwrap().contains("reviewed by the clinical advisor on 2026-09-20"));
+    // a copy with no meta file at all stays provisional
+    let mut copy: serde_json::Value = serde_json::from_str(SYNTHETIC).unwrap();
+    copy["meta"]["id"] = serde_json::json!("synthetic-no-meta-test");
+    let b = lib.join("cases").join("synthetic-no-meta-test");
+    std::fs::create_dir_all(&b).unwrap();
+    std::fs::write(b.join("case.json"), copy.to_string()).unwrap();
+    let (ok, stdout, stderr) = run(&["compile", "--cases", lib.to_str().unwrap(), "--id", "synthetic-no-meta-test", "--out", out.to_str().unwrap()]);
+    assert!(ok, "stdout: {stdout}\nstderr: {stderr}");
+    let pack: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(out.join("synthetic-no-meta-test.pack.json")).unwrap()).unwrap();
+    assert_eq!(pack["provisional"], true);
+    assert!(pack["review"].is_null());
+}
