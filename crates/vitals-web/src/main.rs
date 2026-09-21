@@ -2777,10 +2777,13 @@ fn ward_now(held: &WardView, store: &store::Store, state: &str) -> serde_json::V
             v
         }
     };
-    // Which deployment answered. A page keeps the first one it is told and reloads itself when a
-    // later board comes from a different one — the tab the founder had open was three hours behind
-    // a deploy and had no way to find out.
-    v["revision"] = serde_json::json!(revision());
+    // What is true of *this process*, written on the way out: the door it is actually serving
+    // behind, the sentence composed from that door, and which deployment answered. A page keeps
+    // the first revision it is told and reloads itself when a later board comes from a different
+    // one — the tab the founder had open was three hours behind a deploy and had no way to find
+    // out — and the door belongs at the same seam for the same reason: a board outlives the
+    // revision that composed it, and the door does not travel with it.
+    ward::stamp_host(&mut v, ward_chain::door_here(), &revision());
     v
 }
 

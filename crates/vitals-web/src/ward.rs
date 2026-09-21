@@ -270,10 +270,29 @@ pub fn board_note(from: Origin, kept_at: u64, kept_by: Option<&str>) -> serde_js
 
 /// The facts about **the process answering**, written onto a board on the way out.
 ///
-/// This is what `ward_now` does today, named and moved where a test can reach it: it stamps the
-/// revision and nothing else. The board it stamps may have been composed by a different revision
-/// behind a different door, and the door came along with it.
-pub fn stamp_host(v: &mut serde_json::Value, _door: crate::ward_chain::Door, revision: &str) {
+/// A board is what the chain said about the patients, and it is kept precisely so that two reads a
+/// second apart agree about them. The door is not that. It is an environment variable on the host
+/// answering right now, and a board composed by a revision serving one door goes into a store that
+/// outlives that revision — so a fresh instance served the door its predecessor had, until its
+/// first tick. Both directions have been seen: a shut door reported open, and, on opening night,
+/// an open door reported shut to the people arriving because it opened.
+///
+/// So the door, the sentence composed from it, and the revision are stamped here, together, where
+/// a board leaves the process. They are one kind of fact and the revision was already being
+/// stamped for exactly this reason.
+///
+/// Everything else is left as it was read. The catalogue's counts came off the chain read that
+/// built this board; re-stamping those would be inventing them.
+pub fn stamp_host(v: &mut serde_json::Value, door: crate::ward_chain::Door, revision: &str) {
+    // Written only where the composer put one, so this never invents a field on a board that has
+    // no queue or no policy — `ward_unavailable` is such a board.
+    if v.pointer("/queue/door").is_some() {
+        v["queue"]["door"] = serde_json::json!(door.word());
+    }
+    if v.pointer("/policy/catalogue/status").is_some() {
+        v["policy"]["catalogue"]["status"] =
+            serde_json::json!(crate::ward_chain::catalogue_status(door));
+    }
     v["revision"] = serde_json::json!(revision);
 }
 
