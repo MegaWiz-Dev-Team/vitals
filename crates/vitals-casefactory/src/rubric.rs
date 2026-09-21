@@ -297,15 +297,22 @@ pub fn derive(case: &Case, a: Archetype, mapped: &Mapped, built: &Built, sim: &S
         "case": case.meta.id,
         "pass_bps": pass_bps,
         "status": format!(
-            "{opening} — compiled by vitals-casefactory from embla-cases {} v{} (sha256:{}) under the {} archetype: management_plan→action/action_by, red_flags→no_harm, correct_diagnosis→action, expected_workup→action, outcome from the replay. Judged dimensions dropped (communication). Points scaled to 40 from the case's rubric dimension weights. Pass mark {} % — the ward's, not the case's OSCE mark of {}. {closing}",
+            "{opening} — compiled by vitals-casefactory from embla-cases {} v{} (sha256:{}) under the {} archetype: management_plan→action/action_by, red_flags→no_harm, correct_diagnosis→action, expected_workup→action, outcome from the replay. Judged dimensions dropped (communication). Points scaled to 40 from the case's rubric dimension weights. {} {closing}",
             case.meta.id,
             case.meta.version.as_deref().unwrap_or("?"),
             &source_sha[..source_sha.len().min(16)],
             a.id(),
-            pass_bps / 100,
-            osce_mark
+            pass_mark_note_words(pass_bps, &osce_mark)
         ),
         "items": items,
     });
     Derived { rubric, criteria }
+}
+
+
+/// The pass-mark sentence on every sheet. Named so a test can hold it: the ward's case door
+/// refuses any pack that carries the season's word "OSCE", and on 21 Sep 2026 this sentence
+/// did — all 75 packs were turned away at the door for one word in a note.
+pub fn pass_mark_note_words(pass_bps: u32, case_mark: &str) -> String {
+    format!("Pass mark {} % — the ward's, not the case's own exam mark of {}.", pass_bps / 100, case_mark)
 }

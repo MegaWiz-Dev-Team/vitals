@@ -50,3 +50,12 @@ fn an_obstetric_station_is_not_a_season_station() {
     assert!(scan(&json!({ "a": "the nursing station was busy" }), "Nobody").is_empty());
     assert!(!scan(&json!({ "a": "OSCE station A2" }), "Nobody").is_empty());
 }
+
+
+/// The ward's case door refuses any pack that names "OSCE" (the season's word). 21 Sep 2026: the
+/// pass-mark note said "the case's OSCE mark" and every one of 75 packs was refused at the door.
+#[test]
+fn the_pass_mark_note_names_no_season_word() {
+    let note = vitals_casefactory::rubric::pass_mark_note_words(7000, "60 %");
+    assert!(!note.contains("OSCE"), "the note must not carry the season's word: {note}");
+}
