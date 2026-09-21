@@ -202,3 +202,14 @@ fn the_dashboard_is_served_by_the_ward_and_reads_it_same_origin() {
     assert!(!body.contains("http://") && !body.contains("https://fonts."),
             "no request leaves this origin from the dashboard");
 }
+
+/// **The catalogue endpoint carries the status sentence, so the catalogue page never types a date.**
+#[test]
+fn the_catalogue_endpoint_carries_the_status_sentence() {
+    let s = Server::start(None);
+    let (code, body) = s.get("/api/ward/cases");
+    assert_eq!(code, 200, "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap_or_else(|e| panic!("{e}: {body}"));
+    assert!(v["status"].as_str().is_some_and(|t| t.contains("open for play since") && t.contains("provisional")),
+            "the catalogue says both facts in one sentence, from the one constant: {}", v["status"]);
+}

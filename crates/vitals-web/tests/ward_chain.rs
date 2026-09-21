@@ -2084,3 +2084,21 @@ fn a_second_pass_is_refused_not_queued() {
     assert!(body.get("pace").is_some() && body.get("spans").is_some() && body.get("notes").is_some(),
             "the same facts the slow-pass line prints: {body}");
 }
+
+/// **The ward opened on a date, and that date lives in one place.**
+///
+/// The founder, 21 ก.ย. 2026: the ward opens at 19:00 ICT with every case provisional. After that
+/// two things are true at once — no case has passed the clinical advisor, and anyone may play —
+/// and a page that says only the first reads as "not open", a page that says only the second hides
+/// the first. So one sentence says both, and the date in it comes from one constant, so the page,
+/// the API, the deck and the form cannot drift. A date that lives in three places is three dates.
+#[test]
+fn the_ward_opened_on_a_date_that_lives_in_one_place() {
+    use vitals_web::ward_chain::{catalogue_status, OPENED_ON};
+    assert_eq!(OPENED_ON, "2026-09-21", "the founder's date, ISO, the only copy in src");
+    assert_eq!(
+        catalogue_status(),
+        "provisional — under review by our clinical advisor · open for play since 21 Sep 2026",
+        "both facts in one sentence, in the words the director set, no pronoun"
+    );
+}

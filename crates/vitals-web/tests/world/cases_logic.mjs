@@ -72,11 +72,20 @@ assert.match(script, /<summary>[\s\S]{0,120}withdrawn/i, 'the fold says what it 
 // nothing: it is furniture by the second screenful. The page states it once, and a row speaks only
 // where it differs — which today is nowhere, and the day a case is signed off is everywhere that
 // matters.
-assert.equal(reviewLede(cases), 'No case here is clinically reviewed yet — all provisional.',
-             'the whole catalogue in one sentence, inside the twelve words the ward holds itself to');
+// Count-driven, because the truth moves: the advisor's review of 18 cases arrived on the night of
+// 20 ก.ย., and a fixed "no case here is reviewed" would have been false the morning after. Eleven
+// words, inside the twelve the ward holds itself to.
+assert.equal(reviewLede(cases), '0 of 78 reviewed by our clinical advisor; the rest provisional',
+             'the whole catalogue in one sentence, counted at this read');
+// The ward opened on a date; the page says so beneath the counts, in the sentence the API gives it
+// — never a date typed into the page.
+const status = 'provisional — under review by our clinical advisor · open for play since 21 Sep 2026';
+assert.equal(reviewLede(cases, status),
+             '0 of 78 reviewed by our clinical advisor; the rest provisional · open for play since 21 Sep 2026',
+             'the opening rides on the same line, from the API');
 
 const mixed = cases.map((c, i) => ({ ...c, provisional: i % 2 === 0 }));
-assert.match(reviewLede(mixed), /provisional/,
+assert.equal(reviewLede(mixed), '39 of 78 reviewed by our clinical advisor; the rest provisional',
              'once some are signed off the sentence says the split rather than a flat claim');
 assert.ok(!/all provisional/.test(reviewLede(mixed)),
           `and stops saying "all" the moment it is untrue: ${reviewLede(mixed)}`);

@@ -2039,3 +2039,18 @@ fn an_unrefreshed_history_is_said_on_the_row_and_the_bed_stays_offered() {
                "an empty list on a good read, not an absent field — the shape of the payload does \
                 not change with the weather, and neither does its ETag between two reads of one board");
 }
+
+/// **`/api/ward` says the catalogue's status in the one sentence, next to the counts.**
+#[test]
+fn the_board_publishes_the_catalogues_status_beside_its_counts() {
+    use std::collections::BTreeMap;
+    use vitals_web::ward::{ward_payload, WardRead};
+    use vitals_web::ward_chain::catalogue_status;
+    let v = ward_payload(&WardRead {
+        patients: &[], shifts: &[], packs: &BTreeMap::new(), since: None, as_of_slot: 1_000,
+        now_unix: 1_760_000_000, source: "devnet:ABC", times: &BTreeMap::new(),
+        seconds_per_slot: None, unrebuildable: &BTreeMap::new(), cases: &[], unread: &BTreeMap::new(),
+    });
+    assert_eq!(v["policy"]["catalogue"]["status"], catalogue_status(),
+               "the same sentence the bedside and the catalogue page show, from the same constant");
+}
