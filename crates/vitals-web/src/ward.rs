@@ -1284,7 +1284,7 @@ fn policy(
             "withdrawn": cases.map(|c| c.iter().filter(|c| c.withdrawn).count()),
             // Both facts in one sentence, from the one constant — the bedside and the catalogue
             // page show this same string rather than composing their own.
-            "status": crate::ward_chain::catalogue_status(),
+            "status": crate::ward_chain::catalogue_status(crate::ward_chain::door_here()),
             "placed_by": "a patient is placed on a case written about somebody of the same sex \
                           and near the same age — within twelve years of the case’s own, \
                           and a child only on a child’s case. The cases of that patient’s \

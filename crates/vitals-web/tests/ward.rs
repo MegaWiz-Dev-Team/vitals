@@ -2045,13 +2045,15 @@ fn an_unrefreshed_history_is_said_on_the_row_and_the_bed_stays_offered() {
 fn the_board_publishes_the_catalogues_status_beside_its_counts() {
     use std::collections::BTreeMap;
     use vitals_web::ward::{ward_payload, WardRead};
-    use vitals_web::ward_chain::catalogue_status;
+    use vitals_web::ward_chain::{catalogue_status, door_here};
     let v = ward_payload(&WardRead {
         patients: &[], shifts: &[], packs: &BTreeMap::new(), since: None, as_of_slot: 1_000,
         now_unix: 1_760_000_000, source: "devnet:ABC", times: &BTreeMap::new(),
         seconds_per_slot: None, unrebuildable: &BTreeMap::new(), cases: &[], unread: &BTreeMap::new(),
     });
-    assert_eq!(v["policy"]["catalogue"]["status"], catalogue_status(),
+    // The payload composes it from the door this host is serving behind, which under test is the
+    // default — so the assertion is that the board shows *the same* sentence, not a fixed one.
+    assert_eq!(v["policy"]["catalogue"]["status"], catalogue_status(door_here()),
                "the same sentence the bedside and the catalogue page show, from the same constant");
 }
 

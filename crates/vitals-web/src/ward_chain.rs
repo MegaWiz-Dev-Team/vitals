@@ -1518,14 +1518,29 @@ pub const OPENED_ON: &str = "2026-09-21";
 /// After the opening two things are true together: no case has passed the clinical advisor, and
 /// anyone may play. A page that says only the first reads as "not open"; one that says only the
 /// second hides the first. The director's words, no pronoun; the date read from [`OPENED_ON`].
-pub fn catalogue_status() -> String {
+///
+/// **The door decides which half is true, and that is the whole point of the argument.** The first
+/// version composed this from `OPENED_ON` alone, and on the evening of the opening — the door flip
+/// blocked by an expired login — production told every visitor the ward was open for play for two
+/// hours while `/api/ward/take` answered 404. A claim built from a constant instead of from the
+/// state it describes cannot be wrong, because nothing checks it.
+///
+/// Shut, the date is **absent** rather than unclaimed: a reader who sees "21 Sep 2026" anywhere on
+/// the page concludes the ward is open, whatever the words around it say.
+pub fn catalogue_status(door: Door) -> String {
     const MONTHS: [&str; 12] =
         ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     let mut parts = OPENED_ON.split('-');
     let (y, m, d) = (parts.next().unwrap_or(""), parts.next().unwrap_or(""), parts.next().unwrap_or(""));
     let month = m.parse::<usize>().ok().and_then(|n| MONTHS.get(n.wrapping_sub(1))).copied().unwrap_or(m);
     let day = d.trim_start_matches('0');
-    format!("provisional — under review by our clinical advisor · open for play since {day} {month} {y}")
+    match door {
+        Door::Open => format!(
+            "provisional — under review by our clinical advisor · open for play since {day} {month} {y}"
+        ),
+        Door::Preview | Door::Closed =>
+            "provisional — under review by our clinical advisor · not yet open for play".to_string(),
+    }
 }
 
 /// The three states of the ward's door.

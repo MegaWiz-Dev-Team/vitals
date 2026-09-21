@@ -1907,7 +1907,7 @@ fn open_review(store: &store::Store, case_id: &str) -> Result<(Session, serde_js
             .map(|p| p.place)
             .filter(|p| !p.is_empty())),
         "provisional": summary.provisional,
-        "status": ward_chain::catalogue_status(),
+        "status": ward_chain::catalogue_status(ward_chain::door_here()),
         "withdrawn": summary.withdrawn,
         "endemic": summary.endemic,
         "name": who.name,
@@ -5369,7 +5369,7 @@ fn main() {
                         let _ = req.respond(json(serde_json::json!({
                             "stored": summary.case_id,
                             "provisional": summary.provisional,
-        "status": ward_chain::catalogue_status(),
+        "status": ward_chain::catalogue_status(ward_chain::door_here()),
                             "version": summary.version,
                         })));
                     }
@@ -5471,7 +5471,7 @@ fn main() {
                 let _ = req.respond(json(serde_json::json!({
                     "cases": cases,
                     // The catalogue page shows this beneath its counts; it never types the date.
-                    "status": ward_chain::catalogue_status(),
+                    "status": ward_chain::catalogue_status(ward_chain::door_here()),
                     "derivations": {
                         "cases": "every pack the case factory has put through /api/ward/case and \
                                   this ward accepted. `provisional` is the compiler's own word for \
