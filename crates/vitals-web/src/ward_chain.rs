@@ -1506,6 +1506,28 @@ pub fn pack_id(p: &crate::ward::Pack) -> String {
 /// The word that opens the ward, and the variable that carries it.
 pub const DOOR_ENV: &str = "VITALS_WARD_DOOR";
 
+/// The day the ward opened to players. The founder, 21 ก.ย. 2026, 19:00 ICT — every case
+/// provisional. **The only copy of this date in the source**: `tests/opening.rs` holds it to one,
+/// and every page shows the sentence the API gives it rather than a day typed into the page. A date
+/// that lives in three places is three dates — the one that gets updated and the two that go on
+/// saying the old thing.
+pub const OPENED_ON: &str = "2026-09-21";
+
+/// What the catalogue is, in one sentence that says both facts at once.
+///
+/// After the opening two things are true together: no case has passed the clinical advisor, and
+/// anyone may play. A page that says only the first reads as "not open"; one that says only the
+/// second hides the first. The director's words, no pronoun; the date read from [`OPENED_ON`].
+pub fn catalogue_status() -> String {
+    const MONTHS: [&str; 12] =
+        ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let mut parts = OPENED_ON.split('-');
+    let (y, m, d) = (parts.next().unwrap_or(""), parts.next().unwrap_or(""), parts.next().unwrap_or(""));
+    let month = m.parse::<usize>().ok().and_then(|n| MONTHS.get(n.wrapping_sub(1))).copied().unwrap_or(m);
+    let day = d.trim_start_matches('0');
+    format!("provisional — under review by our clinical advisor · open for play since {day} {month} {y}")
+}
+
 /// The three states of the ward's door.
 ///
 /// **Default closed, and every ambiguity resolves closed.** Production carries this code before the

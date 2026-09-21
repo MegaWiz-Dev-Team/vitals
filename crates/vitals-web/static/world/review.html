@@ -105,13 +105,19 @@ function row(c) {
    Every case the ward holds is provisional today — 138 of 138, read off /api/ward/cases on
    18 ก.ย. — and a badge that is on every row distinguishes nothing. Inside twelve words, like
    every other sentence a reader acts on here. */
-function reviewLede(cases) {
+/* Count-driven, because the truth moves: the advisor's review of 18 cases arrived on the night of
+   20 ก.ย., and a fixed "no case here is reviewed" would have been false the next morning. Eleven
+   words. The opening rides on the same line, in the sentence the API gives — never a date typed
+   into this page (tests/opening.rs holds that). */
+function reviewLede(cases, status) {
   const live = cases.filter(c => !c.withdrawn);
   if (!live.length) return "";
-  const prov = live.filter(c => c.provisional).length;
-  if (prov === live.length) return "No case here is clinically reviewed yet — all provisional.";
-  if (prov === 0) return "Every case here is clinically reviewed.";
-  return `${prov} of ${live.length} here are provisional; the rest are reviewed.`;
+  const reviewed = live.filter(c => !c.provisional).length;
+  const counts = reviewed === live.length
+    ? `Every one of ${live.length} reviewed by our clinical advisor`
+    : `${reviewed} of ${live.length} reviewed by our clinical advisor; the rest provisional`;
+  const opened = status ? status.split(" · ").pop() : "";
+  return opened ? `${counts} · ${opened}` : counts;
 }
 
 function groupsOf(cases) {
@@ -132,7 +138,7 @@ fetch("/api/ward/cases").then(r => r.json()).then(d => {
     return;
   }
   const { bands, withdrawn } = groupsOf(cases);
-  const lede = reviewLede(cases);
+  const lede = reviewLede(cases, d.status);
   if (lede) document.getElementById("review-state").textContent = lede;
   el.innerHTML = bands.map(([level, list]) =>
     `<h2>${esc(level)} · ${list.length}</h2><ul>${list.map(row).join("")}</ul>`).join("")
