@@ -70,7 +70,8 @@ exit 64
 STUB
 chmod +x "$WORK/bin/gcloud"
 
-# The ward, as the script reads it back after the flip.
+# The ward, as the script reads it back after the flip. The stub service starts on preview, so a
+# case that flips to preview and expects to get past "already" must start it on open.
 cat > "$WORK/bin/curl" <<'STUB'
 #!/usr/bin/env bash
 [ "${STUB_WARD_DOWN:-0}" = 1 ] && exit 7
@@ -150,12 +151,12 @@ never_called "run services update"
 run "an expired or missing credential" rejects "credential" preview staging -- STUB_AUTH_FAIL=1
 never_called "run services update"
 
-run "an update that fails" rejects "update" preview staging -- STUB_UPDATE_FAIL=1
+run "an update that fails" rejects "update" preview staging -- STUB_CURRENT_DOOR=open STUB_UPDATE_FAIL=1
 
 run "a revision whose image is not the one that was running" rejects "image" preview staging -- \
-  STUB_NEW_IMAGE="gcr.io/p/vitals-world@sha256:bbbb"
+  STUB_CURRENT_DOOR=open STUB_NEW_IMAGE="gcr.io/p/vitals-world@sha256:bbbb"
 
-run "a ward that cannot be read back" rejects "read back" preview staging -- STUB_WARD_DOWN=1
+run "a ward that cannot be read back" rejects "read back" preview staging -- STUB_CURRENT_DOOR=open STUB_WARD_DOWN=1
 
 run "a page that still shows the old door" rejects "kept board" open staging -- \
   STUB_CURRENT_DOOR=preview STUB_PAGE_DOOR=preview STUB_BOARD_FROM=store STUB_BOARD_KEPT_BY=vitals-world-00072-6fc
