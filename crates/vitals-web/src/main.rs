@@ -2260,17 +2260,22 @@ const ETERNAL_BRAND: &str = "<span class=\"brand\">Vital<span>s</span></span>";
 
 /// The ward's: the monitor mark and the name, and the whole thing is the way out.
 ///
-/// The mark is `static/world/favicon.svg`'s own paths — one drawing, inlined here so the bar needs
-/// no second request, and `the_mark_in_the_bar_is_the_mark_in_the_tab` is what keeps the two from
-/// drifting apart.
+/// The mark is `static/world/favicon.svg`'s own elements — one drawing, inlined here so the bar
+/// needs no second request, and `the_mark_in_the_bar_is_the_mark_in_the_tab` is what keeps the two
+/// from drifting apart. It earned its keep on opening night: the favicon became the globe and this
+/// was still the monitor, and the test said so before anybody saw the page.
 const WORLD_BRAND: &str = concat!(
     "<a href=\"/\" class=\"brand\" title=\"back to the globe\" ",
     "aria-label=\"Vitals World — back to the globe\">",
     "<svg viewBox=\"0 0 64 64\" width=\"18\" height=\"18\" aria-hidden=\"true\" focusable=\"false\">",
     "<rect x=\"0\" y=\"0\" width=\"64\" height=\"64\" rx=\"14\" fill=\"#0E1719\"/>",
-    "<rect x=\"8\" y=\"14\" width=\"40\" height=\"30\" rx=\"7\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"5\"/>",
-    "<polyline points=\"8,29 20,29 23,25 26,29 29,29 32,17 36,40 39,29 60,29\" fill=\"none\" ",
-    "stroke=\"#26C0A5\" stroke-width=\"5\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/>",
+    "<circle cx=\"32\" cy=\"32\" r=\"20.6\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"3.2\"/>",
+    "<ellipse cx=\"32\" cy=\"32\" rx=\"8.7\" ry=\"20.6\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"1.8\" opacity=\"0.85\"/>",
+    "<ellipse cx=\"32\" cy=\"32\" rx=\"16.1\" ry=\"20.6\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"1.8\" opacity=\"0.85\"/>",
+    "<line x1=\"12.6\" y1=\"21.7\" x2=\"51.4\" y2=\"21.7\" stroke=\"#FFFFFF\" stroke-width=\"1.8\" opacity=\"0.85\"/>",
+    "<line x1=\"12.6\" y1=\"42.3\" x2=\"51.4\" y2=\"42.3\" stroke=\"#FFFFFF\" stroke-width=\"1.8\" opacity=\"0.85\"/>",
+    "<polyline points=\"10.3,32 22.7,32 25.4,28.7 27.9,32 30.4,32 32.4,19.2 35.3,42.3 37.6,32 56.3,32\" fill=\"none\" stroke=\"#0E1719\" stroke-width=\"6.5\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/>",
+    "<polyline points=\"10.3,32 22.7,32 25.4,28.7 27.9,32 30.4,32 32.4,19.2 35.3,42.3 37.6,32 56.3,32\" fill=\"none\" stroke=\"#26C0A5\" stroke-width=\"3.2\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/>",
     "</svg> Vitals World</a>",
 );
 
