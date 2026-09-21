@@ -81,6 +81,14 @@ chmod +x "$WORK/bin/gcloud"
 cat > "$WORK/bin/curl" <<'STUB'
 #!/usr/bin/env bash
 [ "${STUB_WARD_DOWN:-0}" = 1 ] && exit 7
+# Traffic moves over seconds: the first STUB_OLD_ANSWERS reads come from the old revision, with
+# the old door, truthfully. The count lives in a file because every read is a new process.
+n=0; [ -f "${STUB_READS:-/dev/null}" ] && n="$(cat "$STUB_READS")"; n=$((n + 1)); printf '%s' "$n" > "${STUB_READS:-/dev/null}"
+if [ "$n" -le "${STUB_OLD_ANSWERS:-0}" ]; then
+  printf '{"revision":"%s","queue":{"door":"%s"},"policy":{"catalogue":{"status":"old"}},"board":{"from":"chain","kept_by":null}}\n' \
+    "${STUB_CURRENT_REV-vitals-world-00025-pdl}" "${STUB_CURRENT_DOOR-preview}"
+  exit 0
+fi
 printf '{"revision":"%s","queue":{"door":"%s"},"policy":{"catalogue":{"status":"%s"}},"board":{"from":"%s","kept_by":"%s"}}\n' \
   "${STUB_NEW_REV-vitals-world-00026-xzm}" "${STUB_PAGE_DOOR-preview}" "${STUB_PAGE_STATUS-provisional — not yet open for play}" \
   "${STUB_BOARD_FROM-chain}" "${STUB_BOARD_KEPT_BY-}"
@@ -102,7 +110,8 @@ run() {
   out="$(env -i \
       PATH="$WORK/bin:/usr/bin:/bin" \
       HOME="$sandbox" TMPDIR="$sandbox" \
-      STUB_CALLS="$sandbox/calls" \
+      STUB_CALLS="$sandbox/calls" STUB_READS="$sandbox/reads" \
+      DOOR_READS=4 DOOR_READ_PAUSE=0 \
       "$@" \
       bash "$TARGET" "$word" "$target" 2>&1 </dev/null)"
   rc=$?
@@ -164,6 +173,9 @@ run "a revision whose image is not the one that was running" rejects "image" pre
 
 run "a ward that cannot be read back" rejects "read back" preview staging -- STUB_CURRENT_DOOR=open STUB_WARD_DOWN=1
 
+run "the new revision never answers" rejects "never answered" preview staging -- \
+  STUB_CURRENT_DOOR=open STUB_OLD_ANSWERS=99
+
 run "a page that still shows the old door" rejects "kept board" open staging -- \
   STUB_CURRENT_DOOR=preview STUB_PAGE_DOOR=preview STUB_BOARD_FROM=store STUB_BOARD_KEPT_BY=vitals-world-00072-6fc
 
@@ -171,6 +183,9 @@ echo "── ward-door accepts ──"
 
 run "staging to preview, read back as preview" accepts "door on the page: preview" preview staging -- \
   STUB_CURRENT_DOOR=open STUB_PAGE_DOOR=preview
+
+run "the old revision answers the first two reads: the script waits for the new one" accepts "answered by vitals-world-00026-xzm on read 3" preview staging -- \
+  STUB_CURRENT_DOOR=open STUB_PAGE_DOOR=preview STUB_OLD_ANSWERS=2
 
 run "staging already at the word: nothing to do" accepts "already" preview staging -- \
   STUB_CURRENT_DOOR=preview STUB_PAGE_DOOR=preview
