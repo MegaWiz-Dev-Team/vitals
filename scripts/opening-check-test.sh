@@ -13,7 +13,10 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 TARGET="$PWD/scripts/opening-check.sh"
-WORK="$(mktemp -d)"
+# Under the repo rather than the system temp dir: a sandboxed shell on the mini hung every stub
+# named launchctl or curl that lived under /var/folders, and the same files ran fine from here.
+mkdir -p target
+WORK="$(mktemp -d "$PWD/target/opening-check.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/bin"
 
@@ -84,8 +87,10 @@ run() {
   [ "${1-}" = "--" ] && shift
   CASE_N=$((CASE_N + 1))
   local sandbox="$WORK/case$CASE_N"; mkdir -p "$sandbox/.vitals/world-prod"
-  # A factory log whose last tick is fresh unless the case says otherwise.
-  printf '[%s] tick done: 0 queued\n' "$(( $(date +%s) - ${STUB_TICK_AGE:-60} ))" > "$sandbox/.vitals/world-prod/factory.log"
+  # A factory log whose last tick is fresh unless the case says otherwise (STUB_TICK_AGE=<s>).
+  local age=60 a
+  for a in "$@"; do case "$a" in STUB_TICK_AGE=*) age="${a#*=}" ;; esac; done
+  printf '[%s] tick done: 0 queued\n' "$(( $(date +%s) - age ))" > "$sandbox/.vitals/world-prod/factory.log"
   local out rc
   out="$(env -i PATH="$WORK/bin:/usr/bin:/bin" HOME="$sandbox" TMPDIR="$sandbox" STUB_CALLS="$sandbox/calls" \
       "$@" bash "$TARGET" "$target" 2>&1 </dev/null)"

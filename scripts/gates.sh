@@ -34,6 +34,7 @@ if command -v node >/dev/null 2>&1; then
   gate "globe logic" node crates/vitals-web/tests/world/globe_logic.mjs crates/vitals-web/static/world/index.html
   gate "deploy script"  bash scripts/deploy-cloudrun-test.sh
   gate "door script"    bash scripts/ward-door-test.sh
+  gate "opening check"  bash scripts/opening-check-test.sh
   gate "cases logic"    node crates/vitals-web/tests/world/cases_logic.mjs crates/vitals-web/static/world/review.html
 else
   printf '  \033[33mskip\033[0m  globe logic — node not installed (CI still runs it)\n'
