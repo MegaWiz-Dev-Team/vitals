@@ -310,9 +310,21 @@ if [ "$PHASE" = "build" ] || [ "$PHASE" = "all" ]; then
   # to gain a check is the trade this script is supposed to stop making. So fd 3 keeps the real
   # stdout, tee puts the log back on it live, and only the last line — the value gcloud prints
   # after the stream closes — is kept.
+  #
+  # Except as the ops service account: it is not a project Viewer, so gcloud cannot stream the log
+  # to it and — with the build green — exits 1, and the first deploy as that account (22 Sep 2026)
+  # died there with a finished image nobody deployed. Told not to stream, gcloud still waits for
+  # the build and answers with its status; the log stays on the build's own page, whose address
+  # gcloud prints first either way.
+  STREAM=""
+  case "$WHO" in
+    vitals-ops@vitals-academy.iam.gserviceaccount.com|vitals-ops@vitals-academy-dev.iam.gserviceaccount.com)
+      STREAM="--suppress-logs"
+      echo "── log       not streamed to a service account; read it on the build's page" ;;
+  esac
   exec 3>&1
   BUILT_DIGEST="$(gcloud builds submit --project "$PROJECT" --config cloudbuild.yaml \
-    --substitutions "_SERVICE=$SERVICE" \
+    --substitutions "_SERVICE=$SERVICE" $STREAM \
     --format='value(results.images[0].digest)' . | tee /dev/fd/3 | tail -n 1)"
   exec 3>&-
   # Shape-checked, not just non-empty. If a future gcloud moves the build log or the value onto
