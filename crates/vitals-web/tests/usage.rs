@@ -314,7 +314,7 @@ fn the_ward_counts_bedsides_opened_and_shifts_taken() {
     let store = Store::open(dir.clone()).expect("a store");
     let mut u = Usage::open(&store);
 
-    let v = u.arrivals();
+    let v = u.funnel();
     assert_eq!(v["bedsides_opened"], 0, "a ward nobody has looked at");
     assert_eq!(v["shifts_taken"], 0);
 
@@ -323,19 +323,23 @@ fn the_ward_counts_bedsides_opened_and_shifts_taken() {
     u.opened_a_bedside(&store);
     u.took_a_shift(&store);
 
-    let v = u.arrivals();
+    let v = u.funnel();
     assert_eq!(v["bedsides_opened"], 3, "three people got as far as a patient");
     assert_eq!(v["shifts_taken"], 1, "one of them put their hands on her");
 
     // Kept across a restart, like every other count here — the answer to "what happened last
     // night" must survive the night.
     let again = Usage::open(&store);
-    let v = again.arrivals();
+    let v = again.funnel();
     assert_eq!(v["bedsides_opened"], 3);
     assert_eq!(v["shifts_taken"], 1);
 
     assert!(v["derivation"].as_str().is_some_and(|d| d.contains("bedside")),
             "and the page says how they are counted, like every other figure: {}", v["derivation"]);
+    // Its own block: `arrivals` says what the ward knows about an arrival — the channel and the
+    // count — and `tests/arrivals.rs` refuses any other key there. These are two later events.
+    assert!(u.arrivals().get("bedsides_opened").is_none(),
+            "the funnel does not widen what the arrivals block claims to hold");
 
     let _ = std::fs::remove_dir_all(&dir);
 }

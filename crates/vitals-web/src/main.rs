@@ -4871,6 +4871,10 @@ fn main() {
                     // rather than the product (UX review G5). The board is already in hand and the
                     // card is built from her row on it, so a card cannot say what the ward does not.
                     Some(id) => {
+                        // Somebody got past the globe to a person. Counted here, where the page is
+                        // actually served, so the gap between this and `shifts_taken` says whether
+                        // a quiet ward is one nobody found or one nobody knew how to start.
+                        usage.opened_a_bedside(&store);
                         let board = ward_now(&ward_view, &store, &state_dir);
                         let her = board["patients"]
                             .as_array()
@@ -5011,6 +5015,7 @@ fn main() {
                         "ward": "not open yet",
                         "opens": "week 2 of Crypto World's Fair, 21-27 Sep 2026",
                         "arrivals": usage.arrivals(),
+                        "funnel": usage.funnel(),
                         "usage_for_the_eternal_entry": "https://vitals.academy/api/usage"
                     })));
                     continue;

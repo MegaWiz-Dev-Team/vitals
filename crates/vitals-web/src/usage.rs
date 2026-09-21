@@ -195,6 +195,13 @@ struct Rec {
     /// split so nobody reads the channels as though they were the whole of it.
     #[serde(default)]
     arrivals: u64,
+    /// How many times a patient's bedside was served — somebody got past the globe to a person.
+    #[serde(default)]
+    bedsides_opened: u64,
+    /// How many of those became a shift actually taken. The gap between this and the line above is
+    /// the question the opening raised: did nobody come, or did they come and not press?
+    #[serde(default)]
+    shifts_taken: u64,
 }
 
 pub struct Usage {
@@ -249,6 +256,47 @@ impl Usage {
             *self.rec.by_src.entry(c.to_string()).or_default() += 1;
         }
         self.persist(store);
+    }
+
+    /// Somebody was served a patient's bedside. Not a person, an event: the same page opened twice
+    /// is two, and nothing about who opened it is read here or anywhere on the way.
+    pub fn opened_a_bedside(&mut self, store: &Store) {
+        let (day, _) = self.stamp();
+        self.rec.since.get_or_insert(day);
+        self.rec.bedsides_opened += 1;
+        self.persist(store);
+    }
+
+    /// A shift was taken — the head is theirs and the lease is running.
+    ///
+    /// Counted where the chain accepted it, not where the button was pressed: a take that the
+    /// program refused is not a shift, and counting the press would tell us people are playing
+    /// when nobody is.
+    pub fn took_a_shift(&mut self, store: &Store) {
+        let (day, _) = self.stamp();
+        self.rec.since.get_or_insert(day);
+        self.rec.shifts_taken += 1;
+        self.persist(store);
+    }
+
+    /// How far people got: the globe, a bedside, a shift.
+    ///
+    /// **Its own block, not a field on `arrivals`.** `arrivals` answers "what does the ward know
+    /// about somebody arriving", and the answer has always been *the channel and the count and
+    /// nothing else* — `tests/arrivals.rs` enumerates its keys and refuses any other, which is how
+    /// this landed in the right place. These are not facts about an arrival; they are counts of two
+    /// later events, and conflating them would have quietly widened what that block claims to hold.
+    pub fn funnel(&self) -> serde_json::Value {
+        serde_json::json!({
+            "arrivals": self.rec.arrivals,
+            "bedsides_opened": self.rec.bedsides_opened,
+            "shifts_taken": self.rec.shifts_taken,
+            "derivation": "three steps the server can see, counted per event and never per \
+                           person: the front page served, a patient's bedside served, and a take \
+                           the chain accepted. A take the program refused is not a shift and is \
+                           not counted as one. The gap between two steps is a question, not a \
+                           measurement of anybody",
+        })
     }
 
     /// The arrivals, as the ward publishes them.
