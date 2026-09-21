@@ -62,7 +62,13 @@ case "$1 $2" in
         printf '%s\n' "${STUB_NEW_REV-vitals-world-00026-xzm}"; exit 0 ;;
     esac ;;
   "run revisions")
-    say_json "{ \"spec\": { \"containers\": [ { \"image\": \"${STUB_NEW_IMAGE-gcr.io/p/vitals-world@sha256:aaaa}\" } ] } }"
+    # The digest is per revision: the one that was serving answers with the old digest, any
+    # other revision with the new one — which is the only way a case can make them differ.
+    case "$4" in
+      "${STUB_CURRENT_REV-vitals-world-00025-pdl}") d="${STUB_IMAGE-gcr.io/p/vitals-world@sha256:aaaa}" ;;
+      *) d="${STUB_NEW_IMAGE-gcr.io/p/vitals-world@sha256:aaaa}" ;;
+    esac
+    say_json "{ \"status\": { \"imageDigest\": \"$d\" } }"
     exit 0 ;;
 esac
 echo "stub gcloud: unhandled [$*]" >&2

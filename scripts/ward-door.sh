@@ -88,15 +88,21 @@ fi
 # What is serving right now: the image, the revision, the door.
 SERVICE_JSON="$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format=json 2>/dev/null)" || {
   echo "refusing: could not describe $SERVICE in $PROJECT." >&2; exit 1; }
-read -r CURRENT_REV CURRENT_IMAGE CURRENT_DOOR < <(printf '%s' "$SERVICE_JSON" | python3 -c '
+read -r CURRENT_REV CURRENT_DOOR < <(printf '%s' "$SERVICE_JSON" | python3 -c '
 import json, sys
 s = json.load(sys.stdin)
 c = s["spec"]["template"]["spec"]["containers"][0]
 door = next((e.get("value", "") for e in c.get("env", []) if e.get("name") == "VITALS_WARD_DOOR"), "closed")
-print(s["status"].get("latestReadyRevisionName", "?"), c["image"], door or "closed")
+print(s["status"].get("latestReadyRevisionName", "?"), door or "closed")
 ')
+# The digest the serving revision resolved to — the service names a tag, and a tag can move.
+digest_of() {
+  gcloud run revisions describe "$1" --project "$PROJECT" --region "$REGION" --format=json 2>/dev/null \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"]["imageDigest"])' 2>/dev/null
+}
+CURRENT_IMAGE="$(digest_of "$CURRENT_REV")"
 echo "── serving   $CURRENT_REV"
-echo "── image     $CURRENT_IMAGE"
+echo "── image     ${CURRENT_IMAGE:-?}"
 echo "── door      $CURRENT_DOOR"
 
 if [ "$CURRENT_DOOR" = "$WORD" ]; then
@@ -117,8 +123,7 @@ if [ -z "$NEW_REV" ]; then
 fi
 echo "── revision  $NEW_REV"
 
-NEW_IMAGE="$(gcloud run revisions describe "$NEW_REV" --project "$PROJECT" --region "$REGION" --format=json 2>/dev/null \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)["spec"]["containers"][0]["image"])' 2>/dev/null)"
+NEW_IMAGE="$(digest_of "$NEW_REV")"
 if [ "$NEW_IMAGE" != "$CURRENT_IMAGE" ]; then
   echo "the new revision runs a different image from the one that was serving:" >&2
   echo "    was  $CURRENT_IMAGE" >&2
