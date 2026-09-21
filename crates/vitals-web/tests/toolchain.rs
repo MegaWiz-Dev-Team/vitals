@@ -52,4 +52,18 @@ fn the_repo_and_ci_name_the_same_compiler() {
              one place and red in the other"
         );
     }
+
+    // The third place the compiler lives, and the one that ships: the deploy image. Found while
+    // writing the green — `FROM rust:1.93-slim-bookworm` — so production was being built with a
+    // compiler neither gates nor CI had run, and nothing in the red above would have said so.
+    let dockerfile = std::fs::read_to_string(root().join("Dockerfile")).expect("Dockerfile");
+    let image = dockerfile
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("FROM rust:").map(|r| r.split_whitespace().next().unwrap_or("").to_string()))
+        .expect("the Dockerfile builds FROM a rust image");
+    assert!(
+        image.starts_with(&format!("{channel}-")) || image == channel,
+        "the deploy image is rust:{image} while the repo pins {channel} — production would be \
+         built with a compiler that neither gates nor CI ran"
+    );
 }

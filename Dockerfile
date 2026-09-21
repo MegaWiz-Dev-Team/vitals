@@ -2,7 +2,10 @@
 # value is being disposable, and in production VITALS_RPC points at a real cluster. Not the model
 # either — that is Heimdall, which needs the GPU and therefore stays on the host.
 
-FROM rust:1.93-slim-bookworm AS build
+# The compiler is pinned in rust-toolchain.toml; this tag names the same version, and
+# crates/vitals-web/tests/toolchain.rs holds the two together so the image never builds with a
+# compiler gates did not run. Exact patch tag on purpose: `rust:1.98` would float.
+FROM rust:1.98.1-slim-bookworm AS build
 RUN apt-get update && apt-get install -y --no-install-recommends \
         pkg-config libssl-dev ca-certificates \
     && rm -rf /var/lib/apt/lists/*
