@@ -55,6 +55,15 @@ MSG
   "builds submit")
     [ "${STUB_BUILD_FAIL:-0}" = 1 ] && { echo "ERROR: (gcloud.builds.submit) stub build failure" >&2; exit 1; }
     echo "Logs are available at [ https://console.cloud.google.com/stub ]." >&2
+    # Faithful to the real thing again: a caller that is not a project Viewer cannot stream the
+    # build log, and gcloud then exits 1 with the build green — unless it was told not to stream.
+    case " $* " in
+      *" --suppress-logs "*) echo "stub: logs suppressed, waiting for the build" >&2 ;;
+      *) if [ "${STUB_CANNOT_STREAM:-0}" = 1 ]; then
+           echo "ERROR: (gcloud.builds.submit) This tool can only stream logs if you are Viewer/Owner of the project" >&2
+           exit 1
+         fi ;;
+    esac
     # Faithful to the real thing in the way that matters here: gcloud streams the build log on
     # STDOUT (submit_util.py: out = log.out), the same stream the --format value lands on.
     if [ "${STUB_BUILD_LOG:-1}" = 1 ]; then
@@ -164,6 +173,13 @@ run "the ops service account may deploy (prod project)" accepts "vitals-ops@vita
   -- STUB_ACCOUNT=vitals-ops@vitals-academy.iam.gserviceaccount.com
 run "the ops service account may deploy (dev project)" accepts "vitals-ops@vitals-academy-dev.iam.gserviceaccount.com" \
   -- STUB_ACCOUNT=vitals-ops@vitals-academy-dev.iam.gserviceaccount.com VITALS_GCP_PROJECT=vitals-academy-dev
+# The service account is not a project Viewer, so gcloud cannot stream the build log to it and
+# exits 1 with the build green — which is how the first deploy as the account died on 22 Sep with
+# a finished image nobody deployed. As the account, the script tells gcloud not to stream.
+run "as the ops service account, the build is not streamed and still succeeds" accepts "logs suppressed" \
+  -- STUB_ACCOUNT=vitals-ops@vitals-academy-dev.iam.gserviceaccount.com VITALS_GCP_PROJECT=vitals-academy-dev STUB_CANNOT_STREAM=1
+run "as a person, the build log is still streamed" accepts "Step #0: DONE" \
+  -- STUB_ACCOUNT=someone@example.com STUB_CANNOT_STREAM=0
 run "the same name in another project is still not you" rejects "not you" \
   -- STUB_ACCOUNT=vitals-ops@some-other-project.iam.gserviceaccount.com
 run "a look-alike is still not you" rejects "not you" \
