@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Vitals World · stats</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<style>
+:root{--ink:#0E1719;--paper:#F6F5F1;--card:#fff;--line:#D9D7D0;--mute:#6B7280;--green:#0B6E58;--mint:#26C0A5;--rust:#A24714;--mono:ui-monospace,"SF Mono",Menlo,monospace;--sans:-apple-system,"Helvetica Neue",Inter,Arial,sans-serif}
+@media (prefers-color-scheme:dark){:root{--ink:#F3F4F1;--paper:#0E1719;--card:#16231F;--line:#2A3A35;--mute:#9AA5A0;--green:#26C0A5}}
+html,body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans)}
+.wrap{max-width:1100px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:20px;margin:0;font-weight:800;letter-spacing:-.01em}h1 b{color:var(--green)}
+.sub{font-family:var(--mono);font-size:11px;color:var(--mute);letter-spacing:.08em;text-transform:uppercase;margin-top:4px}
+.top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.upd{font-family:var(--mono);font-size:12px;color:var(--mute)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.tile{background:var(--card);border:1.5px solid var(--line);border-radius:10px;padding:12px 14px}
+.tile b{display:block;font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.tile span{font-family:var(--mono);font-size:10.5px;color:var(--mute);letter-spacing:.06em;text-transform:uppercase;display:block;margin-top:4px}
+.tile small{display:block;font-size:11.5px;color:var(--mute);margin-top:4px}
+.tile.g b{color:var(--green)}.tile.r b{color:var(--rust)}
+.card{background:var(--card);border:1.5px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.card h3{margin:0 0 8px;font-size:11.5px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--green);font-weight:600}
+.bar{display:grid;grid-template-columns:110px 1fr 60px;gap:10px;align-items:center;font-size:13px;height:26px}
+.bar .tr{height:12px;background:var(--line);border-radius:3px;position:relative}.bar .fl{position:absolute;left:0;top:0;bottom:0;background:var(--green);border-radius:3px}
+.bar .v{font-family:var(--mono);text-align:right}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line);vertical-align:top}th{font-family:var(--mono);font-size:10.5px;color:var(--mute);letter-spacing:.06em;text-transform:uppercase;font-weight:600}
+.tag{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:4px;padding:1px 6px;color:var(--mute)}
+.tag.on{color:var(--green);border-color:var(--green)}.tag.bad{color:var(--rust);border-color:var(--rust)}
+.foot{font-family:var(--mono);font-size:11px;color:var(--mute);line-height:1.6}
+.err{color:var(--rust);font-family:var(--mono);font-size:12px}
+</style></head><body><div class="wrap">
+<div class="top"><div><h1>Vitals <b>World</b> · stats</h1><div class="sub">every number below is re-countable from the chain or the ward's own counter · refreshes every 30 s</div></div><div class="upd" id="upd">loading…</div></div>
+<div class="grid" id="tiles"></div>
+<div class="card"><h3>arrivals · หน้าแรกถูกเปิดกี่ครั้ง แยกตามลิงก์ที่เราแจก (?src=)</h3><div id="arrivals"></div></div>
+<div class="card"><h3>beds now · ใครอยู่ในเตียง ใครกำลังรักษา</h3><div id="beds"></div></div>
+<div class="card"><h3>this week (UTC) · สัปดาห์นี้</h3><div id="week"></div></div>
+<div class="card"><h3>ward · door · catalogue</h3><div id="ward"></div></div>
+<div class="foot" id="foot"></div>
+</div>
+<script>
+const $=s=>document.querySelector(s);const n=v=>(v??0).toLocaleString();
+function tile(v,l,s,c){return `<div class="tile ${c||''}"><b>${v}</b><span>${l}</span>${s?`<small>${s}</small>`:''}</div>`}
+async function load(){
+ try{
+  const [w,u]=await Promise.all([fetch('/api/ward',{cache:'no-store'}).then(r=>r.json()),fetch('/api/usage',{cache:'no-store'}).then(r=>r.json())]);
+  const c=w.census||{},q=w.queue||{},wp=q.waiting_patients||[],pol=w.policy||{},cat=pol.catalogue||{};
+  const door=q.door||pol.door||'?';
+  const ps=w.patients||[]; const inBeds=ps.filter(p=>p.bed); const onShift=inBeds.filter(p=>p.state==='on_shift');
+  $('#tiles').innerHTML=[
+   tile(n(u.arrivals?.total),'arrivals · เข้าหน้าแรก','visits, not people'),
+   tile(n(c.keys),'keys · มือที่เคยส่งเวร','distinct AnchorShift signers — keys, not humans','g'),
+   tile(n(c.shifts),'shifts · เวรที่รักษาแล้วส่งต่อ','anchored on devnet','g'),
+   tile(n(w.in_beds),'in beds · ในเตียง',`${onShift.length} on shift now`),
+   tile(n(c.went_home),'went home · กลับบ้าน','discharged by the engine','g'),
+   tile(n(c.died),'died · เสียชีวิต','recorded, not hidden','r'),
+   tile(n(c.admitted),'admitted · รับเข้าทั้งหมด','patient accounts on chain'),
+   tile(n(wp.length),'waiting · รอประตู',`${new Set(wp.map(p=>p.country)).size} countries`),
+  ].join('');
+  const by=u.arrivals?.by_src||{}; const tot=u.arrivals?.total||0; const rows=Object.entries(by).sort((a,b)=>b[1]-a[1]); const known=rows.reduce((s,[,v])=>s+v,0);
+  const mx=Math.max(1,...rows.map(r=>r[1]),tot-known);
+  $('#arrivals').innerHTML=rows.map(([k,v])=>`<div class="bar"><span>${k}</span><span class="tr"><span class="fl" style="width:${v/mx*100}%"></span></span><span class="v">${n(v)}</span></div>`).join('')+`<div class="bar"><span style="color:var(--mute)">no src</span><span class="tr"><span class="fl" style="width:${(tot-known)/mx*100}%;background:var(--mute)"></span></span><span class="v">${n(tot-known)}</span></div>`;
+  $('#beds').innerHTML=inBeds.length?`<table><tr><th>bed</th><th>patient</th><th>country</th><th>state</th><th>shifts</th><th>last hand-over</th></tr>`+inBeds.sort((a,b)=>a.bed-b.bed).map(p=>`<tr><td>${p.bed}</td><td>${p.name||'—'} · ${p.age??''}</td><td>${p.country||''}</td><td><span class="tag ${p.state==='on_shift'?'on':''}">${p.state==='on_shift'?'being treated now':'waiting for a stranger'}</span></td><td>${n(p.shifts)}</td><td>${p.handed_over?new Date(p.handed_over).toLocaleString():'—'}</td></tr>`).join('')+'</table>':'<span style="color:var(--mute)">nobody in a bed</span>';
+  const wk=w.week||{}; $('#week').innerHTML=`<table><tr><th>admitted</th><th>shifts</th><th>keys</th><th>went home</th><th>died</th><th>on ward</th></tr><tr><td>${n(wk.admitted)}</td><td>${n(wk.shifts)}</td><td>${n(wk.keys)}</td><td>${n(wk.went_home)}</td><td>${n(wk.died)}</td><td>${n(wk.on_ward)}</td></tr></table>`;
+  const b=w.board||{}; const unread=w.unread||[];
+  $('#ward').innerHTML=`<table><tr><th>door</th><th>revision</th><th>board</th><th>cases held</th><th>provisional</th><th>reviewed</th><th>unrebuildable</th></tr><tr><td><span class="tag ${door==='open'?'on':''}">${door}</span></td><td class="tag">${w.revision||''}</td><td>${b.from||'?'}${b.kept_at?' · '+new Date(b.kept_at*1000).toLocaleTimeString():''}${unread.length?` <span class="tag bad">${unread.length} history not refreshed</span>`:''}</td><td>${n(cat.held)}</td><td>${n(cat.provisional)}</td><td>${n(cat.reviewed)}</td><td>${n((w.patients||[]).filter(p=>p.state==='unrebuildable').length)}</td></tr></table>`;
+  $('#upd').textContent='updated '+new Date().toLocaleTimeString()+' · as of slot '+n(w.as_of_slot);
+  $('#foot').innerHTML=`derivations: ${Object.entries(w.derivations||{}).slice(0,4).map(([k,v])=>`<b>${k}</b> — ${String(v).slice(0,110)}…`).join('<br>')}<br>source: /api/ward · /api/usage · program ${(w.source||'').replace('devnet:','')}`;
+ }catch(e){$('#upd').innerHTML=`<span class="err">could not read the ward: ${e}</span>`}
+}
+load();setInterval(load,30000);
+</script></body></html>

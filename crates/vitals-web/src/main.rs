@@ -145,6 +145,11 @@ const TOUCH_ICON_WORLD: &[u8] = include_bytes!("../static/world/apple-touch-icon
 /// written into it is one regeneration away from being lost — and `build-pdf.sh` renders it
 /// straight off disk through a `file://` URL, where a printed deck has no use for arrow keys.
 const PRESENT: &str = include_str!("../static/present.html");
+/// The team's dashboard — one page, two endpoints, every thirty seconds. Served here because the
+/// ward sends no CORS headers and a page that reads it has to come from it. Public: nothing on it
+/// a stranger cannot already read from /api/ward and /api/usage. `static/world/stats.html` is the
+/// only copy; the founder's request of 20 ก.ย.
+const WARD_STATS: &str = include_str!("../static/world/stats.html");
 /// The real bedside monitor, vendored from Embla's device page.
 ///
 /// Not reimplemented: it already draws ECG morphology in milliseconds (P 80ms, PR 160ms, a QRS
@@ -1902,6 +1907,7 @@ fn open_review(store: &store::Store, case_id: &str) -> Result<(Session, serde_js
             .map(|p| p.place)
             .filter(|p| !p.is_empty())),
         "provisional": summary.provisional,
+        "status": ward_chain::catalogue_status(),
         "withdrawn": summary.withdrawn,
         "endemic": summary.endemic,
         "name": who.name,
@@ -5198,6 +5204,7 @@ fn main() {
             // than redirecting to the game origin, because they are the company's documents and
             // because the URL handed to an OAuth consent screen or a reviewer should resolve at
             // the name it was written as, not one hop later.
+            (Method::Get, "/stats") => html(WARD_STATS),
             (Method::Get, "/privacy") => html(&PRIVACY.replace(BUILD_STAMP, BUILD)),
             (Method::Get, "/terms") => html(&TERMS.replace(BUILD_STAMP, BUILD)),
             // ── the form itself ─────────────────────────────────────────────────
@@ -5362,6 +5369,7 @@ fn main() {
                         let _ = req.respond(json(serde_json::json!({
                             "stored": summary.case_id,
                             "provisional": summary.provisional,
+        "status": ward_chain::catalogue_status(),
                             "version": summary.version,
                         })));
                     }
@@ -5462,6 +5470,8 @@ fn main() {
                 cases.sort_by(|a, b| a["case_id"].as_str().cmp(&b["case_id"].as_str()));
                 let _ = req.respond(json(serde_json::json!({
                     "cases": cases,
+                    // The catalogue page shows this beneath its counts; it never types the date.
+                    "status": ward_chain::catalogue_status(),
                     "derivations": {
                         "cases": "every pack the case factory has put through /api/ward/case and \
                                   this ward accepted. `provisional` is the compiler's own word for \
