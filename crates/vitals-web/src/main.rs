@@ -5940,6 +5940,11 @@ fn main() {
                     }
                     (WardWork::Open, Ok(sig)) => json(serde_json::json!({ "opened": true, "tx": sig })),
                     (WardWork::Take { patient_id }, Ok(sig)) => {
+                        // A shift taken, counted here and nowhere earlier: the program has accepted
+                        // it, the head is theirs and the lease is running. Counting the press would
+                        // have counted every take the program refused as a shift, and told us
+                        // people were playing on a night nobody was.
+                        usage.took_a_shift(&store);
                         let until = chain.patient(*patient_id).ok().flatten()
                             .map(|p| p.lease_until_slot);
                         json(serde_json::json!({
