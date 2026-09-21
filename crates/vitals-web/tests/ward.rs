@@ -1672,8 +1672,14 @@ fn a_waiting_patient_is_published_without_a_bed_and_without_her_case() {
     let held = vec![vitals_web::ward_case::CaseSummary {
         case_id: "embla-typhoid-ileal-perforation".into(),
         archetype: "septic_shock".into(),
-        patient_age: Some(64),
-        patient_sex: Some("female".into()),
+        // **Deliberately not the person waiting on it.** A case is authored about a patient of its
+        // own — this one about a man of 31 — and the ward places whoever the factory drew inside
+        // the band on it. The two were both 64 here until now, and a fixture where they agree is a
+        // fixture that cannot tell which of them the title was filled from. Production could: a row
+        // read "A woman of 64" beside an age of 31, and nobody reading the page could tell which
+        // number was the patient's.
+        patient_age: Some(31),
+        patient_sex: Some("male".into()),
         country: Some("BGD".into()),
         difficulty: "intern".into(),
         endemic: true,
@@ -1702,7 +1708,12 @@ fn a_waiting_patient_is_published_without_a_bed_and_without_her_case() {
             "her face, the one the pack arrived with: {first}");
     assert_eq!(first["case_title"],
                "A woman of 64, fever for 3 weeks and now a sudden abdominal pain",
-               "the case's own title, filled for the person who is waiting on it");
+               "the title is filled for the person waiting on the case, not for the case's own \
+                patient: she is 64 and a woman, and the case was written about a man of 31");
+    // Said again as the reader sees it: the sentence and the field beside it are about one person.
+    let title = first["case_title"].as_str().unwrap_or_default();
+    assert!(title.contains(&first["age"].to_string()),
+            "the age in the sentence is the age in the row: {title} / {}", first["age"]);
     assert!(rows[1]["case_title"].is_null(),
             "and null for a pack whose case this ward does not hold: {}", rows[1]);
 
