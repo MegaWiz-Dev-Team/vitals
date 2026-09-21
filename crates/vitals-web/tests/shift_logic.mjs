@@ -663,3 +663,31 @@ assert.equal(/href="\/start"/.test(held), false,
               with a countdown running');
 
 console.log('shift_logic: ok (and the strip reads as three steps)');
+
+
+// ── the shift that records itself, and the one that cannot ──────────────────
+//
+// A.7, and the honest scope of it. `anchor_shift` needs the player's signature, so the server can
+// never record a shift on a stranger's behalf — the only thing it can do at lease end is free the
+// bed, which it already does. What *can* record is the page, while it is still open. So the page
+// does it at 0:00, and the policy text says exactly that and no more.
+//
+// Only where there is something to record. A shift with no orders in it is left as it is today:
+// there is nothing on the chain worth a transaction, and a stranger who opened a bed and walked
+// away has not treated anybody.
+const { autoHandOver } = new Function([grab('autoHandOver'), 'return { autoHandOver };'].join('\n'))();
+
+assert.equal(autoHandOver(0, 1, true, false), true,
+             'the lease is out, the head is theirs and there is one order in it: record it');
+assert.equal(autoHandOver(-3, 4, true, false), true, 'and a clock that went past zero still counts');
+
+assert.equal(autoHandOver(0, 0, true, false), false,
+             'nothing was ordered, so there is nothing to record and no transaction worth sending');
+assert.equal(autoHandOver(1, 3, true, false), false, 'a second left is a second to keep playing');
+assert.equal(autoHandOver(0, 3, false, false), false, 'no head taken, no shift to record');
+assert.equal(autoHandOver(0, 3, true, true), false,
+             'and never twice: a hand-over already going is the one that records it');
+assert.equal(autoHandOver(null, 3, true, false), false,
+             'a page that does not know the lease does not act on it');
+
+console.log('shift_logic: ok (and a shift with work in it records itself at 0:00)');

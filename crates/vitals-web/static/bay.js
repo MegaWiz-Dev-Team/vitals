@@ -1897,6 +1897,10 @@ const ENDLABEL='I have finished';
    actually happened rather than policing the order it happened in — an order placed before a
    question is still an order, and a strip that argues with a stranger about sequence is a strip
    they stop reading. */
+/* Whether the page should record this shift itself, now, because the lease has run out.
+   Stubbed: the page does nothing at 0:00 today, which is how opening night's one shift ended. */
+function autoHandOver(left, orders, taken, handing){ return false; }
+
 function wardGuide(taken, asked, orders){
   if(!taken) return null;
   return {
