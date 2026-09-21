@@ -74,10 +74,26 @@ Fees on devnet are paid by the relay: 10,000 lamports a shift (two signatures), 
 
 ## Open at the time of writing
 
-- The status sentence still ignores the door (queued, one function).
-- The refill can admit a queued patient whose case was withdrawn after she was queued; one such patient is in the production queue, hours away from a bed. Queued with a cold-start guard.
+- ~~The status sentence still ignores the door.~~ Fixed 21 Sep (`catalogue_status(door)`, `8512cbc`); deployed 22 Sep.
+- ~~The refill can admit a queued patient whose case was withdrawn.~~ Fixed 21 Sep (`Placeable::may_place`, `e57609a`, with the cold-start guard); deployed 22 Sep.
 - The ops service account cannot yet submit Cloud Build; deploys still run under the founder.
 - 0 of 75 cases carry the *reviewed* label: the advisor's review exists and is applied to the packs, but the label waits on confirming its provenance directly with him.
 - Nobody outside the team had taken a shift by midnight. The first stranger's receipt will be the first real test of everything above.
+
+## Addendum, 22 Sep — how each of these does not happen again
+
+The founder's question the morning after was the right one: not *what went wrong* but *what makes it impossible next time*. One row per failure above; the middle column is the mechanism, not a resolution to be careful. "Done" means merged and, where it applies, deployed; a date means queued with an owner.
+
+| # | Failure | What makes it impossible | Status |
+|---|---------|--------------------------|--------|
+| 1 | A person's login was the only way to open the door | `scripts/ward-door.sh open\|preview\|closed` flips the door as the ops service account, from the secret, with no build — and refuses to run as a person. The scheduled tick and the factory already run as the service account. | script queued, 23 Sep; SA in use for the factory and the ticker since 21 Sep |
+| 2 | The service account lacked one role on the one call that mattered | The roles are written down with the service account, and `scripts/opening-check.sh` exercises every call the opening needs (secret read, revision describe, image pull, build submit) as the service account, days before, and prints one line per call. | check script queued, 23 Sep; Cloud Build grant still open |
+| 3 | A public sentence composed from a constant | `catalogue_status` takes the door; `tests/doors.rs` holds the preview wording and the open wording apart, and the end-to-end door suite (33 cases) reads the sentence off the running service. | done, deployed 22 Sep |
+| 4 | An instrument that lied | Every boot and pass span is named; the remainder prints as `elsewhere`; the slow-pass line carries median and max per patient. A span whose name does not match its body cannot pass the boot test that reads the marks in order. | done, deployed 20 Sep |
+| 5 | A fix that armed a dormant bug | The ordering rule (repair before sweep) is a test that runs with a tape the sweep would have dropped; the comment is gone, the test stays. | done, deployed 20 Sep |
+| 6 | Machine-wide state changed under running work | `rust-toolchain.toml` pins the compiler for every session and CI; gcloud is pinned per process (`CLOUDSDK_ACTIVE_CONFIG_NAME`) and no session sets the global account; long-lived worktrees live under `~/Developer`; the gates wrapper prints toolchain, tracked-file count and deleted count on its first line so a hollow run announces itself; the factory binary moves to `~/.vitals/bin/` where no build cleanup reaches it. | pin, gates line, worktrees done 20–21 Sep; binary path queued, 23 Sep |
+| 7 | The free RPC met in three places | One listing per patient per pass; a failed history keeps its cached copy and flags the row; a per-patient budget. The staging blackout on a single 429 is a test now. Cloud Monitoring alerts on 5xx rate and on the tick's `took_ms` are the next layer, so the next 51 s pass pages a person instead of waiting for one to look. | fixes done, deployed 20–21 Sep; alerts queued, 24 Sep |
+| 8 | The guard refused the recompiled cases | Kept as is — the guard was right. The compiler's own test holds the sentence it writes so a wording change fails at build, not at the door. | done, 21 Sep |
+| — | Production changed by hand under pressure | After 26 Sep, production deploys come from CI on a tagged commit; until then the deploy script runs only from a committed revision the producer has read, with `MIN_INSTANCES=0` explicit. The one exception on opening night (an env-only flip of the already-built image) is recorded in the incident log. | rule in force; CI deploys queued, 26 Sep |
 
 *Vitals World is MegaWiz's entry to Colosseum's Crypto World's Fair hackathon (14 Sep – 12 Oct 2026), built during the event on top of Vitals and Embla, which are disclosed as prior work.*
