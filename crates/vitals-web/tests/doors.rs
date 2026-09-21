@@ -201,6 +201,12 @@ fn the_dashboard_is_served_by_the_ward_and_reads_it_same_origin() {
             "a team page, not a landing: search engines are asked to leave it alone");
     assert!(!body.contains("http://") && !body.contains("https://fonts."),
             "no request leaves this origin from the dashboard");
+    // **English, every label.** The founder, 22 Sep: "ทำเป็นภาษาอังกฤษให้หมด". The page is read by
+    // the team, the director, and whoever the founder shows it to, and not all of them read Thai —
+    // a label only half the room can read is a number only half the room can check. Written as a
+    // rule rather than a note, because a note cannot fail and this one has to.
+    let thai: String = body.chars().filter(|c| ('\u{0E00}'..='\u{0E7F}').contains(c)).collect();
+    assert!(thai.is_empty(), "every label on the dashboard is English, and these are not: {thai}");
 }
 
 /// **The catalogue endpoint carries the status sentence, so the catalogue page never types a date.**

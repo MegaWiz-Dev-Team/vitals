@@ -30,30 +30,36 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;p
 </style></head><body><div class="wrap">
 <div class="top"><div><h1>Vitals <b>World</b> · stats</h1><div class="sub">every number below is re-countable from the chain or the ward's own counter · refreshes every 30 s</div></div><div class="upd" id="upd">loading…</div></div>
 <div class="grid" id="tiles"></div>
-<div class="card"><h3>arrivals · หน้าแรกถูกเปิดกี่ครั้ง แยกตามลิงก์ที่เราแจก (?src=)</h3><div id="arrivals"></div></div>
-<div class="card"><h3>beds now · ใครอยู่ในเตียง ใครกำลังรักษา</h3><div id="beds"></div></div>
-<div class="card"><h3>this week (UTC) · สัปดาห์นี้</h3><div id="week"></div></div>
+<div class="card"><h3>arrivals · the front page, by the link that brought them (?src=)</h3><div id="arrivals"></div></div>
+<div class="card"><h3>beds now · who is in one, and who is being treated</h3><div id="beds"></div></div>
+<div class="card"><h3>this week (UTC)</h3><div id="week"></div></div>
 <div class="card"><h3>ward · door · catalogue</h3><div id="ward"></div></div>
 <div class="foot" id="foot"></div>
 </div>
 <script>
-const $=s=>document.querySelector(s);const n=v=>(v??0).toLocaleString();
+const $=s=>document.querySelector(s);const n=v=>(v??0).toLocaleString();const pct=(a,b)=>!b?'—':Math.round((a??0)/b*100)+'%';
 function tile(v,l,s,c){return `<div class="tile ${c||''}"><b>${v}</b><span>${l}</span>${s?`<small>${s}</small>`:''}</div>`}
 async function load(){
  try{
   const [w,u]=await Promise.all([fetch('/api/ward',{cache:'no-store'}).then(r=>r.json()),fetch('/api/usage',{cache:'no-store'}).then(r=>r.json())]);
   const c=w.census||{},q=w.queue||{},wp=q.waiting_patients||[],pol=w.policy||{},cat=pol.catalogue||{};
+  const ar=u.arrivals||{}, fn_=u.funnel||{};
   const door=q.door||pol.door||'?';
   const ps=w.patients||[]; const inBeds=ps.filter(p=>p.bed); const onShift=inBeds.filter(p=>p.state==='on_shift');
   $('#tiles').innerHTML=[
-   tile(n(u.arrivals?.total),'arrivals · เข้าหน้าแรก','visits, not people'),
-   tile(n(c.keys),'keys · มือที่เคยส่งเวร','distinct AnchorShift signers — keys, not humans','g'),
-   tile(n(c.shifts),'shifts · เวรที่รักษาแล้วส่งต่อ','anchored on devnet','g'),
-   tile(n(w.in_beds),'in beds · ในเตียง',`${onShift.length} on shift now`),
-   tile(n(c.went_home),'went home · กลับบ้าน','discharged by the engine','g'),
-   tile(n(c.died),'died · เสียชีวิต','recorded, not hidden','r'),
-   tile(n(c.admitted),'admitted · รับเข้าทั้งหมด','patient accounts on chain'),
-   tile(n(wp.length),'waiting · รอประตู',`${new Set(wp.map(p=>p.country)).size} countries`),
+   tile(n(ar.total),'arrivals · the globe','visits, not people'),
+   // The funnel, in the only three steps a server can see. The gap between any two is a question
+   // worth asking before building anything: globe → bedside is whether people find a patient,
+   // bedside → shift is whether they know how to start once they do.
+   tile(n(fn_.bedsides_opened),'bedsides · a patient opened',pct(fn_.bedsides_opened,ar.total)+' of those who arrived'),
+   tile(n(fn_.shifts_taken),'shifts taken · hands on a patient',pct(fn_.shifts_taken,fn_.bedsides_opened)+' of those who opened one','g'),
+   tile(n(c.keys),'keys · hands that have handed over','distinct AnchorShift signers — keys, not humans','g'),
+   tile(n(c.shifts),'shifts · treated and handed over','anchored on devnet','g'),
+   tile(n(w.in_beds),'in beds',`${onShift.length} on shift now`),
+   tile(n(c.went_home),'went home','discharged by the engine','g'),
+   tile(n(c.died),'died','recorded, not hidden','r'),
+   tile(n(c.admitted),'admitted · all time','patient accounts on chain'),
+   tile(n(wp.length),'waiting · behind the door',`${new Set(wp.map(p=>p.country)).size} countries`),
   ].join('');
   const by=u.arrivals?.by_src||{}; const tot=u.arrivals?.total||0; const rows=Object.entries(by).sort((a,b)=>b[1]-a[1]); const known=rows.reduce((s,[,v])=>s+v,0);
   const mx=Math.max(1,...rows.map(r=>r[1]),tot-known);
