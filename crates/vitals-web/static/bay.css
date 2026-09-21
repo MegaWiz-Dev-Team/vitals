@@ -922,6 +922,25 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.78rem;background:va
 .leaseclock{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.72rem;
   letter-spacing:.04em;color:var(--ink-3);white-space:nowrap}
 .leaseclock.soon{color:var(--alarm);font-weight:600}
+/* The guidance strip under the ward's bar (founder, 22 ก.ย.). Ward only — every selector here is
+   behind `html.is-ward`, because this file dresses the Eternal bay too and a stranger who came for
+   a story is not holding anybody's head.
+   The three steps are all present all the time and the live one is lit rather than the others being
+   removed: a stranger deciding whether to start needs to see that it ends in one press, and words
+   that move under somebody mid-shift are words they stop reading. */
+html.is-ward #wardguide{display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;
+  margin:-.2rem 0 .6rem;padding:.3rem .55rem;font-size:.78rem;line-height:1.35;
+  border:1px dashed var(--rule,#d8ded9);border-radius:.45rem}
+html.is-ward #wardguide .gd{display:inline-flex;gap:.35rem;align-items:baseline;
+  padding:.12rem .45rem;border-radius:.35rem;opacity:.58}
+html.is-ward #wardguide .gd b{font-variant-numeric:tabular-nums}
+html.is-ward #wardguide .gd.at{opacity:1;font-weight:600;background:rgba(15,110,92,.11)}
+html.is-ward #wardguide .gd-say{flex:1 1 auto;min-width:12rem}
+html.is-ward #wardguide .guide{margin-left:auto;white-space:nowrap}
+/* Once one order exists the shift has something in it the chain will pay for, and the button that
+   records it stops being one control among several (A.2). */
+html.is-ward #wardprimary.ready{box-shadow:0 0 0 3px rgba(15,110,92,.22);transform:scale(1.02)}
+@media (prefers-reduced-motion:reduce){html.is-ward #wardprimary.ready{transform:none}}
 
 /* The exit that records nothing. It sits beside the one action the page is for, so it is quiet by
    weight and plain by name: a stranger tells the two apart without reading twice (UX review C4).
@@ -1399,6 +1418,7 @@ a.give:hover{filter:brightness(1.06)}
   /* The strip is a row of the bay, not a fourth thing in its first column: it is inserted into the
      grid at run time and without this it takes a cell the header wanted. */
   html.is-ward #wardbar{grid-column:1/-1}
+  html.is-ward #wardguide{grid-column:1/-1}
   /* The face is 128 px of the patient block, and it comes out of the frame above it — which is
      where the stem sheet is. So on the ward the patient block takes more of the column and the
      transcript gives it up: before the head is taken the transcript is empty, and the sheet is

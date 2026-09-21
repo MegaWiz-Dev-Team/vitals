@@ -1225,7 +1225,12 @@ function fire(text,shown,named){
      where every press arrives, and it is said out loud rather than swallowed. */
   const no=takeFirst(WARD, id, pro().o);
   if(no){ if(typeof wardSay==='function')wardSay('<b>'+no+'</b> — nothing you do is on '+pro().p+' chart until the head is yours'); return; }
-  (mode==='ask' && !ep().station) ? askHer(text,shown) : doOrder(text,shown,named);
+  const asking = mode==='ask' && !ep().station;
+  if(asking)ASKED++; else ORDERED++;
+  /* The strip moves to the next step as soon as the press is accepted, not when the server answers:
+     the stranger pressed, and the thing they are being told changes now. */
+  if(typeof paintGuide==='function')paintGuide();
+  asking ? askHer(text,shown) : doOrder(text,shown,named);
 }
 /* Is this order the candidate naming a diagnosis? The station's own differential is the list,
    and a typed answer counts — "epiglottitis" in the order box is the same answer as the chip.
@@ -1878,24 +1883,64 @@ const ENDLABEL='I have finished';
    A shift is not an attempt and does not end: it is handed to whoever comes next, and whether the
    stay ends is the engine's to decide and the chain's to record. So the ward says "hand over"
    twice rather than "I have finished", and the pronoun is the pronoun of the person in the bed. */
-/* ── the guidance a first shift needs, and what the page does about it today ──
+/* ── the guidance a first shift needs ────────────────────────────────────────
    The only shift taken on opening night ran five minutes and ended in `/api/ward/left`: somebody
    treated a patient and then threw the work away, because nothing on the page said that pressing
-   Hand over is what makes it count. These three are that guidance. They return nothing yet — the
-   page today says none of it — so the tests that describe them fail on the behaviour rather than
-   on the name. */
-function wardGuide(taken, asked, orders){ return null; }
-function beforeTake(minutes){ return ''; }
-function guideLink(){ return ''; }
+   Hand over is what makes it count.
+
+   All three are pure and carry no pronoun. The page knows who is in the bed and says so everywhere
+   else; these are instructions about the shift, and a sentence that has to guess a sex to give an
+   instruction is a sentence with a bug waiting in it. */
+
+/* The three steps, with the live one marked. Always all three: it is a map of what a shift is, not
+   a wizard that hides the end from somebody deciding whether to start. `at` follows what has
+   actually happened rather than policing the order it happened in — an order placed before a
+   question is still an order, and a strip that argues with a stranger about sequence is a strip
+   they stop reading. */
+function wardGuide(taken, asked, orders){
+  if(!taken) return null;
+  return {
+    at: orders>0 ? 3 : (asked>0 ? 2 : 1),
+    steps: ['Ask or examine — the answers go on the chart',
+            'Order what is needed — try oxygen',
+            'Press Hand over when done — nothing counts until you do'],
+  };
+}
+
+/* What the page says to somebody who has not taken the shift yet.
+   The lease is the one figure here that must not be typed: devnet ran at 0.166 s a slot on 17 ก.ย.,
+   which made the lease nine and a half minutes rather than the twenty-three its nominal rate
+   implies, so a page that says "ten minutes" is a page that lies the day the rate moves. The
+   measured figure, or no figure — never the nominal one. */
+function beforeTake(minutes){
+  const lease = minutes ? ' · the lease runs about '+minutes+' minutes today' : '';
+  return 'Press the green button to start'+lease+' · nothing counts until you hand over';
+}
+
+/* The way to the guide, in the words of the question somebody asks themselves rather than the name
+   of a feature. Served by this ward at /start, so no request leaves this origin. */
+function guideLink(){
+  return '<a href="/start" class="guide">First time? two-minute guide</a>';
+}
+
+/* The guidance as markup, pure, so what a stranger actually reads is what the harness reads.
+   Two states and they are different kinds of sentence: before the head is taken it is what to
+   expect, and after it is where you are. `at` is carried as a class rather than as a different
+   sentence, because the words must not move under somebody mid-shift. */
+function guideHtml(g, minutes){
+  if(!g) return '<span class="gd-say">'+beforeTake(minutes)+'</span>'+guideLink();
+  return g.steps.map((t,i)=>
+    '<span class="gd'+(g.at===i+1?' at':'')+'"><b>'+(i+1)+'</b><span>'+t+'</span></span>').join('');
+}
 
 function endWords(ward, armed, g){
   if(!ward)return null;
   const Cap=w=>w.charAt(0).toUpperCase()+w.slice(1);
   return armed
-    ? { label:'press again to hand over',
+    ? { label:'press again to record',
         note:'Hands '+g.o+' to whoever comes next. Your shift is written to '+g.p+
              ' chain and cannot be taken back.' }
-    : { label:'hand over',
+    : { label:'hand over (press twice)',
         note:'Ends your shift and writes it to '+g.p+' chain. '+Cap(g.s)+
              ' stays on the ward, and the next stranger starts where you stopped.' };
 }
@@ -1920,7 +1965,11 @@ function disarmLeave(){
 
 function leaveWords(armed){
   return armed
-    ? { label:'press again to leave', say:'nothing you did will be kept — leave?' }
+    /* The question names the thing to do instead. On the sentence, never on the label: C4 is
+       that the two exits must not read alike, and a second button saying "hand" is the bug it
+       exists to prevent. */
+    ? { label:'press again to leave',
+        say:'this throws away everything you did — hand over instead?' }
     : { label:'Leave without recording', say:'' };
 }
 
@@ -4001,6 +4050,10 @@ async function wardBed(){
   }catch(e){ return null; }
 }
 let LEASEMIN=null, LEASESEC=null, LEASEENDS=null, LEASETIMER=null;
+/* What has happened this shift, for the guidance strip and for nothing else. Counted in `fire`,
+   which is the one funnel every chip press and every typed line goes through, and only after its
+   take-gate has let the press past — a press that was refused did not happen. */
+let ASKED=0, ORDERED=0;
 /* The countdown itself. Started at the take, because that is when the lease starts — the program
    stamps `lease_until_slot` in the block the take lands in, and the page's own clock from that
    moment is the honest local reading of it. Stopped when the shift ends, in either of its ways. */
@@ -4028,6 +4081,11 @@ function leaseLine(left){
   if(left<=0)return 'the lease has run out — the bed is free';
   const m=Math.floor(left/60), s=Math.floor(left%60);
   const clock='shift ends in '+m+':'+String(s).padStart(2,'0');
+  /* Two lines, not one. The five-minute line says what to do; by two minutes it has been on
+     screen for three minutes and has not worked, so the last two say what is at stake instead —
+     the program refuses an anchor past the lease, and work that runs out cannot be recorded at
+     all. */
+  if(left<=120) return clock+' — hand over now, or this shift is lost';
   return left<=300 ? clock+' — hand over to record it' : clock;
 }
 
@@ -4079,7 +4137,9 @@ function paintPrimary(){
   const taken=!takeFirst(WARD, id, null);
   b.hidden=false;
   b.textContent=primaryLabel(taken, over, (WARDSHIFT&&WARDSHIFT.name)||'', pro());
-  b.className='btn go primary'+(taken?' handover':'');
+  /* Loud once there is something to lose. A shift with an order in it is a shift the chain will
+     pay for, and the button that records it stops being one control among several. */
+  b.className='btn go primary'+(taken?' handover':'')+(taken&&ORDERED>0?' ready':'');
   /* The ward poll repaints this card. The latch has to outlive the repaint, or a shift that is
      being handed over gets its second press handed back to it. */
   b.disabled=HANDING;
@@ -4130,9 +4190,23 @@ addEventListener('resize', monitorWhereItIsRead);
 /* Every control that treats her, opened or closed in one place.
    Called when the page opens her and again when the head is taken, so there is one answer to
    "may I do this yet" and one sentence saying why not. */
+/* The guidance strip, under the ward's own bar.
+   Only on the ward: `bay.js` is the Eternal bay's script too, and the season needs none of this —
+   a stranger there came for a story and is not holding anybody's head. `WARD` is the gate, the
+   same one every other ward-only behaviour in this file uses. */
+function paintGuide(){
+  if(!WARD)return;
+  const bar=$('#wardbar'); if(!bar)return;
+  if(!$('#wardguide'))bar.insertAdjacentHTML('afterend', '<div id="wardguide"></div>');
+  const el=$('#wardguide'); if(!el)return;
+  const taken=!takeFirst(WARD, id, null);
+  el.innerHTML=guideHtml(taken?wardGuide(true, ASKED, ORDERED):null, LEASEMIN);
+}
+
 function wardGate(){
   const no=takeFirst(WARD, id, pro().o);
   document.documentElement.classList.toggle('untaken', !!no);
+  paintGuide();
   const cmd=$('#cmd'), send=$('#send'), mic=$('#mic');
   if(cmd)cmd.disabled=!!no;   // the placeholder is renderChips's, and it runs below
   if(send)send.disabled=!!no;

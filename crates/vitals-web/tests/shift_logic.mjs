@@ -635,3 +635,31 @@ assert.match(link, /two-minute|2-minute/i, 'and honest about what it costs them 
 assert.equal(/http/i.test(link), false, 'nothing off this origin');
 
 console.log('shift_logic: ok (and there is a way to the guide)');
+
+// ── and the strip a stranger actually reads ──────────────────────────────────
+//
+// The three above are the words. This is the arrangement, which is the part a stranger reads — and
+// it is pure for exactly that reason: a sentence that exists in a function nothing paints is a
+// sentence nobody has been told.
+const { guideHtml } = new Function(
+  [grab('beforeTake'), grab('guideLink'), grab('guideHtml'), 'return { guideHtml };'].join('\n'))();
+
+// Before the head is taken: what to expect, and the way to the guide.
+const waiting = guideHtml(null, null);
+assert.match(waiting, /nothing counts until you hand over/);
+assert.match(waiting, /href="\/start"/, 'the guide is one press away from the bed, before the take');
+assert.equal(/\d/.test(waiting), false, 'and still no unmeasured number in it');
+assert.match(guideHtml(null, 9), /9 minutes/, 'measured, the wait says how long the head is held');
+
+// Once it is theirs: three steps, with one lit.
+const held = guideHtml(wardGuide(true, 2, 0), 9);
+assert.equal((held.match(/class="gd/g) || []).length, 3, 'all three steps, always');
+assert.equal((held.match(/class="gd at"/g) || []).length, 1, 'and exactly one of them is live');
+assert.match(held, /class="gd at"><b>2<\/b>/, 'somebody who has asked is lit at the ordering step');
+assert.match(guideHtml(wardGuide(true, 2, 1), 9), /class="gd at"><b>3<\/b>/,
+             'and one order in, at the press that records it');
+assert.equal(/href="\/start"/.test(held), false,
+             'the guide link is for somebody deciding whether to start, not for somebody mid-shift \
+              with a countdown running');
+
+console.log('shift_logic: ok (and the strip reads as three steps)');
