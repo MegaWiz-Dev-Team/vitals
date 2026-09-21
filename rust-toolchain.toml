@@ -1,0 +1,6 @@
+# The compiler is part of the repo, not part of the machine. A bump is a commit somebody reviews;
+# `crates/vitals-web/tests/toolchain.rs` holds this and .github/workflows/ci.yml to the same version.
+# 20 ก.ย. 2026: the machine's `stable` moved under a running test and voided it; CI was on 1.93.1.
+[toolchain]
+channel = "1.98.1"
+components = ["clippy", "rustfmt"]
