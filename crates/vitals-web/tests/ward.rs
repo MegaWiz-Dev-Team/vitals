@@ -2054,3 +2054,47 @@ fn the_board_publishes_the_catalogues_status_beside_its_counts() {
     assert_eq!(v["policy"]["catalogue"]["status"], catalogue_status(),
                "the same sentence the bedside and the catalogue page show, from the same constant");
 }
+
+/// **The catalogue's counts are of cases a patient can be placed on.**
+///
+/// `held`/`provisional`/`reviewed` counted every pack in the store, withdrawn ones included, while
+/// every other rule about a withdrawn case says it is out of service — the placement rule filters
+/// them (`ward_case.rs:327`), the door refuses a pack naming one, and the catalogue page folds
+/// them into a drawer. So on staging 20 ก.ย. the board said `held 138` where 75 were placeable and
+/// 63 were withdrawn, and `/stats` showed 138 beside a ward that could only ever use 75.
+///
+/// A withdrawn case is still *held* in the plain sense — the ward keeps every case it was ever
+/// sent, because shifts already played on one still have to replay. So the count that a reader
+/// acts on is of the placeable, and the withdrawn get their own number rather than being hidden:
+/// `held + withdrawn` is what is in the store, and `held` is what the ward can use tonight.
+#[test]
+fn the_catalogue_counts_what_a_patient_can_be_placed_on() {
+    use std::collections::BTreeMap;
+    use vitals_web::ward::{ward_payload, WardRead};
+    use vitals_web::ward_case::CaseSummary;
+
+    let case = |id: &str, provisional: bool, withdrawn: bool| CaseSummary {
+        case_id: id.into(), archetype: "ddx".into(), country: None, difficulty: "intern".into(),
+        endemic: false, provisional, withdrawn, version: "0.1.0".into(), title: id.into(),
+        patient_age: Some(40), patient_sex: Some("female".into()),
+    };
+    let cases = [
+        case("live-provisional", true, false),
+        case("live-reviewed", false, false),
+        case("gone-provisional", true, true),
+        case("gone-reviewed", false, true),
+    ];
+    let v = ward_payload(&WardRead {
+        patients: &[], shifts: &[], packs: &BTreeMap::new(), since: None, as_of_slot: 1_000,
+        now_unix: 1_760_000_000, source: "devnet:ABC", times: &BTreeMap::new(),
+        seconds_per_slot: None, unrebuildable: &BTreeMap::new(), cases: &cases,
+        unread: &BTreeMap::new(),
+    });
+    let cat = &v["policy"]["catalogue"];
+    assert_eq!(cat["held"], 2, "the cases a patient can be placed on, not every pack in the store");
+    assert_eq!(cat["provisional"], 1, "…and its split, counted over the same two");
+    assert_eq!(cat["reviewed"], 1);
+    assert_eq!(cat["withdrawn"], 2,
+               "out of service, and said rather than hidden: the ward keeps every case it was ever \
+                sent because shifts played on one still have to replay");
+}
