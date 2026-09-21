@@ -36,8 +36,22 @@ account() {
   esac
 }
 service_json() {
+  # Traffic: 100 % on the new revision once the update has been made — unless the case holds it
+  # split (STUB_TRAFFIC_SPLIT=1: half on each) or lets it settle after N describes
+  # (STUB_TRAFFIC_SETTLES_AT=N, counted in STUB_DESCRIBES).
+  local n=0; [ -f "${STUB_DESCRIBES:-/dev/null}" ] && n="$(cat "$STUB_DESCRIBES")"; n=$((n + 1)); printf '%s' "$n" > "${STUB_DESCRIBES:-/dev/null}"
+  local cur="${STUB_CURRENT_REV-vitals-world-00025-pdl}" new="${STUB_NEW_REV-vitals-world-00026-xzm}" traffic
+  if grep -q "run services update" "${STUB_CALLS:-/dev/null}" 2>/dev/null; then
+    if [ "${STUB_TRAFFIC_SPLIT:-0}" = 1 ] || [ "$n" -lt "${STUB_TRAFFIC_SETTLES_AT:-0}" ]; then
+      traffic="[ { \"percent\": 50, \"revisionName\": \"$cur\" }, { \"percent\": 50, \"revisionName\": \"$new\" } ]"
+    else
+      traffic="[ { \"percent\": 100, \"revisionName\": \"$new\" } ]"
+    fi
+  else
+    traffic="[ { \"percent\": 100, \"revisionName\": \"$cur\" } ]"
+  fi
   say_json "{
-    \"status\": { \"latestReadyRevisionName\": \"${STUB_CURRENT_REV-vitals-world-00025-pdl}\" },
+    \"status\": { \"latestReadyRevisionName\": \"$cur\", \"traffic\": $traffic },
     \"spec\": { \"template\": { \"spec\": { \"containers\": [ {
       \"image\": \"${STUB_IMAGE-gcr.io/p/vitals-world@sha256:aaaa}\",
       \"env\": [ { \"name\": \"VITALS_WORLD\", \"value\": \"1\" },
@@ -110,7 +124,7 @@ run() {
   out="$(env -i \
       PATH="$WORK/bin:/usr/bin:/bin" \
       HOME="$sandbox" TMPDIR="$sandbox" \
-      STUB_CALLS="$sandbox/calls" STUB_READS="$sandbox/reads" \
+      STUB_CALLS="$sandbox/calls" STUB_READS="$sandbox/reads" STUB_DESCRIBES="$sandbox/describes" \
       DOOR_READS=4 DOOR_READ_PAUSE=0 \
       "$@" \
       bash "$TARGET" "$word" "$target" 2>&1 </dev/null)"
@@ -176,6 +190,9 @@ run "a ward that cannot be read back" rejects "read back" preview staging -- STU
 run "the new revision never answers" rejects "never answered" preview staging -- \
   STUB_CURRENT_DOOR=open STUB_OLD_ANSWERS=99
 
+run "traffic still split between the two revisions" rejects "judged the revision, not the service" preview staging -- \
+  STUB_CURRENT_DOOR=open STUB_PAGE_DOOR=preview STUB_TRAFFIC_SPLIT=1
+
 run "a page that still shows the old door" rejects "kept board" open staging -- \
   STUB_CURRENT_DOOR=preview STUB_PAGE_DOOR=preview STUB_BOARD_FROM=store STUB_BOARD_KEPT_BY=vitals-world-00072-6fc
 
@@ -186,6 +203,9 @@ run "staging to preview, read back as preview" accepts "door on the page: previe
 
 run "the old revision answers the first two reads: the script waits for the new one" accepts "answered by vitals-world-00026-xzm on read 3" preview staging -- \
   STUB_CURRENT_DOOR=open STUB_PAGE_DOOR=preview STUB_OLD_ANSWERS=2
+
+run "traffic settles on the new revision after two looks: the script waits for it" accepts "all traffic on vitals-world-00026-xzm" preview staging -- \
+  STUB_CURRENT_DOOR=open STUB_PAGE_DOOR=preview STUB_TRAFFIC_SETTLES_AT=4
 
 run "staging already at the word: nothing to do" accepts "already" preview staging -- \
   STUB_CURRENT_DOOR=preview STUB_PAGE_DOOR=preview
