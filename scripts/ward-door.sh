@@ -15,10 +15,11 @@
 #     different image from the one that was serving — a flip is not a deploy;
 #   - opens production only with the founder's word in FOUNDER_WORD, printed to the record;
 #     shut and preview are the safe direction and need no word;
-#   - reads /api/ward back and fails if the page does not say the door it just set. A board kept
-#     from a previous revision used to carry the old door with it (measured on staging 00072/73,
-#     22 Sep 2026); the ward stamps the door on the way out now, and this is where that is checked
-#     on the real path every time the door moves.
+#   - reads /api/ward back from the revision it just made (traffic moves over seconds, and the
+#     old revision truthfully reports the old door) and fails if that page does not say the door
+#     it set. A board kept from a previous revision used to carry the old door with it (measured
+#     on staging 00072/73, 22 Sep 2026); the ward stamps revision, door and sentence together on
+#     the way out now, and this is where that is checked on the real path every time the door moves.
 #
 # What it is not: a way to change code on production. That is scripts/deploy-cloudrun.sh, from
 # a committed revision the producer has read.
@@ -132,17 +133,36 @@ if [ "$NEW_IMAGE" != "$CURRENT_IMAGE" ]; then
   exit 1
 fi
 
-# Read the door back off the ward itself. The first request after a flip lands on a fresh
-# instance that loads the board the previous revision kept; the door on that page has to be the
-# live one, not the kept one, and this is the check on the real path.
-PAGE="$(curl -sS -m 90 "$WARD/api/ward" 2>/dev/null)" || {
+# Read the door back off the ward itself — from the revision just made, and no other. Traffic
+# moves to a new revision over some seconds, so a read can land on the old one, which truthfully
+# reports the old door: a failure where nothing is wrong, or worse, a pass from the wrong side.
+# The ward stamps its revision, the door and the sentence together on the way out, so a reading
+# counts only when its revision is $NEW_REV; until then it is "not this revision yet", read again.
+# The first request that does land there is the one that matters: a fresh instance loads the
+# board the previous revision kept, and the door on that page has to be the live one.
+READS=0; PAGE=""; PAGE_REV=""
+while [ "$READS" -lt "${DOOR_READS:-20}" ]; do
+  READS=$((READS + 1))
+  PAGE="$(curl -sS -m 90 "$WARD/api/ward" 2>/dev/null)" || PAGE=""
+  PAGE_REV="$(printf '%s' "$PAGE" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("revision",""))' 2>/dev/null)"
+  [ "$PAGE_REV" = "$NEW_REV" ] && break
+  sleep "${DOOR_READ_PAUSE:-3}"
+done
+if [ -z "$PAGE" ]; then
   echo "the door moved ($NEW_REV) but the ward could not be read back at $WARD/api/ward — look at it before telling anyone." >&2
-  exit 2; }
+  exit 2
+fi
+if [ "$PAGE_REV" != "$NEW_REV" ]; then
+  echo "the door moved ($NEW_REV) but after $READS reads the ward still answered from '${PAGE_REV:-?}' — the new revision never answered." >&2
+  echo "Traffic may still be moving, or the revision failed to serve; look at it before telling anyone." >&2
+  exit 2
+fi
 read -r PAGE_DOOR PAGE_FROM PAGE_KEPT_BY < <(printf '%s' "$PAGE" | python3 -c '
 import json, sys
 b = json.load(sys.stdin)
 print(b.get("queue", {}).get("door", "?"), b.get("board", {}).get("from", "?"), b.get("board", {}).get("kept_by") or "-")
 ' 2>/dev/null)
+echo "── answered by $PAGE_REV on read $READS"
 PAGE_STATUS="$(printf '%s' "$PAGE" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("policy",{}).get("catalogue",{}).get("status","?"))' 2>/dev/null)"
 echo "── door on the page: ${PAGE_DOOR:-?}  (board from ${PAGE_FROM:-?}${PAGE_KEPT_BY:+, kept by $PAGE_KEPT_BY})"
 echo "── status: ${PAGE_STATUS:-?}"
