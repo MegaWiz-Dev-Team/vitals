@@ -914,8 +914,12 @@ pub fn waiting_rows(
                 "country": pack.persona.country,
                 "difficulty": pack.difficulty.clone().or_else(|| held.map(|c| c.difficulty.clone())),
                 "endemic": pack.endemic,
+                // Filled for **her**, not for the case's own patient. A case is authored about
+                // a patient of its own and the ward places whoever the factory drew inside the
+                // band it allows; both are patients and only one of them is waiting here. Filled
+                // from the case, this sentence disagrees with the age printed beside it.
                 "case_title": held.map(|c| {
-                    crate::ward_case::fill_persona(&c.title, &crate::ward_case::a_patient_of(c))
+                    crate::ward_case::fill_persona(&c.title, &pack.persona)
                 }),
                 "portrait": portrait_for(&pack.portrait, "stable"),
             })

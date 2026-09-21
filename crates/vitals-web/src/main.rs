@@ -2378,9 +2378,11 @@ fn ward_chart(store: &store::Store, patient_id: u64) -> serde_json::Value {
             ward::portrait_for(&p.portrait, ward::portrait_state(her.state)).map(str::to_string)
         }),
         "case": (!case.is_empty()).then(|| case.clone()),
-        // The case's own words about its own patient: the title as its author wrote it, filled.
+        // The case's own words, filled for the patient in the bed rather than the patient the
+        // case was authored about — the age beside this sentence is hers, and the two have to be
+        // one person or a reader cannot tell which number belongs to whom.
         "case_title": held.as_ref().map(|c| {
-            ward_case::fill_persona(&c.title, &ward_case::a_patient_of(c))
+            pack.as_ref().map(|p| ward_case::fill_persona(&c.title, &p.persona))
         }),
         "difficulty": held.as_ref().map(|c| c.difficulty.clone()),
         "withdrawn": held.as_ref().map(|c| c.withdrawn),
@@ -2452,8 +2454,11 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
             let held = store
                 .get::<serde_json::Value>(ward_case::CASE_STORE, &ward_case::key_for(&pack.case))
                 .and_then(|c| ward_case::validate_case(&c).ok());
+            // Filled for the patient this receipt is about. `v["age"]` two lines down is hers,
+            // and a receipt whose sentence and whose age are about different people is a receipt
+            // nobody can check.
             v["case_title"] = serde_json::json!(held.as_ref().map(|c| {
-                ward_case::fill_persona(&c.title, &ward_case::a_patient_of(c))
+                ward_case::fill_persona(&c.title, &pack.persona)
             }));
             v["difficulty"] = serde_json::json!(held.as_ref().map(|c| c.difficulty.clone()));
             v["age"] = serde_json::json!(pack.persona.age);
