@@ -2100,13 +2100,53 @@ fn a_second_pass_is_refused_not_queued() {
 /// the API, the deck and the form cannot drift. A date that lives in three places is three dates.
 #[test]
 fn the_ward_opened_on_a_date_that_lives_in_one_place() {
-    use vitals_web::ward_chain::{catalogue_status, OPENED_ON};
+    use vitals_web::ward_chain::{catalogue_status, Door, OPENED_ON};
     assert_eq!(OPENED_ON, "2026-09-21", "the founder's date, ISO, the only copy in src");
     assert_eq!(
-        catalogue_status(),
+        catalogue_status(Door::Open),
         "provisional — under review by our clinical advisor · open for play since 21 Sep 2026",
         "both facts in one sentence, in the words the director set, no pronoun"
     );
+}
+
+/// **The sentence says the ward is open only when the ward is open.**
+///
+/// Live on production at 21:06 on the evening of the opening: the door had not turned — the
+/// founder's gcloud login had expired at 18:52 and the flip could not run — and `/api/ward`,
+/// `/api/ward/cases`, the catalogue page and the bedside badge all said "open for play since
+/// 21 Sep 2026" while `POST /api/ward/take` answered 404 and nobody could take a shift.
+///
+/// The first version composed the sentence from `OPENED_ON` alone. **A claim built from a constant
+/// instead of from the state it describes cannot be wrong, because nothing checks it** — which is
+/// the same failure as a comment that says "before anything is dropped" four lines after the thing
+/// that drops, and as a wrapper that prints "done" whatever cargo did. The date is still the only
+/// copy; what changed is that the door decides which half of the sentence is true.
+///
+/// In preview or closed the date is **absent**, not merely unclaimed: a reader who sees
+/// "21 Sep 2026" on the page concludes the ward is open, whatever the words around it say.
+#[test]
+fn the_status_says_open_only_when_the_door_is_open() {
+    use vitals_web::ward_chain::{catalogue_status, Door, OPENED_ON};
+
+    let open = catalogue_status(Door::Open);
+    assert!(open.contains("open for play since 21 Sep 2026"), "{open}");
+
+    for shut in [Door::Preview, Door::Closed] {
+        let said = catalogue_status(shut);
+        assert_eq!(
+            said,
+            "provisional — under review by our clinical advisor · not yet open for play",
+            "a ward nobody can play is not a ward that is open, whatever day it is"
+        );
+        assert!(!said.contains("2026") && !said.contains(OPENED_ON) && !said.contains("Sep"),
+                "and the date is absent rather than unclaimed — a reader who sees it concludes \
+                 the ward is open, whatever the words around it say: {said}");
+    }
+
+    // Both halves always carry the review status: that fact does not depend on the door.
+    for d in [Door::Open, Door::Preview, Door::Closed] {
+        assert!(catalogue_status(d).starts_with("provisional — under review by our clinical advisor"));
+    }
 }
 
 /// **The refill never admits onto a case the ward cannot place on.**
