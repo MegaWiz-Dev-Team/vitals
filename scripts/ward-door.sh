@@ -15,9 +15,9 @@
 #     different image from the one that was serving — a flip is not a deploy;
 #   - opens production only with the founder's word in FOUNDER_WORD, printed to the record;
 #     shut and preview are the safe direction and need no word;
-#   - reads /api/ward back from the revision it just made (traffic moves over seconds, and the
-#     old revision truthfully reports the old door) and fails if that page does not say the door
-#     it set. A board kept from a previous revision used to carry the old door with it (measured
+#   - waits until the service routes all traffic to the revision it just made, then reads
+#     /api/ward back from that revision and no other (the old one truthfully reports the old
+#     door), and fails if that page does not say the door it set. A board kept from a previous revision used to carry the old door with it (measured
 #     on staging 00072/73, 22 Sep 2026); the ward stamps revision, door and sentence together on
 #     the way out now, and this is where that is checked on the real path every time the door moves.
 #
@@ -132,6 +132,29 @@ if [ "$NEW_IMAGE" != "$CURRENT_IMAGE" ]; then
   echo "A flip is not a deploy. Route traffic back to $CURRENT_REV and find out what else changed." >&2
   exit 1
 fi
+
+# First: is the new revision serving everyone? A reading from it says what *it* reports; only when
+# the service routes all traffic to it does that reading speak for the service. Cloud Run sends
+# 100 % to the latest revision on a plain update, so this is short — but a reading taken before it
+# would be judging one revision and calling it the ward.
+LOOKS=0; SHARE=""
+while [ "$LOOKS" -lt "${DOOR_READS:-20}" ]; do
+  LOOKS=$((LOOKS + 1))
+  SHARE="$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format=json 2>/dev/null \
+    | python3 -c '
+import json, sys
+s = json.load(sys.stdin)
+print(sum(t.get("percent", 0) for t in s["status"].get("traffic", []) if t.get("revisionName") == sys.argv[1]))
+' "$NEW_REV" 2>/dev/null)"
+  [ "${SHARE:-0}" = 100 ] && break
+  sleep "${DOOR_READ_PAUSE:-3}"
+done
+if [ "${SHARE:-0}" != 100 ]; then
+  echo "the door moved ($NEW_REV) but after $LOOKS looks only ${SHARE:-0} % of traffic is on it — anything read now would have judged the revision, not the service." >&2
+  echo "Traffic may still be moving, or a tag or split is pinned on the service; look at it before telling anyone." >&2
+  exit 2
+fi
+echo "── all traffic on $NEW_REV after $LOOKS look(s)"
 
 # Read the door back off the ward itself — from the revision just made, and no other. Traffic
 # moves to a new revision over some seconds, so a read can land on the old one, which truthfully
