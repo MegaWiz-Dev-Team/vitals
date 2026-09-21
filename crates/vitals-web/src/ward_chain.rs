@@ -1757,7 +1757,49 @@ pub fn enqueue(store: &crate::store::Store, packs: Vec<crate::ward::Pack>) -> Qu
 /// Deterministic from the ward's own state, ties broken by the pack's own address. A ward that
 /// admitted a different patient on each tick from the same state would be one nobody could
 /// reproduce — and reproducing it is how a stranger checks us.
-pub fn choose_next(queue: &[(String, crate::ward::Pack)], on_ward_cases: &[String]) -> Option<String> {
+/// Which cases this ward can place a patient on, as the caller already holds them.
+///
+/// An argument rather than a lookup, so [`choose_next`] stays pure: queue in, choice out, the same
+/// answer from the same state, which is how a stranger reproduces the ward's admissions.
+pub struct Placeable {
+    /// Every case the catalogue holds, withdrawn included. Empty means *not read yet* — see
+    /// [`Placeable::may_place`].
+    known: std::collections::BTreeSet<String>,
+    withdrawn: std::collections::BTreeSet<String>,
+}
+
+impl Placeable {
+    pub fn of(known: &[String], withdrawn: &[String]) -> Placeable {
+        let mut all: std::collections::BTreeSet<String> = known.iter().cloned().collect();
+        all.extend(withdrawn.iter().cloned());
+        Placeable { known: all, withdrawn: withdrawn.iter().cloned().collect() }
+    }
+
+    /// As the ward's catalogue reads right now.
+    pub fn here(store: &crate::store::Store) -> Placeable {
+        let all = crate::ward_case::all(store);
+        Placeable {
+            known: all.iter().map(|c| c.case_id.clone()).collect(),
+            withdrawn: all.iter().filter(|c| c.withdrawn).map(|c| c.case_id.clone()).collect(),
+        }
+    }
+
+    /// Whether a patient may be admitted onto this case.
+    ///
+    /// **An empty catalogue places everybody.** A ward that has not read its cases yet is not a
+    /// ward that has lost them, and a fresh instance that refused its whole queue would open to
+    /// nobody at all — a cold start is exactly what an opening is. `beds_taken` carries the same
+    /// guard for the same reason.
+    pub fn may_place(&self, case: &str) -> bool {
+        self.known.is_empty() || (self.known.contains(case) && !self.withdrawn.contains(case))
+    }
+}
+
+pub fn choose_next(
+    queue: &[(String, crate::ward::Pack)],
+    on_ward_cases: &[String],
+    placeable: &Placeable,
+) -> Option<String> {
     use crate::ward::difficulty_of;
     let band_load = |band: &str| {
         on_ward_cases.iter().filter(|c| difficulty_of(c) == Some(band)).count()
@@ -1765,6 +1807,10 @@ pub fn choose_next(queue: &[(String, crate::ward::Pack)], on_ward_cases: &[Strin
     queue
         .iter()
         .filter(|(_, p)| !on_ward_cases.iter().any(|c| c == &p.case))
+        // The door's rule, on the other door. A pack whose case is withdrawn — or that the
+        // catalogue has never heard of — would be admitted and judged caseless on the same tick,
+        // leaving an account on chain with no case anybody can open.
+        .filter(|(_, p)| placeable.may_place(&p.case))
         .min_by_key(|(id, p)| {
             (difficulty_of(&p.case).map(band_load).unwrap_or(usize::MAX), id.clone())
         })
@@ -2566,7 +2612,7 @@ pub fn tick(
 
     for _ in 0..to_admit(out.open, BEDS, depth) {
         let queue = store.list::<crate::ward::Pack>(QUEUE_STORE);
-        let Some(id) = choose_next(&queue, &on_ward_cases) else {
+        let Some(id) = choose_next(&queue, &on_ward_cases, &Placeable::here(store)) else {
             out.notes.push(
                 "a bed is free and every queued patient has a case already on the ward — no two \
                  beds hold the same case at once, so the bed waits for the factory"

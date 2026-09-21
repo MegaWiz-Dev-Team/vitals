@@ -426,7 +426,13 @@ fn the_queue_keeps_each_patient_once_and_says_what_it_refused() {
 
 // ── the refill ──────────────────────────────────────────────────────────────
 
-use vitals_web::ward_chain::{choose_next, next_patient_id};
+use vitals_web::ward_chain::{choose_next, next_patient_id, Placeable};
+
+/// This test is about which patient a bed gets, not about which cases the ward can place on —
+/// so every case it names is placeable. The rule about withdrawn cases has its own test below.
+fn any_case() -> Placeable {
+    Placeable::of(&[], &[])
+}
 
 fn queued(case: &str, name: &str) -> (String, Pack) {
     let p = Pack {
@@ -455,28 +461,28 @@ fn the_next_patient_is_the_one_the_ward_is_missing() {
     // than arbitrary. A ward that admitted a different patient on each tick would be a ward whose
     // behaviour nobody could reproduce from the same state.
     let empty: Vec<String> = vec![];
-    let first = choose_next(&queue, &empty).expect("an empty ward admits somebody");
-    assert_eq!(first, choose_next(&queue, &empty).unwrap(), "the same state, the same patient");
+    let first = choose_next(&queue, &empty, &any_case()).expect("an empty ward admits somebody");
+    assert_eq!(first, choose_next(&queue, &empty, &any_case()).unwrap(), "the same state, the same patient");
 
     // Two interns already in beds: the student and the resident are what the ward is missing.
     let interns = vec!["ep2".to_string(), "osce-b".to_string()];
-    let pick = choose_next(&queue, &interns).expect("a bed to fill");
+    let pick = choose_next(&queue, &interns, &any_case()).expect("a bed to fill");
     assert!(pick == student.0 || pick == resident.0,
             "with two interns on the ward, a third would leave a student with nothing to open");
 
     // Every band once: the one band with nobody in it wins.
     let one_each = vec!["osce-a".to_string(), "ep2".to_string()];
-    let pick = choose_next(&[intern.clone(), resident.clone()], &one_each)
+    let pick = choose_next(&[intern.clone(), resident.clone()], &one_each, &any_case())
         .expect("a bed to fill");
     assert_eq!(pick, resident.0, "student and intern are held; resident is the empty band");
 
     // A case already in a bed is not admitted again, whatever else it would balance.
     let on_ward: Vec<String> = vec!["osce-a".into(), "ep2".into(), "osce-d4".into()];
-    assert!(choose_next(&queue, &on_ward).is_none(),
+    assert!(choose_next(&queue, &on_ward, &any_case()).is_none(),
             "no two beds hold the same case at once — the published rule, and an empty bed is \
              better than breaking it");
 
-    assert!(choose_next(&[], &empty).is_none(), "an empty queue admits nobody");
+    assert!(choose_next(&[], &empty, &any_case()).is_none(), "an empty queue admits nobody");
 }
 
 /// A patient id has to be one nobody has used, because it is her address.
@@ -2155,7 +2161,7 @@ fn the_refill_never_admits_onto_a_case_the_ward_cannot_place_on() {
 
     // A case the catalogue has never heard of reaches a bedside exactly as a withdrawn one does.
     let stranger = queued("never-compiled", "A Case Nobody Sent");
-    assert_eq!(choose_next(&[stranger.clone()], &empty, &held), None,
+    assert_eq!(choose_next(std::slice::from_ref(&stranger), &empty, &held), None,
                "\"no case\" and \"withdrawn case\" are the same thing to whoever opens the bed");
 
     // **The cold start.** Nothing loaded yet is not everything missing.
