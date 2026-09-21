@@ -98,6 +98,15 @@ fn the_mark_is_a_file_the_server_can_bake_in() {
     assert!(svg.contains("<svg"), "the mark is an SVG");
     assert!(svg.contains("viewBox=\"0 0 64 64\""),
             "a favicon with no viewBox does not scale down to 16 px: {svg}");
+
+    // The globe, not the monitor. The founder's ask on opening night, 21 ก.ย.: the ward's mark is
+    // the globe its front page is. Pinned on the geometry rather than on the bytes — a designer may
+    // re-cut the trace, and this should not fail for that — but the circle is what makes it a globe
+    // and the mint trace is what makes it Vitals.
+    assert!(svg.contains("<circle"), "the globe's outline: {svg}");
+    assert!(svg.matches("<ellipse").count() >= 2, "its meridians, which is what reads as a globe at 16 px");
+    assert!(svg.contains("#26C0A5"), "the mint trace, the one colour the mark shares with the ward");
+    assert!(svg.contains("#0E1719"), "on the ink ground the other pages wear");
 }
 
 #[test]
