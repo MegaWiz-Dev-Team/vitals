@@ -292,3 +292,50 @@ fn a_case_this_server_cannot_play_is_refused_before_it_is_counted() {
         assert!(r["id"].is_string(), "{good} stopped opening: {r}");
     }
 }
+
+/// **Two numbers that tell "nobody came" from "they came and did not press".**
+///
+/// Opening night, 21 ก.ย.: 360 arrivals on the globe and not one anchored shift. The counters could
+/// not say which of two very different things that was — nobody had opened a bed at all, or people
+/// had opened one and backed out of the cockpit. Those have opposite fixes: the first is an
+/// announcement problem, the second is that the page asks for something a stranger does not yet
+/// know how to give. Building a tutorial for the first would be building for a thing that is not
+/// broken.
+///
+/// So: how many bedsides were opened, and how many shifts were actually taken. Nothing about the
+/// person on either — the same rule as `arrived`: a count of events, never of people.
+#[test]
+fn the_ward_counts_bedsides_opened_and_shifts_taken() {
+    use vitals_web::store::Store;
+    use vitals_web::usage::Usage;
+
+    let dir = std::env::temp_dir().join(format!("vitals-usage-bedside-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store = Store::open(dir.clone()).expect("a store");
+    let mut u = Usage::open(&store);
+
+    let v = u.arrivals();
+    assert_eq!(v["bedsides_opened"], 0, "a ward nobody has looked at");
+    assert_eq!(v["shifts_taken"], 0);
+
+    u.opened_a_bedside(&store);
+    u.opened_a_bedside(&store);
+    u.opened_a_bedside(&store);
+    u.took_a_shift(&store);
+
+    let v = u.arrivals();
+    assert_eq!(v["bedsides_opened"], 3, "three people got as far as a patient");
+    assert_eq!(v["shifts_taken"], 1, "one of them put their hands on her");
+
+    // Kept across a restart, like every other count here — the answer to "what happened last
+    // night" must survive the night.
+    let again = Usage::open(&store);
+    let v = again.arrivals();
+    assert_eq!(v["bedsides_opened"], 3);
+    assert_eq!(v["shifts_taken"], 1);
+
+    assert!(v["derivation"].as_str().is_some_and(|d| d.contains("bedside")),
+            "and the page says how they are counted, like every other figure: {}", v["derivation"]);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
