@@ -2102,3 +2102,65 @@ fn the_ward_opened_on_a_date_that_lives_in_one_place() {
         "both facts in one sentence, in the words the director set, no pronoun"
     );
 }
+
+/// **The refill never admits onto a case the ward cannot place on.**
+///
+/// The case door refuses a pack naming a withdrawn case — "stays for the patients already on it,
+/// and nobody new" — and the refill was the other door nobody told. `choose_next` filtered on one
+/// thing only, that no two beds hold the same case at once, so a pack queued before its case was
+/// withdrawn would be chosen, admitted, and judged `caseless` by the very next `beds_taken` on the
+/// same tick: an admitted account on chain with no case anybody can open. That is the 18 ก.ย.
+/// incident (Ji-woo and Yonas) one step earlier in the pipeline.
+///
+/// Found on production the day of the opening: Solange Fotso (CMR, 43) sat eleventh in the queue
+/// on `ddx-anemia-4-en`, one of three cases the clinical advisor's rule 3.7 cut.
+///
+/// **The catalogue is an argument, not a lookup.** `choose_next` is pure — queue in, choice out —
+/// which is what makes the ward's admissions reproducible by a stranger from the same state. It
+/// takes what the caller already holds rather than reaching for a store.
+///
+/// **And an empty catalogue places everybody.** A fresh instance whose first read has not finished
+/// holds no cases, and a rule that refused every pack then would admit nobody at all on a cold
+/// start — 19:00 on opening night is exactly a cold start. `beds_taken` already carries this guard
+/// in the same words: "a catalogue this ward has not loaded yet is not a catalogue that lost her
+/// case".
+#[test]
+fn the_refill_never_admits_onto_a_case_the_ward_cannot_place_on() {
+    use vitals_web::ward::{Pack, Persona};
+    use vitals_web::ward_chain::{choose_next, pack_id, Placeable};
+
+    let queued = |case: &str, name: &str| {
+        let p = Pack {
+            difficulty: None, case: case.into(), endemic: false, portrait: Default::default(),
+            persona: Persona { name: name.into(), country: "THA".into(), age: 40, sex: "f".into() },
+        };
+        (pack_id(&p), p)
+    };
+    let good = queued("ep2", "A Placeable Case");
+    let gone = queued("ddx-anemia-4-en", "Solange Fotso");
+    let queue = vec![gone.clone(), good.clone()];
+    let empty: Vec<String> = vec![];
+
+    // The catalogue as the ward holds it: one case placeable, one withdrawn, and one the queue
+    // names that the catalogue has never heard of.
+    let held = Placeable::of(&["ep2".to_string()], &["ddx-anemia-4-en".to_string()]);
+
+    let pick = choose_next(&queue, &empty, &held).expect("a placeable patient is still admitted");
+    assert_eq!(pick, good.0, "the withdrawn case is skipped and the bed goes to somebody it can hold");
+
+    let only_gone = vec![gone.clone()];
+    assert_eq!(choose_next(&only_gone, &empty, &held), None,
+               "and with nothing else queued the bed waits, rather than admitting an account with \
+                no case anybody can open");
+
+    // A case the catalogue has never heard of reaches a bedside exactly as a withdrawn one does.
+    let stranger = queued("never-compiled", "A Case Nobody Sent");
+    assert_eq!(choose_next(&[stranger.clone()], &empty, &held), None,
+               "\"no case\" and \"withdrawn case\" are the same thing to whoever opens the bed");
+
+    // **The cold start.** Nothing loaded yet is not everything missing.
+    let nothing_loaded = Placeable::of(&[], &[]);
+    assert_eq!(choose_next(&only_gone, &empty, &nothing_loaded).as_deref(), Some(gone.0.as_str()),
+               "a catalogue this ward has not read yet places everybody — a fresh instance that \
+                refused the whole queue would open to nobody at all");
+}
