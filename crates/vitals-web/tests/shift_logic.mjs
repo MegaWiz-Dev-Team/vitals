@@ -233,14 +233,21 @@ assert.equal(endWords(null, false, her), null, 'in the bay the words are the pac
 assert.equal(endWords(null, true, her), null);
 
 const rest = endWords('1789554596', false, her);
-assert.equal(rest.label, 'hand over');
+assert.equal(rest.label, 'hand over (press twice)',
+             'the two-press latch is a property of the button and the button says so: a stranger \
+              who presses once and walks away has recorded nothing, and nothing told them');
+
 assert.match(rest.note, /writes it to her chain/, 'the patient’s own pronoun, not the sentence’s');
 assert.match(rest.note, /^Ends your shift/);
 assert.match(rest.note, /She stays on the ward/, 'and capitalised where the sentence starts');
 assert.equal(rest.note.includes('I have finished'), false);
 
 const armed = endWords('1789554596', true, him);
-assert.match(armed.label, /hand over/, 'the second press is the same act, said again');
+assert.equal(armed.label, 'press again to record',
+             'and the armed label names what the second press achieves. The rule this replaces \
+              asked for the same verb twice, so that nobody read the second press as a different \
+              act; "record" is the same act named by its consequence, and it is the word \
+              `primaryLabel` already uses for it.');
 assert.equal(armed.label.includes('end'), false, '"end" is the station’s word: a stay does not end here');
 assert.match(armed.note, /his chain/);
 assert.equal(armed.note.includes('her'), false, 'the ward admits men');
@@ -281,6 +288,11 @@ assert.equal(primaryLabel(true, true, 'Rafael Moreira', him),
              'and a finished shift is exactly the one with something left to do');
 assert.equal(primaryLabel(true, false, 'Rafael Moreira', him).includes('her'),
              false, 'the ward admits men');
+
+// The two buttons that hand over share the word the armed strip button uses, so a stranger who
+// reads "press again to record" does not read it as a different act from "hand over".
+assert.ok(/record/i.test(primaryLabel(true, false, 'Nusrat Jahan', her)));
+assert.ok(/record/i.test(endWords('1789554596', true, her).label));
 
 console.log('shift_logic: ok (and the page has one button)');
 
@@ -348,8 +360,15 @@ assert.equal(leaveWords(false).label, 'Leave without recording',
              'what the button does, in the words of what it does');
 assert.equal(leaveWords(false).say, '', 'and nothing said until it is pressed');
 assert.equal(leaveWords(true).label, 'press again to leave');
-assert.equal(leaveWords(true).say, 'nothing you did will be kept — leave?',
-             'asked once, in words, where the strip already speaks');
+assert.equal(leaveWords(true).say,
+             'this throws away everything you did — hand over instead?',
+             'asked once, in words, where the strip already speaks — and naming the thing to do \
+              instead, because the one stranger who took a shift on opening night pressed this \
+              and lost five minutes of work that the chain would have paid for');
+// The alternative is named in the question, never on the button: C4 below is about the labels, and
+// two buttons that both say "hand" are the bug it exists to prevent.
+assert.equal(leaveWords(true).label.toLowerCase().includes('hand'), false);
+assert.equal(leaveWords(false).label.toLowerCase().includes('hand'), false);
 
 // The two exits must not read alike. This is the whole of C4: one of them is irreversible and the
 // other is a loss, and a stranger has to tell them apart at a glance.
@@ -397,13 +416,23 @@ const { leaseLine } = new Function([grab('leaseLine'), 'return { leaseLine };'].
 assert.equal(leaseLine(1351), 'shift ends in 22:31');
 assert.equal(leaseLine(600), 'shift ends in 10:00');
 assert.equal(leaseLine(361), 'shift ends in 6:01', 'seconds are padded, minutes are not');
-assert.equal(leaseLine(9), 'shift ends in 0:09 — hand over to record it',
-             'nine seconds left is inside the last five minutes, and the instruction stays on');
+assert.equal(leaseLine(9), 'shift ends in 0:09 — hand over now, or this shift is lost',
+             'nine seconds left is inside the last two, where the line says what is at stake \
+              rather than what to do: the program refuses an anchor past the lease, so a shift \
+              that runs out is work that cannot be recorded at all');
 
 // The last five minutes carry the instruction, because that is when it is actionable.
 assert.equal(leaseLine(252), 'shift ends in 4:12 — hand over to record it');
 assert.equal(leaseLine(300), 'shift ends in 5:00 — hand over to record it', 'five minutes is inside it');
 assert.equal(leaseLine(301), 'shift ends in 5:01', 'and a second more is not');
+
+// And the last two minutes are stronger than the last five, because by then the instruction has
+// been on screen for three minutes and has not worked. This is the copy the founder asked for
+// after opening night: the only shift taken ran five minutes and was thrown away.
+assert.equal(leaseLine(120), 'shift ends in 2:00 — hand over now, or this shift is lost',
+             'two minutes is inside it');
+assert.equal(leaseLine(121), 'shift ends in 2:01 — hand over to record it',
+             'and a second more is still the gentler line');
 
 // Zero and past it: the bed is free and the shift cannot be anchored. Both halves are true and the
 // second is the one a stranger needs — their work is not on the chain and will not go there.
@@ -532,3 +561,77 @@ assert.equal(shouldStopBeating(null), false, 'and a torn answer is not an instru
 assert.equal(shouldStopBeating({ stop_beating: false }), false);
 
 console.log('shift_logic: ok (and a shift that cannot be rebuilt lets go)');
+
+// ── the three steps of a shift, said on the page ─────────────────────────────
+//
+// Opening night: 381 people opened the front page, one took a shift, and that shift ran five
+// minutes and ended in `/api/ward/left`. Somebody treated a patient and then threw the work away.
+// Nothing on the page had told them that pressing Hand over is the thing that makes it count, and
+// nothing had told them what a shift consists of.
+//
+// So the strip carries the three steps while the head is theirs, with the live one marked. `at` is
+// a function of what has actually happened — what has been asked, and what has been ordered —
+// because a strip that says "order something" to somebody who has not looked at the patient yet is
+// giving instructions in the wrong order, and a strip that marks nothing is decoration.
+const { wardGuide } = new Function([grab('wardGuide'), 'return { wardGuide };'].join('\n'))();
+
+assert.equal(wardGuide(false, 0, 0), null, 'before the head is taken there is no shift to guide');
+
+const fresh = wardGuide(true, 0, 0);
+assert.equal(fresh.steps.length, 3, 'three steps, always all three: it is a map, not a wizard');
+assert.equal(fresh.at, 1, 'a shift with nothing done yet is at the first step');
+assert.match(fresh.steps[0], /ask|examine/i);
+assert.match(fresh.steps[1], /order/i);
+assert.match(fresh.steps[2], /hand over/i, 'and the third step is the one that was never pressed');
+
+assert.equal(wardGuide(true, 3, 0).at, 2, 'somebody who has asked is being asked to order');
+assert.equal(wardGuide(true, 3, 1).at, 3, 'and one order in, the remaining step is to record it');
+assert.equal(wardGuide(true, 0, 1).at, 3,
+             'an order without a question still counts — the steps mark what has happened, they \
+              do not police the order it happened in');
+
+// The steps never change what they say, only which one is live. A strip whose words move under a
+// reader is a strip they stop reading.
+assert.deepEqual(wardGuide(true, 0, 0).steps, wardGuide(true, 9, 9).steps);
+
+console.log('shift_logic: ok (and the page says what a shift consists of)');
+
+// ── what the page says before a head is taken ────────────────────────────────
+//
+// A.4, and the founder's ruling behind it: nothing counts until the shift is handed over, and the
+// page has to say so before somebody starts rather than after they have lost it.
+//
+// The lease is the one number here that must not be typed. `leaseWords` above exists because
+// devnet ran at 0.166 s a slot on 17 ก.ย., which made the lease nine and a half minutes rather
+// than the twenty-three its nominal rate implies — so a page that says "you have 10 minutes" is a
+// page that will lie to somebody the day the rate moves. The measured figure or nothing.
+const { beforeTake } = new Function([grab('beforeTake'), 'return { beforeTake };'].join('\n'))();
+
+const unknown = beforeTake(null);
+assert.match(unknown, /nothing counts until you hand over/,
+             'the sentence that would have saved opening night\u2019s one shift');
+assert.equal(/\d/.test(unknown), false,
+             `a ward that has not measured its rate says no number at all: ${unknown}`);
+assert.equal(/10 minutes|ten minutes/i.test(unknown), false,
+             'and never the nominal one, which is the figure that was wrong by a factor of two');
+
+const known = beforeTake(9);
+assert.match(known, /9 minutes/, 'measured, it says the measured figure');
+assert.match(known, /nothing counts until you hand over/, 'and still says the part that matters');
+assert.match(beforeTake(23), /23 minutes/, 'whatever the chain is doing today');
+
+console.log('shift_logic: ok (and it says so before the shift, not after)');
+
+// ── the way to the guide, for somebody who has never done this ───────────────
+//
+// A.6. One link, to the page the server serves at /start, in the words of the question somebody
+// asks themselves rather than the name of a feature.
+const { guideLink } = new Function([grab('guideLink'), 'return { guideLink };'].join('\n'))();
+
+const link = guideLink();
+assert.match(link, /href="\/start"/, 'the guide the ward serves, same origin, no request leaves');
+assert.match(link, /first time/i, 'addressed to the person who needs it');
+assert.match(link, /two-minute|2-minute/i, 'and honest about what it costs them to read it');
+assert.equal(/http/i.test(link), false, 'nothing off this origin');
+
+console.log('shift_logic: ok (and there is a way to the guide)');

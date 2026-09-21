@@ -1878,6 +1878,16 @@ const ENDLABEL='I have finished';
    A shift is not an attempt and does not end: it is handed to whoever comes next, and whether the
    stay ends is the engine's to decide and the chain's to record. So the ward says "hand over"
    twice rather than "I have finished", and the pronoun is the pronoun of the person in the bed. */
+/* ── the guidance a first shift needs, and what the page does about it today ──
+   The only shift taken on opening night ran five minutes and ended in `/api/ward/left`: somebody
+   treated a patient and then threw the work away, because nothing on the page said that pressing
+   Hand over is what makes it count. These three are that guidance. They return nothing yet — the
+   page today says none of it — so the tests that describe them fail on the behaviour rather than
+   on the name. */
+function wardGuide(taken, asked, orders){ return null; }
+function beforeTake(minutes){ return ''; }
+function guideLink(){ return ''; }
+
 function endWords(ward, armed, g){
   if(!ward)return null;
   const Cap=w=>w.charAt(0).toUpperCase()+w.slice(1);
