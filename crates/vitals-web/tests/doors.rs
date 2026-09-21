@@ -182,3 +182,23 @@ fn a_scheduler_can_ask_for_the_pass_and_gets_the_pass_back() {
     let (again, _) = s.post("/api/ward/tick", Some("door-secret"), "");
     assert_eq!(again, 200);
 }
+
+/// **The team's dashboard is a page the ward serves, public, and it reads the ward same-origin.**
+///
+/// The founder, 20 ก.ย.: "ทีมผมต้องมี dashboard ให้ดู". One static page reading `/api/ward` and
+/// `/api/usage` every thirty seconds — arrivals, keys, shifts, beds, went home, died, the door, the
+/// revision, the board's provenance, the catalogue's counts. The ward sends no CORS headers, so a
+/// page that reads it has to be served by it: `GET /stats`, no-cache HTML like the other pages,
+/// not behind the door — there is nothing on it a stranger cannot already read from the API.
+#[test]
+fn the_dashboard_is_served_by_the_ward_and_reads_it_same_origin() {
+    let s = Server::start(Some("door-secret"));
+    let (code, body) = s.get("/stats");
+    assert_eq!(code, 200, "the dashboard is a page the ward serves: {}", &body[..body.len().min(200)]);
+    assert!(body.contains("api/usage") && body.contains("api/ward"),
+            "and it reads the ward and the usage counters from this origin, not another");
+    assert!(body.contains(r#"name="robots" content="noindex""#),
+            "a team page, not a landing: search engines are asked to leave it alone");
+    assert!(!body.contains("http://") && !body.contains("https://fonts."),
+            "no request leaves this origin from the dashboard");
+}

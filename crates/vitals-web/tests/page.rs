@@ -73,6 +73,9 @@ fn scripted_pages() -> Vec<(&'static str, String)> {
         ("index.html", page()),
         ("world/shift.html", ward_page()),
         ("review.html", review_page()),
+        // The team's dashboard: a script that reads two endpoints and draws tiles. Same three
+        // checks as every other page, or a duplicate id in it is found by a person at 03:00.
+        ("world/stats.html", static_page("world/stats.html")),
     ]
 }
 
