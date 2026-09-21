@@ -268,6 +268,15 @@ pub fn board_note(from: Origin, kept_at: u64, kept_by: Option<&str>) -> serde_js
     })
 }
 
+/// The facts about **the process answering**, written onto a board on the way out.
+///
+/// This is what `ward_now` does today, named and moved where a test can reach it: it stamps the
+/// revision and nothing else. The board it stamps may have been composed by a different revision
+/// behind a different door, and the door came along with it.
+pub fn stamp_host(v: &mut serde_json::Value, _door: crate::ward_chain::Door, revision: &str) {
+    v["revision"] = serde_json::json!(revision);
+}
+
 pub fn board_use(
     age: Option<std::time::Duration>,
     stored: bool,

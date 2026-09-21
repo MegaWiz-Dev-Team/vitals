@@ -2111,3 +2111,51 @@ fn the_catalogue_counts_what_a_patient_can_be_placed_on() {
                "out of service, and said rather than hidden: the ward keeps every case it was ever \
                 sent because shifts played on one still have to replay");
 }
+
+/// **The door is a fact about this host, and the board is not where it lives.**
+///
+/// Measured on staging, 22 Sep: a revision composed its board while the door was open, the board
+/// went to the store, the door was flipped to preview and a fresh instance came up. It served the
+/// kept board — and the kept board carries the whole policy block as the previous revision composed
+/// it, door and all. `/api/ward/cases` said "not yet open for play", because it composes live;
+/// `/api/ward` said "open for play since 21 Sep 2026", because it did not. Both were the same host
+/// answering at the same second. It stayed that way until the first tick.
+///
+/// Note which way that points on the night that matters. The sequence is deploy-in-preview, then
+/// flip the door: in that direction a fresh instance says *not yet open* for as long as it serves
+/// the kept board — after the door has opened, to the people arriving because it opened.
+///
+/// This is not the rule that says no field may change between two reads of the same board. That
+/// rule is about patients, and it is why the board is kept at all. The door is not on the board:
+/// it is a fact about the process answering, like the revision stamped beside it, and the sentence
+/// composed from it is too.
+#[test]
+fn the_door_and_its_sentence_are_stamped_on_the_way_out_not_kept_with_the_board() {
+    use vitals_web::ward::stamp_host;
+    use vitals_web::ward_chain::{catalogue_status, Door};
+
+    // The shape the store keeps: a board composed by a revision that was serving an open door.
+    let mut kept = serde_json::json!({
+        "queue": { "door": "open", "waiting": 20 },
+        "policy": { "catalogue": { "status": catalogue_status(Door::Open), "held": 75 } },
+        "patients": [],
+    });
+
+    // Served now, by a process that is behind a shut one.
+    stamp_host(&mut kept, Door::Preview, "vitals-world-00072-xyz");
+
+    assert_eq!(kept["queue"]["door"], "preview",
+               "the door a reader is told about is the door they are actually standing at");
+    assert_eq!(kept["policy"]["catalogue"]["status"], catalogue_status(Door::Preview),
+               "and the sentence composed from it is composed from the same door");
+    assert!(!kept["policy"]["catalogue"]["status"].as_str().unwrap_or_default().contains("2026"),
+            "a shut door makes no claim about a date: {}", kept["policy"]["catalogue"]["status"]);
+    assert_eq!(kept["revision"], "vitals-world-00072-xyz",
+               "stamped at the same seam as the door, because it is the same kind of fact");
+
+    // And nothing that *is* the board's is touched. The counts came off the chain read that built
+    // this board and re-stamping them here would be inventing them.
+    assert_eq!(kept["policy"]["catalogue"]["held"], 75);
+    assert_eq!(kept["queue"]["waiting"], 20);
+    assert_eq!(kept["patients"], serde_json::json!([]));
+}
