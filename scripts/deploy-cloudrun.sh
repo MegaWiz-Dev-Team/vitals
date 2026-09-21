@@ -300,45 +300,58 @@ if [ "$PHASE" = "build" ] || [ "$PHASE" = "all" ]; then
   # Through cloudbuild.yaml rather than --tag: the Dockerfile needs BuildKit, which the
   # implicit --tag build does not enable.
   #
-  # --format asks the build what it actually produced. Asking is the only way to tell "the image
-  # this run made" from "whatever the tag happened to point at" — at deploy time those two look
-  # identical: same reference, same green output, one of them yesterday's bytes.
-  #
-  # The fd 3 dance is because `builds submit` streams the build log to stdout (submit_util.py:
-  # `out = log.out`), on the same stream the --format value lands on. Capturing stdout plainly
-  # would swallow the twenty minutes of build output a human is watching, and swallowing output
-  # to gain a check is the trade this script is supposed to stop making. So fd 3 keeps the real
-  # stdout, tee puts the log back on it live, and only the last line — the value gcloud prints
-  # after the stream closes — is kept.
-  #
-  # Except as the ops service account: it is not a project Viewer, so gcloud cannot stream the log
-  # to it and — with the build green — exits 1, and the first deploy as that account (22 Sep 2026)
-  # died there with a finished image nobody deployed. Told not to stream, gcloud still waits for
-  # the build and answers with its status; the log stays on the build's own page, whose address
-  # gcloud prints first either way.
-  STREAM=""
-  case "$WHO" in
-    vitals-ops@vitals-academy.iam.gserviceaccount.com|vitals-ops@vitals-academy-dev.iam.gserviceaccount.com)
-      STREAM="--suppress-logs"
-      echo "── log       not streamed to a service account; read it on the build's page" ;;
-  esac
-  exec 3>&1
-  BUILT_DIGEST="$(gcloud builds submit --project "$PROJECT" --config cloudbuild.yaml \
-    --substitutions "_SERVICE=$SERVICE" $STREAM \
-    --format='value(results.images[0].digest)' . | tee /dev/fd/3 | tail -n 1)"
-  exec 3>&-
-  # Shape-checked, not just non-empty. If a future gcloud moves the build log or the value onto
-  # a different stream, the capture would quietly become a log line, and a log line compared
-  # against a digest fails in a way that reads like a stale image rather than like a broken
-  # script. Say which one it actually is.
+  # Three calls rather than one, because gcloud's exit code and the build's status are different
+  # questions and the first deploys as the ops service account (22 Sep 2026) died on the
+  # difference: the account is not a project Viewer, gcloud could not stream the log to it, and
+  # it exited 1 over a build that was green — a finished image nobody deployed, the worst shape a
+  # deploy failure can take, because the thing that failed was the reporting. So: submit names
+  # the build; the log is streamed as a convenience, and if that fails it fails alone; and what
+  # happened to the build is read back from the build itself, by id, which is the only fact
+  # that decides whether to deploy. The digest comes from the same answer.
+  BUILD_ID="$(gcloud builds submit --project "$PROJECT" --config cloudbuild.yaml \
+    --substitutions "_SERVICE=$SERVICE" --async \
+    --format='value(id)' . | tail -n 1 || true)"
+  if [ -z "$BUILD_ID" ]; then
+    echo "the submit named no build — nothing was built and nothing will be deployed" >&2
+    exit 1
+  fi
+  echo "── build     $BUILD_ID"
+  # Streaming is for the person watching; the account that cannot stream loses nothing it
+  # decides by. `|| true` is the whole point: a stream that fails is not a build that failed.
+  gcloud builds log --project "$PROJECT" --stream "$BUILD_ID" || true
+  # Then the fact. Polled here rather than trusted from the stream, so a stream that ended early
+  # or never started still ends with the build's own word for what it did.
+  BUILD_STATUS=""; BUILT_DIGEST=""
+  while :; do
+    ANSWER="$(gcloud builds describe "$BUILD_ID" --project "$PROJECT" \
+      --format='value(status,results.images[0].digest)' 2>/dev/null)" || {
+      echo "build $BUILD_ID: status unknown — the build could not be asked what happened. That is not a failed build" >&2
+      echo "and not a successful one; look at it before deploying anything:" >&2
+      echo "    gcloud builds describe $BUILD_ID --project $PROJECT" >&2
+      exit 1; }
+    BUILD_STATUS="${ANSWER%%	*}"
+    BUILT_DIGEST="${ANSWER#*	}"; [ "$BUILT_DIGEST" = "$ANSWER" ] && BUILT_DIGEST=""
+    case "$BUILD_STATUS" in
+      QUEUED|WORKING|PENDING) sleep "${BUILD_POLL_SECONDS:-10}" ;;
+      *) break ;;
+    esac
+  done
+  if [ "$BUILD_STATUS" != SUCCESS ]; then
+    echo "build $BUILD_ID: ${BUILD_STATUS:-no status} — read from the build itself; not deploying. The build's own page has the log:" >&2
+    echo "    https://console.cloud.google.com/cloud-build/builds/$BUILD_ID?project=$PROJECT" >&2
+    exit 1
+  fi
+  echo "── status    build $BUILD_ID: SUCCESS, read from the build itself"
+  # Shape-checked, not just non-empty: a value that is not a digest would fail later as a
+  # stale-image mismatch and send someone hunting an image that does not exist. Say which it is.
   case "$BUILT_DIGEST" in
     sha256:*) ;;
     "") echo "the build finished but named no image digest — refusing to deploy bytes nothing can identify" >&2
         exit 1 ;;
-    *)  echo "the build's last line of output was not a digest:" >&2
+    *)  echo "the build's answer for its image was not a digest:" >&2
         echo "  $BUILT_DIGEST" >&2
-        echo "this script reads the digest from --format=value(results.images[0].digest); if gcloud" >&2
-        echo "has changed where that lands, fix the capture rather than skipping the check." >&2
+        echo "this script reads it from --format=value(status,results.images[0].digest); if gcloud" >&2
+        echo "has changed that field, fix the read rather than skipping the check." >&2
         exit 1 ;;
   esac
   echo "── built     $BUILT_DIGEST"
