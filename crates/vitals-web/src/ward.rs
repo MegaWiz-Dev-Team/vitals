@@ -1273,9 +1273,15 @@ fn policy(
                      those are vitals.academy’s, and this ward refuses them at the door",
             // Counted at this read rather than written down: a number in prose is a number that
             // goes stale the next time the compiler sends anything.
-            "held": cases.map(<[_]>::len),
-            "provisional": cases.map(|c| c.iter().filter(|c| c.provisional).count()),
-            "reviewed": cases.map(|c| c.iter().filter(|c| !c.provisional).count()),
+            // Of the cases a patient can be placed on. A withdrawn case is out of service —
+            // the placement rule, the door and the catalogue page all already treat it so — and a
+            // `held` that counted it read 138 on staging beside a ward that could use 75.
+            "held": cases.map(|c| c.iter().filter(|c| !c.withdrawn).count()),
+            "provisional": cases.map(|c| c.iter().filter(|c| !c.withdrawn && c.provisional).count()),
+            "reviewed": cases.map(|c| c.iter().filter(|c| !c.withdrawn && !c.provisional).count()),
+            // Said rather than hidden: the ward keeps every case it was ever sent, because shifts
+            // already played on one still have to replay. `held + withdrawn` is what is in the store.
+            "withdrawn": cases.map(|c| c.iter().filter(|c| c.withdrawn).count()),
             // Both facts in one sentence, from the one constant — the bedside and the catalogue
             // page show this same string rather than composing their own.
             "status": crate::ward_chain::catalogue_status(),
