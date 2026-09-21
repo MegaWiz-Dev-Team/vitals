@@ -76,7 +76,7 @@ Fees on devnet are paid by the relay: 10,000 lamports a shift (two signatures), 
 
 - ~~The status sentence still ignores the door.~~ Fixed 21 Sep (`catalogue_status(door)`, `8512cbc`); deployed 22 Sep.
 - ~~The refill can admit a queued patient whose case was withdrawn.~~ Fixed 21 Sep (`Placeable::may_place`, `e57609a`, with the cold-start guard); deployed 22 Sep.
-- The ops service account cannot yet submit Cloud Build; deploys still run under the founder.
+- ~~The ops service account cannot yet submit Cloud Build.~~ The bucket write and the builds list pass as the service account since 22 Sep (the earlier denial was most likely IAM propagation); the first deploy under it is the next staging deploy.
 - 0 of 75 cases carry the *reviewed* label: the advisor's review exists and is applied to the packs, but the label waits on confirming its provenance directly with him.
 - Nobody outside the team had taken a shift by midnight. The first stranger's receipt will be the first real test of everything above.
 
@@ -87,7 +87,7 @@ The founder's question the morning after was the right one: not *what went wrong
 | # | Failure | What makes it impossible | Status |
 |---|---------|--------------------------|--------|
 | 1 | A person's login was the only way to open the door | `scripts/ward-door.sh open\|preview\|closed` flips the door as the ops service account, from the secret, with no build — and refuses to run as a person. The scheduled tick and the factory already run as the service account. | `scripts/ward-door.sh` done 22 Sep (branch `cwf/ops`, 15 cases in its harness, run by gates); SA in use for the factory and the ticker since 21 Sep |
-| 2 | The service account lacked one role on the one call that mattered | The roles are written down with the service account, and `scripts/opening-check.sh` exercises every call the opening needs (secret read, revision describe, image pull, build submit) as the service account, days before, and prints one line per call. | check script queued, 23 Sep; Cloud Build grant still open |
+| 2 | The service account lacked one role on the one call that mattered | The roles are written down with the service account, and `scripts/opening-check.sh` exercises every call the opening needs (secret read, revision describe, image pull, build submit) as the service account, days before, and prints one line per call. | `scripts/opening-check.sh` done 22 Sep (`cwf/ops`, 22 harness cases); run for real the same night: 15 of 15 on production, staging passing except a board the idle instance had not rebuilt — the check working. The Cloud Build bucket write now passes as the service account in both projects |
 | 3 | A public sentence composed from a constant | `catalogue_status` takes the door; `tests/doors.rs` holds the preview wording and the open wording apart, and the end-to-end door suite (33 cases) reads the sentence off the running service. | done, deployed 22 Sep |
 | 4 | An instrument that lied | Every boot and pass span is named; the remainder prints as `elsewhere`; the slow-pass line carries median and max per patient. A span whose name does not match its body cannot pass the boot test that reads the marks in order. | done, deployed 20 Sep |
 | 5 | A fix that armed a dormant bug | The ordering rule (repair before sweep) is a test that runs with a tape the sweep would have dropped; the comment is gone, the test stays. | done, deployed 20 Sep |
