@@ -2210,3 +2210,46 @@ fn the_refill_never_admits_onto_a_case_the_ward_cannot_place_on() {
                "a catalogue this ward has not read yet places everybody — a fresh instance that \
                 refused the whole queue would open to nobody at all");
 }
+
+
+/// **One answer, one rule.** The queue block described the rule B.1 replaced.
+///
+/// `/api/ward` carries two blocks that both say how a patient reaches a bed. On 22 ก.ย. the policy
+/// block was rewritten for the arrival clock — patients arrive whether or not a bed is free — and
+/// the queue block was not, so one answer said both things at once: `queue.filled_by` still told a
+/// reader that a bed frees on discharge or death and the next queued patient takes it, and
+/// `queue.beds` still published three as though it were a cap.
+///
+/// The commit that changed the first of them says, in its own message, that a block describing a
+/// rule the ward no longer follows is worse than one that says nothing. It was written by me eight
+/// hours before this test, and the sentence it describes was still in the answer.
+///
+/// So both blocks are held to the same rule here, together, rather than each being trusted to
+/// remember the other.
+#[test]
+fn the_queue_block_and_the_policy_block_describe_the_same_ward() {
+    use vitals_web::ward_chain::queue_block;
+    let dir = std::env::temp_dir().join(format!("vitals-qb-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store = vitals_web::store::Store::open(dir.clone()).expect("a store");
+
+    let q = queue_block(&store);
+
+    // Not a cap. `beds` here was three, beside a policy block that had already stopped calling it
+    // one — and three is the floor the ward keeps trying to hold free, not a ceiling on anybody.
+    assert!(q.get("beds").is_none(),
+            "the queue block publishes no bed count: the census is in policy, where it is one \
+             number with one meaning: {q}");
+    assert_eq!(q["beds_kept_free"], 3, "what it does publish is the floor, named as the floor");
+
+    let filled = q["filled_by"].as_str().unwrap_or_default();
+    for gone in ["a bed frees on discharge or death and the next queued patient takes it"] {
+        assert!(!filled.contains(gone), "the queue still describes the rule B.1 replaced: {filled}");
+    }
+    for said in ["every", "minutes", "whether"] {
+        assert!(filled.contains(said),
+                "it has to say that arrivals are on a clock and do not wait for a bed: {filled}");
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
