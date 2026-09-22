@@ -112,7 +112,8 @@ fn the_verifier_still_sees_one_tape() {
 
 // ── the idle clock ──────────────────────────────────────────────────────────
 
-use vitals_replay::{idle_sim_seconds, pass_idle, IDLE_SIM_PER_REAL};
+use vitals_replay::{idle_sim_seconds, idle_sim_seconds_on_arrival, pass_idle,
+                    ARRIVAL_IDLE_CAP_SIM_SECONDS, IDLE_SIM_PER_REAL};
 
 /// A patient nobody visits is not the patient you left.
 ///
@@ -171,6 +172,55 @@ fn the_idle_clock_is_slow_linear_and_derivable() {
 
     // A negative span is a clock going backwards, never a patient getting younger.
     assert_eq!(idle_sim_seconds(-90.0), 0.0);
+}
+
+/// **A gap costs her everything it lasted, and costs whoever finally comes at most five minutes.**
+///
+/// Two rules about the same gap, and the ward needs both to be true at once. The first stranger
+/// ever to take a shift here, on 22 Sep 2026, opened Nadege Toussaint after she had been alone for
+/// twelve real hours: at 1:60 that is twelve simulated minutes into a PSVT case, so she was already
+/// past the point the case can be treated from. He asked her nine questions over forty seconds,
+/// she arrested, and he left without recording anything. A ward where the first shift is always a
+/// death teaches one thing, which is not to come back.
+///
+/// The founder's ruling, 23 Sep 2026: "รักษาหลักการ 'ไม่มีใครมาก็ตาย' ไว้ แต่ให้คนที่มาถึงได้รักษาจริง
+/// ไม่ใช่มาดูตาย" — keep the principle that nobody coming means she dies, but whoever does come gets
+/// to treat, not to watch a death.
+///
+/// So: `idle_sim_seconds` stays uncapped and keeps its own test above, because that is the rule the
+/// ticker applies when it decides she has died alone. `idle_sim_seconds_on_arrival` is the rule for
+/// a chart being brought up to the moment somebody arrived, and it stops at five simulated minutes.
+/// The two functions exist separately so neither can be quietly used for the other's job.
+#[test]
+fn a_stranger_who_arrives_finds_her_five_minutes_in_at_the_most() {
+    // Below the cap the two rules agree exactly — the cap is a ceiling, never a rescaling, so a
+    // patient alone for one hour is one simulated minute in on both clocks.
+    for real in [0.0, 60.0, 3600.0, 4.0 * 3600.0, 5.0 * 3600.0] {
+        assert!((idle_sim_seconds_on_arrival(real) - idle_sim_seconds(real)).abs() < 1e-9,
+                "under the cap an arrival sees exactly what the gap cost: {real} real seconds");
+    }
+
+    // Five real hours is the hinge: 300 simulated seconds, which is the cap itself.
+    assert!((idle_sim_seconds_on_arrival(5.0 * 3600.0) - 300.0).abs() < 1e-9);
+    assert!((ARRIVAL_IDLE_CAP_SIM_SECONDS - 300.0).abs() < 1e-9,
+            "five simulated minutes, the founder's number on 23 Sep");
+
+    // Past it, every gap is worth the same to the person who walks in — which is the whole point.
+    // Nadege's twelve real hours and a patient abandoned over a long weekend hand the same state to
+    // whoever opens the bed, and it is a state with a shift's worth of time left in it.
+    for real in [5.0 * 3600.0 + 1.0, 12.0 * 3600.0, 3.0 * 24.0 * 3600.0] {
+        assert!((idle_sim_seconds_on_arrival(real) - 300.0).abs() < 1e-9,
+                "a gap past the cap hands over five simulated minutes, not {}",
+                idle_sim_seconds_on_arrival(real));
+    }
+
+    // And the uncapped rule is still uncapped, because the ticker still has to be able to finish
+    // her. If this ever stops holding, being abandoned on this ward became survivable by accident.
+    assert!(idle_sim_seconds(12.0 * 3600.0) > ARRIVAL_IDLE_CAP_SIM_SECONDS,
+            "twelve hours alone is still twelve simulated minutes to the engine that closes beds");
+
+    // A negative span is a clock disagreeing with itself here too, never five free minutes.
+    assert_eq!(idle_sim_seconds_on_arrival(-90.0), 0.0);
 }
 
 #[test]
