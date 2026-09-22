@@ -212,6 +212,12 @@ run "concurrency is printed next to the service" accepts "── concurrency 80 
   --
 run "concurrency can be set, and the deploy says what it set" accepts "── concurrency 40 requests in flight per instance" \
   -- CONCURRENCY=40
+# min-instances is the founder's ruling of 20 Sep 2026: 0 on every service, billing. A default of 1
+# in the script contradicted it, and every deploy that forgot the variable re-created the cost.
+run "min-instances defaults to the founder's 0 and says so" accepts "── min-instances 0 (MIN_INSTANCES; the founder's ruling of 20 Sep 2026 is 0 on every service)" \
+  --
+run "min-instances 1 is possible but the summary names it as the exception" accepts "── min-instances 1 (MIN_INSTANCES; the founder's ruling of 20 Sep 2026 is 0 on every service) — an exception he named, not a default" \
+  -- MIN_INSTANCES=1
 run "the same name in another project is still not you" rejects "not you" \
   -- STUB_ACCOUNT=vitals-ops@some-other-project.iam.gserviceaccount.com
 run "a look-alike is still not you" rejects "not you" \
