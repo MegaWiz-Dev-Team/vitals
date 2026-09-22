@@ -164,7 +164,8 @@ well</li>
 already played, so they do not play at you twice</li>
 <li><code>vitals.sets</code> — not about you at all: the list of case sets this server sent us,
 kept so the shelf still draws itself when the network does not answer</li>
-<li><code>vitals-analytics-consent</code> (§8) and <code>vitals-review-draft</code> (§7)</li>
+<li><code>vitals-analytics-consent</code> (§8), <code>vitals-review-draft</code> and
+<code>vitals-review-lang</code> (§7)</li>
 </ul>
 <p>All of it is local to that browser. Clearing site data removes all of it.</p>
 <p class="note">That list is meant to be exhaustive, and it was one key short until we checked it
@@ -330,6 +331,11 @@ who both leave the name blank and answer identically are stored as a single reco
 on that endpoint can tell them apart.</p>
 <p>Your draft is saved as you type under <code>vitals-review-draft</code> in your own browser, and
 it never leaves your device until you press send. A successful send clears it.</p>
+<p>If you switch the form between Thai and English, that choice is remembered under
+<code>vitals-review-lang</code> in the same browser. It holds one word, <code>th</code> or
+<code>en</code>, it is never sent anywhere, and it exists so a reader who chose a language is not
+asked again. Until you choose, the form follows the language your browser asks for and stores
+nothing.</p>
 <p>What we do with a review: read it, and change the product. That is all. It is never an input to
 anybody's run, score, mark sheet or anchored record — the code that files a review touches no
 session, no tape and no tree, and an opinion about the product is data recorded beside a run and

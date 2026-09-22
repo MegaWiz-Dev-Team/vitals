@@ -14,7 +14,7 @@
 
 import { readFileSync } from 'node:fs';
 
-const [, , htmlPath, forId = '', click = ''] = process.argv;
+const [, , htmlPath, forId = '', click = '', lang = 'th'] = process.argv;
 const html = readFileSync(htmlPath, 'utf8');
 
 // ── a document, just large enough ───────────────────────────────────────────────────────────
@@ -103,7 +103,11 @@ for (const m of html.matchAll(/<([a-z0-9]+)\b[^>]*\bid="([^"]+)"[^>]*>/gi)) {
 }
 const meta = new El('meta');
 meta.content = 'test-build';   // served by us: the send button posts, and the form id travels
+// The root element. The page stamps the reader's language on it, and a document without one is a
+// document no browser has ever served — the page should not have to check for it.
+const documentElement = new El('html');
 const document = {
+  documentElement,
   getElementById: id => byId[id] || null,
   createElement: tag => new El(tag),
   querySelector: sel => sel === 'meta[name="build"]' ? meta : body.querySelector(sel),
@@ -111,6 +115,9 @@ const document = {
   body,
   execCommand: () => true,
 };
+// Nothing pre-seeded. The language comes from `navigator` below, the way it does for a reader who
+// has never touched the switch, and this store starts empty so that a test asking what the form
+// *writes* to a browser sees only what the form wrote.
 const store = {};
 const localStorage = {
   getItem: k => (k in store ? store[k] : null),
@@ -119,7 +126,8 @@ const localStorage = {
 };
 const window = { scrollTo() {}, claude: undefined };
 const location = { search: forId ? `?for=${forId}` : '' };
-const navigator = {};
+const navigator = { language: lang === 'en' ? 'en-GB' : 'th-TH',
+                    languages: [lang === 'en' ? 'en-GB' : 'th-TH'] };
 const URL = { createObjectURL: () => 'blob:', revokeObjectURL() {} };
 class Blob { constructor() {} }
 const fetch = () => Promise.reject(new Error('not here'));
@@ -150,6 +158,11 @@ const out = {
     .map(c => c.querySelector('textarea[data-q]').dataset.q),
   // English-against-Thai rows per card, in order — the language review's whole content.
   rows: questions.querySelectorAll('section.q').map(c => c.querySelectorAll('.lines tr').length),
+  // The three labels the script writes onto every card. They are not elements in the markup, so
+  // they have no Thai to be read off the page — and on 22 ก.ย. that fallback fell through to the
+  // English string and headed every card of the Thai form in English. Reported here so the rule
+  // that catches it is a rule about these three labels rather than a coincidence.
+  ctx_labels: [...new Set(questions.querySelectorAll('.ctx dt').map(d => d.textContent))],
   draft_keys: Object.keys(store),
 };
 process.stdout.write(JSON.stringify(out));

@@ -852,8 +852,79 @@ fn built(for_id: &str, click: &str) -> serde_json::Value {
     serde_json::from_slice(&out.stdout).expect("the harness prints one JSON object")
 }
 
+/// The same, in a browser asking for a named language. `built` is a Thai browser, which is what
+/// every test written before the English side existed means by "the form".
+fn built_in(for_id: &str, click: &str, lang: &str) -> serde_json::Value {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let out = std::process::Command::new("node")
+        .arg(dir.join("tests/review_logic.mjs"))
+        .arg(dir.join("static/review.html"))
+        .arg(for_id)
+        .arg(click)
+        .arg(lang)
+        .output()
+        .expect("run node");
+    assert!(out.status.success(), "review.html did not run in {lang}:\n{}", String::from_utf8_lossy(&out.stderr));
+    serde_json::from_slice(&out.stdout).expect("the harness prints one JSON object")
+}
+
 fn ids_of(v: &serde_json::Value) -> Vec<String> {
     v["ids"].as_array().unwrap().iter().map(|s| s.as_str().unwrap().to_string()).collect()
+}
+
+/// **The English form asks the same questions, in the same order, under the same ids.**
+///
+/// The founder posted the bare `/review` link internationally on 22 ก.ย. and the form was Thai.
+/// The questions are the substance — an English frame over Thai questions would have taken a
+/// reviewer's time before telling them they could not answer — so the physician set has an English
+/// twin, and a reader whose browser does not ask for Thai gets it without looking for a switch.
+///
+/// Twin, not translation-in-place: the Thai is addressed to one advisor who knows the product and
+/// stays exactly as he has it. What has to hold between them is that they are the *same form*. Same
+/// ids, same numbering, same option codes — so an answer sent in either language lands on the same
+/// question, the two can be read side by side, and nothing already submitted becomes unreadable.
+///
+/// This is the part that rots without a test. A question added to one side and forgotten on the
+/// other is invisible until a reviewer answers something nobody is looking at.
+#[test]
+fn the_english_physician_form_is_the_same_form_as_the_thai_one() {
+    let th = built("", "physician");
+    let en = built_in("", "physician", "en");
+
+    assert_eq!(ids_of(&th), ids_of(&en),
+               "the two languages ask the same questions in the same order, under the same ids");
+    assert_eq!(th["groups"].as_array().map(Vec::len), en["groups"].as_array().map(Vec::len),
+               "and the same number of sections: {} against {}", th["groups"], en["groups"]);
+
+    // The English is English. A section heading left in Thai is the half-translated state that is
+    // worse than either language on its own, because it looks finished.
+    let thai = |v: &serde_json::Value| v.to_string().chars().any(|c| ('\u{0E00}'..='\u{0E7F}').contains(&c));
+    assert!(!thai(&en["groups"]), "an English section heading is still Thai: {}", en["groups"]);
+    assert!(!thai(&en["title"]), "the English title is still Thai: {}", en["title"]);
+
+    // And the Thai side is untouched by any of it.
+    assert!(thai(&th["title"]), "the Thai form is still Thai: {}", th["title"]);
+
+    // **The three labels on every card, in both directions.**
+    //
+    // These are written by the script rather than served in the markup, so they have no element
+    // to read a Thai string off. On 22 ก.ย. that fallback chain ended at the English string, and
+    // every card of the *Thai* form was headed in English — the advisor and the student reviewer
+    // would have opened their own links to that. It was caught by a test that reads the served
+    // page for a Thai sentence, which is a coincidence rather than a rule, so here is the rule.
+    //
+    // A check that counts Thai characters across the whole page cannot catch this: twenty-six
+    // Thai questions drown three English headings. It has to be these three, named.
+    let th_labels = th["ctx_labels"].as_array().expect("the harness reports the card labels");
+    let en_labels = en["ctx_labels"].as_array().expect("the harness reports the card labels");
+    assert_eq!(th_labels.len(), 3, "three labels on a Thai card: {th_labels:?}");
+    assert_eq!(en_labels.len(), 3, "three labels on an English card: {en_labels:?}");
+    for l in th_labels {
+        assert!(thai(l), "a card on the Thai form is headed in English: {l}");
+    }
+    for l in en_labels {
+        assert!(!thai(l), "a card on the English form is headed in Thai: {l}");
+    }
 }
 
 /// **An instance selects its own question set, and the old instance still selects the old one.**
@@ -1053,10 +1124,17 @@ fn the_review_form_does_not_promise_that_no_address_is_kept() {
         };
     }
     visible.push_str(rest);
-    assert!(
-        !visible.contains("ไม่เก็บ IP"),
-        "review.html claims again that it keeps no IP — `/api/review` is metered per address"
-    );
+    // Both languages, because the false claim can now come back through either. The English side
+    // was written on 22 ก.ย. when the founder posted the link internationally, and a guard that
+    // only reads Thai would have let the softer sentence in through the new door.
+    for claim in ["ไม่เก็บ IP", "we keep no IP", "do not keep your IP", "no IP address is kept",
+                  "your IP is not kept", "we don’t keep your IP", "we don't keep your IP"] {
+        assert!(
+            !visible.to_lowercase().contains(&claim.to_lowercase()),
+            "review.html claims again that it keeps no IP ({claim}) — `/api/review` is metered \
+             per address"
+        );
+    }
     assert!(
         visible.contains("href=\"/privacy\""),
         "review.html says something about data and gives the reader nowhere to check it"

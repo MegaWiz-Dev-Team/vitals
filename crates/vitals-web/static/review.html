@@ -121,21 +121,32 @@
 <div class="wrap">
 
   <header style="display:flex;flex-direction:column;gap:10px">
-    <span class="eyebrow">Vitals · ใบตรวจ</span>
-    <h1 id="title">ตรวจ Vitals</h1>
-    <p class="sub" id="lede">เลือกก่อนว่าคุณตรวจในบทบาทไหน — คำถามจะเปลี่ยนตามบทบาท</p>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
+      <span class="eyebrow" data-t="eyebrow">Vitals · ใบตรวจ</span>
+      <!-- Two words, not a flag: a flag is a country and this is a language. The page picks the
+           one the browser asks for and remembers a choice made here, so a reader who came from an
+           English post is never shown a Thai form and told to look for a switch. -->
+      <span class="langsw" role="group" aria-label="language">
+        <button type="button" id="lang-th" class="linky" lang="th">ไทย</button>
+        <span aria-hidden="true">·</span>
+        <button type="button" id="lang-en" class="linky" lang="en">English</button>
+      </span>
+    </div>
+    <h1 id="title" data-t="title">ตรวจ Vitals</h1>
+    <p class="sub" id="lede" data-t="lede">เลือกก่อนว่าคุณตรวจในบทบาทไหน — คำถามจะเปลี่ยนตามบทบาท</p>
     <p class="sub" id="addressed" hidden></p>
+    <p class="sub" id="langnote" hidden></p>
   </header>
 
   <section id="pick">
     <div class="roles">
       <button type="button" id="r-student" aria-pressed="false">
-        นักศึกษาแพทย์
-        <small>ความสมจริง · ความยาก · OSCE จริง</small>
+        <span data-t="role_student">นักศึกษาแพทย์</span>
+        <small data-t="role_student_sub">ความสมจริง · ความยาก · OSCE จริง</small>
       </button>
       <button type="button" id="r-physician" aria-pressed="false">
-        แพทย์
-        <small>ขนาดยา · เกณฑ์คะแนน · รหัสโรค</small>
+        <span data-t="role_physician">แพทย์</span>
+        <small data-t="role_physician_sub">ขนาดยา · เกณฑ์คะแนน · รหัสโรค</small>
       </button>
     </div>
   </section>
@@ -146,15 +157,15 @@
 
     <section class="card">
       <div class="group">
-        <label>ชื่อ <span class="sub">(ไม่ใส่ก็ได้ — ความเห็นที่ไม่ลงชื่อก็ยังมีค่า)</span>
+        <label><span data-t="f_name">ชื่อ</span> <span class="sub" data-t="f_name_sub">(ไม่ใส่ก็ได้ — ความเห็นที่ไม่ลงชื่อก็ยังมีค่า)</span>
           <input type="text" id="name" autocomplete="name">
         </label>
-        <label>ช่องทางติดต่อกลับ <span class="sub">(ถ้าอยากให้เราถามต่อได้)</span>
+        <label><span data-t="f_contact">ช่องทางติดต่อกลับ</span> <span class="sub" data-t="f_contact_sub">(ถ้าอยากให้เราถามต่อได้)</span>
           <input type="text" id="contact" autocomplete="off">
         </label>
         <label class="cb" id="anonwrap" hidden>
           <input type="checkbox" id="anonymous">
-          <span>ตรวจให้ แต่<strong>ไม่ประสงค์ให้ระบุชื่อ</strong>ในไฟล์เกณฑ์ให้คะแนน
+          <span data-t="f_anon">ตรวจให้ แต่<strong>ไม่ประสงค์ให้ระบุชื่อ</strong>ในไฟล์เกณฑ์ให้คะแนน
             <span class="sub" style="display:block">เราจะใช้คำว่า “ตรวจโดยแพทย์เวชปฏิบัติ” แทน</span></span>
         </label>
       </div>
@@ -163,8 +174,8 @@
     <section id="questions" class="group" style="margin-top:22px"></section>
 
     <section class="card" style="margin-top:22px" id="notecard">
-      <label><span class="qlabel">อย่างอื่นที่อยากบอก</span>
-        <span class="sub">ไม่เข้าข้อไหนก็เขียนตรงนี้ หรือข้อไหนเขียนไม่พอก็เขียนต่อที่นี่ได้ — ช่องนี้มักเป็นช่องที่มีประโยชน์ที่สุด</span>
+      <label><span class="qlabel" data-t="f_notes">อย่างอื่นที่อยากบอก</span>
+        <span class="sub" data-t="f_notes_sub">ไม่เข้าข้อไหนก็เขียนตรงนี้ หรือข้อไหนเขียนไม่พอก็เขียนต่อที่นี่ได้ — ช่องนี้มักเป็นช่องที่มีประโยชน์ที่สุด</span>
         <textarea id="notes" style="min-height:120px"></textarea>
       </label>
     </section>
@@ -174,7 +185,7 @@
          recorded five minutes of rulings is worse than never offering one. So it says where to
          send it instead — back the way the link arrived. -->
     <div class="note" style="margin-top:22px">
-      <p class="sub"><strong>อยากพูดมากกว่าพิมพ์:</strong> อัดเสียงส่งกลับมาทางเดิมที่ได้ลิงก์นี้มาได้เลยครับ
+      <p class="sub" data-t="voice"><strong>อยากพูดมากกว่าพิมพ์:</strong> อัดเสียงส่งกลับมาทางเดิมที่ได้ลิงก์นี้มาได้เลยครับ
         (LINE หรืออีเมล) — ฟอร์มนี้รับไฟล์เสียงไม่ได้ จึงไม่ทำปุ่มอัปโหลดหลอกไว้
         · จะกดตัวเลือกในข้อที่ตอบได้ก่อน แล้วอัดเสียงเฉพาะข้อที่อยากขยายความก็ได้</p>
     </div>
@@ -188,10 +199,10 @@
          test, not this comment: `the_review_form_does_not_promise_that_no_address_is_kept` in
          `crates/vitals-web/tests/page.rs` fails when the claim comes back as visible text. -->
     <div class="note" style="margin-top:14px">
-      <p class="sub"><strong>เก็บอะไรบ้าง:</strong> คำตอบ ตัวเลือกที่กด กล่องข้อความท้ายฟอร์ม ชื่อและช่องทางติดต่อถ้ากรอก
+      <p class="sub" data-t="keep"><strong>เก็บอะไรบ้าง:</strong> คำตอบ ตัวเลือกที่กด กล่องข้อความท้ายฟอร์ม ชื่อและช่องทางติดต่อถ้ากรอก
         รุ่นของระบบที่คุณตรวจ และเวลาที่เซิร์ฟเวอร์ได้รับ · ใช้ภายในทีมเพื่อแก้ผลิตภัณฑ์เท่านั้น ไม่เอาไปคิดคะแนนของใคร
         · หน้านี้ไม่มีคุกกี้ติดตาม ไม่มี Google Analytics และร่างคำตอบอยู่ในเบราว์เซอร์ของคุณเองจนกว่าจะกดส่ง</p>
-      <p class="sub" style="margin-top:9px"><strong>เรื่อง IP ขอพูดตรง ๆ ครับ:</strong> ตอนกดส่ง เซิร์ฟเวอร์เอาหมายเลข IP
+      <p class="sub" style="margin-top:9px" data-t="ip"><strong>เรื่อง IP ขอพูดตรง ๆ ครับ:</strong> ตอนกดส่ง เซิร์ฟเวอร์เอาหมายเลข IP
         มาเป็นกุญแจนับว่าที่อยู่เดียวกันส่งมากี่ครั้ง ไว้กันคนยิงฟอร์มรัว ๆ อย่างเดียว — อยู่ในหน่วยความจำของโปรเซส
         ไม่ได้เขียนลงฐานข้อมูล ไม่ได้เก็บคู่กับคำตอบของคุณ นับเฉพาะช่วง 24 ชั่วโมงล่าสุด และหายทั้งหมดเมื่อเซิร์ฟเวอร์รีสตาร์ต
         · อีกสองอย่างที่ไม่ได้อยู่ในมือเรา คือ Google Cloud Run ที่เรารันอยู่เก็บ log ของตัวเองซึ่งมี IP ต้นทางติดไปด้วย
@@ -199,16 +210,16 @@
         · ที่ยืนยันได้คือคำตอบของคุณไม่ได้ถูกเก็บผูกกับ IP ของใคร · อ่านฉบับเต็มได้ที่ <a href="/privacy">นโยบายความเป็นส่วนตัว</a></p>
     </div>
 
-    <button type="button" class="linky" id="alt" style="margin-top:16px">หรือคัดลอกคำตอบไปส่งเองทาง LINE</button>
+    <button type="button" class="linky" id="alt" style="margin-top:16px" data-t="btn_alt">หรือคัดลอกคำตอบไปส่งเองทาง LINE</button>
 
     <!-- Also reached when the send button cannot talk to the server. A reviewer who has just
          typed for forty minutes must never be told only that it failed. -->
     <section class="card" id="export" hidden style="margin-top:22px;gap:14px">
-      <h2 id="exhead">ส่งคำตอบกลับเอง</h2>
+      <h2 id="exhead" data-t="ex_head">ส่งคำตอบกลับเอง</h2>
       <p class="sub" id="exwhy">คำตอบทั้งหมดอยู่ในกล่องข้างล่าง — คัดลอกแล้ววางส่งกลับมาทาง LINE หรืออีเมลได้เลย</p>
       <div class="row">
-        <button type="button" class="go" id="copy">คัดลอกคำตอบ</button>
-        <button type="button" class="ghost" id="dl">บันทึกเป็นไฟล์</button>
+        <button type="button" class="go" id="copy" data-t="btn_copy">คัดลอกคำตอบ</button>
+        <button type="button" class="ghost" id="dl" data-t="btn_dl">บันทึกเป็นไฟล์</button>
       </div>
       <textarea id="blob" class="mono" readonly aria-label="คำตอบทั้งหมดในรูปแบบ JSON"></textarea>
       <p class="sub">ถ้าปุ่มบันทึกไฟล์ไม่ทำงาน (บางแอปเปิดหน้าเว็บในตัวเองและกันการดาวน์โหลด)
@@ -218,15 +229,15 @@
   </div>
 
   <div id="thanks" class="done" hidden>
-    <h2 style="color:var(--accent)">ส่งแล้ว ขอบคุณมากครับ 🙏</h2>
-    <p class="sub" style="margin-top:8px">ถ้านึกอะไรได้อีก เปิดหน้านี้ส่งเพิ่มได้เลย</p>
+    <h2 style="color:var(--accent)" data-t="sent_head">ส่งแล้ว ขอบคุณมากครับ 🙏</h2>
+    <p class="sub" style="margin-top:8px" data-t="sent_sub">ถ้านึกอะไรได้อีก เปิดหน้านี้ส่งเพิ่มได้เลย</p>
   </div>
 
 </div>
 
 <div class="bar" id="bar" hidden>
-  <span class="state" id="state">บันทึกร่างอัตโนมัติ</span>
-  <button type="button" id="send">ส่ง</button>
+  <span class="state" id="state" data-t="st_auto">บันทึกร่างอัตโนมัติ</span>
+  <button type="button" id="send" data-t="btn_send">ส่ง</button>
 </div>
 
 <script>
@@ -264,6 +275,186 @@
   // literals to check every item fits the store's clamp, and typographic quotes (“ ”) keep that
   // scan simple. The documents use them anyway.
   var QS = {
+    // ── the physician set, in English ────────────────────────────────────────────
+    //
+    // The founder posted the bare /review link internationally on 22 ก.ย. The questions are the
+    // substance of this form, so an English frame over Thai questions would have taken a
+    // reviewer’s time before telling them they could not answer. Same ids, same option codes and
+    // same numbering as the Thai above, so an answer in either language lands on the same
+    // question and the two can be read side by side.
+    //
+    // Not a gloss of the Thai: the Thai is addressed to one advisor who already knows the
+    // product, and these have to stand for a stranger. The clinical content is unchanged —
+    // where the Thai gives a number, a rhythm or a code, so does this.
+    physician_en: [
+      { g:"Section 1 — the rhythm in cardiac arrest",
+        gnote:"Four of the main episodes declare an arrest state without naming a rhythm, so the engine keeps whatever rhythm was running (sinus) — the monitor goes on showing a pulse, a blood pressure and a saturation on a patient in arrest, and a candidate who defibrillates correctly is recorded as “shocked a patient with a pulse = harm”, marked down for doing the right thing · The engine is not the problem: it supports vf, vt, pea and asystole · We have made a choice in each case and are asking you to confirm it, not for permission · ep1 is already right and carries its reasoning in the case file (PEA); we would like the other four to carry the same.",
+        n:"1.1", id:"r-ep2", head:"ep2 — STEMI, ending in cardiac arrest",
+        now:"The arrest state names no rhythm and the monitor still shows a pulse and a pressure · Two paths reach it — (a) from vf left for 90 seconds without a shock, (b) from cardiogenic_shock once SBP falls below 45",
+        plan:"Asystole as the shared endpoint of both paths, so that the vf window before it is a window in which shocking is the right thing (and vf will be declared in the state that is called vf — today it is named vf and never is vf)",
+        why:"If the endpoint were VF, a candidate who shocked correctly would still watch the patient die, which teaches the opposite of what we intend",
+        ask:"Is asystole the right shared endpoint, or would you rather the rhythm differed by the path that reached it?",
+        opts:[["asys","Confirm — asystole as the shared endpoint of both paths"],["split","The rhythm should differ by the path"],["other","Something else — write below"]] },
+
+      { n:"1.2", id:"r-ep3", head:"ep3 — child of 5, epiglottitis, hypoxic arrest",
+        now:"The obstructed state declares an arrest without naming a rhythm",
+        why:"Clinically this is likely bradyasystolic, but the engine holds the heart rate through arrest and nothing in this case brings the rate down — it stays at 148, so “asystole at 148” is an impossible reading on the monitor",
+        plan:"PEA (which does not contradict a rate of 148)",
+        ask:"If you want physiological asystole we can do it, but the case has to bring the pulse down before the arrest — if so, from 148 to what, over roughly how long?",
+        opts:[["pea","Confirm — PEA"],["asys","Asystole — and have the case bring the pulse down first (numbers below)"],["other","Something else — write below"]] },
+
+      { n:"1.3", id:"r-ep5", head:"ep5 — trauma, exsanguination",
+        now:"The exsanguinated state declares an arrest without naming a rhythm · The pulse on entering it is 144 and does not fall (the same limitation as 1.2)",
+        plan:"PEA — in hypovolaemic arrest the heart is empty rather than electrically disordered",
+        ask:"Is PEA right here, and if you want asystole does the pulse need to come down first as in ep3?",
+        opts:[["pea","Confirm — PEA"],["asys","Asystole — and have the case bring the pulse down first (numbers below)"],["other","Something else — write below"]] },
+
+      { n:"1.4", id:"r-ep4", head:"ep4 — pulmonary embolism (the one we think is uncontroversial)",
+        now:"An arrest state naming no rhythm, as in the other three",
+        plan:"PEA (obstructive shock → PEA)",
+        ask:"We think this one is straightforward; tell us if you see it differently",
+        opts:[["pea","Confirm — PEA"],["other","I see it differently — write below"]] },
+
+      { g:"Section 2 — a six-year-old goes home at a pulse of 175 and the screen says Recovered",
+        gnote:"We walked every case down every path and found four runs that end in a “win” with the patient worse than on arrival — osce-a (71) 118→133 · osce-a2 (68) 124→139 · osce-b2 (14) 105→118 · osce-d3 (6) 138→175 · All four are on paths where everything is ordered including the harmful things: not ordinary play, but a path a candidate can really walk.",
+        n:"2.1", id:"win-means", head:"What should “winning” mean here",
+        now:"When a station ends in an outcome that counts as a win, the system sets the patient to Recovered and shows it, without looking at the vital signs the patient is left with",
+        why:"The last row is a girl of six leaving the station at a pulse of 175 with the word Recovered on the screen, when a rate that high is the consequence of actions the case itself records as harmful",
+        plan:"This is not a marking bug — the harm is recorded in all four runs, and in osce-b2 and osce-d3 the mark scheme does deduct for it. What has no answer yet is the ending · Choosing between (a) and (b) is ours to do, but we cannot until we know what a win means in a real examination",
+        ask:"Pick one — if (b), please give the numeric thresholds by age band beyond which the run must not end as a win, and what it should become instead (a qualified pass? admitted for observation? not a win at all?)",
+        opts:[["a","(a) “You did everything you should have” — the process is judged and the patient’s final state is not part of it (if so, we only change the words on screen so it stops saying the patient recovered)"],["b","(b) “The patient left in an acceptable state” — the ending must carry numeric conditions (thresholds by age band below)"]] },
+
+      { n:"2.2", id:"win-ivpush", head:"A smaller thing found while checking that one — IV push adrenaline with no deduction",
+        now:"In osce-a and osce-a2, pushing adrenaline intravenously is recorded as harm but the mark scheme has no line to deduct it: doing it costs nothing — unlike osce-d3, where it costs 1 mark",
+        ask:"Should there be a deduction, and if so how much?",
+        opts:[["same","Yes — the same as osce-d3 (1 mark)"],["more","Yes — but more than that (number below)"],["none","No deduction; what we have is right"]] },
+
+      { g:"Section 3 — children",
+        n:"3.1", id:"news2-under16", head:"NEWS2 in patients under 16",
+        now:"NEWS2 is not validated under 16, but the old system scored everybody — five of our 17 cases are children (3, 5, 6, 6, 14) scored on the adult table · osce-b3, a girl of 3 with mild croup and vital signs entirely normal for her age (HR 118, RR 28, SpO₂ 98% on room air, BP 98/62), scored 7 · HIGH RISK · emergency response, while the monitor beside it on the same screen showed 3-5 YR with no alarm and the banner read Stable · osce-b2, a boy of 14 with pericarditis and a fever, scored 2 · LOW RISK on the adult table, which is the more dangerous direction because it reassures",
+        plan:"Already changed — under 16 no score is shown at all, and in its place the words “NEWS2 is not validated under 16” · Deliberately not inventing a paediatric score ourselves, and deliberately not leaving the space blank, because a blank reads as nothing to worry about",
+        ask:"Is showing nothing, and saying why, the right answer?",
+        opts:[["ok","Right — show no score, and say why"],["other","It should be something else — write below"]] },
+
+      { n:"3.2", id:"pews-which", head:"Should it be PEWS instead, and if so which one",
+        now:"PEWS exists in several versions with different age bands, and hospitals do not use the same one. Choosing a version is a clinical decision, not an engineering one",
+        ask:"Name a version and we will implement it",
+        opts:[["none","No PEWS — showing no score is right"],["yes","Use PEWS — version below"]] },
+
+      { n:"3.3", id:"paed-adrenaline", head:"Paediatric adrenaline dose — osce-d3",
+        now:"A girl of 6, 20 kg, anaphylaxis · The system gives full marks for adrenaline 0.2 mg IM (0.01 mg/kg) and deducts for the adult 0.5 mg — deducting even in runs where the child survives",
+        ask:"Is 0.2 mg right, and is treating an adult dose as deductible harm appropriate at this level of candidate?",
+        opts:[["ok","Both right — the dose and the deduction"],["dose","The dose should be different (below)"],["noharm","The dose is right, but it should not count as deductible harm"],["other","Something else — write below"]] },
+
+      { n:"3.4", id:"d3-allergy", head:"osce-d3 — if the teacher should not know the allergy history, should the station hand it over?",
+        now:"A girl of 6 arrives with a teacher who came in the ambulance; her parents have not arrived · The teacher’s script says she does not know the allergy history — “I don’t know if she’s allergic to anything — I’m her teacher, not her mother. Nobody’s told me she carries a pen.” · But when a candidate presses the allergy question (ask_allergy), the station file answers at once and precisely: “Shrimp, since she was two. It is written on a card in her school bag.” — and the mark scheme pays 2 marks for it",
+        why:"The station is built around a witness who is not the parent. If the teacher should not know, the candidate should not be handed the history free, and we are paying 2 marks for obtaining something that may not exist in this scene",
+        plan:"The other half of this — whether the scene is realistic, who is at the bedside — has gone to our student reviewer. What we are asking you is only whether the examination should hand a candidate this piece of evidence",
+        ask:"If it should not be handed over, what do we expect the candidate to do instead (treat on what is in front of them? look for a card or a book in the school bag? call the parents while treating?) — whatever you answer here is what should earn the marks instead",
+        opts:[["block","It should not be handed over — a dead end is right (say what should earn the marks instead)"],["card","It should be available, but from the allergy card in the bag (an object) rather than from the teacher’s mouth"],["keep","Leave it as it is; it is right"],["other","Something else — write below"]] },
+
+      { g:"Section 4 — vital signs that never move",
+        gnote:"We walked all 17 cases down every path and counted which variables never move while the patient is alive — respiratory rate in 16 of 17 cases · temperature in 14 · GCS in every one · GCS changes exactly once, falling to 3 at death. A level of consciousness that moves only at death cannot teach the thing it ought to be the earliest warning of · This is not an engine limitation: they do not move because nobody wrote them into the case files · Rough numbers are enough, for example “down 1 point every 2 minutes once SpO₂ is below 90”.",
+        n:"4.1", id:"gcs-cases", head:"GCS — the one that worries us most",
+        now:"Every case declares a level of consciousness at the start and no case ever changes it — not while anaphylaxis closes an airway, not through haemorrhage, not in either of the two children whose airways are obstructing",
+        ask:"Which cases should have a falling GCS, from what to what, over roughly how long (for example the child with epiglottitis whose airway is closing · the bleeding patient going into shock)?",
+        opts:[["keep","Leaving them still is right"],["spec","They should move — cases and numbers below"]] },
+
+      { n:"4.2", id:"rr-cases", head:"Respiratory rate",
+        now:"Does not move in 16 of 17 cases; osce-b3 is the only exception",
+        ask:"Which cases should move, and should it move in both directions — faster to compensate, then slower on exhaustion, which is the sign before respiratory arrest?",
+        opts:[["keep","Leaving them still is right"],["two","Both directions — cases and numbers below"],["one","One direction only — below"]] },
+
+      { n:"4.3", id:"temp-cases", head:"Temperature",
+        now:"Does not move in 14 of 17 cases",
+        plan:"In cases that are not teaching about fever, a still temperature is not wrong — we only want to know which case is which",
+        ask:"Which cases should move, or is a still temperature right for most of them?",
+        opts:[["keep","Right for most of them"],["spec","These should move — cases below"]] },
+
+      { n:"4.4", id:"gcs-floor", head:"The floor of the GCS",
+        now:"The code clamps GCS to 0–15, where the Glasgow Coma Scale bottoms out at 3 — if anybody wrote a case setting GCS to 0, 1 or 2 the system would display a score that does not exist (no case reaches it today)",
+        plan:"Raise the floor to 3",
+        ask:"Do you agree?",
+        opts:[["ok","Agree — the floor is 3"],["other","I disagree — write below"]] },
+
+      { g:"Section 5 — marking: doing nothing scores 16 out of 40",
+        n:"5.1", id:"no-harm-marks", head:"osce-c — Fon, a girl of 6, croup with drooling",
+        now:"The sheet is out of 40 and the pass mark is 70% = 28 · Two of its items are of the “did not do the harmful thing” kind, 8 marks each — no tongue depressor near that airway, and no needle hunt on a calm child · A candidate who sits through the station doing nothing at all is awarded both automatically = 16/40 (40%)",
+        why:"16 is a long way short of 28, so inaction does not pass and nobody buys anything with it — but it pays 40% of the sheet for not touching the patient, and we do not know whether a real OSCE accepts that",
+        ask:"In a real OSCE, should “avoided harm” items pay in full to somebody who did nothing, or only to somebody who engaged with the station and avoided the harm?",
+        opts:[["free","Paying in full is right"],["gated","They should be conditional on the candidate having done something first"],["other","Something else — write below"]] },
+
+      { g:"Section 6 — the remaining queue",
+        n:"6.1", id:"adr-timing", head:"The adrenaline timing targets disagree",
+        now:"The main episode (ep1) targets 60 seconds; the examination stations (osce-a, osce-a2, osce-d3) mark at 300 seconds (5 minutes) — for the same anaphylaxis",
+        ask:"What should each of them be?",
+        opts:[["60","60 seconds in both"],["300","5 minutes in both"],["split","They may differ — reason and numbers below"],["other","Something else — write below"]] },
+
+      { n:"6.2", id:"over-order", head:"The penalty for over-ordering",
+        now:"3 marks per item, to a maximum of 9 (out of 40), the same on every sheet",
+        ask:"Is that rate right, or should it differ by station?",
+        opts:[["ok","The rate is right"],["rate","Change the rate — number below"],["perstation","It should differ by station"]] },
+
+      { n:"6.3", id:"o2-acs", head:"Oxygen in ACS",
+        now:"osce-b is a STEMI starting at SpO₂ 96% · Giving oxygen currently earns nothing and costs nothing (following AVOID and DETO2X-AMI)",
+        why:"Context: a good number of Thai candidates give oxygen out of habit",
+        ask:"Should it count as deductible harm, or is earning nothing enough?",
+        opts:[["nopoints","Earning nothing is enough — as it is"],["harm","It should count as harm and be deducted"],["other","Something else — write below"]] },
+
+      { n:"6.4", id:"dengue-code", head:"The dengue codes disagree",
+        now:"The case library uses both A90 (dengue fever) and A91 (dengue haemorrhagic fever) for cases of the same name",
+        ask:"Which code should a case with warning signs carry?",
+        opts:[["a90","A90 — dengue fever"],["a91","A91 — dengue haemorrhagic fever"],["other","Something else — write below"]] },
+
+      { n:"6.5", id:"icd-level", head:"The level of the ICD codes",
+        now:"Eight conditions carry codes at different levels, for example I26 against I26.9",
+        ask:"Which level should we standardise on?",
+        opts:[["three","Three characters (I26)"],["four","Four characters (I26.9)"],["other","Something else — write below"]] },
+
+      { n:"6.6", id:"ecg-stemi", head:"An image we are withholding (1/2) — the ECG for an acute STEMI, osce-b",
+        now:"Our film library is PTB-XL, and the film matched to this station is labelled ASMI/AMI, which may be an old anterior infarct rather than an acute STEMI · This station teaches reperfusion within 10 minutes and an old film will not do · The image is not compiled into the program, so it cannot reach anybody before you rule on it",
+        ask:"Confirm that showing no film is better than showing an old MI — and if you know a source of teaching ECGs we may use (acute inferior or anterior STEMI), please point us at it",
+        opts:[["hold","Confirm — better to show nothing"],["show","It may be shown — conditions below"]] },
+
+      { n:"6.7", id:"cxr-pneumonia", head:"An image we are withholding (2/2) — the chest film with consolidation, osce-c3",
+        now:"The Pneumonia label in ChestX-ray14 comes from NLP mining of report text with no radiologist re-read, and on looking at the film we cannot see the white wedge the station’s script describes",
+        why:"A learner told that a normal-looking film is pneumonia is being taught something untrue",
+        ask:"Confirm that showing nothing is better?",
+        opts:[["hold","Confirm — better to show nothing"],["show","It may be shown — conditions below"]] },
+
+      { n:"6.8", id:"pericarditis-ecg", head:"A film we cannot find — the ECG for pericarditis, osce-b2",
+        now:"osce-b2 has no ECG at all, because PTB-XL holds no pericarditis — and this is the station that teaches that ST elevation is a finding rather than a diagnosis",
+        ask:"If you know a licensable source of an ECG with diffuse ST elevation and PR depression, please point us at it",
+        opts:[["none","I do not know one"],["have","I know one — write below"]] },
+
+      { g:"Section 6 (continued) — five rates in the physiology model",
+        gnote:"From our physiology proposal drafted on 28 Aug, with a second-by-second simulation over 8 minutes · The worked example is osce-a — anaphylactic shock in a man of 71 · Reproduced here in full so it can be answered in one sitting without opening another file.",
+        n:"6.9", id:"phys-rates", head:"Are the rates right",
+        now:"dbp falls at 5/min, deliberately faster than sbp, so the pulse pressure widens — which is what separates distributive shock from cardiogenic · hr falls at 14/min once decompensating",
+        ask:"Are these too fast or too slow?",
+        opts:[["ok","They are right"],["change","They should change — numbers below"]] },
+
+      { n:"6.10", id:"phys-sbp70", head:"The turning point at SBP 70",
+        now:"The point where the pulse stops rising and starts falling · 70 was chosen as the point below which shock is decompensated",
+        ask:"What should it be?",
+        opts:[["ok","70 is fine"],["change","It should be something else — number below"]] },
+
+      { n:"6.11", id:"phys-spo288", head:"The exhaustion point at SpO₂ 88",
+        now:"The point where the respiratory rate stops rising and starts falling · At 88 the signs begin to show around minute 7.5 — in an 8-minute station that may need to move to 90 to be seen at all",
+        ask:"What should it be?",
+        opts:[["ok","88 is fine"],["ninety","Move it to 90"],["change","Another value — number below"]] },
+
+      { n:"6.12", id:"phys-dbpfloor", head:"The diastolic floor at 30",
+        now:"The pulse pressure narrows late because dbp hits its floor while sbp keeps falling — the right result by a mechanism that is not quite right",
+        plan:"If you want it more faithful we can tie dbp to sbp directly",
+        ask:"Which would you rather?",
+        opts:[["ok","A floor at 30 is fine"],["link","Tie dbp to sbp directly"],["other","Something else — write below"]] },
+
+      { n:"6.13", id:"phys-amlodipine", head:"This patient takes amlodipine, not a beta-blocker",
+        now:"So he can still mount a normal tachycardic response (a beta-blocker would make a very good lesson of its own)",
+        ask:"Please confirm the compensation needs no adjustment",
+        opts:[["ok","Confirm — no adjustment"],["change","It needs adjusting — write below"]] }
+    ],
     physician: [
       { g:"หมวด 1 — จังหวะหัวใจในภาวะหัวใจหยุดเต้น",
         gnote:"ตอนหลัก 4 ตอนประกาศสถานะ arrest โดยไม่ระบุจังหวะหัวใจ เครื่องยนต์จึงคงจังหวะเดิม (sinus) ไว้ — จอจึงแสดงชีพจร ความดัน ออกซิเจน บนคนไข้ที่หัวใจหยุดเต้น และผู้เข้าสอบที่ช็อกไฟฟ้าถูกต้องถูกบันทึกว่า “ช็อกคนไข้ที่ยังมีชีพจร = harm” คือถูกหักคะแนนเพราะทำถูก · กลไกไม่มีปัญหา เครื่องยนต์รองรับ vf / vt / pea / asystole ครบ · เราเลือกไว้แล้วและขอ “การยืนยัน” ไม่ใช่ขออนุญาต · ep1 ทำถูกอยู่แล้วและมีบันทึกเหตุผลในไฟล์เคส (PEA) เราอยากให้อีก 4 ตอนมีบันทึกแบบเดียวกัน",
@@ -1113,6 +1304,121 @@
     ]
   };
 
+  // ── which language this reader gets ─────────────────────────────────────────
+  //
+  // The form was written in Thai for two named reviewers. The founder posted the bare link
+  // internationally on 22 ก.ย., and a reviewer who cannot read the questions is a reviewer we
+  // wasted: the questions are the substance, and a form whose frame is English over Thai
+  // questions is worse than an honest "not translated yet", because it takes their time first.
+  //
+  // The browser decides unless the reader does. Somebody arriving from an English post is shown
+  // English without having to find a switch, and a Thai reader is never moved off Thai. A choice
+  // made here is remembered on this browser and beats the browser's own setting from then on.
+  var LANG = (function(){
+    try {
+      var saved = localStorage.getItem("vitals-review-lang");
+      if (saved === "th" || saved === "en") return saved;
+    } catch(e){}
+    try {
+      var want = (navigator.languages || [navigator.language || ""]).join(",").toLowerCase();
+      return /\bth\b|-th|thai/.test(want) ? "th" : "en";
+    } catch(e){ return "th"; }
+  })();
+
+  // Every string the frame shows. Thai is what the page ships with; English is what this table
+  // adds. A key with no English falls back to the Thai rather than to an empty element — a blank
+  // where a sentence belongs is the one failure mode worse than the wrong language.
+  var STR = {
+    eyebrow:            "Vitals · review form",
+    title:              "Review Vitals",
+    lede:               "Pick the role you are reviewing in — the questions change with it",
+    role_student:       "Medical student",
+    role_student_sub:   "realism · difficulty · whether it feels like a real OSCE",
+    role_physician:     "Physician",
+    role_physician_sub: "drug doses · mark schemes · diagnosis codes",
+    f_name:             "Name",
+    f_name_sub:         "(optional — an unsigned review is worth just as much)",
+    f_contact:          "How to reach you",
+    f_contact_sub:      "(if you are happy for us to ask a follow-up)",
+    f_anon:             "Review it, but <strong>do not name me</strong> in the mark-scheme files<span class='sub' style='display:block'>We will write “reviewed by a practising physician” instead.</span>",
+    f_notes:            "Anything else",
+    f_notes_sub:        "Anything that fits no question, or more room for one that was too small — this box is usually the most useful one on the form",
+    ex_head:            "Send your answers back yourself",
+    btn_copy:           "Copy the answers",
+    btn_dl:             "Save as a file",
+    btn_send:           "Send",
+    st_auto:            "Draft saved automatically",
+    sent_head:          "Sent — thank you 🙏",
+    sent_sub:           "If anything else comes to mind, open this page again and send more.",
+    // Runtime lines.
+    st_saved:           "Draft saved",
+    st_restored:        "Picked up the draft you left",
+    st_nothing:         "Nothing answered yet",
+    st_sending:         "Sending…",
+    st_failed:          "Could not reach the server",
+    st_gathered:        "Answers gathered",
+    copied:             "Copied ✓",
+    copy_manual:        "Select the text in the box and copy it yourself",
+    saved_file:         "Saved ✓",
+    no_save:            "Cannot save a file here — use the copy button",
+    opt_more:           "Add anything (optional)",
+    say_free:           "Write as much as you like",
+    ctx_now:            "What the system does now",
+    ctx_why:            "Why we think it may be wrong",
+    ctx_plan:           "What we would change it to",
+    ctx_ask:            "Question",
+    // Only the physician set is translated so far; the student set asks about Thai wording and
+    // cannot be answered by somebody who does not read Thai, so English hides it rather than
+    // leading a reader into a form they cannot use.
+    en_only_physician:  "The medical-student form asks about the Thai wording our patients speak — it cannot be answered without Thai, so it is hidden here. The physician form below is about clinical content: doses, scores, rhythms and codes, and none of it needs Thai.",
+    scope_physician:    "<p><strong>What we are asking, and what we are not</strong></p>" +
+      "<p style='margin-top:8px'><strong>Asking:</strong> whether the content and the mark schemes are right by clinical practice.</p>" +
+      "<p style='margin-top:8px'><strong>Not asking:</strong> we are not asking you to take responsibility for anything a patient is treated with. This is a teaching simulation, nobody is treated from it, and your answers change what it teaches — not what anyone is given.</p>" +
+      "<p style='margin-top:8px'>Answer what you have time for. Nothing is read until you press send, and the draft stays in this browser if you stop.</p>",
+    title_physician:    "The calls we cannot make ourselves",
+    voice:              "<strong>Rather speak than type:</strong> record a voice message and send it back the way this link reached you — this form cannot take an audio file, so there is no upload button pretending it can · You can pick the options on the questions you are sure about and record only the ones you want to expand on.",
+    keep:               "<strong>What is stored:</strong> your answers, the options you pick, the box at the end of the form, your name and contact if you fill them in, the build of the system you reviewed, and the time the server received it · Used inside the team to fix the product, never to score anybody · This page sets no tracking cookies and has no Google Analytics, and your draft stays in your own browser until you press send.",
+    ip:                 "<strong>Plainly, about your IP address:</strong> when you press send, the server uses your IP address as a key to count how many submissions have come from the same address, purely to stop the form being flooded — it is held in the memory of the process, never written to a database, never stored alongside your answers, counted only over the last 24 hours, and lost entirely when the server restarts · Two things are not in our hands: Google Cloud Run, which we run on, keeps its own logs and those carry source addresses, and this page loads fonts from Google, so your address reaches Google before you type a character · What we can state is that your answers are not stored against anybody’s address · The full text is in the <a href=\"/privacy\">privacy policy</a>.",
+    btn_alt:            "Or copy the answers and send them yourself",
+    lede_physician:     "Ordered most dangerous first — if you have ten minutes, sections 1 to 3 are the ones that matter and the rest can wait · pick the option closest to your view and add anything below · “what you are already doing is right” is an answer worth as much as any other, and it is the one that had nowhere to go before"
+  };
+
+  // The Thai the page ships with. Anything that is a visible element is read straight off it, so
+  // the Thai lives in one place and cannot drift from its English key. The rest — labels the
+  // script writes into cards it builds, and the lines it puts in the status strip — have no
+  // element to be read from, so they are written here.
+  //
+  // This table is not optional. Without it a Thai reader falls through to the English string,
+  // which is how every card on the Thai form briefly carried English headings — caught by
+  // `the_form_is_served_at_one_url`, which reads the served page for the Thai the form has always
+  // had. A fallback chain whose last step is the other language is a fallback that fails silently
+  // in the one direction nobody checks.
+  var TH = {
+    ctx_now:      "ตอนนี้ระบบทำอะไร",
+    ctx_why:      "ทำไมเราคิดว่าอาจผิด",
+    ctx_plan:     "เราจะแก้เป็น",
+    ctx_ask:      "คำถาม",
+    opt_more:     "เขียนเพิ่มได้ (ไม่บังคับ)",
+    say_free:     "เขียนได้เต็มที่ครับ",
+    st_saved:     "บันทึกร่างแล้ว",
+    st_restored:  "กู้ร่างที่ค้างไว้แล้ว",
+    st_nothing:   "ยังไม่ได้ตอบข้อไหนเลย",
+    st_sending:   "กำลังส่ง…",
+    st_failed:    "ส่งเข้าเซิร์ฟเวอร์ไม่ได้",
+    st_gathered:  "รวมคำตอบแล้ว",
+    copied:       "คัดลอกแล้ว",
+    copy_manual:  "เลือกข้อความในกล่องแล้วคัดลอกเอง",
+    saved_file:   "บันทึกแล้ว",
+    no_save:      "บันทึกไฟล์ไม่ได้ที่นี่ — ใช้ปุ่มคัดลอก"
+  };
+  var THAI = {};
+  function T(k){
+    if (LANG === "en" && STR[k]) return STR[k];
+    if (k in THAI) return THAI[k];
+    if (k in TH) return TH[k];
+    return STR[k] || "";
+  }
+
   var SCOPE = {
     student: "<p><strong>สิ่งที่ไม่ได้ขอให้รับผิดชอบ</strong></p><p style='margin-top:8px'>ไม่ต้องรับรองความถูกต้องทางคลินิก — ขนาดยา น้ำหนักคะแนน รหัสโรค เป็นงานของแพทย์ที่มีใบประกอบวิชาชีพ · ถ้าเห็นอะไรที่คิดว่าผิด บอกได้เต็มที่ในฐานะข้อสังเกต ไม่ใช่การรับรอง</p>",
     physician: "<p><strong>สิ่งที่ขอ และไม่ขอ</strong></p><p style='margin-top:8px'><strong>ขอ:</strong> ตรวจว่าเนื้อหาและเกณฑ์ให้คะแนนถูกต้องตามเวชปฏิบัติหรือไม่</p><p style='margin-top:8px'><strong>ไม่ขอ:</strong> ไม่ได้ขอให้รับรองว่าใช้แทนการสอบจริงได้ และไม่ได้ขอให้รับผิดชอบผลการเรียนของนักศึกษาที่ใช้</p>"
@@ -1231,7 +1537,7 @@
     document.querySelectorAll("textarea[data-q]").forEach(function(t){ d.a[t.dataset.q] = t.value; });
     Object.keys(picked).forEach(function(k){ if (picked[k]) d.c[k] = picked[k]; });
     try { localStorage.setItem(KEY, JSON.stringify(d)); } catch(e){}
-    $("state").textContent = "บันทึกร่างแล้ว";
+    $("state").textContent = T("st_saved");
   }
 
   function el(tag, cls, text){
@@ -1250,7 +1556,7 @@
   }
 
   // The four lines the review documents put in front of every ruling, in the document's order.
-  var CTX = [["now", "ตอนนี้ระบบทำอะไร"], ["why", "ทำไมเราคิดว่าอาจผิด"], ["plan", "เราจะแก้เป็น"]];
+  function CTX(){ return [["now", T("ctx_now")], ["why", T("ctx_why")], ["plan", T("ctx_plan")]]; }
 
   // Exactly what is stored as `asked` — the item as it was shown, flattened to text.
   //
@@ -1266,8 +1572,8 @@
     if (q.rows) q.rows.forEach(function(r){
       out.push((r[0] ? r[0] + " " : "") + r[1] + "  →  " + r[2]);
     });
-    CTX.forEach(function(p){ if (q[p[0]]) out.push(p[1] + ": " + q[p[0]]); });
-    if (q.ask) out.push("คำถาม: " + q.ask);
+    CTX().forEach(function(p){ if (q[p[0]]) out.push(p[1] + ": " + q[p[0]]); });
+    if (q.ask) out.push(T("ctx_ask") + ": " + q.ask);
     return out.join("\n");
   }
 
@@ -1306,7 +1612,7 @@
     }
 
     var ctx = el("dl", "ctx");
-    CTX.forEach(function(p){
+    CTX().forEach(function(p){
       if (!q[p[0]]) return;
       var row = document.createElement("div");
       row.appendChild(el("dt", null, p[1]));
@@ -1347,7 +1653,7 @@
     }
 
     var lab = document.createElement("label");
-    lab.appendChild(el("span", "say", q.opts ? "เขียนเพิ่มได้ (ไม่บังคับ)" : "เขียนได้เต็มที่ครับ"));
+    lab.appendChild(el("span", "say", q.opts ? T("opt_more") : T("say_free")));
     var ta = document.createElement("textarea");
     ta.dataset.q = q.id;
     ta.dataset.asked = contextOf(q);
@@ -1359,7 +1665,11 @@
 
   // Which list a page reads: the instance's own when the link names one, else the role's.
   function setOf(r){
-    return (FORM && FORM.qs && QS[FORM.qs]) ? FORM.qs : r;
+    var want = (FORM && FORM.qs && QS[FORM.qs]) ? FORM.qs : r;
+    // An English reader gets the English set where one exists. Same ids and same option codes, so
+    // an answer sent in either language lands on the same question and the two read side by side.
+    if (LANG === "en" && QS[want + "_en"]) return want + "_en";
+    return want;
   }
 
   function build(r){
@@ -1368,9 +1678,12 @@
     var set = setOf(r);
     $("r-student").setAttribute("aria-pressed", String(r === "student"));
     $("r-physician").setAttribute("aria-pressed", String(r === "physician"));
-    $("title").textContent = TITLE[set] || TITLE[r];
-    $("lede").textContent = LEDE[r];
-    $("scope").innerHTML = SCOPE[r];
+    // English exists for the physician form only so far. Where it does not, the Thai stands
+    // rather than a blank: a reader who can see the Thai can at least tell there is something
+    // there to be translated, which an empty heading cannot say.
+    $("title").textContent = (LANG === "en" && STR["title_" + r]) || TITLE[set] || TITLE[r];
+    $("lede").textContent = (LANG === "en" && STR["lede_" + r]) || LEDE[r];
+    $("scope").innerHTML = (LANG === "en" && STR["scope_" + r]) || SCOPE[r];
     $("anonwrap").hidden = (r !== "physician");
 
     var box = $("questions");
@@ -1397,7 +1710,7 @@
         var qid = b.parentNode.parentNode.querySelector("textarea").dataset.q;
         b.setAttribute("aria-pressed", String(picked[qid] === b.dataset.opt));
       });
-      $("state").textContent = "กู้ร่างที่ค้างไว้แล้ว";
+      $("state").textContent = T("st_restored");
     }
     tellAll();
     $("form").hidden = false; $("bar").hidden = false;
@@ -1408,6 +1721,33 @@
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+
+  // ── the switch ───────────────────────────────────────────────────────────────
+  function paintLang(){
+    document.documentElement.lang = LANG;
+    document.querySelectorAll("[data-t]").forEach(function(elm){
+      var k = elm.getAttribute("data-t");
+      if (!(k in THAI)) THAI[k] = elm.innerHTML;   // read once, before anything overwrites it
+      elm.innerHTML = T(k);
+    });
+    $("lang-th").setAttribute("aria-pressed", String(LANG === "th"));
+    $("lang-en").setAttribute("aria-pressed", String(LANG === "en"));
+    // The student form asks about Thai wording. Hiding it in English is not tidying: it is the
+    // difference between a reader losing a minute and a reader losing ten before finding out.
+    var en = LANG === "en";
+    $("r-student").hidden = en;
+    $("langnote").textContent = en ? T("en_only_physician") : "";
+    $("langnote").hidden = !en;
+    if (role) build(role);
+  }
+  function setLang(v){
+    LANG = v;
+    try { localStorage.setItem("vitals-review-lang", v); } catch(e){}
+    paintLang();
+  }
+  $("lang-th").addEventListener("click", function(){ setLang("th"); });
+  $("lang-en").addEventListener("click", function(){ setLang("en"); });
+  paintLang();
 
   $("r-student").addEventListener("click", function(){ build("student"); });
   $("r-physician").addEventListener("click", function(){ build("physician"); });
@@ -1461,19 +1801,19 @@
   $("alt").addEventListener("click", function(){
     if (!role) return;
     var p = payload();
-    if (empty(p)){ $("state").textContent = "ยังไม่ได้ตอบข้อไหนเลย"; return; }
+    if (empty(p)){ $("state").textContent = T("st_nothing"); return; }
     showExport(null, null);
   });
 
   $("copy").addEventListener("click", function(){
-    var ta = $("blob"), done = function(){ $("copy").textContent = "คัดลอกแล้ว ✓"; };
+    var ta = $("blob"), done = function(){ $("copy").textContent = T("copied") + " \u2713"; };
     if (navigator.clipboard && navigator.clipboard.writeText){
       navigator.clipboard.writeText(ta.value).then(done, function(){ legacy(); });
     } else legacy();
     function legacy(){
       ta.removeAttribute("readonly"); ta.focus(); ta.select();
       try { document.execCommand("copy"); done(); }
-      catch(e){ $("copy").textContent = "เลือกข้อความในกล่องแล้วคัดลอกเอง"; }
+      catch(e){ $("copy").textContent = T("copy_manual"); }
       ta.setAttribute("readonly", "");
     }
   });
@@ -1482,10 +1822,10 @@
     var filename = "vitals-review-" + (role || "x") + "-" + new Date().toISOString().slice(0, 10) + ".json";
     var text = $("blob").value;
     if (VIEWER){
-      if (!SAVE){ $("dl").textContent = "บันทึกไฟล์ไม่ได้ที่นี่ — ใช้ปุ่มคัดลอก"; return; }
+      if (!SAVE){ $("dl").textContent = T("no_save"); return; }
       $("dl").disabled = true;
       SAVE.save({ filename: filename, data: text }).then(function(){
-        $("dl").textContent = "บันทึกแล้ว ✓";
+        $("dl").textContent = T("saved_file") + " \u2713";
       }, function(err){
         // Declining the prompt is a choice, not a failure — say nothing and leave the button be.
         $("dl").textContent = (err && err.code === "declined")
@@ -1503,15 +1843,15 @@
   $("send").addEventListener("click", function(){
     if (!role) return;
     var p = payload();
-    if (empty(p)){ $("state").textContent = "ยังไม่ได้ตอบข้อไหนเลย"; return; }
+    if (empty(p)){ $("state").textContent = T("st_nothing"); return; }
     if (!CANPOST){
       showExport("คำตอบพร้อมส่งกลับแล้ว",
         "คัดลอกทั้งก้อนแล้ววางส่งกลับมาทาง LINE หรืออีเมลได้เลย — ร่างยังอยู่ในเครื่อง กลับมาแก้ทีหลังได้");
-      $("state").textContent = "รวมคำตอบแล้ว";
+      $("state").textContent = T("st_gathered");
       return;
     }
     $("send").disabled = true;
-    $("state").textContent = "กำลังส่ง…";
+    $("state").textContent = T("st_sending");
     fetch("/api/review", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1526,7 +1866,7 @@
       // Not an error the reviewer can act on, and they have just spent an hour typing. Hand them
       // the answers instead of a retry button: copying them out always works, the server may not.
       $("send").disabled = false;
-      $("state").textContent = "ส่งเข้าเซิร์ฟเวอร์ไม่ได้";
+      $("state").textContent = T("st_failed");
       showExport("ส่งเข้าเซิร์ฟเวอร์ไม่ได้ — แต่คำตอบไม่หาย",
         "คำตอบทั้งหมดยังอยู่ครบในกล่องข้างล่าง คัดลอกแล้ววางส่งกลับมาทาง LINE หรืออีเมลได้เลย ร่างในเครื่องก็ยังอยู่ ปิดหน้านี้ได้");
     });
