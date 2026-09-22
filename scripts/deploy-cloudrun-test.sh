@@ -53,18 +53,36 @@ MSG
     echo "ya29.stub-access-token"; exit 0 ;;
 
   "builds submit")
-    [ "${STUB_BUILD_FAIL:-0}" = 1 ] && { echo "ERROR: (gcloud.builds.submit) stub build failure" >&2; exit 1; }
+    # The submit only names the build; what happened to it is a fact of the build, read back
+    # by id. Faithful to the two ways the real thing has lied: the log stream can fail for a
+    # caller who is not a project Viewer (exit 1, build green), and the last line of stdout is
+    # not always the value asked for.
+    echo "Created [https://cloudbuild.googleapis.com/v1/projects/p/locations/global/builds/${STUB_BUILD_ID-b1d0}]." >&2
     echo "Logs are available at [ https://console.cloud.google.com/stub ]." >&2
-    # Faithful to the real thing in the way that matters here: gcloud streams the build log on
-    # STDOUT (submit_util.py: out = log.out), the same stream the --format value lands on.
+    [ "${STUB_SUBMIT_FAIL:-0}" = 1 ] && { echo "ERROR: (gcloud.builds.submit) stub submit failure" >&2; exit 1; }
+    case " $* " in
+      *" --async "*) printf '%s\n' "${STUB_BUILD_ID-b1d0}"; exit 0 ;;
+    esac
+    echo "stub gcloud: builds submit without --async is the old shape" >&2; exit 64 ;;
+
+  "builds log")
+    if [ "${STUB_CANNOT_STREAM:-0}" = 1 ]; then
+      echo "ERROR: (gcloud.builds.log) This tool can only stream logs if you are Viewer/Owner of the project" >&2
+      exit 1
+    fi
     if [ "${STUB_BUILD_LOG:-1}" = 1 ]; then
       echo "Step #0: Pulling image gcr.io/cloud-builders/docker"
       echo "Step #0: DONE"
     fi
-    # STUB_BUILD_NO_VALUE: gcloud prints no --format value at all, so the last line of stdout
-    # is a build log line — what a capture that has drifted onto the wrong stream would see.
-    [ "${STUB_BUILD_NO_VALUE:-0}" = 1 ] || printf '%s\n' "${STUB_BUILD_DIGEST-sha256:aaaa}"
     exit 0 ;;
+
+  "builds describe")
+    [ "${STUB_DESCRIBE_FAIL:-0}" = 1 ] && { echo "ERROR: (gcloud.builds.describe) stub: cannot reach the build" >&2; exit 1; }
+    # STATUS<TAB>DIGEST, the two fields the script asks for; a build that failed names no image.
+    if [ "${STUB_BUILD_FAIL:-0}" = 1 ]; then printf 'FAILURE\t\n'; exit 0; fi
+    # STUB_BUILD_NO_VALUE: the value line is missing altogether, as a format drift would look.
+    [ "${STUB_BUILD_NO_VALUE:-0}" = 1 ] && exit 0
+    printf 'SUCCESS\t%s\n' "${STUB_BUILD_DIGEST-sha256:aaaa}"; exit 0 ;;
 
   "run deploy")
     [ "${STUB_DEPLOY_FAIL:-0}" = 1 ] && { echo "ERROR: (gcloud.run.deploy) stub deploy failure" >&2; exit 1; }
@@ -164,6 +182,23 @@ run "the ops service account may deploy (prod project)" accepts "vitals-ops@vita
   -- STUB_ACCOUNT=vitals-ops@vitals-academy.iam.gserviceaccount.com
 run "the ops service account may deploy (dev project)" accepts "vitals-ops@vitals-academy-dev.iam.gserviceaccount.com" \
   -- STUB_ACCOUNT=vitals-ops@vitals-academy-dev.iam.gserviceaccount.com VITALS_GCP_PROJECT=vitals-academy-dev
+# gcloud's exit code and the build's status are different questions. The service account is not
+# a project Viewer, so gcloud cannot stream the log to it and exits 1 with the build green — which
+# is how the first two deploys as the account died on 22 Sep with a finished image nobody deployed
+# (and --suppress-logs did not move it). The script asks the build what happened, by id, and
+# says what it concluded and from what.
+run "the log stream failing is not the build failing" accepts "build b1d0: SUCCESS" \
+  -- STUB_ACCOUNT=vitals-ops@vitals-academy-dev.iam.gserviceaccount.com VITALS_GCP_PROJECT=vitals-academy-dev STUB_CANNOT_STREAM=1
+run "as a person, the build log is still streamed" accepts "Step #0: DONE" \
+  -- STUB_ACCOUNT=someone@example.com STUB_CANNOT_STREAM=0
+run "a build that failed is refused by its status, not by an exit code" rejects "build b1d0: FAILURE" \
+  -- STUB_BUILD_FAIL=1
+run "a submit that names no build stops before anything is built" rejects "named no build" \
+  -- STUB_SUBMIT_FAIL=1
+# A status that cannot be read is not a failed build and not a successful one; it is unknown,
+# and the safe answer is to stop and say so rather than assume either way.
+run "a build whose status cannot be read is unknown, not failed" rejects "unknown" \
+  -- STUB_DESCRIBE_FAIL=1
 run "the same name in another project is still not you" rejects "not you" \
   -- STUB_ACCOUNT=vitals-ops@some-other-project.iam.gserviceaccount.com
 run "a look-alike is still not you" rejects "not you" \
@@ -174,8 +209,8 @@ run "a build that names no image" rejects "no image digest" \
 # The build log shares stdout with the --format value, so a capture that drifted onto a log
 # line has to say so rather than fail later as a digest mismatch and send someone hunting a
 # stale image that does not exist.
-run "the build's last word is not a digest" rejects "was not a digest" \
-  -- STUB_BUILD_NO_VALUE=1
+run "the build's answer is not a digest" rejects "was not a digest" \
+  -- STUB_BUILD_DIGEST=gcr.io/p/not-a-digest
 run "a deploy that names no revision" rejects "nothing to verify" \
   -- STUB_REVISION=
 
