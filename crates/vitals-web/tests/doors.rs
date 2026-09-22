@@ -209,6 +209,45 @@ fn the_dashboard_is_served_by_the_ward_and_reads_it_same_origin() {
     assert!(thai.is_empty(), "every label on the dashboard is English, and these are not: {thai}");
 }
 
+/// **Every link the bedside offers a stranger goes somewhere this ward serves.**
+///
+/// The guide link shipped to production at 09:04 on 22 ก.ย. and `/start` was not a route. It sits
+/// on the bedside before the take, addressed to the one person on the ward who has said out loud
+/// that they do not know what they are doing — "First time? two-minute guide" — and pressing it
+/// would have given them a 404. A dead link is worse than no link at that exact moment, because it
+/// spends the trust of somebody who had already decided to ask for help.
+///
+/// The rule is not "remember to add the route". It is that the page and the server are checked
+/// against each other: whatever path `guideLink()` names, this ward answers. An empty link is the
+/// honest state while there is no page, and it passes here; a link to nothing does not.
+#[test]
+fn the_guide_link_on_the_bedside_goes_somewhere_this_ward_serves() {
+    let bay = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("static/bay.js"),
+    )
+    .expect("bay.js");
+    let body = bay
+        .split_once("function guideLink()")
+        .expect("guideLink is still the one place the bedside names the guide")
+        .1;
+    let body = &body[..body.find("\n}").unwrap_or(body.len())];
+
+    let Some(rest) = body.split_once("href=\"") else {
+        // No link at all: nothing is promised, so nothing can be broken.
+        return;
+    };
+    let path = rest.1.split('"').next().unwrap_or_default().to_string();
+    assert!(path.starts_with('/'), "the guide link leaves this origin: {path}");
+
+    let s = Server::start(None);
+    let (code, _) = s.get(&path);
+    assert_eq!(
+        code, 200,
+        "the bedside offers a stranger {path} and this ward answers {code} — a dead link on the \
+         one control that exists for somebody who has already said they need help"
+    );
+}
+
 /// **The catalogue endpoint carries the status sentence, so the catalogue page never types a date.**
 #[test]
 fn the_catalogue_endpoint_carries_the_status_sentence() {

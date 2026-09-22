@@ -628,11 +628,21 @@ console.log('shift_logic: ok (and it says so before the shift, not after)');
 // asks themselves rather than the name of a feature.
 const { guideLink } = new Function([grab('guideLink'), 'return { guideLink };'].join('\n'))();
 
+// **A link is a promise that something is there.** The guide link went to production at 09:04 on
+// 22 ก.ย. and `/start` is not a route: the first stranger to press "First time? two-minute guide"
+// — the one person on the ward who had said out loud that they needed help — would have been sent
+// to a 404. So the link exists only while the page it names does, and the pairing is checked
+// against the running server in `tests/doors.rs`, not asserted here where only the string lives.
 const link = guideLink();
-assert.match(link, /href="\/start"/, 'the guide the ward serves, same origin, no request leaves');
-assert.match(link, /first time/i, 'addressed to the person who needs it');
-assert.match(link, /two-minute|2-minute/i, 'and honest about what it costs them to read it');
-assert.equal(/http/i.test(link), false, 'nothing off this origin');
+if (link) {
+  assert.match(link, /href="\/[a-z][a-z0-9/-]*"/, 'a path on this origin, and one the ward serves');
+  assert.match(link, /first time/i, 'addressed to the person who needs it');
+  assert.match(link, /two-minute|2-minute/i, 'and honest about what it costs them to read it');
+  assert.equal(/http/i.test(link), false, 'nothing off this origin');
+} else {
+  // Empty is the honest state while the page is not served. It is not the end state.
+  assert.equal(link, '', 'no link at all, rather than a link to nothing');
+}
 
 console.log('shift_logic: ok (and there is a way to the guide)');
 
