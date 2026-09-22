@@ -1967,7 +1967,12 @@ function beforeTake(minutes){
    names, the ward answers 200. Until then the three-step strip above carries the guidance on its
    own, which is the part a stranger reads without leaving the bedside anyway. */
 function guideLink(){
-  return '<a href="/start" class="guide">First time? two-minute guide</a>';
+  /* A question mark before the words, because the mark is read before the sentence is — and the
+     person this is for is deciding in a second whether anything here is for them. The words then
+     say what it costs: two minutes, not a manual. */
+  return '<a href="/start" class="guide">'
+       + '<span class="guide-q" aria-hidden="true">?</span>'
+       + '<span>First time here? Two-minute guide</span></a>';
 }
 
 /* The guidance as markup, pure, so what a stranger actually reads is what the harness reads.

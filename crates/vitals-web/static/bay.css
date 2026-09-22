@@ -929,14 +929,34 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.78rem;background:va
    removed: a stranger deciding whether to start needs to see that it ends in one press, and words
    that move under somebody mid-shift are words they stop reading. */
 html.is-ward #wardguide{display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;
-  margin:-.2rem 0 .6rem;padding:.3rem .55rem;font-size:.78rem;line-height:1.35;
+  margin:-.2rem 0 .6rem;padding:.45rem .6rem;font-size:.85rem;line-height:1.4;
   border:1px dashed var(--rule,#d8ded9);border-radius:.45rem}
 html.is-ward #wardguide .gd{display:inline-flex;gap:.35rem;align-items:baseline;
   padding:.12rem .45rem;border-radius:.35rem;opacity:.58}
 html.is-ward #wardguide .gd b{font-variant-numeric:tabular-nums}
 html.is-ward #wardguide .gd.at{opacity:1;font-weight:600;background:rgba(15,110,92,.11)}
-html.is-ward #wardguide .gd-say{flex:1 1 auto;min-width:12rem}
-html.is-ward #wardguide .guide{margin-left:auto;white-space:nowrap}
+html.is-ward #wardguide .gd-say{flex:1 1 16rem;min-width:0}
+/* **The offer of help, shaped like one.**
+   It was a bare text link at .78rem pushed to the far right by `margin-left:auto` — the smallest
+   thing in the strip, in the place the eye goes last, with a tap target the height of its own
+   letters. On a phone that is well under what a finger hits. It is the one control on this page
+   aimed at somebody who has just admitted they do not know what to do, and it was dressed as a
+   footnote.
+   An outlined pill in the action colour, not a filled one: the filled green belongs to "Take the
+   shift", which is still the thing we want pressed. Second offer, not third. */
+html.is-ward #wardguide .guide{display:inline-flex;align-items:center;gap:.45rem;
+  padding:.42rem .85rem;min-height:38px;border-radius:999px;
+  font-size:.95rem;font-weight:600;line-height:1.2;white-space:nowrap;
+  color:var(--act);border:1.5px solid currentColor;text-decoration:none}
+html.is-ward #wardguide .guide:hover{background:color-mix(in srgb, var(--act) 10%, transparent)}
+html.is-ward #wardguide .guide:focus-visible{outline:2px solid var(--act);outline-offset:2px}
+html.is-ward #wardguide .guide-q{display:inline-flex;align-items:center;justify-content:center;
+  width:1.3em;height:1.3em;border-radius:50%;border:1.5px solid currentColor;
+  font-size:.85em;font-weight:700;flex:none}
+/* Narrow: its own full-width row rather than a squeeze at the end of a sentence. */
+@media (max-width:560px){
+  html.is-ward #wardguide .guide{width:100%;justify-content:center}
+}
 /* Once one order exists the shift has something in it the chain will pay for, and the button that
    records it stops being one control among several (A.2). */
 html.is-ward #wardprimary.ready{box-shadow:0 0 0 3px rgba(15,110,92,.22);transform:scale(1.02)}
