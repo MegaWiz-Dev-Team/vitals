@@ -9,8 +9,8 @@
 
 mod chain;
 use vitals_web::{
-    archive, authors, fuel, lang, meter, news2, patient, payout, reading, rebuild, review, store,
-    usage, ward, ward_case, ward_chain,
+    archive, authors, fuel, lang, meter, news2, patient, payout, reading, rebuild, review, serve,
+    store, usage, ward, ward_case, ward_chain,
 };
 
 use serde::Serialize;
@@ -3137,6 +3137,116 @@ fn squeezed(
 ///
 /// Content-addressed, so two servers behind one URL agree and a restart does not invalidate
 /// everybody's copy — which is what a timestamp or a boot id would do.
+/// Every answer that changes nothing, in one place.
+///
+/// `None` for a path this does not serve, so a caller can fall through to the loop it came from.
+///
+/// One implementation, two callers: the reader pool, and the writing loop's own arms, which
+/// delegate here rather than keeping a second copy. Two copies of one page is how the copies come
+/// to disagree, and the disagreement is always found by a reader rather than by us.
+///
+/// Nothing in here opens a session, writes a tape, touches the tree or reaches the chain. That is
+/// the property `serve::is_read_only` names path by path, and the reason these may be answered
+/// beside a pass rather than behind it.
+#[allow(clippy::too_many_arguments)]
+fn read_response(
+    req: &tiny_http::Request,
+    path: &str,
+    view: &WardView,
+    store: &store::Store,
+    state: &str,
+    usage: &Arc<Mutex<usage::Usage>>,
+    token: &Option<String>,
+) -> Option<Response<std::io::Cursor<Vec<u8>>>> {
+    match path {
+        "/api/ward" => {
+            // **A slow read, made askable for.** The board's first read on a cold instance goes to
+            // the chain inline and takes sixteen to twenty-one seconds — measured on staging. That
+            // is the case the reader pool exists for, and without a way to produce one, the pool
+            // would ship as a mechanism nobody had watched work. Inert unless set, and set by no
+            // deployed service; it slows this one path so a test can ask whether the others are
+            // still answered beside it.
+            if let Some(ms) = std::env::var("VITALS_BOARD_SLEEP_MS")
+                .ok()
+                .and_then(|v| v.trim().parse::<u64>().ok())
+            {
+                std::thread::sleep(std::time::Duration::from_millis(ms));
+            }
+            let body = serde_json::to_vec(&ward_now(view, store, state))
+                .unwrap_or_else(|_| b"{}".to_vec());
+            let tag = etag_of(&body);
+            // Asked again with the tag it already has, the ward says "still that" and sends
+            // nothing. The board is opened by a room full of people at once during a demo.
+            let known = req
+                .headers()
+                .iter()
+                .find(|h| h.field.equiv("if-none-match"))
+                .is_some_and(|h| h.value.as_str().split(',').any(|t| t.trim() == tag));
+            let resp = if known {
+                Response::from_data(Vec::new()).with_status_code(304)
+            } else {
+                squeezed(req, body, b"application/json")
+            };
+            Some(
+                resp.with_header(Header::from_bytes(&b"ETag"[..], tag.as_bytes()).unwrap())
+                    // Fifteen seconds: long enough to absorb a room opening it at once, short
+                    // enough that a death is on screen before anybody has stopped looking.
+                    .with_header(
+                        Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=15"[..])
+                            .unwrap(),
+                    ),
+            )
+        }
+        // The bay's own play numbers are not this host's to publish, and that has not changed.
+        // What is this host's is who arrived at it, so that is published and nothing else is.
+        "/api/usage" => Some(json(serde_json::json!({
+            "ward": "not open yet",
+            "opens": "week 2 of Crypto World's Fair, 21-27 Sep 2026",
+            "arrivals": usage.lock().unwrap().arrivals(),
+            "funnel": usage.lock().unwrap().funnel(),
+            "usage_for_the_eternal_entry": "https://vitals.academy/api/usage"
+        }))),
+        "/review" => Some(html(&REVIEW.replace(BUILD_STAMP, BUILD))),
+        "/privacy" => Some(html(&PRIVACY.replace(BUILD_STAMP, BUILD))),
+        "/stats" => Some(html(WARD_STATS)),
+        "/start" | "/start/" => Some(html(WARD_START)),
+        "/bay.css" => Some(
+            squeezed(req, BAY_CSS.replace(BUILD_STAMP, BUILD).into_bytes(), b"text/css; charset=utf-8")
+                .with_header(forever()),
+        ),
+        "/bay.js" => {
+            let js = BAY_JS
+                .replace("__VITALS_TOKEN__", token.as_deref().unwrap_or(""))
+                .replace(BUILD_STAMP, BUILD);
+            Some(
+                squeezed(req, js.into_bytes(), b"application/javascript; charset=utf-8")
+                    .with_header(forever()),
+            )
+        }
+        "/world/favicon.svg" => Some(
+            Response::from_data(FAVICON_WORLD)
+                .with_header(Header::from_bytes(&b"Content-Type"[..], &b"image/svg+xml"[..]).unwrap())
+                .with_header(forever()),
+        ),
+        "/world/apple-touch-icon.png" => Some(
+            Response::from_data(TOUCH_ICON_WORLD)
+                .with_header(Header::from_bytes(&b"Content-Type"[..], &b"image/png"[..]).unwrap())
+                .with_header(forever()),
+        ),
+        p if p.starts_with("/start/img/") => {
+            let want = &p["/start/img/".len()..];
+            Some(match WARD_START_IMG.iter().find(|(name, _)| *name == want) {
+                Some((_, bytes)) => Response::from_data(*bytes)
+                    .with_header(Header::from_bytes(&b"Content-Type"[..], &b"image/jpeg"[..]).unwrap())
+                    .with_header(forever()),
+                // A name not in the list is not a file this server has, and the set is closed.
+                None => Response::from_data(b"no such picture".to_vec()).with_status_code(404),
+            })
+        }
+        _ => None,
+    }
+}
+
 fn etag_of(body: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     let h = Sha256::digest(body);
@@ -3512,8 +3622,11 @@ fn main() {
     // Runs opened and runs finished, resumed from the store. Deliberately not a count of
     // people: there is no signup here, so there is nothing that is a person to count. See
     // `usage::LIMITS`, which travels with every reply the endpoint gives.
-    let mut usage = usage::Usage::open(&store);
-    println!("usage      {}", usage.describe());
+    // Shared, because the reader pool answers /api/usage while the writing loop is inside a
+    // pass. Every mutation of it still happens on that loop, in the order it always did; the lock
+    // is held for the length of one count or one read and never across anything that waits.
+    let usage = Arc::new(Mutex::new(usage::Usage::open(&store)));
+    println!("usage      {}", usage.lock().unwrap().describe());
 
     // How many past scenario versions this deployment can hand back to a verifier. Printed
     // because the failure mode is silent: an image built without `conformance/sce-archive`
@@ -3775,9 +3888,85 @@ fn main() {
 
     // `mut` for exactly one route: reading a request body needs the request mutably, and the
     // match below borrows it for the whole of its scrutinee. See `/api/review`.
+    // ── the readers ─────────────────────────────────────────────────────────────────────
+    //
+    // A pass holds the loop below for eleven to fifteen seconds at the census the ward runs at,
+    // and about eighty on a cold start. Cloud Run is told this container takes eight requests at
+    // once and answers one; during a pass it counts eight in hand with seven unserved and refuses
+    // the ninth — which is what a stranger opening a bedside met three times today. max-instances
+    // stays 1: the anchoring tree is in memory and a second instance would hold another.
+    //
+    // So the reads leave the loop and nothing else does. Every take, every anchor, every step is
+    // still answered in the order it arrived, by the one thread that has always answered them; a
+    // write arriving mid-pass should wait for the pass rather than race it. Reads wait for
+    // nothing, because they change nothing — `serve::is_read_only` is that claim, path by path.
+    //
+    // Ward only. The Eternal entry is not redeployed for this sprint and has none of this
+    // problem; changing how it serves to fix something it does not have is a risk with no return.
+    const READERS: usize = 4;
+    let (read_tx, read_rx) = std::sync::mpsc::channel::<tiny_http::Request>();
+    let read_rx = Arc::new(Mutex::new(read_rx));
+    if ward_mode() {
+        for _ in 0..READERS {
+            let rx = Arc::clone(&read_rx);
+            let view = Arc::clone(&ward_view);
+            let counts = Arc::clone(&usage);
+            let page_token = token.clone();
+            let state = state_dir.clone();
+            std::thread::spawn(move || {
+                // Its own handle on the same files. Opened here rather than shared so a reader
+                // cannot be waiting on a lock the writing loop is holding.
+                let store = match store::Store::open(std::path::PathBuf::from(&state)) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("readers    no store, so this reader is not serving: {e}");
+                        return;
+                    }
+                };
+                loop {
+                    // The lock is held only while waiting for and taking one request; the answer
+                    // is built after it is released, which is what lets four of these overlap.
+                    let got = { rx.lock().unwrap().recv() };
+                    let Ok(req) = got else { return };
+                    let path = req.url().split('?').next().unwrap_or("/").to_string();
+                    let resp = read_response(&req, &path, &view, &store, &state, &counts, &page_token);
+                    let _ = match resp {
+                        Some(r) => req.respond(r),
+                        // Routed here by the table but not served by it: answer rather than drop,
+                        // and the table's test is what stops the two disagreeing.
+                        None => req.respond(
+                            Response::from_data(b"not found".to_vec()).with_status_code(404),
+                        ),
+                    };
+                }
+            });
+        }
+        // Announced on stderr, not stdout. Every harness in this repository reads the server's
+        // stdout only until the line that names the port and then drops the pipe; a `println!`
+        // after that point kills the server with a broken pipe, and the test sees a connection
+        // that failed rather than a server that was told to stop talking. This line cost an hour
+        // of looking at a concurrency result that was really a dead process.
+        eprintln!("readers    {READERS} answering the board and the pages beside a pass");
+    }
+
     for mut req in server.incoming_requests() {
         let url = req.url().to_string();
         let path = url.split('?').next().unwrap_or("/").to_string();
+
+        // Off the writing loop, if it changes nothing. A send that finds no reader is answered
+        // here instead — a request is never dropped for want of a thread.
+        if ward_mode() && serve::is_read_only(req.method().as_str(), &path) {
+            if let Err(std::sync::mpsc::SendError(back)) = read_tx.send(req) {
+                let resp =
+                    read_response(&back, &path, &ward_view, &store, &state_dir, &usage, &token);
+                let _ = match resp {
+                    Some(r) => back.respond(r),
+                    None => back
+                        .respond(Response::from_data(b"not found".to_vec()).with_status_code(404)),
+                };
+            }
+            continue;
+        }
 
         // A session is rebuilt here, the first time its id is asked for, rather than all of them at
         // boot. One place instead of the twenty handlers that take an `id`, so no route can forget.
@@ -3967,7 +4156,7 @@ fn main() {
                 // string we handed out on a link, and the tally holds our own string or nothing —
                 // see `usage::channel`. Nothing about the person is read on the way here.
                 if ward_mode() {
-                    usage.arrived(param(&url, "src").as_deref().and_then(usage::channel), &store);
+                    usage.lock().unwrap().arrived(param(&url, "src").as_deref().and_then(usage::channel), &store);
                 }
                 let page = compose(if ward_mode() { WORLD } else { LANDING });
                 let resp = squeezed(&req, page.into_bytes(), b"text/html; charset=utf-8")
@@ -4283,7 +4472,7 @@ fn main() {
                         s.owner = param(&url, "player").and_then(|p| pubkey(&p)).map(|k| k.to_string());
                         // One run opened. The key is a browser's, not a person's — it is folded
                         // into a month-salted fingerprint and never stored as itself.
-                        usage.started(&ep, s.owner.as_deref(), &store);
+                        usage.lock().unwrap().started(&ep, s.owner.as_deref(), &store);
                         let id = fresh_id();
                         let view = s.view(lang::language(param(&url, "lang").as_deref()));
                         let mut map = sessions.lock().unwrap();
@@ -4388,7 +4577,7 @@ fn main() {
                             }
                         }
                         let v = s.view(lang::language(param(&url, "lang").as_deref()));
-                        count_finish(&mut usage, s, was_over, &store);
+                        count_finish(&mut usage.lock().unwrap(), s, was_over, &store);
                         // Nothing to write for a run that was already over: it took nothing on
                         // this request, so the bytes on disk are the bytes already there. A poll
                         // left running against a finished case must not be a write per second.
@@ -4421,7 +4610,7 @@ fn main() {
                             }
                         }
                         let v = s.view(lang::language(param(&url, "lang").as_deref()));
-                        count_finish(&mut usage, s, was_over, &store);
+                        count_finish(&mut usage.lock().unwrap(), s, was_over, &store);
                         if !was_over {
                             persist(&store, &id, s, true);
                         }
@@ -4509,7 +4698,7 @@ fn main() {
                             }
                         }
                         let v = s.view(lang::language(param(&url, "lang").as_deref()));
-                        count_finish(&mut usage, s, was_over, &store);
+                        count_finish(&mut usage.lock().unwrap(), s, was_over, &store);
                         if !was_over {
                             persist(&store, &id, s, true);
                         }
@@ -4923,7 +5112,7 @@ fn main() {
                         // Somebody got past the globe to a person. Counted here, where the page is
                         // actually served, so the gap between this and `shifts_taken` says whether
                         // a quiet ward is one nobody found or one nobody knew how to start.
-                        usage.opened_a_bedside(&store);
+                        usage.lock().unwrap().opened_a_bedside(&store);
                         let board = ward_now(&ward_view, &store, &state_dir);
                         let her = board["patients"]
                             .as_array()
@@ -5057,20 +5246,15 @@ fn main() {
                 // that has not opened — a number that is true elsewhere is still a wrong answer
                 // here. Say so, and point at where the real one lives.
                 if ward_mode() {
-                    // The bay's own play numbers are not this host's to publish, and that has not
-                    // changed. What is this host's is who arrived at it, so that is published and
-                    // nothing else is.
-                    let _ = req.respond(json(serde_json::json!({
-                        "ward": "not open yet",
-                        "opens": "week 2 of Crypto World's Fair, 21-27 Sep 2026",
-                        "arrivals": usage.arrivals(),
-                        "funnel": usage.funnel(),
-                        "usage_for_the_eternal_entry": "https://vitals.academy/api/usage"
-                    })));
+                    // One implementation, in `read_response`, which the reader pool also calls.
+                    match read_response(&req, &path, &ward_view, &store, &state_dir, &usage, &token) {
+                        Some(r) => { let _ = req.respond(r); }
+                        None => { let _ = req.respond(json_code(serde_json::json!({}), 404)); }
+                    }
                     continue;
                 }
                 let t = tree.lock().unwrap();
-                let mut v = usage.view();
+                let mut v = usage.lock().unwrap().view();
                 // The one figure on this page an outsider can verify without trusting us: the
                 // runs anchored on chain. Read from the same lock /api/chain and /api/fuel read,
                 // so the three can never disagree about how many there are.
@@ -5263,8 +5447,10 @@ fn main() {
             // than redirecting to the game origin, because they are the company's documents and
             // because the URL handed to an OAuth consent screen or a reviewer should resolve at
             // the name it was written as, not one hop later.
-            (Method::Get, "/stats") => html(WARD_STATS),
-            (Method::Get, "/privacy") => html(&PRIVACY.replace(BUILD_STAMP, BUILD)),
+            (Method::Get, "/stats") => read_response(&req, &path, &ward_view, &store, &state_dir, &usage, &token)
+                .unwrap_or_else(|| html(WARD_STATS)),
+            (Method::Get, "/privacy") => read_response(&req, &path, &ward_view, &store, &state_dir, &usage, &token)
+                .unwrap_or_else(|| html(&PRIVACY.replace(BUILD_STAMP, BUILD))),
             (Method::Get, "/terms") => html(&TERMS.replace(BUILD_STAMP, BUILD)),
             // ── the form itself ─────────────────────────────────────────────────
             // One URL and nothing else. The two reviewers this is for are a final-year student
@@ -5280,7 +5466,8 @@ fn main() {
             // Ungated, like the bay. A token here would protect nothing — everything on the page
             // is a question we are asking — and would stop the page opening for the two people
             // it was written for. `guarding_covers_everything_that_spends_or_signs` holds it.
-            (Method::Get, "/review") => html(&REVIEW.replace(BUILD_STAMP, BUILD)),
+            (Method::Get, "/review") => read_response(&req, &path, &ward_view, &store, &state_dir, &usage, &token)
+                .unwrap_or_else(|| html(&REVIEW.replace(BUILD_STAMP, BUILD))),
             // The board, pushed (CWF_PLAN.md ruling 12). SSE rather than a socket: the page only
             // ever listens, and a browser reconnects an EventSource by itself — which matters
             // here because Cloud Run ends a request at its timeout however healthy it is.
@@ -5559,32 +5746,64 @@ fn main() {
                 // nothing able to check it, which is how Cloud Run came to be refusing visitors
                 // all day without a single test noticing.
                 //
-                // Inert unless the variable is set, and no deployed service sets it. It is here
-                // rather than in a test because the loop it has to occupy is here.
-                if let Some(ms) = std::env::var("VITALS_TICK_SLEEP_MS")
-                    .ok()
-                    .and_then(|v| v.trim().parse::<u64>().ok())
-                {
-                    std::thread::sleep(std::time::Duration::from_millis(ms));
-                }
+                // Inert unless the variable is set, and no deployed service sets it. It lives
+                // inside the pass's own thread below, so that holding the pass no longer holds
+                // the loop — which is the thing being fixed.
                 // The pass runs *inside* this request on purpose: with min-instances 0, Cloud Run
                 // gives the container CPU only while a request is being served, so a pass spawned
                 // and answered 202 would stall the moment the response went out. The budget in
                 // `Budget::pass` is what makes a synchronous pass tolerable on a server that
                 // answers one request at a time.
-                let began = Instant::now();
-                let ran = match one_pass(&store, &scenario_root()) {
-                    None => None,
-                    Some(Ok(t)) => Some(t),
-                    // No chain is a pass that ran and admitted nobody, with the reason in its
-                    // notes — 200, because the route did its job and the ward is saying why.
-                    Some(Err(e)) => Some(ward_chain::Ticked {
-                        notes: vec![format!("the chain could not be read, so nobody was admitted: {e}")],
-                        ..Default::default()
-                    }),
-                };
-                let (code, body) = ward_chain::tick_response(ran, began.elapsed());
-                let _ = req.respond(json_code(body, code));
+                // **The pass runs on its own thread, holding this request open.**
+                //
+                // It used to run right here, and "here" is the loop that pulls requests off the
+                // socket. While it ran, nothing else was even *collected*, let alone answered —
+                // which is why the reader pool alone did not help: the readers were idle behind a
+                // loop that never reached the point of handing them anything.
+                //
+                // The request is carried into the thread and answered when the pass finishes, so
+                // Cloud Run still sees a request in flight for the whole of it. That matters at
+                // min-instances 0, where CPU is given only while a request is being served: a
+                // pass that answered first and worked after would stall the moment the response
+                // went out. This keeps the original reason for running it synchronously and drops
+                // the cost nobody had noticed — that it also stopped the ward answering anybody.
+                //
+                // `one_pass` takes the `TICKING` gate, so two scheduler ticks still cannot overlap:
+                // the second is answered 409 by the gate rather than by this loop being busy.
+                let state = state_dir.clone();
+                std::thread::spawn(move || {
+                    let store = match store::Store::open(std::path::PathBuf::from(&state)) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            let _ = req.respond(json_code(
+                                serde_json::json!({ "error": format!("no store for the pass: {e}") }),
+                                503,
+                            ));
+                            return;
+                        }
+                    };
+                    if let Some(ms) = std::env::var("VITALS_TICK_SLEEP_MS")
+                        .ok()
+                        .and_then(|v| v.trim().parse::<u64>().ok())
+                    {
+                        std::thread::sleep(std::time::Duration::from_millis(ms));
+                    }
+                    let began = Instant::now();
+                    let ran = match one_pass(&store, &scenario_root()) {
+                        None => None,
+                        Some(Ok(t)) => Some(t),
+                        // No chain is a pass that ran and admitted nobody, with the reason in its
+                        // notes — 200, because the route did its job and the ward is saying why.
+                        Some(Err(e)) => Some(ward_chain::Ticked {
+                            notes: vec![format!(
+                                "the chain could not be read, so nobody was admitted: {e}"
+                            )],
+                            ..Default::default()
+                        }),
+                    };
+                    let (code, body) = ward_chain::tick_response(ran, began.elapsed());
+                    let _ = req.respond(json_code(body, code));
+                });
                 continue;
             }
             (Method::Post, "/api/ward/queue") => {
@@ -6008,7 +6227,7 @@ fn main() {
                         // it, the head is theirs and the lease is running. Counting the press would
                         // have counted every take the program refused as a shift, and told us
                         // people were playing on a night nobody was.
-                        usage.took_a_shift(&store);
+                        usage.lock().unwrap().took_a_shift(&store);
                         let until = chain.patient(*patient_id).ok().flatten()
                             .map(|p| p.lease_until_slot);
                         json(serde_json::json!({
@@ -6411,32 +6630,18 @@ fn main() {
                     })));
                     continue;
                 }
-                let body = serde_json::to_vec(&ward_now(&ward_view, &store, &state_dir))
-                    .unwrap_or_else(|_| b"{}".to_vec());
-                let tag = etag_of(&body);
-                // Asked again with the tag it already has, the ward says "still that" and sends
-                // nothing. The board is opened by a room full of people at once during a demo.
-                let known = req
-                    .headers()
-                    .iter()
-                    .find(|h| h.field.equiv("if-none-match"))
-                    .is_some_and(|h| h.value.as_str().split(',').any(|t| t.trim() == tag));
-                let resp = if known {
-                    Response::from_data(Vec::new()).with_status_code(304)
-                } else {
-                    squeezed(&req, body, b"application/json")
-                };
-                let resp = resp
-                    .with_header(Header::from_bytes(&b"ETag"[..], tag.as_bytes()).unwrap())
-                        // Fifteen seconds: long enough to absorb a room opening it at once, short
-                        // enough that a death is on screen before anybody has stopped looking.
-                    .with_header(
-                        Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=15"[..])
-                            .unwrap(),
-                    );
-                let _ = req.respond(resp);
+                // One implementation, in `read_response`. The reader pool answers this path when
+                // the ward is serving; this is the same answer for the Eternal entry and for a
+                // send that found no reader. Within an hour of writing "one implementation, two
+                // callers" there were two implementations, and the drift was found by a test hook
+                // that existed in one of them — so the delegation is the point, not the tidiness.
+                match read_response(&req, &path, &ward_view, &store, &state_dir, &usage, &token) {
+                    Some(r) => { let _ = req.respond(r); }
+                    None => { let _ = req.respond(Response::from_data(b"not found".to_vec()).with_status_code(404)); }
+                }
                 continue;
             }
+
             (Method::Get, "/api/chain") => {
                 // On the ward host these would answer for vitals.academy's play, not for a ward
                 // that has not opened — a number that is true elsewhere is still a wrong answer

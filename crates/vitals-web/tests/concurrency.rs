@@ -39,6 +39,11 @@ impl Server {
     /// A ward whose pass takes `pass_ms`, so the loop can be held long enough to ask what happens
     /// to everybody else while it is.
     fn with_slow_pass(pass_ms: u64) -> Server {
+        Server::slow(pass_ms, 0)
+    }
+
+    /// A ward whose pass takes `pass_ms` and whose board read takes `board_ms`.
+    fn slow(pass_ms: u64, board_ms: u64) -> Server {
         static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let state = std::env::temp_dir().join(format!("vitals-conc-{}-{n}", std::process::id()));
@@ -49,6 +54,7 @@ impl Server {
             .env("VITALS_WORLD", "1")
             .env("VITALS_WARD_DOOR", "open")
             .env("VITALS_TICK_SLEEP_MS", pass_ms.to_string())
+            .env("VITALS_BOARD_SLEEP_MS", board_ms.to_string())
             // **The door has to be open for the pass to be askable for at all.** Removing
             // `VITALS_DOOR_TOKEN` does not open the factory's doors, it shuts them: this test
             // first passed in 1.88 s having never occupied the loop, because the tick it fired
@@ -131,4 +137,60 @@ fn reads_are_answered_while_a_pass_holds_the_loop() {
     let code = pass.join().expect("the pass thread");
     assert_eq!(code, 200, "the pass was refused, so the loop was never held and this test proved \
                            nothing — check the door secret");
+}
+
+
+/// **A slow read holds nobody but its own reader.**
+///
+/// The pass leaving the loop is what the test above proves. This is the other half, and the half
+/// the reader pool is for: the board's first read on a cold instance goes to the chain inline and
+/// took sixteen to twenty-one seconds on staging. On one thread that is twenty seconds in which
+/// the ward answers nobody — the same refusal as a pass, arriving through a different door.
+///
+/// Without the pool this fails: `/api/usage`, `/review` and `/stats` would queue behind the board
+/// read and be answered after it. With it they are answered beside it.
+#[test]
+fn a_slow_board_read_does_not_hold_the_other_readers() {
+    let s = Server::slow(0, 4_000);
+
+    let board = s.url("/api/ward");
+    let slow = std::thread::spawn(move || {
+        let began = Instant::now();
+        let code = ureq::get(&board).call().map(|r| r.status()).unwrap_or(0);
+        (code, began.elapsed())
+    });
+    std::thread::sleep(Duration::from_millis(400));
+
+    let others: Vec<_> = ["/api/usage", "/review", "/stats"]
+        .iter()
+        .map(|p| {
+            let url = s.url(p);
+            let path = p.to_string();
+            std::thread::spawn(move || {
+                let began = Instant::now();
+                let code = ureq::get(&url).call().map(|r| r.status()).unwrap_or(0);
+                (path, code, began.elapsed())
+            })
+        })
+        .collect();
+
+    for h in others {
+        let (path, code, took) = h.join().expect("a reader thread");
+        assert_eq!(code, 200, "{path} was not answered while the board was being read");
+        assert!(
+            took < Duration::from_millis(1_500),
+            "{path} waited {}ms for a slow board read instead of being answered beside it",
+            took.as_millis()
+        );
+    }
+
+    // And the slow read really was slow: otherwise nothing was being waited on and this proved
+    // nothing, which is the failure mode the test above already fell into once.
+    let (code, took) = slow.join().expect("the board thread");
+    assert_eq!(code, 200, "the board read itself failed");
+    assert!(
+        took >= Duration::from_millis(3_500),
+        "the board read took only {}ms, so it never held anything and this test proved nothing",
+        took.as_millis()
+    );
 }
