@@ -174,3 +174,63 @@ fn absurd_readings_still_score() {
     let s = news::score(&news::Obs { age_years: ADULT, rr: 999.0, spo2: 200.0, on_oxygen: false, sbp: 999.0, hr: 999.0, temp: 99.0, gcs: 15 }).expect("an adult is scored");
     assert_eq!(s.total, (3 + 3 + 3 + 2));
 }
+
+
+/// **Whose age the score is built from, when the ward put somebody else in the bed.**
+///
+/// `applies_to_age` treats an unknown age as an adult, and says in its own doc comment why that is
+/// safe: *the case table declares an age for every case and a test fails if one is missing;
+/// without it, "no age" would become the way a child gets scored as an adult again.*
+///
+/// Vitals World broke that premise without touching this file. Its patients are not cases from
+/// that table — the factory draws a person and the ward places her on a case — so the lookup by
+/// case id returns nothing, "nothing" is read as an adult, and on 22 ก.ย. Sagal Abdi, eight years
+/// old, was in bed 3 on production carrying a NEWS2 of an adult table. Fadumo Jama, two, is in the
+/// tutorial screenshots reading 15 · HIGH RISK.
+///
+/// It is the third time this family has bitten: the card that called a child by the case's age in
+/// ก.ย. 16, the receipt title last night, and now a clinical score. Each of the first two was
+/// closed where it was noticed. So the rule is named here rather than patched there: **the patient
+/// in the bed decides, and the patient the case was authored about never overrides her.**
+///
+/// Under sixteen the answer is that there is no score — not a paediatric one. Which PEWS to use is
+/// a clinical decision, it is question 3.2 on the form we are asking an advisor right now, and a
+/// ward that answers it for him while asking him would be inventing a number nobody checked.
+#[test]
+fn the_patient_in_the_bed_decides_the_age_the_score_is_built_from() {
+    use vitals_web::news2::{age_for, applies_to_age, score, Obs, NOT_VALIDATED};
+
+    // A case authored about a woman of forty, with a girl of eight placed on it.
+    assert_eq!(age_for(Some(8), Some(40.0)), Some(8.0),
+               "the age is hers, not the age of the patient the case was written about");
+    assert_eq!(age_for(Some(71), Some(40.0)), Some(71.0), "and in the other direction too");
+
+    // No placed patient: the season's own case, answered from the case table as it always was.
+    assert_eq!(age_for(None, Some(40.0)), Some(40.0));
+    assert_eq!(age_for(None, None), None, "an authored case with no age is unchanged — adult");
+
+    // The ward's failure, stated as the rule that ends it: a placed patient is never unknown.
+    assert!(age_for(Some(8), None).is_some(),
+            "a ward patient's age can never come back unknown — unknown is how she was scored as \
+             an adult");
+
+    // And what the screen gets for her. `score` answers `None` for a patient this instrument does
+    // not read — which is the whole point: not zero, not unknown, not reassuring.
+    let obs = |age| Obs { age_years: age, rr: 28.0, spo2: 96.0, on_oxygen: false,
+                          sbp: 98.0, hr: 118.0, temp: 37.4, gcs: 15.0 };
+
+    let hers = obs(age_for(Some(8), Some(40.0)));
+    assert!(!applies_to_age(hers.age_years), "eight is not an adult");
+    assert!(score(&hers).is_none(), "a girl of eight is not given an adult score");
+
+    // The same observations read through the case's patient — which is what production did — come
+    // back scored, and high. This is the bug in one assertion: identical vitals, two answers,
+    // decided entirely by which patient the age was taken from.
+    let the_cases = obs(Some(40.0));
+    assert!(score(&the_cases).is_some(),
+            "the same observations on a woman of forty are scored, and that is correct");
+
+    // The sentence that goes where the number would have been. A blank reads as nothing to worry
+    // about on a child who may be very sick.
+    assert!(NOT_VALIDATED.contains("under 16"), "{NOT_VALIDATED}");
+}
