@@ -526,7 +526,7 @@ pub fn tick(cfg: &Config, door: &dyn Door, tools: &dyn Tools) -> Report {
                 pack.portrait.insert("stable_256".into(), sibling_url(&stable));
                 pack.portrait.insert("stable".into(), stable);
             }
-            Ok(None) => r.say(format!("{} goes out without a picture: {} stable was refused twice, or waits for tomorrow's edit budget", who.name, who.sex.possessive())),
+            Ok(None) => r.say(format!("{} goes out without a picture: {} stable was refused twice", who.name, who.sex.possessive())),
             Err(e) => {
                 r.fail(format!("{}'s stable could not be made: {e} — no pack for {} this tick", who.name, who.sex.object()));
                 continue;
@@ -1315,7 +1315,8 @@ fn gated_edit(cfg: &Config, tools: &dyn Tools, reference: &[u8], prompt: &str, s
 }
 
 /// Her stable, made from the base and judged, on file under `stable` with the base under `base`.
-/// `Ok(Some(url))` is the made stable (already on file, or made now); `Ok(None)` is a stable
+/// `Ok(Some(url))` is the made stable (already on file, or made now) — or, with no edit budget,
+/// her base, sent as it is and replaced the first day there is budget; `Ok(None)` is a stable
 /// refused twice — she goes out without a picture rather than with the wrong one.
 fn ensure_stable(cfg: &Config, tools: &dyn Tools, manifest: &mut Manifest, slot: &str, who: &Person, age: u16, r: &mut Report) -> Result<Option<String>, String> {
     let entry = manifest.entries.get(slot).ok_or_else(|| format!("{slot} is not on file"))?;
@@ -1326,7 +1327,16 @@ fn ensure_stable(cfg: &Config, tools: &dyn Tools, manifest: &mut Manifest, slot:
     let reference = read_face(cfg, tools, &base_url)?;
     let prompt = prompts::state_for(prompts::STABLE, who.sex, age < prompts::CHILD_UNDER).ok_or_else(|| "no stable prompt".to_string())?;
     match gated_edit(cfg, tools, &reference, &prompt, prompts::STABLE, &who.name, r)? {
-        Gate::Budget => Ok(None),
+        // No budget for the edit: the base goes out under `stable` — her own painted face, in a
+        // gown, in a bed — and nothing is recorded as made, so the first day with budget makes the
+        // real stable and the replace door swaps it in. The founder, 22 ก.ย., on a patient who had
+        // gone out with no picture at all under a zero budget: "ต้องมีรูป" — there has to be a
+        // picture; and "ถูกที่สุด" — the cheapest, which is the face the local model already
+        // painted, never somebody else's.
+        Gate::Budget => {
+            r.say(format!("{} goes out with the base as the stable: no edit budget today; a made stable replaces it when there is", who.name));
+            Ok(Some(base_url))
+        }
         Gate::Made(webp) => {
             let url = publish(cfg, tools, &webp)?;
             manifest.record_stable(slot, &url);
