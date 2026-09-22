@@ -5552,6 +5552,21 @@ fn main() {
                     }), 404));
                     continue;
                 }
+                // **The occupation, made askable for.** A pass holds this loop for eleven to
+                // fifteen seconds at the census the ward now runs at, and about eighty on a cold
+                // start. Nothing in the test suite can occupy it that long — there is no chain to
+                // read — so a claim about what happens to other requests during a pass had
+                // nothing able to check it, which is how Cloud Run came to be refusing visitors
+                // all day without a single test noticing.
+                //
+                // Inert unless the variable is set, and no deployed service sets it. It is here
+                // rather than in a test because the loop it has to occupy is here.
+                if let Some(ms) = std::env::var("VITALS_TICK_SLEEP_MS")
+                    .ok()
+                    .and_then(|v| v.trim().parse::<u64>().ok())
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(ms));
+                }
                 // The pass runs *inside* this request on purpose: with min-instances 0, Cloud Run
                 // gives the container CPU only while a request is being served, so a pass spawned
                 // and answered 202 would stall the moment the response went out. The budget in

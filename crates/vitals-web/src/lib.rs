@@ -21,6 +21,7 @@ pub mod payout;
 pub mod reading;
 pub mod rebuild;
 pub mod review;
+pub mod serve;
 pub mod store;
 pub mod usage;
 pub mod ward;
