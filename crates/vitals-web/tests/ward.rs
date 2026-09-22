@@ -152,12 +152,28 @@ fn on_the_ward_can_never_go_negative_even_if_the_chain_is_read_mid_write() {
 #[test]
 fn the_ward_fills_its_beds_and_never_more() {
     assert_eq!(BEDS, 3, "three beds to start — CWF_PLAN.md's beds ruling");
-    assert_eq!(to_admit(0, BEDS, 10), 3, "an empty ward opens every bed it has");
-    assert_eq!(to_admit(2, BEDS, 10), 1, "one free bed takes one patient");
-    assert_eq!(to_admit(3, BEDS, 10), 0, "a full ward admits nobody");
-    assert_eq!(to_admit(1, BEDS, 1), 1, "and never more than the queue actually holds");
-    assert_eq!(to_admit(0, BEDS, 0), 0, "an empty queue is not an error, it is a quiet night");
-    assert_eq!(to_admit(5, BEDS, 5), 0, "more patients than beds — from a bed count that shrank — admits nobody");
+    // `due` is the clock, and it is a separate question from whether a bed is free. With nothing
+    // due, this is the rule the ward has always had.
+    assert_eq!(to_admit(0, BEDS, 10, false), 3, "an empty ward opens every bed it has");
+    assert_eq!(to_admit(2, BEDS, 10, false), 1, "one free bed takes one patient");
+    assert_eq!(to_admit(3, BEDS, 10, false), 0, "a full ward admits nobody");
+    assert_eq!(to_admit(1, BEDS, 1, false), 1, "and never more than the queue actually holds");
+    assert_eq!(to_admit(0, BEDS, 0, false), 0, "an empty queue is not an error, it is a quiet night");
+    assert_eq!(to_admit(5, BEDS, 5, false), 0, "more patients than beds admits nobody on beds alone");
+
+    // **And the founder's ruling, 22 ก.ย.: "โลกความจริงจำนวนคนไข้ไม่มีคำว่ารอ".** Sick people do
+    // not wait for a bed to free. When the clock says one is due, one is admitted whether or not
+    // there is a bed — three is a cap we chose and the shortage is the thing being shown.
+    assert_eq!(to_admit(3, BEDS, 10, true), 1, "a full ward still admits the one that is due");
+    assert_eq!(to_admit(20, BEDS, 10, true), 1,
+               "and a ward well past the old cap admits one more: there is no ceiling, only a \
+                queue that runs out");
+    assert_eq!(to_admit(0, BEDS, 10, true), 3,
+               "a due arrival does not add to a bed-filling pass — filling the beds already \
+                admits somebody this minute, and the clock is satisfied by that");
+    assert_eq!(to_admit(3, BEDS, 0, true), 0,
+               "but never out of an empty queue: the ward admits what the factory has built and \
+                invents nobody");
 }
 
 // ── /api/ward · the payload the weekly card is photographed from ────────────
@@ -2158,4 +2174,48 @@ fn the_door_and_its_sentence_are_stamped_on_the_way_out_not_kept_with_the_board(
     assert_eq!(kept["policy"]["catalogue"]["held"], 75);
     assert_eq!(kept["queue"]["waiting"], 20);
     assert_eq!(kept["patients"], serde_json::json!([]));
+}
+
+
+/// **A patient arrives every thirty minutes, whether or not anybody is watching.**
+///
+/// The founder, 22 ก.ย.: "ผมต้องการผลิตคนไข้มาเรื่อยๆ เพื่อสะท้อนปัญหาแพทย์ไม่พอ". A ward that only
+/// admits when a bed frees is a ward whose census is a number we chose; a ward that keeps admitting
+/// is one whose census is the shortage. At one arrival every thirty minutes and ten hours from
+/// admission to an unattended death, a ward nobody plays settles near twenty patients and around
+/// forty-eight deaths a day — and that is the figure to show, not hide.
+///
+/// The clock is read from **the chain**, not from a counter we keep: the last admission is
+/// `admitted_slot` on the patients themselves, dated by the same slot-dater everything else on the
+/// board uses. So the arrival rate is re-countable by anybody holding the program id, like every
+/// other number here.
+///
+/// A ward that cannot say when the last patient arrived does not invent one. `None` is that case —
+/// an unreadable chain, or a dater that could not date — and the answer is no. The bed-filling rule
+/// above already covers a ward that has never admitted anybody, so nothing is lost by refusing, and
+/// what is avoided is a burst of arrivals every time the dating fails.
+#[test]
+fn a_patient_is_due_on_the_clock_and_a_ward_that_cannot_tell_the_time_invents_nobody() {
+    use vitals_web::ward::arrival_due;
+
+    let half_hour = 30;
+    let now = 1_790_000_000i64;
+
+    assert_eq!(arrival_due(Some(now - 1800), now, half_hour), true,
+               "thirty minutes to the second is due");
+    assert_eq!(arrival_due(Some(now - 4000), now, half_hour), true, "and long past due is due");
+    assert_eq!(arrival_due(Some(now - 1799), now, half_hour), false, "a second short is not");
+    assert_eq!(arrival_due(Some(now), now, half_hour), false, "and one just admitted is not");
+
+    assert_eq!(arrival_due(None, now, half_hour), false,
+               "a ward that cannot say when the last patient arrived invents nobody — filling the \
+                beds already covers a ward that has never admitted, so refusing costs nothing and \
+                avoids a burst every time the dating fails");
+
+    assert_eq!(arrival_due(Some(now - 99_999), now, 0), false,
+               "and zero minutes turns the clock off rather than admitting on every pass");
+
+    // A clock running backwards — a slot dated later than this host's own now — is not an arrival.
+    assert_eq!(arrival_due(Some(now + 600), now, half_hour), false,
+               "a last admission in the future is a disagreement about time, not a patient due");
 }
