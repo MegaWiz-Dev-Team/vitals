@@ -199,6 +199,19 @@ run "a submit that names no build stops before anything is built" rejects "named
 # and the safe answer is to stop and say so rather than assume either way.
 run "a build whose status cannot be read is unknown, not failed" rejects "unknown" \
   -- STUB_DESCRIBE_FAIL=1
+# Two settings a deploy speaks for whether or not anybody named them. `--set-env-vars` replaces
+# the whole environment, so an arrival interval set by hand was silently dropped by the next
+# deploy (22 Sep, four minutes after the founder ruled 60); and `--concurrency` hard-coded at 8
+# put the platform's belief about the container on no screen at all, while every open tab held a
+# 301 s stream against it and strangers were refused. Both are named on every deploy and printed.
+run "the arrival interval rides on every deploy and is printed" accepts "── arrivals  every 60 min" \
+  -- VITALS_WARD_ARRIVAL_MINUTES=60
+run "the arrival interval defaults to the binary's own 30 and says so" accepts "── arrivals  every 30 min" \
+  --
+run "concurrency is printed next to the service" accepts "── concurrency 80 requests in flight per instance" \
+  --
+run "concurrency can be set, and the deploy says what it set" accepts "── concurrency 40 requests in flight per instance" \
+  -- CONCURRENCY=40
 run "the same name in another project is still not you" rejects "not you" \
   -- STUB_ACCOUNT=vitals-ops@some-other-project.iam.gserviceaccount.com
 run "a look-alike is still not you" rejects "not you" \
