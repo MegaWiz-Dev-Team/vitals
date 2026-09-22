@@ -29,7 +29,12 @@ SERVICE="${SERVICE:-vitals}"
 # Staging keeps no warm instance: vitals-academy-dev is for the devnet proof and for load, its data
 # is deletable, and a cold start there costs a few seconds of somebody's patience rather than a
 # clinician's. Production is unchanged by this variable's default.
-MIN_INSTANCES="${MIN_INSTANCES:-1}"
+# The founder's ruling of 20 Sep 2026 (billing): min-instances 0 on every service, production
+# included; a warm instance is his to name for a demo window, never a default. This defaulted to
+# 1 until 23 Sep, which is the same hazard as the arrival interval below — a setting the deploy
+# speaks for, whose silent value contradicted a ruling — and it re-created the cost on every
+# deploy that forgot the variable.
+MIN_INSTANCES="${MIN_INSTANCES:-0}"
 # How many requests Cloud Run may hold in flight on the one instance. This was hard-coded at 8
 # and on no screen: every open front-page tab holds a 301 s stream (`/api/ward/stream`) against
 # it, so on 22 Sep 2026 eight tabs — some of them ours — filled the count and the platform
@@ -192,6 +197,11 @@ if [ "$SERVICE" = "vitals-world" ]; then
   echo "── arrivals  every $ARRIVAL_MINUTES min (VITALS_WARD_ARRIVAL_MINUTES; 0 turns the clock off)"
 fi
 echo "── concurrency $CONCURRENCY requests in flight per instance (CONCURRENCY; streams count, one per open tab)"
+if [ "$MIN_INSTANCES" = 0 ]; then
+  echo "── min-instances 0 (MIN_INSTANCES; the founder's ruling of 20 Sep 2026 is 0 on every service)"
+else
+  echo "── min-instances $MIN_INSTANCES (MIN_INSTANCES; the founder's ruling of 20 Sep 2026 is 0 on every service) — an exception he named, not a default"
+fi
 [ -n "$VERTEX_URL" ] && env_add "VITALS_VERTEX_URL=$VERTEX_URL"
 [ -n "$VERTEX_MODEL" ] && env_add "VITALS_VERTEX_MODEL=$VERTEX_MODEL"
 [ -n "$MONTHLY" ] && env_add "VITALS_MONTHLY_TURNS=$MONTHLY"
