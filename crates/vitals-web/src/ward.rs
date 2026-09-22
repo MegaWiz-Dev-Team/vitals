@@ -1358,9 +1358,13 @@ fn policy(
                                anybody is here. Read the rate off the arrivals block and check it \
                                against admitted_slot on the chain.",
         "draw": "from the queue the case factory fills, by a ticker on this host every minute. It \
-                 takes the difficulty band with fewest patients on the ward, and never a case \
-                 another bed already holds, so no two beds hold the same case at once and a \
-                 stranger looking for one level is not told the ward is full of another",
+                 takes the difficulty band with fewest patients on the ward, and prefers a case no \
+                 other bed holds — so a stranger looking for one level is not told the ward is \
+                 full of another. A case already on the ward is taken only when the queue offers \
+                 nothing else: a bed left empty for want of variety teaches nobody, and with no \
+                 ceiling on the census a hard rule would stop admissions the moment the ward held \
+                 the whole catalogue. A patient whose picture is not painted yet is taken last for \
+                 the same reason and by the same rule.",
         "where_they_come_from": "admissions are weighted by each country's people per doctor \
                                  (World Bank/WHO, latest year), so a country with twice the \
                                  shortage sends twice the patients. The weights and their source \

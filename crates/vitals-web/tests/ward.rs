@@ -281,8 +281,16 @@ fn the_release_policy_is_published_and_promises_no_rate() {
             "and the new one is said in the same place the old one was");
     assert!(p["draw"].as_str().unwrap().contains("queue"),
             "a bed is filled from the queue the factory fills, by the ticker on this host");
-    assert!(p["draw"].as_str().unwrap().contains("another bed already holds"),
-            "a case is not drawn while another copy of it is in a bed");
+    // Until 22 ก.ย. this required the sentence to say a case is never drawn while another bed
+    // holds it. B.3 made that a preference — with no ceiling on the census, a hard rule stops
+    // admissions the moment the ward holds the whole catalogue — so what the sentence has to carry
+    // now is both halves: the preference, and what happens when it cannot be honoured.
+    let draw = p["draw"].as_str().unwrap();
+    assert!(draw.contains("prefers a case no other bed holds"),
+            "the preference is still published, because it is still the rule most of the time: {draw}");
+    assert!(draw.contains("only when the queue offers nothing else"),
+            "and so is the exception, because a reader who sees two beds on one case deserves to \
+             find out here rather than guess we are broken: {draw}");
 
     // The catalogue was a list of the season's sixteen here until 16 ก.ย. It is not a list any
     // more, because the ward's cases are not a table compiled into this binary: they arrive

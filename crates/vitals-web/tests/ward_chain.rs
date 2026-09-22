@@ -476,11 +476,15 @@ fn the_next_patient_is_the_one_the_ward_is_missing() {
         .expect("a bed to fill");
     assert_eq!(pick, resident.0, "student and intern are held; resident is the empty band");
 
-    // A case already in a bed is not admitted again, whatever else it would balance.
+    // A case already in a bed is taken last, and taken. This assertion said the opposite until
+    // 22 ก.ย. — "an empty bed is better than breaking the rule" — and it was right while the ward
+    // had three beds. B.1 took the ceiling off the census, which gave that rule an arithmetic end:
+    // fill with distinct cases until the ward holds the whole catalogue, then admit nobody. The
+    // founder's ruling B.3, "ซ้ำได้", is what this now records.
     let on_ward: Vec<String> = vec!["osce-a".into(), "ep2".into(), "osce-d4".into()];
-    assert!(choose_next(&queue, &on_ward, &any_case()).is_none(),
-            "no two beds hold the same case at once — the published rule, and an empty bed is \
-             better than breaking it");
+    assert!(choose_next(&queue, &on_ward, &any_case()).is_some(),
+            "with every queued case already on the ward, a repeat is admitted rather than the bed \
+             left empty — an empty bed teaches nobody");
 
     assert!(choose_next(&[], &empty, &any_case()).is_none(), "an empty queue admits nobody");
 }
@@ -2301,9 +2305,11 @@ fn a_patient_with_no_picture_waits_for_the_others_and_is_still_admitted() {
         "the ward does not stall on a missing picture"
     );
 
-    // Once her case is on the ward she is skipped for the usual reason, not this one.
+    // Her case being on the ward no longer refuses her either — B.3 made that a preference too,
+    // and with nobody else waiting both preferences are spent. She is admitted.
     let taken = vec!["osce-b".to_string()];
-    assert!(choose_next(&alone, &taken, &any_case()).is_none());
+    assert_eq!(choose_next(&alone, &taken, &any_case()).as_deref(), Some(faceless.0.as_str()),
+               "two last-resorts are still a patient, and a bed left empty is still nobody taught");
 }
 
 

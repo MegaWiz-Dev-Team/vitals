@@ -1830,13 +1830,21 @@ pub fn choose_next(
     };
     queue
         .iter()
-        .filter(|(_, p)| !on_ward_cases.iter().any(|c| c == &p.case))
         // The door's rule, on the other door. A pack whose case is withdrawn — or that the
         // catalogue has never heard of — would be admitted and judged caseless on the same tick,
-        // leaving an account on chain with no case anybody can open.
+        // leaving an account on chain with no case anybody can open. This stays a refusal: whether
+        // this ward can place a case at all is a different question from whether another bed
+        // happens to hold it.
         .filter(|(_, p)| placeable.may_place(&p.case))
         .min_by_key(|(id, p)| {
             (
+                // **A case another bed holds goes last, and still goes** (founder, 22 ก.ย.:
+                // "ซ้ำได้"). It was a filter until B.1 took the ceiling off the census, at which
+                // point the rule had an arithmetic end: fill with distinct cases until the ward
+                // holds the whole catalogue, then admit nobody. Its reason survives as this
+                // preference — a stranger looking for one band should not find the ward full of
+                // another — and a bed left empty for want of variety teaches nobody.
+                on_ward_cases.iter().any(|c| c == &p.case),
                 // **A patient with no picture goes last, and still goes.** The factory can queue
                 // somebody whose face has not been painted yet; a bed should take anybody else
                 // first, and take her rather than stand empty. Refusing her at the door would be
@@ -2667,9 +2675,15 @@ pub fn tick(
     for _ in 0..to_admit(out.open, BEDS, depth, due) {
         let queue = store.list::<crate::ward::Pack>(QUEUE_STORE);
         let Some(id) = choose_next(&queue, &on_ward_cases, &Placeable::here(store)) else {
+            // The reason changed with B.3 and so does the note. A repeat is admitted now, so
+            // reaching here means the queue is empty or holds nothing this ward can place —
+            // withdrawn cases, or cases the catalogue has never heard of. Saying which is the
+            // difference between "the factory is behind" and "the factory is sending packs we
+            // refuse", and those need opposite work.
             out.notes.push(
-                "a bed is free and every queued patient has a case already on the ward — no two \
-                 beds hold the same case at once, so the bed waits for the factory"
+                "a bed is free and nobody in the queue can be placed: it is empty, or every pack \
+                 in it names a case this ward has withdrawn or never held. A case another bed \
+                 already holds is no longer a reason to refuse one"
                     .into(),
             );
             break;

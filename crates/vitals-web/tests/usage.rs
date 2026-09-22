@@ -343,3 +343,77 @@ fn the_ward_counts_bedsides_opened_and_shifts_taken() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+
+/// **The three steps of the funnel share one clock, or they are not a funnel.**
+///
+/// Written on 22 ก.ย., the day the funnel was published and the day it was nearly used. `funnel()`
+/// took its first step from `rec.arrivals`, the lifetime counter, because it was there and it held
+/// a number. The other two steps were added the night before with serde defaults of zero and began
+/// counting when that build started serving. So the first step had a day's head start, `/stats`
+/// printed "2% of those who arrived" from it, and the sentence "514 people opened the front page,
+/// 10 of them opened a bedside" was in a draft going out to the public.
+///
+/// This file had already met this problem and said so: `runs_finished_with_a_key` carries a
+/// comment explaining that a run which finished before the split belongs to neither half, so the
+/// halves never simply subtract from the total — "a third, honestly-named bucket rather than a
+/// wrong answer folded into the first". The lesson was written down here and I walked into it
+/// anyway, because a counter that already exists looks free and its history is not part of what
+/// you are reading when you reach for it.
+///
+/// So the funnel gets a window of its own. Everything inside it starts together, the window says
+/// when it opened, and the lifetime total stays where it always was — a headline, not a
+/// denominator.
+#[test]
+fn the_funnel_counts_from_one_moment_and_says_which() {
+    use vitals_web::store::Store;
+    use vitals_web::usage::Usage;
+    let dir = std::env::temp_dir().join(format!("vitals-funnel-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store = Store::open(dir.clone()).expect("a store");
+
+    // A ward that has been counting arrivals for a while before the funnel existed.
+    {
+        let mut u = Usage::open(&store);
+        for _ in 0..7 {
+            u.arrived(None, &store);
+        }
+    }
+
+    // The funnel opens its window. From here the three steps share a clock.
+    let mut u = Usage::open(&store);
+    let f = u.funnel();
+    assert!(f["since"].as_str().is_some(), "the window says when it opened: {f}");
+    assert_eq!(f["arrivals"], 0, "and nothing before it is inside it");
+    assert_eq!(f["bedsides_opened"], 0);
+    assert_eq!(f["shifts_taken"], 0);
+
+    // The lifetime total is untouched and still published where it always was.
+    assert_eq!(u.arrivals()["total"], 7, "the headline keeps its history");
+
+    u.arrived(None, &store);
+    u.arrived(None, &store);
+    u.opened_a_bedside(&store);
+    u.took_a_shift(&store);
+
+    let f = u.funnel();
+    assert_eq!(f["arrivals"], 2, "two arrivals since the window opened, not nine");
+    assert_eq!(f["bedsides_opened"], 1);
+    assert_eq!(f["shifts_taken"], 1);
+    assert_eq!(u.arrivals()["total"], 9, "and the lifetime total counts all of them");
+
+    // The derivation has to say the thing that was nearly published: these are a window, and the
+    // headline is not their denominator.
+    let why = f["derivation"].as_str().unwrap_or_default();
+    for said in ["window", "since"] {
+        assert!(why.contains(said), "the funnel says what it is counted over: {why}");
+    }
+
+    // Across a restart the window is kept, not reopened — otherwise every deploy would silently
+    // reset the only numbers we are trying to read across days.
+    let again = Usage::open(&store);
+    assert_eq!(again.funnel()["arrivals"], 2, "a restart does not reopen the window");
+    assert_eq!(again.funnel()["since"], f["since"]);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
