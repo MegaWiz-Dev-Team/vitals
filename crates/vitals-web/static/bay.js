@@ -1907,6 +1907,14 @@ const ENDLABEL='I have finished';
    Only where there is something to record. A shift with no orders is left as it is: nothing is on
    the chain worth a transaction, and somebody who opened a bed and walked away has not treated
    anybody. And never twice — a hand-over already going is the one that records it. */
+/* An age, said the way a person says one. Stubbed as the page writes it today: the bare number,
+   which reads as a stray digit at any age and as a typo at two. */
+function agePhrase(age){ return age?String(age):''; }
+
+/* Whether the season's chain counters belong on screen. Stubbed as today: always, including on a
+   ward where they are a placeholder that will never be filled. */
+function showsTally(ward, value){ return true; }
+
 function autoHandOver(left, orders, taken, handing){
   if(left===null||left===undefined)return false;
   return left<=0 && orders>0 && !!taken && !handing;

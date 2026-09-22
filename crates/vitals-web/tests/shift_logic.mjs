@@ -691,3 +691,47 @@ assert.equal(autoHandOver(null, 3, true, false), false,
              'a page that does not know the lease does not act on it');
 
 console.log('shift_logic: ok (and a shift with work in it records itself at 0:00)');
+
+
+// ── an age, said the way a person says one ──────────────────────────────────
+//
+// Seen on staging, 22 Sep, at 1280 and at phone width: the bedside identity line read
+// "FADUMO JAMA · 2 · FROM SOM" and the receipt carried a line holding nothing but "2". A number
+// with no unit standing between two other facts reads as a stray digit at any age, and at two it
+// reads as a typo — which is the worst of it, because two is exactly the age a reader is most
+// likely to disbelieve.
+//
+// The patient block's "F 2" is a different convention and stays: there the letter carries the sex
+// and the number is plainly the age beside it. This is for the places where the number stands
+// alone.
+const { agePhrase } = new Function([grab('agePhrase'), 'return { agePhrase };'].join('\n'))();
+
+assert.equal(agePhrase(2), '2 years old', 'the unit is what makes it a fact rather than a digit');
+assert.equal(agePhrase(64), '64 years old');
+assert.equal(agePhrase(1), '1 year old', 'and one of anything is not ones');
+assert.equal(agePhrase(0), 'under 1 year old',
+             'a ward that admits infants has ages of zero, and "0 years old" is not how anybody \
+              says it — nor is hiding the age of the youngest patient on the ward');
+assert.equal(agePhrase(null), '', 'and an age nobody knows is not invented');
+assert.equal(agePhrase(undefined), '');
+
+console.log('shift_logic: ok (and an age says what it is)');
+
+// ── the season's counters are not the ward's ────────────────────────────────
+//
+// `#chainstate` and `#tally` ship as "—" in bay-surface.html and are filled by the season, which
+// counts an account's attempts. On the ward there is no account and no attempts, so they stay at
+// their placeholder — and at phone width they wrap onto a line of their own, where a stranger
+// standing at a bed is given a symbol that decodes to nothing.
+//
+// A placeholder is a promise that a value is coming. Where none is, it is furniture.
+const { showsTally } = new Function([grab('showsTally'), 'return { showsTally };'].join('\n'))();
+
+assert.equal(showsTally(true, '—'), false, 'on the ward, an unfilled counter is not shown at all');
+assert.equal(showsTally(true, ''), false, 'nor an empty one');
+assert.equal(showsTally(true, '3 of 5'), true, 'and a counter with something in it is shown');
+assert.equal(showsTally(false, '—'), true,
+             'the Eternal bay keeps its own placeholder — the season fills it, and its layout was \
+              designed around it being there');
+
+console.log('shift_logic: ok (and the ward shows no empty furniture)');
