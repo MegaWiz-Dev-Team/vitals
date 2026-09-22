@@ -1836,7 +1836,16 @@ pub fn choose_next(
         // leaving an account on chain with no case anybody can open.
         .filter(|(_, p)| placeable.may_place(&p.case))
         .min_by_key(|(id, p)| {
-            (difficulty_of(&p.case).map(band_load).unwrap_or(usize::MAX), id.clone())
+            (
+                // **A patient with no picture goes last, and still goes.** The factory can queue
+                // somebody whose face has not been painted yet; a bed should take anybody else
+                // first, and take her rather than stand empty. Refusing her at the door would be
+                // the wrong trade in a week where the queue is the binding constraint — it would
+                // empty the ward faster than it protected it.
+                p.portrait.is_empty(),
+                difficulty_of(&p.case).map(band_load).unwrap_or(usize::MAX),
+                id.clone(),
+            )
         })
         .map(|(id, _)| id.clone())
 }

@@ -615,8 +615,17 @@ const T = 'https://storage.googleapis.com/vitals-world-portraits/' + 'a'.repeat(
 const F = 'https://storage.googleapis.com/vitals-world-portraits/' + 'b'.repeat(64) + '.webp';
 assert.equal(portraitImg({ portrait: T }), `<img src="${T}" width="56" height="56" loading="lazy" decoding="async" alt="">`, 'the thumbnail, as served');
 assert.equal(portraitImg({ portrait: F }), `<img src="${F}" width="56" height="56" loading="lazy" decoding="async" alt="">`, 'a full picture, as served — the page does not rewrite it');
-assert.equal(portraitImg({ portrait: null }), '<span class="ph">—</span>', 'no picture is a placeholder, not a broken image');
-assert.equal(portraitImg({}), '<span class="ph">—</span>');
+// A placeholder, and one that says whose it is. An em dash says "something is absent" and stops
+// there; her initials say the patient is here and the picture is not — the distinction the founder
+// had to make himself on production, from a gap, on 22 ก.ย.
+assert.equal(portraitImg({ portrait: null, name: 'Haruto Sasaki' }),
+             '<span class="ph" title="no picture yet" aria-label="Haruto Sasaki — no picture yet">HS</span>',
+             'no picture is a placeholder carrying her initials, not a broken image and not a dash');
+assert.equal(portraitImg({ name: 'Sagal' }),
+             '<span class="ph" title="no picture yet" aria-label="Sagal — no picture yet">S</span>');
+assert.equal(portraitImg({}),
+             '<span class="ph" title="no picture yet" aria-label="this patient — no picture yet">?</span>',
+             'and a row with no name at all still fills the square');
 assert.equal(portraitImg({ portrait: 'x"y' }), '<img src="x&quot;y" width="56" height="56" loading="lazy" decoding="async" alt="">', 'the address is escaped, never trusted');
 assert.ok(!/-256|_256/.test(script), 'no size logic in the page: the ward chooses the address');
 assert.ok(!/\$\{l\[0\] === at \? "" : ""\}/.test(script), 'the no-op ternary is gone');

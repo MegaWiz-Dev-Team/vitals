@@ -1249,12 +1249,29 @@ function paint(v,named){
     WARDFACE=v.portrait||'';
     /* Drawn where the founder looked for it — with her name, not in the frame, which on a station
        is behind the stem sheet until the first order is given. `alt` is her name because that is
-       what the picture is of; when there is no picture the element is not there at all. */
+       what the picture is of.
+       When there is no picture the square stays and says so. It used to be hidden, and on 22 ก.ย.
+       the founder read the gap on production as a broken page — which is the right reading of a
+       blank: it says nothing, so it says whatever the reader fears. */
+    const who=WARDSHIFT&&WARDSHIFT.name?WARDSHIFT.name:'';
     const f=$('#pt-face');
     if(f){
       f.hidden=!WARDFACE;
       if(WARDFACE&&f.getAttribute('src')!==WARDFACE)f.setAttribute('src',WARDFACE);
-      f.alt=WARDSHIFT&&WARDSHIFT.name?WARDSHIFT.name:'the patient';
+      f.alt=who||'the patient';
+      /* The stand-in lives beside the image rather than replacing it, so the picture arriving on
+         a later poll needs no teardown — one of the two is hidden, always exactly one. */
+      let none=$('#pt-face-none');
+      if(!none&&f.parentNode){
+        f.insertAdjacentHTML('afterend', faceMark('', who, 128));
+        none=f.nextElementSibling;
+        if(none)none.id='pt-face-none';
+      }
+      if(none){
+        none.hidden=!!WARDFACE;
+        none.textContent=initials(who);
+        none.setAttribute('aria-label',(who||'this patient')+' — no picture yet');
+      }
     }
   }
   /* The lines this run has earned, in the chosen language. Merged rather than replaced: beats
@@ -1966,6 +1983,36 @@ function beforeTake(minutes){
    `the_guide_link_on_the_bedside_goes_somewhere_this_ward_serves` now enforces: whatever path this
    names, the ward answers 200. Until then the three-step strip above carries the guidance on its
    own, which is the part a stranger reads without leaving the bedside anyway. */
+/* Her initials, for the square where her face would be.
+   Two letters from the first and last word of the name she is admitted under, which is the shape
+   every name on this ward has. One word gives one letter. Nothing gives a question mark, which is
+   still a mark: the square must never be empty, because an empty square is read as a broken page
+   rather than as a missing picture. */
+function initials(name){
+  const parts=String(name||'').trim().split(/\s+/).filter(Boolean);
+  if(!parts.length)return '?';
+  const first=Array.from(parts[0])[0]||'';
+  const last=parts.length>1?(Array.from(parts[parts.length-1])[0]||''):'';
+  return (first+last).toUpperCase();
+}
+
+/* Her face, or the square that says there is not one yet.
+   The factory paints a face for every patient it queues and sometimes cannot upload it; a patient
+   then arrives with none. Until 22 ก.ย. the frame was simply removed, and the founder read the
+   result on production as a fault — which is the right reading of a blank where a face belongs.
+   A blank says nothing, so it is read as whatever the reader fears; an outline with initials says
+   the one true thing, that the picture is missing and the patient is not. */
+function faceMark(portrait, name, size){
+  const px=Number(size)||128;
+  if(portrait){
+    return '<img src="'+esc(portrait)+'" alt="'+esc(name||'')+'" width="'+px+'" height="'+px+
+           '" class="face">';
+  }
+  return '<span class="face face-none" style="width:'+px+'px;height:'+px+'px" role="img" '+
+         'aria-label="'+esc(name||'this patient')+' — no picture yet" title="no picture yet">'+
+         esc(initials(name))+'</span>';
+}
+
 function guideLink(){
   /* A question mark before the words, because the mark is read before the sentence is — and the
      person this is for is deciding in a second whether anything here is for them. The words then
@@ -4430,8 +4477,9 @@ function chartState(c, g){
 function chartPage(c, why){
   const g=/^m/i.test(c.sex||'')?PRO_M:(/^f/i.test(c.sex||'')?PRO_F:PRO_N);
   const when=t=>t?String(t).replace('T',' ').replace(/\.\d+Z?$/,'').replace('Z','')+' UTC':'';
-  const face=c.portrait?'<img src="'+esc(c.portrait)+'" alt="" width="128" height="128" '+
-      'style="border-radius:12px;object-fit:cover;display:block;margin:0 0 .9rem">':'';
+  // Her face, or the square that says there is not one. Never nothing: a chart page that drops
+  // the frame reads as a page that failed to load it.
+  const face='<div class="chart-face">'+faceMark(c.portrait, c.name, 128)+'</div>';
   const shifts=(c.shifts||[]).map((s,i)=>
     '<li>shift '+(i+1)+' · <a href="/shift/'+encodeURIComponent(s.run_hash)+'">the receipt</a>'
     +' · key '+esc(s.signer)+'…'+(s.kept?'':' · <i>tape not kept here</i>')+'</li>').join('');

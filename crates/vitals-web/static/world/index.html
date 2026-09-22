@@ -183,6 +183,9 @@ canvas#globe.dragging{cursor:grabbing}
 .prow>a.take::after{content:"";position:absolute;inset:0;border-radius:.6rem}
 .prow:hover{border-color:var(--rule)}
 .prow img,.prow .ph{width:56px;height:56px;border-radius:50%;object-fit:cover;background:var(--surface-2);border:1px solid var(--rule)}
+/* The square that stands in for a face carries her initials, so a row without a picture
+   reads as a patient we have no picture of rather than as a row that failed to load. */
+.prow .ph{display:inline-flex;align-items:center;justify-content:center;font-weight:700;letter-spacing:.06em;font-size:1rem;color:var(--ink-3,#5e6f73);border-style:dashed;user-select:none}
 .prow .ph{display:flex;align-items:center;justify-content:center;font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--ink-3)}
 .prow b{font-size:.92rem;line-height:1.25;overflow-wrap:anywhere}
 .prow .who{display:flex;gap:.4rem;align-items:baseline;flex-wrap:wrap}
@@ -836,7 +839,21 @@ function stateLine(p, nowMs) {
 // thread. No picture is a placeholder, never a broken image.
 function portraitImg(p) {
   const src = p && p.portrait;
-  if (!src) return `<span class="ph">\u2014</span>`;
+  if (!src) {
+    // Her initials, not a dash. A dash says something is absent and stops there; the founder read
+    // exactly that on production on 22 ก.ย. and had to work out for himself whether the patient
+    // or the page was missing. Initials say the patient is here and the picture is not, and the
+    // same square says it on the bedside and the chart page, so one patient does not appear to be
+    // three different kinds of missing.
+    const who = (p && p.name) || '';
+    const parts = String(who).trim().split(/\s+/).filter(Boolean);
+    const mark = parts.length
+      ? ((Array.from(parts[0])[0] || '') +
+         (parts.length > 1 ? (Array.from(parts[parts.length - 1])[0] || '') : '')).toUpperCase()
+      : '?';
+    const label = escapeHtml((who || 'this patient') + ' \u2014 no picture yet');
+    return `<span class="ph" title="no picture yet" aria-label="${label}">${escapeHtml(mark)}</span>`;
+  }
   return `<img src="${String(src).replace(/"/g, "&quot;")}" width="56" height="56" loading="lazy" decoding="async" alt="">`;
 }
 /* Whether this row's button can do what it says.

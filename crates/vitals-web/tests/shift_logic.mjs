@@ -19,6 +19,18 @@ import assert from 'node:assert/strict';
 
 const script = readFileSync(process.argv[2], 'utf8');
 
+/// A one-line `const name = …;` declaration, verbatim from the file that ships.
+///
+/// `grab` matches braces, which is right for a function body and wrong for an arrow whose body
+/// contains an object literal — `esc` is one, and brace matching stops inside its replacement map.
+/// Pulled by line instead, so the test still runs the code that ships rather than a lookalike.
+function grabLine(name) {
+  const re = new RegExp(`^\\s*(?:const|let|var)\\s+${name}\\s*=.*$`, 'm');
+  const m = script.match(re);
+  if (!m) throw new Error(`${name} is not a one-line declaration in the page any more`);
+  return m[0];
+}
+
 function grab(name) {
   for (const head of [`function ${name}(`, `const ${name}=`, `let ${name}=`]) {
     const i = script.indexOf(head);
@@ -750,3 +762,42 @@ assert.equal(showsTally(false, '—'), true,
               designed around it being there');
 
 console.log('shift_logic: ok (and the ward shows no empty furniture)');
+
+
+// ── the square where a face goes, when there is no face ──────────────────────
+//
+// The founder on production, 22 ก.ย.: "Haruto Sasaki · M 43 · Deteriorating — คนนี้ไม่มีรูป". The
+// ward had removed the frame entirely, which is what the code said to do and what reads as a
+// broken page. A blank means nothing, so it is read as whatever the reader fears; the founder read
+// it as a fault, and he was the most forgiving reader this page will ever have.
+//
+// So the square is always there and always says something true: her face, or her initials and the
+// words "no picture yet" for anybody who hovers or listens.
+const { initials, faceMark } = new Function(
+  [grabLine('esc'), grab('initials'), grab('faceMark'), 'return { initials, faceMark };'].join('\n'))();
+
+assert.equal(initials('Haruto Sasaki'), 'HS');
+assert.equal(initials('Nusrat Jahan'), 'NJ');
+assert.equal(initials('Sagal'), 'S', 'one word is one letter, not half of a pair');
+assert.equal(initials('  Ndeye   Sarr  '), 'NS', 'however the name was spaced');
+assert.equal(initials(''), '?', 'and a name nobody has is still a mark, never a blank');
+assert.equal(initials(null), '?');
+
+// With a picture: the picture, carrying her name as its text alternative.
+const face = faceMark('https://example.invalid/f.webp', 'Haruto Sasaki', 128);
+assert.match(face, /^<img /);
+assert.match(face, /alt="Haruto Sasaki"/, 'the alternative text is who the picture is of');
+
+// Without: never empty, never silent.
+const none = faceMark('', 'Haruto Sasaki', 128);
+assert.notEqual(none, '', 'the square is never removed — that is the bug being fixed');
+assert.match(none, /HS/, 'it carries her initials');
+assert.match(none, /no picture yet/, 'and says what is missing, in words, twice over');
+assert.match(none, /role="img"/, 'announced as the thing it stands in for');
+assert.equal(/<img/.test(none), false, 'and it is not an image element with nothing in it');
+
+// The same square either way, so a row of patients does not change shape when one lacks a face.
+assert.match(face, /width="128"/);
+assert.match(none, /width:128px/);
+
+console.log('shift_logic: ok (and a missing picture says so)');

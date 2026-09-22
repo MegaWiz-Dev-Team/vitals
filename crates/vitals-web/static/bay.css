@@ -922,6 +922,17 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.78rem;background:va
 .leaseclock{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.72rem;
   letter-spacing:.04em;color:var(--ink-3);white-space:nowrap}
 .leaseclock.soon{color:var(--alarm);font-weight:600}
+/* The square where a face goes, and what stands in it when there is none.
+   The frame used to be removed when a patient arrived without a picture, and the founder read the
+   gap on production as a broken page — correctly, because a blank says nothing and is therefore
+   read as whatever the reader fears. An outline with initials says the one true thing: the picture
+   is missing, the patient is not. Same size either way, so a row of patients keeps its shape. */
+.face{border-radius:12px;object-fit:cover;display:block}
+.face-none{display:inline-flex;align-items:center;justify-content:center;
+  border:2px dashed var(--rule,#d8ded9);color:var(--ink-3,#5e6f73);
+  background:var(--lb-bg,#eef4f4);font-weight:700;letter-spacing:.06em;
+  font-size:clamp(1rem,28%,2.4rem);user-select:none}
+.chart-face{margin:0 0 .9rem}
 /* The guidance strip under the ward's bar (founder, 22 ก.ย.). Ward only — every selector here is
    behind `html.is-ward`, because this file dresses the Eternal bay too and a stranger who came for
    a story is not holding anybody's head.
