@@ -209,6 +209,48 @@ fn the_dashboard_is_served_by_the_ward_and_reads_it_same_origin() {
     assert!(thai.is_empty(), "every label on the dashboard is English, and these are not: {thai}");
 }
 
+/// **The two counts the founder reads are on one line, with the day they are counted from.**
+///
+/// The director, 23 Sep: the funnel's two steps belong side by side on the dashboard, "since that
+/// is the number the founder will look at on Wednesday". They can only be put side by side because
+/// the window exists: until f0633a9, `bedsides_opened` had counted since the build that introduced
+/// it and `arrivals` since the ward's first visitor, and this page divided one by the other anyway
+/// and printed "2% of those who arrived". Two counts on two clocks are not a ratio.
+///
+/// So the rule has two halves and both must hold. The page names both steps on one line, and it
+/// names the day they start from. The date is not decoration on that line — it is the thing that
+/// makes the pair comparable, and a pair printed without it is exactly the number that meant
+/// nothing for three days.
+#[test]
+fn the_dashboard_puts_the_two_funnel_counts_on_one_line_with_the_day_they_start() {
+    let s = Server::start(Some("door-secret"));
+    let (code, body) = s.get("/stats");
+    assert_eq!(code, 200);
+    assert!(
+        body.contains(r#"<div id="lead">"#),
+        "the line has a place of its own on the page, above the grid of tiles"
+    );
+    let line = body
+        .split_once("function twoCounts(")
+        .expect("one function writes that line, so what a reader reads can be read here")
+        .1;
+    let line = &line[..line.find("\n}").unwrap_or(line.len())];
+    assert!(
+        line.contains("bedsides_opened") && line.contains("shifts_taken"),
+        "both steps are on the line — the second is the one the founder is asking about, and it \
+         means nothing without the first beside it"
+    );
+    assert!(
+        line.contains("f.since"),
+        "and the day they are both counted from is on the line with them"
+    );
+    assert!(
+        !line.contains("ar.total") && !line.contains("arrivals_all_time"),
+        "and the lifetime total is not: it has counted since the ward's first visitor and is \
+         nobody's denominator here"
+    );
+}
+
 /// **Every link the bedside offers a stranger goes somewhere this ward serves.**
 ///
 /// The guide link shipped to production at 09:04 on 22 ก.ย. and `/start` was not a route. It sits
