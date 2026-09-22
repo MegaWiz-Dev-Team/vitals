@@ -849,13 +849,22 @@ pub fn queue_block(store: &crate::store::Store) -> serde_json::Value {
         // not look" are opposite facts and this endpoint has one rule about those.
         ("waiting", serde_json::json!(waiting.as_ref().ok())),
         ("waiting_unknown_because", serde_json::json!(waiting.as_ref().err())),
-        ("beds", serde_json::json!(crate::ward::BEDS)),
+        // The floor the ward tries to keep open, named as the floor. It published `beds: 3` until
+        // 22 ก.ย., beside a policy block that had already stopped calling three a cap — one answer
+        // describing two wards. The census lives in `policy.beds`, where it is one number with one
+        // meaning; this is the other number, and it says which one it is.
+        ("beds_kept_free", serde_json::json!(crate::ward::BEDS)),
         // Published, because "the queue is empty" and "the door is shut" look identical from
         // outside and mean opposite things about whether anybody should be doing anything.
         ("door", serde_json::json!(door_here().word())),
-        ("filled_by", serde_json::json!("a ticker on the ward host, every minute: a bed frees on \
-                                         discharge or death and the next queued patient takes it. \
-                                         Nobody on the team touches anything")),
+        ("filled_by", serde_json::json!("a ticker on the ward host, every minute. One patient is \
+                                         admitted every thirty minutes by default — the interval \
+                                         is VITALS_WARD_ARRIVAL_MINUTES — whether or not a bed is \
+                                         free and whether or not anybody is here; and a bed \
+                                         freeing on discharge or death takes the next queued \
+                                         patient as well. Nobody on the team touches anything. \
+                                         Read the rate off policy.arrivals and check it against \
+                                         admitted_slot on the chain")),
         ("waiting_patients", serde_json::json!(crate::ward::waiting_rows(&queued, &crate::ward_case::all(store)))),
     ] {
         block[key] = val;

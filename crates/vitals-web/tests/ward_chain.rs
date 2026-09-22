@@ -2243,13 +2243,65 @@ fn the_queue_block_and_the_policy_block_describe_the_same_ward() {
     assert_eq!(q["beds_kept_free"], 3, "what it does publish is the floor, named as the floor");
 
     let filled = q["filled_by"].as_str().unwrap_or_default();
-    for gone in ["a bed frees on discharge or death and the next queued patient takes it"] {
-        assert!(!filled.contains(gone), "the queue still describes the rule B.1 replaced: {filled}");
-    }
+    assert!(
+        !filled.contains("a bed frees on discharge or death and the next queued patient takes it"),
+        "the queue still describes the rule B.1 replaced: {filled}"
+    );
     for said in ["every", "minutes", "whether"] {
         assert!(filled.contains(said),
                 "it has to say that arrivals are on a clock and do not wait for a bed: {filled}");
     }
 
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+
+/// **A patient with no picture is admitted last, and still admitted.**
+///
+/// The founder, looking at production on 22 ก.ย.: "Haruto Sasaki · M 43 · Deteriorating —
+/// คนนี้ไม่มีรูป". He was right; the factory had queued him faceless because a rule written before
+/// the cost ruling defers a base face to "tomorrow's edit budget", and the budget is zero by
+/// design, so tomorrow never comes. That half is the factory's to fix.
+///
+/// This half is the ward's: which of the waiting patients an empty bed takes. Refusing a faceless
+/// pack outright would be the wrong trade in exactly the week supply is the binding constraint —
+/// on the evening this was written the queue was six deep and the factory could not add to it, so
+/// a rule that turned patients away would have emptied the ward faster than it protected it. A
+/// faceless patient beats an empty bed.
+///
+/// So: last in line, never turned away. With anybody else available she waits; with nobody else,
+/// she is admitted, because the alternative is a ward that stalls on a missing JPEG.
+#[test]
+fn a_patient_with_no_picture_waits_for_the_others_and_is_still_admitted() {
+    let faced = {
+        let (id, mut p) = queued("osce-a", "Has A Face");
+        p.portrait.insert("stable".into(), "https://example.invalid/face.webp".into());
+        (id, p)
+    };
+    let faceless = queued("osce-b", "No Face Yet");
+    let empty: Vec<String> = vec![];
+
+    // Both waiting, both placeable, neither case on the ward: the one with a face goes first.
+    let queue = vec![faced.clone(), faceless.clone()];
+    assert_eq!(
+        choose_next(&queue, &empty, &any_case()).expect("a bed to fill"),
+        faced.0,
+        "a patient with a picture is admitted before one without"
+    );
+
+    // Order in the queue does not decide it — the picture does.
+    let reversed = vec![faceless.clone(), faced.clone()];
+    assert_eq!(choose_next(&reversed, &empty, &any_case()).unwrap(), faced.0);
+
+    // And with nobody else, she is admitted rather than the bed being left empty.
+    let alone = vec![faceless.clone()];
+    assert_eq!(
+        choose_next(&alone, &empty, &any_case()).expect("a faceless patient is still a patient"),
+        faceless.0,
+        "the ward does not stall on a missing picture"
+    );
+
+    // Once her case is on the ward she is skipped for the usual reason, not this one.
+    let taken = vec!["osce-b".to_string()];
+    assert!(choose_next(&alone, &taken, &any_case()).is_none());
 }
