@@ -317,6 +317,20 @@ struct WardShift {
     /// change during a shift (the factory adds faces to patients, and add-only is the rule).
     #[serde(default)]
     faces: std::collections::BTreeMap<String, String>,
+    /// How old **she** is — the patient the ward placed here, not the patient the case was
+    /// authored about.
+    ///
+    /// Carried in the session for the same reason her faces are: a view that reached for the store
+    /// to answer it would be a view nobody can test. And carried at all because the alternative
+    /// was asking the case table, which has never heard of her — on 22 ก.ย. that returned nothing,
+    /// `news2` read nothing as an adult, and a girl of eight was scored on the adult chart in
+    /// production.
+    ///
+    /// `u16` and not an option: a patient in a bed always has an age. A restored session written
+    /// before this field existed defaults to 0, which reads as under sixteen and is therefore not
+    /// scored — the safe direction, and the one the old default got backwards.
+    #[serde(default)]
+    age: u16,
 }
 
 /// A run as it sits on disk.
@@ -1059,7 +1073,10 @@ impl Session {
             // charged her 3 for a respiration rate that is normal for three, 2 for a pulse that
             // is normal for three, and 2 for a systolic that is normal for three, and printed
             // "7 · HIGH RISK · emergency response" beside a banner reading "Stable".
-            age_years: patient_age(&self.ep),
+            // Hers if the ward placed somebody here, and the case's own only where nobody has
+            // been placed at all — the season's cases, which is every caller this had before
+            // Vitals World existed. `news2::age_for` is the rule; this is its one call site.
+            age_years: news2::age_for(self.ward.as_ref().map(|w| w.age), patient_age(&self.ep)),
             rr: v.rr, spo2: v.spo2, on_oxygen, sbp: v.sbp, hr: v.hr, temp: v.temp, gcs: v.gcs,
         };
         let n = news2::score(&obs);
@@ -2100,6 +2117,8 @@ fn open_shift(
         // Her whole set, carried into the session so every view can name the right one without
         // reaching for the store.
         faces: pack.portrait.clone(),
+        // Hers, from the pack the factory drew. The case's own patient is a different person.
+        age: pack.persona.age,
     };
     let ward_view = serde_json::json!({
         "patient_id": patient_id,
@@ -7607,6 +7626,7 @@ mod tests {
             taken_slot: 1,
             head: "00".repeat(32),
             faces: faces.clone(),
+            age: 8,
         });
 
         // The engine spells its states `Stable`; the ladder's keys are the same words in lower

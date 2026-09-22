@@ -217,7 +217,7 @@ fn the_patient_in_the_bed_decides_the_age_the_score_is_built_from() {
     // And what the screen gets for her. `score` answers `None` for a patient this instrument does
     // not read — which is the whole point: not zero, not unknown, not reassuring.
     let obs = |age| Obs { age_years: age, rr: 28.0, spo2: 96.0, on_oxygen: false,
-                          sbp: 98.0, hr: 118.0, temp: 37.4, gcs: 15.0 };
+                          sbp: 98.0, hr: 118.0, temp: 37.4, gcs: 15 };
 
     let hers = obs(age_for(Some(8), Some(40.0)));
     assert!(!applies_to_age(hers.age_years), "eight is not an adult");

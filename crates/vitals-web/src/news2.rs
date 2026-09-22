@@ -47,6 +47,29 @@ pub fn applies_to_age(age_years: Option<f64>) -> bool {
     age_years.is_none_or(|a| a >= ADULT_FROM_YEARS)
 }
 
+/// **Whose age this score is built from.**
+///
+/// Two patients can stand behind one case. The case was authored about somebody — an age and a sex
+/// its prose, its marks and its differential were written for — and on the ward the factory draws
+/// a different person and places her on it. Only one of them is in the bed.
+///
+/// `placed` is her age, and it wins outright. It is a `u16` rather than an option because a
+/// patient the ward put in a bed always has an age: if a caller cannot produce one, that is a bug
+/// in the caller and not a patient to be scored as an adult. `authored` is the case's own, used
+/// only where nobody has been placed at all — the season's cases, which is every caller this
+/// function had before Vitals World existed.
+///
+/// This exists because the absence of it shipped. `applies_to_age` reads an unknown age as an
+/// adult, which was safe only while every case declared one; the ward's patients are not in that
+/// table, so the lookup returned nothing and a girl of eight was scored on the adult chart in
+/// production on 22 ก.ย.
+pub fn age_for(placed: Option<u16>, authored: Option<f64>) -> Option<f64> {
+    match placed {
+        Some(years) => Some(f64::from(years)),
+        None => authored,
+    }
+}
+
 /// One set of observations, as a nurse would record them.
 #[derive(Debug, Clone, Copy)]
 pub struct Obs {
