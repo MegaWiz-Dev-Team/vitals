@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Vitals World — the ward, by country</title>
-<meta name="description" content="A public ward. Spin the globe, find a patient by country, take a shift.">
+<meta name="description" content="A public ward. Spin the globe, find a patient by country, treat them.">
 <meta property="og:title" content="Vitals World">
 <meta property="og:description" content="One patient, many strangers, and the chart is the chain. Spin the globe to find her.">
 <link rel="icon" type="image/svg+xml" href="/world/favicon.svg">
@@ -277,7 +277,7 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
 
   </div>
 
-  <h1 id="h1">Spin the world. Find a patient. Take a shift.
+  <h1 id="h1">Spin the world. Find a patient. Treat them.
       <span class="second" id="h1b">A ring is a country with a patient in a bed; filled, being treated now.</span></h1>
   <p class="mission" id="mission" hidden></p>
   <!-- What this ward is doing, in numbers, where a reader looks second. `in beds` and `on shift
@@ -1011,7 +1011,7 @@ function row(p, showCountry) {
   li.innerHTML = `${img}<div>
     <div class="who"><b>${escapeHtml(p.name || ("patient " + p.patient_id))}${age}</b>${bed}</div>
     <div class="meta"><span class="state ${st}" title="${escapeHtml(line.title)}">${escapeHtml(line.text)}</span>${diff}${where}${end}</div>${shut}${stale}${note}</div>
-    <a class="take${canTake ? "" : " look"}" href="/ward/${encodeURIComponent(p.patient_id)}">${canTake ? "take a shift" : "view"}</a>`;
+    <a class="take${canTake ? "" : " look"}" href="/ward/${encodeURIComponent(p.patient_id)}">${canTake ? "treat" : "view"}</a>`;
   return li;
 }
 function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }

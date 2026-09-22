@@ -2013,6 +2013,39 @@ function faceMark(portrait, name, size){
          esc(initials(name))+'</span>';
 }
 
+/* **The first thing a stranger sees at a bedside, once.**
+
+   Ten of them opened a bedside on 22 ก.ย. and not one pressed. One read the whole guide first and
+   still did not come back. So the missing thing is not instruction — the strip had already told
+   them what to press — it is permission, and the specific suspicion to answer is the one the page
+   itself creates: it says chain, key, anchor and signature, which to a doctor reads as *I need a
+   wallet, this will cost me something, I have to install something*.
+
+   Four lines and two buttons. The offer is on the card, so this is not a wall between a person and
+   what they came for; it is the invitation, made where they are already looking. "Just look first"
+   dismisses it for good on this browser and leaves the page exactly as it was.
+
+   Pure, so the harness reads the words a stranger reads rather than a paraphrase. */
+function firstVisit(name, g){
+  const who = name || (g && g.o) || 'this patient';
+  const she = (g && g.s) || 'they';
+  return '<div id="firstvisit" role="dialog" aria-label="Before you start">'
+    + '<p class="fv-lead"><b>Nobody is treating ' + esc(who) + '. You can.</b></p>'
+    + '<p class="fv-free">No wallet. No signup. Nothing to install.</p>'
+    + '<p class="fv-cost">Ten minutes, or leave whenever you like — nothing counts until you '
+    + 'hand over.</p>'
+    + '<div class="fv-acts">'
+    +   '<button type="button" class="btn go" id="fv-treat">Treat ' + esc(who) + '</button>'
+    +   '<button type="button" class="btn quiet" id="fv-look">Just look first</button>'
+    + '</div></div>';
+}
+
+/* Whether to show it. Once per browser, on the ward only, and never over a shift already taken —
+   somebody holding a head does not need to be asked whether they would like to start. */
+function firstVisitDue(ward, taken, dismissed){
+  return !!ward && !taken && !dismissed;
+}
+
 function guideLink(){
   /* A question mark before the words, because the mark is read before the sentence is — and the
      person this is for is deciding in a second whether anything here is for them. The words then
@@ -4046,7 +4079,11 @@ let WARDSHIFT=null, WARDPENDING=null;
    it would be this file quietly turning a single-player bay into a ward. Tested in
    tests/shift_logic.mjs. */
 function takeFirst(ward, runId, whom){
-  return ward && !runId ? 'take the shift to treat '+(whom||'the patient') : null;
+  // **"Take the shift" is staff vocabulary.** It tells a stranger the page is for somebody
+  // already on duty, and on 22 ก.ย. ten of them opened a bedside and none pressed it — including
+  // one who read the whole guide first. What a person wants to do is treat somebody; what the
+  // ward calls the unit of work stays in the receipt and the policy, where it belongs.
+  return ward && !runId ? 'press Treat '+(whom||'this patient')+' to start' : null;
 }
 
 /* An authored line, retold with the age of the person actually in the bed.
@@ -4216,7 +4253,7 @@ function leaseWords(minutes){
    one — and positionally rather than as an object, because the test that runs this function pulls
    it out of the file by brace matching and a destructured parameter list closes the first brace. */
 function primaryLabel(taken, over, name, g){
-  if(!taken) return 'Take the shift · treat '+(name||g.o);
+  if(!taken) return 'Treat '+(name||g.o);
   return 'Hand over · record this shift';
 }
 
@@ -4305,6 +4342,31 @@ addEventListener('resize', monitorWhereItIsRead);
    Only on the ward: `bay.js` is the Eternal bay's script too, and the season needs none of this —
    a stranger there came for a story and is not holding anybody's head. `WARD` is the gate, the
    same one every other ward-only behaviour in this file uses. */
+/* The key this browser remembers the dismissal under. Named in privacy.html §7 with the others —
+   the policy has to list every key a page writes, and the page test fails if it does not. */
+const FIRSTVISIT_KEY='vitals-ward-first-visit';
+
+function firstVisitDismissed(){
+  try{ return localStorage.getItem(FIRSTVISIT_KEY)==='1'; }catch(e){ return false; }
+}
+
+/* Drawn above the strip, where a stranger is already looking, and removed for good on either
+   button: pressing Treat is its own answer, and "Just look first" is remembered so the page is
+   never asked twice. */
+function paintFirstVisit(){
+  const taken=!takeFirst(WARD, id, null);
+  const due=firstVisitDue(WARD, taken, firstVisitDismissed());
+  const there=$('#firstvisit');
+  if(!due){ if(there)there.remove(); return; }
+  if(there)return;
+  const bar=$('#wardbar'); if(!bar)return;
+  bar.insertAdjacentHTML('beforebegin', firstVisit((WARDSHIFT&&WARDSHIFT.name)||'', pro()));
+  const shut=()=>{ try{ localStorage.setItem(FIRSTVISIT_KEY,'1'); }catch(e){}
+                   const el=$('#firstvisit'); if(el)el.remove(); };
+  const t=$('#fv-treat'); if(t)t.onclick=()=>{ shut(); takeShift().catch(e=>wardSay(esc(e&&e.message?e.message:e))); };
+  const l=$('#fv-look'); if(l)l.onclick=shut;
+}
+
 function paintGuide(){
   if(!WARD)return;
   const bar=$('#wardbar'); if(!bar)return;
@@ -4317,6 +4379,7 @@ function paintGuide(){
 function wardGate(){
   const no=takeFirst(WARD, id, pro().o);
   document.documentElement.classList.toggle('untaken', !!no);
+  paintFirstVisit();
   paintGuide();
   /* The season's counters, hidden here rather than in the stylesheet, because whether they hold
      anything is a fact the script has and CSS does not. */
@@ -4328,6 +4391,12 @@ function wardGate(){
   if(send)send.disabled=!!no;
   if(mic)mic.disabled=!!no;
   if($('#chips'))renderChips();
+  // The strip's button is built before the ward has answered who is in the bed, so it is named
+  // again here, where the answer has arrived.
+  const t=$('#wardtake');
+  if(t&&!t.classList.contains('armed')){
+    t.textContent='Treat '+((WARDSHIFT&&WARDSHIFT.name)||pro().o);
+  }
   paintPrimary();
   monitorWhereItIsRead();
 }
@@ -4365,7 +4434,7 @@ function wardBar(){
     const tint=REVIEW?'rgba(198,143,31,.09)':'rgba(15,110,92,.06)';
     const controls=REVIEW
       ? '<a class="btn" href="/ward/review">open another case</a>'
-      : '<button class="btn go" id="wardtake" disabled>take this shift</button>'
+      : '<button class="btn go" id="wardtake" disabled>Treat this patient</button>'
         +'<button class="btn quiet" id="wardback-shift" style="display:none">'
         +leaveWords(false).label+'</button>';
     $('#game').insertAdjacentHTML('afterbegin',

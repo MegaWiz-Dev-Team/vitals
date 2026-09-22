@@ -165,7 +165,7 @@ already played, so they do not play at you twice</li>
 <li><code>vitals.sets</code> — not about you at all: the list of case sets this server sent us,
 kept so the shelf still draws itself when the network does not answer</li>
 <li><code>vitals-analytics-consent</code> (§8), <code>vitals-review-draft</code> and
-<code>vitals-review-lang</code> (§7)</li>
+<code>vitals-review-lang</code> (§7), <code>vitals-ward-first-visit</code> (§7)</li>
 </ul>
 <p>All of it is local to that browser. Clearing site data removes all of it.</p>
 <p class="note">That list is meant to be exhaustive, and it was one key short until we checked it
@@ -331,6 +331,11 @@ who both leave the name blank and answer identically are stored as a single reco
 on that endpoint can tell them apart.</p>
 <p>Your draft is saved as you type under <code>vitals-review-draft</code> in your own browser, and
 it never leaves your device until you press send. A successful send clears it.</p>
+<p>The first time you open a patient's bedside, the ward shows one card explaining that you may
+treat them, what it costs you and that nothing is recorded until you hand over. Pressing either
+button on it writes <code>vitals-ward-first-visit</code> in your own browser so you are not asked
+again. It holds one character, it is never sent anywhere, and clearing site data brings the card
+back.</p>
 <p>If you switch the form between Thai and English, that choice is remembered under
 <code>vitals-review-lang</code> in the same browser. It holds one word, <code>th</code> or
 <code>en</code>, it is never sent anywhere, and it exists so a reader who chose a language is not

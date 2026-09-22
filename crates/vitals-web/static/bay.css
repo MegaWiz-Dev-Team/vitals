@@ -927,6 +927,25 @@ select,.btn{font-family:"IBM Plex Mono",monospace;font-size:.78rem;background:va
    gap on production as a broken page — correctly, because a blank says nothing and is therefore
    read as whatever the reader fears. An outline with initials says the one true thing: the picture
    is missing, the patient is not. Same size either way, so a row of patients keeps its shape. */
+/* The first-visit card. Ward only, and deliberately not a banner: no bar across the top, no
+   dismiss cross in a corner, no shadow lifting it off the page. It sits in the flow where the
+   strip is, in the page's own colours, because a stranger who reads it as an advert will dismiss
+   it the way they dismiss adverts — without reading it. The offer is the largest thing on it. */
+html.is-ward #firstvisit{margin:0 0 .8rem;padding:1rem 1.1rem;border-radius:.6rem;
+  border:1.5px solid var(--act);background:var(--act-soft)}
+html.is-ward #firstvisit p{margin:0 0 .35rem}
+html.is-ward #firstvisit .fv-lead{font-size:1.15rem;line-height:1.35}
+html.is-ward #firstvisit .fv-free{font-weight:600}
+html.is-ward #firstvisit .fv-cost{color:var(--ink-2,#4a5b5e);font-size:.92rem}
+html.is-ward #firstvisit .fv-acts{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.8rem}
+html.is-ward #firstvisit #fv-treat{font-size:1.05rem;padding:.6rem 1.2rem;min-height:44px}
+html.is-ward #firstvisit #fv-look{min-height:44px}
+/* On a phone the offer takes the width and the other choice sits under it, so the thing we want
+   pressed is never the smaller of two side by side. */
+@media (max-width:560px){
+  html.is-ward #firstvisit #fv-treat{width:100%;justify-content:center}
+  html.is-ward #firstvisit #fv-look{width:100%;justify-content:center}
+}
 .face{border-radius:12px;object-fit:cover;display:block}
 .face-none{display:inline-flex;align-items:center;justify-content:center;
   border:2px dashed var(--rule,#d8ded9);color:var(--ink-3,#5e6f73);
