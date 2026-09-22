@@ -2305,3 +2305,46 @@ fn a_patient_with_no_picture_waits_for_the_others_and_is_still_admitted() {
     let taken = vec!["osce-b".to_string()];
     assert!(choose_next(&alone, &taken, &any_case()).is_none());
 }
+
+
+/// **A case another bed holds is a last resort, not a refusal.**
+///
+/// The founder, 22 ก.ย., ruling B.3: "ซ้ำได้". Until now `choose_next` filtered out any pack whose
+/// case was already on the ward — a hard rule that was right while the ward held three beds and a
+/// catalogue of seventy-five. Under B.1 the census has no ceiling, so that rule has an end: the
+/// ward fills with distinct cases until it holds the whole catalogue, and then it stops admitting
+/// anybody at all. Staging walked into exactly that on 22 ก.ย. — sixteen on the ward, four in the
+/// queue, every pass printing "an arrival is due" and admitting nobody.
+///
+/// The reason for the old rule stands and is kept as a preference: a stranger looking for one
+/// difficulty should not find the ward full of another, and variety is what the board is for. What
+/// changes is what happens when variety is not available. A bed that stays empty teaches nobody.
+#[test]
+fn a_case_another_bed_holds_is_taken_last_rather_than_refused() {
+    let fresh = queued("osce-a", "A Fresh Case");
+    let repeat = queued("ep2", "A Case Already Here");
+    let on_ward = vec!["ep2".to_string()];
+    let empty: Vec<String> = vec![];
+
+    // Both waiting: the case nobody is holding goes first, whichever order they were queued in.
+    let queue = vec![repeat.clone(), fresh.clone()];
+    assert_eq!(choose_next(&queue, &on_ward, &any_case()).expect("a bed to fill"), fresh.0,
+               "a case no bed holds is admitted before one that is already on the ward");
+    let reversed = vec![fresh.clone(), repeat.clone()];
+    assert_eq!(choose_next(&reversed, &on_ward, &any_case()).unwrap(), fresh.0);
+
+    // Only the repeat is waiting: it is admitted. This is the whole ruling — a bed that stays
+    // empty because the catalogue ran out teaches nobody, and under B.1 the catalogue runs out.
+    let only_repeat = vec![repeat.clone()];
+    assert_eq!(
+        choose_next(&only_repeat, &on_ward, &any_case()).expect("a repeat is still a patient"),
+        repeat.0,
+        "with nothing else waiting the ward admits a case it already holds rather than stalling"
+    );
+
+    // And the door's rule is untouched: a case this ward cannot place is still refused, which is a
+    // different question from whether another bed holds it.
+    let nothing_placeable = Placeable::of(&["ep2".to_string()], &["ep2".to_string()]);
+    assert!(choose_next(&only_repeat, &empty, &nothing_placeable).is_none(),
+            "a withdrawn case is refused whether or not it is a repeat");
+}
