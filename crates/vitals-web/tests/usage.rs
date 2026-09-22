@@ -372,24 +372,43 @@ fn the_funnel_counts_from_one_moment_and_says_which() {
     let _ = std::fs::remove_dir_all(&dir);
     let store = Store::open(dir.clone()).expect("a store");
 
-    // A ward that has been counting arrivals for a while before the funnel existed.
-    {
-        let mut u = Usage::open(&store);
-        for _ in 0..7 {
-            u.arrived(None, &store);
-        }
-    }
+    // The record as production holds it tonight: arrivals counted since the ward opened, the two
+    // newer steps counting since this morning, and no window — written directly, because this is
+    // a shape the public API can no longer produce and it is exactly the shape that must migrate.
+    //
+    // The kind and the document are the ones `usage.rs` writes under. If they ever change, the
+    // seed below will not be read and `arrivals_all_time` will come back 0 — which the assertion
+    // after the migration catches, so this test cannot quietly stop exercising it.
+    store
+        .put("usage", "all", &serde_json::json!({
+            // The fields without serde defaults have to be present or the record will not
+            // deserialize at all and `open` will silently see an empty one — which is how the
+            // first version of this test came to assert against a store it had never seeded.
+            "since": "2026-09-21",
+            "runs_started": 0, "runs_finished": 0, "runs_without_a_key": 0,
+            "by_case": {}, "by_outcome": {}, "died": 0, "survived": 0,
+            "days": {}, "devices": {},
+            // What production holds tonight: arrivals since the ward opened, the two newer steps
+            // counting only since this morning, and no window.
+            "arrivals": 7,
+            "bedsides_opened": 3,
+            "shifts_taken": 0,
+        }))
+        .expect("seed the old shape");
 
-    // The funnel opens its window. From here the three steps share a clock.
+    // Opening migrates it: the window opens now, and the counts from before it are discarded
+    // rather than kept, because they cannot be divided by anything.
     let mut u = Usage::open(&store);
     let f = u.funnel();
     assert!(f["since"].as_str().is_some(), "the window says when it opened: {f}");
     assert_eq!(f["arrivals"], 0, "and nothing before it is inside it");
-    assert_eq!(f["bedsides_opened"], 0);
+    assert_eq!(f["bedsides_opened"], 0, "including the three counted on the other clock");
     assert_eq!(f["shifts_taken"], 0);
 
-    // The lifetime total is untouched and still published where it always was.
+    // The lifetime total is untouched and still published where it always was. This assertion is
+    // also what proves the seed above was read at all.
     assert_eq!(u.arrivals()["total"], 7, "the headline keeps its history");
+    assert_eq!(f["arrivals_all_time"], 7, "and the funnel publishes it, plainly not as its own");
 
     u.arrived(None, &store);
     u.arrived(None, &store);
@@ -398,6 +417,7 @@ fn the_funnel_counts_from_one_moment_and_says_which() {
 
     let f = u.funnel();
     assert_eq!(f["arrivals"], 2, "two arrivals since the window opened, not nine");
+    assert_eq!(f["arrivals_all_time"], 9, "while the headline counts all nine");
     assert_eq!(f["bedsides_opened"], 1);
     assert_eq!(f["shifts_taken"], 1);
     assert_eq!(u.arrivals()["total"], 9, "and the lifetime total counts all of them");

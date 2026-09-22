@@ -195,6 +195,22 @@ struct Rec {
     /// split so nobody reads the channels as though they were the whole of it.
     #[serde(default)]
     arrivals: u64,
+    /// **When the funnel's window opened.** The three steps below are counted from this day and
+    /// no earlier, because a funnel whose steps started on different days is not a funnel.
+    ///
+    /// `arrivals` above is older than they are — it has counted since this record existed — so it
+    /// is the headline and never their denominator. `funnel_arrivals` is the same event counted
+    /// inside the window, and it is what the three steps divide by.
+    ///
+    /// The window opens once, on the first read after this field appears, and a restart does not
+    /// reopen it: a window that reset on every deploy would quietly erase the one measurement we
+    /// take across days.
+    #[serde(default)]
+    funnel_since: Option<String>,
+    /// Arrivals inside the window. The same event as `arrivals`, counted from a moment the other
+    /// two steps share.
+    #[serde(default)]
+    funnel_arrivals: u64,
     /// How many times a patient's bedside was served — somebody got past the globe to a person.
     #[serde(default)]
     bedsides_opened: u64,
@@ -211,7 +227,25 @@ pub struct Usage {
 impl Usage {
     /// Counts resumed from the store, so a deploy is not a reset.
     pub fn open(store: &Store) -> Usage {
-        Usage { rec: store.get(KIND, DOC).unwrap_or_default() }
+        let mut me = Usage { rec: store.get(KIND, DOC).unwrap_or_default() };
+        // **The funnel's window opens once.** Before it, `bedsides_opened` and `shifts_taken` had
+        // been counting since the build that introduced them while `arrivals` had counted since
+        // the ward's first visitor — three numbers on two clocks, published as a funnel. The
+        // counts from that period are discarded rather than kept: they cannot be divided by
+        // anything, and a number that cannot be compared is not data, it is a number waiting to
+        // be used wrongly. Somebody did nearly use it.
+        //
+        // Once only, and never on a later start: a window that reopened on every deploy would
+        // erase the one measurement this ward takes across days.
+        if me.rec.funnel_since.is_none() {
+            let (day, _) = me.stamp();
+            me.rec.funnel_since = Some(day);
+            me.rec.funnel_arrivals = 0;
+            me.rec.bedsides_opened = 0;
+            me.rec.shifts_taken = 0;
+            me.persist(store);
+        }
+        me
     }
 
     /// A run was opened. `player` is the browser's public key when it has one.
@@ -252,6 +286,7 @@ impl Usage {
         let (day, _) = self.stamp();
         self.rec.since.get_or_insert(day);
         self.rec.arrivals += 1;
+        self.rec.funnel_arrivals += 1;
         if let Some(c) = src {
             *self.rec.by_src.entry(c.to_string()).or_default() += 1;
         }
@@ -288,14 +323,20 @@ impl Usage {
     /// later events, and conflating them would have quietly widened what that block claims to hold.
     pub fn funnel(&self) -> serde_json::Value {
         serde_json::json!({
-            "arrivals": self.rec.arrivals,
+            "since": self.rec.funnel_since,
+            "arrivals": self.rec.funnel_arrivals,
+            "arrivals_all_time": self.rec.arrivals,
             "bedsides_opened": self.rec.bedsides_opened,
             "shifts_taken": self.rec.shifts_taken,
             "derivation": "three steps the server can see, counted per event and never per \
-                           person: the front page served, a patient's bedside served, and a take \
-                           the chain accepted. A take the program refused is not a shift and is \
-                           not counted as one. The gap between two steps is a question, not a \
-                           measurement of anybody",
+                           person, inside one window that opened on `since`: the front page \
+                           served, a patient's bedside served, and a take the chain accepted. A \
+                           take the program refused is not a shift and is not counted as one. All \
+                           three start together — the first version of this took its arrivals from \
+                           the all-time counter, which had a day's head start, and the ratio \
+                           between them meant nothing. `arrivals_all_time` is the headline and is \
+                           never the denominator for these. The gap between two steps is a \
+                           question, not a measurement of anybody",
         })
     }
 

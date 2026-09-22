@@ -47,11 +47,18 @@ async function load(){
   const door=q.door||pol.door||'?';
   const ps=w.patients||[]; const inBeds=ps.filter(p=>p.bed); const onShift=inBeds.filter(p=>p.state==='on_shift');
   $('#tiles').innerHTML=[
-   tile(n(ar.total),'arrivals · the globe','visits, not people'),
+   // The lifetime total, and plainly not the funnel's denominator: it has counted since the ward
+   // opened and the two steps below have counted since the funnel's window opened. Dividing one by
+   // the other is the number this page printed until 22 Sep, and it meant nothing.
+   tile(n(ar.total),'arrivals · the globe, all time','visits, not people'),
+   tile(n(fn_.arrivals),'arrivals · in the funnel window',
+        // A date, so it is checked rather than escaped: digits and dashes survive and nothing
+        // else does, which is a narrower promise than escaping and an easier one to read.
+        fn_.since?('counting since '+String(fn_.since).replace(/[^0-9-]/g,'')):'window not open yet'),
    // The funnel, in the only three steps a server can see. The gap between any two is a question
    // worth asking before building anything: globe → bedside is whether people find a patient,
    // bedside → shift is whether they know how to start once they do.
-   tile(n(fn_.bedsides_opened),'bedsides · a patient opened',pct(fn_.bedsides_opened,ar.total)+' of those who arrived'),
+   tile(n(fn_.bedsides_opened),'bedsides · a patient opened',pct(fn_.bedsides_opened,fn_.arrivals)+' of arrivals in the window'),
    tile(n(fn_.shifts_taken),'shifts taken · hands on a patient',pct(fn_.shifts_taken,fn_.bedsides_opened)+' of those who opened one','g'),
    tile(n(c.keys),'keys · hands that have handed over','distinct AnchorShift signers — keys, not humans','g'),
    tile(n(c.shifts),'shifts · treated and handed over','anchored on devnet','g'),
