@@ -1268,7 +1268,7 @@ function paint(v,named){
      quieter, because which case she is is true and useful — it is just not the point. */
   $('#ep-name').innerHTML=(WARD&&WARDSHIFT
       ? esc(WARDSHIFT.name||('patient '+WARD))
-        +(WARDSHIFT.age?' · '+WARDSHIFT.age:'')
+        +(agePhrase(WARDSHIFT.age)?' · '+agePhrase(WARDSHIFT.age):'')
         +(WARDSHIFT.country_name?' · from '+esc(WARDSHIFT.country_name):'')
       : (E.sn||E.n)+' · '+E.t)
     /* The pill is the bay's own word for a run in progress. On this host the strip above says what
@@ -1907,13 +1907,28 @@ const ENDLABEL='I have finished';
    Only where there is something to record. A shift with no orders is left as it is: nothing is on
    the chain worth a transaction, and somebody who opened a bed and walked away has not treated
    anybody. And never twice — a hand-over already going is the one that records it. */
-/* An age, said the way a person says one. Stubbed as the page writes it today: the bare number,
-   which reads as a stray digit at any age and as a typo at two. */
-function agePhrase(age){ return age?String(age):''; }
+/* An age, said the way a person says one.
+   Used where the number would otherwise stand alone between other facts. The patient block's
+   "F 2" keeps its own convention: there the letter carries the sex and the number is plainly the
+   age beside it. */
+function agePhrase(age){
+  if(age===null||age===undefined||age==='')return '';
+  const n=Number(age);
+  if(!isFinite(n))return '';
+  if(n<1)return 'under 1 year old';
+  return n===1 ? '1 year old' : n+' years old';
+}
 
-/* Whether the season's chain counters belong on screen. Stubbed as today: always, including on a
-   ward where they are a placeholder that will never be filled. */
-function showsTally(ward, value){ return true; }
+/* Whether the season's chain counters belong on screen.
+   They ship as "—" and the season fills them from an account's attempts. The ward has neither, so
+   on the ward they are shown only once they hold something. A placeholder is a promise that a
+   value is coming; where none is, it is furniture — and at phone width it is furniture on a line
+   of its own, in front of somebody standing at a bed. */
+function showsTally(ward, value){
+  if(!ward)return true;
+  const t=String(value==null?'':value).trim();
+  return t!=='' && t!=='—' && t!=='-';
+}
 
 function autoHandOver(left, orders, taken, handing){
   if(left===null||left===undefined)return false;
@@ -4068,6 +4083,11 @@ async function wardBed(){
        measures it and publishes it; this page repeats it and works nothing out. */
     LEASEMIN=(w.policy&&w.policy.lease&&w.policy.lease.minutes_now)||null;
     LEASESEC=(w.policy&&w.policy.lease&&w.policy.lease.seconds_now)||null;
+    /* The strip was painted before this arrived, so it said what it says about a ward that has
+       never measured its rate — about a ward that had, one request earlier. Withholding a figure
+       we are a second from knowing, in the exact words we use for one we cannot know, makes the
+       honest case and a bug indistinguishable. Repaint now that it is known. */
+    if(typeof paintGuide==='function')paintGuide();
     const her=(w.patients||[]).find(p=>String(p.patient_id)===String(WARD));
     return her&&her.bed?her.bed:null;
   }catch(e){ return null; }
@@ -4237,6 +4257,11 @@ function wardGate(){
   const no=takeFirst(WARD, id, pro().o);
   document.documentElement.classList.toggle('untaken', !!no);
   paintGuide();
+  /* The season's counters, hidden here rather than in the stylesheet, because whether they hold
+     anything is a fact the script has and CSS does not. */
+  ['#chainstate','#tally'].forEach(sel=>{
+    const el=$(sel); if(el)el.hidden=!showsTally(!!WARD, el.textContent);
+  });
   const cmd=$('#cmd'), send=$('#send'), mic=$('#mic');
   if(cmd)cmd.disabled=!!no;   // the placeholder is renderChips's, and it runs below
   if(send)send.disabled=!!no;
@@ -4401,7 +4426,7 @@ function chartPage(c, why){
     '<p class="bed">patient '+esc(c.patient_id)+'</p>'
     +face
     +'<h1>'+esc(c.name||('patient '+c.patient_id))+'</h1>'
-    +'<p>'+[c.age?esc(c.age):'', c.country_name?'from '+esc(c.country_name):'',
+    +'<p>'+[esc(agePhrase(c.age)), c.country_name?'from '+esc(c.country_name):'',
             c.case_title?esc(c.case_title):'', c.difficulty?esc(c.difficulty):'']
         .filter(Boolean).join(' · ')+'</p>'
     +(why?'<p class="bed">'+esc(why)+'</p>':'')
