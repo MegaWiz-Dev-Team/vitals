@@ -1955,8 +1955,17 @@ function beforeTake(minutes){
   return 'Press the green button to start'+lease+' · nothing counts until you hand over';
 }
 
-/* The way to the guide, in the words of the question somebody asks themselves rather than the name
-   of a feature. Served by this ward at /start, so no request leaves this origin. */
+/* The way to the guide — when there is one.
+
+   Empty today, and deliberately. This returned a link to /start from 09:04 on 22 ก.ย., and /start
+   is not a route: the first stranger to press it would have been sent to a 404, and that stranger
+   is by definition the one who had just admitted they did not know what to do. A link is a promise
+   that something is there, and the honest state while the page does not exist is no promise.
+
+   Restoring it is one line, and it must land in the same change as the route — which is what
+   `the_guide_link_on_the_bedside_goes_somewhere_this_ward_serves` now enforces: whatever path this
+   names, the ward answers 200. Until then the three-step strip above carries the guidance on its
+   own, which is the part a stranger reads without leaving the bedside anyway. */
 function guideLink(){
   return '<a href="/start" class="guide">First time? two-minute guide</a>';
 }

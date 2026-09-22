@@ -150,6 +150,28 @@ const PRESENT: &str = include_str!("../static/present.html");
 /// a stranger cannot already read from /api/ward and /api/usage. `static/world/stats.html` is the
 /// only copy; the founder's request of 20 ก.ย.
 const WARD_STATS: &str = include_str!("../static/world/stats.html");
+
+/// The two-minute guide, and the eight screenshots it walks a stranger through.
+///
+/// Compiled in like every other page this server has. The alternative — reading them off disk at
+/// request time — is how a page becomes something no test can see and no revision can pin: the
+/// image a reader gets would depend on what happened to be in a directory, not on the commit that
+/// was deployed.
+///
+/// The list is the route. `/start/img/<name>` answers only for a name in it, so a path a stranger
+/// types cannot reach anything but these eight, and a file added here without a caption in the
+/// page is a file nobody is served.
+const WARD_START: &str = include_str!("../static/world/start/index.html");
+const WARD_START_IMG: &[(&str, &[u8])] = &[
+    ("01-globe.jpg", include_bytes!("../static/world/start/img/01-globe.jpg")),
+    ("02-bedside-before.jpg", include_bytes!("../static/world/start/img/02-bedside-before.jpg")),
+    ("03-after-take.jpg", include_bytes!("../static/world/start/img/03-after-take.jpg")),
+    ("04-first-order.jpg", include_bytes!("../static/world/start/img/04-first-order.jpg")),
+    ("05-treating.jpg", include_bytes!("../static/world/start/img/05-treating.jpg")),
+    ("06-handover-armed.jpg", include_bytes!("../static/world/start/img/06-handover-armed.jpg")),
+    ("07-handed-over.jpg", include_bytes!("../static/world/start/img/07-handed-over.jpg")),
+    ("08-receipt.jpg", include_bytes!("../static/world/start/img/08-receipt.jpg")),
+];
 /// The real bedside monitor, vendored from Embla's device page.
 ///
 /// Not reimplemented: it already draws ECG morphology in milliseconds (P 80ms, PR 160ms, a QRS
@@ -6217,6 +6239,39 @@ fn main() {
                             .unwrap(),
                         ),
                 );
+                continue;
+            }
+            // The guide a first-time stranger is pointed at from the bedside. Ward only: it
+            // teaches this ward's controls, and the Eternal entry has its own season around it.
+            //
+            // `/start` and `/start/` are the same page because both are what a person types, and
+            // a trailing slash deciding whether somebody gets help is not a rule worth having.
+            (Method::Get, p) if ward_mode() && (p == "/start" || p == "/start/") => {
+                let _ = req.respond(html(WARD_START));
+                continue;
+            }
+            (Method::Get, p) if ward_mode() && p.starts_with("/start/img/") => {
+                let want = &p["/start/img/".len()..];
+                match WARD_START_IMG.iter().find(|(name, _)| *name == want) {
+                    Some((_, bytes)) => {
+                        let _ = req.respond(
+                            Response::from_data(*bytes)
+                                .with_header(
+                                    Header::from_bytes(&b"Content-Type"[..], &b"image/jpeg"[..])
+                                        .unwrap(),
+                                )
+                                .with_header(forever()),
+                        );
+                    }
+                    // A name not in the list is not a file this server has, and saying so is the
+                    // whole of the answer: the set is closed, so nothing a stranger types reaches
+                    // past it.
+                    None => {
+                        let _ = req.respond(
+                            Response::from_string("no such picture").with_status_code(404),
+                        );
+                    }
+                }
                 continue;
             }
             (Method::Get, "/world/favicon.svg") => {

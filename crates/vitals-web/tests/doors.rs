@@ -248,6 +248,45 @@ fn the_guide_link_on_the_bedside_goes_somewhere_this_ward_serves() {
     );
 }
 
+/// **Every picture the guide shows is a picture this ward serves.**
+///
+/// The same rule as the guide link, one level in. The page walks a stranger through eight
+/// screenshots; a caption pointing at a file the server does not have is the 404 of this morning
+/// again, in a smaller place and harder to notice — the text would still read, and the reader
+/// would be looking at a broken image while being told what to see in it.
+///
+/// The set is closed on purpose, so this also checks the other direction: a name nobody put in the
+/// list is answered 404 rather than reaching for anything.
+#[test]
+fn every_picture_the_guide_shows_is_one_this_ward_serves() {
+    let s = Server::start(None);
+    let (code, page) = s.get("/start");
+    assert_eq!(code, 200, "the guide does not open: {}", &page[..page.len().min(200)]);
+
+    let mut seen = 0;
+    let mut rest = page.as_str();
+    while let Some(a) = rest.find("src=\"") {
+        rest = &rest[a + 5..];
+        let Some(end) = rest.find('"') else { break };
+        let src = &rest[..end];
+        rest = &rest[end..];
+        if !src.starts_with("/start/img/") {
+            assert!(!src.starts_with("http"), "the guide loads a picture off this origin: {src}");
+            continue;
+        }
+        seen += 1;
+        let (code, _) = s.get(src);
+        assert_eq!(code, 200, "the guide shows {src} and this ward answers {code}");
+    }
+    assert!(seen >= 6, "the guide showed {seen} pictures — the scanner has stopped working");
+
+    // And the set is closed: a name that is not in it reaches nothing.
+    let (code, _) = s.get("/start/img/../../../etc/passwd");
+    assert_ne!(code, 200, "a path outside the list was served");
+    let (code, _) = s.get("/start/img/09-not-a-picture.jpg");
+    assert_eq!(code, 404, "a name nobody put in the list is answered 404");
+}
+
 /// **The catalogue endpoint carries the status sentence, so the catalogue page never types a date.**
 #[test]
 fn the_catalogue_endpoint_carries_the_status_sentence() {
