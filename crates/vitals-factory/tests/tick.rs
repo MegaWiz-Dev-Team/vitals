@@ -1870,3 +1870,34 @@ fn the_edit_budget_is_counted_across_ticks_and_states_wait_when_it_is_spent() {
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     assert!(tools.edits.borrow().len() > 2, "a new day, new edits");
 }
+
+// ── a patient in a bed with only a thumbnail is shown her face ────────────────────────
+// Founder, 22 ก.ย.: "คนนี้ไม่มีรูป" — Haruto Sasaki, admitted from a pack that went out with no
+// full-size picture and then had only its 256 px sibling filled in. The board showed nothing.
+// The fill path pushed the stable only when the board held *no* picture at all; a board holding
+// nothing but a thumbnail is the same emptiness to a reader and must be filled the same way —
+// with her own face from the file, never anybody else's.
+#[test]
+fn a_bed_patient_whose_board_holds_only_a_thumbnail_gets_her_own_stable_pushed() {
+    let dir = world("thumb-only");
+    let pool = read_pool(POOL).unwrap();
+    let man = seed_manifest(&dir, &pool);
+    let haruto = pool.iter().find(|p| p.key == "JPN-1").unwrap();
+    let stable = man.entries["JPN-1"].portrait["stable"].clone();
+    let mut ward = WardView::parse(STAGING).unwrap();
+    let p = &mut ward.patients[0];
+    p.name = Some(haruto.name.clone()); p.country = Some("JPN".into()); p.case = Some("world-stroke-man".into()); p.age = Some(43);
+    p.portrait = None;
+    p.portraits = BTreeMap::from([("stable_256".to_string(), sibling(&stable))]);
+    let id = p.patient_id;
+    let door = FakeDoor::new(ward);
+    let tools = FakeTools::default();
+    let mut cfg = config(&dir, 0, 0);
+    cfg.edits_per_day = 0;
+    let r = tick(&cfg, &door, &tools);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let fills = door.fills.borrow();
+    let fill = fills.iter().find(|(pid, _)| *pid == id).expect("his set was pushed");
+    assert_eq!(fill.1.get("stable").map(String::as_str), Some(stable.as_str()), "his own stable, from the file: {:?}", fill.1);
+    assert!(tools.edits.borrow().is_empty(), "no edit on a zero budget");
+}
