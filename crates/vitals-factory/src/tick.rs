@@ -1024,8 +1024,11 @@ fn gaps(ward: &WardView, pool: &[Person], manifest: &Manifest, ledger: &Ledger, 
         };
         let (record, reference) = reference_of(entry, &stable);
         let (mut from_manifest, to_make) = short_of(entry, record, |st| p.portraits.contains_key(st));
-        if p.portraits.is_empty() && p.portrait.is_none() {
-            // A build that publishes no set at all: the stable is pushed too, so the board can show her.
+        // A board that shows her nothing — no picture, and no full-size stable among what it
+        // holds (a thumbnail alone is nothing to a reader) — is given her stable too, her own from
+        // the file. Founder, 22 ก.ย., on a patient in a bed with a 256 px sibling and no face:
+        // "คนนี้ไม่มีรูป".
+        if p.portrait.is_none() && !p.portraits.contains_key("stable") {
             from_manifest.insert("stable".into(), stable.clone());
         }
         // The 256 px sibling of every full-size picture the board shows that neither the board
