@@ -1847,8 +1847,23 @@ fn the_edit_budget_is_counted_across_ticks_and_states_wait_when_it_is_spent() {
     assert_eq!(tools.edits.borrow().len(), 2, "no edit on a spent budget");
     assert_eq!(r.edits, 0);
     assert!(r.lines.iter().any(|l| l.contains("deferred: budget")), "{:?}", r.lines);
-    assert!(r.lines.iter().any(|l| l.contains("goes out without a picture")), "a new pack whose stable waits for budget goes out without one: {:?}", r.lines);
-    assert_eq!(door.queue.borrow().len(), 1, "the pack still went out");
+    // Founder, 22 ก.ย.: a patient with no picture on the ward ("คนนี้ไม่มีรูป") — Haruto Sasaki went
+    // out faceless because his stable "waits for tomorrow's edit budget", and with the budget
+    // set to zero by the cost ruling tomorrow never comes. A spent budget sends the base as the
+    // stable — a painted face in a gown beats an empty frame — and says so; the replace door
+    // swaps in a made stable the first day there is budget, which is the path
+    // `a_waiting_pack_sent_with_the_base_gets_a_made_stable_once` already proves.
+    assert!(r.lines.iter().any(|l| l.contains("goes out with the base as the stable")), "a new pack whose stable waits for budget goes out with the base: {:?}", r.lines);
+    assert!(!r.lines.iter().any(|l| l.contains("without a picture")), "nobody goes out faceless for want of budget: {:?}", r.lines);
+    {
+        let q = door.queue.borrow();
+        assert_eq!(q.len(), 1, "the pack still went out");
+        let sent = q.values().next().unwrap();
+        let man = Manifest::load(&dir.join("portraits.json")).unwrap();
+        let (key, e) = man.entry_with_stable(&sent.portrait["stable"]).or_else(|| man.entries.iter().find(|(_, e)| e.base() == Some(&sent.portrait["stable"]))).expect("the picture sent is on file");
+        assert_eq!(e.base(), Some(&sent.portrait["stable"]), "{key}: the base went out under stable, not nothing");
+        assert!(e.made_stable().is_none(), "{key}: no made stable is recorded, so the next budget replaces it");
+    }
 
     // Tomorrow the budget is new.
     let r = tick(&Config { now: cfg.now + 86_400, ..cfg.clone() }, &door, &tools);
