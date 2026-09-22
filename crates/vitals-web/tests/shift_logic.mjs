@@ -52,11 +52,14 @@ const { takeFirst, wardAged, stateSentence } = new Function(
 // ── the sentence, and when there is one ──────────────────────────────────────
 assert.equal(takeFirst(null, null, 'her'), null, 'the Eternal bay is not a ward and is never gated');
 assert.equal(takeFirst(null, 'run-7', 'her'), null);
-assert.equal(takeFirst('1789528326', null, 'her'), 'take the shift to treat her',
+// The words changed on 23 ก.ย. "Take the shift" is what somebody already on duty does; ten
+// strangers read it on a bedside and none of them pressed. The sentence now names the button they
+// are looking at and what pressing it starts.
+assert.equal(takeFirst('1789528326', null, 'her'), 'press Treat her to start',
              'on the ward with no head taken, every control has to say this rather than sit inert');
-assert.equal(takeFirst('1789528327', null, 'him'), 'take the shift to treat him',
+assert.equal(takeFirst('1789528327', null, 'him'), 'press Treat him to start',
              'and the ward admits men — the pronoun is the patient\u2019s, never the sentence\u2019s');
-assert.equal(takeFirst('1789528326', null, null), 'take the shift to treat the patient',
+assert.equal(takeFirst('1789528326', null, null), 'press Treat this patient to start',
              'a page that does not yet know who is in the bed says so rather than guessing');
 assert.equal(takeFirst('1789528326', 'run-7', 'her'), null,
              'and once the head is theirs the page gets out of the way');
@@ -287,10 +290,10 @@ console.log('shift_logic: ok (and the hand-over button is the ward’s own)');
 const { primaryLabel } = new Function([grab('primaryLabel'), 'return { primaryLabel };'].join('\n'))();
 
 assert.equal(primaryLabel(false, false, 'Nusrat Jahan', her),
-             'Take the shift · treat Nusrat Jahan',
-             'before the head is taken, the page has one thing to ask');
+             'Treat Nusrat Jahan',
+             'before the head is taken the page has one thing to ask, in the words a person would use');
 assert.equal(primaryLabel(false, false, '', her),
-             'Take the shift · treat her',
+             'Treat her',
              'and a page that does not know her name yet still says what the press does');
 assert.equal(primaryLabel(true, false, 'Nusrat Jahan', her),
              'Hand over · record this shift',
@@ -801,3 +804,51 @@ assert.match(face, /width="128"/);
 assert.match(none, /width:128px/);
 
 console.log('shift_logic: ok (and a missing picture says so)');
+
+// ── the first thing a stranger sees, once ────────────────────────────────────
+//
+// Ten bedside opens on 22 ก.ย., no takes. One of the ten read the whole guide — six pictures — and
+// did not come back to press. So the gap is not instruction: the strip had already said what to
+// press and had been served. It is permission, and the suspicion to answer is the one this page
+// creates for itself, because it says chain, key, anchor and signature, which to a doctor reads as
+// "I need a wallet, this will cost me, I have to install something".
+const { firstVisit, firstVisitDue } = new Function(
+  [grabLine('esc'), grab('firstVisit'), grab('firstVisitDue'),
+   'return { firstVisit, firstVisitDue };'].join('\n'))();
+
+// `her` is already bound further up this file — the pronoun table is shared, and shadowing it
+// here would be a second source of truth about the same patient.
+const card = firstVisit('Nusrat Jahan', her);
+
+// The offer, by name, twice: once as the sentence and once as the button.
+assert.match(card, /Nobody is treating Nusrat Jahan\. You can\./);
+assert.match(card, /Treat Nusrat Jahan/, 'and the button says the act in the same words');
+
+// The three suspicions this page creates, answered before they are raised.
+assert.match(card, /No wallet\. No signup\. Nothing to install\./);
+
+// The cost, and the exit, in one sentence — "ten minutes" alone is a commitment to somebody
+// deciding in two seconds, and the true thing is that they can walk away.
+assert.match(card, /leave whenever you like/);
+assert.match(card, /nothing counts until you hand over/);
+
+// Both ways out are on the card. A card with only one is a wall.
+assert.match(card, /id="fv-treat"/);
+assert.match(card, /id="fv-look"/);
+assert.match(card, /Just look first/);
+
+// A patient the ward cannot name yet still gets an offer, not a blank.
+const unnamed = firstVisit('', her);
+assert.match(unnamed, /Nobody is treating her\. You can\./);
+assert.match(firstVisit('', null), /Nobody is treating this patient\. You can\./,
+             'and one it knows nothing about is still somebody');
+
+// ── when it is shown ─────────────────────────────────────────────────────────
+assert.equal(firstVisitDue('1789663069', false, false), true, 'a stranger, first time, no shift');
+assert.equal(firstVisitDue('1789663069', true, false), false,
+             'somebody already holding a head is not asked whether they would like to start');
+assert.equal(firstVisitDue('1789663069', false, true), false, 'and never twice on one browser');
+assert.equal(firstVisitDue(null, false, false), false,
+             'the Eternal bay is not a ward and is never covered');
+
+console.log('shift_logic: ok (and a stranger is told they may)');
