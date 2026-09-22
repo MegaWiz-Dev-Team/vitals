@@ -1898,8 +1898,19 @@ const ENDLABEL='I have finished';
    question is still an order, and a strip that argues with a stranger about sequence is a strip
    they stop reading. */
 /* Whether the page should record this shift itself, now, because the lease has run out.
-   Stubbed: the page does nothing at 0:00 today, which is how opening night's one shift ended. */
-function autoHandOver(left, orders, taken, handing){ return false; }
+
+   The scope is set by the chain, not by taste: `anchor_shift` needs the player's signature, so the
+   server can never record on a stranger's behalf. The only thing it can do at lease end is free the
+   bed, which it already does. What can record is this page, while it is open — so it does, and the
+   policy text says that and no more.
+
+   Only where there is something to record. A shift with no orders is left as it is: nothing is on
+   the chain worth a transaction, and somebody who opened a bed and walked away has not treated
+   anybody. And never twice — a hand-over already going is the one that records it. */
+function autoHandOver(left, orders, taken, handing){
+  if(left===null||left===undefined)return false;
+  return left<=0 && orders>0 && !!taken && !handing;
+}
 
 function wardGuide(taken, asked, orders){
   if(!taken) return null;
@@ -4068,6 +4079,13 @@ function leaseClock(){
     const left=LEASEENDS===null?null:Math.round((LEASEENDS-Date.now())/1000);
     el.textContent=leaseLine(left);
     el.classList.toggle('soon', left!==null&&left<=300);
+    /* At zero, the page records what is in the shift rather than letting the lease take it. The
+       same flow the button runs, so there is one hand-over path and not a second one that could
+       drift from it. */
+    if(autoHandOver(left, ORDERED, !takeFirst(WARD, id, null), HANDING)){
+      wardSay('<b>the lease ran out.</b> Recording your shift now — nothing more to press.');
+      endRun();
+    }
   };
   paint();
   if(LEASEENDS!==null)LEASETIMER=setInterval(paint, 1000);

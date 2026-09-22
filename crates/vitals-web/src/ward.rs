@@ -1281,6 +1281,13 @@ fn policy(
             "measured": "seconds a slot, from the block time of a recent slot and the block time \
                          of one a few thousand slots earlier — both facts the chain publishes and \
                          anybody can ask it for",
+            // Said at its real width. Anchoring needs the player's own signature, so this ward
+            // cannot record a shift on anybody's behalf and no amount of server-side work would
+            // change that — the page is the only thing that can, and only while it is open.
+            "when_it_runs_out": "the page records your shift at 0:00 if it is still open, and only \
+                                 where something was ordered. A closed tab frees the bed and \
+                                 records nothing: an anchor carries the player's own signature, so \
+                                 this ward cannot record a shift on anybody's behalf",
         },
         "admissions_per_day": "as many as leave — a bed frees on discharge or death and on \
                                nothing else, so the rate is a consequence of how the ward is \
