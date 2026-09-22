@@ -851,8 +851,46 @@ pub fn beds_of(
 ///
 /// Free beds, capped by what the queue actually holds. `open` above `beds` — a bed count that
 /// shrank under a ward already full — admits nobody rather than going negative.
-pub fn to_admit(open: usize, beds: usize, queue: usize) -> usize {
-    beds.saturating_sub(open).min(queue)
+pub fn to_admit(open: usize, beds: usize, queue: usize, due: bool) -> usize {
+    let fill = beds.saturating_sub(open);
+    // A due arrival is satisfied by a bed-filling pass: that pass already admits somebody this
+    // minute, and the clock asked for an arrival, not for an extra one.
+    let want = if due { fill.max(1) } else { fill };
+    want.min(queue)
+}
+
+/// Whether an arrival is due on the clock, quite apart from whether a bed is free.
+///
+/// The founder, 22 ก.ย.: "โลกความจริงจำนวนคนไข้ไม่มีคำว่ารอ" — in the real world the number of
+/// patients does not wait. A ward that admits only into a freed bed has a census we chose; a ward
+/// that keeps admitting has a census that is the shortage. Three stops being a ceiling.
+///
+/// `last_admission` is read from the chain — `admitted_slot` on the patients, dated by the same
+/// slot-dater the board uses — rather than from a counter this host keeps, so the arrival rate is
+/// re-countable by anybody holding the program id, like every other number published here.
+///
+/// **`None` admits nobody.** It means the chain could not be read or the slot could not be dated,
+/// and a ward that cannot tell the time inventing arrivals would put a burst on the ward every
+/// pass until the dating recovered — a census inflated by our own failure, in the direction we
+/// most want it to move, which is the hardest kind of wrong to notice. Nothing is lost by
+/// refusing: [`to_admit`] already fills the beds on a ward that has never admitted anybody. A last
+/// admission dated in the future is refused for the same reason — that is two clocks disagreeing,
+/// not a patient due.
+pub fn arrival_due(last_admission: Option<i64>, now: i64, every_minutes: u64) -> bool {
+    if every_minutes == 0 {
+        return false;
+    }
+    let Some(then) = last_admission else { return false };
+    let since = now - then;
+    since >= 0 && since >= (every_minutes as i64).saturating_mul(60)
+}
+
+/// How often a patient arrives, in minutes. `VITALS_WARD_ARRIVAL_MINUTES`, default 30, `0` off.
+pub fn arrival_minutes() -> u64 {
+    std::env::var("VITALS_WARD_ARRIVAL_MINUTES")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(30)
 }
 
 /// The `/api/ward` payload: the six numbers, twice, each beside where it came from.
@@ -1124,7 +1162,9 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
         // what the ward can actually hand to a stranger. A rail that published only the first
         // would be telling somebody six when three of those six cannot be treated by anybody.
         "in_beds": beds_taken(patients, packs, lost, r.cases),
-        "beds": BEDS,
+        // The floor the ward tries to hold open, not a ceiling on the census: `census.on_ward` is
+        // how many are here and nothing stops it going past this.
+        "beds_kept_free": BEDS,
         "week": w,
         "patients": board,
         // Every patient whose history could not be refreshed this read, by id and reason. An empty
@@ -1134,7 +1174,7 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
             .map(|(id, why)| format!("patient {id}: {why}"))
             .collect::<Vec<_>>(),
         "readable": true,
-        "policy": policy(Some(r.cases), r.seconds_per_slot),
+        "policy": policy(Some(r.cases), r.seconds_per_slot, Some(all.on_ward as usize)),
         "derivations": {
             "admitted": "patient accounts on chain, counted by admitted_slot",
             "in_beds": "open patients the ward holds a pack for, counted at this read. The \
@@ -1258,12 +1298,33 @@ pub fn state_word(state: u8) -> &'static str {
 fn policy(
     cases: Option<&[crate::ward_case::CaseSummary]>,
     seconds_per_slot: Option<f64>,
+    on_ward: Option<usize>,
 ) -> serde_json::Value {
     let level = |want: &str| {
         cases.map(|c| c.iter().filter(|c| c.difficulty == want).count())
     };
     serde_json::json!({
-        "beds": BEDS,
+        // **Not a cap.** The founder, 22 ก.ย.: "โลกความจริงจำนวนคนไข้ไม่มีคำว่ารอ" — in the real
+        // world the number of patients does not wait for a bed. This is how many are on the ward
+        // right now, which is a consequence of the arrivals and the deaths rather than a number
+        // chosen here. `beds_kept_free` is the floor the ward tries to hold open for whoever
+        // walks in; nothing stops the census going past it.
+        "beds": on_ward,
+        "beds_kept_free": BEDS,
+        "arrivals": {
+            "every_minutes": crate::ward::arrival_minutes(),
+            "derivation": "a patient arrives every so many minutes whether or not anybody is \
+                           here, because a ward whose census only moves when somebody plays is \
+                           showing our own traffic rather than the shortage. The clock is the \
+                           chain's: the last admission is the newest admitted_slot on the \
+                           patients, dated the way every other time on this board is dated, so \
+                           anybody holding the program id can re-count the rate. A ward that \
+                           cannot read the chain admits nobody rather than guessing",
+            "who_arrives": "drawn by the country's people per doctor, so a country with twice the \
+                            shortage sends twice the patients. The weighting is the factory's and \
+                            its pool is published; the ward admits what the queue holds and \
+                            chooses no countries of its own",
+        },
         "a_bed_frees_on": ["discharge", "death"],
         // The lease, in the program's unit and in a person's. The slots never change; how long
         // they take does — devnet was running at 0.166 s a slot on 17 ก.ย., which made this lease
@@ -1289,9 +1350,13 @@ fn policy(
                                  records nothing: an anchor carries the player's own signature, so \
                                  this ward cannot record a shift on anybody's behalf",
         },
-        "admissions_per_day": "as many as leave — a bed frees on discharge or death and on \
-                               nothing else, so the rate is a consequence of how the ward is \
-                               played rather than a number we choose. Read it off the census.",
+        "admissions_per_day": "on the clock above, plus however many beds free. Until 22 ก.ย. \
+                               this said 'as many as leave', which was true while a patient could \
+                               only be admitted into a bed somebody had left — and it made the \
+                               census a fact about how much the ward was played rather than about \
+                               the shortage it exists to show. Patients arrive now whether or not \
+                               anybody is here. Read the rate off the arrivals block and check it \
+                               against admitted_slot on the chain.",
         "draw": "from the queue the case factory fills, by a ticker on this host every minute. It \
                  takes the difficulty band with fewest patients on the ward, and never a case \
                  another bed already holds, so no two beds hold the same case at once and a \
@@ -1375,6 +1440,6 @@ pub fn ward_unavailable(source: &str, why: &str) -> serde_json::Value {
         "census": serde_json::Value::Null,
         "week": serde_json::Value::Null,
         // The rules are still true with no chain; the counts are not taken here, and say so.
-        "policy": policy(None, None),
+        "policy": policy(None, None, None),
     })
 }

@@ -2538,7 +2538,7 @@ pub fn tick(
     now_unix: u64,
     held: &[(String, Vec<vitals_replay::Step>)],
 ) -> Ticked {
-    use crate::ward::{to_admit, BEDS, OPEN};
+    use crate::ward::{arrival_due, arrival_minutes, to_admit, BEDS, OPEN};
     let mut out = Ticked::default();
     // Every part of the pass is timed and named, and `spans_line` reconciles them against the
     // whole — the rule the two boot-marker incidents cost an hour each to learn.
@@ -2625,7 +2625,28 @@ pub fn tick(
         return out;
     }
 
-    for _ in 0..to_admit(out.open, BEDS, depth) {
+    // ── whether one is due on the clock ────────────────────────────────────────────────
+    //
+    // The last admission, from the chain: the newest `admitted_slot` among the patients this pass
+    // already read, dated by the same dater the board uses. Nothing is stored and nothing is
+    // counted here — the answer is a fact about the chain, and a reader with the program id gets
+    // the same one.
+    let dater = cached_dater(store);
+    let last_admission = patients
+        .iter()
+        .map(|p| p.admitted_slot)
+        .max()
+        .and_then(&dater);
+    let due = arrival_due(last_admission, now_unix as i64, arrival_minutes());
+    if due {
+        out.notes.push(format!(
+            "an arrival is due — the last was {} minutes ago and the ward admits one every {}",
+            last_admission.map(|t| (now_unix as i64 - t) / 60).unwrap_or(0),
+            arrival_minutes()
+        ));
+    }
+
+    for _ in 0..to_admit(out.open, BEDS, depth, due) {
         let queue = store.list::<crate::ward::Pack>(QUEUE_STORE);
         let Some(id) = choose_next(&queue, &on_ward_cases, &Placeable::here(store)) else {
             out.notes.push(

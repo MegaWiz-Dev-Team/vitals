@@ -7400,6 +7400,28 @@ fn one_pass(store: &store::Store, root: &std::path::Path) -> Option<Result<ward_
             t.listed, t.checked
         );
     }
+    // **A pass that changed the ward re-keeps the board.**
+    //
+    // `keep_board` is called from one place — `read_ward` — and `tick` does not call it, so until
+    // now a pass admitted a patient on chain and left the board in the store exactly as it found
+    // it. A fresh instance then served a census taken before the arrival, which at min-instances 0
+    // is the next visitor: the first person through the door after a patient arrives would not see
+    // that patient. For a ward whose whole point is that the census keeps moving, an arrival
+    // nobody can see is an arrival that did not happen.
+    //
+    // Only when something changed. `read_ward` is the expensive call this ticker was rebuilt to
+    // avoid — 100 seconds to about four — and paying it once per actual arrival or death is a
+    // trade worth making, while paying it every minute for a pass that moved nothing is not.
+    if !t.admitted.is_empty() || !t.closed.is_empty() {
+        let kept = ward_chain::read_ward(&chain, store);
+        println!(
+            "ward       the board was re-kept after a pass that admitted {} and closed {} — \
+             a census a fresh instance can read without waiting for a visitor{}",
+            t.admitted.len(),
+            t.closed.len(),
+            if kept["readable"] == serde_json::json!(true) { "" } else { " (unreadable board)" }
+        );
+    }
     // Any pass that took more than ten seconds, not only the first; the sentence is `ward_chain`'s
     // so the shape can be tested without a deploy.
     if let Some(note) = ward_chain::slow_pass_note(began.elapsed(), t.pace, &t.spans) {

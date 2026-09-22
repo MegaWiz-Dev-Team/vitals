@@ -255,11 +255,30 @@ fn the_release_policy_is_published_and_promises_no_rate() {
     let v = ward_payload(&read(&[], &[], &nobody(), None, 1));
     let p = &v["policy"];
 
-    assert_eq!(p["beds"], 3);
+    // `beds` is the census, not a cap: an empty ward has nobody on it, and nothing stops a busy
+    // one going past the floor the ward keeps trying to hold free.
+    assert_eq!(p["beds"], 0, "nobody is on this ward, and the field says so rather than saying 3");
+    assert_eq!(p["beds_kept_free"], 3, "three is what it tries to keep open for whoever walks in");
     assert_eq!(p["a_bed_frees_on"], serde_json::json!(["discharge", "death"]),
                "nothing else frees a bed — not time, not us");
-    assert!(p["admissions_per_day"].as_str().unwrap().contains("as many as leave"),
-            "the rate is derived from the ward, never promised by us");
+
+    // The arrivals are on a clock now, and the block says how to check the claim rather than
+    // asking to be believed.
+    assert_eq!(p["arrivals"]["every_minutes"], 30);
+    for said in ["whether or not anybody is here", "admitted_slot", "re-count"] {
+        assert!(p["arrivals"]["derivation"].as_str().unwrap_or_default().contains(said),
+                "the arrivals block says how the rate is checked: {}", p["arrivals"]["derivation"]);
+    }
+    assert!(p["arrivals"]["who_arrives"].as_str().unwrap_or_default().contains("people per doctor"),
+            "and who arrives is the shortage, which is the whole point of the ward");
+
+    // The old sentence promised "as many as leave", which was true only while a patient could not
+    // be admitted except into a bed somebody had left. It would now be false, and a policy block
+    // that describes a rule the ward no longer follows is worse than one that says nothing.
+    assert!(!p["admissions_per_day"].as_str().unwrap().starts_with("as many as leave"),
+            "the old rule is not the rule any more: {}", p["admissions_per_day"]);
+    assert!(p["admissions_per_day"].as_str().unwrap().contains("whether or not anybody is here"),
+            "and the new one is said in the same place the old one was");
     assert!(p["draw"].as_str().unwrap().contains("queue"),
             "a bed is filled from the queue the factory fills, by the ticker on this host");
     assert!(p["draw"].as_str().unwrap().contains("another bed already holds"),
@@ -2201,21 +2220,21 @@ fn a_patient_is_due_on_the_clock_and_a_ward_that_cannot_tell_the_time_invents_no
     let half_hour = 30;
     let now = 1_790_000_000i64;
 
-    assert_eq!(arrival_due(Some(now - 1800), now, half_hour), true,
+    assert!(arrival_due(Some(now - 1800), now, half_hour),
                "thirty minutes to the second is due");
-    assert_eq!(arrival_due(Some(now - 4000), now, half_hour), true, "and long past due is due");
-    assert_eq!(arrival_due(Some(now - 1799), now, half_hour), false, "a second short is not");
-    assert_eq!(arrival_due(Some(now), now, half_hour), false, "and one just admitted is not");
+    assert!(arrival_due(Some(now - 4000), now, half_hour), "and long past due is due");
+    assert!(!arrival_due(Some(now - 1799), now, half_hour), "a second short is not");
+    assert!(!arrival_due(Some(now), now, half_hour), "and one just admitted is not");
 
-    assert_eq!(arrival_due(None, now, half_hour), false,
+    assert!(!arrival_due(None, now, half_hour),
                "a ward that cannot say when the last patient arrived invents nobody — filling the \
                 beds already covers a ward that has never admitted, so refusing costs nothing and \
                 avoids a burst every time the dating fails");
 
-    assert_eq!(arrival_due(Some(now - 99_999), now, 0), false,
+    assert!(!arrival_due(Some(now - 99_999), now, 0),
                "and zero minutes turns the clock off rather than admitting on every pass");
 
     // A clock running backwards — a slot dated later than this host's own now — is not an arrival.
-    assert_eq!(arrival_due(Some(now + 600), now, half_hour), false,
+    assert!(!arrival_due(Some(now + 600), now, half_hour),
                "a last admission in the future is a disagreement about time, not a patient due");
 }
