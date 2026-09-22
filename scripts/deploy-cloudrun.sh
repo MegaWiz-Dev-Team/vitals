@@ -30,6 +30,13 @@ SERVICE="${SERVICE:-vitals}"
 # is deletable, and a cold start there costs a few seconds of somebody's patience rather than a
 # clinician's. Production is unchanged by this variable's default.
 MIN_INSTANCES="${MIN_INSTANCES:-1}"
+# How many requests Cloud Run may hold in flight on the one instance. This was hard-coded at 8
+# and on no screen: every open front-page tab holds a 301 s stream (`/api/ward/stream`) against
+# it, so on 22 Sep 2026 eight tabs — some of them ours — filled the count and the platform
+# refused strangers with "no available instance" for minutes at a time, ticks included. The
+# server serves reads on a pool and streams on their own threads, so the count is not a promise
+# the container cannot keep; 80 is Cloud Run's own default. Printed below, next to the service.
+CONCURRENCY="${CONCURRENCY:-80}"
 PROGRAM_ID="${VITALS_PROGRAM_ID:-}"
 RPC="${VITALS_RPC:-https://api.devnet.solana.com}"
 # Heimdall needs a GPU and cannot run here. Reach the machine that has one — when there is one.
@@ -176,7 +183,15 @@ if [ "$SERVICE" = "vitals-world" ]; then
     preview) echo "── door      PREVIEW — packs are taken and published; nobody is admitted and nobody plays" ;;
     *)       echo "── door      closed — packs are refused until a deploy sets VITALS_WARD_DOOR=open or =preview" ;;
   esac
+  # How often a patient arrives, named on every deploy for the same reason as the door: this
+  # replaces the whole environment, and on 22 Sep 2026 a deploy that did not name it put the
+  # ward back to the binary's default four minutes after the founder had ruled otherwise. The
+  # default here is the binary's own, so an unset variable changes nothing and says so.
+  ARRIVAL_MINUTES="${VITALS_WARD_ARRIVAL_MINUTES:-30}"
+  env_add "VITALS_WARD_ARRIVAL_MINUTES=$ARRIVAL_MINUTES"
+  echo "── arrivals  every $ARRIVAL_MINUTES min (VITALS_WARD_ARRIVAL_MINUTES; 0 turns the clock off)"
 fi
+echo "── concurrency $CONCURRENCY requests in flight per instance (CONCURRENCY; streams count, one per open tab)"
 [ -n "$VERTEX_URL" ] && env_add "VITALS_VERTEX_URL=$VERTEX_URL"
 [ -n "$VERTEX_MODEL" ] && env_add "VITALS_VERTEX_MODEL=$VERTEX_MODEL"
 [ -n "$MONTHLY" ] && env_add "VITALS_MONTHLY_TURNS=$MONTHLY"
@@ -390,7 +405,7 @@ REVISION="$(gcloud run deploy "$SERVICE" \
   --image "$IMAGE" \
   --allow-unauthenticated \
   --port 8474 \
-  --min-instances "$MIN_INSTANCES" --max-instances 1 --concurrency 8 \
+  --min-instances "$MIN_INSTANCES" --max-instances 1 --concurrency "$CONCURRENCY" \
   --cpu 1 --memory 512Mi \
   --set-env-vars "^@^$ENV" \
   --set-secrets "$SECRETS" \
