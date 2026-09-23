@@ -191,8 +191,11 @@ if [ "$SERVICE" = "vitals-world" ]; then
   # How often a patient arrives, named on every deploy for the same reason as the door: this
   # replaces the whole environment, and on 22 Sep 2026 a deploy that did not name it put the
   # ward back to the binary's default four minutes after the founder had ruled otherwise. The
-  # default here is the binary's own, so an unset variable changes nothing and says so.
-  ARRIVAL_MINUTES="${VITALS_WARD_ARRIVAL_MINUTES:-30}"
+  # default here is the founder's ruling of 22 Sep 2026 — one an hour — so an unset variable
+  # means his number and not the one it replaced; the binary's own default moves with it
+  # (`ward.rs::arrival_minutes`), because this script names the variable on every deploy and
+  # the binary's default is therefore never what production runs.
+  ARRIVAL_MINUTES="${VITALS_WARD_ARRIVAL_MINUTES:-60}"
   env_add "VITALS_WARD_ARRIVAL_MINUTES=$ARRIVAL_MINUTES"
   echo "── arrivals  every $ARRIVAL_MINUTES min (VITALS_WARD_ARRIVAL_MINUTES; 0 turns the clock off)"
 fi
