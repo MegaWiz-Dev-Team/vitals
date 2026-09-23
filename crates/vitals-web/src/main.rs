@@ -7930,6 +7930,68 @@ mod tests {
                 "the Eternal entry's stills are the Director's and a ward pack has no say in them");
     }
 
+    /// **"No picture has been made for her" and "this run has no such thing as a picture" are
+    /// different sentences, and the wire says only one of them.**
+    ///
+    /// `View.portrait` is `skip_serializing_if = "Option::is_none"`, which was written for the
+    /// season: the Eternal entry's stills are the Director's, a ward pack has no say in them, and
+    /// the honest thing is to send no field at all. Then the ward borrowed the same absence. A
+    /// patient nobody has photographed yet resolves to `None` through the ladder, the field is
+    /// omitted, and the page receives exactly what an Eternal run sends.
+    ///
+    /// The page's guard is `if (v.portrait !== undefined)`, so an omitted field skips the whole
+    /// block — including the line that draws the stand-in. That is why Somsak Faceless has no
+    /// `.face-none` element on his bedside at all rather than a visible one: b9b72af promised an
+    /// outline with her initials wherever there is no photograph, and it has only ever been
+    /// delivered when the server had something to say about the photograph.
+    ///
+    /// This is the blank-frame bug one layer down, and it is the same lesson: an absence says
+    /// nothing, so it is read as whatever the reader already assumes. On 22 ก.ย. the reader was
+    /// the founder. Here it is my own code.
+    ///
+    /// So the two absences are made to look different on the wire, and the test is about the wire
+    /// rather than the type — a browser sees JSON, and `Option::is_none` on the Rust side is not
+    /// the fact that matters.
+    #[test]
+    fn a_ward_patient_with_no_picture_says_so_and_the_season_says_nothing_at_all() {
+        let mut s = new_session("ep5").expect("ep5 is in the repository");
+        s.ward = Some(WardShift {
+            patient_id: 1790144220,
+            index: 0,
+            taken_slot: 1,
+            head: "00".repeat(32),
+            // Nobody has photographed him. Not a missing pack, not a closed door — a patient on
+            // the ward whose face has not been made yet, which is the ordinary state of a patient
+            // the factory has only just admitted.
+            faces: std::collections::BTreeMap::new(),
+            age: 62,
+        });
+
+        let on_the_wire = serde_json::to_value(s.view(lang::language(None)))
+            .expect("the view a browser is sent");
+        assert!(
+            on_the_wire.get("portrait").is_some(),
+            "a ward bedside says something about the picture even when there is none, or the \
+             page cannot tell 'no photograph' from 'this is not a ward': {on_the_wire:#}"
+        );
+        assert!(
+            on_the_wire["portrait"].is_null(),
+            "and what it says is null — there is a bedside, and it has no face to draw"
+        );
+
+        // The season is untouched, and this half is why the skip exists at all. Nothing about the
+        // Eternal entry changed when the ward learned to say "none".
+        let eternal = serde_json::to_value(
+            new_session("ep1").expect("ep1").view(lang::language(None)),
+        )
+        .expect("the season's view");
+        assert!(
+            eternal.get("portrait").is_none(),
+            "the Eternal entry sends no such field: its stills are the Director's and a ward \
+             pack has no say in them"
+        );
+    }
+
     /// **The top-left is the way out** (founder, 16 ก.ย.: a logo, and pressing it leaves for the
     /// globe). On the ward host that is the Vitals World mark and a link to `/`; on vitals.academy
     /// the bar keeps the Eternal wordmark exactly as it is.
