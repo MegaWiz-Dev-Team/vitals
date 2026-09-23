@@ -38,10 +38,20 @@ impl std::fmt::Debug for Token {
     }
 }
 
+fn default_beds() -> usize {
+    vitals_web::ward::BEDS
+}
+
 /// The queue block `/api/ward` publishes on `cwf/ward`. Absent on builds before it.
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct Queue {
     pub waiting: usize,
+    /// The beds the ward keeps free — `beds_kept_free` since 22 Sep (b9b72af), when the census
+    /// stopped being capped and `beds` stopped meaning one; `beds` on the builds before. Read for
+    /// the tick line only, never for the plan, so a ward that publishes neither still parses:
+    /// a factory that required the old name read nothing for fourteen hours on 22–23 Sep
+    /// ("queue: missing field `beds`") while the ward it was meant to fill drained to one.
+    #[serde(alias = "beds_kept_free", default = "default_beds")]
     pub beds: usize,
     /// `open` or `closed`.
     pub door: String,
@@ -117,7 +127,15 @@ impl WardView {
             readable,
             source: v.get("source").and_then(|s| s.as_str()).unwrap_or("").to_string(),
             why: v.get("why").and_then(|s| s.as_str()).map(str::to_string),
-            beds: policy.get("beds").and_then(|b| b.as_u64()).map(|b| b as usize).unwrap_or(vitals_web::ward::BEDS),
+            // The floor the ward keeps free, which is what the country cap is sized against.
+            // `policy.beds` was that number until 22 Sep and is the census since; the floor moved
+            // to `beds_kept_free`. Read the floor, then the old name, then the binary's own.
+            beds: policy
+                .get("beds_kept_free")
+                .or_else(|| policy.get("beds"))
+                .and_then(|b| b.as_u64())
+                .map(|b| b as usize)
+                .unwrap_or(vitals_web::ward::BEDS),
             catalogue: policy
                 .get("catalogue")
                 .and_then(|c| c.as_array())
