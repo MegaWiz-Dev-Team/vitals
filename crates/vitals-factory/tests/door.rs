@@ -169,3 +169,65 @@ fn the_token_is_never_printed() {
     assert!(shown.contains("redacted"));
     assert_eq!(t.bearer(), "Bearer sekrit-value-1234", "the header is the one place it is spelled out");
 }
+
+/// **The contract is linked, not copied.**
+///
+/// `on_branch()` above is a hand-written string that claims to be "the shape on `cwf/ward`". It
+/// says `"queue": {"waiting": 4, "beds": 3, …}` and `"policy": {"beds": 3, …}`, and it has said so
+/// since 16 Sep. On 22 Sep, 95963be renamed that published field to `beds_kept_free` and changed
+/// what `policy.beds` *means* — it is the census now, not the floor. The fixture was not updated,
+/// because nothing makes anybody update it. So this file went on passing, describing a ward that
+/// had stopped existing, while every factory tick failed at the read for twelve hours: "the ward
+/// could not be read, so nothing was built: queue: missing field `beds`". Zero queued on eighty
+/// ticks, the production queue drained to one pack, and the census fell from twenty to one.
+///
+/// A fixture is a contract somebody has to remember, and remembering is the failure we keep having.
+/// So this test does not describe the ward's shape. It **asks the ward for it** — `vitals-factory`
+/// already depends on `vitals-web`, so the producer's own builders are one call away — and hands
+/// what comes back to the consumer's own parser. A rename on either side now fails here, in the
+/// ward's gates, with nothing for anybody to refresh.
+///
+/// Both halves of the 22 Sep failure are asserted, and the second is the one no fixture would have
+/// caught: `Queue.beds` was a *loud* failure, a missing required field. `WardView.beds` never fails
+/// at all — `parse` builds it from `policy` with a fallback, so a rename there yields a wrong
+/// number in silence, and the factory sized its country cap by the census with nothing anywhere
+/// saying so. The compile catches the first kind. Only an assertion catches the second.
+#[test]
+fn the_wards_own_blocks_parse_in_the_factory_that_reads_them() {
+    // The door has to be open or the ward publishes no queue at all, which is its own correct
+    // behaviour and not the thing under test here.
+    std::env::set_var("VITALS_WARD_DOOR", "open");
+    let dir = std::env::temp_dir().join(format!("vitals-contract-{}", std::process::id()));
+    let store = vitals_web::store::Store::open(dir.clone()).expect("a store to build a ward from");
+
+    // The producer's own words, built by the code that serves them rather than typed here.
+    let queue = vitals_web::ward_chain::queue_block(&store);
+    let policy = vitals_web::ward::policy(None, None, Some(7));
+    let body = serde_json::json!({
+        "readable": true,
+        "source": "devnet:test",
+        "policy": policy,
+        "queue": queue,
+        "patients": [],
+    })
+    .to_string();
+
+    let view = WardView::parse(&body).unwrap_or_else(|e| {
+        panic!("the factory could not read the ward this repository serves: {e}\n{body}")
+    });
+
+    // The loud half: whatever the ward calls the fields inside its queue block, this parses.
+    assert!(view.queue.is_some(), "an open ward publishes a queue and the factory reads it: {body}");
+
+    // The silent half. The ward's floor is `beds_kept_free`; `policy.beds` is the census, and the
+    // census here is 7 on purpose — larger than any bed count — so a factory that read the wrong
+    // field would size itself by 7 and this assertion would say so out loud.
+    assert_eq!(
+        view.beds,
+        vitals_web::ward::BEDS,
+        "the factory's bed figure is the ward's floor and not its census; reading `policy.beds` \
+         now yields however many patients happen to be on the ward: {policy:#}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -1295,7 +1295,13 @@ pub fn state_word(state: u8) -> &'static str {
 /// did not look", which is why the counts are null rather than zero there: an endpoint that
 /// answers `0` because it could not read the store looks exactly like a ward with no cases, and
 /// that zero would be read as a fact about the ward rather than about the answer.
-fn policy(
+/// **Public because the factory parses it.** It was private only because nothing outside had asked
+/// yet, and that accident is what let 95963be rename `beds` here and break every factory tick for
+/// twelve hours with no test failing anywhere. `vitals-factory` depends on this crate, so its own
+/// test can now call this and hand the result to `WardView::parse` — the contract linked instead of
+/// copied, checked by the compiler and the assertion rather than by somebody remembering to
+/// refresh a fixture.
+pub fn policy(
     cases: Option<&[crate::ward_case::CaseSummary]>,
     seconds_per_slot: Option<f64>,
     on_ward: Option<usize>,
