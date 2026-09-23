@@ -223,3 +223,21 @@ fn a_diagnosis_with_fewer_than_two_typeable_names_is_refused_until_the_table_nam
     assert!(refusal.reason.contains("diagnosis_synonyms"), "the refusal names the table: {}", refusal.reason);
     assert!(refusal.reason.contains("Severe community acquired bacterial pneumonia"), "the refusal names the diagnosis: {}", refusal.reason);
 }
+
+// A pack says which compiler built it — name, version, and the commit the compiler was built
+// from. The version is the workspace's and moves with releases, not with the compiler; the commit
+// is what changed on 23 Sep 2026 when the same source compiled to a different pack, and it is
+// what the door can compare when a replace arrives under the same case version.
+#[test]
+fn a_pack_names_the_commit_its_compiler_was_built_from() {
+    let pack = compile(SYNTHETIC, src()).expect("compiles");
+    let commit = pack.compiler.commit;
+    // "-dirty" when built with uncommitted changes: the stamp then says the commit is not the
+    // code, rather than naming one that is not.
+    let sha = commit.strip_suffix("-dirty").unwrap_or(commit);
+    assert!(
+        sha.len() >= 7 && sha.chars().all(|c| c.is_ascii_hexdigit()),
+        "compiler.commit is a git sha, with -dirty when the tree is, not {commit:?}"
+    );
+    assert_eq!(pack.compiler.name, "vitals-casefactory");
+}

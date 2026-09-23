@@ -55,11 +55,14 @@ pub struct Refusal {
     pub reason: String,
 }
 
-/// The compiler's own name and version, stamped on every pack.
+/// The compiler's own name, version and commit, stamped on every pack. The version is the
+/// workspace's and moves with releases; the commit is the compiler's own fact, and the one that
+/// changed on 23 Sep 2026 when the same source compiled to a different pack under one version.
 #[derive(Debug, Clone, Serialize)]
 pub struct Compiler {
     pub name: &'static str,
     pub version: &'static str,
+    pub commit: &'static str,
 }
 
 /// A time a sentence pinned to a role, as the pack shows the reviewer.
@@ -145,7 +148,7 @@ pub struct PackPatient {
     pub sex: Option<String>,
 }
 
-pub const COMPILER: Compiler = Compiler { name: "vitals-casefactory", version: env!("CARGO_PKG_VERSION") };
+pub const COMPILER: Compiler = Compiler { name: "vitals-casefactory", version: env!("CARGO_PKG_VERSION"), commit: env!("CASEFACTORY_COMMIT") };
 
 fn refuse(id: &str, reason: impl Into<String>) -> Refusal {
     Refusal { case_id: id.to_string(), reason: reason.into() }
