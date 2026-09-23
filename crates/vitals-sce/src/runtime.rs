@@ -115,6 +115,43 @@ pub enum PatientStatus {
     Dead,
 }
 
+impl PatientStatus {
+    /// **Can she answer a question?**
+    ///
+    /// Asked here rather than by matching on variants at the call site, for the reason
+    /// [`Outcome::is_death`] gives just below: one place knows the answer, so no caller can forget
+    /// a variant. There is exactly one rule and both the server and the page read it.
+    ///
+    /// On 22 Sep 2026 the first stranger ever to take a shift on this ward asked Nadege Toussaint
+    /// nine questions — anxious, pain, coffee, whether it radiates — and she answered every one of
+    /// them after she had arrested. Not from a model that had been told she was dead: on the ward
+    /// `/api/say` answers out of the case file's own string table, which had no notion of status at
+    /// all, so the answer was not unlikely, it was certain. A dead patient discussing her coffee
+    /// intake is the worst first impression this ward can make, and it was made on the first
+    /// stranger who ever came.
+    ///
+    /// `Arrest` is included and is the whole point of the name: it is not death, and CPR is exactly
+    /// what should happen next — but a patient with no pulse does not speak, and the page has to say
+    /// so at the moment it becomes true rather than at the result screen.
+    pub fn can_speak(self) -> bool {
+        !matches!(self, PatientStatus::Arrest | PatientStatus::Dead)
+    }
+
+    /// The engine's own word for her state, lowercase — the key the portrait ladder and the page
+    /// are both written against, so neither invents a second vocabulary for one thing.
+    pub fn word(self) -> &'static str {
+        match self {
+            PatientStatus::Stable => "stable",
+            PatientStatus::Deteriorating => "deteriorating",
+            PatientStatus::Critical => "critical",
+            PatientStatus::Arrest => "arrest",
+            PatientStatus::Improving => "improving",
+            PatientStatus::Recovered => "recovered",
+            PatientStatus::Dead => "dead",
+        }
+    }
+}
+
 /// Terminal outcome. NOTE: still the legacy fixed (anaphylaxis-shaped) set; the
 /// data-driven engine bridges SCE outcome ids onto it via [`outcome_enum`]. A
 /// follow-up generalises this to carry the SCE outcome id + kind directly.

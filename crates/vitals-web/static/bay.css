@@ -1631,3 +1631,6 @@ html.is-ward .wardpage h1{font-size:1.5rem;margin:0 0 .4rem}
 html.is-ward .wardpage a{color:var(--ink);text-underline-offset:.2em}
 html.is-ward .wardpage .bed{color:var(--ink-3,#7b8a86);font:600 .85rem/1.6 ui-monospace,monospace;
   letter-spacing:.06em;text-transform:uppercase}
+
+/* A patient with no pulse: the sentence carries, the greyed controls beside it do not shout. */
+html.is-ward #wardsay b.gone{color:var(--alarm);font-weight:700}

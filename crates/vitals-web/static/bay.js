@@ -1242,6 +1242,10 @@ const namesADiagnosis=t=>{ const l=String(t).trim().toLowerCase();
 
 function paint(v,named){
   const E=ep();
+  /* Her pulse, before her face and before anything a stranger can press. `/api/step` publishes
+     `status` on every tick and the bedside payload publishes it on open, so this runs both while
+     somebody is holding her and at the moment a stranger opens a bed the ward closed overnight. */
+  if(v.status!==undefined)paintNoPulse(v.status, v.died_at);
   /* Her face, as the server chose it for the state it is publishing in the same breath. `undefined`
      on the Eternal entry — no ward, no field — and the frame then behaves exactly as it always
      has. */
@@ -2044,6 +2048,41 @@ function firstVisit(name, g){
    somebody holding a head does not need to be asked whether they would like to start. */
 function firstVisitDue(ward, taken, dismissed){
   return !!ward && !taken && !dismissed;
+}
+
+/* **A patient with no pulse does not answer, and the page has to stop asking.**
+
+   On 22 ก.ย. the first stranger ever to take a shift here asked Nadege Toussaint nine questions
+   after she had arrested, and got nine answers. The server is gated now, but a page that keeps the
+   chips lit and the box focused is still inviting the question — and the refusal, however plain,
+   arrives as *the ward saying no* rather than as *the patient being dead*. The strip has to say it
+   first.
+
+   The status word arrives capitalised from `/api/step` (the engine's Debug form, "Arrest") and
+   lowercase from the bedside payload (the portrait ladder's vocabulary, "arrest"), because those
+   two fields were written years apart for different readers. One place lowercases, so nothing
+   downstream has to know that. */
+function noPulse(status){
+  const s=String(status||'').toLowerCase();
+  return s==='arrest'||s==='dead';
+}
+
+/* What the strip says the moment it becomes true, and never a sentence that is false.
+
+   The founder asked for "<Name> has died. Nobody was on shift." — which is the right sentence for
+   the case he was looking at, a stranger opening a patient the ward closed overnight, and the wrong
+   one for a patient who arrests in somebody's hands: they *are* on shift, and telling them nobody
+   was is the page calling them absent while they are standing there.
+
+   So three sentences for three true things. Arrest is not death and CPR is what happens next, which
+   is why it gets its own words rather than the death ones. */
+function deadWords(name, status, when, onShift){
+  if(!noPulse(status))return null;
+  const who=name||'This patient';
+  const st=String(status).toLowerCase();
+  if(st==='arrest')return who+' has no pulse. Start CPR now, or hand over.';
+  if(onShift)return who+' has died. Hand over to record what happened.';
+  return who+' has died'+(when?' at '+when:'')+'. Nobody was on shift.';
 }
 
 function guideLink(){
@@ -4414,6 +4453,42 @@ async function wardDo(path){
   if(r.error||!r.sign)return r;
   return await (await fetch('/api/ward/submit?player='+me.pub+'&sig='+await sign(r.sign))).json();
 }
+/* **Shut the ways of asking, and say why.**
+
+   Not the result panel — that only fires on `v.over`, and the whole of the 22 ก.ย. failure happened
+   before `over` was ever set: she arrested, the chips stayed lit, the timer kept stepping, and the
+   page went on looking like a consultation. This is the live page, at the moment it becomes true.
+
+   The chips and the box go *disabled* rather than hidden. A control that vanishes reads as a page
+   that broke; a control greyed out with a sentence above it reads as a patient who cannot talk,
+   which is what has happened. Orders are deliberately left alone: CPR and defibrillation are orders,
+   and this is exactly the moment to give them. */
+function paintNoPulse(status, when){
+  const gone=noPulse(status);
+  /* Arrest is reversible — CPR and a shock are exactly what the orders beside this are for — so
+     every line here has to undo itself when she comes back. What it must *not* do on the way back is
+     enable something a different rule had switched off: the untaken-shift gate owns these same
+     controls, and a naive `disabled = gone` hands a stranger an ask box on a shift they never took.
+     So this rule only ever adds a reason, and `wardGate` is left owning the other one. */
+  const untaken=!!takeFirst(WARD, id, null);
+  const cmd=$('#cmd'), send=$('#send'), mic=$('#mic'), chips=$('#chips');
+  if(cmd){
+    cmd.disabled=gone||untaken;
+    if(gone)cmd.value='';
+    /* The real placeholder, kept once the first time it is replaced, because the second call would
+       otherwise keep "She cannot answer." as the thing it restores. */
+    if(cmd.dataset.ask===undefined)cmd.dataset.ask=cmd.placeholder||'';
+    cmd.placeholder=gone?'She cannot answer.':cmd.dataset.ask;
+  }
+  if(send)send.disabled=gone||untaken;
+  if(mic)mic.disabled=gone||untaken;
+  /* Only ever switched off here. `renderChips` rebuilds them from scratch on every pass, so the way
+     back is a fresh row rather than this function guessing which ones were allowed. */
+  if(gone&&chips)chips.querySelectorAll('button').forEach(b=>{ b.disabled=true; });
+  const words=deadWords((WARDSHIFT&&WARDSHIFT.name)||'', status, when, !untaken);
+  if(words)wardSay('<b class="gone">'+esc(words)+'</b>');
+}
+
 function wardSay(html){ const b=$('#wardbar'); if(b)$('#wardsay').innerHTML=html; }
 /* The strip at the top of the bay, for both kinds of run this host has.
    A shift's carries the two controls that put a stranger on the chain — take, and hand back. A

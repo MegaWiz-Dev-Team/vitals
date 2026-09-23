@@ -2139,7 +2139,22 @@ fn open_shift(
         "head": head,
         "shift": played + 1,
         "shifts_before": played,
-        "portrait": ward::portrait_for(&pack.portrait, "stable"),
+        // **The state she is actually in, not the calm one.** This read `"stable"` and so the
+        // bedside opened on the base portrait of a woman who might by then have been arrested for
+        // hours — the founder, 23 Sep: "ถ้าคนไข้ตายแล้วควรจะเข้าไปเห็นรูปที่อาการไม่ดี". The ladder for
+        // this already existed and already resolves a dead patient down to her worst *made*
+        // picture; it was simply never asked the question. `portrait_at_the_bedside` rather than
+        // `portrait_for` for the reason its own doc gives: at a bedside, the last face there is
+        // beats a black frame in front of somebody still in the room with her.
+        "portrait": ward::portrait_at_the_bedside(
+            &pack.portrait,
+            vitals_sce::runtime::PatientStatus::word(state.status),
+        ),
+        // Her state travels with the picture, because the page has to be able to say what it is
+        // showing — a portrait that looks bad is not a sentence, and the founder asked for the
+        // sentence too: "โดยต้องมีข้อความบอกคนไข้ตายแล้ว".
+        "status": vitals_sce::runtime::PatientStatus::word(state.status),
+        "can_speak": state.status.can_speak(),
         "taken_slot": now_slot,
         // The case's own words, told about the person in this bed. The page renders from this and
         // from nothing else: its own table holds the season's sixteen, and a World-case patient
@@ -4901,7 +4916,7 @@ fn main() {
                 // at boot and every case in the season borrowed it, so asking OSCE-A's
                 // seventy-one-year-old man anything got an answer from a nineteen-year-old woman
                 // about her shrimp allergy — in her name, on her allergy, at her age.
-                let (hist, status, spo2, ep, shift) = {
+                let (hist, status, pulse, spo2, ep, shift) = {
                     let mut map = sessions.lock().unwrap();
                     let Some(s) = map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) else {
                         let _ = req.respond(no_such_session());
@@ -4912,12 +4927,47 @@ fn main() {
                     (
                         s.said.clone(),
                         format!("{:?}", s.state.status),
+                        // The engine's own value, not the string above. `status` is a Debug format
+                        // built for a prompt; a decision about whether a person can speak is not
+                        // something to make by matching on formatted text.
+                        s.state.status,
                         s.state.vitals.spo2,
                         s.ep.clone(),
                         s.ward.clone(),
                     )
                 };
                 let want = lang::language(param(&url, "lang").as_deref());
+
+                // ── a patient with no pulse does not answer ───────────────────────
+                //
+                // Before either voice below, because there are two and both of them would speak.
+                // The ward's voice is `ward_case::answer`, a lookup in the case file's own string
+                // table that never had a notion of status, so a dead patient answered *certainly*
+                // rather than probably — nine questions, on 22 Sep, from the first stranger ever to
+                // take a shift here. The bay's voice is a model, and `patient::brief` tells it "you
+                // are {status}" and then asks anyway, which is a different mechanism with the same
+                // result. One gate above both, so neither can be fixed alone and left broken.
+                //
+                // The ask is already on the tape a few lines above and stays there: what a stranger
+                // asked a dead patient is part of what happened, and the receipt is not a place to
+                // be tactful. What changes is only that nobody answers in her name.
+                //
+                // Her name rather than a pronoun, because `plain_words` forbids server sentences
+                // composed out of pronouns — the ward does not know how to refer to a person it has
+                // only a case file for, and "she" in the wrong place is worse than a name.
+                if !pulse.can_speak() {
+                    // "The patient" and not her name, although the page says her name a line away:
+                    // the session knows her id and her faces, not what she is called — the name
+                    // lives in the pack the ward branch below loads. A sentence that is true from
+                    // here beats one that needs a store read to be polite, and `plain_words`
+                    // forbids composing it out of a pronoun instead.
+                    let _ = req.respond(json(serde_json::json!({
+                        "reply": "The patient has no pulse and cannot answer. Start CPR, or hand over.",
+                        "asked": serde_json::Value::Null,
+                        "cannot_answer": true,
+                    })));
+                    continue;
+                }
 
                 // ── the ward: her words, out of the case the ward is holding ──────
                 if let Some(w) = shift {
