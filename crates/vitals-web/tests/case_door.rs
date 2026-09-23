@@ -1248,3 +1248,144 @@ fn the_age_a_case_allows_follows_the_age_it_is_written_about() {
     assert!(ok(62, 52) && ok(62, 72) && !ok(62, 51) && !ok(62, 73));
     assert!(ok(80, 74));
 }
+
+/// **What makes a case unreplaceable is a shift on the chain, not a clinician's signature.**
+///
+/// The rule above this one read `provisional`, and its comment in main.rs claimed "a reviewed case
+/// is one the chain carries shifts against". That was an assumption written down as a fact, and it
+/// was false: `provisional` is the compiler's word for clinical review, every case on this ward is
+/// provisional, and so the check passed everything. On 23 ก.ย. a recompiled pack went over
+/// `ddx-pneumonia-1-en` while the chain held a closure against it. `sce_hash` is an input to the
+/// leaf, so the closure stopped re-deriving — not a different score, a shift that no longer
+/// verifies at all.
+///
+/// The rule is narrower than "never replace a played case", because only some of a pack can hurt
+/// an anchored shift. The **scored content** is the `sce` block, which the leaf commits to, and the
+/// `rubric`, which the receipt's mark sheet is computed from. A title, a tag, a country or a
+/// version is presentation: changing it cannot move a leaf or a sheet, and refusing it would be
+/// theatre. So the door blocks a change to the scored content of a case the chain has shifts
+/// against, and lets everything else through.
+///
+/// A fresh ward has no patient on this case at all, which is a definite "nothing is anchored"
+/// rather than an unknown — the unknown case is the one where patients exist and the board cannot
+/// be read, and that one refuses with 503 rather than guessing.
+#[test]
+fn a_case_the_chain_has_no_shifts_against_may_be_recompiled() {
+    let s = Server::start();
+    assert_eq!(s.post("/api/ward/case", &a_pack()).0, 200);
+
+    // Presentation only: the scored content is untouched, so this is not the dangerous kind of
+    // change and the catalogue takes it.
+    let mut retitled = a_pack();
+    retitled["title"] = json!("a better title");
+    retitled["version"] = json!("0.1.1");
+    let (code, body) = s.post("/api/ward/case", &retitled);
+    assert_eq!(code, 200, "a title is not something a leaf commits to: {body}");
+
+    // The scored content itself, on a ward where nobody is on this case: allowed, because there is
+    // no anchored shift for it to rewrite.
+    let mut recompiled = a_pack();
+    recompiled["version"] = json!("0.2.0");
+    recompiled["sce"]["interventions"][0]["match"]["any_kw"] = json!(["a new phrase"]);
+    let (code, body) = s.post("/api/ward/case", &recompiled);
+    assert_eq!(code, 200, "nothing is anchored against it, so a recompile lands: {body}");
+}
+
+/// **The same bytes twice is not a store, and the door says so instead of reporting one.**
+///
+/// A replace at an unchanged version with changed bytes is a silent edit, and after the pneumonia
+/// incident it is a silent edit to something a leaf depends on. So the identifiers have to move
+/// when the scored content does — `version` for an authored change, `compiler.commit` for a
+/// recompile — and the refusal names both hashes so the caller can see for themselves that the
+/// bytes differ.
+#[test]
+fn a_silent_edit_is_refused_and_an_identical_push_writes_nothing() {
+    let s = Server::start();
+    assert_eq!(s.post("/api/ward/case", &a_pack()).0, 200);
+
+    // Byte for byte what is already held. Nothing to write, and the answer says that rather than
+    // reporting a store that did not happen.
+    let (code, body) = s.post("/api/ward/case", &a_pack());
+    assert_eq!(code, 200, "{body}");
+    assert_eq!(body["unchanged"], json!(true),
+               "an identical push writes nothing and says so: {body}");
+
+    // Changed scored content, and every identifier standing still. This is the shape of the thing
+    // that went wrong at 14:44 and the door has to name it.
+    let mut edited = a_pack();
+    edited["sce"]["interventions"][0]["match"]["any_kw"] = json!(["something else"]);
+    let (code, body) = s.post("/api/ward/case", &edited);
+    assert_eq!(code, 409, "a silent edit is refused: {body}");
+    let why = body["refused"].as_str().unwrap_or_default();
+    assert!(why.contains("version") && why.contains("compiler"),
+            "and the refusal says which identifier should have moved: {why}");
+    assert_ne!(body["sce_sha256_held"], body["sce_sha256_offered"],
+               "with both hashes, so the caller can see the bytes differ: {body}");
+
+    // The same change, with the compiler's commit moved: a recompile, and it lands.
+    let mut rebuilt = edited.clone();
+    rebuilt["compiler"] = json!({"name": "vitals-casefactory", "version": "0.9.4",
+                                 "commit": "ccd73727b039"});
+    let (code, body) = s.post("/api/ward/case", &rebuilt);
+    assert_eq!(code, 200, "a recompile by a different compiler is not a silent edit: {body}");
+}
+
+/// **The case Amelia's shift is anchored against cannot be recompiled under her.**
+///
+/// This is the rule the other two do not test, and the one the incident was about. On 23 ก.ย. a
+/// recompiled pack replaced `ddx-pneumonia-1-en` while the chain carried a ward closure against it;
+/// `sce_hash` is an input to the leaf, so that closure stopped re-deriving. The check that let it
+/// through was asking whether a clinician had reviewed the case.
+///
+/// Seeded through the ward's own `keep_board`, not a hand-built row — the same reason the factory
+/// contract test calls `queue_block` instead of describing it. A board written by the writer is a
+/// board the reader will accept, and a fixture of my own shape would only prove I can agree with
+/// myself.
+///
+/// The presentation half is asserted in the same test on purpose: a title may still be corrected on
+/// a case the chain has shifts against, because a title is not something a leaf or a mark sheet is
+/// computed from. A rule that refuses everything is easy and wrong.
+#[test]
+fn the_scored_content_of_a_case_with_a_shift_on_chain_is_not_replaceable() {
+    let s = Server::start();
+    assert_eq!(s.post("/api/ward/case", &a_pack()).0, 200);
+
+    // A patient on this case whom the chain has finished: one shift, and a closed slot. Whoever
+    // signed it, it is an anchored shift and its leaf commits to these bytes.
+    let store = vitals_web::store::Store::open(s.state()).expect("the ward's own store");
+    let board = json!({
+        "readable": true,
+        "source": "devnet:test",
+        "patients": [{
+            "patient_id": 1790037060u64,
+            "state": "died",
+            "case": "auth-demo-1",
+            "shifts": 1,
+            "bed": null,
+            "admitted_slot": 1u64,
+            "closed_slot": 502381820u64,
+        }],
+    });
+    assert!(vitals_web::ward_chain::keep_board(&store, &board, "test"),
+            "a readable board is kept, and this test needs the ward to have one");
+
+    // The dangerous change: the scored content, under a patient whose shift is on chain.
+    let mut recompiled = a_pack();
+    recompiled["version"] = json!("0.2.0");
+    recompiled["sce"]["interventions"][0]["match"]["any_kw"] = json!(["pertussis"]);
+    let (code, body) = s.post("/api/ward/case", &recompiled);
+    assert_eq!(code, 409, "the chain carries a shift against it: {body}");
+    let why = body["refused"].as_str().unwrap_or_default();
+    assert!(why.contains("shift"),
+            "and the refusal says why, in the terms that make it true: {why}");
+    assert!(!why.contains("reviewed"),
+            "and not in terms of clinical review, which is what the old rule wrongly asked: {why}");
+
+    // The safe change, on the very same case: a title cannot move a leaf or a mark sheet, so it is
+    // still allowed while she is on the board.
+    let mut retitled = a_pack();
+    retitled["title"] = json!("a corrected title");
+    retitled["version"] = json!("0.1.1");
+    let (code, body) = s.post("/api/ward/case", &retitled);
+    assert_eq!(code, 200, "presentation is not scored content: {body}");
+}
