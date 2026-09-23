@@ -264,7 +264,13 @@ fn the_release_policy_is_published_and_promises_no_rate() {
 
     // The arrivals are on a clock now, and the block says how to check the claim rather than
     // asking to be believed.
-    assert_eq!(p["arrivals"]["every_minutes"], 30);
+    // Sixty, and written as a literal on purpose. This assertion is the reason the number cannot
+    // drift quietly: it caught the change that brought it here, which is exactly what it is for.
+    // The founder ruled sixty on 22 ก.ย., replacing the thirty this said before; the binary
+    // defaulted to thirty for a day afterwards and the ruling survived only because the director
+    // typed the variable on every deploy. If this ever needs editing again, that edit is somebody
+    // deciding to change what the ward promises, and it should cost a diff and a sentence.
+    assert_eq!(p["arrivals"]["every_minutes"], 60);
     for said in ["whether or not anybody is here", "admitted_slot", "re-count"] {
         assert!(p["arrivals"]["derivation"].as_str().unwrap_or_default().contains(said),
                 "the arrivals block says how the rate is checked: {}", p["arrivals"]["derivation"]);
