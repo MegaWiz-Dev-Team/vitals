@@ -92,3 +92,35 @@ fn a_case_no_archetype_fits_is_refused_not_written() {
     assert_eq!(err.case_id, "synthetic-septic-shock-test");
     assert!(err.reason.contains("not forced"), "{}", err.reason);
 }
+
+// ── the diagnosis keeps its own name ──────────────────────────────────────────────────────────
+// Found on production, 23 Sep 2026: `ddx-pneumonia-1-en` and `-4-en` ship with a diagnosis
+// matcher of `["dx_pneumonia"]` and nothing else — ten marks reachable by no word in any language.
+// The pruning pass drops any single-word keyword that more than one intervention carries, and
+// "pneumonia" was also in `ask_pneumonia_history`, so the diagnosis lost its only word.
+//
+// The rule is not "the diagnosis keeps the word": the engine resolves a learner's text to the
+// **first** intervention in declaration order that matches, so a diagnosis that kept "pneumonia"
+// behind an ask that also carried it would lose every time, with the patient answering a history
+// question instead of the sheet recording a diagnosis — a worse zero than silence. So the test
+// asserts the outcome: typing the disease's bare name resolves to the diagnosis.
+#[test]
+fn typing_the_bare_name_of_the_disease_names_the_diagnosis_even_when_a_history_question_shares_the_word() {
+    use vitals_sce::runtime::SceState;
+    let mut case: serde_json::Value = serde_json::from_str(SYNTHETIC).unwrap();
+    case["hidden"]["correct_diagnosis"] = serde_json::json!({ "display": "Pneumonia", "aliases": [] });
+    case["symptom_script"].as_array_mut().unwrap().push(serde_json::json!({
+        "finding": { "display": "Pneumonia history" }, "present": true, "reveal": "asked",
+        "patient_words": "I had pneumonia once, years ago."
+    }));
+    let pack = compile(&case.to_string(), src()).expect("compiles");
+    let sce = Sce::from_json(&pack.sce.to_string()).expect("the engine parses it");
+    let st = SceState::new(sce);
+    let hit = st.resolve("pneumonia");
+    assert!(
+        hit.as_deref().is_some_and(|id| id.starts_with("dx_")),
+        "typing the disease's name should name the diagnosis, not fire {hit:?}"
+    );
+    let ask = st.resolve("pneumonia history");
+    assert!(ask.as_deref().is_some_and(|id| id.starts_with("ask_")), "the history question is still reachable by its own phrase: {ask:?}");
+}
