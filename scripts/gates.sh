@@ -23,7 +23,11 @@ gate() {
 }
 
 echo "── gates ──"
-gate "clippy -D warnings"  cargo clippy --workspace --all-targets --offline -- -D warnings
+# Clippy and rustc write different artifacts, and in one target dir each forces the other to
+# rebuild — measured 22–23 Sep at about 45 minutes of wall clock over one night's four runs. A
+# target dir of clippy's own is check-mode only: 902 MB for the whole workspace (481 crates,
+# 67 s from empty, measured 23 Sep), not a second copy of the 23 GB test tree.
+gate "clippy -D warnings"  env CARGO_TARGET_DIR=target/clippy cargo clippy --workspace --all-targets --offline -- -D warnings
 gate "workspace tests"     cargo test --workspace --offline
 
 # The globe's own arithmetic — country lookup, the per-country counts, the difficulty filter —
