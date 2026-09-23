@@ -1285,3 +1285,36 @@ fn the_privacy_page_names_the_film_it_embeds() {
     assert!(low.contains("press play") || low.contains("until you play") || low.contains("before you play"),
             "and it has to say when the cookie happens, which is the whole reason for that host");
 }
+
+
+/// **`hidden` hides things, and the stylesheet must not be able to overrule it.**
+///
+/// `hidden` is `display:none` in the user-agent stylesheet, which is the weakest place a rule can
+/// come from — so *any* author rule that sets `display` on the same element wins, silently, and an
+/// element the script has hidden goes on rendering. Nothing warns. The page looks broken and the
+/// script looks correct, which is the exact failure mode this whole file exists for.
+///
+/// This has now happened four times in `bay.css`, and three of them were fixed one selector at a
+/// time — `.pt-face[hidden]`, `.veil[hidden]`, `#wardprimary[hidden]`. Each of those is somebody
+/// noticing. The fourth was the missing-picture stand-in from 00033: `faceMark` returns
+/// `class="face face-none"`, `.face` sets `display:block` and `.face-none` sets
+/// `display:inline-flex`, neither had a `[hidden]` rule, and so the initials square rendered on
+/// every bedside *beside* the real portrait — "MB" next to Maria Bautista's own face on staging,
+/// "TM" on production `/ward/1790099280` — for two days, on every patient, while the script that
+/// hid it was working perfectly.
+///
+/// So the rule is not a fourth selector. It is that the attribute wins everywhere in this
+/// stylesheet, once, and a fifth `display` rule on a hideable element cannot bring the bug back.
+/// The three older one-offs are redundant under it and harmless; they are left where they are
+/// because churning a shared stylesheet to delete dead rules is how the next regression arrives.
+#[test]
+fn nothing_the_script_hides_can_be_shown_again_by_the_stylesheet() {
+    let css = static_page("bay.css");
+    let flat: String = css.chars().filter(|c| !c.is_whitespace()).collect();
+    assert!(
+        flat.contains("[hidden]{display:none!important}"),
+        "bay.css has to make the hidden attribute win against its own display rules, once and for \
+         everything — `[hidden]{{display:none!important}}` — because the script hides nine \
+         different elements and any new `display:` rule on one of them silently un-hides it"
+    );
+}
