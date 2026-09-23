@@ -852,3 +852,45 @@ assert.equal(firstVisitDue(null, false, false), false,
              'the Eternal bay is not a ward and is never covered');
 
 console.log('shift_logic: ok (and a stranger is told they may)');
+
+// ── a patient with no pulse ──────────────────────────────────────────────────
+//
+// The first stranger ever to take a shift here asked Nadege Toussaint nine questions after she had
+// arrested, and got nine answers, and nothing on the page said she had stopped being able to talk.
+// The server is gated now; these are the page's half, and the page's half is the one the person
+// actually reads.
+const { noPulse, deadWords } = new Function(
+  [grab('noPulse'), grab('deadWords'), 'return { noPulse, deadWords };'].join('\n'))();
+
+// Both spellings, because the two payloads that carry this field were written apart: `/api/step`
+// sends the engine's Debug form and the bedside sends the portrait ladder's word.
+for (const gone of ['Arrest', 'arrest', 'Dead', 'dead']) {
+  assert.equal(noPulse(gone), true, `${gone} is a patient who cannot answer`);
+}
+for (const alive of ['Stable', 'deteriorating', 'Critical', 'improving', 'Recovered', '', null,
+                     undefined]) {
+  assert.equal(noPulse(alive), false, `${alive} is a patient who can`);
+}
+
+// Arrest is not death, and it gets its own sentence: CPR is what happens next, and a page that says
+// "has died" over a shockable rhythm has just told a doctor to stop.
+assert.equal(deadWords('Nadege Toussaint', 'Arrest', null, true),
+             'Nadege Toussaint has no pulse. Start CPR now, or hand over.');
+
+// Dead, in somebody's hands. Not "nobody was on shift" — they are standing there, and telling them
+// otherwise is the page calling them absent.
+assert.equal(deadWords('Nadege Toussaint', 'Dead', null, true),
+             'Nadege Toussaint has died. Hand over to record what happened.');
+
+// Dead, and nobody came: the founder's own sentence, with the time when the chain has it.
+assert.equal(deadWords('Nadege Toussaint', 'dead', null, false),
+             'Nadege Toussaint has died. Nobody was on shift.');
+assert.equal(deadWords('Nadege Toussaint', 'dead', '22:02', false),
+             'Nadege Toussaint has died at 22:02. Nobody was on shift.');
+
+// A patient the page cannot name is still somebody, and a patient who can talk gets no sentence at
+// all — the absence is what keeps this off every ordinary page.
+assert.match(deadWords('', 'dead', null, false), /^This patient has died\./);
+assert.equal(deadWords('Nadege Toussaint', 'Stable', null, true), null);
+
+console.log('shift_logic: ok (and a patient with no pulse is not asked anything)');
