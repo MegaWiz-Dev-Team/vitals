@@ -3,9 +3,10 @@
 //!
 //! The door is already content-addressed — the same pack pushed twice is one patient — so the
 //! ledger is the factory's half of the same promise, and the half the door cannot keep: the queue
-//! is not published pack by pack, so who is *waiting* is known only here. A pack is `unseen`
-//! from the moment it is sent until the board shows her; then it carries her patient id; then,
-//! when the board says she went home or died, it is `closed` and her face is free again.
+//! block lists who is waiting by pack id, but shows one picture per pack, so what each waiting
+//! pack *carries* is known only here. A pack is `unseen` from the moment it is sent until the
+//! board shows her; then it carries her patient id; then, when the board says she went home or
+//! died, it is `closed` and her face is free again.
 //!
 //! Resending an unseen pack is safe and is what a tick does first: the door answers `duplicates`
 //! if she is still queued and `queued` if the queue lost her, and either is right.
@@ -39,6 +40,26 @@ pub struct Sent {
     /// Set when the board shows she has left. Her face is free from then on.
     #[serde(default)]
     pub closed: bool,
+    /// Set once her waiting pack carries the 256 px siblings — the door that takes them accepted.
+    #[serde(default)]
+    pub variants_sent: bool,
+    /// The states carried to her pack while she waits, state → url, as the door answered they
+    /// were on it — so they are not made or sent again while she waits. The queue row shows one
+    /// picture, so this is the only record of the rest; once she is in a bed the board itself
+    /// says what she has. Empty for a pack sent with her stable alone.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub carried: BTreeMap<String, String>,
+    /// States the judge refused twice and the factory left out — "critical: <why>" — so a person
+    /// can see which pictures the board falls back on, and why.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub refused: Vec<String>,
+    /// The case chosen for her from the ward's own list, and its difficulty, as the pack went
+    /// out — so a re-send says the same. None for a pack sent before the case door, or when
+    /// nothing on the list fit her.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub case_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub difficulty: Option<String>,
 }
 
 impl Sent {
@@ -56,6 +77,11 @@ impl Sent {
             ward: ward.into(),
             patient_id: None,
             closed: false,
+            variants_sent: false,
+            carried: BTreeMap::new(),
+            refused: Vec::new(),
+            case_id: None,
+            difficulty: None,
         }
     }
 
@@ -71,12 +97,50 @@ impl Sent {
             endemic: self.endemic,
         }
     }
+
+    /// The pack as it goes through the door, with the case chosen for her if one was.
+    pub fn to_outbound(&self) -> crate::door::Outbound {
+        crate::door::Outbound { pack: self.to_pack(), case_id: self.case_id.clone(), difficulty: self.difficulty.clone() }
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+/// What one UTC day cost, across ticks.
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+pub struct Spend {
+    /// Image edits made (the Gemini image editor).
+    pub edits: usize,
+    /// Judge calls made (the text model; the base gate, the age question, the state gate).
+    pub judge_calls: usize,
+    /// States left for another day because the edit budget was spent.
+    pub deferred: usize,
+    /// Estimated from list price — edits × 0.039 USD + judge calls × 0.0005 USD — never measured.
+    pub usd: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Ledger {
     /// By the door's pack id (`vitals_web::ward_chain::pack_id`).
     pub sent: BTreeMap<String, Sent>,
+    /// By UTC day, `YYYY-MM-DD`: what the model calls cost.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub spend: BTreeMap<String, Spend>,
+}
+
+/// The UTC day of a unix time, `YYYY-MM-DD` — the budget's unit.
+pub fn utc_day(unix: u64) -> String {
+    let days = unix / 86_400;
+    // civil-from-days (Howard Hinnant), for dates since 1970.
+    let z = days as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02}")
 }
 
 impl Ledger {
@@ -105,6 +169,25 @@ impl Ledger {
         self.sent.iter().filter(|(_, s)| s.patient_id.is_none()).collect()
     }
 
+    /// Every age this person was ever sent at — waiting, admitted or closed — so a name is one
+    /// person: she is only ever drawn again within two years of these.
+    pub fn ages_of(&self, key: &str) -> Vec<u16> {
+        let mut ages: Vec<u16> = self.sent.values().filter(|s| s.key == key).map(|s| s.age).collect();
+        ages.sort_unstable();
+        ages.dedup();
+        ages
+    }
+
+    /// Everything sent, oldest first — the draw's own history. The spread rules in
+    /// [`crate::plan`] read its tail: the last twenty sent are the queue the ward admits from,
+    /// and the last forty are the run no region may be missing from. Ties in time go by pack id,
+    /// so the order is the same on every run.
+    pub fn chronology(&self) -> Vec<&Sent> {
+        let mut v: Vec<(&String, &Sent)> = self.sent.iter().collect();
+        v.sort_by(|a, b| a.1.sent_at.cmp(&b.1.sent_at).then_with(|| a.0.cmp(b.0)));
+        v.into_iter().map(|(_, s)| s).collect()
+    }
+
     /// Learn from the board: an unseen pack whose person, case and age are now on a bed gets her
     /// patient id; a pack whose patient has left is closed. Returns what changed, in words.
     pub fn reconcile(&mut self, ward: &WardView) -> Vec<String> {
@@ -130,7 +213,7 @@ impl Ledger {
                     if let Some(p) = ward.patients.iter().find(|p| p.patient_id == pid) {
                         if !p.is_open() {
                             s.closed = true;
-                            notes.push(format!("{} ({}) has left — {}; her face is free", s.name, pid, p.state));
+                            notes.push(format!("{} ({}) has left — {}; {} face is free", s.name, pid, p.state, crate::sex::Sex::possessive_of(&s.sex)));
                         }
                     }
                 }

@@ -6,12 +6,16 @@
 //! |--------------------------|------------------------------------------|------------------------------------------|
 //! | `WARD`                   | *(required)*                             | the ward's origin, `https://…run.app`    |
 //! | `QUEUE_DEPTH`            | 20                                       | keep at least this many packs waiting    |
-//! | `BASES_PER_TICK`         | 3                                        | faces made with mflux per tick           |
-//! | `VITALS_REPO`            | the checkout this binary was built from  | scenarios, persona files, pool, endemic  |
-//! | `VITALS_WORLD_DIR`       | `~/.vitals/world`                        | the manifest, the ledger, the faces      |
-//! | `VITALS_GCP_PROJECT`     | `vitals-academy`                         | Secret Manager and Vertex                |
+//! | `BASES_PER_TICK`         | 2                                        | faces made with mflux per tick (≈ 3 min each on the mini, measured 16 Sep) |
+//! | `VITALS_REPO`            | the checkout this binary was built from  | the pool and the physicians series       |
+//! | `VITALS_WORLD_DIR`       | `~/.vitals/world`                        | this ward's ledger and logs — one per ward |
+//! | `VITALS_FACES_DIR`       | the world dir                            | the manifest, the face bytes, the paint scratch — shared between wards |
+//! | `VITALS_GCP_PROJECT`     | *(required)*                             | the ward's project, where its `vitals-door-token` secret lives (`vitals-academy-dev` for staging, `vitals-academy` for production) |
+//! | `VITALS_VERTEX_PROJECT`  | `vitals-academy`                         | the image editor's project               |
 //! | `VITALS_PORTRAIT_BUCKET` | `vitals-world-portraits`                 | where faces are published                |
 //! | `VITALS_IMAGE_MODEL`     | `gemini-2.5-flash-image`                 | the state editor                         |
+//! | `VITALS_JUDGE_MODEL`     | `gemini-2.5-flash`                       | the model that judges each face (11/11 on the 16 Sep calibration; gemini-3.1-flash-lite was 10/11 and is the fallback when 2.5 retires) |
+//! | `EDITS_PER_DAY`          | 40                                       | image edits allowed per UTC day, across ticks (≈ 0.039 USD each at list price); bases are local and free |
 //! | `FACTORY_SEED`           | the clock                                | the draw; set it to repeat a run         |
 //!
 //! `--dry-run` reads the ward and prints what a tick would do, fetching no secret, sending no
@@ -20,14 +24,17 @@
 
 use std::path::PathBuf;
 use vitals_factory::door::Http;
-use vitals_factory::tick::{default_repo, tick, Config};
+use vitals_factory::tick::{backfill_variants, default_repo, remake_face, tick, Config};
 use vitals_factory::tools::Shell;
 
-const USAGE: &str = "usage: vitals-factory [--once] [--dry-run]
+const USAGE: &str = "usage: vitals-factory [--once] [--dry-run] | --face KEY@AGE | --variants
 
 One tick of the patient factory: read WARD's /api/ward, top its queue up to QUEUE_DEPTH, complete
 one patient's faces, exit. Configuration is the environment (see the crate doc); --dry-run reads
-and plans and touches nothing.";
+and plans and touches nothing. --face KOR-0@8 remakes one face through the photorealism gate,
+records it, and prints its url; the ward is not touched. --variants makes the 256 px sibling of
+every portrait on file that has none, uploads and records them; the next tick carries them to the
+ward.";
 
 fn env_or(name: &str, default: &str) -> String {
     std::env::var(name).ok().filter(|v| !v.trim().is_empty()).unwrap_or_else(|| default.to_string())
@@ -53,9 +60,20 @@ fn stamp() -> String {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut dry_run = false;
-    for a in &args {
+    let mut face: Option<String> = None;
+    let mut variants = false;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
         match a.as_str() {
             "--dry-run" => dry_run = true,
+            "--variants" => variants = true,
+            "--face" => match it.next() {
+                Some(spec) => face = Some(spec.clone()),
+                None => {
+                    eprintln!("--face needs KEY@AGE\n{USAGE}");
+                    std::process::exit(2);
+                }
+            },
             // One tick is the only mode there is; the word is accepted so a launchd line and a
             // hand-typed line read the same.
             "--once" => {}
@@ -76,8 +94,43 @@ fn main() {
             std::process::exit(2);
         }
     };
-    let door = Http::new(&cfg.ward);
     let tools = Shell { bucket: cfg.bucket.clone() };
+    if variants {
+        let report = backfill_variants(&cfg, &tools);
+        let t = stamp();
+        for line in &report.lines {
+            println!("{t} {line}");
+        }
+        for e in &report.errors {
+            eprintln!("{t} ERROR {e}");
+        }
+        if !report.errors.is_empty() {
+            std::process::exit(1);
+        }
+        return;
+    }
+    if let Some(spec) = face {
+        match remake_face(&cfg, &tools, &spec) {
+            Ok((url, report)) => {
+                let t = stamp();
+                for line in &report.lines {
+                    println!("{t} {line}");
+                }
+                println!("{t} {url}");
+            }
+            Err(boxed) => {
+                let (e, report) = *boxed;
+                let t = stamp();
+                for line in &report.lines {
+                    println!("{t} {line}");
+                }
+                eprintln!("{t} ERROR {e}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+    let door = Http::new(&cfg.ward);
     let report = tick(&cfg, &door, &tools);
     let t = stamp();
     for line in &report.lines {
@@ -87,13 +140,19 @@ fn main() {
         eprintln!("{t} ERROR {e}");
     }
     println!(
-        "{t} tick done: {} queued, {} duplicates, {} rejected, depth {}, {} faces made, {} states made, {} error(s)",
+        "{t} tick done: {} queued, {} duplicates, {} state(s) refused by the judge, {} refused by the door, depth {}, {} faces made of {} painted, {} states made, {} edit(s) + {} judge call(s) ≈ {:.3} USD estimated from list price, {} state(s) deferred: budget, {} error(s)",
         report.queued,
         report.duplicates,
         report.rejected,
+        report.door_rejected,
         report.depth.map_or("?".to_string(), |d| d.to_string()),
         report.faces_made,
+        report.faces_tried,
         report.states_made,
+        report.edits,
+        report.judge_calls,
+        vitals_factory::tick::estimate_usd(report.edits, report.judge_calls),
+        report.deferred_budget,
         report.errors.len()
     );
     if !report.errors.is_empty() {
@@ -110,16 +169,26 @@ fn config(dry_run: bool) -> Result<Config, String> {
     }
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
     let world_dir = std::env::var_os("VITALS_WORLD_DIR").map(PathBuf::from).unwrap_or_else(|| home.join(".vitals/world"));
+    let faces_dir = std::env::var_os("VITALS_FACES_DIR").map(PathBuf::from).unwrap_or_else(|| world_dir.clone());
     let seed = env_num("FACTORY_SEED", now())?;
     Ok(Config {
         ward: ward.trim_end_matches('/').to_string(),
         queue_depth: env_num("QUEUE_DEPTH", 20)? as usize,
-        bases_per_tick: env_num("BASES_PER_TICK", 3)? as usize,
+        bases_per_tick: env_num("BASES_PER_TICK", 2)? as usize,
         repo: default_repo(),
         world_dir,
-        project: env_or("VITALS_GCP_PROJECT", "vitals-academy"),
+        faces_dir,
+        secret_project: std::env::var("VITALS_GCP_PROJECT").ok().filter(|v| !v.trim().is_empty()).ok_or_else(|| {
+            "VITALS_GCP_PROJECT is not set — the ward's own project, where its vitals-door-token secret lives \
+             (vitals-academy-dev for staging, vitals-academy for production); a token from the wrong project is a door \
+             that says unauthorised"
+                .to_string()
+        })?,
+        vertex_project: env_or("VITALS_VERTEX_PROJECT", "vitals-academy"),
         bucket: env_or("VITALS_PORTRAIT_BUCKET", "vitals-world-portraits"),
         model: env_or("VITALS_IMAGE_MODEL", "gemini-2.5-flash-image"),
+        judge_model: env_or("VITALS_JUDGE_MODEL", "gemini-2.5-flash"),
+        edits_per_day: env_num("EDITS_PER_DAY", 40)? as usize,
         dry_run,
         seed,
         now: now(),

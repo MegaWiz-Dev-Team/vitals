@@ -10,7 +10,7 @@
 //! seeded entries carry no age; theirs is the batch's, by index, and [`batch_age`] says so.
 
 use crate::pool::Person;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ops::RangeInclusive;
 use std::path::Path;
 
@@ -32,12 +32,25 @@ pub struct Entry {
     /// State → url, in the bucket's one shape.
     #[serde(default)]
     pub portrait: BTreeMap<String, String>,
+    /// State → the 256 px sibling's url (`<sha>-256.webp`, the same sha as the full one).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub portrait_256: BTreeMap<String, String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Manifest {
     pub entries: BTreeMap<String, Entry>,
+    /// The keys the file held when this was loaded — so a save can tell an entry another
+    /// factory added since (kept) from one this factory removed on purpose (not brought back).
+    loaded: BTreeSet<String>,
 }
+
+impl PartialEq for Manifest {
+    fn eq(&self, other: &Manifest) -> bool {
+        self.entries == other.entries
+    }
+}
+impl Eq for Manifest {}
 
 /// A base that fits: which entry, at what age, and where.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,7 +86,8 @@ impl Manifest {
             };
             entries.insert(key, entry);
         }
-        Ok(Manifest { entries })
+        let loaded = entries.keys().cloned().collect();
+        Ok(Manifest { entries, loaded })
     }
 
     pub fn to_json(&self) -> String {
@@ -89,9 +103,24 @@ impl Manifest {
         }
     }
 
-    /// Written whole through a temp file and a rename, so a crash mid-write leaves the old file.
+    /// Written whole through a temp file and a rename, so a crash mid-write leaves the old file
+    /// — after merging what is on disk, because the faces are shared between wards and two
+    /// factories may hold the file: an entry another factory added since this one loaded is
+    /// kept; an entry another factory removed since this one loaded (`--face` remakes one) stays
+    /// removed; an entry this one removed on purpose stays removed; ours wins for a key both
+    /// hold.
     pub fn save(&self, path: &Path) -> Result<(), String> {
-        write_atomically(path, &self.to_json())
+        let mut merged = self.entries.clone();
+        if let Ok(on_disk) = Manifest::load(path) {
+            for (k, e) in &on_disk.entries {
+                if !merged.contains_key(k) && !self.loaded.contains(k) {
+                    merged.insert(k.clone(), e.clone());
+                }
+            }
+            merged.retain(|k, _| on_disk.entries.contains_key(k) || !self.loaded.contains(k));
+        }
+        let whole = Manifest { entries: merged, loaded: BTreeSet::new() };
+        write_atomically(path, &whole.to_json())
     }
 
     /// The age an entry's base was made at: recorded, or the batch's by index.
@@ -109,10 +138,21 @@ impl Manifest {
             .filter(|(k, _)| k.as_str() == key || k.starts_with(&prefix))
             .filter_map(|(k, e)| {
                 let age = Manifest::age_of(k, e)?;
-                let url = e.portrait.get("stable")?;
+                let url = e.base()?;
                 band.contains(&age).then(|| Base { key: k.clone(), age, url: clone(url) })
             })
             .min_by_key(|b| (u32::from(b.age).abs_diff(mid), b.key.clone()))
+    }
+
+    /// Every age a face exists at for this person — her own entry (the batch age, or the age it
+    /// records) and every `<key>@<age>` — so a name is one person: she is only ever drawn within
+    /// two years of these.
+    pub fn ages_of(&self, key: &str) -> Vec<u16> {
+        let prefix = format!("{key}@");
+        let mut ages: Vec<u16> = self.entries.iter().filter(|(k, _)| k.as_str() == key || k.starts_with(&prefix)).filter_map(|(k, e)| Manifest::age_of(k, e)).collect();
+        ages.sort_unstable();
+        ages.dedup();
+        ages
     }
 
     /// Record a base made for this person at this age. Under her own key when the batch age is
@@ -128,7 +168,7 @@ impl Manifest {
         e.country.get_or_insert_with(|| who.country.clone());
         e.sex.get_or_insert_with(|| who.sex.letter().to_string());
         e.age = Some(age);
-        e.portrait.insert("stable".into(), url.to_string());
+        e.portrait.insert("base".into(), url.to_string());
     }
 
     /// Add one state's picture to an entry. Add only, like the door.
@@ -141,10 +181,51 @@ impl Manifest {
         true
     }
 
-    /// The entry whose `stable` is this url — how a patient on the board is traced back to the
-    /// face she was given, whichever key it was recorded under.
+    /// Record a state's 256 px sibling. Add only, like the rest.
+    pub fn record_variant(&mut self, key: &str, state: &str, url: &str) -> bool {
+        let e = self.entries.entry(key.to_string()).or_default();
+        if e.portrait_256.contains_key(state) {
+            return false;
+        }
+        e.portrait_256.insert(state.into(), url.into());
+        true
+    }
+
+    /// The entry whose `stable` or `base` is this url — how a patient on the board is traced back
+    /// to the face she was given, whichever key it was recorded under and whether her stable is
+    /// the made one or (before 16 Sep) the base itself.
     pub fn entry_with_stable(&self, url: &str) -> Option<(&String, &Entry)> {
-        self.entries.iter().find(|(_, e)| e.portrait.get("stable").map(String::as_str) == Some(url))
+        self.entries
+            .iter()
+            .find(|(_, e)| e.portrait.get("stable").map(String::as_str) == Some(url))
+            .or_else(|| self.entries.iter().find(|(_, e)| e.portrait.get("base").map(String::as_str) == Some(url)))
+    }
+
+    /// Record the made stable of an entry, keeping the face it was made from under `base`. Before
+    /// 16 Sep an entry's `stable` was the base itself; that is what moves under `base` here.
+    pub fn record_stable(&mut self, key: &str, stable: &str) {
+        let e = self.entries.entry(key.to_string()).or_default();
+        if !e.portrait.contains_key("base") {
+            if let Some(old) = e.portrait.get("stable").cloned() {
+                e.portrait.insert("base".into(), old);
+            }
+        }
+        e.portrait.insert("stable".into(), stable.into());
+        e.portrait_256.remove("stable");
+    }
+}
+
+impl Entry {
+    /// The face the states are edited from: `base`, or — for an entry from before the rule —
+    /// its `stable`, which then IS the base.
+    pub fn base(&self) -> Option<&String> {
+        self.portrait.get("base").or_else(|| self.portrait.get("stable"))
+    }
+
+    /// The made stable, if one exists distinct from the base.
+    pub fn made_stable(&self) -> Option<&String> {
+        let s = self.portrait.get("stable")?;
+        (Some(s) != self.portrait.get("base") && self.portrait.contains_key("base")).then_some(s)
     }
 }
 

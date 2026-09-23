@@ -1,11 +1,25 @@
 //! The ward's door, from the factory's side: what it answers, and a client that asks.
 //!
-//! Three requests, all against `crates/vitals-web/src/main.rs` as it is on `cwf/ward`:
+//! Four requests, all against `crates/vitals-web/src/main.rs` as it is on `cwf/ward`:
 //!
-//!   * `GET /api/ward` — the census, the policy, the board, and (once that build ships) the
-//!     queue block;
-//!   * `POST /api/ward/queue` — a page of packs, behind the token;
-//!   * `POST /api/ward/pack/<id>` — more of one patient's pictures, add only, same token.
+//!   * `GET /api/ward` — the census, the policy, the board, and the queue block: how many wait,
+//!     which door they are behind, and (since the ward's `waiting_rows`) who they are, one row per
+//!     pack with the pack id it is addressed by;
+//!   * `GET /api/ward/cases?placeable=1` — the cases the ward holds and will place (7b's case
+//!     door, 16 Sep; `placeable` since 00034): case_id, country or null, difficulty, endemic,
+//!     provisional, title, version, patient, withdrawn. An older ward has no such door and
+//!     answers 404, which is read as an empty list, not an error;
+//!   * `POST /api/ward/queue` — a page of packs, behind the token. Each pack may carry a
+//!     `case_id` and a `difficulty` beside the ward's own fields ([`Outbound`]); the door that
+//!     reads them is landing, and the one before it ignores them;
+//!   * `POST /api/ward/pack/<id>` — more of one patient's pictures, same token. The ward reads the
+//!     id's shape: digits are a patient in a bed, whose pictures are add only (the board has shown
+//!     them); 64 hex is a pack still waiting, whose pictures are replaced (nobody has seen her).
+//!     A waiting patient has no patient id, so hers go under the pack id the queue row publishes.
+//!
+//! Those four and no other. The factory never takes, admits or frees a bed — the ward's ticker
+//! does — so a 409 from a take-style route is nothing it can receive, and nothing it would act
+//! on if it did.
 //!
 //! Every answer is read for what it says. The door answers a closed ward with 503 and the word
 //! `closed`, which is "come back later" and never "stop building"; it answers a bad page with
@@ -53,8 +67,49 @@ pub struct Queue {
     /// ("queue: missing field `beds`") while the ward it was meant to fill drained to one.
     #[serde(alias = "beds_kept_free", default = "default_beds")]
     pub beds: usize,
-    /// `open` or `closed`.
+    /// `open` (packs taken, patients admitted), `preview` (packs taken, nobody admitted — since
+    /// 17 Sep, the queue fills while the founder looks) or `closed`.
     pub door: String,
+    /// Who is waiting, one row per pack, in the order the ward lists them (by pack id, which is
+    /// also how its ticker breaks ties when a bed frees). Empty on a build before the rows.
+    #[serde(default)]
+    pub waiting_patients: Vec<WaitingPatient>,
+}
+
+/// One row of the queue, as the ward's `waiting_rows` writes it: the pack id she is addressed
+/// by, who she is, and the one face her pack shows. What is deliberately absent is what she does
+/// not have yet — a bed, a patient id (she is not on the chain), a state — and the rest of her
+/// set: the row shows one picture, so which states her pack carries is known only to whoever
+/// carried them ([`crate::ledger::Sent::carried`]).
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct WaitingPatient {
+    /// 64 hex: the content address her pictures are replaced under.
+    pub pack: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub age: Option<u16>,
+    #[serde(default)]
+    pub sex: Option<String>,
+    #[serde(default)]
+    pub country: Option<String>,
+    #[serde(default)]
+    pub difficulty: Option<String>,
+    #[serde(default)]
+    pub endemic: bool,
+    #[serde(default)]
+    pub case_title: Option<String>,
+    /// The face the pack arrived with — its `stable`, full size or the 256 px sibling.
+    #[serde(default)]
+    pub portrait: Option<String>,
+}
+
+impl Queue {
+    /// Does the door take packs this tick? `open` and `preview` do; `closed` and any word the
+    /// factory does not know do not.
+    pub fn takes_packs(&self) -> bool {
+        matches!(self.door.as_str(), "open" | "preview")
+    }
 }
 
 /// One entry on the board, with the fields the factory uses. Everything about who she is may be
@@ -72,8 +127,13 @@ pub struct BoardPatient {
     pub age: Option<u16>,
     #[serde(default)]
     pub country: Option<String>,
+    /// The case the bed holds — since the ward's 0543ed7 the World case id once she was admitted
+    /// from the catalogue. This is the field the case rules read; the board publishes no other
+    /// name for it.
     #[serde(default)]
     pub case: Option<String>,
+    /// True when she was drawn from her country's endemic list — a fact about the draw, not a
+    /// tag on the case. Whether a case is endemic is the case door's to say (`GET /api/ward/cases`).
     #[serde(default)]
     pub endemic: bool,
     /// The one picture to draw now, as the board publishes it.
@@ -88,6 +148,85 @@ impl BoardPatient {
     /// Is she in a bed? `on_shift` is `on_ward` with somebody in the room.
     pub fn is_open(&self) -> bool {
         matches!(self.state.as_str(), "on_ward" | "on_shift")
+    }
+    /// The case the bed holds: `case`, the one name the board gives it.
+    pub fn case_held(&self) -> Option<&str> {
+        self.case.as_deref()
+    }
+}
+
+/// The patient a case was written about, as the case door states it (ward commit 92b4181): an
+/// age, and a sex spelled `male` / `female` as the packs spell it. Read into the pool's letters in
+/// one place, [`crate::cases::sex_of`].
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct CasePatient {
+    pub age: u16,
+    pub sex: String,
+}
+
+/// One case the ward holds, as `GET /api/ward/cases` lists it: `{archetype, case_id, country,
+/// difficulty, endemic, provisional, title, version, patient}`.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct WardCase {
+    pub case_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archetype: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// ISO 3166-1 alpha-3, or null for a case of the common draw.
+    #[serde(default)]
+    pub country: Option<String>,
+    /// `student`, `intern` or `resident`.
+    pub difficulty: String,
+    #[serde(default)]
+    pub endemic: bool,
+    #[serde(default)]
+    pub provisional: bool,
+    /// Whatever the ward calls a version — a number today, perhaps a date tomorrow.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<serde_json::Value>,
+    /// Who the case was written about; null when the case states nobody, which fits any adult.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub patient: Option<CasePatient>,
+    /// Withdrawn on review (ward 00034). The factory asks the door for placeable rows only
+    /// (`?placeable=1`) and, should one arrive anyway, never chooses it.
+    #[serde(default)]
+    pub withdrawn: bool,
+}
+
+/// The case door's answer — `{"cases": [...], "derivations": {...}}`, or a bare array — read for
+/// what it says.
+pub fn parse_cases(body: &str) -> Result<Vec<WardCase>, String> {
+    let v: serde_json::Value = serde_json::from_str(body).map_err(|e| format!("not JSON: {e}"))?;
+    if let Some(where_it_is) = v.get("the_ward_is").and_then(|s| s.as_str()) {
+        return Err(format!("this host is not the ward; the ward is {where_it_is}"));
+    }
+    let list = match &v {
+        serde_json::Value::Array(_) => v.clone(),
+        serde_json::Value::Object(o) => o.get("cases").cloned().ok_or_else(|| "no `cases` in the case door's answer".to_string())?,
+        _ => return Err("the case door's answer is neither a list nor an object".into()),
+    };
+    serde_json::from_value(list).map_err(|e| format!("cases: {e}"))
+}
+
+/// A pack as it goes through the door: the ward's pack, and the case chosen for her from the
+/// ward's own list. The two extra fields are read by the door that is landing and ignored by
+/// the one before it; the ward content-addresses the pack by its own fields, so a pack is the
+/// same patient with or without them.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct Outbound {
+    #[serde(flatten)]
+    pub pack: Pack,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub case_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub difficulty: Option<String>,
+}
+
+impl Outbound {
+    /// A pack with no case chosen — the shape every pack had before the case door.
+    pub fn plain(pack: Pack) -> Outbound {
+        Outbound { pack, case_id: None, difficulty: None }
     }
 }
 
@@ -149,6 +288,12 @@ impl WardView {
     /// The patients in beds.
     pub fn open(&self) -> impl Iterator<Item = &BoardPatient> {
         self.patients.iter().filter(|p| p.is_open())
+    }
+
+    /// The patients waiting for one, as the queue block lists them; nobody on a build that
+    /// publishes no rows.
+    pub fn waiting(&self) -> impl Iterator<Item = &WaitingPatient> {
+        self.queue.iter().flat_map(|q| q.waiting_patients.iter())
     }
 }
 
@@ -220,7 +365,7 @@ impl FillReply {
 }
 
 /// The body of a push: `{"packs": [...]}`, and nothing else.
-pub fn push_body(packs: &[Pack]) -> String {
+pub fn push_body(packs: &[Outbound]) -> String {
     serde_json::json!({ "packs": packs }).to_string()
 }
 
@@ -229,11 +374,18 @@ pub fn fill_body(set: &BTreeMap<String, String>) -> String {
     serde_json::json!({ "portrait": set }).to_string()
 }
 
-/// The three requests, so a tick can be tested against a door that is not there.
+/// The requests, so a tick can be tested against a door that is not there.
 pub trait Door {
     fn read_ward(&self) -> Result<WardView, String>;
-    fn push(&self, token: &Token, packs: &[Pack]) -> Result<Pushed, String>;
+    /// The cases the ward holds. Empty for a ward with no case door.
+    fn read_cases(&self) -> Result<Vec<WardCase>, String> {
+        Ok(Vec::new())
+    }
+    fn push(&self, token: &Token, packs: &[Outbound]) -> Result<Pushed, String>;
+    /// More of an admitted patient's pictures, by patient id. Add only.
     fn fill(&self, token: &Token, patient_id: u64, set: &BTreeMap<String, String>) -> Result<FillReply, String>;
+    /// A waiting pack's pictures, by pack id (64 hex), replaced. Refused once she is in a bed.
+    fn replace(&self, token: &Token, pack_id: &str, set: &BTreeMap<String, String>) -> Result<FillReply, String>;
 }
 
 /// The real door, over HTTP.
@@ -281,13 +433,29 @@ impl Door for Http {
         WardView::parse(&body)
     }
 
-    fn push(&self, token: &Token, packs: &[Pack]) -> Result<Pushed, String> {
+    fn read_cases(&self) -> Result<Vec<WardCase>, String> {
+        // Placeable rows only: a withdrawn case must never be chosen.
+        match self.agent().get(&format!("{}/api/ward/cases?placeable=1", self.ward)).call() {
+            Ok(resp) => parse_cases(&resp.into_string().map_err(|e| e.to_string())?),
+            // No case door on this build of the ward: an empty list, honestly.
+            Err(ureq::Error::Status(404, _)) => Ok(Vec::new()),
+            Err(ureq::Error::Status(code, resp)) => Err(format!("GET /api/ward/cases?placeable=1: HTTP {code}: {}", resp.into_string().unwrap_or_default())),
+            Err(e) => Err(format!("GET /api/ward/cases?placeable=1: {e}")),
+        }
+    }
+
+    fn push(&self, token: &Token, packs: &[Outbound]) -> Result<Pushed, String> {
         let (status, body) = self.post("/api/ward/queue", token, &push_body(packs))?;
         Pushed::parse(status, &body)
     }
 
     fn fill(&self, token: &Token, patient_id: u64, set: &BTreeMap<String, String>) -> Result<FillReply, String> {
         let (status, body) = self.post(&format!("/api/ward/pack/{patient_id}"), token, &fill_body(set))?;
+        FillReply::parse(status, &body)
+    }
+
+    fn replace(&self, token: &Token, pack_id: &str, set: &BTreeMap<String, String>) -> Result<FillReply, String> {
+        let (status, body) = self.post(&format!("/api/ward/pack/{pack_id}"), token, &fill_body(set))?;
         FillReply::parse(status, &body)
     }
 }

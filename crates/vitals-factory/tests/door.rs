@@ -10,7 +10,7 @@
 //! meets both.
 
 use std::collections::BTreeMap;
-use vitals_factory::door::{push_body, FillReply, Pushed, Token, WardView};
+use vitals_factory::door::{push_body, FillReply, Outbound, Pushed, Queue, Token, WardView};
 use vitals_web::ward::{Pack, Persona};
 
 const STAGING: &str = include_str!("fixtures/ward-staging-2026-09-16.json");
@@ -148,7 +148,7 @@ fn a_page_of_packs_is_the_shape_the_door_documents() {
         portrait: BTreeMap::from([("stable".to_string(), "https://storage.googleapis.com/vitals-world-portraits/a.webp".to_string())]),
         endemic: false,
     };
-    let body: serde_json::Value = serde_json::from_str(&push_body(&[pack])).expect("json");
+    let body: serde_json::Value = serde_json::from_str(&push_body(&[Outbound::plain(pack)])).expect("json");
     let packs = body["packs"].as_array().expect("a packs array");
     assert_eq!(packs.len(), 1);
     assert_eq!(packs[0]["case"], "osce-a");
@@ -168,6 +168,94 @@ fn the_token_is_never_printed() {
     assert!(!shown.contains("sekrit"), "debug output leaks the token: {shown}");
     assert!(shown.contains("redacted"));
     assert_eq!(t.bearer(), "Bearer sekrit-value-1234", "the header is the one place it is spelled out");
+}
+
+/// The ward's door has three states since 17 Sep: `open` (packs taken, patients admitted),
+/// `preview` (packs taken, nobody admitted — the queue fills while the founder looks), and
+/// `closed`. The factory sends on the first two and waits on the third.
+#[test]
+fn preview_takes_packs_like_open_and_closed_does_not() {
+    for (door, takes) in [("open", true), ("preview", true), ("closed", false), ("", false), ("shut", false)] {
+        let q = Queue { waiting: 4, beds: 3, door: door.into(), waiting_patients: vec![] };
+        assert_eq!(q.takes_packs(), takes, "{door:?}");
+    }
+    let body = r#"{"readable": true, "source": "devnet:x", "policy": {"beds": 3, "catalogue": []}, "queue": {"waiting": 7, "beds": 3, "door": "preview"}, "patients": []}"#;
+    let w = WardView::parse(body).unwrap();
+    let q = w.queue.as_ref().unwrap();
+    assert!(q.takes_packs() && q.waiting == 7, "{q:?}");
+}
+
+/// The factory speaks to four routes and no other: it never takes, admits, or touches a bed, so
+/// a 409 from a take-style route is never its to see. Held here the way a grep would hold it.
+#[test]
+fn the_factory_speaks_to_four_routes_and_never_takes() {
+    let src = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/door.rs")).unwrap();
+    let mut routes: Vec<String> = Vec::new();
+    for line in src.lines().filter(|l| !l.trim_start().starts_with("//")) {
+        let mut rest = line;
+        while let Some(i) = rest.find("/api/ward") {
+            let tail = &rest[i..];
+            let end = tail.find(['"', '{', ' ', ')', ':']).unwrap_or(tail.len());
+            routes.push(tail[..end].trim_end_matches('/').to_string());
+            rest = &tail[end..];
+        }
+    }
+    routes.sort();
+    routes.dedup();
+    assert_eq!(routes, vec!["/api/ward", "/api/ward/cases?placeable=1", "/api/ward/pack", "/api/ward/queue"], "{routes:?}");
+    assert!(!src.contains("/take") && !src.contains("/admit"), "no take-style route, ever");
+}
+
+/// The queue block lists who is waiting — `waiting_patients`, one row per pack, as the ward's
+/// `waiting_rows` writes them: the pack id she is addressed by, who she is, and the one face her
+/// pack shows. No patient id, because she is not on the chain: her pictures go through the same
+/// route as a bed's (`POST /api/ward/pack/<id>`), which reads a 64-hex id as a waiting pack and
+/// digits as a patient. A block from before the rows parses with nobody listed, not as an error.
+#[test]
+fn the_queue_block_lists_who_is_waiting_by_pack_id() {
+    let body = r#"{"readable": true, "source": "devnet:x", "policy": {"beds": 3, "catalogue": []}, "patients": [],
+      "queue": {"waiting": 2, "beds": 3, "door": "preview", "filled_by": "a ticker", "waiting_unknown_because": null,
+        "waiting_patients": [
+          {"pack": "0900aa0fcc205a7bcd8511d542de7942e27511495ee55d99911d6e2985a81f0d", "name": "Eric Habimana", "age": 60, "sex": "m",
+           "country": "RWA", "difficulty": "resident", "endemic": false, "case_title": "Cirrhotic patient with confusion and low-grade fever",
+           "portrait": "https://storage.googleapis.com/vitals-world-portraits/7133df8cad5160d12f9bf62cbcda3ac16a7cb14219b806b886cb4589115c946a.webp"},
+          {"pack": "112bc97c1abe361d4129f87f48ec5edff8120b8266171a98736685b82a805224", "name": "Juma Shabani", "age": 40, "sex": "m",
+           "country": "TZA", "difficulty": null, "endemic": true, "case_title": null, "portrait": null}
+        ]}}"#;
+    let w = WardView::parse(body).expect("parses");
+    let q = w.queue.as_ref().expect("a queue block");
+    assert_eq!((q.waiting, q.door.as_str()), (2, "preview"));
+    assert_eq!(q.waiting_patients.len(), 2);
+    let eric = &q.waiting_patients[0];
+    assert_eq!(eric.pack, "0900aa0fcc205a7bcd8511d542de7942e27511495ee55d99911d6e2985a81f0d", "the address her pictures go to");
+    assert_eq!((eric.name.as_deref(), eric.age, eric.country.as_deref()), (Some("Eric Habimana"), Some(60), Some("RWA")));
+    assert!(eric.portrait.as_deref().is_some_and(|u| u.ends_with("115c946a.webp")), "the one face the pack shows");
+    let juma = &q.waiting_patients[1];
+    assert!(juma.portrait.is_none() && juma.endemic && juma.difficulty.is_none());
+    assert_eq!(w.waiting().map(|p| p.pack.as_str()).collect::<Vec<_>>(), vec![eric.pack.as_str(), juma.pack.as_str()], "in the order the ward lists them");
+    // Before the rows shipped (17 Sep): a block with no list is nobody listed, and still a queue.
+    let older = r#"{"readable": true, "source": "devnet:x", "policy": {"beds": 3, "catalogue": []}, "queue": {"waiting": 7, "beds": 3, "door": "preview"}, "patients": []}"#;
+    let w = WardView::parse(older).unwrap();
+    let q = w.queue.as_ref().unwrap();
+    assert!(q.waiting_patients.is_empty() && q.waiting == 7 && w.waiting().count() == 0, "{q:?}");
+}
+
+/// The ward of 22 Sep (b9b72af): the queue block says `beds_kept_free` and no `beds`, and the
+/// policy's `beds` is the census rather than a cap. A factory that requires the old field reads
+/// nothing — and read nothing for fourteen hours on 22–23 Sep, "queue: missing field `beds`",
+/// while the ward drained to one patient. The queue's bed figure is a courtesy for the tick
+/// line, never a fact the plan depends on; a ward that stops publishing it must still parse.
+#[test]
+fn the_ward_of_22_sep_parses_without_beds_in_its_queue_block() {
+    let body = on_branch()
+        .replace(r#""queue": {"waiting": 4, "beds": 3, "door": "open", "filled_by": "a ticker"}"#,
+                 r#""queue": {"waiting": 4, "beds_kept_free": 3, "door": "open", "filled_by": "a ticker on the ward host"}"#);
+    assert!(body.contains("beds_kept_free"), "the fixture was rewritten");
+    let w = WardView::parse(&body).expect("a queue block without `beds` still parses");
+    let q = w.queue.as_ref().expect("a queue block");
+    assert_eq!((q.waiting, q.door.as_str()), (4, "open"));
+    assert_eq!(q.beds, 3, "the floor the ward keeps free is read from beds_kept_free");
+    assert_eq!(w.beds, 3, "the plan's bed figure still comes from the policy");
 }
 
 /// **The contract is linked, not copied.**
@@ -230,22 +318,4 @@ fn the_wards_own_blocks_parse_in_the_factory_that_reads_them() {
     );
 
     let _ = std::fs::remove_dir_all(&dir);
-}
-
-/// The ward of 22 Sep (b9b72af): the queue block says `beds_kept_free` and no `beds`, and the
-/// policy's `beds` is the census rather than a cap. A factory that requires the old field reads
-/// nothing — and read nothing for fourteen hours on 22–23 Sep, "queue: missing field `beds`",
-/// while the ward drained to one patient. The queue's bed figure is a courtesy for the tick
-/// line, never a fact the plan depends on; a ward that stops publishing it must still parse.
-#[test]
-fn the_ward_of_22_sep_parses_without_beds_in_its_queue_block() {
-    let body = on_branch()
-        .replace(r#""queue": {"waiting": 4, "beds": 3, "door": "open", "filled_by": "a ticker"}"#,
-                 r#""queue": {"waiting": 4, "beds_kept_free": 3, "door": "open", "filled_by": "a ticker on the ward host"}"#);
-    assert!(body.contains("beds_kept_free"), "the fixture was rewritten");
-    let w = WardView::parse(&body).expect("a queue block without `beds` still parses");
-    let q = w.queue.as_ref().expect("a queue block");
-    assert_eq!((q.waiting, q.door.as_str()), (4, "open"));
-    assert_eq!(q.beds, 3, "the floor the ward keeps free is read from beds_kept_free");
-    assert_eq!(w.beds, 3, "the plan's bed figure still comes from the policy");
 }

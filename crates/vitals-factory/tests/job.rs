@@ -10,12 +10,14 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::Command;
+use vitals_factory::tools::DOOR_SECRET;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
 const STAGING: &str = include_str!("fixtures/ward-staging-2026-09-16.json");
+const CASES: &str = include_str!("fixtures/ward-cases-2026-09-16.json");
 
 #[test]
 fn the_launchd_job_is_the_one_the_brief_names_and_carries_no_secret() {
@@ -27,7 +29,29 @@ fn the_launchd_job_is_the_one_the_brief_names_and_carries_no_secret() {
     assert!(flat.contains("vitals-factory</string>"), "runs this binary");
     assert!(flat.contains("<key>WARD</key>"), "says which ward");
     assert!(!text.contains("VITALS_TOKEN"), "the token is read from Secret Manager at run time, never written here");
+    // The door's own secret, since the Forseti sweep found the doors' old token injected into the
+    // public /bay.js: `vitals-door-token`, in both projects, and nothing else by that name.
+    assert_eq!(DOOR_SECRET, "vitals-door-token");
+    assert!(text.contains("vitals-door-token") && !text.contains("vitals-token secret"), "the plist names the secret the factory reads");
     assert!(flat.contains("<key>PATH</key>"), "mflux-generate, gcloud and cwebp are on the user's path, not launchd's");
+    // The production job beside it: the same binary against world.vitals.academy, its own world
+    // directory (its own ledger), the shared faces directory, and the production project's
+    // secret.
+    let prod = repo_root().join("deploy/launchd/com.vitals.world-factory-prod.plist");
+    let text = std::fs::read_to_string(&prod).unwrap_or_else(|e| panic!("{}: {e}", prod.display()));
+    let flat: String = text.split_whitespace().collect();
+    assert!(flat.contains("<key>Label</key><string>com.vitals.world-factory-prod</string>"));
+    assert!(flat.contains("<key>WARD</key><string>https://world.vitals.academy</string>"));
+    assert!(flat.contains("<key>VITALS_GCP_PROJECT</key><string>vitals-academy</string>"));
+    assert!(flat.contains("<key>VITALS_WORLD_DIR</key><string>/Users/mimir/.vitals/world-prod</string>"), "its own ledger");
+    assert!(flat.contains("<key>VITALS_FACES_DIR</key><string>/Users/mimir/.vitals/world</string>"), "the shared faces");
+    assert!(flat.contains("<key>VITALS_VERTEX_PROJECT</key><string>vitals-academy</string>"));
+    assert!(!text.contains("VITALS_TOKEN") && text.contains("vitals-door-token"));
+    assert!(flat.contains("<key>StartInterval</key><integer>600</integer>"));
+    assert!(text.contains("world-prod/factory.log"), "its own log");
+    if let Ok(out) = Command::new("plutil").args(["-lint", "-s"]).arg(&prod).output() {
+        assert!(out.status.success(), "plutil: {}", String::from_utf8_lossy(&out.stderr));
+    }
     // macOS's own linter, when this runs on a Mac.
     if let Ok(out) = Command::new("plutil").args(["-lint", "-s"]).arg(&path).output() {
         assert!(out.status.success(), "plutil: {}", String::from_utf8_lossy(&out.stderr));
@@ -51,11 +75,17 @@ fn without_a_ward_the_binary_says_so_and_does_nothing() {
     // hand-typed line should not be an error.
     let once = Command::new(env!("CARGO_BIN_EXE_vitals-factory")).env_remove("WARD").args(["--once", "--dry-run"]).output().expect("runs");
     assert!(String::from_utf8_lossy(&once.stderr).contains("WARD"), "past the arguments, it is WARD that stops it");
+    // And the ward's project: a token read from the wrong project is a door that says unauthorised,
+    // which is what the first real tick against staging did, so there is no default.
+    let no_project = Command::new(env!("CARGO_BIN_EXE_vitals-factory")).env("WARD", "https://ward.test").env_remove("VITALS_GCP_PROJECT").arg("--dry-run").output().expect("runs");
+    assert!(!no_project.status.success());
+    assert!(String::from_utf8_lossy(&no_project.stderr).contains("VITALS_GCP_PROJECT"), "names the variable");
     let bad = Command::new(env!("CARGO_BIN_EXE_vitals-factory")).arg("--twice").output().expect("runs");
     assert_eq!(bad.status.code(), Some(2), "an argument it does not know is refused");
 }
 
-/// A ward that is one socket answering one GET with the staging fixture.
+/// A ward that is one socket answering `GET /api/ward` with the staging fixture and
+/// `GET /api/ward/cases` with the case list, and refusing anything else.
 fn one_shot_ward() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
@@ -67,6 +97,10 @@ fn one_shot_ward() -> String {
             let req = String::from_utf8_lossy(&buf[..n]).to_string();
             let (status, body) = if req.starts_with("GET /api/ward ") {
                 ("200 OK", STAGING.to_string())
+            } else if req.starts_with("GET /api/ward/cases?placeable=1 ") {
+                ("200 OK", CASES.to_string())
+            } else if req.starts_with("GET /api/ward/cases") {
+                ("500 Internal Server Error", r#"{"error":"the factory must ask for placeable cases only"}"#.to_string())
             } else {
                 ("500 Internal Server Error", r#"{"error":"a dry run must not POST"}"#.to_string())
             };
@@ -84,6 +118,7 @@ fn a_dry_run_reads_a_real_socket_and_writes_nothing() {
         .env("WARD", one_shot_ward())
         .env("VITALS_REPO", repo_root())
         .env("VITALS_WORLD_DIR", &world)
+        .env("VITALS_GCP_PROJECT", "vitals-academy-dev")
         .env("QUEUE_DEPTH", "3")
         .env("FACTORY_SEED", "5")
         .arg("--dry-run")
@@ -95,6 +130,8 @@ fn a_dry_run_reads_a_real_socket_and_writes_nothing() {
     assert!(stdout.contains("dry run"), "{stdout}");
     assert!(stdout.contains("would then build 3 pack(s)"), "{stdout}");
     assert!(stdout.contains("this build publishes no queue block"), "read the real fixture over the socket: {stdout}");
-    assert!(stdout.contains("not built: ep2"), "says which cases it will not build: {stdout}");
+    assert!(stdout.contains("case door: 18 cases listed"), "read the case door over the socket: {stdout}");
+    assert!(stdout.contains("case_id world-"), "names the World case of each draw: {stdout}");
+    assert!(!stdout.contains("osce-"), "never a season id: {stdout}");
     assert!(!world.exists(), "a dry run creates nothing, not even the world directory");
 }
