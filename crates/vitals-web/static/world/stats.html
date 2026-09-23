@@ -18,7 +18,12 @@ h1{font-size:20px;margin:0;font-weight:800;letter-spacing:-.01em}h1 b{color:var(
 .tile small{display:block;font-size:11.5px;color:var(--mute);margin-top:4px}
 .tile.g b{color:var(--green)}.tile.r b{color:var(--rust)}
 .card{background:var(--card);border:1.5px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px}
-.card h3{margin:0 0 8px;font-size:11.5px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--green);font-weight:600}
+.lead{background:var(--card);border:1.5px solid var(--green);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.lead .two{display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start}
+.lead .two b{display:block;font-size:34px;font-weight:800;letter-spacing:-.02em;line-height:1.05;color:var(--green)}
+.lead .two span{display:block;font-size:13.5px;max-width:20em;margin-top:2px}
+.lead .when{font-family:var(--mono);font-size:11px;color:var(--mute);line-height:1.6;margin-top:10px}
+.card h3,.lead h3{margin:0 0 8px;font-size:11.5px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--green);font-weight:600}
 .bar{display:grid;grid-template-columns:110px 1fr 60px;gap:10px;align-items:center;font-size:13px;height:26px}
 .bar .tr{height:12px;background:var(--line);border-radius:3px;position:relative}.bar .fl{position:absolute;left:0;top:0;bottom:0;background:var(--green);border-radius:3px}
 .bar .v{font-family:var(--mono);text-align:right}
@@ -29,6 +34,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;p
 .err{color:var(--rust);font-family:var(--mono);font-size:12px}
 </style></head><body><div class="wrap">
 <div class="top"><div><h1>Vitals <b>World</b> · stats</h1><div class="sub">every number below is re-countable from the chain or the ward's own counter · refreshes every 30 s</div></div><div class="upd" id="upd">loading…</div></div>
+<div class="lead"><h3>the funnel &middot; found a patient, then started</h3><div id="lead"></div></div>
 <div class="grid" id="tiles"></div>
 <div class="card"><h3>arrivals · the front page, by the link that brought them (?src=)</h3><div id="arrivals"></div></div>
 <div class="card"><h3>beds now · who is in one, and who is being treated</h3><div id="beds"></div></div>
@@ -38,6 +44,21 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;p
 </div>
 <script>
 const $=s=>document.querySelector(s);const n=v=>(v??0).toLocaleString();const pct=(a,b)=>!b?'—':Math.round((a??0)/b*100)+'%';
+// The two counts the funnel exists to compare, side by side and on one clock. Both are tiles
+// below as well, but a tile is one number beside eleven others; this is the sentence someone
+// reads on a Wednesday morning without doing arithmetic across a grid. It can only be written
+// because the window made the two start on the same day: before that they were on separate
+// clocks and printing them side by side would have been a lie with a percent sign on it.
+function twoCounts(f){
+ // A date, so it is checked rather than escaped: digits and dashes survive and nothing else does.
+ const day=f.since?String(f.since).replace(/[^0-9-]/g,''):'';
+ if(!day)return '<div class="when">the window has not opened yet &middot; it opens on the first arrival after this counter was built, and the two counts below start together on that day</div>';
+ return '<div class="two">'
+  +`<div><b>${n(f.bedsides_opened)}</b><span>opened a patient&rsquo;s bedside</span></div>`
+  +`<div><b>${n(f.shifts_taken)}</b><span>went on to take the shift &mdash; ${pct(f.shifts_taken,f.bedsides_opened)} of the people beside them</span></div>`
+  +'</div>'
+  +`<div class="when">both counted since ${day}, and only since then &mdash; one day, one clock, so the second divides into the first<br>${n(f.arrivals)} arrived on the front page in the same window &middot; ${pct(f.bedsides_opened,f.arrivals)} of them opened a bedside</div>`;
+}
 function tile(v,l,s,c){return `<div class="tile ${c||''}"><b>${v}</b><span>${l}</span>${s?`<small>${s}</small>`:''}</div>`}
 async function load(){
  try{
@@ -46,6 +67,7 @@ async function load(){
   const ar=u.arrivals||{}, fn_=u.funnel||{};
   const door=q.door||pol.door||'?';
   const ps=w.patients||[]; const inBeds=ps.filter(p=>p.bed); const onShift=inBeds.filter(p=>p.state==='on_shift');
+  $('#lead').innerHTML=twoCounts(fn_);
   $('#tiles').innerHTML=[
    // The lifetime total, and plainly not the funnel's denominator: it has counted since the ward
    // opened and the two steps below have counted since the funnel's window opened. Dividing one by
