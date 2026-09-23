@@ -885,12 +885,21 @@ pub fn arrival_due(last_admission: Option<i64>, now: i64, every_minutes: u64) ->
     since >= 0 && since >= (every_minutes as i64).saturating_mul(60)
 }
 
-/// How often a patient arrives, in minutes. `VITALS_WARD_ARRIVAL_MINUTES`, default 30, `0` off.
+/// How often a patient arrives, in minutes. `VITALS_WARD_ARRIVAL_MINUTES`, default 60, `0` off.
+///
+/// **Sixty because the founder ruled sixty**, on 22 ก.ย., replacing the thirty this defaulted to
+/// before. It defaulted to thirty for a day after that ruling, and the ruling survived only because
+/// the director typed `VITALS_WARD_ARRIVAL_MINUTES=60` by hand on every deploy — which failed once
+/// already, four minutes after he made it, when a deploy that did not name the variable put the
+/// ward back to thirty. His `deploy-cloudrun.sh` now defaults to sixty too (b1ac49c), so this
+/// number is no longer what production runs on; it is what a ward run *without* that script runs
+/// on, which is every local run and every test. Two defaults that disagree is a trap for whoever
+/// reads one of them, so they agree.
 pub fn arrival_minutes() -> u64 {
     std::env::var("VITALS_WARD_ARRIVAL_MINUTES")
         .ok()
         .and_then(|v| v.trim().parse().ok())
-        .unwrap_or(30)
+        .unwrap_or(60)
 }
 
 /// The `/api/ward` payload: the six numbers, twice, each beside where it came from.
