@@ -325,5 +325,40 @@ pub fn build(case: &Case, mapped: &Mapped, a: Archetype) -> Built {
         iv["match"]["any_kw"] = json!(kept);
     }
 
+    // The diagnosis is the first intervention any text carrying the disease's name can hit, and
+    // the engine takes the first hit — so "blood gas for pneumonia" would record a diagnosis the
+    // learner never made and send no blood gas: a premature commitment, invisible on the receipt.
+    // The guard is the case's own vocabulary: every phrase another order, treatment or exam in
+    // this case answers to goes on the diagnosis as `not_kw`, so text that is also an order is
+    // an order. Nothing medical is known here; a phrase that lies inside the disease's own name
+    // (or the name inside it) is left out, or the diagnosis could never fire at all.
+    let dx_words: Vec<String> = out
+        .iter()
+        .find(|iv| iv["id"] == dx_id)
+        .and_then(|iv| iv["match"]["any_kw"].as_array())
+        .map(|a| a.iter().filter_map(|k| k.as_str()).filter(|k| !k.starts_with("dx_")).map(str::to_string).collect())
+        .unwrap_or_default();
+    let mut guard: Vec<String> = Vec::new();
+    for iv in &out {
+        let id = iv["id"].as_str().unwrap_or_default();
+        if id.starts_with("dx_") || id.starts_with("ask_") {
+            continue;
+        }
+        for k in iv["match"]["any_kw"].as_array().into_iter().flatten().filter_map(|k| k.as_str()) {
+            if k == id || k.contains('_') {
+                continue;
+            }
+            if dx_words.iter().any(|d| d.contains(k) || k.contains(d.as_str())) {
+                continue;
+            }
+            if !guard.iter().any(|g| g == k) {
+                guard.push(k.to_string());
+            }
+        }
+    }
+    if let Some(dx) = out.iter_mut().find(|iv| iv["id"] == dx_id) {
+        dx["match"]["not_kw"] = json!(guard);
+    }
+
     Built { interventions: out, voice, asks, exams, ix, dx_id }
 }

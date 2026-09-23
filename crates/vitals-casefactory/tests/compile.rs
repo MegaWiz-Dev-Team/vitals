@@ -134,7 +134,7 @@ fn typing_the_bare_name_of_the_disease_names_the_diagnosis_even_when_a_history_q
     // pneumonia" would record a diagnosis the learner never made and send no blood gas — a
     // premature commitment invisible on the receipt. The guard is derived from the case's own
     // other keywords, not from medical knowledge.
-    let ix = st.resolve("blood gas for pneumonia");
+    let ix = st.resolve("lactate for pneumonia");
     assert!(ix.as_deref().is_some_and(|id| id.starts_with("ix_")), "an order that mentions the disease resolves to the order, not the diagnosis: {ix:?}");
     let tx = st.resolve("antibiotics for pneumonia");
     assert!(tx.as_deref().is_some_and(|id| id.starts_with("tx_")), "a treatment that mentions the disease resolves to the treatment: {tx:?}");
