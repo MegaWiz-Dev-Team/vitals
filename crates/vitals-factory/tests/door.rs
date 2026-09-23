@@ -238,3 +238,21 @@ fn the_queue_block_lists_who_is_waiting_by_pack_id() {
     let q = w.queue.as_ref().unwrap();
     assert!(q.waiting_patients.is_empty() && q.waiting == 7 && w.waiting().count() == 0, "{q:?}");
 }
+
+/// The ward of 22 Sep (b9b72af): the queue block says `beds_kept_free` and no `beds`, and the
+/// policy's `beds` is the census rather than a cap. A factory that requires the old field reads
+/// nothing — and read nothing for fourteen hours on 22–23 Sep, "queue: missing field `beds`",
+/// while the ward drained to one patient. The queue's bed figure is a courtesy for the tick
+/// line, never a fact the plan depends on; a ward that stops publishing it must still parse.
+#[test]
+fn the_ward_of_22_sep_parses_without_beds_in_its_queue_block() {
+    let body = on_branch()
+        .replace(r#""queue": {"waiting": 4, "beds": 3, "door": "open", "filled_by": "a ticker"}"#,
+                 r#""queue": {"waiting": 4, "beds_kept_free": 3, "door": "open", "filled_by": "a ticker on the ward host"}"#);
+    assert!(body.contains("beds_kept_free"), "the fixture was rewritten");
+    let w = WardView::parse(&body).expect("a queue block without `beds` still parses");
+    let q = w.queue.as_ref().expect("a queue block");
+    assert_eq!((q.waiting, q.door.as_str()), (4, "open"));
+    assert_eq!(q.beds, 3, "the floor the ward keeps free is read from beds_kept_free");
+    assert_eq!(w.beds, 3, "the plan's bed figure still comes from the policy");
+}
