@@ -20,6 +20,7 @@ pub mod report;
 pub mod rubric;
 pub mod scenario;
 pub mod source;
+pub mod synonyms;
 pub mod text;
 pub mod triage;
 pub mod validate;
@@ -227,6 +228,18 @@ pub fn compile_with(case_json: &str, source: Source, review: Option<source::Revi
     }
 
     let built = interventions::build(&case, &mapped, a);
+    // The diagnosis has to be nameable in words a doctor writes: two names of four words or
+    // fewer — the display when it is that short, the author's aliases, the table's names — or
+    // the case is refused with the file to add them to. A pack whose rubric pays for naming the
+    // diagnosis under a phrase nobody types scores everybody zero for it (production, 23 Sep 2026).
+    let typeable = built.typeable_diagnosis_names();
+    if typeable.len() < 2 {
+        return Err(refuse(&id, format!(
+            "the diagnosis '{}' has {} name(s) of four words or fewer a doctor could type ({}) and needs two — \
+             add the names people write for it to {} under the exact name the case gives",
+            case.hidden.correct_diagnosis.display, typeable.len(), typeable.join(", "), synonyms::FILE
+        )));
+    }
     let sim = scenario::build(&case, a, &v0, &mapped, &built);
     let rubric::Derived { rubric, criteria } = rubric::derive(&case, a, &mapped, &built, &sim, &source.sha256, review.as_ref());
 

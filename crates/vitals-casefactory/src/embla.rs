@@ -133,10 +133,23 @@ pub struct Rubric {
     pub dimensions: Vec<Dimension>,
 }
 
+/// One line of the case's differential: another diagnosis this could have been.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct Differential {
+    #[serde(default)]
+    pub dx: Named,
+    #[serde(default)]
+    pub probability: f64,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Hidden {
     #[serde(default)]
     pub correct_diagnosis: Diagnosis,
+    /// What else the author thought this could be. Read for one thing: a name the synonym table
+    /// offers for the diagnosis that is also one of these is left off the diagnosis.
+    #[serde(default)]
+    pub differential: Vec<Differential>,
     #[serde(default)]
     pub expected_workup: Vec<Named>,
     #[serde(default)]

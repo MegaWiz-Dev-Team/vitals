@@ -1,0 +1,183 @@
+{
+  "peptic ulcer bleeding": [
+    "bleeding peptic ulcer",
+    "bleeding ulcer",
+    "peptic ulcer",
+    "upper gi bleed",
+    "upper gi bleeding",
+    "upper gastrointestinal bleeding",
+    "ugib"
+  ],
+  "acute pulmonary oedema": [
+    "pulmonary oedema",
+    "pulmonary edema",
+    "acute pulmonary edema",
+    "flash pulmonary oedema",
+    "flash pulmonary edema",
+    "cardiogenic pulmonary oedema",
+    "cardiogenic pulmonary edema",
+    "fluid in the lungs"
+  ],
+  "anaphylaxis": [
+    "anaphylactic shock",
+    "anaphylactic reaction",
+    "severe allergic reaction"
+  ],
+  "atrial fibrillation": [
+    "afib",
+    "a-fib",
+    "fast af",
+    "af with rvr",
+    "atrial fib",
+    "rapid atrial fibrillation",
+    "fast atrial fibrillation",
+    "new atrial fibrillation"
+  ],
+  "bronchitis": [
+    "acute bronchitis"
+  ],
+  "bronchospasm / acute asthma exacerbation": [
+    "asthma exacerbation",
+    "acute asthma",
+    "asthma attack",
+    "acute severe asthma",
+    "life-threatening asthma",
+    "status asthmaticus",
+    "bronchospasm",
+    "asthma"
+  ],
+  "ebola virus disease": [
+    "ebola",
+    "ebola virus",
+    "viral haemorrhagic fever",
+    "viral hemorrhagic fever"
+  ],
+  "ebola virus disease with multi-organ failure": [
+    "ebola virus disease",
+    "ebola",
+    "ebola virus",
+    "viral haemorrhagic fever",
+    "viral hemorrhagic fever"
+  ],
+  "acute epiglottitis": [
+    "epiglottitis",
+    "supraglottitis"
+  ],
+  "epiglottitis": [
+    "acute epiglottitis",
+    "supraglottitis"
+  ],
+  "guillain-barré syndrome": [
+    "guillain-barré",
+    "aidp",
+    "acute inflammatory demyelinating polyneuropathy",
+    "acute inflammatory demyelinating polyradiculoneuropathy"
+  ],
+  "pulmonary embolism": [
+    "pulmonary embolus",
+    "pulmonary emboli",
+    "pulmonary thromboembolism",
+    "lung embolism",
+    "massive pulmonary embolism"
+  ],
+  "pneumonia": [
+    "chest infection",
+    "lower respiratory tract infection",
+    "lrti",
+    "community-acquired pneumonia",
+    "community acquired pneumonia",
+    "lung infection"
+  ],
+  "community-acquired pneumonia": [
+    "pneumonia",
+    "community acquired pneumonia",
+    "chest infection",
+    "lower respiratory tract infection",
+    "lrti",
+    "lung infection"
+  ],
+  "possible nstemi / stemi": [
+    "stemi",
+    "nstemi",
+    "myocardial infarction",
+    "acute myocardial infarction",
+    "heart attack",
+    "acute coronary syndrome",
+    "acute mi",
+    "st elevation mi",
+    "non-st elevation mi",
+    "st-elevation myocardial infarction"
+  ],
+  "psvt": [
+    "supraventricular tachycardia",
+    "paroxysmal supraventricular tachycardia",
+    "avnrt",
+    "re-entrant tachycardia",
+    "reentrant tachycardia",
+    "narrow complex tachycardia",
+    "narrow-complex tachycardia"
+  ],
+  "spontaneous pneumothorax": [
+    "pneumothorax",
+    "collapsed lung",
+    "primary spontaneous pneumothorax",
+    "primary pneumothorax"
+  ],
+  "whooping cough": [
+    "pertussis",
+    "bordetella pertussis",
+    "bordetella"
+  ],
+  "acute appendicitis with peritonitis": [
+    "appendicitis",
+    "acute appendicitis",
+    "perforated appendicitis",
+    "perforated appendix",
+    "ruptured appendix",
+    "appendicitis with peritonitis"
+  ],
+  "acute cholangitis": [
+    "cholangitis",
+    "ascending cholangitis",
+    "biliary sepsis",
+    "obstructive cholangitis"
+  ],
+  "disseminated intravascular coagulation": [
+    "consumptive coagulopathy",
+    "consumption coagulopathy",
+    "defibrination syndrome"
+  ],
+  "postpartum hemorrhage": [
+    "postpartum haemorrhage",
+    "postpartum bleeding",
+    "obstetric haemorrhage",
+    "obstetric hemorrhage",
+    "primary pph",
+    "uterine atony"
+  ],
+  "spontaneous bacterial peritonitis": [
+    "bacterial peritonitis",
+    "ascitic fluid infection",
+    "infected ascites",
+    "peritonitis"
+  ],
+  "urinary tract infection with urosepsis": [
+    "urosepsis",
+    "urinary sepsis",
+    "urinary tract infection",
+    "urinary infection",
+    "complicated uti",
+    "pyelonephritis"
+  ],
+  "uterine rupture in unscarred uterus": [
+    "uterine rupture",
+    "ruptured uterus",
+    "rupture of the uterus"
+  ],
+  "hepatic encephalopathy precipitated by gi bleeding": [
+    "hepatic encephalopathy",
+    "portosystemic encephalopathy",
+    "liver encephalopathy",
+    "encephalopathy from gi bleeding"
+  ]
+}

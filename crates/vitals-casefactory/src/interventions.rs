@@ -40,6 +40,27 @@ pub struct Built {
     pub dx_id: String,
 }
 
+impl Built {
+    /// The diagnosis's names a doctor could type — four words or fewer, the id left out. The
+    /// compiler refuses a case with fewer than two of them (lib.rs), naming the table to add to.
+    pub fn typeable_diagnosis_names(&self) -> Vec<String> {
+        self.interventions
+            .iter()
+            .find(|iv| iv["id"] == self.dx_id)
+            .and_then(|iv| iv["match"]["any_kw"].as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    // Words, not tokens: the dash in "bradycardia — complete heart block" and the
+                    // slash in "bronchospasm / acute asthma" are not words anybody types.
+                    .filter(|k| !k.starts_with("dx_") && k.split_whitespace().filter(|w| w.chars().any(char::is_alphanumeric)).count() <= 4)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+}
+
 /// Caps and floors for one-off nudges, so an order can never push a vital past what a body
 /// does or past the threshold that ends the case.
 fn bounded_delta(var: &str, delta: f64) -> Value {
@@ -172,11 +193,44 @@ pub fn build(case: &Case, mapped: &Mapped, a: Archetype) -> Built {
     let d = &case.hidden.correct_diagnosis;
     let short = d.aliases.iter().find(|a| a.is_ascii() && a.len() >= 4).cloned().unwrap_or_else(|| d.display.clone());
     let dx_id = id_for("dx", &short, 0, &mut taken);
+    // The author's names first and never dropped; then the table's names for exactly those
+    // names (`crate::synonyms`), each left off if it is — or sits inside — one of the case's
+    // *other* differentials, because typing it there would be naming that; then every way each
+    // of them gets typed (accents off, hyphens spaced). Four characters or more throughout: the
+    // engine matches by substring, and "af" would fire inside "after".
+    let own: Vec<String> = d
+        .aliases
+        .iter()
+        .chain(std::iter::once(&d.display))
+        .map(|a| a.trim().to_lowercase())
+        .filter(|a| !a.is_empty())
+        .collect();
+    let mine: BTreeSet<String> = own.iter().map(|a| crate::synonyms::key(a)).collect();
+    let others: Vec<String> = case
+        .hidden
+        .differential
+        .iter()
+        .map(|x| crate::synonyms::key(&x.dx.display))
+        .filter(|k| !k.is_empty() && !mine.contains(k))
+        .collect();
+    let mut named: Vec<String> = own.clone();
+    for a in &own {
+        for s in crate::synonyms::names_for(a) {
+            let k = crate::synonyms::key(s);
+            if others.iter().any(|o| o.contains(k.as_str()) || k.contains(o.as_str())) {
+                continue;
+            }
+            if !named.contains(s) {
+                named.push(s.clone());
+            }
+        }
+    }
     let mut dx_kw: Vec<String> = Vec::new();
-    for a in d.aliases.iter().chain(std::iter::once(&d.display)) {
-        let a = a.trim().to_lowercase();
-        if a.chars().count() >= 4 && !dx_kw.contains(&a) {
-            dx_kw.push(a);
+    for n in &named {
+        for v in crate::text::typed_variants(n) {
+            if v.chars().count() >= 4 && !dx_kw.contains(&v) {
+                dx_kw.push(v);
+            }
         }
     }
     out.push(json!({
