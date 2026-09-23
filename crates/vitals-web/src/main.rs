@@ -5659,21 +5659,96 @@ fn main() {
                         continue;
                     }
                 };
-                // Add or replace while it is provisional; add-only once it has been reviewed. A
-                // reviewed case is one the chain carries shifts against, and replacing it under the
-                // same id would rewrite what those shifts were about.
+                // **What makes a case unreplaceable is a shift on the chain, not a signature.**
+                //
+                // This read `provisional`, and the comment that stood here claimed "a reviewed case
+                // is one the chain carries shifts against" — an assumption written down as a fact,
+                // and false. `provisional` is the compiler's word for clinical review; every case
+                // on this ward is provisional, so the check passed everything. On 23 ก.ย. a
+                // recompiled pack went over `ddx-pneumonia-1-en` while the chain held a closure
+                // against it, and that closure stopped re-deriving: `sce_hash` is an input to the
+                // leaf, so changing the case bytes changes what a verifier computes from a tape
+                // already on chain. Not a different score — a shift that no longer verifies.
+                //
+                // Reviewed stays add-only below, because clinical sign-off is its own good reason
+                // to stop taking recompiles. What is added is the question the old comment meant.
                 let key = ward_case::key_for(&summary.case_id);
                 if let Some(held) = store.get::<serde_json::Value>(ward_case::CASE_STORE, &key) {
+                    // The same bytes twice is not a store, and saying "stored" for work that did
+                    // not happen is the habit this whole day has been spent unlearning.
+                    if ward_case::identical_to(&held, &pack) {
+                        let _ = req.respond(json(serde_json::json!({
+                            "stored": summary.case_id,
+                            "unchanged": true,
+                            "note": "already held, byte-identical — nothing was written",
+                            "version": summary.version,
+                        })));
+                        continue;
+                    }
                     let reviewed = !held.get("provisional").and_then(|p| p.as_bool()).unwrap_or(true);
                     if reviewed {
                         let _ = req.respond(json_code(serde_json::json!({
                             "refused": format!(
-                                "{} is already here and reviewed, so it is add-only now: somebody \
-                                 has played it and the chain carries shifts against this case",
+                                "{} is already here and has been clinically reviewed, so it is \
+                                 add-only: a reviewed case is replaced by publishing a new id",
                                 summary.case_id
                             )
                         }), 409));
                         continue;
+                    }
+                    // Only the scored content can hurt an anchored shift — the `sce` block the leaf
+                    // commits to and the `rubric` the mark sheet is computed from. A title, a tag or
+                    // a version cannot move either, and refusing to correct a typo on a case
+                    // somebody has played would be theatre rather than care.
+                    if !ward_case::scores_the_same(&held, &pack) {
+                        match ward_case::held_by_the_chain(&store, &summary.case_id) {
+                            // **Cannot tell is a third answer, not a quiet no.** The check that let
+                            // the 14:44 push through was one that answered confidently about the
+                            // wrong thing. Refusing is recoverable; a shift that stops verifying is
+                            // not.
+                            Err(why) => {
+                                let _ = req.respond(json_code(serde_json::json!({
+                                    "refused": format!(
+                                        "this ward cannot tell whether the chain carries a shift \
+                                         against {}, so it will not change what that case scores: \
+                                         {why}",
+                                        summary.case_id
+                                    )
+                                }), 503));
+                                continue;
+                            }
+                            Ok(Some(who)) => {
+                                let _ = req.respond(json_code(serde_json::json!({
+                                    "refused": format!(
+                                        "the chain carries a shift against {} ({who}), so changing \
+                                         what it scores would stop that shift re-deriving. Publish \
+                                         a new case id instead",
+                                        summary.case_id
+                                    ),
+                                    "case": summary.case_id,
+                                }), 409));
+                                continue;
+                            }
+                            Ok(None) => {}
+                        }
+                        // Nothing is anchored, so this may land — but changed bytes under an
+                        // unmoved version and an unmoved compiler.commit is a silent edit, and the
+                        // identifiers are the only thing a reader can tell two packs apart by.
+                        if !ward_case::identity_moved(&held, &pack) {
+                            let _ = req.respond(json_code(serde_json::json!({
+                                "refused": format!(
+                                    "{} would score differently but nothing says so: the same \
+                                     version and the same compiler.commit. Bump meta.version for \
+                                     an authored change, or rebuild with a compiler whose commit \
+                                     differs — a `-dirty` stamp does not count, because two \
+                                     different packs can carry it",
+                                    summary.case_id
+                                ),
+                                "sce_sha256_held": ward_case::sce_sha256(&held),
+                                "sce_sha256_offered": ward_case::sce_sha256(&pack),
+                            }), 409));
+                            continue;
+                        }
                     }
                 }
                 match store.put(ward_case::CASE_STORE, &key, &pack) {

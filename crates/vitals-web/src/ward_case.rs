@@ -727,3 +727,156 @@ pub fn case_view(pack: &Value, who: &crate::ward::Persona) -> Value {
         "no_answer": no_answer(pack, who),
     })
 }
+
+// ── what a case may still change once somebody has played it ─────────────────
+
+/// **The part of a pack an anchored shift depends on.**
+///
+/// The `sce` block and the `rubric`, and nothing else. `sce_hash(sce_json)` is an input to the leaf
+/// a shift commits to, so changing those bytes changes what a verifier re-derives from a tape that
+/// is already on chain. The rubric does not reach the leaf, but the receipt's mark sheet is computed
+/// from it on every request, so changing it rewrites what a stranger's shift is shown to have
+/// scored — which is the same wrong in a place people actually read.
+///
+/// Everything else in a pack is presentation: the title, the tags, the country, the version, the
+/// compiler stamp. None of it can move a leaf or a sheet, and refusing to fix a typo in a title on
+/// a case somebody has played would be theatre rather than care.
+fn scored_content(pack: &Value) -> (String, String) {
+    let part = |k: &str| pack.get(k).map(|v| v.to_string()).unwrap_or_default();
+    (part("sce"), part("rubric"))
+}
+
+/// The sha256 of a pack's `sce` block, as the ward serialises it — which is what
+/// `vitals_replay::sce_hash` is given and therefore what the leaf commits to.
+///
+/// Published in a refusal so a caller can see for themselves that two packs differ, rather than
+/// being told so.
+pub fn sce_sha256(pack: &Value) -> String {
+    let sce = pack.get("sce").map(|v| v.to_string()).unwrap_or_default();
+    crate::ward_chain::hex32(&vitals_replay::sce_hash(&sce))
+}
+
+/// Do these two packs score the same? Presentation may differ freely.
+pub fn scores_the_same(held: &Value, offered: &Value) -> bool {
+    scored_content(held) == scored_content(offered)
+}
+
+/// Is this pack, in every byte, the one already held?
+pub fn identical_to(held: &Value, offered: &Value) -> bool {
+    held == offered
+}
+
+/// Has anything a reader could tell two packs apart by moved?
+///
+/// `version` is the author's — an authored change bumps it. `compiler.commit` is ours — a recompile
+/// by a different compiler moves it, and it carries a `-dirty` suffix when the tree it was built
+/// from was not committed, so a dirty build cannot masquerade as a distinguishing identifier.
+/// Either moving is enough; neither moving, on changed scored content, is a silent edit.
+pub fn identity_moved(held: &Value, offered: &Value) -> bool {
+    let at = |v: &Value, path: [&str; 2]| -> String {
+        let mut cur = v;
+        for p in path {
+            if p.is_empty() {
+                continue;
+            }
+            match cur.get(p) {
+                Some(next) => cur = next,
+                None => return String::new(),
+            }
+        }
+        cur.as_str().unwrap_or_default().to_string()
+    };
+    let version = |v: &Value| at(v, ["version", ""]);
+    let commit = |v: &Value| at(v, ["compiler", "commit"]);
+    // A dirty, absent or "unknown" stamp is not an identifier — two different packs can carry the
+    // same one, so treating it as a difference would reopen the hole this is closing.
+    let usable = |v: &Value| {
+        let c = commit(v);
+        !c.is_empty() && c != "unknown" && !c.ends_with("-dirty")
+    };
+    let version_moved = !version(held).is_empty() && version(held) != version(offered);
+    // Two usable stamps that differ is a recompile. **And so is gaining one**: every pack pushed
+    // before the stamp existed carries none, so the first stamped rebuild of each of them would
+    // otherwise be refused as a silent edit — which would block the whole migration it is part of.
+    // Going from "nobody knows what built this" to a named commit is a real and visible difference,
+    // it can only happen once per case, and it cannot be used to hide an edit: the stamp itself is
+    // the declared identifier that moved.
+    let commit_moved = match (usable(held), usable(offered)) {
+        (true, true) => commit(held) != commit(offered),
+        (false, true) => true,
+        _ => false,
+    };
+    version_moved || commit_moved
+}
+
+/// **Does the chain carry a shift against this case?**
+///
+/// `Ok(None)` is a definite no. `Ok(Some(who))` names a patient it is anchored under. `Err` is *this
+/// ward cannot tell*, which is a third answer and not a quiet no — the check that let a recompile
+/// over an anchored closure on 23 ก.ย. was one that answered confidently about the wrong thing, and
+/// a ward that cannot read its own board must refuse rather than assume the board is empty.
+///
+/// Read from the board this ward keeps, because that is where the chain's own answer already is:
+/// every patient on it carries her case, her state, her closed slot and how many shifts she has. A
+/// closure counts and is the case that actually happened — it is an anchored shift whoever signed
+/// it, and `died_unattended` signs plenty of them.
+///
+/// The board being absent is only an unknown once there is something it could have told us. A ward
+/// that holds no pack for this case at all has no patient who could have a shift, and that is a
+/// definite no rather than a shrug.
+pub fn held_by_the_chain(
+    store: &crate::store::Store,
+    case_id: &str,
+) -> Result<Option<String>, String> {
+    // **The board first, because the board is the chain's own answer.** It was read from the chain,
+    // every patient on it carries her case and her history, and a patient who is on it is a patient
+    // this ward knows about whether or not a pack for her is still in the queue store. Consulting
+    // the packs first was wrong in exactly the way that matters: a bed can exist on the board with
+    // no pack beside it, and the answer would have been a confident no.
+    let board = crate::ward_chain::last_board(store);
+    let patients: Vec<Value> = board
+        .as_ref()
+        .and_then(|k| k.board.get("patients"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if board.is_none() {
+        // No board to answer with. Then the packs decide whether there was anything to know: a case
+        // no patient is on cannot have a shift against it, and that is a definite no rather than a
+        // shrug. Anything else is an unknown, and an unknown must not be read as a no.
+        let waiting = crate::ward_chain::packs(store)
+            .into_iter()
+            .filter(|(_, pack)| pack.case == case_id)
+            .count();
+        if waiting == 0 {
+            return Ok(None);
+        }
+        return Err(format!(
+            "{waiting} patient(s) are on this case and this ward has no readable board to say \
+             whether the chain carries a shift against any of them"
+        ));
+    }
+    for p in &patients {
+        if p.get("case").and_then(Value::as_str) != Some(case_id) {
+            continue;
+        }
+        let id = p.get("patient_id").and_then(Value::as_u64).unwrap_or(0);
+        let shifts = p.get("shifts").and_then(Value::as_u64).unwrap_or(0);
+        let closed = p.get("closed_slot").and_then(Value::as_u64).is_some();
+        let on_shift = p.get("state").and_then(Value::as_str) == Some("on_shift");
+        if shifts > 0 {
+            return Ok(Some(format!("patient {id} has {shifts} shift(s) anchored")));
+        }
+        if closed {
+            return Ok(Some(format!(
+                "patient {id} was closed by the ward, which anchors a shift"
+            )));
+        }
+        if on_shift {
+            return Ok(Some(format!(
+                "patient {id} is being treated now and that shift will anchor"
+            )));
+        }
+    }
+    Ok(None)
+}
