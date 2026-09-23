@@ -75,6 +75,18 @@ else
   printf '  \033[33mskip\033[0m  globe logic — node not installed (CI still runs it)\n'
 fi
 
+# The factory that ships against this ward runs from ~/.vitals/bin/vitals-factory, a link named for
+# its commit. If that commit is not in this branch, the factory crate these gates just checked is
+# not the crate that runs — the ward's copy fell eight commits behind, unnoticed, 20–23 Sep 2026,
+# while a fixture in its tests went on asserting a shape the ward no longer served. Blind to
+# cherry-picks on purpose: a copy under another sha is exactly the divergence this is for.
+if [ -L "$HOME/.vitals/bin/vitals-factory" ]; then
+  SHIPS="$(readlink "$HOME/.vitals/bin/vitals-factory" | sed 's/^vitals-factory-//')"
+  gate "factory that ships ($SHIPS) is in this branch" git merge-base --is-ancestor "$SHIPS" HEAD
+else
+  printf '  \033[33mskip\033[0m  factory that ships — no ~/.vitals/bin/vitals-factory on this machine (the mini has it)\n'
+fi
+
 if command -v gitleaks >/dev/null 2>&1; then
   gate "gitleaks (history)" gitleaks git --no-banner .
 else

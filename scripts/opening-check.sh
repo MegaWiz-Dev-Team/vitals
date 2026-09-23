@@ -14,6 +14,7 @@
 # Nothing here changes anything: the one write is a one-byte probe object in the Cloud Build
 # bucket, removed on the spot. Secrets are read for length only and never printed.
 set -uo pipefail
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
 
 TARGET="${1:-}"
 case "$TARGET" in
@@ -153,6 +154,20 @@ if [ "$TICK_EXPECTED" = 1 ]; then
     if [ "$FEXIT" != 0 ] && [ "$FEXIT" != "(never" ]; then bad "factory last exit code $FEXIT"
     elif [ "$FAGE" -gt 1200 ]; then bad "factory last tick ${FAGE}s ago — the job runs every 600 s"
     else ok "factory loaded · last exit ${FEXIT:-?} · last tick ${FAGE}s ago"; fi
+  fi
+  # The factory that ships is a link named for its commit. If that commit is not in this branch,
+  # the crate this branch's gates check is not the crate that runs against the ward — the ward's
+  # copy fell eight commits behind, unnoticed, 20–23 Sep. A cherry-picked copy under another sha
+  # does not count, on purpose: a copy is exactly the divergence this is for.
+  if [ -L "$HOME/.vitals/bin/vitals-factory" ]; then
+    SHIPS="$(readlink "$HOME/.vitals/bin/vitals-factory" | sed 's/^vitals-factory-//')"
+    if git -C "$REPO" merge-base --is-ancestor "$SHIPS" HEAD 2>/dev/null; then
+      ok "factory that ships ($SHIPS) is in this branch"
+    else
+      bad "factory that ships ($SHIPS) is not in this branch — the crate checked here is not the crate that runs"
+    fi
+  else
+    skip "factory that ships — no ~/.vitals/bin/vitals-factory on this machine"
   fi
 else
   skip "factory — the production job only"
