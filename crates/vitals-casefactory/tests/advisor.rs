@@ -26,7 +26,13 @@ fn case_with_harms(id: &str, dx: &str, tags: &[&str], age: u32, vitals: &[&str],
     v["meta"]["id"] = serde_json::json!(id);
     v["meta"]["title"] = serde_json::json!("test");
     v["patient"]["age"] = serde_json::json!(age);
-    v["hidden"]["correct_diagnosis"] = serde_json::json!({ "display": dx, "aliases": [] });
+    // The display, then the names a doctor types, after bars — what a real case carries as
+    // aliases. The compiler refuses a diagnosis it cannot name in four words (tests/compile.rs),
+    // and a synthetic case is held to the same bar as an authored one.
+    let mut names = dx.split(" | ").map(str::trim);
+    let display = names.next().unwrap_or(dx);
+    let aliases: Vec<&str> = names.collect();
+    v["hidden"]["correct_diagnosis"] = serde_json::json!({ "display": display, "aliases": aliases });
     v["meta"]["search_tags"] = serde_json::json!(tags);
     v["hidden"]["red_flags"] = serde_json::json!(red);
     v["hidden"]["management_plan"] = serde_json::json!(plan);
@@ -103,7 +109,7 @@ fn matched(pack: &vitals_casefactory::Pack, text: &str) -> String {
 
 #[test]
 fn a_management_safety_criterion_pays_a_supportive_role_the_plan_names() {
-    let s = case("synthetic-criterion", "Cerebral malaria with hypoglycaemia", &["malaria"], 30,
+    let s = case("synthetic-criterion", "Cerebral malaria with hypoglycaemia | cerebral malaria | severe malaria", &["malaria"], 30,
         &["96/58 mmHg", "118/min", "24/min", "95%", "39.1 °C", "GCS 9 (E2 V3 M4)"],
         &["50% dextrose 50 mL IV at once", "IV artesunate 2.4 mg/kg at 0, 12 and 24 hours",
           "After blood cultures: empirical ceftriaxone 2 g IV once daily", "If hypovolaemic give 500 mL isotonic crystalloid over 30 minutes and reassess"],
@@ -125,7 +131,7 @@ fn a_management_safety_criterion_pays_a_supportive_role_the_plan_names() {
 
 #[test]
 fn a_criterion_naming_a_role_already_paid_adds_no_second_item_and_an_unplaceable_one_is_listed() {
-    let s = case("synthetic-criterion-dup", "Septic shock from an ascending urinary tract infection", &["sepsis"], 41,
+    let s = case("synthetic-criterion-dup", "Septic shock from an ascending urinary tract infection | septic shock | urosepsis", &["sepsis"], 41,
         &["82/50 mmHg", "130/min", "28/min", "94%"],
         &["Two blood cultures, then broad-spectrum IV antibiotics (ceftriaxone 2 g) within the first hour",
           "Fluids: 30 mL/kg balanced crystalloid in boluses of 500 mL", "Start noradrenaline if MAP stays below 65 mmHg"],
@@ -142,7 +148,7 @@ fn a_criterion_naming_a_role_already_paid_adds_no_second_item_and_an_unplaceable
 
 #[test]
 fn dexamethasone_is_a_priced_harm_while_hydrocortisone_stays_the_therapy_for_refractory_shock() {
-    let s = case("synthetic-dexa", "Meningococcal meningitis with septic shock", &["meningitis"], 19,
+    let s = case("synthetic-dexa", "Meningococcal meningitis with septic shock | meningococcal meningitis | meningococcal sepsis", &["meningitis"], 19,
         &["78/40 mmHg", "132/min", "30/min", "95%"],
         &["Ceftriaxone 2 g IV within the hour after blood cultures", "Crystalloid 30 mL/kg in boluses", "Noradrenaline if MAP stays below 65",
           "If shock persists on noradrenaline for 4 hours: hydrocortisone 200 mg/day IV for refractory septic shock; do not give dexamethasone for the meningitis itself"],
@@ -160,7 +166,7 @@ fn dexamethasone_is_a_priced_harm_while_hydrocortisone_stays_the_therapy_for_ref
 
 #[test]
 fn the_anticholinesterase_and_suxamethonium_are_priced_harms_where_a_taipan_bite_forbids_them() {
-    let s = case("synthetic-taipan", "Papuan taipan envenoming with paralysis and coagulopathy", &["envenoming", "taipan"], 44,
+    let s = case("synthetic-taipan", "Papuan taipan envenoming with paralysis and coagulopathy | taipan bite | taipan envenoming", &["envenoming", "taipan"], 44,
         &["126/80 mmHg", "104/min", "26/min", "91% on room air"],
         &["Secure the airway now by elective intubation: rapid-sequence induction with ketamine and rocuronium (suxamethonium is avoided because of the rhabdomyolysis and rising potassium)",
           "Taipan antivenom 1 vial IV as soon as systemic envenoming is recognised",
@@ -179,7 +185,7 @@ fn the_anticholinesterase_and_suxamethonium_are_priced_harms_where_a_taipan_bite
 
 #[test]
 fn a_krait_bite_that_allows_the_neostigmine_trial_keeps_it_as_an_order() {
-    let s = case("synthetic-krait", "Common krait envenoming with neuromuscular respiratory failure", &["envenoming", "krait"], 34,
+    let s = case("synthetic-krait", "Common krait envenoming with neuromuscular respiratory failure | krait bite | krait envenoming", &["envenoming", "krait"], 34,
         &["118/76 mmHg", "110/min", "26/min", "90% on room air"],
         &["Airway first: intubate and ventilate", "Indian polyvalent anti-snake venom 10 vials over 30-60 minutes",
           "Atropine-neostigmine trial: atropine 0.6 mg IV followed by neostigmine 1.5 mg IV; if no objective improvement, stop"],
@@ -192,7 +198,7 @@ fn a_krait_bite_that_allows_the_neostigmine_trial_keeps_it_as_an_order() {
 
 #[test]
 fn a_rapid_fluid_bolus_is_a_priced_harm_in_a_childs_shock_and_in_a_coma_when_the_case_forbids_it() {
-    let sam = case("synthetic-sam", "Severe acute malnutrition with shock", &["malnutrition", "child", "shock"], 2,
+    let sam = case("synthetic-sam", "Severe acute malnutrition with shock | severe acute malnutrition | sam with shock", &["malnutrition", "child", "shock"], 2,
         &["70/50 mmHg", "172/min", "50/min", "94%"],
         &["Ringer's lactate with 5% dextrose 15 mL/kg IV over 1 hour, reassessed every 10 minutes", "10% dextrose 5 mL/kg at once",
           "Ampicillin and gentamicin", "Do not give a 20 mL/kg fluid bolus, do not give diuretics for the oedema"],
@@ -206,7 +212,7 @@ fn a_rapid_fluid_bolus_is_a_priced_harm_in_a_childs_shock_and_in_a_coma_when_the
     assert!(typed(&pack, &[], "ringer's lactate 15 ml/kg over 1 hour").is_empty());
     assert!(no_harm(&pack).iter().any(|n| n.contains("bolus")), "{:?}", no_harm(&pack));
 
-    let coma = case("synthetic-coma-bolus", "Cerebral malaria with hypoglycaemia and severe anaemia", &["malaria", "child"], 4,
+    let coma = case("synthetic-coma-bolus", "Cerebral malaria with hypoglycaemia and severe anaemia | cerebral malaria | severe malaria", &["malaria", "child"], 4,
         &["92/56 mmHg", "150/min", "44/min", "93%", "39.4 °C", "GCS 8 (E2 V2 M4)"],
         &["10% dextrose 5 mL/kg IV over 5-10 minutes", "IV artesunate 3 mg/kg at 0, 12 and 24 hours",
           "Fluids: no rapid bolus (FEAST) — give maintenance isotonic fluid with 10% dextrose", "Transfuse whole blood 20 mL/kg over 3-4 hours"],
@@ -219,7 +225,7 @@ fn a_rapid_fluid_bolus_is_a_priced_harm_in_a_childs_shock_and_in_a_coma_when_the
     assert!(typed(&pack, &[], "whole blood 20 ml/kg").is_empty());
 
     // and where the bolus is the therapy, the same sentence forbids nothing
-    let septic = case("synthetic-septic-bolus", "Septic shock from an ascending urinary tract infection", &["sepsis"], 41,
+    let septic = case("synthetic-septic-bolus", "Septic shock from an ascending urinary tract infection | septic shock | urosepsis", &["sepsis"], 41,
         &["82/50 mmHg", "130/min", "28/min", "94%"],
         &["Broad-spectrum antibiotics after cultures", "Fluids: 30 mL/kg crystalloid in boluses of 500 mL; do not give a rapid large bolus without reassessing"],
         &[], &[]);
@@ -229,7 +235,7 @@ fn a_rapid_fluid_bolus_is_a_priced_harm_in_a_childs_shock_and_in_a_coma_when_the
 
 #[test]
 fn full_anticoagulation_is_a_priced_harm_where_the_case_allows_only_prophylaxis() {
-    let s = case("synthetic-chagas", "Acute Chagas myocarditis with cardiogenic shock", &["chagas", "myocarditis"], 27,
+    let s = case("synthetic-chagas", "Acute Chagas myocarditis with cardiogenic shock | chagas myocarditis | acute chagas disease", &["chagas", "myocarditis"], 27,
         &["84/60 mmHg", "118/min", "28/min", "91%"],
         &["Dobutamine 5 µg/kg/min; add noradrenaline if MAP stays below 65", "Benznidazole once stable",
           "Thromboprophylaxis with low-molecular-weight heparin once bleeding risk is acceptable; no routine full anticoagulation unless thrombus or atrial fibrillation"],
@@ -246,7 +252,7 @@ fn full_anticoagulation_is_a_priced_harm_where_the_case_allows_only_prophylaxis(
 
 #[test]
 fn prednisolone_is_a_steroid_harm_where_the_case_forbids_steroids_in_shock() {
-    let s = case("synthetic-rhd", "Rheumatic heart disease with acute heart failure and low output", &["rheumatic", "heart failure"], 24,
+    let s = case("synthetic-rhd", "Rheumatic heart disease with acute heart failure and low output | rheumatic heart disease | acute heart failure", &["rheumatic", "heart failure"], 24,
         &["86/64 mmHg", "124/min", "30/min", "90%"],
         &["Dobutamine 5 µg/kg/min; add noradrenaline if MAP stays below 65", "Furosemide 40 mg IV once the pressure is supported",
           "After three blood cultures, benzathine benzylpenicillin 1.2 million units IM once"],
@@ -268,11 +274,11 @@ fn the_red_flag_checklist_puts_the_harm_it_names_at_the_head_of_a_full_sheet() {
         "If hypovolaemic give 500 mL isotonic crystalloid over 30 minutes and reassess (no rapid large boluses)",
         "No NSAIDs; no corticosteroids or mannitol; no oral antimalarials alone while vomiting; no prophylactic phenobarbital; no sedatives before the airway"];
     let vitals = &["96/58 mmHg", "118/min", "24/min", "95%", "39.1 °C", "GCS 9 (E2 V3 M4)"];
-    let without = case("synthetic-bolus-order", "Cerebral malaria with hypoglycaemia", &["malaria"], 30, vitals, plan, &[], &[]);
+    let without = case("synthetic-bolus-order", "Cerebral malaria with hypoglycaemia | cerebral malaria | severe malaria", &["malaria"], 30, vitals, plan, &[], &[]);
     let pack = pack_of(&without);
     assert!(harmful(&pack).contains(&"tx_rapid_bolus".to_string()), "{:?}", harmful(&pack));
     assert!(!no_harm(&pack).iter().any(|n| n.contains("bolus")), "the sheet is full and the bolus is last: {:?}", no_harm(&pack));
-    let with = case_with_harms("synthetic-bolus-order", "Cerebral malaria with hypoglycaemia", &["malaria"], 30, vitals, plan, &[], &[],
+    let with = case_with_harms("synthetic-bolus-order", "Cerebral malaria with hypoglycaemia | cerebral malaria | severe malaria", &["malaria"], 30, vitals, plan, &[], &[],
         &["No aggressive or rapid fluid bolus"]);
     let pack = pack_of(&with);
     let nh = no_harm(&pack);
@@ -282,7 +288,7 @@ fn the_red_flag_checklist_puts_the_harm_it_names_at_the_head_of_a_full_sheet() {
 
 #[test]
 fn releasing_the_ligature_before_the_antivenom_and_the_airway_is_a_priced_harm() {
-    let s = case_with_harms("synthetic-ligature", "Common krait envenoming with neuromuscular respiratory failure", &["envenoming", "krait"], 34,
+    let s = case_with_harms("synthetic-ligature", "Common krait envenoming with neuromuscular respiratory failure | krait bite | krait envenoming", &["envenoming", "krait"], 34,
         &["118/76 mmHg", "110/min", "26/min", "90% on room air"],
         &["Airway first: intubate and ventilate", "Indian polyvalent anti-snake venom 10 vials over 30-60 minutes",
           "Release the ankle ligature slowly only after antivenom is running and the airway is secured",
@@ -301,7 +307,7 @@ fn releasing_the_ligature_before_the_antivenom_and_the_airway_is_a_priced_harm()
 
 #[test]
 fn tranexamic_acid_is_its_own_order_beside_the_uterotonics_and_the_criterion_pays_it() {
-    let s = case("synthetic-pph", "Postpartum haemorrhage from uterine atony with haemorrhagic shock", &["postpartum", "haemorrhage"], 23,
+    let s = case("synthetic-pph", "Postpartum haemorrhage from uterine atony with haemorrhagic shock | postpartum haemorrhage | uterine atony", &["postpartum", "haemorrhage"], 23,
         &["78/46 mmHg", "136/min", "28/min", "96%"],
         &["Two large-bore lines, crystalloid 1 L fast", "Uterotonic within minutes: oxytocin 10 units IV, then ergometrine 0.2 mg IM, then misoprostol 800 µg sublingual; bimanual uterine massage",
           "Tranexamic acid 1 g IV over 10 minutes now, within 3 hours of birth", "Transfuse O-negative then crossmatched blood"],
@@ -318,7 +324,7 @@ fn tranexamic_acid_is_its_own_order_beside_the_uterotonics_and_the_criterion_pay
 
 #[test]
 fn vitamin_a_is_an_order_in_measles_and_the_criterion_pays_it() {
-    let s = case("synthetic-measles", "Measles with severe pneumonia and hypoxaemia", &["measles", "child"], 2,
+    let s = case("synthetic-measles", "Measles with severe pneumonia and hypoxaemia | measles pneumonia | complicated measles", &["measles", "child"], 2,
         &["92/58 mmHg", "150/min", "56/min", "86% on room air"],
         &["Isolate with airborne precautions before the examination", "Oxygen by nasal prongs to keep SpO2 at or above 90%",
           "Ampicillin 50 mg/kg IV every 6 hours plus gentamicin 7.5 mg/kg once daily", "Vitamin A 200,000 IU by mouth today and again tomorrow"],
@@ -386,7 +392,7 @@ fn the_eighteen_endemic_packs_carry_the_advisors_items() {
 #[test]
 fn a_release_before_the_line_is_a_harm_the_engine_can_fire() {
     // the engine sees the branch harm as one it can fire, so the sheet's no_harm resolves
-    let s = case("synthetic-ligature-2", "Common krait envenoming with neuromuscular respiratory failure", &["envenoming", "krait"], 34,
+    let s = case("synthetic-ligature-2", "Common krait envenoming with neuromuscular respiratory failure | krait bite | krait envenoming", &["envenoming", "krait"], 34,
         &["118/76 mmHg", "110/min", "26/min", "90% on room air"],
         &["Intubate and ventilate", "Anti-snake venom 10 vials", "Release the ligature only after antivenom is running and the airway is secured"],
         &[], &[]);

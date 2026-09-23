@@ -202,7 +202,7 @@ fn r3_4_the_report_lists_the_acls_scenarios_vf_first_then_pea_asystole_then_brad
     let mut brady_v: serde_json::Value = serde_json::from_str(VF).unwrap();
     brady_v["meta"]["id"] = serde_json::json!("aab-brady-second-by-name");
     brady_v["meta"]["title"] = serde_json::json!("Synthetic test case: dizzy and grey with a pulse of 36");
-    brady_v["hidden"]["correct_diagnosis"] = serde_json::json!({ "display": "Symptomatic bradycardia — complete heart block", "aliases": ["complete heart block"] });
+    brady_v["hidden"]["correct_diagnosis"] = serde_json::json!({ "display": "Symptomatic bradycardia — complete heart block", "aliases": ["complete heart block", "third-degree AV block"] });
     brady_v["meta"]["search_tags"] = serde_json::json!(["synthetic", "bradycardia", "test"]);
     brady_v["exam_findings"][0]["value"] = serde_json::json!("78/50 mmHg");
     brady_v["exam_findings"][1]["value"] = serde_json::json!("36/min, regular");
@@ -305,7 +305,7 @@ fn adult_with_vitals(id: &str, dx: &str, aliases: &[&str], vitals: &[&str], plan
 #[test]
 fn r3_7_an_adult_whose_presenting_vitals_score_news2_low_is_cut_by_name() {
     // a shock index of 1.04 at a systolic of 104 passes the haemorrhagic gate; NEWS2 says 2, nothing red
-    let s = adult_with_vitals("synthetic-normal-vitals", "Upper gastrointestinal haemorrhage with haemorrhagic shock", &["GI bleeding"],
+    let s = adult_with_vitals("synthetic-normal-vitals", "Upper gastrointestinal haemorrhage with haemorrhagic shock", &["GI bleeding", "upper GI bleed"],
         &["104/70 mmHg", "108/min", "18/min", "97% on room air", "37.0 °C", "Pale; GCS 15"],
         &["Two large-bore lines, crystalloid 1 L", "Transfuse packed red cells", "Urgent endoscopy for haemostasis", "Pantoprazole 80 mg IV"], 45);
     let err = compile(&s, Source::of("embla-cases", "test", &s)).unwrap_err();
@@ -320,7 +320,7 @@ fn r3_7_an_adult_whose_presenting_vitals_score_news2_low_is_cut_by_name() {
     let r = compile(&child, Source::of("embla-cases", "test", &child));
     assert!(r.as_ref().err().is_none_or(|e| !e.reason.contains("NEWS2")), "{:?}", r.err().map(|e| e.reason));
     // and one red parameter keeps a low total on the ward
-    let red = adult_with_vitals("synthetic-one-red", "Upper gastrointestinal haemorrhage with haemorrhagic shock", &["GI bleeding"],
+    let red = adult_with_vitals("synthetic-one-red", "Upper gastrointestinal haemorrhage with haemorrhagic shock", &["GI bleeding", "upper GI bleed"],
         &["88/60 mmHg", "80/min", "18/min", "97% on room air", "37.0 °C", "Pale; GCS 15"],
         &["Two large-bore lines, crystalloid 1 L", "Transfuse packed red cells", "Urgent endoscopy for haemostasis"], 45);
     pack_of(&red);
@@ -337,7 +337,7 @@ fn r3_7_the_library_cut_is_three_translated_cases_and_no_endemic_one() {
         library_pack(&root, id).unwrap_or_else(|e| panic!("{e}"));
     }
     // and the report names the cut under its own heading
-    let s = adult_with_vitals("synthetic-normal-vitals", "Upper gastrointestinal haemorrhage with haemorrhagic shock", &["GI bleeding"],
+    let s = adult_with_vitals("synthetic-normal-vitals", "Upper gastrointestinal haemorrhage with haemorrhagic shock", &["GI bleeding", "upper GI bleed"],
         &["104/70 mmHg", "108/min", "18/min", "97% on room air", "37.0 °C", "Pale; GCS 15"],
         &["Crystalloid 1 L", "Transfuse packed red cells", "Urgent endoscopy for haemostasis"], 45);
     let err = compile(&s, Source::of("embla-cases", "test", &s)).unwrap_err();

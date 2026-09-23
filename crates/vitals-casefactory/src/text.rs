@@ -442,3 +442,26 @@ pub fn contains_kw(hay: &str, kw: &str) -> bool {
 pub fn matcher_kw(kw: &str) -> String {
     kw.trim().trim_matches('*').to_string()
 }
+
+/// The same phrase with the accents taken off its Latin letters: `Guillain-Barré` → `Guillain-Barre`.
+/// Only the marks NFD peels off a Latin letter go — the combining-diacritics block, U+0300–U+036F.
+/// Thai writes its vowels and tone marks as combining marks too, but in its own block, so a Thai
+/// phrase comes back exactly as it went in. A phrase with nothing to fold is unchanged.
+pub fn fold_latin(s: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    s.nfd().filter(|c| !('\u{0300}'..='\u{036F}').contains(c)).nfc().collect()
+}
+
+/// The ways one phrase gets typed at a bedside: as written, without its accents (no keyboard
+/// at the ward has one for "é"), with a space where it has a hyphen, and both. The phrase itself
+/// first, no repeats.
+pub fn typed_variants(phrase: &str) -> Vec<String> {
+    let spaced = phrase.replace('-', " ");
+    let mut out: Vec<String> = vec![phrase.to_string()];
+    for v in [fold_latin(phrase), spaced.clone(), fold_latin(&spaced)] {
+        if !out.contains(&v) {
+            out.push(v);
+        }
+    }
+    out
+}

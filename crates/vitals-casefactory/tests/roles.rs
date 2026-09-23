@@ -12,7 +12,12 @@ fn case(dx: &str, tags: &[&str], age: u32, vitals: &[&str], plan: &[&str], red: 
     v["meta"]["id"] = serde_json::json!(format!("synthetic-{}", dx.split_whitespace().next().unwrap().to_lowercase()));
     v["meta"]["title"] = serde_json::json!("test");
     v["patient"]["age"] = serde_json::json!(age);
-    v["hidden"]["correct_diagnosis"] = serde_json::json!({ "display": dx, "aliases": [] });
+    // The display, then the names a doctor types, after bars — what a real case carries as
+    // aliases; the compiler refuses a diagnosis it cannot name in four words (tests/compile.rs).
+    let mut names = dx.split(" | ").map(str::trim);
+    let display = names.next().unwrap_or(dx);
+    let aliases: Vec<&str> = names.collect();
+    v["hidden"]["correct_diagnosis"] = serde_json::json!({ "display": display, "aliases": aliases });
     v["meta"]["search_tags"] = serde_json::json!(tags);
     v["hidden"]["red_flags"] = serde_json::json!(red);
     v["hidden"]["management_plan"] = serde_json::json!(plan);
@@ -31,7 +36,7 @@ fn critical_ids(pack: &vitals_casefactory::Pack) -> Vec<String> {
 
 #[test]
 fn diphtheria_is_won_by_antitoxin_and_the_airway_not_by_an_antibiotic_alone() {
-    let s = case("Respiratory diphtheria with critical upper airway obstruction", &["diphtheria", "airway obstruction"], 7,
+    let s = case("Respiratory diphtheria with critical upper airway obstruction | diphtheria | respiratory diphtheria", &["diphtheria", "airway obstruction"], 7,
         &["100/60 mmHg", "140/min", "40/min", "88% on room air"],
         &["Isolate the child with droplet precautions before the examination",
           "Diphtheria antitoxin now, after a test dose, without waiting for the culture",
@@ -54,7 +59,7 @@ fn diphtheria_is_won_by_antitoxin_and_the_airway_not_by_an_antibiotic_alone() {
 
 #[test]
 fn acute_chest_syndrome_is_won_by_the_transfusion_when_the_plan_names_it() {
-    let s = case("Acute chest syndrome with hypoxaemia in sickle cell disease", &["sickle"], 19,
+    let s = case("Acute chest syndrome with hypoxaemia in sickle cell disease | acute chest syndrome | sickle cell chest crisis", &["sickle"], 19,
         &["110/70 mmHg", "118/min", "30/min", "87% on room air"],
         &["Oxygen to keep saturation above 95%", "Ceftriaxone and azithromycin", "Simple transfusion of packed red cells now (Hb 6.1, baseline 8)", "Incentive spirometry", "Admit"],
         &["Hb 6.1 with multilobar infiltrates = transfuse now"]);
@@ -66,7 +71,7 @@ fn acute_chest_syndrome_is_won_by_the_transfusion_when_the_plan_names_it() {
 
 #[test]
 fn a_malnourished_child_in_shock_is_won_by_fluid_glucose_and_antibiotics_together() {
-    let s = case("Severe acute malnutrition with septic shock and hypoglycaemia", &["sam", "child", "shock"], 2,
+    let s = case("Severe acute malnutrition with septic shock and hypoglycaemia | severe acute malnutrition | sam with shock", &["sam", "child", "shock"], 2,
         &["70/50 mmHg", "170/min", "50/min", "94%"],
         &["Cautious measured fluid: 15 mL/kg over 1 hour, reassess", "10% dextrose 5 mL/kg at once for the glucose of 2.1", "Broad-spectrum antibiotics: ampicillin and gentamicin", "Rewarm the child", "Admit to the stabilisation ward"],
         &["Cold hands and a weak pulse in a wasted child = shock"]);

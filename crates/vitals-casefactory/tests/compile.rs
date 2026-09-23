@@ -139,3 +139,87 @@ fn typing_the_bare_name_of_the_disease_names_the_diagnosis_even_when_a_history_q
     let tx = st.resolve("antibiotics for pneumonia");
     assert!(tx.as_deref().is_some_and(|id| id.starts_with("tx_")), "a treatment that mentions the disease resolves to the treatment: {tx:?}");
 }
+
+// The one phrase the compiler used to write for a diagnosis was the author's display name — for
+// ddx-guillain-barr-syndrome-4-en, "guillain-barré syndrome", and nothing else. A doctor types
+// "GBS", "Guillain-Barre" (no accent, no keyboard for one), "guillain barre" (no hyphen). None of
+// those reached the diagnosis, and the first stranger to finish a shift on production (23 Sep
+// 2026) typed the disease's plain name and was scored 0 of 10 for naming it. The names people
+// actually type live in one table the compiler owns (data/diagnosis_synonyms.json), keyed by the
+// exact name the case gives — exact, so "pneumonia" never attaches to "pneumocystis pneumonia".
+#[test]
+fn the_names_a_doctor_actually_types_reach_the_diagnosis_from_the_synonym_table() {
+    use vitals_sce::runtime::SceState;
+    let mut case: serde_json::Value = serde_json::from_str(SYNTHETIC).unwrap();
+    // Five words nobody writes on a chart; the chart says "urosepsis". No aliases from the author.
+    case["hidden"]["correct_diagnosis"] = serde_json::json!({ "display": "Urinary tract infection with urosepsis", "aliases": [] });
+    let pack = compile(&case.to_string(), src()).expect("compiles");
+    let sce = Sce::from_json(&pack.sce.to_string()).expect("the engine parses it");
+    let st = SceState::new(sce);
+    for typed in ["urosepsis", "Urinary sepsis", "complicated UTI", "urinary tract infection with urosepsis"] {
+        let hit = st.resolve(typed);
+        assert!(
+            hit.as_deref().is_some_and(|id| id.starts_with("dx_")),
+            "typing {typed:?} should name the diagnosis, not fire {hit:?}"
+        );
+    }
+}
+
+// An author's alias with accents gets an accent-free twin — "Guillain-Barré" is typed
+// "Guillain-Barre" on every keyboard the ward's visitors have — and a hyphen gets a space twin.
+// Latin letters only: Thai carries its vowels and tones as combining marks too, and those stay.
+#[test]
+fn an_accented_or_hyphenated_name_is_also_reachable_without_the_accent_or_the_hyphen() {
+    use vitals_sce::runtime::SceState;
+    let mut case: serde_json::Value = serde_json::from_str(SYNTHETIC).unwrap();
+    case["hidden"]["correct_diagnosis"] = serde_json::json!({
+        "display": "Septic shock from an ascending urinary tract infection",
+        "aliases": ["septic shock", "pyélonéphrite-sévère"]
+    });
+    let pack = compile(&case.to_string(), src()).expect("compiles");
+    let sce = Sce::from_json(&pack.sce.to_string()).expect("the engine parses it");
+    let st = SceState::new(sce);
+    for typed in ["pyélonéphrite-sévère", "pyelonephrite-severe", "pyelonephrite severe"] {
+        let hit = st.resolve(typed);
+        assert!(hit.as_deref().is_some_and(|id| id.starts_with("dx_")), "typing {typed:?} should name the diagnosis, not fire {hit:?}");
+    }
+    assert_eq!(vitals_casefactory::text::fold_latin("ไข้เลือดออกช็อก"), "ไข้เลือดออกช็อก", "Thai is not folded");
+    assert_eq!(vitals_casefactory::text::fold_latin("Guillain-Barré"), "Guillain-Barre");
+}
+
+// A name from the table is only a name for *this* case's diagnosis if the case does not also
+// list it as something else. The case's own differential is the cross-reference: a synonym
+// that is (or sits inside) one of the other differentials is left off, because typing it would
+// be naming that other thing. The author's own aliases are never dropped — the author's word wins.
+#[test]
+fn a_table_name_the_case_lists_as_another_differential_is_left_off_the_diagnosis() {
+    use vitals_sce::runtime::SceState;
+    let mut case: serde_json::Value = serde_json::from_str(SYNTHETIC).unwrap();
+    case["hidden"]["correct_diagnosis"] = serde_json::json!({ "display": "Urinary tract infection with urosepsis", "aliases": [] });
+    // The fixture's own differential list carries "Pyelonephritis without shock": the table's
+    // "pyelonephritis" sits inside it, so typing it would be naming that, and it stays off.
+    let pack = compile(&case.to_string(), src()).expect("compiles");
+    let sce = Sce::from_json(&pack.sce.to_string()).expect("the engine parses it");
+    let st = SceState::new(sce);
+    let other = st.resolve("pyelonephritis");
+    assert!(
+        !other.as_deref().is_some_and(|id| id.starts_with("dx_")),
+        "\"pyelonephritis\" is inside one of this case's other differentials and must not name the diagnosis: {other:?}"
+    );
+    let still = st.resolve("urosepsis");
+    assert!(still.as_deref().is_some_and(|id| id.starts_with("dx_")), "the table's other names still attach: {still:?}");
+}
+
+// The gate. A diagnosis nobody could type in four words or fewer is a diagnosis nobody will be
+// scored for naming; the compiler refuses the case and says which table to add the names to,
+// rather than shipping a pack whose rubric pays for a phrase no doctor writes. Two names, each
+// four words or fewer: the display name counts when it is short enough, aliases count, table
+// names count.
+#[test]
+fn a_diagnosis_with_fewer_than_two_typeable_names_is_refused_until_the_table_names_it() {
+    let mut case: serde_json::Value = serde_json::from_str(SYNTHETIC).unwrap();
+    case["hidden"]["correct_diagnosis"] = serde_json::json!({ "display": "Severe community acquired bacterial pneumonia of the right lower lobe", "aliases": [] });
+    let refusal = compile(&case.to_string(), src()).expect_err("a diagnosis with no typeable name is refused");
+    assert!(refusal.reason.contains("diagnosis_synonyms"), "the refusal names the table: {}", refusal.reason);
+    assert!(refusal.reason.contains("Severe community acquired bacterial pneumonia"), "the refusal names the diagnosis: {}", refusal.reason);
+}
