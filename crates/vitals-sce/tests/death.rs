@@ -91,3 +91,51 @@ fn diastolic_never_exceeds_systolic() {
         }
     }
 }
+
+
+/// **A patient with no pulse does not answer a question, and one rule says so.**
+///
+/// On 22 ก.ย. 2026 the first stranger ever to take a shift on Vitals World asked Nadege Toussaint
+/// nine questions after she had arrested — anxious, pain, coffee, whether it radiates — and she
+/// answered all nine. Two voices could have done that and on the ward it was the duller one: the
+/// case file's own string table, which had no notion of status, so the answer was not unlikely but
+/// certain. The other voice is a model that `patient::brief` tells "you are {status}" before asking
+/// it anyway.
+///
+/// Two mechanisms, one rule, and this is the rule. It lives beside `Outcome::is_death` for the
+/// reason that function's own doc gives: one place knows, so no caller can forget a variant — and
+/// `PatientStatus` is a seven-variant enum that has grown before.
+///
+/// `word` is tested with it because the two halves of this fix depend on the same vocabulary being
+/// the engine's and not ours: the portrait ladder in `vitals-web` is keyed on these exact strings,
+/// and the page's own `noPulse` — a second implementation in a second language, which is what a
+/// browser costs — checks the same two words. If `word` ever disagreed with the ladder, a dead
+/// patient would be silenced and still be shown smiling.
+#[test]
+fn a_patient_with_no_pulse_cannot_answer_and_says_so_in_the_engines_own_words() {
+    use vitals_sce::runtime::PatientStatus::*;
+
+    // The two that cannot speak, and the reason they are two rather than one: arrest is not death,
+    // CPR is what should happen next, and a patient with no pulse still does not talk.
+    for gone in [Arrest, Dead] {
+        assert!(!gone.can_speak(), "{:?} has no pulse and cannot be asked anything", gone);
+    }
+
+    // Everything else can, including Critical — a patient who can barely speak is still answering,
+    // and silencing her would delete most of what a candidate is marked on.
+    for alive in [Stable, Deteriorating, Critical, Improving, Recovered] {
+        assert!(alive.can_speak(), "{:?} can be asked a question", alive);
+    }
+
+    // The vocabulary is the engine's own, lowercase, and it is the one the portrait ladder and the
+    // page are both written against. Spelled out here rather than derived, because a `Debug` format
+    // is what these strings were before and a rename upstream must break this test rather than
+    // quietly start resolving a patient's picture to nothing.
+    assert_eq!(Stable.word(), "stable");
+    assert_eq!(Deteriorating.word(), "deteriorating");
+    assert_eq!(Critical.word(), "critical");
+    assert_eq!(Arrest.word(), "arrest");
+    assert_eq!(Improving.word(), "improving");
+    assert_eq!(Recovered.word(), "recovered");
+    assert_eq!(Dead.word(), "dead");
+}
