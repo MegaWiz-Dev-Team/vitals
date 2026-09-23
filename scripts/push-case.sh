@@ -15,8 +15,10 @@
 #   - any patient on that case with a shift on chain (a `closed_slot`, or shifts counted), or a
 #     shift in progress (`on_shift_since` — it will anchor, and the case is about to be under it),
 #     means the case is not replaceable — provisional or reviewed, same version or bumped;
-#   - a pack whose version equals the catalogue's for that case is a silent edit, and refused: a
-#     replace bumps meta.version, so the catalogue shows that something changed.
+#   - a pack at the catalogue's version with no usable compiler.commit (missing, unknown, -dirty)
+#     cannot pass the door and is refused here; one with a usable stamp is sent, because the door
+#     holds the other side's stamp and decides on the bytes (23 Sep 2026 contract: the hash
+#     decides, (meta.version, compiler.commit) explains).
 #
 # It runs as the ops service account by construction (configuration pinned per process, never
 # `gcloud config set`), reads the door token into the shell and nowhere else, and prints the
@@ -72,6 +74,10 @@ import json, sys
 pack = json.load(open(sys.argv[1]))
 board = json.loads(sys.argv[2]); cat = json.loads(sys.argv[3])
 cid = pack.get("case_id", ""); ver = str(pack.get("version", ""))
+# The compiler's stamp, when the pack has one and it can count as an identifier: a missing,
+# unknown or -dirty stamp cannot, because two different packs can carry it.
+stamp = str((pack.get("compiler") or {}).get("commit") or "")
+usable = bool(stamp) and stamp != "unknown" and not stamp.endswith("-dirty")
 held = []
 for p in board.get("patients", []):
     case = p.get("case")
@@ -85,7 +91,7 @@ for p in board.get("patients", []):
     if p.get("closed_slot") or n > 0 or p.get("on_shift_since"):
         held.append(f"{p.get('patient_id')} {p.get('name', '')}".strip())
 have = next((str(c.get("version", "")) for c in cat.get("cases", []) if c.get("case_id") == cid), "")
-print(cid); print(ver); print(have); print("|".join(held))
+print(cid); print(ver); print(have); print("|".join(held)); print("usable" if usable else "no-stamp")
 PY
 }
 
@@ -94,7 +100,7 @@ for PACK in "$@"; do
   if [ ! -f "$PACK" ]; then
     echo "refusing: $PACK is not a file." >&2; REFUSED=$((REFUSED + 1)); continue
   fi
-  { read -r CASE_ID; read -r VERSION; read -r HAVE; read -r HELD; } < <(ask "$PACK")
+  { read -r CASE_ID; read -r VERSION; read -r HAVE; read -r HELD; read -r STAMP; } < <(ask "$PACK")
   if [ -z "$CASE_ID" ]; then
     echo "refusing: $PACK has no case_id." >&2; REFUSED=$((REFUSED + 1)); continue
   fi
@@ -106,8 +112,13 @@ for PACK in "$@"; do
     echo "   refusing: the chain carries $N shift(s) against $CASE_ID ($(printf '%s' "$HELD" | tr '|' ';')) — replacing the case would change the leaf those shifts re-derive to. Not sent." >&2
     REFUSED=$((REFUSED + 1)); continue
   fi
-  if [ -n "$HAVE" ] && [ "$HAVE" = "$VERSION" ]; then
-    echo "   refusing: the door already holds $CASE_ID at v$VERSION — a replace bumps meta.version, so the catalogue shows something changed. Not sent." >&2
+  # The door decides a replace on the bytes and explains it with (meta.version, compiler.commit):
+  # a recompile by a newer compiler under the author's unchanged version is a move. The door
+  # holds the other side's stamp, so a same-version pack with a usable stamp is sent and the
+  # door answers — "unchanged", stored, or 409 with both hashes. A same-version pack with no
+  # usable stamp cannot pass the door and is refused here, with the reason.
+  if [ -n "$HAVE" ] && [ "$HAVE" = "$VERSION" ] && [ "$STAMP" != usable ]; then
+    echo "   refusing: the door already holds $CASE_ID at v$VERSION and this pack carries no usable compiler.commit (missing, unknown or -dirty) — a replace bumps meta.version, or is built clean by a compiler whose commit differs. Not sent." >&2
     REFUSED=$((REFUSED + 1)); continue
   fi
   # The token, read once, on the first pack that may go — into this shell and nowhere else.
@@ -122,7 +133,7 @@ for PACK in "$@"; do
       --data-binary @"$PACK" -w '\n%{http_code}' "$WARD/api/ward/case" 2>/dev/null)"
   CODE="${ANSWER##*$'\n'}"; BODY="${ANSWER%$'\n'*}"
   if [ "$CODE" = 200 ]; then
-    STORED="$(printf '%s' "$BODY" | python3 -c 'import json,sys; b=json.load(sys.stdin); print(b.get("stored","?"), "v"+str(b.get("version","?")), "provisional" if b.get("provisional") else "reviewed")' 2>/dev/null)"
+    STORED="$(printf '%s' "$BODY" | python3 -c 'import json,sys; b=json.load(sys.stdin); print(("unchanged: " if b.get("unchanged") else "")+str(b.get("stored","?")), "v"+str(b.get("version","?")), "byte-identical, nothing written" if b.get("unchanged") else ("provisional" if b.get("provisional") else "reviewed"))' 2>/dev/null)"
     echo "   stored: ${STORED:-$BODY}"
     SENT=$((SENT + 1))
   else

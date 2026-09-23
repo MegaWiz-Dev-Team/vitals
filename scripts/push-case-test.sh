@@ -74,7 +74,15 @@ run() {
   [ "${1-}" = "--" ] && shift
   CASE_N=$((CASE_N + 1))
   local sandbox="$WORK/case$CASE_N"; mkdir -p "$sandbox"
-  printf '{"case_id":"ddx-example-1-en","version":"%s","sce":{}}\n' "$version" > "$sandbox/pack.json"
+  # A compiler stamp when the case names one (STUB_STAMP=<commit>); none otherwise, like every
+  # pack on production before 23 Sep 2026.
+  local stamp=""
+  for a in "$@"; do case "$a" in STUB_STAMP=*) stamp="${a#*=}" ;; esac; done
+  if [ -n "$stamp" ]; then
+    printf '{"case_id":"ddx-example-1-en","version":"%s","compiler":{"name":"vitals-casefactory","version":"0.9.4","commit":"%s"},"sce":{}}\n' "$version" "$stamp" > "$sandbox/pack.json"
+  else
+    printf '{"case_id":"ddx-example-1-en","version":"%s","sce":{}}\n' "$version" > "$sandbox/pack.json"
+  fi
   local out rc
   out="$(env -i PATH="$WORK/bin:/usr/bin:/bin" HOME="$sandbox" TMPDIR="$sandbox" STUB_SENT="$sandbox/sent" STUB_POSTED_TO=door \
       "$@" bash "$TARGET" "$target" "$sandbox/pack.json" 2>&1 </dev/null)"
@@ -103,7 +111,9 @@ run "the target is not staging or production" refuses "refusing" demo 0.1.2
 run "a person is the active account" refuses "a person" production 0.1.2 -- STUB_ACCOUNT_PROD=someone@example.com
 run "the ward cannot be read — the question cannot be asked" refuses "cannot be asked" production 0.1.2 -- STUB_WARD_DOWN=1
 run "the chain carries a shift against the case (a ward closure counts)" refuses "the chain carries 1 shift(s) against ddx-example-1-en (1790037060 Yahya Al-Shami)" production 0.1.2 -- STUB_SHIFT_ON_CHAIN=1
-run "the pack's version equals the one the door holds" refuses "already holds ddx-example-1-en at v0.1.1" production 0.1.1
+run "the pack's version equals the one the door holds and it carries no compiler stamp" refuses "already holds ddx-example-1-en at v0.1.1" production 0.1.1
+run "the same version with a -dirty stamp — two different packs could carry it" refuses "already holds ddx-example-1-en at v0.1.1" production 0.1.1 -- STUB_STAMP=0c7c5403135d-dirty
+run "the same version with an unknown stamp" refuses "already holds ddx-example-1-en at v0.1.1" production 0.1.1 -- STUB_STAMP=unknown
 run "a shift on chain refuses even a bumped version" refuses "the chain carries" staging 0.1.2 -- STUB_SHIFT_ON_CHAIN=1
 run "a shift is in progress on the case — it will anchor" refuses "the chain carries 1 shift(s) against ddx-example-1-en (1790146977 Hodan Warsame)" production 0.1.2 -- STUB_ON_SHIFT=1
 
@@ -111,6 +121,10 @@ echo "── push-case sends when ──"
 run "no shift is on chain against the case and the version is bumped" sends "stored: ddx-example-1-en v0.1.2 provisional" production 0.1.2
 run "the case is new to the door (no version held)" sends "stored: ddx-example-1-en" staging 0.1.1 -- STUB_CATALOGUE_VERSION=
 run "the pack's version differs from the held one" sends "1 sent, 0 refused" staging 0.1.3
+# The door decides on the bytes and explains with (meta.version, compiler.commit): a recompile
+# by a newer compiler under the author's unchanged version is a move, and the door is the one
+# that holds the other side's stamp — the script sends and lets it answer.
+run "the same version with a clean compiler stamp is sent — the door holds the other stamp and decides" sends "stored: ddx-example-1-en" production 0.1.1 -- STUB_STAMP=ccd73727b039
 
 echo
 printf '%d passed, %d failed\n' "$PASS" "$FAIL"
