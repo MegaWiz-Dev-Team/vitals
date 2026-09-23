@@ -162,6 +162,30 @@ pub fn build(case: &Case, mapped: &Mapped, a: Archetype) -> Built {
         }
     }
 
+    // The diagnosis, declared before the investigations and the history questions. The engine
+    // resolves a learner's words to the first intervention in declaration order that matches, so
+    // a bare disease name reaches the diagnosis before an investigation or an ask that carries
+    // the same word — "pneumonia" is naming it, not asking about it. Its words are also exempt
+    // from the shared-single-word pruning below: ddx-pneumonia-1-en shipped with a diagnosis no
+    // word could reach because "pneumonia" was in `ask_pneumonia_history` too (production,
+    // 23 Sep 2026). Moving it later instead (behind the investigations) emptied three others.
+    let d = &case.hidden.correct_diagnosis;
+    let short = d.aliases.iter().find(|a| a.is_ascii() && a.len() >= 4).cloned().unwrap_or_else(|| d.display.clone());
+    let dx_id = id_for("dx", &short, 0, &mut taken);
+    let mut dx_kw: Vec<String> = Vec::new();
+    for a in d.aliases.iter().chain(std::iter::once(&d.display)) {
+        let a = a.trim().to_lowercase();
+        if a.chars().count() >= 4 && !dx_kw.contains(&a) {
+            dx_kw.push(a);
+        }
+    }
+    out.push(json!({
+        "id": dx_id,
+        "label": "Name the diagnosis",
+        "match": { "any_kw": dx_kw },
+        "effects": [ { "flag": "dx_named" }, { "beat": "the working diagnosis is written on the chart" } ],
+    }));
+
     // investigations: the expected workup first (it is what the rubric pays for), results
     // attached where the case has them, then any remaining investigation with a result
     let mut ix: Vec<(String, String)> = Vec::new();
@@ -227,29 +251,6 @@ pub fn build(case: &Case, mapped: &Mapped, a: Archetype) -> Built {
         }));
         exams.push((id, display, f.system.clone()));
     }
-
-    // The diagnosis, declared before the history questions on purpose. The engine resolves a
-    // learner's words to the first intervention in declaration order that matches, so a bare
-    // disease name has to reach the diagnosis before any ask that happens to carry the same word
-    // — "pneumonia" is naming it, not asking about it. Declared after the asks, the diagnosis of
-    // ddx-pneumonia-1-en lost its only word to `ask_pneumonia_history` in the pruning below and
-    // shipped with ten marks reachable by no word at all (found on production, 23 Sep 2026).
-    let d = &case.hidden.correct_diagnosis;
-    let short = d.aliases.iter().find(|a| a.is_ascii() && a.len() >= 4).cloned().unwrap_or_else(|| d.display.clone());
-    let dx_id = id_for("dx", &short, 0, &mut taken);
-    let mut dx_kw: Vec<String> = Vec::new();
-    for a in d.aliases.iter().chain(std::iter::once(&d.display)) {
-        let a = a.trim().to_lowercase();
-        if a.chars().count() >= 4 && !dx_kw.contains(&a) {
-            dx_kw.push(a);
-        }
-    }
-    out.push(json!({
-        "id": dx_id,
-        "label": "Name the diagnosis",
-        "match": { "any_kw": dx_kw },
-        "effects": [ { "flag": "dx_named" }, { "beat": "the working diagnosis is written on the chart" } ],
-    }));
 
     // history: one ask per symptom line, the words kept in the voice
     let mut voice: BTreeMap<String, VoiceLine> = BTreeMap::new();

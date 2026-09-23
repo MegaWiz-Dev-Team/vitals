@@ -129,4 +129,13 @@ fn typing_the_bare_name_of_the_disease_names_the_diagnosis_even_when_a_history_q
     let sce2 = Sce::from_json(&pack.sce.to_string()).unwrap();
     assert!(sce2.interventions.iter().any(|i| i.id == "ask_pneumonia_history"), "the history question is still on the case under its id");
     assert!(st.resolve("pneumonia history").as_deref().is_some_and(|id| id.starts_with("dx_")), "typed prose with the disease's word names the diagnosis — the trade this test records");
+    // But an *order* that mentions the disease is an order. The diagnosis is the first
+    // intervention any text with the disease's word can hit, so without a guard "blood gas for
+    // pneumonia" would record a diagnosis the learner never made and send no blood gas — a
+    // premature commitment invisible on the receipt. The guard is derived from the case's own
+    // other keywords, not from medical knowledge.
+    let ix = st.resolve("blood gas for pneumonia");
+    assert!(ix.as_deref().is_some_and(|id| id.starts_with("ix_")), "an order that mentions the disease resolves to the order, not the diagnosis: {ix:?}");
+    let tx = st.resolve("antibiotics for pneumonia");
+    assert!(tx.as_deref().is_some_and(|id| id.starts_with("tx_")), "a treatment that mentions the disease resolves to the treatment: {tx:?}");
 }
