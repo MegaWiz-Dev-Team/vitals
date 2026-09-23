@@ -206,7 +206,7 @@ run "a build whose status cannot be read is unknown, not failed" rejects "unknow
 # 301 s stream against it and strangers were refused. Both are named on every deploy and printed.
 run "the arrival interval rides on every deploy and is printed" accepts "── arrivals  every 60 min" \
   -- VITALS_WARD_ARRIVAL_MINUTES=60
-run "the arrival interval defaults to the binary's own 30 and says so" accepts "── arrivals  every 30 min" \
+run "the arrival interval defaults to the founder's 60 and says so" accepts "── arrivals  every 60 min" \
   --
 run "concurrency is printed next to the service" accepts "── concurrency 80 requests in flight per instance" \
   --
