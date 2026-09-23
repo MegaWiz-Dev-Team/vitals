@@ -767,8 +767,20 @@ struct View {
     /// ladder the board uses — so the page draws a URL and holds no opinion about states, sizes or
     /// what to do when a picture for this one has not been made. Absent on the Eternal entry: its
     /// stills are the season's, chosen by the Director, and a ward pack has no say in them.
+    ///
+    /// **Two absences, and they are not the same absence.** The outer `None` is the season: the
+    /// Eternal entry's stills are the Director's, a ward pack has no say in them, and the field is
+    /// omitted entirely — which is what `skip_serializing_if` is for and the only thing it was
+    /// ever for. The inner `None` is a ward patient nobody has photographed yet, and it goes on
+    /// the wire as an explicit `null`, because the page has a stand-in to draw in exactly that
+    /// case and cannot draw it for a field that never arrived.
+    ///
+    /// They were one `Option` until 23 ก.ย., and the ward borrowed the season's silence: Somsak
+    /// Faceless opened on staging with no `.face-none` element on the page at all, because the
+    /// script's guard is `v.portrait !== undefined` and an omitted field skips the block that
+    /// creates it. An absence says nothing, so it is read as whatever the reader already assumes.
     #[serde(skip_serializing_if = "Option::is_none")]
-    portrait: Option<String>,
+    portrait: Option<Option<String>>,
     beats: Vec<String>,
     /// The display line for each beat above, in the language the page asked for — the language
     /// layer's half of [`View::beats`], and the only part of it a reader ever sees.
@@ -1179,11 +1191,15 @@ impl Session {
             // One word, two uses: what the rail prints and which face to draw. The ladder's keys
             // are the engine's words in lower case — `portrait_for` then answers with hers, or
             // with the nearest milder one, or with nothing at all if no picture of her exists yet.
-            portrait: self
-                .ward
-                .as_ref()
-                .and_then(|w| ward::portrait_at_the_bedside(&w.faces, &status.to_lowercase()))
-                .map(str::to_string),
+            // `map` and not `and_then`, and that one word is the whole fix. A ward session always
+            // has something to say about the picture — here it is, or there is none — and the
+            // inner `None` is the second sentence. `and_then` flattened the two into one absence,
+            // and the page could not tell "no photograph has been made" from "this is not a ward
+            // at all", so it drew neither the face nor the stand-in that exists for exactly this.
+            portrait: self.ward.as_ref().map(|w| {
+                ward::portrait_at_the_bedside(&w.faces, &status.to_lowercase())
+                    .map(str::to_string)
+            }),
             // Read off the sealed copy, not the live one: a translation of a withheld sentence
             // is the withheld sentence.
             tr: beat_lines(lang, &beats),
@@ -7904,7 +7920,10 @@ mod tests {
         // the word once rather than formatting it twice.
         let seen = |s: &Session| {
             let v = s.view(lang::language(None));
-            (v.status.to_lowercase(), v.portrait.clone())
+            // `flatten` because this patient has faces and the question here is *which* one, not
+            // whether the ward said anything — the outer Option is the season/ward distinction and
+            // is asserted on its own at the end of this test and in full next door.
+            (v.status.to_lowercase(), v.portrait.clone().flatten())
         };
         let (status, portrait) = seen(&s);
         assert_eq!(portrait.as_deref(), ward::portrait_for(&faces, &status),
