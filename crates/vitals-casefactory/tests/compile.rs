@@ -121,6 +121,12 @@ fn typing_the_bare_name_of_the_disease_names_the_diagnosis_even_when_a_history_q
         hit.as_deref().is_some_and(|id| id.starts_with("dx_")),
         "typing the disease's name should name the diagnosis, not fire {hit:?}"
     );
-    let ask = st.resolve("pneumonia history");
-    assert!(ask.as_deref().is_some_and(|id| id.starts_with("ask_")), "the history question is still reachable by its own phrase: {ask:?}");
+    // The trade, stated: the history question that shares the disease's word is still on the
+    // case under its own id — the ward's ask path (`/api/say?q=<id>`) finds it by that id, never
+    // through this matcher — and typed prose carrying the word now names the diagnosis, because
+    // the engine takes the first match and the diagnosis comes first. A learner who types the
+    // disease is naming it; the question keeps its chip.
+    let sce2 = Sce::from_json(&pack.sce.to_string()).unwrap();
+    assert!(sce2.interventions.iter().any(|i| i.id == "ask_pneumonia_history"), "the history question is still on the case under its id");
+    assert!(st.resolve("pneumonia history").as_deref().is_some_and(|id| id.starts_with("dx_")), "typed prose with the disease's word names the diagnosis — the trade this test records");
 }

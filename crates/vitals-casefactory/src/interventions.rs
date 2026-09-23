@@ -162,24 +162,6 @@ pub fn build(case: &Case, mapped: &Mapped, a: Archetype) -> Built {
         }
     }
 
-    // the diagnosis
-    let d = &case.hidden.correct_diagnosis;
-    let short = d.aliases.iter().find(|a| a.is_ascii() && a.len() >= 4).cloned().unwrap_or_else(|| d.display.clone());
-    let dx_id = id_for("dx", &short, 0, &mut taken);
-    let mut dx_kw: Vec<String> = Vec::new();
-    for a in d.aliases.iter().chain(std::iter::once(&d.display)) {
-        let a = a.trim().to_lowercase();
-        if a.chars().count() >= 4 && !dx_kw.contains(&a) {
-            dx_kw.push(a);
-        }
-    }
-    out.push(json!({
-        "id": dx_id,
-        "label": "Name the diagnosis",
-        "match": { "any_kw": dx_kw },
-        "effects": [ { "flag": "dx_named" }, { "beat": "the working diagnosis is written on the chart" } ],
-    }));
-
     // investigations: the expected workup first (it is what the rubric pays for), results
     // attached where the case has them, then any remaining investigation with a result
     let mut ix: Vec<(String, String)> = Vec::new();
@@ -246,6 +228,29 @@ pub fn build(case: &Case, mapped: &Mapped, a: Archetype) -> Built {
         exams.push((id, display, f.system.clone()));
     }
 
+    // The diagnosis, declared before the history questions on purpose. The engine resolves a
+    // learner's words to the first intervention in declaration order that matches, so a bare
+    // disease name has to reach the diagnosis before any ask that happens to carry the same word
+    // — "pneumonia" is naming it, not asking about it. Declared after the asks, the diagnosis of
+    // ddx-pneumonia-1-en lost its only word to `ask_pneumonia_history` in the pruning below and
+    // shipped with ten marks reachable by no word at all (found on production, 23 Sep 2026).
+    let d = &case.hidden.correct_diagnosis;
+    let short = d.aliases.iter().find(|a| a.is_ascii() && a.len() >= 4).cloned().unwrap_or_else(|| d.display.clone());
+    let dx_id = id_for("dx", &short, 0, &mut taken);
+    let mut dx_kw: Vec<String> = Vec::new();
+    for a in d.aliases.iter().chain(std::iter::once(&d.display)) {
+        let a = a.trim().to_lowercase();
+        if a.chars().count() >= 4 && !dx_kw.contains(&a) {
+            dx_kw.push(a);
+        }
+    }
+    out.push(json!({
+        "id": dx_id,
+        "label": "Name the diagnosis",
+        "match": { "any_kw": dx_kw },
+        "effects": [ { "flag": "dx_named" }, { "beat": "the working diagnosis is written on the chart" } ],
+    }));
+
     // history: one ask per symptom line, the words kept in the voice
     let mut voice: BTreeMap<String, VoiceLine> = BTreeMap::new();
     let mut asks: Vec<Ask> = Vec::new();
@@ -295,6 +300,7 @@ pub fn build(case: &Case, mapped: &Mapped, a: Archetype) -> Built {
     for iv in &mut out {
         let id = iv["id"].as_str().unwrap_or_default().to_string();
         let is_tx = id.starts_with("tx_");
+        let is_dx = id.starts_with("dx_");
         let kws: Vec<String> = iv["match"]["any_kw"]
             .as_array()
             .map(|a| a.iter().filter_map(|k| k.as_str().map(str::to_string)).collect())
@@ -304,7 +310,9 @@ pub fn build(case: &Case, mapped: &Mapped, a: Archetype) -> Built {
             if claimed.iter().any(|c| c == &k || k.contains(c.as_str())) {
                 continue;
             }
-            if !is_tx && !k.contains(' ') && word_count.get(&k).copied().unwrap_or(0) > 1 {
+            // A single word shared by several interventions fires the first of them and is
+            // noise on the rest — except on the diagnosis, whose own name is the whole of it.
+            if !is_tx && !is_dx && !k.contains(' ') && word_count.get(&k).copied().unwrap_or(0) > 1 {
                 continue;
             }
             kept.push(k);
