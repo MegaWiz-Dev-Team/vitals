@@ -86,7 +86,11 @@ run() {
   local name="$1" expect="$2" needle="$3" target="$4"; shift 4
   [ "${1-}" = "--" ] && shift
   CASE_N=$((CASE_N + 1))
-  local sandbox="$WORK/case$CASE_N"; mkdir -p "$sandbox/.vitals/world-prod"
+  local sandbox="$WORK/case$CASE_N"; mkdir -p "$sandbox/.vitals/world-prod" "$sandbox/.vitals/bin"
+  # The shipped factory's link, when a case names one (the commit is the part after the dash).
+  local link=""
+  for a in "$@"; do case "$a" in STUB_FACTORY_LINK=*) link="${a#*=}" ;; esac; done
+  [ -n "$link" ] && ln -sfn "$link" "$sandbox/.vitals/bin/vitals-factory"
   # A factory log whose last tick is fresh unless the case says otherwise (STUB_TICK_AGE=<s>).
   local age=60 a
   for a in "$@"; do case "$a" in STUB_TICK_AGE=*) age="${a#*=}" ;; esac; done
@@ -128,6 +132,14 @@ run "the last tick did not answer 200" rejects "FAIL  tick" production -- STUB_T
 run "the factory job is not loaded" rejects "FAIL  factory" production -- STUB_FACTORY_MISSING=1
 run "the factory's last exit was not 0" rejects "FAIL  factory" production -- STUB_FACTORY_EXIT=1
 run "the factory has not ticked for 25 minutes" rejects "FAIL  factory" production -- STUB_TICK_AGE=1500
+# The factory that ships runs from a link named for its commit. If that commit is not in the
+# branch being checked, the crate the ward's gates check is not the crate that runs — the ward's
+# copy fell eight commits behind, unnoticed, 20–23 Sep, and a contract test compiled against the
+# wrong crate would have proved the wrong thing.
+run "the factory that ships is not in this branch" rejects "FAIL  factory that ships (deadbeef) is not in this branch" production -- \
+  STUB_FACTORY_LINK=vitals-factory-deadbeef
+run "the factory that ships is in this branch" accepts "ok    factory that ships" production -- \
+  STUB_FACTORY_LINK=vitals-factory-$(git rev-parse --short HEAD)
 run "the RPC does not answer ok" rejects "FAIL  rpc" production -- STUB_RPC_RESULT=behind
 run "min-instances is not what the founder ruled" rejects "FAIL  min-instances" production -- STUB_MIN=1 EXPECT_MIN=0
 
