@@ -53,7 +53,9 @@ case "$url" in
     printf '{"stored":"ddx-example-1-en","provisional":true,"version":"0.1.2","status":"stub"}\n200'; exit 0 ;;
   */api/ward)
     [ "${STUB_WARD_DOWN:-0}" = 1 ] && exit 7
-    if [ "${STUB_SHIFT_ON_CHAIN:-0}" = 1 ]; then
+    if [ "${STUB_ON_SHIFT:-0}" = 1 ]; then
+      printf '{"patients":[{"patient_id":1790146977,"name":"Hodan Warsame","case":"ddx-example-1-en","state":"on_ward","closed_slot":null,"shifts":0,"on_shift_since":"2026-09-23T08:40:00Z"}]}\n'
+    elif [ "${STUB_SHIFT_ON_CHAIN:-0}" = 1 ]; then
       printf '{"patients":[{"patient_id":1790037060,"name":"Yahya Al-Shami","case":"ddx-example-1-en","state":"died","closed_slot":502381820,"shifts":1}]}\n'
     else
       printf '{"patients":[{"patient_id":1790146977,"name":"Hodan Warsame","case":"ddx-example-1-en","state":"on_ward","closed_slot":null,"shifts":0}]}\n'
@@ -103,6 +105,7 @@ run "the ward cannot be read — the question cannot be asked" refuses "cannot b
 run "the chain carries a shift against the case (a ward closure counts)" refuses "the chain carries 1 shift(s) against ddx-example-1-en (1790037060 Yahya Al-Shami)" production 0.1.2 -- STUB_SHIFT_ON_CHAIN=1
 run "the pack's version equals the one the door holds" refuses "already holds ddx-example-1-en at v0.1.1" production 0.1.1
 run "a shift on chain refuses even a bumped version" refuses "the chain carries" staging 0.1.2 -- STUB_SHIFT_ON_CHAIN=1
+run "a shift is in progress on the case — it will anchor" refuses "the chain carries 1 shift(s) against ddx-example-1-en (1790146977 Hodan Warsame)" production 0.1.2 -- STUB_ON_SHIFT=1
 
 echo "── push-case sends when ──"
 run "no shift is on chain against the case and the version is bumped" sends "stored: ddx-example-1-en v0.1.2 provisional" production 0.1.2

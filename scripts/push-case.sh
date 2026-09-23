@@ -12,8 +12,9 @@
 # anchored against this case?", and the leaf does not care who signed. So this script asks the
 # board the right question for every pack, and refuses before anything is sent:
 #
-#   - any patient on that case with a shift on chain (a `closed_slot`, or shifts counted) means
-#     the case is not replaceable — provisional or reviewed, same version or bumped;
+#   - any patient on that case with a shift on chain (a `closed_slot`, or shifts counted), or a
+#     shift in progress (`on_shift_since` — it will anchor, and the case is about to be under it),
+#     means the case is not replaceable — provisional or reviewed, same version or bumped;
 #   - a pack whose version equals the catalogue's for that case is a silent edit, and refused: a
 #     replace bumps meta.version, so the catalogue shows that something changed.
 #
@@ -79,7 +80,9 @@ for p in board.get("patients", []):
         continue
     shifts = p.get("shifts")
     n = len(shifts) if isinstance(shifts, list) else int(shifts or 0)
-    if p.get("closed_slot") or n > 0:
+    # A closure is an anchored shift; a shift in progress will anchor, and the case is about to
+    # be under it. Both count, and so does any shift the board has counted.
+    if p.get("closed_slot") or n > 0 or p.get("on_shift_since"):
         held.append(f"{p.get('patient_id')} {p.get('name', '')}".strip())
 have = next((str(c.get("version", "")) for c in cat.get("cases", []) if c.get("case_id") == cid), "")
 print(cid); print(ver); print(have); print("|".join(held))
