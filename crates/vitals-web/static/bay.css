@@ -464,6 +464,22 @@
   --alarm:#C6362E; --alarm-soft:#FBE8E6;
 }
 *{box-sizing:border-box}
+/* **The hidden attribute wins, against everything below it.**
+
+   `hidden` is `display:none` in the user-agent stylesheet — the weakest source a declaration can
+   have — so every rule in this file that sets `display` on an element the script hides overrules it
+   silently. That has bitten four times here. Three were patched one selector at a time
+   (`.pt-face[hidden]`, `.veil[hidden]`, `#wardprimary[hidden]`, all still below and all now
+   redundant); the fourth was the missing-picture stand-in, `class="face face-none"`, whose two
+   classes set `display:block` and `display:inline-flex` between them — so the initials square
+   rendered beside every real portrait on every bedside for two days while the script hid it
+   correctly on every pass.
+
+   Once, here, so a fifth `display:` rule on a hideable element cannot bring it back. `!important`
+   because that is the only thing an author rule cannot outrank, and because there is no such thing
+   as an element that is hidden and ought to be showing. Pinned by
+   `page.rs::nothing_the_script_hides_can_be_shown_again_by_the_stylesheet`. */
+[hidden]{display:none!important}
 body{margin:0;background:var(--room);color:var(--ink);
   font-family:"IBM Plex Sans",system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
 .app{max-width:96rem;margin:0 auto;padding:.9rem 1rem 3rem;display:grid;gap:.9rem;
