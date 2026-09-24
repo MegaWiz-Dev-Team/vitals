@@ -908,6 +908,48 @@ mod tests {
         );
     }
 
+    /// **A take and a hand-over are two events, and the gap between them is where the work goes.**
+    ///
+    /// On 24 ก.ย. the funnel said 33 takes accepted while the board carried 15 anchored human
+    /// shifts and nobody was on shift. The other 18 are people who took a patient's head, worked on
+    /// her, and left without handing over — and a tape that is never handed over is anchored
+    /// nowhere: it is on no chain, no receipt and no number we publish. Fifty-five per cent of
+    /// everyone who has ever put their hands on a patient here.
+    ///
+    /// That is by design — the chain refuses a leaf that extends no head, and an abandoned tape
+    /// cannot be signed by a page that has closed — but publishing one number for both events hid
+    /// it. So the funnel carries both, and the derivation says what their difference means rather
+    /// than leaving a reader to assume a take is a shift.
+    ///
+    /// Ward closures are not hand-overs and cannot reach this counter: `close_unattended` takes and
+    /// anchors through the chain client directly, never through the dispatch these counters sit in,
+    /// so the exclusion is structural rather than a filter somebody has to maintain.
+    #[test]
+    fn a_take_and_a_hand_over_are_counted_apart() {
+        let s = store("handovers");
+        let mut u = Usage::open(&s);
+
+        for _ in 0..3 {
+            u.took_a_shift(&s);
+        }
+        u.handed_over(&s);
+
+        let f = u.funnel();
+        assert_eq!(f["shifts_taken"], 3, "three heads were taken");
+        assert_eq!(f["hand_overs"], 1, "and one of them was handed back: {f}");
+
+        let why = f["derivation"].as_str().unwrap_or_default();
+        assert!(
+            why.contains("hand over") || why.contains("handed over"),
+            "the derivation has to say what the second number is: {why}"
+        );
+        assert!(
+            why.contains("no chain") || why.contains("anchored nowhere") || why.contains("nowhere"),
+            "and what becomes of the work in the gap — that is the whole reason for two \
+             numbers rather than one: {why}"
+        );
+    }
+
     /// The case map stops taking new names at its ceiling, and keeps counting the ones it has.
     ///
     /// `/api/new` refuses an id it cannot play, so nothing should ever reach this. That is the
