@@ -266,6 +266,13 @@ pub struct Event {
     pub text: String,
 }
 
+/// **Clone is cheap and is here for one reason: asking what happens next without it happening.**
+///
+/// The board needs to know when the ticker will close each patient, which means running her forward
+/// with nobody treating her until the engine reaches an ending — and that question must not advance
+/// the patient it is asked about. The scenario behind it is an `Arc`, so a clone copies her state
+/// and not the case.
+#[derive(Clone)]
 pub struct SceState {
     sce: Arc<Sce>,
     pub vitals: Vitals,

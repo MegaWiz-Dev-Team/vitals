@@ -295,3 +295,45 @@ fn an_hour_away_costs_her_a_minute() {
     assert!((idle_sim_seconds(2.0 * 3600.0) - 120.0).abs() < 1e-3,
             "two real hours is two simulated minutes: 1:60, written where a reader can divide it");
 }
+
+/// **The ward can ask when it will close a patient without closing her.**
+///
+/// The board ranks beds by who the ticker reaches next, which means asking every open bed how long
+/// she has if nobody comes. Two properties matter more than the number: the question must not
+/// advance the patient it is asked about, and the answer must come from the same physiology the
+/// ticker uses — a coarser walk would produce a different patient's clock, which is the whole
+/// reason `pass_idle` refuses to deliver time in one jump.
+#[test]
+fn asking_how_long_she_has_does_not_shorten_it() {
+    use vitals_replay::{pass_idle, sim_seconds_until_untreated_ending};
+
+    let sce = ep1();
+    let (mut st, _) = resume(&sce, &[]).expect("ep1 at t=0");
+
+    let before = (st.vitals.hr, st.vitals.spo2, st.status, st.outcome());
+    let left = sim_seconds_until_untreated_ending(&st, 6.0 * 3_600.0);
+    let after = (st.vitals.hr, st.vitals.spo2, st.status, st.outcome());
+    assert_eq!(
+        format!("{before:?}"), format!("{after:?}"),
+        "asking the question moved the patient it was asked about"
+    );
+
+    // ep1 kills an untreated patient, so there is an answer and it is not zero.
+    let left = left.expect("ep1 left alone reaches an ending");
+    assert!(left > 0.0, "a living patient has time left, however little");
+
+    // And the answer is the truth: walk her that far and she is finished; stop a step short and she
+    // is not. This is what ties the figure to the ticker's own physiology rather than to a formula.
+    let mut walked = st.clone();
+    pass_idle(&mut walked, left);
+    assert!(walked.outcome().is_some(), "she was said to end by {left} and did not");
+
+    let mut nearly = st.clone();
+    pass_idle(&mut nearly, (left - 120.0).max(0.0));
+    assert!(nearly.outcome().is_none(),
+            "she ended earlier than the figure said, so the countdown is short");
+
+    // A patient already finished has none left, rather than an error or a negative.
+    pass_idle(&mut st, left);
+    assert_eq!(sim_seconds_until_untreated_ending(&st, 3_600.0), Some(0.0));
+}

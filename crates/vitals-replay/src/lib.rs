@@ -580,3 +580,42 @@ pub fn debrief(sce_json: &str, tape: &[Step]) -> Result<Debrief, String> {
         statuses,
     })
 }
+
+/// **How much longer this patient has, if nobody comes.**
+///
+/// Simulated seconds from her state now until the engine reaches an ending with nobody treating
+/// her — which is the question the ward's own ticker answers every minute, asked one step earlier.
+/// `None` when she reaches no ending inside `limit`: a patient the case does not kill untreated,
+/// or one so far out that a countdown would be a fiction.
+///
+/// **It does not advance her.** The state is cloned, because the board asks this about every open
+/// bed on every build and a question that changed its subject would be the ward killing patients by
+/// looking at them.
+///
+/// Walked at the scenario's own grain through [`pass_idle`] rather than in one jump, for the reason
+/// that function gives: an hour delivered as a single tick walks past the edges an hour of ordinary
+/// ticks would have crossed, and produces a corpse the chart calls alive. The answer has to come
+/// from the same physiology the ticker uses or it is a different patient's clock.
+///
+/// Real time is the caller's to compute and the conversion is [`IDLE_SIM_PER_REAL`]: at one
+/// simulated minute per sixty real ones, a simulated second is a real minute, so simulated seconds
+/// divided by sixty is hours.
+pub fn sim_seconds_until_untreated_ending(st: &SceState, limit: f64) -> Option<f64> {
+    if st.outcome().is_some() {
+        return Some(0.0);
+    }
+    let mut ahead = st.clone();
+    // A minute of simulated time per step: fine enough that the answer is never more than a minute
+    // out — under a real hour at 1:60 — and coarse enough that forty beds cost forty thousand ticks
+    // rather than two and a half million.
+    const STEP: f64 = 60.0;
+    let mut spent = 0.0;
+    while spent < limit {
+        pass_idle(&mut ahead, STEP);
+        spent += STEP;
+        if ahead.outcome().is_some() {
+            return Some(spent);
+        }
+    }
+    None
+}
