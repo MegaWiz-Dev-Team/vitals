@@ -12,6 +12,11 @@
 //!
 //! The RPC calls themselves are proven on devnet by `ward_proof`. These are the parts that must
 //! hold before the wire is ever touched.
+//!
+//! Every `resumed` call here passes `cap_trailing: false`: these tests assert the rebuild as
+//! it happened, which is what they were written for and what the ticker still does. The arrival
+//! cap is a different question and has its own tests — passing `true` here would quietly change
+//! what each of these asserts rather than adding anything.
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_sdk::pubkey::Pubkey;
@@ -655,14 +660,14 @@ fn the_chain_decides_what_happened_to_her_and_in_what_order() {
     let chart = |h: &str| tapes.get(h).cloned();
 
     // Nobody has been yet.
-    let (fresh, n) = resumed(&sce, &[], &chart, 1_000_000, 1_000_000, &dated).expect("an unvisited patient");
+    let (fresh, n) = resumed(&sce, &[], &chart, 1_000_000, 1_000_000, &dated, false).expect("an unvisited patient");
     let (start, _) = replay_resume(&sce, &[]).expect("the scenario's start");
     assert_eq!(seen(&fresh), seen(&start));
     assert_eq!(n, 0);
 
     // Two shifts, anchored back to back. The chain of shifts equals the whole tape.
     let two = [anchored("one", 1_000_010), anchored("two", 1_000_020)];
-    let (rebuilt, n) = resumed(&sce, &two, &chart, 1_000_000, 1_000_020, &dated).expect("two shifts");
+    let (rebuilt, n) = resumed(&sce, &two, &chart, 1_000_000, 1_000_020, &dated, false).expect("two shifts");
     let whole: Vec<Step> = first.iter().chain(&second).cloned().collect();
     let (one_tape, _) = replay_resume(&sce, &whole).expect("one tape of both");
     // The chain of shifts equals the whole tape **plus the idle the chain's own gaps buy** — ten
@@ -677,13 +682,13 @@ fn the_chain_decides_what_happened_to_her_and_in_what_order() {
     assert_eq!(n, 2);
 
     // A tape we hold but the chain never anchored is not part of her past.
-    let (same, _) = resumed(&sce, &two, &chart, 1_000_000, 1_000_020, &dated).expect("two shifts again");
+    let (same, _) = resumed(&sce, &two, &chart, 1_000_000, 1_000_020, &dated, false).expect("two shifts again");
     assert_eq!(seen(&same), seen(&rebuilt),
                "the store holds a third tape, and it changes nothing — only anchored work counts");
 
     // A tape the chain names and we cannot produce stops the rebuild, in words.
     let missing = [anchored("one", 1_000_010), anchored("gone", 1_000_020)];
-    let err = match resumed(&sce, &missing, &chart, 1_000_000, 1_000_020, &dated) {
+    let err = match resumed(&sce, &missing, &chart, 1_000_000, 1_000_020, &dated, false) {
         Err(e) => e,
         Ok(_) => panic!("a tape the chain names and we cannot produce must stop the rebuild"),
     };
@@ -694,15 +699,15 @@ fn the_chain_decides_what_happened_to_her_and_in_what_order() {
     // the last anchor to now — three spans, all of them chain arithmetic.
     let a_night = (10.0 * 3600.0 / SLOT_SECONDS) as u64;
     let apart = [anchored("one", 1_000_010), anchored("two", 1_000_010 + a_night)];
-    let (after_a_night, _) = resumed(&sce, &apart, &chart, 1_000_000, 1_000_010 + a_night, &dated).expect("a night apart");
+    let (after_a_night, _) = resumed(&sce, &apart, &chart, 1_000_000, 1_000_010 + a_night, &dated, false).expect("a night apart");
     assert_ne!(seen(&after_a_night), seen(&rebuilt),
                "ten hours between two anchors is time she spent untreated");
 
-    let (waiting, _) = resumed(&sce, &two, &chart, 1_000_000, 1_000_020 + a_night, &dated).expect("nobody since");
+    let (waiting, _) = resumed(&sce, &two, &chart, 1_000_000, 1_000_020 + a_night, &dated, false).expect("nobody since");
     assert_ne!(seen(&waiting), seen(&rebuilt),
                "and so is ten hours since the last stranger left");
 
-    let (admitted_early, _) = resumed(&sce, &two, &chart, 1_000_000 - a_night, 1_000_020, &dated).expect("admitted early");
+    let (admitted_early, _) = resumed(&sce, &two, &chart, 1_000_000 - a_night, 1_000_020, &dated, false).expect("admitted early");
     assert_ne!(seen(&admitted_early), seen(&rebuilt),
                "a patient nobody came to for ten hours after she was admitted is not the patient \
                 the first stranger would have found at once");
@@ -1244,20 +1249,20 @@ fn the_same_real_hour_is_the_same_patient_on_any_chain() {
     let devnet = |slot: u64| (slot != 0).then(|| 1_789_000_000 + (slot as i64 * 166) / 1000);
 
     // One real hour on each chain: 9,000 slots at 0.4 s, 21,687 at 0.166 s.
-    let (a, _) = resumed(&sce, &[], &chart, admitted, admitted + 9_000, &nominal).expect("an hour");
-    let (b, _) = resumed(&sce, &[], &chart, admitted, admitted + 21_687, &devnet).expect("an hour");
+    let (a, _) = resumed(&sce, &[], &chart, admitted, admitted + 9_000, &nominal, false).expect("an hour");
+    let (b, _) = resumed(&sce, &[], &chart, admitted, admitted + 21_687, &devnet, false).expect("an hour");
     assert!((a.t_sec() - b.t_sec()).abs() < 1.0,
             "an hour is an hour: {} vs {} simulated seconds", a.t_sec(), b.t_sec());
 
     // The same slot gap on the two chains is not the same span, and must not leave the same
     // patient — this is the bug, stated as an inequality.
-    let (fast, _) = resumed(&sce, &[], &chart, admitted, admitted + 9_000, &devnet).expect("a gap");
+    let (fast, _) = resumed(&sce, &[], &chart, admitted, admitted + 9_000, &devnet, false).expect("a gap");
     assert!(fast.t_sec() < a.t_sec() - 1.0,
             "nine thousand slots is an hour on one chain and twenty-five minutes on the other, and \
              the patient has to be the one the clock says: {} vs {}", fast.t_sec(), a.t_sec());
 
     // A slot this ward cannot date advances her by nothing rather than by a guess.
-    let (undated, _) = resumed(&sce, &[], &chart, admitted, admitted + 9_000, &|_| None)
+    let (undated, _) = resumed(&sce, &[], &chart, admitted, admitted + 9_000, &|_| None, false)
         .expect("a chain this ward cannot date");
     assert_eq!(undated.t_sec(), 0.0,
                "no block time, no idle time: the ticker asks again a minute later with the block \

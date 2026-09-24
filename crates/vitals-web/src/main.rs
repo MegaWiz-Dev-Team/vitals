@@ -449,6 +449,10 @@ impl Session {
                     // rebuilt with no RPC in hand; a slot it cannot date advances her by nothing,
                     // and the next read that can date it does.
                     dated,
+                    // A person's shift, resumed to the moment they took it: capped if that moment
+                    // is at or after the boundary, so a restore hands back the patient the play
+                    // was on rather than a sicker one.
+                    ward_chain::cap_on_arrival(w.taken_slot, None, ward::arrival_cap_from_slot(), ward_chain::ward_signer().as_ref()),
                 )?;
                 let r = vitals_replay::shift(&mut st, &saved.tape, 0.0);
                 (st, r)
@@ -2122,6 +2126,9 @@ fn open_shift(
         // every slot on her chain from the listing that found them, so nothing here reaches the
         // RPC — the open path used to spend a round trip per slot before a page could be answered.
         &ward_chain::dater_to_now(store, now_slot),
+        // The case the cap was made for: somebody opening a bed now. Nobody has signed anything at
+        // this slot, so the boundary alone decides, and what she meets is what the card promises.
+        ward_chain::cap_on_arrival(now_slot, None, ward::arrival_cap_from_slot(), ward_chain::ward_signer().as_ref()),
     )?;
 
     let head = hex(&her.head);
@@ -6227,7 +6234,8 @@ fn main() {
                                     &s.sce_json, &b.shifts,
                                     &|h| ward_chain::tape_by_hash(&store, h),
                                     b.admitted_slot, w.taken_slot,
-                                    &ward_chain::cached_dater(&store))) {
+                                    &ward_chain::cached_dater(&store),
+                                    ward_chain::cap_on_arrival(w.taken_slot, None, ward::arrival_cap_from_slot(), ward_chain::ward_signer().as_ref()))) {
                                     Some(Ok((mut st, _))) => vitals_replay::shift(&mut st, &s.tape, 0.0),
                                     Some(Err(e)) => { drop(map);
                                         let _ = req.respond(json_code(
@@ -6519,6 +6527,9 @@ fn main() {
                     rebuild.admitted_slot,
                     w.taken_slot,
                     &ward_chain::cached_dater(&store),
+                    // The same answer the play was given, or this reduction computes a leaf from a
+                    // different patient than the one the tape was played on.
+                    ward_chain::cap_on_arrival(w.taken_slot, None, ward::arrival_cap_from_slot(), ward_chain::ward_signer().as_ref()),
                 );
                 let r = match base {
                     Ok((mut st, _)) => vitals_replay::shift(&mut st, &s.tape, 0.0),

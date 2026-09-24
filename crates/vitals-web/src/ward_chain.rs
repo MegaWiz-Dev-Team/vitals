@@ -1923,7 +1923,9 @@ pub fn closing_tape(
     let earlier: Vec<crate::ward::ShiftOnChain> =
         before.iter().filter(|s| s.slot < this.slot).copied().collect();
     let since = earlier.iter().map(|s| s.slot).max().unwrap_or(admitted_slot).max(admitted_slot);
-    let (mut st, _) = resumed(sce_json, &earlier, tape_of, admitted_slot, since, dated).ok()?;
+    let (mut st, _) = // Trailing span is zero here — this resumes only as far as the last anchor and applies the
+    // real gap itself below — so the flag changes nothing and says the honest thing.
+    resumed(sce_json, &earlier, tape_of, admitted_slot, since, dated, false).ok()?;
     let gap = match (dated(since), dated(this.slot)) {
         (Some(a), Some(b)) if b > a => (b - a) as f64,
         _ => 0.0,
@@ -2912,6 +2914,9 @@ pub fn resumed(
     admitted_slot: u64,
     now_slot: u64,
     dated: &dyn Fn(u64) -> Option<i64>,
+    // Whether the trailing gap is the one a stranger arriving meets, or the one that happened.
+    // Decided by `cap_on_arrival` at the call site, which knows whose slot this is.
+    cap_trailing: bool,
 ) -> Result<(vitals_sce::runtime::SceState, usize), String> {
     // How long she was alone between two slots, in real seconds, as the chain dates them. It was
     // the slot count times 0.4 s — and devnet was producing slots at 0.166 s on 17 ก.ย., so every
@@ -2942,8 +2947,20 @@ pub fn resumed(
         since = s.slot;
     }
 
-    // What has happened to her since the last anchor: nothing anybody did, and time.
-    vitals_replay::pass_idle(&mut st, vitals_replay::idle_sim_seconds(span(since, now_slot)));
+    // What has happened to her since the last anchor: nothing anybody did, and time — capped or
+    // not, as the caller has already decided with `cap_on_arrival`. The decision is not made here
+    // because this function cannot see whose moment `now_slot` is: a live arrival, a human shift
+    // being rebuilt, or a closure the ward signed. Seven callers know that and this one does not,
+    // so each passes the answer rather than restating the rule.
+    let gap = span(since, now_slot);
+    vitals_replay::pass_idle(
+        &mut st,
+        if cap_trailing {
+            vitals_replay::idle_sim_seconds_on_arrival(gap)
+        } else {
+            vitals_replay::idle_sim_seconds(gap)
+        },
+    );
     Ok((st, ordered.len()))
 }
 
@@ -2983,7 +3000,9 @@ pub fn died_unattended(
 ) -> Result<Option<Unattended>, String> {
     // Where her chart stops: the last shift anybody anchored, or her admission if nobody has.
     let since = shifts.iter().map(|s| s.slot).max().unwrap_or(admitted_slot).max(admitted_slot);
-    let (mut st, _) = resumed(sce_json, shifts, tape_of, admitted_slot, since, dated)?;
+    let (mut st, _) = // Same: `died_unattended` resumes to the last anchor and then hands the engine the whole
+    // uncapped gap itself. This is the ticker's half of the ruling and it must never be capped.
+    resumed(sce_json, shifts, tape_of, admitted_slot, since, dated, false)?;
     // The slots stay on the record — they are the chain's own name for the span, and what a
     // stranger re-derives it from. What the engine is handed is what those two blocks say the span
     // lasted in seconds.
@@ -3351,7 +3370,11 @@ pub fn receipt(
     // this one, and the idle time between them.
     let before: Vec<crate::ward::ShiftOnChain> =
         shifts.iter().filter(|s| s.slot < this.slot).copied().collect();
-    let (mut st, played) = resumed(sce_json, &before, tape_of, admitted_slot, this.slot, dated)?;
+    let (mut st, played) = // An anchored shift being re-derived: capped exactly as it was played, which the signer and
+    // the slot decide. Get this wrong and the leaf moves.
+    resumed(sce_json, &before, tape_of, admitted_slot, this.slot, dated,
+            cap_on_arrival(this.slot, Some(&this.signer), crate::ward::arrival_cap_from_slot(),
+                           ward_signer().as_ref()))?;
     let r = vitals_replay::shift(&mut st, &tape, 0.0);
 
     let det = rubric_json.and_then(|rj| vitals_osce::det_for_run(sce_json, &tape, rj).ok());

@@ -885,6 +885,22 @@ pub fn arrival_due(last_admission: Option<i64>, now: i64, every_minutes: u64) ->
     since >= 0 && since >= (every_minutes as i64).saturating_mul(60)
 }
 
+/// **The slot the arrival cap begins at.** `VITALS_ARRIVAL_CAP_FROM_SLOT`, and **off when unset**.
+///
+/// Off by default on purpose, and it is the same direction as min-instances: a deploy that forgets
+/// this setting must change no patient. The alternative default — capping from slot zero — would
+/// reach back over every shift already on chain and stop 23 production charts re-deriving, which is
+/// exactly the outcome the boundary exists to prevent.
+///
+/// The director sets it to the deploying slot after re-running the gap count, so the boundary is
+/// always a slot the chain has already passed and never a guess about one it has not.
+pub fn arrival_cap_from_slot() -> u64 {
+    std::env::var("VITALS_ARRIVAL_CAP_FROM_SLOT")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(u64::MAX)
+}
+
 /// How often a patient arrives, in minutes. `VITALS_WARD_ARRIVAL_MINUTES`, default 60, `0` off.
 ///
 /// **Sixty because the founder ruled sixty**, on 22 ก.ย., replacing the thirty this defaulted to
