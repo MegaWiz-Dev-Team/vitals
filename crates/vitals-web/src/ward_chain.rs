@@ -3541,3 +3541,72 @@ pub fn rubric_for(
         .map(|r| r.to_string())
         .or_else(|| rubric_of(root, case))
 }
+
+// ── hand-overs, counted off the chain rather than tallied as they happen ─────
+
+/// Midnight in Bangkok on `day` ("YYYY-MM-DD"), as a unix second.
+///
+/// `funnel_since` is a Bangkok day and a slot's block time is a unix second, so one of them has to
+/// cross to meet the other. This is the crossing, in one place, pure: 2026-09-23 in Bangkok begins
+/// at 17:00 UTC on the 22nd, and a shift anchored at 16:00 UTC on the 22nd is outside a window that
+/// opened on the 23rd however much it looks like the same day on a UTC clock.
+///
+/// `None` on anything that is not three numbers — the day comes from our own record, but a record
+/// is data from disk and this is asked about a published figure.
+pub fn day_start_ict(day: &str) -> Option<i64> {
+    let mut it = day.split('-');
+    let y: i64 = it.next()?.parse().ok()?;
+    let m: i64 = it.next()?.parse().ok()?;
+    let d: i64 = it.next()?.parse().ok()?;
+    if it.next().is_some() || !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    // Days from the civil calendar to the epoch, shifting the year to start in March so a leap day
+    // is the last day of the year and needs no special case.
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let mp = (m + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    // Bangkok is UTC+7 and has been since 1920, with no daylight saving ever. The ward's own day
+    // boundary is this one, so this is the only offset in the file.
+    Some(days * 86_400 - 7 * 3_600)
+}
+
+/// How many shifts on this chain were handed over by a stranger inside the funnel's window.
+///
+/// **Derived, never tallied.** A runtime counter would start at the deploy that introduced it while
+/// the takes beside it had been counting for days — two clocks published as one gap, which is the
+/// bug `funnel_since` exists to end. Every anchored shift already carries the two facts this needs,
+/// a signer and a slot, so the chain is the record and this only reads it. It is also why anyone
+/// holding the program id can recount this figure without trusting the page.
+///
+/// A shift the ward itself signed is a closure, not a hand-over, and is excluded **by signer rather
+/// than by the patient's state** — Amelia was handed over by a stranger and closed by the ward
+/// fifteen minutes later, and her hand-over counts while the closure does not.
+///
+/// Returns the count and how many shifts could not be placed in the window because their slot has
+/// no block time yet. Undatable shifts are **not** counted, and the number of them is published
+/// beside the figure rather than swallowed: a count that is quietly short is worse than one that
+/// says how short it might be.
+pub fn hand_overs_in_window(
+    shifts: &[(u64, crate::ward::ShiftOnChain)],
+    ward_key: &[u8; 32],
+    dated: &dyn Fn(u64) -> Option<i64>,
+    window_start_unix: i64,
+) -> (u64, u64) {
+    let (mut counted, mut undatable) = (0u64, 0u64);
+    for (_, s) in shifts {
+        if &s.signer == ward_key {
+            continue;
+        }
+        match dated(s.slot) {
+            Some(t) if t >= window_start_unix => counted += 1,
+            Some(_) => {}
+            None => undatable += 1,
+        }
+    }
+    (counted, undatable)
+}

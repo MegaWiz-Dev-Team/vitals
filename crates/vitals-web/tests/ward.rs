@@ -2255,3 +2255,98 @@ fn a_patient_is_due_on_the_clock_and_a_ward_that_cannot_tell_the_time_invents_no
     assert!(!arrival_due(Some(now + 600), now, half_hour),
                "a last admission in the future is a disagreement about time, not a patient due");
 }
+
+// ── hand-overs read off the chain, not tallied as they happen ───────────────
+
+/// **The Bangkok day a window opened, as the unix second a block time can be compared to.**
+///
+/// `funnel_since` is a Bangkok day and a slot carries a unix second. One of them has to cross, and
+/// crossing it in two places is how a figure comes to mean two things. The case that matters is the
+/// seven-hour overlap: a shift anchored at 16:00 UTC on 22 Sep is *before* a window that opened on
+/// 23 Sep in Bangkok, even though a UTC reader would call 17:00 the same evening.
+#[test]
+fn a_bangkok_day_starts_seven_hours_before_utc_midnight() {
+    use vitals_web::ward_chain::day_start_ict;
+
+    // 2026-09-23 00:00 +07 is 2026-09-22 17:00 UTC.
+    let start = day_start_ict("2026-09-23").expect("a day the ward wrote itself");
+    // 1790096400 == 2026-09-22T17:00:00Z, checked against a date library rather than arithmetic
+    // done by hand: the first constant written here was a day out, and the function was right.
+    assert_eq!(start, 1_790_096_400, "23 Sep in Bangkok begins at 17:00 UTC on the 22nd");
+
+    // A day is exactly a day later, leap years and month ends included.
+    assert_eq!(day_start_ict("2026-09-24").unwrap() - start, 86_400);
+    assert_eq!(
+        day_start_ict("2026-10-01").unwrap() - day_start_ict("2026-09-30").unwrap(),
+        86_400,
+        "a month boundary is still one day"
+    );
+    assert_eq!(
+        day_start_ict("2028-03-01").unwrap() - day_start_ict("2028-02-29").unwrap(),
+        86_400,
+        "and a leap day is a day"
+    );
+
+    // It is asked about a published figure, so it refuses anything that is not a date rather than
+    // guessing a number out of it.
+    for bad in ["", "2026-09", "2026-09-23T00:00", "yesterday", "2026-13-01", "2026-09-32"] {
+        assert!(day_start_ict(bad).is_none(), "{bad} is not a day");
+    }
+}
+
+/// **A hand-over is a shift a stranger anchored inside the window, and the chain already says so.**
+///
+/// Counted at read time off the board rather than tallied as it happens: a counter introduced today
+/// starts at zero while the takes beside it have run since the window opened, and publishing those
+/// two as a gap is the "2% of those who arrived" bug wearing a new field name. Every anchored shift
+/// carries a signer and a slot, so nothing needs to be remembered.
+///
+/// Excluded **by signer, not by state**: the ward closes patients by anchoring a shift of its own,
+/// and Amelia was handed over by a stranger and closed by the ward fifteen minutes later. Her
+/// hand-over is one of these; the closure that followed is not.
+#[test]
+fn hand_overs_are_the_strangers_shifts_the_chain_dates_inside_the_window() {
+    use vitals_web::ward::ShiftOnChain;
+    use vitals_web::ward_chain::hand_overs_in_window;
+
+    let ward = [0xAAu8; 32];
+    let her = [0x11u8; 32];
+    let him = [0x22u8; 32];
+    let shift = |signer: [u8; 32], slot: u64| ShiftOnChain {
+        patient_id: 1,
+        run_hash: [0; 32],
+        signer,
+        slot,
+    };
+    let window = 1_000i64;
+    // Slot 1 is before the window, 2 and 3 inside it, 9 is a slot nothing has dated yet.
+    let dated = |slot: u64| -> Option<i64> {
+        match slot {
+            1 => Some(900),
+            2 => Some(1_000),
+            3 => Some(5_000),
+            _ => None,
+        }
+    };
+
+    let board = vec![
+        (1u64, shift(her, 2)),    // a stranger, inside
+        (2u64, shift(him, 3)),    // another stranger, inside
+        (3u64, shift(her, 1)),    // a stranger, but before the window opened
+        (4u64, shift(ward, 3)),   // the ward closing a patient: never a hand-over
+        (5u64, shift(ward, 2)),   // and again
+        (6u64, shift(him, 9)),    // a stranger whose slot has no block time yet
+    ];
+
+    let (n, undatable) = hand_overs_in_window(&board, &ward, &dated, window);
+    assert_eq!(n, 2, "two strangers handed over inside the window");
+    assert_eq!(undatable, 1, "and one could not be placed, which is said rather than swallowed");
+
+    // The boundary belongs to the window: a shift anchored in the window's first second is in it.
+    assert_eq!(hand_overs_in_window(&[(1, shift(her, 2))], &ward, &dated, 1_000).0, 1);
+    assert_eq!(hand_overs_in_window(&[(1, shift(her, 2))], &ward, &dated, 1_001).0, 0);
+
+    // A ward that has anchored nothing but closures has no hand-overs, not an error.
+    let only_closures = vec![(1u64, shift(ward, 2)), (2u64, shift(ward, 3))];
+    assert_eq!(hand_overs_in_window(&only_closures, &ward, &dated, window), (0, 0));
+}
