@@ -218,6 +218,26 @@ struct Rec {
     /// the question the opening raised: did nobody come, or did they come and not press?
     #[serde(default)]
     shifts_taken: u64,
+    /// **Step four, and the one that says whether any of it was kept.** A take puts the head in
+    /// somebody's hands; only a hand-over anchors the tape. The difference between these two is
+    /// work that happened and is recorded nowhere — 18 of 33 on 24 ก.ย. — so they are two fields
+    /// and never one. `#[serde(default)]` because every record written before this existed has a
+    /// take count and no hand-over count, and those takes are real: the field starts at zero and
+    /// counts forward rather than pretending to know a past it was not there for.
+    #[serde(default)]
+    hand_overs: u64,
+    /// **The day `hand_overs` started counting, which is not the day the window opened.**
+    ///
+    /// The field arrived on 25 ก.ย., after `shifts_taken` had been counting since the 23rd. Without
+    /// this date the page would divide a take count with two days of history by a hand-over count
+    /// with none and print the difference as a finding — two numbers on two clocks published as a
+    /// ratio, which is precisely the bug `funnel_since` was created to end and which cost us a
+    /// published "2% of those who arrived" three days ago.
+    ///
+    /// So the gap is only ever quoted between figures that share a clock, and this says when that
+    /// clock started. `None` on a record that has never anchored a hand-over.
+    #[serde(default)]
+    hand_overs_since: Option<String>,
 }
 
 pub struct Usage {
@@ -243,6 +263,8 @@ impl Usage {
             me.rec.funnel_arrivals = 0;
             me.rec.bedsides_opened = 0;
             me.rec.shifts_taken = 0;
+            me.rec.hand_overs = 0;
+            me.rec.hand_overs_since = None;
             me.persist(store);
         }
         me
@@ -314,6 +336,23 @@ impl Usage {
         self.persist(store);
     }
 
+    /// A shift was handed over — the tape is anchored and the work is on the chain.
+    ///
+    /// Counted in the `(WardWork::Anchor, Ok(sig))` arm, where the chain accepted the leaf, for the
+    /// same reason `took_a_shift` is counted where the take landed: the moment the program agreed
+    /// is the only moment either of them became true.
+    ///
+    /// The ward's own closures cannot arrive here. `close_unattended` takes and anchors through the
+    /// chain client directly and never enters this dispatch, so this counts human hand-overs by
+    /// construction rather than by filtering on a signer.
+    pub fn handed_over(&mut self, store: &Store) {
+        let (day, _) = self.stamp();
+        self.rec.since.get_or_insert(day.clone());
+        self.rec.hand_overs_since.get_or_insert_with(|| day.clone());
+        self.rec.hand_overs += 1;
+        self.persist(store);
+    }
+
     /// How far people got: the globe, a bedside, a shift.
     ///
     /// **Its own block, not a field on `arrivals`.** `arrivals` answers "what does the ward know
@@ -328,15 +367,28 @@ impl Usage {
             "arrivals_all_time": self.rec.arrivals,
             "bedsides_opened": self.rec.bedsides_opened,
             "shifts_taken": self.rec.shifts_taken,
-            "derivation": "three steps the server can see, counted per event and never per \
+            "hand_overs": self.rec.hand_overs,
+            "hand_overs_since": self.rec.hand_overs_since,
+            "derivation": "four steps the server can see, counted per event and never per \
                            person, inside one window that opened on `since`: the front page \
-                           served, a patient's bedside served, and a take the chain accepted. A \
-                           take the program refused is not a shift and is not counted as one. All \
-                           three start together — the first version of this took its arrivals from \
-                           the all-time counter, which had a day's head start, and the ratio \
-                           between them meant nothing. `arrivals_all_time` is the headline and is \
-                           never the denominator for these. The gap between two steps is a \
-                           question, not a measurement of anybody",
+                           served, a patient's bedside served, a take the chain accepted, and a \
+                           hand-over the chain anchored. A take the program refused is not a shift \
+                           and is not counted as one. **The gap between `shifts_taken` and \
+                           `hand_overs` is work that exists nowhere**: only a hand-over anchors \
+                           the tape, so a shift whose page closed or whose lease ran out is on no \
+                           chain, no receipt and in no other number here — on 24 ก.ย. that was 18 \
+                           of 33. Ward closures are not hand-overs and never reach this count: the \
+                           ticker anchors them through the chain client, not through the dispatch \
+                           these are counted in. **`hand_overs` has its own start date and it is later than \
+                           `since`**: the count arrived on 25 ก.ย. while takes had been counted \
+                           from the 23rd, so the two are only a gap from `hand_overs_since` \
+                           onwards and anything spanning more than that is two clocks. The first \
+                           three start together — the first version of \
+                           this took its arrivals from the all-time counter, which had a day's \
+                           head start, and the ratio between them meant nothing. \
+                           `arrivals_all_time` is the headline and is never the denominator for \
+                           these. The gap between two steps is a question, not a measurement of \
+                           anybody",
         })
     }
 
@@ -939,8 +991,12 @@ mod tests {
         assert_eq!(f["hand_overs"], 1, "and one of them was handed back: {f}");
 
         let why = f["derivation"].as_str().unwrap_or_default();
+        // "hand-over" hyphenated: the house spelling everywhere else in this file and on the
+        // page. The first version of this assertion looked for "hand over" and failed against a
+        // derivation that says it eleven times — a too-narrow check reporting a fault in the thing
+        // it was checking, which is the shape of mistake this session has made all day.
         assert!(
-            why.contains("hand over") || why.contains("handed over"),
+            why.contains("hand-over"),
             "the derivation has to say what the second number is: {why}"
         );
         assert!(

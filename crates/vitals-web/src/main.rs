@@ -6412,6 +6412,12 @@ fn main() {
                         }))
                     }
                     (WardWork::Anchor { session, patient_id, .. }, Ok(sig)) => {
+                        // A hand-over, counted here and nowhere earlier, mirroring the take arm
+                        // above: the chain has accepted the leaf, so the tape is on the record and
+                        // the work is kept. Every take that never reaches this line is work that
+                        // exists nowhere — 18 of 33 on 24 ก.ย. — which is why these are two
+                        // numbers on the funnel and not one.
+                        usage.lock().unwrap().handed_over(&store);
                         let mut map = sessions.lock().unwrap();
                         let now_long = map.get(session).and_then(|s| s.ward.as_ref()).map(|w| w.index + 1);
                         if let Some(s) = map.get_mut(session) {
