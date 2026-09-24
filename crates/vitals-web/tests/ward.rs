@@ -2350,3 +2350,64 @@ fn hand_overs_are_the_strangers_shifts_the_chain_dates_inside_the_window() {
     let only_closures = vec![(1u64, shift(ward, 2)), (2u64, shift(ward, 3))];
     assert_eq!(hand_overs_in_window(&only_closures, &ward, &dated, window), (0, 0));
 }
+
+/// **When a gap is capped, and when it is the gap that actually happened.**
+///
+/// The founder's ruling has two halves that must both stay true: she gets worse for every hour
+/// nobody comes, and whoever comes finds her with a shift's worth of time in hand. The first is the
+/// ticker's uncapped rule; the second is this cap. What decides between them is not the patient and
+/// not the clock — it is **whose moment the chart is being brought up to**.
+///
+/// Two conditions, and the devnet count is why each exists. An unconditional cap would have
+/// rewritten every already-anchored shift's starting state: 23 production charts, every one of them
+/// a ward closure, would have stopped re-deriving the leaf the chain holds.
+///
+/// * **Before the boundary slot, nothing is capped.** A shift anchored before the cap shipped was
+///   played from the uncapped state and must keep deriving from it, or its leaf moves.
+/// * **A shift the ward signed is never capped**, whenever it happened. The ticker's closures are
+///   the uncapped half of the ruling; capping them would make the ward close patients on a
+///   different patient than the one it killed.
+///
+/// A live arrival has no anchored shift at that slot at all — nobody has signed anything yet — and
+/// that is the case the cap exists for.
+#[test]
+fn a_gap_is_capped_only_for_a_stranger_arriving_after_the_boundary() {
+    use vitals_web::ward_chain::cap_on_arrival;
+
+    let ward = [0xAAu8; 32];
+    let her = [0x11u8; 32];
+    let boundary = 1_000u64;
+
+    // The case the cap is for: somebody arriving now, after the boundary, nothing signed yet.
+    assert!(cap_on_arrival(1_500, None, boundary, Some(&ward)),
+            "a stranger opening a bed after the boundary meets the capped state");
+
+    // A human shift anchored after the boundary: capped, and it was played that way too, so its
+    // leaf re-derives exactly as it was anchored.
+    assert!(cap_on_arrival(1_500, Some(&her), boundary, Some(&ward)));
+
+    // History. A human shift anchored before the boundary was played from the uncapped state and
+    // keeps deriving from it — this is the condition that saves the charts already on chain.
+    assert!(!cap_on_arrival(999, Some(&her), boundary, Some(&ward)),
+            "a shift anchored before the cap shipped must derive as it was played");
+    assert!(!cap_on_arrival(999, None, boundary, Some(&ward)));
+
+    // The ward's own closures, never capped, on either side of the boundary. She still dies of
+    // being alone; the cap is only what the person who comes is handed.
+    assert!(!cap_on_arrival(1_500, Some(&ward), boundary, Some(&ward)),
+            "a closure the ward signed is the uncapped half of the ruling");
+    assert!(!cap_on_arrival(999, Some(&ward), boundary, Some(&ward)));
+
+    // The boundary slot itself is inside the new rule: it is where the cap begins, not the last
+    // slot before it.
+    assert!(cap_on_arrival(1_000, None, boundary, Some(&ward)));
+    assert!(!cap_on_arrival(999, None, boundary, Some(&ward)));
+
+    // A ward that cannot name its own key cannot tell a closure from a stranger's shift, so it caps
+    // nothing: the safe direction is the one that leaves every anchored chart deriving as it was.
+    assert!(!cap_on_arrival(1_500, Some(&ward), boundary, None));
+    assert!(!cap_on_arrival(1_500, None, boundary, None));
+
+    // A boundary nobody has set is a cap that is off, so an unset deploy changes no patient.
+    assert!(!cap_on_arrival(u64::MAX - 1, None, u64::MAX, Some(&ward)));
+}

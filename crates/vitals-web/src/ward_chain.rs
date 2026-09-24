@@ -3655,3 +3655,41 @@ pub fn shifts_on_the_board(
     }
     all
 }
+
+/// **Is the trailing gap before `now_slot` capped, or is it the gap that actually happened?**
+///
+/// The founder's ruling of 23 ก.ย. has two halves and both have to stay true: she gets worse for
+/// every hour nobody comes, and whoever comes finds her with a shift's worth of time left. The
+/// first is [`vitals_replay::idle_sim_seconds`], applied by the ticker; the second is
+/// [`vitals_replay::idle_sim_seconds_on_arrival`]. This decides which a chart is brought up with,
+/// and the answer turns on **whose moment it is being brought up to**, never on the patient.
+///
+/// Two conditions, and the devnet count is why each of them exists. Capping unconditionally — the
+/// first version of this, stopped before it shipped — would have changed the starting state of
+/// every shift already on chain: 23 production charts, all of them ward closures, would have
+/// stopped re-deriving the leaf the chain holds. Not a different score; a shift that no longer
+/// verifies.
+///
+/// * **Before `boundary_slot`, nothing is capped.** A shift anchored before the cap shipped was
+///   played from the uncapped state, so that is the state it must keep deriving from.
+/// * **A shift the ward signed is never capped**, whenever it landed. Closures are the uncapped
+///   half of the ruling, and capping one would close a patient on a different patient than the one
+///   the engine actually finished.
+///
+/// A live arrival has signed nothing yet — `None` — and is the case the cap was made for.
+///
+/// `ward` is `None` on a host that holds neither key. It cannot tell a closure from a stranger's
+/// shift, so it caps nothing: the safe direction is the one that leaves every anchored chart
+/// deriving exactly as it was played.
+pub fn cap_on_arrival(
+    now_slot: u64,
+    signer_at_now: Option<&[u8; 32]>,
+    boundary_slot: u64,
+    ward: Option<&[u8; 32]>,
+) -> bool {
+    let Some(ward) = ward else { return false };
+    if now_slot < boundary_slot {
+        return false;
+    }
+    signer_at_now != Some(ward)
+}

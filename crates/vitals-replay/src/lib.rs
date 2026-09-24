@@ -156,6 +156,46 @@ pub fn idle_sim_seconds(real: f64) -> f64 {
     if real <= 0.0 { 0.0 } else { real * IDLE_SIM_PER_REAL }
 }
 
+/// **The most a gap may cost the stranger who finally comes: five simulated minutes.**
+///
+/// Set by the founder on 23 ก.ย. 2026, the morning after the first real stranger ever to take a
+/// shift on this ward opened Nadege Toussaint — twelve real hours alone, so twelve simulated
+/// minutes into a PSVT case, already past the point it can be treated from. He asked her nine
+/// questions across forty seconds, she arrested, and he left without recording anything. A ward
+/// whose first shift is always a death teaches exactly one thing, and it is not to come back.
+///
+/// His ruling: "รักษาหลักการ 'ไม่มีใครมาก็ตาย' ไว้ แต่ให้คนที่มาถึงได้รักษาจริง ไม่ใช่มาดูตาย" — keep the
+/// principle that nobody coming means she dies, but whoever does come gets to treat, not to watch
+/// a death. Two rules about one gap, both true at once, and they are two functions here so that
+/// neither can be quietly used for the other's work:
+///
+/// * [`idle_sim_seconds`] stays unbounded. It is what the ward's ticker hands the engine when it
+///   asks whether a patient has died alone, and being abandoned here has to stay survivable-by-
+///   nobody. She gets worse for every hour nobody comes.
+/// * This one stops at the cap, and it is what a chart is brought up to the moment somebody
+///   arrived. Whoever comes finds her as she would be five minutes in.
+///
+/// A ceiling, never a rescaling: under it the two agree exactly, so an hour alone still costs her
+/// the simulated minute it always did and only the long gaps flatten.
+///
+/// **This changes what an already-anchored shift re-derives to.** The chain stores tapes and slots,
+/// never states, so every state on this ward is recomputed by this code — and a shift anchored
+/// after a gap longer than five real hours now rebuilds from a different patient than it was played
+/// on, and its leaf will not match. Visible as unrebuildable rather than silently wrong, which is
+/// the only mercy available; checked against devnet before this shipped.
+///
+/// Not a physical constant. It is a promise about what showing up is worth, in one place, so moving
+/// it is one edit and every browser still derives the same patient.
+pub const ARRIVAL_IDLE_CAP_SIM_SECONDS: f64 = 300.0;
+
+/// Simulated seconds to advance a chart being brought up to the moment somebody arrived at the bed.
+///
+/// See [`ARRIVAL_IDLE_CAP_SIM_SECONDS`] for why this is not [`idle_sim_seconds`], and why the
+/// ticker's death path must never call it.
+pub fn idle_sim_seconds_on_arrival(real: f64) -> f64 {
+    idle_sim_seconds(real).min(ARRIVAL_IDLE_CAP_SIM_SECONDS)
+}
+
 /// Let `seconds` of simulated time pass with nobody in the room.
 ///
 /// **At the scenario's own grain, never in one jump**, and that is the whole function. The engine
