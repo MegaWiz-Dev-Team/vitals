@@ -23,6 +23,9 @@ h1{font-size:20px;margin:0;font-weight:800;letter-spacing:-.01em}h1 b{color:var(
 .lead .two b{display:block;font-size:34px;font-weight:800;letter-spacing:-.02em;line-height:1.05;color:var(--green)}
 .lead .two span{display:block;font-size:13.5px;max-width:20em;margin-top:2px}
 .lead .when{font-family:var(--mono);font-size:11px;color:var(--mute);line-height:1.6;margin-top:10px}
+.lead .gap{margin-top:10px;padding:8px 10px;border-left:3px solid var(--rust);background:rgba(162,71,20,.06);font-size:13px;line-height:1.5}
+.lead .gap b{color:var(--rust);font-size:16px}
+.lead .two b.hot{color:var(--green)}
 .card h3,.lead h3{margin:0 0 8px;font-size:11.5px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--green);font-weight:600}
 .bar{display:grid;grid-template-columns:110px 1fr 60px;gap:10px;align-items:center;font-size:13px;height:26px}
 .bar .tr{height:12px;background:var(--line);border-radius:3px;position:relative}.bar .fl{position:absolute;left:0;top:0;bottom:0;background:var(--green);border-radius:3px}
@@ -52,12 +55,23 @@ const $=s=>document.querySelector(s);const n=v=>(v??0).toLocaleString();const pc
 function twoCounts(f){
  // A date, so it is checked rather than escaped: digits and dashes survive and nothing else does.
  const day=f.since?String(f.since).replace(/[^0-9-]/g,''):'';
+ // Null when this host cannot tell its own closures from a stranger's hand-over; no gap is
+ // claimed in that case rather than one being invented from a missing number.
+ const gap=(f.hand_overs===null||f.hand_overs===undefined)?0:Math.max(0,(f.shifts_taken||0)-f.hand_overs);
  if(!day)return '<div class="when">the window has not opened yet &middot; it opens on the first arrival after this counter was built, and the two counts below start together on that day</div>';
  return '<div class="two">'
   +`<div><b>${n(f.bedsides_opened)}</b><span>opened a patient&rsquo;s bedside</span></div>`
   +`<div><b>${n(f.shifts_taken)}</b><span>went on to take the shift &mdash; ${pct(f.shifts_taken,f.bedsides_opened)} of the people beside them</span></div>`
+  +`<div><b${f.hand_overs===null?'':' class="hot"'}>${f.hand_overs===null?'&mdash;':n(f.hand_overs)}</b><span>${f.hand_overs===null?'hand-overs cannot be counted on this host':'handed her over &mdash; '+pct(f.hand_overs,f.shifts_taken)+' of the shifts taken'}</span></div>`
   +'</div>'
-  +`<div class="when">both counted since ${day}, and only since then &mdash; one day, one clock, so the second divides into the first<br>${n(f.arrivals)} arrived on the front page in the same window &middot; ${pct(f.bedsides_opened,f.arrivals)} of them opened a bedside</div>`;
+  +`<div class="when">all counted since ${day}, and only since then &mdash; one window, one clock<br>${n(f.arrivals)} arrived on the front page in the same window &middot; ${pct(f.bedsides_opened,f.arrivals)} of them opened a bedside</div>`
+  // **The gap is the point of the fourth number, so the page says what it is** rather than
+  // leaving a reader to subtract two figures and guess. Only a hand-over anchors the tape: a
+  // shift whose page closed or whose lease ran out is on no chain and no receipt, so the
+  // difference is work that happened and is recorded nowhere. It was 18 of 33 when we first
+  // looked, and we had spent a day improving the step above it without knowing.
+  +(gap>0?`<div class="gap"><b>${n(gap)}</b> took a patient and never handed her over &mdash; that work is on no chain and no receipt. Only a hand-over anchors the tape.</div>`:'')
+  +(f.hand_overs_not_yet_datable?`<div class="when">${n(f.hand_overs_not_yet_datable)} anchored shift(s) have no block time yet, so they are not in the count above &mdash; it is a floor until the chain dates them</div>`:'');
 }
 function tile(v,l,s,c){return `<div class="tile ${c||''}"><b>${v}</b><span>${l}</span>${s?`<small>${s}</small>`:''}</div>`}
 async function load(){

@@ -218,26 +218,11 @@ struct Rec {
     /// the question the opening raised: did nobody come, or did they come and not press?
     #[serde(default)]
     shifts_taken: u64,
-    /// **Step four, and the one that says whether any of it was kept.** A take puts the head in
-    /// somebody's hands; only a hand-over anchors the tape. The difference between these two is
-    /// work that happened and is recorded nowhere — 18 of 33 on 24 ก.ย. — so they are two fields
-    /// and never one. `#[serde(default)]` because every record written before this existed has a
-    /// take count and no hand-over count, and those takes are real: the field starts at zero and
-    /// counts forward rather than pretending to know a past it was not there for.
-    #[serde(default)]
-    hand_overs: u64,
-    /// **The day `hand_overs` started counting, which is not the day the window opened.**
-    ///
-    /// The field arrived on 25 ก.ย., after `shifts_taken` had been counting since the 23rd. Without
-    /// this date the page would divide a take count with two days of history by a hand-over count
-    /// with none and print the difference as a finding — two numbers on two clocks published as a
-    /// ratio, which is precisely the bug `funnel_since` was created to end and which cost us a
-    /// published "2% of those who arrived" three days ago.
-    ///
-    /// So the gap is only ever quoted between figures that share a clock, and this says when that
-    /// clock started. `None` on a record that has never anchored a hand-over.
-    #[serde(default)]
-    hand_overs_since: Option<String>,
+    // `hand_overs` was a field here for one commit (90cf423) and is gone: it is a count of
+    // shifts on the chain, each carrying a signer and a slot, so it is derived at read time in
+    // `read_response` instead. A counter would have started at its own deploy while the takes
+    // beside it had run since the window opened — two clocks published as one gap, which is the
+    // bug `funnel_since` exists to end — and, more simply, it was a copy of a record.
 }
 
 pub struct Usage {
@@ -263,8 +248,6 @@ impl Usage {
             me.rec.funnel_arrivals = 0;
             me.rec.bedsides_opened = 0;
             me.rec.shifts_taken = 0;
-            me.rec.hand_overs = 0;
-            me.rec.hand_overs_since = None;
             me.persist(store);
         }
         me
@@ -336,23 +319,6 @@ impl Usage {
         self.persist(store);
     }
 
-    /// A shift was handed over — the tape is anchored and the work is on the chain.
-    ///
-    /// Counted in the `(WardWork::Anchor, Ok(sig))` arm, where the chain accepted the leaf, for the
-    /// same reason `took_a_shift` is counted where the take landed: the moment the program agreed
-    /// is the only moment either of them became true.
-    ///
-    /// The ward's own closures cannot arrive here. `close_unattended` takes and anchors through the
-    /// chain client directly and never enters this dispatch, so this counts human hand-overs by
-    /// construction rather than by filtering on a signer.
-    pub fn handed_over(&mut self, store: &Store) {
-        let (day, _) = self.stamp();
-        self.rec.since.get_or_insert(day.clone());
-        self.rec.hand_overs_since.get_or_insert_with(|| day.clone());
-        self.rec.hand_overs += 1;
-        self.persist(store);
-    }
-
     /// How far people got: the globe, a bedside, a shift.
     ///
     /// **Its own block, not a field on `arrivals`.** `arrivals` answers "what does the ward know
@@ -367,8 +333,6 @@ impl Usage {
             "arrivals_all_time": self.rec.arrivals,
             "bedsides_opened": self.rec.bedsides_opened,
             "shifts_taken": self.rec.shifts_taken,
-            "hand_overs": self.rec.hand_overs,
-            "hand_overs_since": self.rec.hand_overs_since,
             "derivation": "four steps the server can see, counted per event and never per \
                            person, inside one window that opened on `since`: the front page \
                            served, a patient's bedside served, a take the chain accepted, and a \
@@ -379,11 +343,11 @@ impl Usage {
                            chain, no receipt and in no other number here — on 24 ก.ย. that was 18 \
                            of 33. Ward closures are not hand-overs and never reach this count: the \
                            ticker anchors them through the chain client, not through the dispatch \
-                           these are counted in. **`hand_overs` has its own start date and it is later than \
-                           `since`**: the count arrived on 25 ก.ย. while takes had been counted \
-                           from the 23rd, so the two are only a gap from `hand_overs_since` \
-                           onwards and anything spanning more than that is two clocks. The first \
-                           three start together — the first version of \
+                           these are counted in. `hand_overs` is not tallied here at all \
+                           — it is counted at read time off the board's own shifts, by signer and \
+                           by the slot's block time, so it sits on this window's clock from the \
+                           first read and anyone with the program id can recount it. All four \
+                           start together — the first version of \
                            this took its arrivals from the all-time counter, which had a day's \
                            head start, and the ratio between them meant nothing. \
                            `arrivals_all_time` is the headline and is never the denominator for \
@@ -960,51 +924,13 @@ mod tests {
         );
     }
 
-    /// **A take and a hand-over are two events, and the gap between them is where the work goes.**
-    ///
-    /// On 24 ก.ย. the funnel said 33 takes accepted while the board carried 15 anchored human
-    /// shifts and nobody was on shift. The other 18 are people who took a patient's head, worked on
-    /// her, and left without handing over — and a tape that is never handed over is anchored
-    /// nowhere: it is on no chain, no receipt and no number we publish. Fifty-five per cent of
-    /// everyone who has ever put their hands on a patient here.
-    ///
-    /// That is by design — the chain refuses a leaf that extends no head, and an abandoned tape
-    /// cannot be signed by a page that has closed — but publishing one number for both events hid
-    /// it. So the funnel carries both, and the derivation says what their difference means rather
-    /// than leaving a reader to assume a take is a shift.
-    ///
-    /// Ward closures are not hand-overs and cannot reach this counter: `close_unattended` takes and
-    /// anchors through the chain client directly, never through the dispatch these counters sit in,
-    /// so the exclusion is structural rather than a filter somebody has to maintain.
-    #[test]
-    fn a_take_and_a_hand_over_are_counted_apart() {
-        let s = store("handovers");
-        let mut u = Usage::open(&s);
-
-        for _ in 0..3 {
-            u.took_a_shift(&s);
-        }
-        u.handed_over(&s);
-
-        let f = u.funnel();
-        assert_eq!(f["shifts_taken"], 3, "three heads were taken");
-        assert_eq!(f["hand_overs"], 1, "and one of them was handed back: {f}");
-
-        let why = f["derivation"].as_str().unwrap_or_default();
-        // "hand-over" hyphenated: the house spelling everywhere else in this file and on the
-        // page. The first version of this assertion looked for "hand over" and failed against a
-        // derivation that says it eleven times — a too-narrow check reporting a fault in the thing
-        // it was checking, which is the shape of mistake this session has made all day.
-        assert!(
-            why.contains("hand-over"),
-            "the derivation has to say what the second number is: {why}"
-        );
-        assert!(
-            why.contains("no chain") || why.contains("anchored nowhere") || why.contains("nowhere"),
-            "and what becomes of the work in the gap — that is the whole reason for two \
-             numbers rather than one: {why}"
-        );
-    }
+    // `a_take_and_a_hand_over_are_counted_apart` stood here for one commit. It tested a runtime
+    // counter that no longer exists: hand-overs are shifts on the chain and are counted at read
+    // time from the board's own signers and slots, which
+    // `ward.rs::hand_overs_are_the_strangers_shifts_the_chain_dates_inside_the_window` covers —
+    // including the two cases a counter could never have had, a ward closure after a human
+    // hand-over and a slot with no block time yet. Removed rather than left passing against a
+    // method kept alive to satisfy it.
 
     /// The case map stops taking new names at its ceiling, and keeps counting the ones it has.
     ///

@@ -3230,13 +3230,49 @@ fn read_response(
         }
         // The bay's own play numbers are not this host's to publish, and that has not changed.
         // What is this host's is who arrived at it, so that is published and nothing else is.
-        "/api/usage" => Some(json(serde_json::json!({
-            "ward": "not open yet",
-            "opens": "week 2 of Crypto World's Fair, 21-27 Sep 2026",
-            "arrivals": usage.lock().unwrap().arrivals(),
-            "funnel": usage.lock().unwrap().funnel(),
-            "usage_for_the_eternal_entry": "https://vitals.academy/api/usage"
-        }))),
+        "/api/usage" => {
+            let mut funnel = usage.lock().unwrap().funnel();
+            // **The fourth step is read off the chain, not remembered.** A take is this server's
+            // own event and has to be counted as it happens; a hand-over is a shift on the chain
+            // with a signer and a slot, so it is counted here from the board's own shifts and sits
+            // on the window's clock from the first read rather than from the deploy that added it.
+            // A counter would have been a copy of a record, and a copy has to be kept true.
+            let since = funnel.get("since").and_then(|d| d.as_str()).map(str::to_string);
+            match (since.as_deref().and_then(ward_chain::day_start_ict), ward_chain::ward_signer()) {
+                (Some(opened), Some(me)) => {
+                    let shifts = ward_chain::shifts_on_the_board(store);
+                    let dated = ward_chain::cached_dater(store);
+                    let (n, undatable) =
+                        ward_chain::hand_overs_in_window(&shifts, &me, &dated, opened);
+                    funnel["hand_overs"] = serde_json::json!(n);
+                    if undatable > 0 {
+                        // Said rather than swallowed: a slot with no block time cannot be placed in
+                        // the window, so it is left out of the count and the shortfall is named.
+                        funnel["hand_overs_not_yet_datable"] = serde_json::json!(undatable);
+                    }
+                }
+                // A ward that cannot name its own key cannot tell its closures from a stranger's
+                // hand-over, and the wrong answer here is a number — it would count every closure
+                // the ticker ever signed as somebody's work.
+                (_, None) => {
+                    funnel["hand_overs"] = serde_json::Value::Null;
+                    funnel["hand_overs_unknown"] = serde_json::json!(
+                        "this host holds neither VITALS_OPERATOR nor a relay key, so it cannot \
+                         tell its own closures from a stranger's hand-over and will not guess");
+                }
+                // No window, no figure: the three steps above it are not counting either.
+                (None, _) => {
+                    funnel["hand_overs"] = serde_json::Value::Null;
+                }
+            }
+            Some(json(serde_json::json!({
+                "ward": "not open yet",
+                "opens": "week 2 of Crypto World's Fair, 21-27 Sep 2026",
+                "arrivals": usage.lock().unwrap().arrivals(),
+                "funnel": funnel,
+                "usage_for_the_eternal_entry": "https://vitals.academy/api/usage"
+            })))
+        }
         "/review" => Some(html(&REVIEW.replace(BUILD_STAMP, BUILD))),
         "/privacy" => Some(html(&PRIVACY.replace(BUILD_STAMP, BUILD))),
         "/stats" => Some(html(WARD_STATS)),
@@ -6412,12 +6448,6 @@ fn main() {
                         }))
                     }
                     (WardWork::Anchor { session, patient_id, .. }, Ok(sig)) => {
-                        // A hand-over, counted here and nowhere earlier, mirroring the take arm
-                        // above: the chain has accepted the leaf, so the tape is on the record and
-                        // the work is kept. Every take that never reaches this line is work that
-                        // exists nowhere — 18 of 33 on 24 ก.ย. — which is why these are two
-                        // numbers on the funnel and not one.
-                        usage.lock().unwrap().handed_over(&store);
                         let mut map = sessions.lock().unwrap();
                         let now_long = map.get(session).and_then(|s| s.ward.as_ref()).map(|w| w.index + 1);
                         if let Some(s) = map.get_mut(session) {

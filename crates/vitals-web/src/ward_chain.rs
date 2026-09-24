@@ -3610,3 +3610,48 @@ pub fn hand_overs_in_window(
     }
     (counted, undatable)
 }
+
+/// The key this ward signs its own closures with, as raw bytes, without touching the network.
+///
+/// `hand_overs_in_window` needs it to tell a stranger's shift from the ward's own, and it is asked
+/// on a read path the reader pool serves — so it is resolved once and kept. Nothing about it can
+/// change while the process runs: it is `VITALS_OPERATOR` if set, otherwise the relay keypair's
+/// public key, which is exactly how `WardChain::connect` resolves it and is read from the same two
+/// places so the two can never disagree about who the ward is.
+///
+/// `None` on a host holding neither — a read-only ward that publishes somebody else's board. There
+/// the honest answer is that it cannot tell its own shifts from anyone's, and the caller says so
+/// rather than counting every closure as a hand-over.
+pub fn ward_signer() -> Option<[u8; 32]> {
+    use solana_sdk::signature::Signer;
+    static ME: std::sync::OnceLock<Option<[u8; 32]>> = std::sync::OnceLock::new();
+    *ME.get_or_init(|| {
+        if let Ok(o) = std::env::var("VITALS_OPERATOR") {
+            return Pubkey::from_str(&o).ok().map(|p| p.to_bytes());
+        }
+        std::env::var("VITALS_KEYPAIR")
+            .ok()
+            .and_then(|p| read_keypair_file(p).ok())
+            .map(|k| k.pubkey().to_bytes())
+    })
+}
+
+/// Every anchored shift this ward knows about, with the patient it belongs to.
+///
+/// Read from the shift cache rather than the chain: the ticker refreshes it, the board is built
+/// from it, and a figure published beside the board should be counted off the same reading rather
+/// than a second one that can disagree with it.
+pub fn shifts_on_the_board(
+    store: &crate::store::Store,
+) -> Vec<(u64, crate::ward::ShiftOnChain)> {
+    let mut all = Vec::new();
+    for patient_id in packs(store).keys() {
+        let seen: Seen = store
+            .get(SHIFT_CACHE, &format!("p{patient_id}"))
+            .unwrap_or_default();
+        for s in seen.shifts() {
+            all.push((*patient_id, s));
+        }
+    }
+    all
+}
