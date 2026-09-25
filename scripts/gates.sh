@@ -67,6 +67,8 @@ if command -v node >/dev/null 2>&1; then
   # The lock's own harness — no cargo, so it costs nothing and proves the thing that stops two
   # gate runs colliding still works.
   gate "gate lock"      bash scripts/gate-lock-test.sh
+  # The integrity list is read as pages since a5f609a; the reader that sums them is proven on stubs.
+  gate "bytes reader"   bash scripts/bytes-read-test.sh
   # A generated sentence about a patient takes its pronoun from the board, never from a guess. The
   # server's plain-words gate never reached the page, so this reads the page itself and fails on any
   # interpolated template carrying a bare she/he/her/him/his. From cwf/ops, where it was written;
