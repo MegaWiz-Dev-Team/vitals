@@ -78,6 +78,11 @@ try:
         time.sleep(3)
         if js("(()=>{const c=document.querySelector('#cmd'); return !!c && !c.disabled})()"): break
     time.sleep(2); shot("03-after-take")
+    # "oxygen" is an order, and the box interprets what is typed by the mode that is on: in the
+    # default "ask" mode it becomes a question ("ASKED oxygen" on the receipt). The guide's second
+    # step is an order, so the drugs mode is pressed first, the way the picture should show it.
+    log["drugs_mode_pressed"] = press('#modes button[data-m="drugs"]'); time.sleep(0.8)
+    log["mode_on"] = js("(()=>{const b=document.querySelector('#modes button.on'); return b? b.dataset.m : null})()")
     doc = cdp("DOM.getDocument", depth=1); node = cdp("DOM.querySelector", nodeId=doc["root"]["nodeId"], selector="#cmd").get("nodeId")
     log["cmd_before"] = js("(()=>{const c=document.querySelector('#cmd'); return c? {disabled:c.disabled, value:c.value, focused:document.activeElement===c} : null})()")
     if node:
