@@ -1599,7 +1599,7 @@ fn the_ward_seeds_a_blob_for_every_case_it_already_holds() {
 /// rubric-only correction, replay can never recover the second half of the address.
 #[test]
 fn an_anchored_shift_is_matched_to_its_bytes_by_replaying_them() {
-    use vitals_web::ward_case::Played;
+    use vitals_web::ward_case::ForReceipt;
 
     let s = Server::start();
     assert_eq!(s.post("/api/ward/case", &a_pack()).0, 200);
@@ -1617,9 +1617,10 @@ fn an_anchored_shift_is_matched_to_its_bytes_by_replaying_them() {
         admitted_slot: LONE_SLOT, dated: &ward_dated,
     };
 
-    match vitals_web::ward_case::played_against(&store, &anchored, &tape, &deriving) {
-        Played::Proved(id) => assert_eq!(id, vitals_web::ward_case::played_id(&a_pack()),
-                                        "the blob that reproduces the leaf is the one the door kept"),
+    match vitals_web::ward_case::bytes_for_receipt(&store, &anchored, &tape, &deriving, None, None) {
+        ForReceipt::These { played_id, .. } => assert_eq!(
+            played_id, vitals_web::ward_case::played_id(&a_pack()),
+            "the blob that reproduces the leaf is the one the door kept"),
         other => panic!("one blob reproduces this leaf and it should have been proved: {other:?}"),
     }
 
@@ -1630,8 +1631,8 @@ fn an_anchored_shift_is_matched_to_its_bytes_by_replaying_them() {
     regraded["rubric"]["items"][0]["points"] = json!(99);
     vitals_web::ward_case::keep_played_bytes(&store, &regraded);
 
-    match vitals_web::ward_case::played_against(&store, &anchored, &tape, &deriving) {
-        Played::Ambiguous(ids) => {
+    match vitals_web::ward_case::bytes_for_receipt(&store, &anchored, &tape, &deriving, None, None) {
+        ForReceipt::ScenarioOnly { candidates: ids, .. } => {
             assert_eq!(ids.len(), 2, "both rubrics fit the same leaf: {ids:?}");
             assert!(ids.contains(&vitals_web::ward_case::played_id(&a_pack()))
                     && ids.contains(&vitals_web::ward_case::played_id(&regraded)),
@@ -1642,8 +1643,9 @@ fn an_anchored_shift_is_matched_to_its_bytes_by_replaying_them() {
 
     // A leaf nothing here reproduces. Not an error and not a blank — a shift whose chart this ward
     // can no longer rebuild, which is a fact a reader is owed.
-    assert!(matches!(vitals_web::ward_case::played_against(&store, &"0".repeat(64), &tape, &deriving),
-                     Played::Unrebuildable),
+    assert!(matches!(vitals_web::ward_case::bytes_for_receipt(
+                         &store, &"0".repeat(64), &tape, &deriving, None, None),
+                     ForReceipt::Unrebuildable),
             "a leaf no kept bytes reproduce is unrebuildable, and says so");
 }
 
@@ -1921,7 +1923,7 @@ fn a_receipt_derives_from_the_bytes_the_shift_was_played_on_or_says_it_cannot() 
     // Nothing recorded — every shift anchored before the hand-over wrote an address. Replay finds
     // the bytes anyway, which is what makes the backlog recoverable.
     file("");
-    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, &deriving, None) {
+    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, &deriving, None, None) {
         ForReceipt::These { sce: got, rubric, played_id } => {
             assert_eq!(played_id, addr, "proved by replay, and named");
             assert_eq!(got, sce, "the scenario the leaf commits to");
@@ -1932,7 +1934,7 @@ fn a_receipt_derives_from_the_bytes_the_shift_was_played_on_or_says_it_cannot() 
 
     // Recorded and correct: the same answer, reached by being told rather than by searching.
     file(&addr);
-    assert!(matches!(vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, &deriving, None),
+    assert!(matches!(vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, &deriving, None, None),
                      ForReceipt::These { ref played_id, .. } if *played_id == addr));
 
     // **Recorded and wrong.** Some other case's bytes, which do not reproduce this leaf. The record
@@ -1944,7 +1946,7 @@ fn a_receipt_derives_from_the_bytes_the_shift_was_played_on_or_says_it_cannot() 
     let wrong = vitals_web::ward_case::played_id(&other_case);
     assert_ne!(wrong, addr);
     file(&wrong);
-    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, &deriving, None) {
+    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, &deriving, None, None) {
         ForReceipt::These { played_id, .. } => assert_eq!(
             played_id, addr,
             "a record that does not reproduce the leaf is wrong about this shift, and the proof wins"),
@@ -1958,7 +1960,7 @@ fn a_receipt_derives_from_the_bytes_the_shift_was_played_on_or_says_it_cannot() 
     regraded["rubric"]["items"][0]["points"] = json!(3);
     vitals_web::ward_case::keep_played_bytes(&store, &regraded);
     file("");
-    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, &deriving, None) {
+    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, &deriving, None, None) {
         ForReceipt::ScenarioOnly { sce: got, candidates } => {
             assert_eq!(got, sce, "the chart is still rebuildable, because the scenario is proved");
             assert_eq!(candidates.len(), 2, "and both rubrics are named: {candidates:?}");
@@ -1967,7 +1969,7 @@ fn a_receipt_derives_from_the_bytes_the_shift_was_played_on_or_says_it_cannot() 
     }
 
     // A leaf whose bytes are gone. Not a blank sheet and not today's bytes — a refusal.
-    assert_eq!(vitals_web::ward_case::bytes_for_receipt(&store, &"7".repeat(64), &tape, &deriving, None),
+    assert_eq!(vitals_web::ward_case::bytes_for_receipt(&store, &"7".repeat(64), &tape, &deriving, None, None),
                ForReceipt::Unrebuildable,
                "the bytes this shift was played on are not here, and the honest answer says so");
 }
@@ -2015,7 +2017,7 @@ fn a_case_with_no_blob_is_still_provable_from_the_bytes_it_carries_now() {
         patient_id: 9, run_hash: leaf.clone(), steps: tape.clone(), played_id: String::new(),
     }).expect("tape kept");
 
-    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, &deriving, standing(&store, "no-blob")) {
+    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, &deriving, standing(&store, "no-blob"), None) {
         ForReceipt::These { sce: got, rubric, played_id } => {
             assert_eq!(got, sce, "its own bytes reproduce the leaf, so they are the played bytes");
             assert!(rubric.contains("items"), "with the rubric they are filed beside: {rubric}");
@@ -2033,10 +2035,92 @@ fn a_case_with_no_blob_is_still_provable_from_the_bytes_it_carries_now() {
     store
         .put(vitals_web::ward_case::CASE_STORE, &vitals_web::ward_case::key_for("no-blob"), &fixed)
         .expect("a correction, as a pre-blob-store one landed");
-    assert_eq!(vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, &deriving, standing(&store, "no-blob")),
+    assert_eq!(vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, &deriving, standing(&store, "no-blob"), None),
                ForReceipt::Unrebuildable,
                "the version it was played on is gone, and the current one does not reproduce the \
                 leaf, so nothing here can rebuild it");
+}
+
+/// **Trying the likely candidates first must not change the answer.**
+///
+/// Identifying the played scenario is the only part that costs a replay — re-deriving one candidate
+/// replays the patient's whole history — so the search tries the address the hand-over recorded, a
+/// sibling shift's resolved scenario, and the bytes the case carries now, before walking every kept
+/// version. On staging the unordered walk took 198 seconds and held the ward's single instance for
+/// all of it.
+///
+/// Ordering is exactly the kind of optimisation that quietly answers a different question: reach the
+/// live bytes before the kept blob and a "proved" becomes a "proved as it stands", which is a
+/// different published fact about whether that receipt is pinned. So this fixes the answer against
+/// every combination of the shortcuts being available or not. Whatever the search is handed, it must
+/// arrive at the same place.
+///
+/// The speed itself is not asserted here. A synthetic scenario replays far too fast on this machine
+/// for a wall-clock bound to tell the ordered search from the unordered one, and a bound loose enough
+/// not to be flaky would pass either — so the timing is measured on staging, against a real case
+/// store, and a bound invented here would only look like a guarantee.
+#[test]
+fn trying_the_likely_candidates_first_does_not_change_the_answer() {
+    let s = Server::start();
+    assert_eq!(s.post("/api/ward/case", &a_pack()).0, 200);
+    let store = vitals_web::store::Store::open(s.state()).expect("the ward's own store");
+    let tape: Vec<vitals_replay::Step> = vec![];
+    let sce = vitals_web::ward_case::sce_of(&store, "auth-demo-1").expect("its scenario");
+    let addr = vitals_web::ward_case::played_id(&a_pack());
+    let leaf = leaf_the_receipts_way(&store, &sce, &tape, LONE_SLOT);
+
+    // A crowd of other kept versions for the walk to have to get through.
+    for n in 0..24 {
+        let mut other = a_pack();
+        other["case_id"] = json!(format!("crowd-{n}"));
+        other["sce"]["vitals0"]["hr"] = json!(60.0 + n as f64);
+        vitals_web::ward_case::keep_played_bytes(&store, &other);
+    }
+
+    let shifts = lone(LONE_SLOT);
+    let tape_of = |h: &str| vitals_web::ward_chain::tape_by_hash(&store, h);
+    let deriving = vitals_web::ward_chain::Deriving {
+        shifts: &shifts, this: &shifts[0], tape_of: &tape_of,
+        admitted_slot: LONE_SLOT, dated: &ward_dated,
+    };
+
+    let answer = |recorded: &str, hint: Option<&str>, standing: bool| {
+        vitals_web::ward_chain::keep_tape(&store, &vitals_web::ward_chain::StoredTape {
+            patient_id: 7, run_hash: leaf.clone(), steps: tape.clone(),
+            played_id: recorded.to_string(),
+        }).expect("tape kept");
+        vitals_web::ward_case::bytes_for_receipt(
+            &store, &leaf, &tape, &deriving,
+            standing.then(|| standing_of(&store, "auth-demo-1")).flatten(), hint)
+    };
+
+    // The walk alone, with nothing to shortcut it, is the reference answer.
+    let reference = answer("", None, false);
+    match &reference {
+        vitals_web::ward_case::ForReceipt::These { played_id, .. } => assert_eq!(played_id, &addr),
+        other => panic!("the kept version reproduces this leaf: {other:?}"),
+    }
+
+    // Every shortcut, alone and together. `keep_tape` will not let a later empty address erase an
+    // earlier one, so the record is set once and the cases that want it absent come first.
+    assert_eq!(answer("", Some(&sce), false), reference, "a sibling's scenario, tried first");
+    assert_eq!(answer("", None, true), reference, "the live bytes, which must not win over a blob");
+    assert_eq!(answer("", Some(&sce), true), reference, "both, and still the kept version");
+    assert_eq!(answer(&addr, None, false), reference, "the recorded address");
+    assert_eq!(answer(&addr, Some(&sce), true), reference, "everything available at once");
+
+    // A record naming bytes that do not reproduce this leaf must not shortcut past the truth.
+    let mut wrong_case = a_pack();
+    wrong_case["case_id"] = json!("wrong");
+    wrong_case["sce"]["vitals0"]["hr"] = json!(177.0);
+    let wrong = vitals_web::ward_case::keep_played_bytes(&store, &wrong_case);
+    assert_eq!(answer(&wrong, None, true), reference,
+               "a wrong record is checked like any other candidate and loses to the walk");
+}
+
+/// The case's scored content as the store holds it now, for the tests that hand it to the proof.
+fn standing_of(store: &vitals_web::store::Store, case: &str) -> Option<(String, String)> {
+    standing(store, case)
 }
 
 /// The slot these one-shift fixtures put their shift in, and her admission — the same, so there is
@@ -2174,8 +2258,16 @@ fn the_proof_re_derives_a_leaf_the_way_the_receipt_does() {
             shifts: &shifts, this: &shifts[n], tape_of: &tape_of,
             admitted_slot: admitted, dated: &dated,
         };
-        let got = vitals_web::ward_case::played_against(&store, leaf, &steps, &deriving);
-        assert_eq!(got, vitals_web::ward_case::Played::Proved(addr.clone()),
-                   "shift {} of 2 was played on the bytes in the store and must prove it", n + 1);
+        let got = vitals_web::ward_case::bytes_for_receipt(
+            &store, leaf, &steps, &deriving, None, None);
+        match got {
+            vitals_web::ward_case::ForReceipt::These { sce: ref got_sce, ref played_id, .. } => {
+                assert_eq!(played_id, &addr,
+                           "shift {} of 2 is addressed to the bytes it was played on", n + 1);
+                assert_eq!(got_sce, &sce, "and to that scenario");
+            }
+            other => panic!("shift {} of 2 was played on the bytes in the store and must prove it: \
+                             {other:?}", n + 1),
+        }
     }
 }

@@ -2539,7 +2539,7 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
         .ok()
         .zip(ward_chain::rubric_for(store, &root, &pack.case));
     let (sce_json, rubric, bytes_note) =
-        match ward_case::bytes_for_receipt(store, &leaf_hex, &steps, &deriving, as_it_stands) {
+        match ward_case::bytes_for_receipt(store, &leaf_hex, &steps, &deriving, as_it_stands, None) {
         ward_case::ForReceipt::These { sce, rubric, played_id } => (
             sce,
             Some(rubric),

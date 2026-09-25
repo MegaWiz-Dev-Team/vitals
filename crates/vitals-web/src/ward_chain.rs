@@ -3198,6 +3198,8 @@ pub fn bytes_behind_the_anchored_shifts(
     let dated = cached_dater(store);
     let tape_of = |h: &str| tape_by_hash(store, h);
     let mut out = Vec::new();
+    // The scenario each patient turned out to have been played on, so her later shifts try it first.
+    let mut resolved: std::collections::HashMap<u64, Option<String>> = Default::default();
     for (key, seen) in store.list::<Seen>(SHIFT_CACHE) {
         let Ok(patient_id) = key.trim_start_matches('p').parse::<u64>() else { continue };
         let all = seen.shifts();
@@ -3240,22 +3242,30 @@ pub fn bytes_behind_the_anchored_shifts(
             // report every shift on production unrebuildable while their receipts rendered: the list
             // searched only kept versions, the receipt also accepts the live bytes when they
             // reproduce the leaf, and a reader had no way to tell which of them was lying.
-            let (verdict, proved, candidates) = match crate::ward_case::bytes_for_receipt(
+            let (verdict, proved, candidates, sce_proved) = match crate::ward_case::bytes_for_receipt(
                 store, &leaf, &steps, &deriving, as_it_stands_of(&case),
+                // What a sibling shift of hers already resolved to. Ordering only — it is checked by
+                // replay like any other candidate — but it means a patient's scenario is searched for
+                // once rather than once per shift she has.
+                resolved.get(&patient_id).and_then(|s: &Option<String>| s.as_deref()),
             ) {
-                crate::ward_case::ForReceipt::These { played_id, .. } if !played_id.is_empty() => {
-                    ("proved", Some(played_id), Vec::new())
+                crate::ward_case::ForReceipt::These { sce, played_id, .. }
+                    if !played_id.is_empty() =>
+                {
+                    ("proved", Some(played_id), Vec::new(), Some(sce))
                 }
                 // Proved, and by the bytes the case carries now rather than a version anybody kept.
                 // Its own verdict because it is the actionable one: seeding pins these, and until
                 // somebody does, the next correction to that case takes the shift with it.
-                crate::ward_case::ForReceipt::These { .. } => {
-                    ("proved as it stands", None, Vec::new())
+                crate::ward_case::ForReceipt::These { sce, .. } => {
+                    ("proved as it stands", None, Vec::new(), Some(sce))
                 }
-                crate::ward_case::ForReceipt::ScenarioOnly { candidates, .. } => {
-                    ("ambiguous", None, candidates)
+                crate::ward_case::ForReceipt::ScenarioOnly { sce, candidates } => {
+                    ("ambiguous", None, candidates, Some(sce))
                 }
-                crate::ward_case::ForReceipt::Unrebuildable => ("unrebuildable", None, Vec::new()),
+                crate::ward_case::ForReceipt::Unrebuildable => {
+                    ("unrebuildable", None, Vec::new(), None)
+                }
             };
             // A disagreement needs both halves to exist. Nothing recorded is not a disagreement —
             // it is the ordinary state of every shift anchored before the hand-over recorded it.
@@ -3263,6 +3273,9 @@ pub fn bytes_behind_the_anchored_shifts(
                 (Some(r), Some(p)) => r != p,
                 _ => false,
             };
+            if let Some(sce) = sce_proved {
+                resolved.entry(patient_id).or_insert(Some(sce));
+            }
             out.push(ShiftBytes {
                 patient_id, leaf, case, recorded, verdict, proved, candidates, disagrees,
             });

@@ -948,7 +948,7 @@ pub fn played_bytes(store: &crate::store::Store, id: &str) -> Option<PlayedBytes
 /// kept. Idempotent, because the address is the bytes — running it twice keeps the same blobs.
 ///
 /// It recovers the *current* version and only that. A case corrected before the blob store existed
-/// has lost its earlier bytes for good; that shift is [`Played::Unrebuildable`] and belongs in a
+/// has lost its earlier bytes for good; that shift is [`ForReceipt::Unrebuildable`] and belongs in a
 /// list a reader can see, not filled in from whatever the store happens to hold today.
 ///
 /// Packs that no longer validate are skipped, on the same reasoning as [`all`]: the door would
@@ -965,54 +965,16 @@ pub fn seed_played_bytes(store: &crate::store::Store) -> usize {
     kept
 }
 
-/// What this ward can prove about the bytes an already-anchored shift was played against.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Played {
-    /// One kept scenario reproduces the leaf the chain holds, under one rubric. Demonstrated.
-    Proved(String),
-    /// Several blobs fit: they share the scenario and differ in rubric, and a leaf commits to
-    /// nothing about the rubric. Both addresses are named because choosing between them would put
-    /// a number on a stranger's receipt that no evidence supports.
-    Ambiguous(Vec<String>),
-    /// Nothing this ward holds reproduces the leaf. The chart cannot be rebuilt, and saying so is
-    /// the honest end of that road.
-    Unrebuildable,
-}
-
-/// **Which kept bytes an anchored shift was played against, proved by replaying them.**
+/// Every kept scenario, with the addresses of the blobs that carry those exact bytes.
 ///
-/// Nothing on the chain says which bytes a shift ran on — that is the defect this whole mechanism
-/// exists to end. But the leaf commits to `sce_hash(sce_json)` and to the tape, so replaying a
-/// candidate scenario against the tape the ward kept either reproduces the anchored leaf or does
-/// not. No field is taken on trust: the scenario hash is recomputed from the bytes, so a blob whose
-/// recorded `sce_sha256` were wrong could not talk its way into a match.
-///
-/// Blobs are grouped by their scenario bytes rather than by any recorded hash of them, which makes
-/// the ambiguity structural instead of incidental — every blob sharing a scenario stands or falls
-/// on one replay, and if that scenario fits, all of them fit equally. Which is the true state of
-/// the evidence: the leaf cannot separate two rubrics over one scenario.
-pub fn played_against(
-    store: &crate::store::Store,
-    leaf_hex: &str,
-    tape: &[vitals_replay::Step],
-    d: &crate::ward_chain::Deriving,
-) -> Played {
-    let mut by_scenario: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+/// Grouped by the bytes themselves rather than by any recorded hash of them, so a blob whose
+/// `sce_sha256` were wrong could not talk its way into a group it does not belong to.
+fn scenarios_kept(store: &crate::store::Store) -> std::collections::BTreeMap<String, Vec<String>> {
+    let mut by_bytes: std::collections::BTreeMap<String, Vec<String>> = Default::default();
     for (id, blob) in store.list::<PlayedBytes>(PLAYED_STORE) {
-        by_scenario.entry(blob.sce).or_default().push(id);
+        by_bytes.entry(blob.sce).or_default().push(id);
     }
-    for (sce, mut ids) in by_scenario {
-        // Through the receipt's own derivation, never a replay from the initial state. A shift's
-        // leaf commits to a reduction taken after her earlier shifts and the idle time between
-        // them, so a fresh replay answers a different question and answers it wrongly for every
-        // shift that had anything happen before it.
-        if crate::ward_chain::leaf_if_played_on(&sce, tape, d).as_deref() != Some(leaf_hex) {
-            continue;
-        }
-        ids.sort();
-        return if ids.len() == 1 { Played::Proved(ids.remove(0)) } else { Played::Ambiguous(ids) };
-    }
-    Played::Unrebuildable
+    by_bytes
 }
 
 /// Which bytes a receipt for an anchored shift must be derived from.
@@ -1054,51 +1016,77 @@ pub fn bytes_for_receipt(
     tape: &[vitals_replay::Step],
     d: &crate::ward_chain::Deriving,
     as_it_stands: Option<(String, String)>,
+    hint: Option<&str>,
 ) -> ForReceipt {
     let reproduces = |sce: &str| -> bool {
         crate::ward_chain::leaf_if_played_on(sce, tape, d).as_deref() == Some(leaf_hex)
     };
+    let kept = scenarios_kept(store);
 
-    // The cheap road: an address the hand-over recorded, confirmed against the leaf.
-    if let Some(id) = store
+    // **Identifying the scenario is the only part that costs a replay; the rubric is a lookup.**
+    // Re-deriving one candidate means replaying this patient's whole history, so the order these are
+    // tried in decides whether the answer takes one replay or hundreds. It used to walk every kept
+    // scenario in key order for every shift, which on staging was 198 seconds and held the single
+    // instance for all of it.
+    //
+    // Likeliest first, and each is a fact about *this* shift rather than a guess: the address the
+    // hand-over recorded, the scenario a sibling shift of hers already resolved to, and the bytes her
+    // case carries now. Then, only if all of those fail, the exhaustive walk — which is the honest
+    // cost of a shift whose bytes really did move.
+    let recorded = recorded_address(store, leaf_hex);
+    let from_record = recorded.as_deref().and_then(|id| played_bytes(store, id)).map(|b| b.sce);
+    let standing = as_it_stands.as_ref().map(|(sce, _)| sce.clone());
+    let likely = from_record
+        .into_iter()
+        .chain(hint.map(str::to_string))
+        .chain(standing.clone());
+
+    let mut tried: Vec<String> = Vec::new();
+    for sce in likely.chain(kept.keys().cloned()) {
+        if tried.contains(&sce) {
+            continue;
+        }
+        if !reproduces(&sce) {
+            tried.push(sce);
+            continue;
+        }
+
+        // The scenario is proved. Which rubric marked the shift is decided by counting the kept
+        // versions that carry these exact scenario bytes — no further replaying, because a leaf
+        // commits to the scenario and the tape and to nothing about the rubric.
+        let mut ids = kept.get(&sce).cloned().unwrap_or_default();
+        ids.sort();
+        return match ids.len() {
+            // Proved by bytes nobody kept a version of — the case as it stands. No address is
+            // claimed: the proof is the replay, not a blob somebody filed.
+            0 => ForReceipt::These {
+                sce,
+                rubric: as_it_stands.map(|(_, rubric)| rubric).unwrap_or_default(),
+                played_id: String::new(),
+            },
+            1 => {
+                let id = ids.remove(0);
+                match played_bytes(store, &id) {
+                    Some(blob) => {
+                        ForReceipt::These { sce: blob.sce, rubric: blob.rubric, played_id: id }
+                    }
+                    // Gone between the two reads. Treated as lost rather than retried: the answer a
+                    // reader gets should not depend on the race.
+                    None => ForReceipt::Unrebuildable,
+                }
+            }
+            _ => ForReceipt::ScenarioOnly { sce, candidates: ids },
+        };
+    }
+    ForReceipt::Unrebuildable
+}
+
+/// The address the hand-over wrote on this shift's tape, if it wrote one.
+fn recorded_address(store: &crate::store::Store, leaf_hex: &str) -> Option<String> {
+    store
         .get::<StoredTapeAddress>(crate::ward_chain::TAPE_STORE, leaf_hex)
         .map(|t| t.played_id)
         .filter(|id| !id.is_empty())
-    {
-        if let Some(blob) = played_bytes(store, &id) {
-            if reproduces(&blob.sce) {
-                return ForReceipt::These { sce: blob.sce, rubric: blob.rubric, played_id: id };
-            }
-        }
-    }
-
-    match played_against(store, leaf_hex, tape, d) {
-        Played::Proved(id) => match played_bytes(store, &id) {
-            Some(blob) => ForReceipt::These { sce: blob.sce, rubric: blob.rubric, played_id: id },
-            // Proved against a blob that has gone missing between the two reads. Treated as lost
-            // rather than retried: the answer a reader gets should not depend on the race.
-            None => ForReceipt::Unrebuildable,
-        },
-        Played::Ambiguous(candidates) => match candidates.first().and_then(|id| played_bytes(store, id)) {
-            Some(blob) => ForReceipt::ScenarioOnly { sce: blob.sce, candidates },
-            None => ForReceipt::Unrebuildable,
-        },
-        // **The case as it stands is a candidate too, and proof is proof.** No blob is needed for a
-        // shift whose case has not been corrected since: if the bytes the case carries now reproduce
-        // the leaf, then those *are* the bytes this shift was played on, demonstrated by the same
-        // replay as any blob. Without this, a case filed before the blob store existed — or one the
-        // ward plays from a file — would read as unrebuildable while its own bytes sat there
-        // answering the question.
-        //
-        // Last, never first. A blob is a version deliberately kept; the live pack is whatever the
-        // store holds today, and it earns its place here only by reproducing the leaf.
-        Played::Unrebuildable => match as_it_stands {
-            Some((sce, rubric)) if reproduces(&sce) => {
-                ForReceipt::These { sce, rubric, played_id: String::new() }
-            }
-            _ => ForReceipt::Unrebuildable,
-        },
-    }
 }
 
 
