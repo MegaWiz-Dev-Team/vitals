@@ -958,30 +958,44 @@ console.log('globe_logic: ok (and the closest to dying is read first)');
 // such rule, so the sentence went out in the one place a stranger actually reads it.
 globalThis.ARRIVALCAP = { from_slot: 1, sim_minutes: 5 };
 
-// **The fixture below is a hand-written row, and that is exactly how this bug shipped.** The card
-// read `p.sex`; the board's patient rows did not carry `sex` at all — only `/api/ward/patient/<id>`
-// did — so every card on production said "them" about patients whose sex the ward knows. These
-// assertions passed the whole time, because I wrote the fixture myself and gave it the field I
-// wished were there.
+// **The row below comes from the board, not from me.** The card read `p.sex`; the board's patient
+// rows did not carry `sex` at all — only `/api/ward/patient/<id>` did — so every card on production
+// said "them" about patients whose sex the ward knows, and these assertions were green the whole
+// time, because I had hand-written the fixture and given it the field I wished were there.
 //
-// A node harness cannot call the Rust board builder, so it cannot be a linked contract the way
-// `vitals-factory/tests/door.rs` is. What holds the pairing honest is on the other side:
-// `ward.rs::the_board_lists_the_patients_and_where_they_are_from` asserts the row carries `sex`. If that
-// assertion is ever deleted, these become fiction again — which is worth knowing rather than
-// assuming, and is why the two are named in each other's comments.
-const boy = clock({ closes_in_hours: 2, sex: "m" });
+// So the fixture is the board `ward.rs::the_board_lists_the_patients_and_where_they_are_from`
+// builds, written out by that test and read here. The contract flows from the producer to the
+// consumer through an artefact rather than a copy: delete the assertion there and this file stops
+// being written and this test fails, instead of quietly going back to testing my wish. `gates.sh`
+// runs the workspace tests before the node checks, so it is always this tree's board.
+const boardFile = new URL('../../../../target/contract/board.json', import.meta.url).pathname;
+let realRow;
+try {
+  realRow = JSON.parse(readFileSync(boardFile, 'utf8')).patients[0];
+} catch (e) {
+  assert.fail(`the card's fixture is the board the Rust tests build, and it is not at ` +
+              `${boardFile}: run the workspace tests first (gates.sh does). ${e.message}`);
+}
+assert.ok(realRow && typeof realRow.sex === 'string',
+          'the board the ward serves carries a sex on its patient rows, or the card cannot ' +
+          'write a sentence about her — this is the assertion that was missing when it did not');
+
+// Her own row, with only the clock varied: everything else is what the ward actually sends.
+const asServed = (over) => ({ ...realRow, closes_in_hours: 2, ...over });
+
+const boy = clock(asServed({ sex: "m" }));
 assert.match(boy, /close him in about/, `a boy is him: ${boy}`);
 assert.match(boy, /you will find him five minutes in — treating him/);
 assert.ok(!/\bher\b|\bshe\b/.test(boy), `and never her: ${boy}`);
 
-const girl = clock({ closes_in_hours: 2, sex: "f" });
+const girl = clock(asServed({ sex: "f" }));
 assert.match(girl, /close her in about/);
 assert.ok(!/\bhim\b|\bhe\b/.test(girl), `and never him: ${girl}`);
 
 // A patient the ward cannot sex gets "them", not a guess. Assigning one would be inventing a fact
 // about a person from nothing, which is worse than the neutral word.
 for (const unknown of [undefined, "", "?", "x"]) {
-  const t = clock({ closes_in_hours: 2, sex: unknown });
+  const t = clock(asServed({ sex: unknown }));
   assert.match(t, /close them in about/, `unknown sex is them, not a guess: ${t}`);
   assert.ok(!/\bher\b|\bhim\b/.test(t));
 }

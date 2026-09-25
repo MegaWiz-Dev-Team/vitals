@@ -501,9 +501,29 @@ fn the_board_lists_the_patients_and_where_they_are_from() {
     // patients whose sex the ward knows — and the page's own harness passed, because its fixture
     // was hand-written with a `sex` the board never sent. Asserted here, on the board's own
     // output, which is the only place that can hold the page's reading honest.
-    // Paired with `world/globe_logic.mjs`'s card section, which can only feed `clock()` a
-    // hand-written row: deleting this assertion turns that one into fiction.
     assert_eq!(list[0]["sex"], "f", "the row carries her sex, because a card writes about her");
+
+    // **The card's fixture comes from here, not from somebody's memory of here.**
+    //
+    // `world/globe_logic.mjs` tests the sentence the front page writes about a patient, and it is
+    // a node harness: it cannot call this builder, so until now it fed `clock()` a row I typed by
+    // hand. I gave that row a `sex` the board did not publish, the page read `p.sex`, and every
+    // card on production said "them" about patients this ward knows the sex of — with the harness
+    // green throughout, because it was asserting against my wish rather than against the ward.
+    //
+    // So the board this test just built is written out, and the node harness reads *that*. The
+    // contract flows from the producer to the consumer through an artefact instead of a copy, and
+    // the link is real rather than remembered: delete the assertion above and this file stops
+    // being written, and the node test fails loudly instead of quietly becoming fiction.
+    // `gates.sh` runs the workspace tests before the node checks, so it is always this tree's.
+    let contract = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/contract");
+    std::fs::create_dir_all(&contract).expect("somewhere to put the board the page is tested on");
+    std::fs::write(
+        contract.join("board.json"),
+        serde_json::to_string_pretty(&v).expect("the board serialises"),
+    )
+    .expect("the card's fixture is written from the board this test built");
 
     assert_eq!(list[1]["state"], "died");
     assert!(list[1]["country"].is_null(),
