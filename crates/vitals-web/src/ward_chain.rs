@@ -2495,7 +2495,11 @@ fn reap(
                 .map(|(secs, _)| secs);
                 match left {
                     Some(secs) => {
-                        let _ = store.put(CLOSES_IN_STORE, &format!("p{}", p.patient_id), &secs);
+                        let _ = store.put(
+                            CLOSES_IN_STORE,
+                            &format!("p{}", p.patient_id),
+                            &ClosesIn { secs, revision: this_revision() },
+                        );
                     }
                     // No ending inside the horizon, or her chart could not be rebuilt: the card
                     // says nothing rather than a number, so the old answer is cleared rather than
@@ -3808,6 +3812,28 @@ pub fn cap_on_arrival(
 /// could replay sixteen charts on every read would put a simulation on a page load.
 pub const CLOSES_IN_STORE: &str = "ward_closes_in";
 
+/// A patient's remaining time, and **the revision that worked it out**.
+///
+/// The store outlives a deploy. On 25 ก.ย. staging came up on a new revision and served the old
+/// one's clocks until the first pass ran — cards reading "about 1 min" computed by the build whose
+/// bug had just been fixed. Values derived by code that is no longer running are not this ward's
+/// answers, and a card is better silent for a minute than confidently wrong for one.
+///
+/// Stamped with `K_REVISION` rather than cleared at boot: a restart of the same revision keeps its
+/// clocks, which matters on a ward that scales to zero and would otherwise blank every card on
+/// every cold start until the scheduler's next tick.
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct ClosesIn {
+    pub secs: f64,
+    pub revision: String,
+}
+
+/// What Cloud Run calls the code that is running. Empty off Cloud Run, where a deploy is not a
+/// thing that happens and the stamp only has to be consistent with itself.
+pub fn this_revision() -> String {
+    std::env::var("K_REVISION").unwrap_or_default()
+}
+
 /// How far ahead the ranking looks: twelve simulated hours, which at 1:60 is thirty real days.
 /// Past that the number is not a countdown anybody can act on.
 pub const CLOSES_IN_HORIZON_SIM_SECONDS: f64 = 12.0 * 3_600.0;
@@ -3828,8 +3854,12 @@ pub fn closes_in(
         .filter(|p| p.closed_slot == 0)
         .filter_map(|p| {
             store
-                .get::<f64>(CLOSES_IN_STORE, &format!("p{}", p.patient_id))
-                .map(|secs| (p.patient_id, secs))
+                .get::<ClosesIn>(CLOSES_IN_STORE, &format!("p{}", p.patient_id))
+                // Another revision's arithmetic is not this ward's answer. After a deploy the
+                // cards say nothing about a clock until a pass has run on the code now serving
+                // them, which is also the honest reading of "this deploy is not verified yet".
+                .filter(|c| c.revision == this_revision())
+                .map(|c| (p.patient_id, c.secs))
         })
         .collect()
 }
