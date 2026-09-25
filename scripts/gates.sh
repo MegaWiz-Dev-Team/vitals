@@ -23,12 +23,19 @@ if [ "${GATE_LOCK_HELD:-}" != 1 ]; then
 fi
 
 FAIL=0
+# Every gate's output is kept, and a FAIL shows the end of its own. Three reds on 25 Sep 2026
+# recorded a gate's name and nothing else — both streams went to /dev/null — so not one of them
+# named the failing test, and each cost a diagnosis it should have carried in itself.
+GATE_LOGS="${GATE_LOGS:-target/gates}"; mkdir -p "$GATE_LOGS"
 gate() {
   local name="$1"; shift
-  if "$@" >/dev/null 2>&1; then
+  local log; log="$GATE_LOGS/$(printf '%s' "$name" | tr -c 'A-Za-z0-9\n' '-' | sed 's/-*$//').log"
+  if "$@" >"$log" 2>&1; then
     printf '  \033[32mpass\033[0m  %s\n' "$name"
   else
-    printf '  \033[31mFAIL\033[0m  %s\n' "$name"
+    printf '  \033[31mFAIL\033[0m  %s — output kept in %s; its last lines:\n' "$name" "$log"
+    grep -n 'FAILED\|panicked\|^failures:\|error\[\|^error:\|timed out' "$log" | head -12 | sed 's/^/        /'
+    tail -n 25 "$log" | sed 's/^/        │ /'
     FAIL=1
   fi
 }
@@ -39,7 +46,12 @@ echo "── gates ──"
 # target dir of clippy's own is check-mode only: 902 MB for the whole workspace (481 crates,
 # 67 s from empty, measured 23 Sep), not a second copy of the 23 GB test tree.
 gate "clippy -D warnings"  env CARGO_TARGET_DIR=target/clippy cargo clippy --workspace --all-targets --offline -- -D warnings
-gate "workspace tests"     cargo test --workspace --offline
+# The test threads are capped. This box carries a standing load of about 6 on 12 cores (the
+# cluster's backends, the window server, the IDE), and `cargo test` defaults to a thread per
+# core: twelve threads on five spare cores is contention on every run, lock or no lock, and
+# contention fabricates reds — never greens. Six is half the cores; name another with
+# GATE_TEST_THREADS on a box that is different.
+gate "workspace tests"     cargo test --workspace --offline -- --test-threads="${GATE_TEST_THREADS:-6}"
 
 # The globe's own arithmetic — country lookup, the per-country counts, the difficulty filter —
 # runs in node against the page it is extracted from, so a change to the page that breaks the
