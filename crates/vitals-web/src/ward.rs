@@ -1171,6 +1171,13 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                 "closes_in_hours": r.closes_in.get(&p.patient_id).map(|s| s / 60.0),
                 "name": pack.map(|k| k.persona.name.clone()),
                 "age": pack.map(|k| k.persona.age),
+                // **Her sex, because the card writes a sentence about her.** The board carried
+                // name, age and country and not this, so `theirs(p)` on the globe read a field
+                // that was never sent and every card on production said "them" — about patients
+                // whose sex this ward knows and publishes one route away, on
+                // `/api/ward/patient/<id>`. A page cannot be more careful than the data it is
+                // given, and the "them" branch is for a patient the ward genuinely cannot sex.
+                "sex": pack.map(|k| k.persona.sex.clone()),
                 "country": pack.map(|k| k.persona.country.clone()),
                 "case": pack.map(|k| k.case.clone()),
                 // Null rather than a default: a patient filed under a level somebody chose against

@@ -496,6 +496,14 @@ fn the_board_lists_the_patients_and_where_they_are_from() {
     assert_eq!(list[0]["shifts"], 2);
     assert_eq!(list[0]["country"], "THA");
     assert_eq!(list[0]["name"], "Ploy");
+    // **The card writes a sentence about her, so the row has to say which sentence.** This key was
+    // missing while the globe's `theirs(p)` read it, so every card on production said "them" about
+    // patients whose sex the ward knows — and the page's own harness passed, because its fixture
+    // was hand-written with a `sex` the board never sent. Asserted here, on the board's own
+    // output, which is the only place that can hold the page's reading honest.
+    // Paired with `world/globe_logic.mjs`'s card section, which can only feed `clock()` a
+    // hand-written row: deleting this assertion turns that one into fiction.
+    assert_eq!(list[0]["sex"], "f", "the row carries her sex, because a card writes about her");
 
     assert_eq!(list[1]["state"], "died");
     assert!(list[1]["country"].is_null(),

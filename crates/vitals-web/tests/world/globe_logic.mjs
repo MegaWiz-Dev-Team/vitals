@@ -958,6 +958,17 @@ console.log('globe_logic: ok (and the closest to dying is read first)');
 // such rule, so the sentence went out in the one place a stranger actually reads it.
 globalThis.ARRIVALCAP = { from_slot: 1, sim_minutes: 5 };
 
+// **The fixture below is a hand-written row, and that is exactly how this bug shipped.** The card
+// read `p.sex`; the board's patient rows did not carry `sex` at all — only `/api/ward/patient/<id>`
+// did — so every card on production said "them" about patients whose sex the ward knows. These
+// assertions passed the whole time, because I wrote the fixture myself and gave it the field I
+// wished were there.
+//
+// A node harness cannot call the Rust board builder, so it cannot be a linked contract the way
+// `vitals-factory/tests/door.rs` is. What holds the pairing honest is on the other side:
+// `ward.rs::the_board_lists_the_patients_and_where_they_are_from` asserts the row carries `sex`. If that
+// assertion is ever deleted, these become fiction again — which is worth knowing rather than
+// assuming, and is why the two are named in each other's comments.
 const boy = clock({ closes_in_hours: 2, sex: "m" });
 assert.match(boy, /close him in about/, `a boy is him: ${boy}`);
 assert.match(boy, /you will find him five minutes in — treating him/);
