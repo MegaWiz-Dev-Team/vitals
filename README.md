@@ -22,6 +22,19 @@ Vitals is two things that turn out to be the same thing:
 The same replay serves a curious teenager on a leaderboard and a medical graduate who
 needs to prove competence to a residency programme in another country.
 
+## Watch it run
+
+- **[One shift, end to end](https://youtu.be/JEoNwBoIqZ0)** · 2 min — the live ward on
+  [world.vitals.academy](https://world.vitals.academy), recorded 25 Sep 2026: the globe, a bed, the
+  questions and the orders, the hand-over, the receipt, the devnet transaction it made, and a second
+  stranger picking the same bed up from the chain. Every press is a real gesture on the page; no
+  slides and no code walkthrough. Captions carry the narration.
+- **[Vital Signs](https://youtu.be/uOpv-_d7-s0)** · 3 min — the film. The patients are simulated,
+  the shortage is not.
+
+Or take a shift yourself at **[world.vitals.academy](https://world.vitals.academy)** — no wallet,
+no signup, nothing to install.
+
 ---
 
 ## 🏆 Traction — Embla's, not Vitals'
