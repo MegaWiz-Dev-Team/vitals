@@ -2469,7 +2469,7 @@ fn reap(
         }
         let Some(seen) = cached.seen.get(&p.patient_id) else { continue };
 
-        let found = died_unattended(
+        let found = standing_unattended(
             &sce,
             &seen.shifts(),
             &|h| tape_by_hash(store, h),
@@ -2478,23 +2478,23 @@ fn reap(
             &dater(chain, store),
         );
         let closing = match found {
-            Ok(Some(u)) => u,
+            Ok(Standing::Closed(u)) => *u,
             // Still open: ask the one question further, and leave the answer where the board can
             // publish it. This is the ordering the founder asked for — "เรียงเตียงตามใกล้ตาย" — and
             // it is the ticker's own clock, because it is computed from the rebuild the ticker just
             // did rather than from a proxy for how long she has been lying there.
-            Ok(None) => {
-                let left = sim_seconds_left_unattended(
-                    &sce,
-                    &seen.shifts(),
-                    &|h| tape_by_hash(store, h),
-                    p.admitted_slot,
-                    now_slot,
-                    &dater(chain, store),
-                    CLOSES_IN_HORIZON_SIM_SECONDS,
-                );
+            Ok(Standing::Open(st)) => {
+                // The same rebuild, asked one question further — and free, because the state it was
+                // decided on came back with the answer. Only an ending the ward would actually
+                // close on is a countdown: an outcome is terminal, so a patient who reaches a
+                // discharge or a transfer on her own is not on this clock at all and never will be.
+                let left = vitals_replay::sim_seconds_until_untreated_ending(
+                    &st, CLOSES_IN_HORIZON_SIM_SECONDS,
+                )
+                .filter(|(_, ending)| the_ward_closes_on(ending))
+                .map(|(secs, _)| secs);
                 match left {
-                    Ok(Some(secs)) => {
+                    Some(secs) => {
                         let _ = store.put(CLOSES_IN_STORE, &format!("p{}", p.patient_id), &secs);
                     }
                     // No ending inside the horizon, or her chart could not be rebuilt: the card
@@ -3010,6 +3010,37 @@ pub struct Unattended {
     pub state: vitals_sce::runtime::SceState,
 }
 
+/// What the ward found when it looked at an unattended bed.
+///
+/// Two answers, and the second carries the machine it was decided on. The ticker asks this of every
+/// open bed each pass and then wants to know how much longer the open ones have — which is the same
+/// rebuild, asked one question further. Returning the state means that question is free; computing
+/// it in a second function cost a whole extra rebuild per living bed per pass, measured at about
+/// 0.6 s each on staging, which on a sixteen-bed production ward is ten seconds a minute spent
+/// deriving a patient twice.
+pub enum Standing {
+    /// The engine reached an ending the ward closes on, and it must be written down.
+    Closed(Box<Unattended>),
+    /// Still open, as of `now_slot`, with the whole uncapped gap already applied — the state the
+    /// ticker judged, so anything asked of it is asked of the same patient the ward just looked at.
+    Open(Box<vitals_sce::runtime::SceState>),
+}
+
+impl Standing {
+    /// The closure, when there is one.
+    pub fn closed(self) -> Option<Unattended> {
+        match self {
+            Standing::Closed(u) => Some(*u),
+            Standing::Open(_) => None,
+        }
+    }
+
+    /// Still open — the ward is not closing this bed on this pass.
+    pub fn is_open(&self) -> bool {
+        matches!(self, Standing::Open(_))
+    }
+}
+
 /// Has the ward finished her while nobody was in the room?
 ///
 /// The founder removed the idle cap on 16 ก.ย., so time alone can now end a stay — and a death
@@ -3021,14 +3052,14 @@ pub struct Unattended {
 /// slot she was admitted at and the slot now. `Err` when a tape the chain names cannot be found —
 /// her chart cannot be rebuilt, and closing her on a chart nobody can check is the one thing the
 /// ward may not do.
-pub fn died_unattended(
+pub fn standing_unattended(
     sce_json: &str,
     shifts: &[crate::ward::ShiftOnChain],
     tape_of: &dyn Fn(&str) -> Option<Vec<vitals_replay::Step>>,
     admitted_slot: u64,
     now_slot: u64,
     dated: &dyn Fn(u64) -> Option<i64>,
-) -> Result<Option<Unattended>, String> {
+) -> Result<Standing, String> {
     // Where her chart stops: the last shift anybody anchored, or her admission if nobody has.
     let since = shifts.iter().map(|s| s.slot).max().unwrap_or(admitted_slot).max(admitted_slot);
     // `died_unattended` resumes only to the last anchor and then hands the engine the whole
@@ -3046,13 +3077,17 @@ pub fn died_unattended(
 
     // The span itself, as a shift with no steps in it — which is what happened.
     let replay = vitals_replay::shift(&mut st, &[], idle_real);
-    let Some(outcome) = replay.outcome.clone() else { return Ok(None) };
+    let Some(outcome) = replay.outcome.clone() else { return Ok(Standing::Open(Box::new(st))) };
     if !the_ward_closes_on(&outcome) {
-        // She reached an ending the ward does not close on its own. A discharge nobody was there
-        // to give is not a discharge, and ICU is a transfer: the next stranger continues her.
-        return Ok(None);
+        // An ending the ward does not close on its own. A discharge nobody was there to give is
+        // not a discharge, and ICU is a transfer: the next stranger continues the stay. Still open,
+        // and the state says so — a caller asking how long is left will find no closing ending
+        // ahead, which is the truth rather than a countdown to nothing.
+        return Ok(Standing::Open(Box::new(st)));
     }
-    Ok(Some(Unattended { outcome, since_slot: since, idle_slots, replay, state: st }))
+    Ok(Standing::Closed(Box::new(Unattended {
+        outcome, since_slot: since, idle_slots, replay, state: st,
+    })))
 }
 
 /// **Is this an ending the ward closes a stay on by itself?**
@@ -3765,52 +3800,6 @@ pub fn cap_on_arrival(
     signer_at_now != Some(ward)
 }
 
-
-/// **How much longer she has, if nobody comes** — the ranking the board is ordered by.
-///
-/// The same rebuild `died_unattended` does, asked one question further: not *has* the engine
-/// finished her, but *when will it*. The ward's ticker asks the first of every open bed every
-/// minute and this asks the second of the ones still alive, so the ordering on the board is the
-/// ticker's own clock rather than a proxy for it.
-///
-/// Uncapped, deliberately, and this is the half of the founder's ruling the ranking belongs to: she
-/// gets worse for every hour nobody comes, so the patient who has been alone longest on the most
-/// lethal case is the one closest to dying and the one the list must put first. The cap is what the
-/// person who arrives is handed, which is a different sentence on the card and not this number.
-///
-/// `None` when the case does not finish her inside `horizon` — a countdown longer than that is a
-/// fiction, and saying nothing is better than saying a number nobody should plan by.
-///
-/// It costs a second rebuild of each living patient per pass, on top of the one `died_unattended`
-/// already does. That is the honest price of not changing a contract six tests pin at midnight; if
-/// it ever shows in the tick's timing, the fix is to return the state from the first rebuild rather
-/// than to make this cheaper.
-pub fn sim_seconds_left_unattended(
-    sce_json: &str,
-    shifts: &[crate::ward::ShiftOnChain],
-    tape_of: &dyn Fn(&str) -> Option<Vec<vitals_replay::Step>>,
-    admitted_slot: u64,
-    now_slot: u64,
-    dated: &dyn Fn(u64) -> Option<i64>,
-    horizon_sim_seconds: f64,
-) -> Result<Option<f64>, String> {
-    let since = shifts.iter().map(|s| s.slot).max().unwrap_or(admitted_slot).max(admitted_slot);
-    let (mut st, _) = resumed(sce_json, shifts, tape_of, admitted_slot, since, dated, false)?;
-    let idle_real = match (dated(since), dated(now_slot)) {
-        (Some(a), Some(b)) if b > a => (b - a) as f64,
-        _ => 0.0,
-    };
-    // Bring her to now the way the ticker does — the whole gap, uncapped — and then ask the engine
-    // how much further it would take her.
-    vitals_replay::shift(&mut st, &[], idle_real);
-    // Only an ending the ward would actually close her on is a countdown. An outcome is terminal,
-    // so a patient who reaches a discharge or an ICU transfer on her own is not on this clock at
-    // all and never will be — `None`, and her card says nothing rather than "about 0 h" about a
-    // closure that is not coming.
-    Ok(vitals_replay::sim_seconds_until_untreated_ending(&st, horizon_sim_seconds)
-        .filter(|(_, ending)| the_ward_closes_on(ending))
-        .map(|(secs, _)| secs))
-}
 
 /// The store the ticker leaves each patient's remaining time in, for the board to publish.
 ///

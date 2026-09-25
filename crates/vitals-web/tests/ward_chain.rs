@@ -1133,7 +1133,7 @@ fn the_small_siblings_are_added_to_a_patient_like_any_other_face() {
 /// This is the decision half: pure, chain-derived, and the same arithmetic a stranger would do.
 #[test]
 fn a_patient_nobody_came_back_to_is_closed_by_the_ward_and_not_by_the_next_stranger() {
-    use vitals_web::ward_chain::died_unattended;
+    use vitals_web::ward_chain::standing_unattended;
 
     let sce = ep1();
     let chart = |_: &str| Some(Vec::<Step>::new());
@@ -1142,8 +1142,9 @@ fn a_patient_nobody_came_back_to_is_closed_by_the_ward_and_not_by_the_next_stran
     // at 518 simulated seconds untended, which at 1:60 is a little under nine real hours.
     let admitted = 1_000_000u64;
     let nine_hours = (9.0 * 3600.0 / vitals_replay::SLOT_SECONDS) as u64;
-    let closed = died_unattended(&sce, &[], &chart, admitted, admitted + nine_hours, &dated)
+    let closed = standing_unattended(&sce, &[], &chart, admitted, admitted + nine_hours, &dated)
         .expect("the chain reads")
+        .closed()
         .expect("nine hours alone finishes EP1 — the whole point of the founder's ruling");
     assert!(closed.outcome.to_lowercase().contains("death"),
             "the engine's own word for it, carried rather than restated: {}", closed.outcome);
@@ -1156,9 +1157,9 @@ fn a_patient_nobody_came_back_to_is_closed_by_the_ward_and_not_by_the_next_stran
 
     // An hour is an hour. She is worse, and she is alive, and the ticker leaves her alone.
     let one_hour = (3600.0 / vitals_replay::SLOT_SECONDS) as u64;
-    assert!(died_unattended(&sce, &[], &chart, admitted, admitted + one_hour, &dated)
+    assert!(standing_unattended(&sce, &[], &chart, admitted, admitted + one_hour, &dated)
                 .expect("the chain reads")
-                .is_none(),
+                .is_open(),
             "a patient who is merely deteriorating is not a patient to close");
 
     // The span runs from the last anchor rather than from admission — somebody was with her at the
@@ -1166,12 +1167,13 @@ fn a_patient_nobody_came_back_to_is_closed_by_the_ward_and_not_by_the_next_stran
     // what moves is where the *next* span is measured from.
     let seen_at = admitted + one_hour;
     let recent = anchored("one", seen_at);
-    let after = died_unattended(&sce, std::slice::from_ref(&recent), &chart, admitted, seen_at + one_hour, &dated)
+    let after = standing_unattended(&sce, std::slice::from_ref(&recent), &chart, admitted, seen_at + one_hour, &dated)
         .expect("the chain reads");
-    assert!(after.is_none(), "an hour after a shift is an hour — two real hours has not killed her");
+    assert!(after.is_open(), "an hour after a shift is an hour — two real hours has not killed her");
 
-    let long_after = died_unattended(&sce, &[recent], &chart, admitted, seen_at + nine_hours, &dated)
+    let long_after = standing_unattended(&sce, &[recent], &chart, admitted, seen_at + nine_hours, &dated)
         .expect("the chain reads")
+        .closed()
         .expect("nine hours after the last shift is nine hours");
     assert_eq!(long_after.since_slot, seen_at, "measured from the last anchor");
     assert_eq!(long_after.idle_slots, nine_hours);
@@ -1179,7 +1181,7 @@ fn a_patient_nobody_came_back_to_is_closed_by_the_ward_and_not_by_the_next_stran
     // A tape the chain names and we have lost stops the reading. The alternative is closing a
     // patient on a chart nobody can rebuild, which is the one thing the ward may not do.
     let missing = anchored("never-stored", admitted + one_hour);
-    let err = died_unattended(&sce, &[missing], &|_| None, admitted, admitted + nine_hours * 2, &dated);
+    let err = standing_unattended(&sce, &[missing], &|_| None, admitted, admitted + nine_hours * 2, &dated);
     assert!(err.is_err(),
             "her chart cannot be rebuilt, so the ward says so rather than closing her on a guess");
 }
