@@ -2438,6 +2438,66 @@ fn standing(store: &vitals_web::store::Store, case: &str) -> Option<(String, Str
 /// Every other fixture in this file is one shift with an empty tape and no gap, which is precisely
 /// why the suite was green. This one gives the patient two shifts and real idle gaps — the ordinary
 /// shape of a ward patient — and asserts both prove against the bytes they were played on.
+/// **A stranger's shift re-derives on the side of the cap it was actually played on.**
+///
+/// Whether a live take capped the gap depended on the ward key being loaded on the instance that
+/// served it, and that was never recorded with the shift. On 25 Sep 2026 Rowena Villanueva and Chipo
+/// Ncube were taken on an instance without the key and played uncapped; their charts then re-derived
+/// capped on an instance with it, and the leaves did not come back. The chain's own leaf says which
+/// side a shift was played on, so the one derivation asks it: the default first, and when the cap
+/// bites and the default does not reproduce the leaf, the other setting. A leaf commits to the
+/// scenario and the tape, so a wrong setting cannot reproduce it by accident.
+#[test]
+fn a_strangers_shift_re_derives_on_the_side_of_the_cap_it_was_played_on() {
+    // A real case that worsens while nobody is in the room — the demo pack the door tests use does
+    // not, so a gap changes nothing on it and the cap could never bite. Read, never edited.
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../demo/scenarios/ep4-pulmonary-embolism.json");
+    let sce = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let dated = |slot: u64| -> Option<i64> { (slot != 0).then(|| 1_789_000_000 + (slot as i64 * 2) / 5) };
+
+    // Admitted at 50, taken at 450_050: 180 thousand real seconds, 3000 simulated seconds alone
+    // against the 300 the cap allows — far enough apart that the two settings leave her in different
+    // states, which the premise below checks rather than assumes.
+    let admitted = 50u64;
+    let slot = 450_050u64;
+    let steps: Vec<vitals_replay::Step> =
+        vec![vitals_replay::Step::Tick(60.0), vitals_replay::Step::Tick(30.0)];
+    let no_tapes = |_: &str| -> Option<Vec<vitals_replay::Step>> { None };
+    let leaf_from = |cap: bool| {
+        let (mut st, _) =
+            vitals_web::ward_chain::resumed(&sce, &[], &no_tapes, admitted, slot, &dated, cap)
+                .expect("she resumes");
+        let r = vitals_replay::shift(&mut st, &steps, 0.0);
+        vitals_web::ward_chain::hex32(&vitals_replay::leaf(&vitals_replay::sce_hash(&sce), &steps, &r))
+    };
+    let played_uncapped = leaf_from(false);
+    assert_ne!(played_uncapped, leaf_from(true),
+               "the premise: past the cap the two settings give different leaves, or this proves nothing");
+
+    // Anchored the way production anchored Rowena: the uncapped leaf, and its tape findable by it.
+    let mut rh = [0u8; 32];
+    for (i, c) in rh.iter_mut().enumerate() {
+        *c = u8::from_str_radix(&played_uncapped[i * 2..i * 2 + 2], 16).expect("hex");
+    }
+    let anchored = played_uncapped.clone();
+    let tape_of = |h: &str| -> Option<Vec<vitals_replay::Step>> { (h == anchored).then(|| steps.clone()) };
+    let this = vitals_web::ward::ShiftOnChain { patient_id: 12, signer: [7u8; 32], slot, run_hash: rh };
+    let shifts = [this];
+    let d = vitals_web::ward_chain::Deriving {
+        shifts: &shifts, this: &this, tape_of: &tape_of, admitted_slot: admitted, dated: &dated,
+    };
+
+    // Re-derived on an instance holding the ward key, where a stranger past the boundary defaults to
+    // capped — and it must still come back to the leaf it was anchored with.
+    let (mut st, _) = vitals_web::ward_chain::state_this_shift_began_on_with(&sce, &d, true)
+        .expect("she re-derives");
+    let r = vitals_replay::shift(&mut st, &steps, 0.0);
+    let re = vitals_web::ward_chain::hex32(&vitals_replay::leaf(&vitals_replay::sce_hash(&sce), &steps, &r));
+    assert_eq!(re, played_uncapped,
+               "a shift played uncapped re-derives uncapped, whichever side the replay defaults to");
+}
+
 #[test]
 fn the_proof_re_derives_a_leaf_the_way_the_receipt_does() {
     let s = Server::start();

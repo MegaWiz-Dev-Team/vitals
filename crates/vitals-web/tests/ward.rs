@@ -2473,10 +2473,22 @@ fn a_gap_is_capped_only_for_a_stranger_arriving_after_the_boundary() {
     assert!(cap_on_arrival(1_000, None, boundary, Some(&ward)));
     assert!(!cap_on_arrival(999, None, boundary, Some(&ward)));
 
-    // A ward that cannot name its own key cannot tell a closure from a stranger's shift, so it caps
-    // nothing: the safe direction is the one that leaves every anchored chart deriving as it was.
+    // A ward that cannot name its own key cannot tell a closure from a stranger's shift, so when it
+    // is *re-deriving* an anchored one it caps nothing: the safe direction is the one that leaves the
+    // chart deriving as it was.
     assert!(!cap_on_arrival(1_500, Some(&ward), boundary, None));
-    assert!(!cap_on_arrival(1_500, None, boundary, None));
+    // **But a live arrival is a stranger by construction** — the ward never arrives to take a bed —
+    // so there is no closure to confuse it with and the missing key tells us nothing. It is capped
+    // past the boundary whatever keys are loaded. This line used to assert the opposite, and on
+    // production that is what played strangers uncapped on any instance that had not yet read the
+    // ward key: Rowena Villanueva and Chipo Ncube, 25 Sep 2026, whose charts then re-derived capped
+    // on an instance that had, and did not reproduce the leaves they were anchored with.
+    assert!(cap_on_arrival(1_500, None, boundary, None),
+            "a stranger opening a bed after the boundary is capped even on an instance without the \
+             ward key — the key only matters for telling a closure from a stranger, and an arrival \
+             is never a closure");
+    assert!(!cap_on_arrival(999, None, boundary, None),
+            "and before the boundary, still nothing is capped");
 
     // A boundary nobody has set is a cap that is off, so an unset deploy changes no patient.
     assert!(!cap_on_arrival(u64::MAX - 1, None, u64::MAX, Some(&ward)));

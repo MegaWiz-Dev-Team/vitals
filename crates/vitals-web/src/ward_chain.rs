@@ -3711,22 +3711,67 @@ pub fn state_this_shift_began_on(
     sce_json: &str,
     d: &Deriving,
 ) -> Result<(vitals_sce::runtime::SceState, usize), String> {
+    let default_cap = cap_on_arrival(
+        d.this.slot,
+        Some(&d.this.signer),
+        crate::ward::arrival_cap_from_slot(),
+        ward_signer().as_ref(),
+    );
+    state_this_shift_began_on_with(sce_json, d, default_cap)
+}
+
+/// [`state_this_shift_began_on`] with the cap the environment would choose passed in, so the
+/// derivation can be exercised without the process-wide ward key and boundary.
+///
+/// **The side of the cap a shift was played on is decided by the chain's leaf, not re-guessed.**
+/// Whether a live take capped the trailing gap depended on the ward key being loaded on the instance
+/// that served it, and that was never recorded with the shift — so a replay on a different instance
+/// could choose the other side and fail to reproduce a leaf it should (Rowena Villanueva and Chipo
+/// Ncube, played uncapped on 25 Sep 2026, re-derived capped). The shift's own tape and leaf are both
+/// in hand here, and exactly one setting reproduces the leaf once the cap bites, so that is the one
+/// taken. A leaf commits to the scenario and the tape, so a wrong setting cannot reproduce it by
+/// accident, and a wrong candidate scenario reproduces it under neither.
+///
+/// Cheap where it can be: below the cap the two settings are the same state, so nothing more is
+/// done; past it the default is tried first, so a shift that already derives is untouched and only
+/// a shift that does not costs a second replay. Receipt and proof both come through here, so they
+/// still agree on one state.
+pub fn state_this_shift_began_on_with(
+    sce_json: &str,
+    d: &Deriving,
+    default_cap: bool,
+) -> Result<(vitals_sce::runtime::SceState, usize), String> {
     let before: Vec<crate::ward::ShiftOnChain> =
         d.shifts.iter().filter(|s| s.slot < d.this.slot).copied().collect();
-    resumed(
-        sce_json,
-        &before,
-        d.tape_of,
-        d.admitted_slot,
-        d.this.slot,
-        d.dated,
-        cap_on_arrival(
-            d.this.slot,
-            Some(&d.this.signer),
-            crate::ward::arrival_cap_from_slot(),
-            ward_signer().as_ref(),
-        ),
-    )
+    let derive = |cap: bool| {
+        resumed(sce_json, &before, d.tape_of, d.admitted_slot, d.this.slot, d.dated, cap)
+    };
+    let first = derive(default_cap)?;
+
+    // The trailing gap `resumed` caps: from her last anchored shift, or her admission, to this one.
+    let since = before.iter().map(|s| s.slot).max().unwrap_or(d.admitted_slot);
+    let gap = match ((d.dated)(since), (d.dated)(d.this.slot)) {
+        (Some(a), Some(b)) if b > a => (b - a) as f64,
+        _ => 0.0,
+    };
+    if vitals_replay::idle_sim_seconds(gap) <= vitals_replay::ARRIVAL_IDLE_CAP_SIM_SECONDS {
+        return Ok(first);
+    }
+
+    let Some(tape) = (d.tape_of)(&hex32(&d.this.run_hash)) else { return Ok(first) };
+    let sce_hash = vitals_replay::sce_hash(sce_json);
+    let reproduces = |st: &vitals_sce::runtime::SceState| {
+        let mut probe = st.clone();
+        let r = vitals_replay::shift(&mut probe, &tape, 0.0);
+        vitals_replay::leaf(&sce_hash, &tape, &r) == d.this.run_hash
+    };
+    if reproduces(&first.0) {
+        return Ok(first);
+    }
+    match derive(!default_cap) {
+        Ok(other) if reproduces(&other.0) => Ok(other),
+        _ => Ok(first),
+    }
 }
 
 /// The leaf this shift produces when re-derived against `sce_json`, or `None` if it cannot be.
@@ -4112,20 +4157,30 @@ pub fn shifts_on_the_board(
 ///
 /// A live arrival has signed nothing yet — `None` — and is the case the cap was made for.
 ///
-/// `ward` is `None` on a host that holds neither key. It cannot tell a closure from a stranger's
-/// shift, so it caps nothing: the safe direction is the one that leaves every anchored chart
-/// deriving exactly as it was played.
+/// **A live arrival is capped past the boundary whatever keys are loaded.** It is a stranger by
+/// construction — the ward never arrives to take a bed — so there is no closure to confuse it with,
+/// and whether this instance has read the ward key tells us nothing about it. This used to return
+/// uncapped whenever the key was missing, and on production that is what played strangers uncapped
+/// on any instance that had not yet read it (Rowena Villanueva and Chipo Ncube, 25 Sep 2026); their
+/// charts then re-derived capped on an instance that had, and did not reproduce their leaves.
+///
+/// `ward` still matters when *re-deriving* an anchored shift (`Some(signer)`): only the key can tell
+/// a closure the ward signed, which is never capped, from a stranger's shift, which is. Without it
+/// this caps nothing, the safe direction for a chart that has to derive as it was played — and
+/// [`state_this_shift_began_on_with`] checks that against the chain's own leaf regardless.
 pub fn cap_on_arrival(
     now_slot: u64,
     signer_at_now: Option<&[u8; 32]>,
     boundary_slot: u64,
     ward: Option<&[u8; 32]>,
 ) -> bool {
-    let Some(ward) = ward else { return false };
     if now_slot < boundary_slot {
         return false;
     }
-    signer_at_now != Some(ward)
+    match signer_at_now {
+        None => true,
+        Some(signer) => ward.is_some_and(|w| signer != w),
+    }
 }
 
 
