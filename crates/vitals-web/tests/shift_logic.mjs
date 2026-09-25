@@ -907,15 +907,22 @@ const { leavingUnrecorded, unrecordedWords } = new Function(
    'return { leavingUnrecorded, unrecordedWords };'].join('\n'))();
 
 // The exact population: holding a ward patient, has done something, has not handed over.
-assert.equal(leavingUnrecorded('1790068323', true, true, false), true);
+assert.equal(leavingUnrecorded('1790068323', true, true, false, false), true);
+
+// **Not while the hand-over is in flight.** It takes about ten seconds to anchor, and during them
+// the strip is saying "anchoring 6 beats onto her chain…". A tab switch in that window used to
+// overwrite it with "You still have her" — false, and said to somebody in the middle of doing the
+// exact thing being asked of them. Found on staging by pressing hand over and reading the strip.
+assert.equal(leavingUnrecorded('1790068323', true, true, false, true), false,
+             'the reminder must not race the hand-over it is asking for');
 
 // And nobody else. Somebody who has done nothing has nothing to lose; somebody who handed over
 // has already kept it; somebody who never took the shift is not holding anybody; and the Eternal
 // bay is not a ward.
-assert.equal(leavingUnrecorded('1790068323', true, false, false), false, 'no work, nothing lost');
-assert.equal(leavingUnrecorded('1790068323', true, true, true), false, 'handed over, already kept');
-assert.equal(leavingUnrecorded('1790068323', false, true, false), false, 'never took the shift');
-assert.equal(leavingUnrecorded(null, true, true, false), false, 'the season is not a ward');
+assert.equal(leavingUnrecorded('1790068323', true, false, false, false), false, 'no work, nothing lost');
+assert.equal(leavingUnrecorded('1790068323', true, true, true, false), false, 'handed over, already kept');
+assert.equal(leavingUnrecorded('1790068323', false, true, false, false), false, 'never took the shift');
+assert.equal(leavingUnrecorded(null, true, true, false, false), false, 'the season is not a ward');
 
 // Her name, because the thing being lost is a person's treatment and not a form.
 assert.match(unrecordedWords('Nadege Toussaint'), /You still have Nadege Toussaint\./);

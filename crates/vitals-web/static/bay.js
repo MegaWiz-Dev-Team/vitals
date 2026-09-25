@@ -2146,8 +2146,16 @@ function disarmLeave(){
    `didWork` and not `handedOver`, on a ward shift: the exact population. Somebody who has taken a
    patient and done nothing yet has nothing to lose, and somebody who has handed over has already
    kept it. Pure, so the harness reads the condition rather than a paraphrase of it. */
-function leavingUnrecorded(ward, taken, didWork, handedOver){
-  return !!ward && !!taken && !!didWork && !handedOver;
+function leavingUnrecorded(ward, taken, didWork, handedOver, handing){
+  /* `handing` is the ten seconds a hand-over takes. Without it the reminder wins a race against
+     the thing it is asking for: the strip reads "anchoring 6 beats onto her chain…", a tab switch
+     fires, and this overwrites it with "You still have her" while she is in the middle of being
+     handed over — false, and discouraging at the exact moment somebody is doing the right thing.
+     Found on staging, 25 ก.ย., by pressing hand over and reading the strip five seconds later.
+
+     It is the same mistake as the other three that night: a second writer to a surface that
+     already had one, added without asking what happens when the two disagree. */
+  return !!ward && !!taken && !!didWork && !handedOver && !handing;
 }
 
 /* What they are told, on return rather than on the way out — a phone that switches apps shows no
@@ -4416,12 +4424,12 @@ addEventListener('resize', monitorWhereItIsRead);
    a key that has gone, which is why this is a reminder and never an auto-anchor. */
 addEventListener('visibilitychange', () => {
   if(document.visibilityState !== 'visible') return;
-  if(!leavingUnrecorded(WARD, !takeFirst(WARD, id, null), DIDWORK, HANDEDOVER)) return;
+  if(!leavingUnrecorded(WARD, !takeFirst(WARD, id, null), DIDWORK, HANDEDOVER, HANDING)) return;
   wardSay('<b class="gone">' + esc(unrecordedWords((WARDSHIFT && WARDSHIFT.name) || '')) + '</b>');
 });
 
 addEventListener('beforeunload', (e) => {
-  if(!leavingUnrecorded(WARD, !takeFirst(WARD, id, null), DIDWORK, HANDEDOVER)) return;
+  if(!leavingUnrecorded(WARD, !takeFirst(WARD, id, null), DIDWORK, HANDEDOVER, HANDING)) return;
   /* The browser shows its own words here and ours are not permitted, which is the whole reason
      this is the lesser half: it can say "leave site?" and cannot say what is being thrown away. */
   e.preventDefault();
