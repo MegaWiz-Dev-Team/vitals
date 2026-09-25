@@ -286,6 +286,16 @@ impl Server {
         }
     }
 
+    /// A GET carrying the door's secret, for the routes that are the operator's.
+    fn post_get(&self, path: &str) -> (u16, Value) {
+        let url = format!("http://127.0.0.1:{}{path}", self.port);
+        match ureq::get(&url).set("Authorization", "Bearer the-door-token").call() {
+            Ok(res) => (res.status(), res.into_json().unwrap_or(Value::Null)),
+            Err(ureq::Error::Status(c, res)) => (c, res.into_json().unwrap_or(Value::Null)),
+            Err(e) => panic!("{url}: {e}"),
+        }
+    }
+
     fn get(&self, path: &str) -> (u16, Value) {
         let url = format!("http://127.0.0.1:{}{path}", self.port);
         match ureq::get(&url).call() {
@@ -1599,11 +1609,15 @@ fn an_anchored_shift_is_matched_to_its_bytes_by_replaying_them() {
     // the leaf is as binding as any other.
     let played = vitals_web::ward_case::sce_of(&store, "auth-demo-1").expect("the scenario");
     let tape: Vec<vitals_replay::Step> = vec![];
-    let r = vitals_replay::replay(&played, &tape).expect("the scenario replays");
-    let anchored = vitals_web::ward_chain::hex32(
-        &vitals_replay::leaf(&vitals_replay::sce_hash(&played), &tape, &r));
+    let anchored = leaf_the_receipts_way(&store, &played, &tape, LONE_SLOT);
+    let shifts = lone(LONE_SLOT);
+    let tape_of = |h: &str| vitals_web::ward_chain::tape_by_hash(&store, h);
+    let deriving = vitals_web::ward_chain::Deriving {
+        shifts: &shifts, this: &shifts[0], tape_of: &tape_of,
+        admitted_slot: LONE_SLOT, dated: &ward_dated,
+    };
 
-    match vitals_web::ward_case::played_against(&store, &anchored, &tape) {
+    match vitals_web::ward_case::played_against(&store, &anchored, &tape, &deriving) {
         Played::Proved(id) => assert_eq!(id, vitals_web::ward_case::played_id(&a_pack()),
                                         "the blob that reproduces the leaf is the one the door kept"),
         other => panic!("one blob reproduces this leaf and it should have been proved: {other:?}"),
@@ -1616,7 +1630,7 @@ fn an_anchored_shift_is_matched_to_its_bytes_by_replaying_them() {
     regraded["rubric"]["items"][0]["points"] = json!(99);
     vitals_web::ward_case::keep_played_bytes(&store, &regraded);
 
-    match vitals_web::ward_case::played_against(&store, &anchored, &tape) {
+    match vitals_web::ward_case::played_against(&store, &anchored, &tape, &deriving) {
         Played::Ambiguous(ids) => {
             assert_eq!(ids.len(), 2, "both rubrics fit the same leaf: {ids:?}");
             assert!(ids.contains(&vitals_web::ward_case::played_id(&a_pack()))
@@ -1628,7 +1642,7 @@ fn an_anchored_shift_is_matched_to_its_bytes_by_replaying_them() {
 
     // A leaf nothing here reproduces. Not an error and not a blank — a shift whose chart this ward
     // can no longer rebuild, which is a fact a reader is owed.
-    assert!(matches!(vitals_web::ward_case::played_against(&store, &"0".repeat(64), &tape),
+    assert!(matches!(vitals_web::ward_case::played_against(&store, &"0".repeat(64), &tape, &deriving),
                      Played::Unrebuildable),
             "a leaf no kept bytes reproduce is unrebuildable, and says so");
 }
@@ -1665,10 +1679,8 @@ fn the_ward_lists_what_it_can_prove_about_every_anchored_shift() {
         pack["sce"]["vitals0"]["hr"] = json!(hr);
         assert_eq!(s.post("/api/ward/case", &pack).0, 200, "the door takes {id}");
         let sce = vitals_web::ward_case::sce_of(&store, id).expect("its scenario");
-        let r = vitals_replay::replay(&sce, &tape).expect("the scenario replays");
-        let leaf = vitals_web::ward_chain::hex32(
-            &vitals_replay::leaf(&vitals_replay::sce_hash(&sce), &tape, &r));
-        (leaf, vitals_web::ward_case::played_id(&pack))
+        (leaf_the_receipts_way(&store, &sce, &tape, LONE_SLOT),
+         vitals_web::ward_case::played_id(&pack))
     };
     let (leaf_a, addr_a) = case("auth-demo-a", 111.0);
     let (leaf_b, addr_b) = case("auth-demo-b", 112.0);
@@ -1677,7 +1689,7 @@ fn the_ward_lists_what_it_can_prove_about_every_anchored_shift() {
 
     let anchor = |id: u64, leaf: &str, case_id: &str, recorded: &str, keep_the_tape: bool| {
         let shift = vitals_web::ward::ShiftOnChain {
-            patient_id: id, signer: [1; 32], slot: 100,
+            patient_id: id, signer: [1; 32], slot: LONE_SLOT,
             run_hash: {
                 let mut b = [0u8; 32];
                 for (i, c) in b.iter_mut().enumerate() {
@@ -1712,7 +1724,12 @@ fn the_ward_lists_what_it_can_prove_about_every_anchored_shift() {
     // The row every reader is here for: a recorded address that is not what replay proves.
     anchor(5, &leaf_c, "auth-demo-c", &addr_a, true);
 
-    let rows = vitals_web::ward_chain::bytes_behind_the_anchored_shifts(&store);
+    // Her admission is the shift's own slot, so no idle time enters the derivation and the rows are
+    // about which bytes were chosen.
+    let admitted_of = |_id: u64| Some(LONE_SLOT);
+    let as_it_stands_of = |case: &str| standing(&store, case);
+    let rows = vitals_web::ward_chain::bytes_behind_the_anchored_shifts(
+        &store, &admitted_of, &as_it_stands_of);
     let of = |id: u64| rows.iter().find(|r| r.patient_id == id).expect("a row per anchored shift");
     assert_eq!(rows.len(), 5, "one row per anchored shift, none dropped: {rows:#?}");
 
@@ -1790,19 +1807,25 @@ fn keeping_a_tape_again_never_erases_the_address_already_on_it() {
                "an empty address on a new tape is the ordinary state, not an erasure");
 }
 
-/// **The seed takes the door's secret; the list of what cannot be rebuilt is public.**
+/// **Both the seed and the integrity list take the door's secret.**
 ///
-/// Two routes with opposite answers to the same question, which is why they are tested together.
-/// Seeding writes, and an operator asks for it deliberately — the founder's rule on this repair is
-/// that nothing is fixed behind anybody's back, and a seed running by itself on every cold start
-/// would be the first step of exactly that. Reading changes nothing, and a shift this ward cannot
-/// rebuild is a fact the person holding that receipt is owed rather than ours to keep.
+/// Seeding writes, and an operator asks for it deliberately — the rule on this repair is that
+/// nothing is fixed behind anybody's back, and a seed running by itself on every cold start would be
+/// the first step of exactly that.
 ///
-/// The shapes are pinned here because this is the surface somebody reads on staging before deciding
-/// what to repair. A count that quietly stopped being published would make a clean list out of a
-/// ward with findings in it.
+/// Reading changes nothing, and it was public for one deploy on the reasoning that a shift this ward
+/// cannot rebuild is a fact the person holding that receipt is owed. That much is true; the surface
+/// was wrong. Unseeded, the list answered "77 of 77 shifts unrebuildable" on production — a sentence
+/// about this ward never having looked, published as a finding about the chain. The per-shift
+/// honesty a stranger is owed belongs on their own receipt, where it sits next to the shift it is
+/// about and can be checked; an aggregate that reads catastrophically before its own setup step has
+/// run is a footgun whoever is holding it.
+///
+/// The shapes are pinned here because this is the surface somebody reads before deciding what to
+/// repair. A count that quietly stopped being published would make a clean list out of a ward with
+/// findings in it.
 #[test]
-fn the_seed_takes_the_doors_secret_and_the_list_of_what_cannot_be_rebuilt_is_public() {
+fn the_seed_and_the_integrity_list_are_both_the_operators() {
     let s = Server::start();
     let store = vitals_web::store::Store::open(s.state()).expect("the ward's own store");
 
@@ -1828,12 +1851,14 @@ fn the_seed_takes_the_doors_secret_and_the_list_of_what_cannot_be_rebuilt_is_pub
     assert!(vitals_web::ward_case::played_bytes(&store, &addr).is_some(),
             "and the case filed before the blob store existed is now addressable by its own bytes");
 
-    // Reading takes no secret at all.
-    let (code, body) = s.get("/api/ward/bytes");
+    // Reading is an operator's too — unseeded it would answer "every shift unrebuildable", which
+    // is a sentence about this ward never having looked and not a fact about the chain.
+    assert_eq!(s.get("/api/ward/bytes").0, 401, "the list is not a stranger's to read");
+    let (code, body) = s.post_get("/api/ward/bytes");
     assert_eq!(code, 200, "{body}");
     Server::reads_as_sentences(&body);
-    for named in ["shifts", "proved", "ambiguous", "unrebuildable", "no_tape", "disagreements",
-                  "rows"] {
+    for named in ["shifts", "proved", "proved_as_it_stands", "ambiguous", "unrebuildable",
+                  "no_tape", "not_asked", "disagreements", "rows"] {
         assert!(body.get(named).is_some(), "the published list names {named}: {body}");
         assert!(body["derivations"].get(named).is_some(),
                 "and says how {named} is known, because a count nobody can check is a claim: {body}");
@@ -1877,10 +1902,14 @@ fn a_receipt_derives_from_the_bytes_the_shift_was_played_on_or_says_it_cannot() 
     let pack = a_pack();
     assert_eq!(s.post("/api/ward/case", &pack).0, 200);
     let sce = vitals_web::ward_case::sce_of(&store, "auth-demo-1").expect("its scenario");
-    let r = vitals_replay::replay(&sce, &tape).expect("it replays");
-    let leaf = vitals_web::ward_chain::hex32(
-        &vitals_replay::leaf(&vitals_replay::sce_hash(&sce), &tape, &r));
+    let leaf = leaf_the_receipts_way(&store, &sce, &tape, LONE_SLOT);
     let addr = vitals_web::ward_case::played_id(&pack);
+    let shifts = lone(LONE_SLOT);
+    let tape_of = |h: &str| vitals_web::ward_chain::tape_by_hash(&store, h);
+    let deriving = vitals_web::ward_chain::Deriving {
+        shifts: &shifts, this: &shifts[0], tape_of: &tape_of,
+        admitted_slot: LONE_SLOT, dated: &ward_dated,
+    };
 
     let file = |recorded: &str| {
         vitals_web::ward_chain::keep_tape(&store, &vitals_web::ward_chain::StoredTape {
@@ -1892,7 +1921,7 @@ fn a_receipt_derives_from_the_bytes_the_shift_was_played_on_or_says_it_cannot() 
     // Nothing recorded — every shift anchored before the hand-over wrote an address. Replay finds
     // the bytes anyway, which is what makes the backlog recoverable.
     file("");
-    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, None) {
+    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, &deriving, None) {
         ForReceipt::These { sce: got, rubric, played_id } => {
             assert_eq!(played_id, addr, "proved by replay, and named");
             assert_eq!(got, sce, "the scenario the leaf commits to");
@@ -1903,7 +1932,7 @@ fn a_receipt_derives_from_the_bytes_the_shift_was_played_on_or_says_it_cannot() 
 
     // Recorded and correct: the same answer, reached by being told rather than by searching.
     file(&addr);
-    assert!(matches!(vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, None),
+    assert!(matches!(vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, &deriving, None),
                      ForReceipt::These { ref played_id, .. } if *played_id == addr));
 
     // **Recorded and wrong.** Some other case's bytes, which do not reproduce this leaf. The record
@@ -1915,7 +1944,7 @@ fn a_receipt_derives_from_the_bytes_the_shift_was_played_on_or_says_it_cannot() 
     let wrong = vitals_web::ward_case::played_id(&other_case);
     assert_ne!(wrong, addr);
     file(&wrong);
-    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, None) {
+    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, &deriving, None) {
         ForReceipt::These { played_id, .. } => assert_eq!(
             played_id, addr,
             "a record that does not reproduce the leaf is wrong about this shift, and the proof wins"),
@@ -1929,7 +1958,7 @@ fn a_receipt_derives_from_the_bytes_the_shift_was_played_on_or_says_it_cannot() 
     regraded["rubric"]["items"][0]["points"] = json!(3);
     vitals_web::ward_case::keep_played_bytes(&store, &regraded);
     file("");
-    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, None) {
+    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, &deriving, None) {
         ForReceipt::ScenarioOnly { sce: got, candidates } => {
             assert_eq!(got, sce, "the chart is still rebuildable, because the scenario is proved");
             assert_eq!(candidates.len(), 2, "and both rubrics are named: {candidates:?}");
@@ -1938,7 +1967,7 @@ fn a_receipt_derives_from_the_bytes_the_shift_was_played_on_or_says_it_cannot() 
     }
 
     // A leaf whose bytes are gone. Not a blank sheet and not today's bytes — a refusal.
-    assert_eq!(vitals_web::ward_case::bytes_for_receipt(&store, &"7".repeat(64), &tape, None),
+    assert_eq!(vitals_web::ward_case::bytes_for_receipt(&store, &"7".repeat(64), &tape, &deriving, None),
                ForReceipt::Unrebuildable,
                "the bytes this shift was played on are not here, and the honest answer says so");
 }
@@ -1975,14 +2004,18 @@ fn a_case_with_no_blob_is_still_provable_from_the_bytes_it_carries_now() {
                 &vitals_web::ward_case::played_id(&pack)).is_none(), "and no blob for it");
 
     let sce = vitals_web::ward_case::sce_of(&store, "no-blob").expect("its scenario");
-    let r = vitals_replay::replay(&sce, &tape).expect("it replays");
-    let leaf = vitals_web::ward_chain::hex32(
-        &vitals_replay::leaf(&vitals_replay::sce_hash(&sce), &tape, &r));
+    let leaf = leaf_the_receipts_way(&store, &sce, &tape, LONE_SLOT);
+    let shifts = lone(LONE_SLOT);
+    let tape_of = |h: &str| vitals_web::ward_chain::tape_by_hash(&store, h);
+    let deriving = vitals_web::ward_chain::Deriving {
+        shifts: &shifts, this: &shifts[0], tape_of: &tape_of,
+        admitted_slot: LONE_SLOT, dated: &ward_dated,
+    };
     vitals_web::ward_chain::keep_tape(&store, &vitals_web::ward_chain::StoredTape {
         patient_id: 9, run_hash: leaf.clone(), steps: tape.clone(), played_id: String::new(),
     }).expect("tape kept");
 
-    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, standing(&store, "no-blob")) {
+    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, &deriving, standing(&store, "no-blob")) {
         ForReceipt::These { sce: got, rubric, played_id } => {
             assert_eq!(got, sce, "its own bytes reproduce the leaf, so they are the played bytes");
             assert!(rubric.contains("items"), "with the rubric they are filed beside: {rubric}");
@@ -2000,10 +2033,46 @@ fn a_case_with_no_blob_is_still_provable_from_the_bytes_it_carries_now() {
     store
         .put(vitals_web::ward_case::CASE_STORE, &vitals_web::ward_case::key_for("no-blob"), &fixed)
         .expect("a correction, as a pre-blob-store one landed");
-    assert_eq!(vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, standing(&store, "no-blob")),
+    assert_eq!(vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, &deriving, standing(&store, "no-blob")),
                ForReceipt::Unrebuildable,
                "the version it was played on is gone, and the current one does not reproduce the \
                 leaf, so nothing here can rebuild it");
+}
+
+/// The slot these one-shift fixtures put their shift in, and her admission — the same, so there is
+/// no idle time to account for and the fixture stays about which bytes are chosen.
+const LONE_SLOT: u64 = 120;
+
+/// The chain's clock, as the ward asks it.
+fn ward_dated(slot: u64) -> Option<i64> {
+    (slot != 0).then(|| 1_789_000_000 + (slot as i64 * 2) / 5)
+}
+
+/// One anchored shift, standing alone.
+fn lone(slot: u64) -> Vec<vitals_web::ward::ShiftOnChain> {
+    vec![vitals_web::ward::ShiftOnChain {
+        patient_id: 7, signer: [1; 32], slot, run_hash: [0; 32],
+    }]
+}
+
+/// **The leaf a shift produces, derived the way `ward_chain::receipt` derives it** — `resumed` for
+/// the state she began on, then the reduction on top.
+///
+/// Spelled out here rather than taken from `leaf_if_played_on` on purpose: a fixture that asked the
+/// verifier for the answer it is about to check would agree with any arithmetic, including the wrong
+/// one these tests exist to catch.
+fn leaf_the_receipts_way(
+    store: &vitals_web::store::Store,
+    sce: &str,
+    tape: &[vitals_replay::Step],
+    slot: u64,
+) -> String {
+    let tape_of = |h: &str| vitals_web::ward_chain::tape_by_hash(store, h);
+    let (mut st, _played) = vitals_web::ward_chain::resumed(
+        sce, &[], &tape_of, slot, slot, &ward_dated, false,
+    ).expect("she resumes");
+    let r = vitals_replay::shift(&mut st, tape, 0.0);
+    vitals_web::ward_chain::hex32(&vitals_replay::leaf(&vitals_replay::sce_hash(sce), tape, &r))
 }
 
 /// The case's scored content as the store holds it now, the way the ward hands it to the proof.
@@ -2011,4 +2080,102 @@ fn standing(store: &vitals_web::store::Store, case: &str) -> Option<(String, Str
     let pack: Value = store.get(vitals_web::ward_case::CASE_STORE,
                                 &vitals_web::ward_case::key_for(case))?;
     Some((pack.get("sce")?.to_string(), pack.get("rubric")?.to_string()))
+}
+
+/// **The proof must re-derive a leaf the way the receipt does, or it calls good bytes unrebuildable.**
+///
+/// A shift's leaf commits to its reduction, and `ward_chain::receipt` takes that reduction from the
+/// state after every prior shift *and* the idle time between the slots the chain dates. My proof
+/// replayed the tape from the initial state instead — a second derivation of the one number the
+/// whole mechanism turns on. With correct bytes in the store it still reports unrebuildable for any
+/// shift that had anything happen before it, which is most of them.
+///
+/// Every other fixture in this file is one shift with an empty tape and no gap, which is precisely
+/// why the suite was green. This one gives the patient two shifts and real idle gaps — the ordinary
+/// shape of a ward patient — and asserts both prove against the bytes they were played on.
+#[test]
+fn the_proof_re_derives_a_leaf_the_way_the_receipt_does() {
+    let s = Server::start();
+    assert_eq!(s.post("/api/ward/case", &a_pack()).0, 200);
+    let store = vitals_web::store::Store::open(s.state()).expect("the ward's own store");
+    let sce = vitals_web::ward_case::sce_of(&store, "auth-demo-1").expect("its scenario");
+    let addr = vitals_web::ward_case::played_id(&a_pack());
+
+    // The chain's clock, as the ward asks it: a slot has a block time and idle time comes from it.
+    let dated = |slot: u64| -> Option<i64> { (slot != 0).then(|| 1_789_000_000 + (slot as i64 * 2) / 5) };
+    let tape_of = |h: &str| vitals_web::ward_chain::tape_by_hash(&store, h);
+    let admitted = 50u64;
+
+    // She is admitted at slot 50 and her first shift is at 100, so fifty slots of her illness
+    // happened before anybody arrived. Her second is at 300.
+    // **The tapes have to advance the clock or the fixture proves nothing.** With empty tapes the
+    // reduction is the same whatever state the shift began on, so both leaves come out identical and
+    // a verifier replaying from scratch looks correct. The first shift ticks 400 simulated seconds;
+    // the second ticks 300 more, which crosses this case's `bled_out` trigger at 600 only because of
+    // what happened before it. Replayed from the initial state that shift ends alive, and its leaf is
+    // a different number — which is precisely the defect.
+    let mut shifts: Vec<vitals_web::ward::ShiftOnChain> = vec![];
+    let mut leaves: Vec<String> = vec![];
+    for (slot, tick) in [(100u64, 400.0f64), (300u64, 90.0f64)] {
+        let steps: Vec<vitals_replay::Step> = vec![
+            vitals_replay::Step::Do("fluids".into()), vitals_replay::Step::Tick(tick),
+        ];
+        let before: Vec<vitals_web::ward::ShiftOnChain> =
+            shifts.iter().filter(|x| x.slot < slot).copied().collect();
+        // Exactly the call `receipt` makes, including the cap decision, because getting that wrong
+        // moves the leaf.
+        let (mut st, _played) = vitals_web::ward_chain::resumed(
+            &sce, &before, &tape_of, admitted, slot, &dated,
+            vitals_web::ward_chain::cap_on_arrival(
+                slot, Some(&[1u8; 32]), vitals_web::ward::arrival_cap_from_slot(),
+                vitals_web::ward_chain::ward_signer().as_ref()),
+        ).expect("she resumes");
+        let r = vitals_replay::shift(&mut st, &steps, 0.0);
+        let leaf = vitals_web::ward_chain::hex32(
+            &vitals_replay::leaf(&vitals_replay::sce_hash(&sce), &steps, &r));
+        vitals_web::ward_chain::keep_tape(&store, &vitals_web::ward_chain::StoredTape {
+            patient_id: 11, run_hash: leaf.clone(), steps: steps.clone(), played_id: String::new(),
+        }).expect("tape kept");
+        let mut b = [0u8; 32];
+        for (i, c) in b.iter_mut().enumerate() {
+            *c = u8::from_str_radix(&leaf[i * 2..i * 2 + 2], 16).expect("hex");
+        }
+        shifts.push(vitals_web::ward::ShiftOnChain {
+            patient_id: 11, signer: [1; 32], slot, run_hash: b,
+        });
+        leaves.push(leaf);
+    }
+    assert_ne!(leaves[0], leaves[1], "two shifts on one patient are two leaves");
+
+    // The second shift's leaf is *not* what a replay from the initial state produces. This is the
+    // defect stated as a number: a verifier that starts over cannot reach it, however right the
+    // bytes are.
+    // The defect stated as a number. Her second shift's leaf is not what a replay from the initial
+    // state produces: from the state she was actually in she is already recovered, so the order
+    // raises no beats, while from scratch the same order raises two. Different reduction, different
+    // leaf — and a verifier that starts over cannot reach the one the chain holds, however right the
+    // bytes it is holding are.
+    let from_scratch = {
+        let steps = vec![
+            vitals_replay::Step::Do("fluids".into()), vitals_replay::Step::Tick(90.0),
+        ];
+        let r = vitals_replay::replay(&sce, &steps).expect("it replays");
+        vitals_web::ward_chain::hex32(
+            &vitals_replay::leaf(&vitals_replay::sce_hash(&sce), &steps, &r))
+    };
+    assert_ne!(from_scratch, leaves[1],
+               "a replay from the initial state reaches a different leaf, which is why the proof \
+                must re-derive the way the receipt does");
+
+    // Both were played on the bytes sitting in the store. Both must prove.
+    for (n, leaf) in leaves.iter().enumerate() {
+        let steps = tape_of(leaf).expect("her tape");
+        let deriving = vitals_web::ward_chain::Deriving {
+            shifts: &shifts, this: &shifts[n], tape_of: &tape_of,
+            admitted_slot: admitted, dated: &dated,
+        };
+        let got = vitals_web::ward_case::played_against(&store, leaf, &steps, &deriving);
+        assert_eq!(got, vitals_web::ward_case::Played::Proved(addr.clone()),
+                   "shift {} of 2 was played on the bytes in the store and must prove it", n + 1);
+    }
 }
