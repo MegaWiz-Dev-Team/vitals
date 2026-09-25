@@ -862,14 +862,18 @@ pub fn queue_block(store: &crate::store::Store) -> serde_json::Value {
         // Published, because "the queue is empty" and "the door is shut" look identical from
         // outside and mean opposite things about whether anybody should be doing anything.
         ("door", serde_json::json!(door_here().word())),
-        ("filled_by", serde_json::json!("a ticker on the ward host, every minute. One patient is \
-                                         admitted every thirty minutes by default — the interval \
-                                         is VITALS_WARD_ARRIVAL_MINUTES — whether or not a bed is \
-                                         free and whether or not anybody is here; and a bed \
-                                         freeing on discharge or death takes the next queued \
-                                         patient as well. Nobody on the team touches anything. \
-                                         Read the rate off policy.arrivals and check it against \
-                                         admitted_slot on the chain")),
+        // The interval comes from `arrival_minutes`, the same function the policy block publishes
+        // from, because this sentence spelled it as a word — "every thirty minutes" — and stayed
+        // that way for three days after the default moved to 60, contradicting a number printed a
+        // few lines above it. A figure read off the value cannot drift from the value; a word can,
+        // and did, in the one sentence that also tells the reader to go and check it.
+        ("filled_by", serde_json::json!(format!(
+            "a ticker on the ward host, every minute. One patient is admitted every {} minutes by \
+             default — the interval is VITALS_WARD_ARRIVAL_MINUTES — whether or not a bed is free \
+             and whether or not anybody is here; and a bed freeing on discharge or death takes the \
+             next queued patient as well. Nobody on the team touches anything. Read the rate off \
+             policy.arrivals and check it against admitted_slot on the chain",
+            crate::ward::arrival_minutes()))),
         ("waiting_patients", serde_json::json!(crate::ward::waiting_rows(&queued, &crate::ward_case::all(store)))),
     ] {
         block[key] = val;
