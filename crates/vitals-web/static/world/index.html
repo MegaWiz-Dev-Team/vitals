@@ -164,6 +164,13 @@ canvas#globe.dragging{cursor:grabbing}
 .panel .k{font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.1em;color:var(--ink-3);text-transform:uppercase}
 .panel .empty{color:var(--ink-2);font-size:.92rem;margin:.6rem 0 0}
 .prow .shut{font-size:.78rem;color:var(--ink-2);margin-top:.15rem}
+/* **Two sentences, and they have to read as two.** The card had no rule for this at all, so the
+   `<b>` and the `<span>` sat inline and production rendered "the ward will close her in about
+   2.0 hyou will find her five minutes in" — the two facts fused into one unreadable string, on the
+   front page. They are separate claims about different things and the layout has to say so. */
+.prow .clock{margin-top:.2rem;font-size:.8rem;line-height:1.35}
+.prow .clock b{display:block;color:var(--ink)}
+.prow .clock span{display:block;color:var(--ink-2)}
 /* A 16:9 box the width of whatever column it is in, so the frame never decides the layout. */
 .film{margin:1.2rem 0 0;padding:0}
 .film-box{position:relative;aspect-ratio:16/9;max-width:100%;border-radius:.75rem;overflow:hidden;
@@ -1047,6 +1054,21 @@ function treated(p) {
    answer for her — a patient admitted since its last pass, one whose chart would not rebuild, or a
    case that does not finish her inside the horizon. Silence is the honest state there; a number
    left over from an hour ago would read as current and nothing would look wrong. */
+/* The patient's own pronoun, from the board's own `sex`, and "them" when the ward does not know.
+   The card said "her" about every patient on the front page — including Anas Chraibi, seven years
+   old, on production this morning. `plain_words.rs` forbids exactly this on the server side ("the
+   ward admits men and women and this code has a patient id, not a persona") and the page had no
+   such rule, so the same sentence went out in the one place a stranger actually reads it.
+
+   Unknown is `them` rather than a guess: a patient the ward cannot sex is not a patient to assign
+   one to. */
+function theirs(p) {
+  const sex = (p && typeof p.sex === "string") ? p.sex.trim().toLowerCase() : "";
+  if (sex === "m" || sex === "male") return { them: "him", they: "he", their: "his" };
+  if (sex === "f" || sex === "female") return { them: "her", they: "she", their: "her" };
+  return { them: "them", they: "they", their: "their" };
+}
+
 function clock(p) {
   const h = p.closes_in_hours;
   if (h === undefined || h === null || !(h >= 0)) return "";
@@ -1054,11 +1076,12 @@ function clock(p) {
   /* The second sentence is the cap, so it is said only where the cap is on. With it off, a
      stranger meets her exactly as long-abandoned as she is, and promising otherwise would be the
      page inventing a mercy the ward is not giving. */
+  const g = theirs(p);
   const mins = ARRIVALCAP && ARRIVALCAP.sim_minutes;
   const meets = mins
-    ? `<span>you will find her ${mins === 5 ? "five" : mins} minutes in — treating her is still worth it</span>`
+    ? `<span>you will find ${g.them} ${mins === 5 ? "five" : mins} minutes in — treating ${g.them} is still worth it</span>`
     : "";
-  return `<div class="clock"><b>the ward will close her in about ${when}</b>${meets}</div>`;
+  return `<div class="clock"><b>the ward will close ${g.them} in about ${when}</b>${meets}</div>`;
 }
 
 /* Closest to dying first — the founder's ruling of 24 ก.ย., "เรียงเตียงตามใกล้ตาย".

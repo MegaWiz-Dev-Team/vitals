@@ -47,13 +47,13 @@ const sandbox = [grabConst('ALPHA3'), grabConst('FULL_NAME'), grab('displayName'
   grab('peoplePerDoctor'), grab('latestOf'), grab('tenYearTrend'), grab('fmtTrend'), grab('fmtPeople'), grab('doctorLine'),
   grab('worldAverage'), grab('missionLine'), grab('doctorBin'),
   grab('yearValue'), grab('yearRange'), grab('doctorLineAt'), grab('worldAverageAt'), grab('missionLineAt'),
-  grab('escapeHtml'), grab('portraitImg'), grab('onTheGlobe'), grab('clock'), grab('treated'), grab('byClosest'),
-  'return { displayName, FULL_NAME, countryId, countryCounts, visible, inBeds, canTakeShift, censusFigures, ALPHA3, openingCountry, openingLongitude, countryGroups, countryHeading, waitingCounts, figuresFor, bedsEmptyWords, shouldReload, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg, onTheGlobe, clock, treated, byClosest };'].join('\n');
+  grab('escapeHtml'), grab('portraitImg'), grab('onTheGlobe'), grab('clock'), grab('treated'), grab('byClosest'), grab('theirs'),
+  'return { displayName, FULL_NAME, countryId, countryCounts, visible, inBeds, canTakeShift, censusFigures, ALPHA3, openingCountry, openingLongitude, countryGroups, countryHeading, waitingCounts, figuresFor, bedsEmptyWords, shouldReload, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg, onTheGlobe, clock, treated, byClosest, theirs };'].join('\n');
 const { displayName, FULL_NAME, countryId, countryCounts, inBeds, canTakeShift, censusFigures, visible, ALPHA3, openingCountry, openingLongitude, countryGroups, countryHeading, waitingCounts, figuresFor, bedsEmptyWords, shouldReload, whenMs, relative, absolute, stateLine,
   stateOf, onBoard, paintOf, hoverText, STATE_LABEL,
   DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin,
   yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg, onTheGlobe,
-  clock, treated, byClosest } = new Function(sandbox)();
+  clock, treated, byClosest, theirs } = new Function(sandbox)();
 
 // ── countryId ────────────────────────────────────────────────────────────────
 // world-atlas 110m keys its shapes by ISO numeric, as strings ("764"); the ward sends alpha-3.
@@ -911,13 +911,15 @@ assert.deepEqual([...mixed].sort(byClosest).map(p => p.patient_id), [12, 11, 10,
 // assuming, and with no cap published it says only the half that is true.
 globalThis.ARRIVALCAP = null;
 const uncapped = clock(bed(1, 3.25));
-assert.match(uncapped, /the ward will close her in about 3\.3 h/);
+// `bed()` gives no sex, so the sentence is "them" — the card no longer assumes every patient on
+// this ward is a woman, which is what it did until production said "her" about a seven-year-old boy.
+assert.match(uncapped, /the ward will close them in about 3\.3 h/);
 assert.ok(!/five minutes in/.test(uncapped),
           `with no cap on the board the page may not promise one: ${uncapped}`);
 
 globalThis.ARRIVALCAP = { from_slot: 503728769, sim_minutes: 5 };
 const said = clock(bed(1, 3.25));
-assert.match(said, /the ward will close her in about 3\.3 h/,
+assert.match(said, /the ward will close them in about 3\.3 h/,
              `the ward's own clock is the first sentence: ${said}`);
 assert.match(said, /five minutes in/,
              `and what an arrival actually meets is the second: ${said}`);
@@ -946,3 +948,40 @@ assert.ok(!/alive|surviv|saved|longer/i.test(treated({ shifts: 3 })),
           'the count must not claim what a shift buys');
 
 console.log('globe_logic: ok (and the closest to dying is read first)');
+
+
+// ── the ward admits men and women, and the card has to know which ────────────
+//
+// Production's front page said "the ward will close her" about Anas Chraibi, seven years old, and
+// about Jean-Pierre Mbuyi, fifty-five. `plain_words.rs` forbids exactly this on the server — "the
+// ward admits men and women and this code has a patient id, not a persona" — and the page had no
+// such rule, so the sentence went out in the one place a stranger actually reads it.
+globalThis.ARRIVALCAP = { from_slot: 1, sim_minutes: 5 };
+
+const boy = clock({ closes_in_hours: 2, sex: "m" });
+assert.match(boy, /close him in about/, `a boy is him: ${boy}`);
+assert.match(boy, /you will find him five minutes in — treating him/);
+assert.ok(!/\bher\b|\bshe\b/.test(boy), `and never her: ${boy}`);
+
+const girl = clock({ closes_in_hours: 2, sex: "f" });
+assert.match(girl, /close her in about/);
+assert.ok(!/\bhim\b|\bhe\b/.test(girl), `and never him: ${girl}`);
+
+// A patient the ward cannot sex gets "them", not a guess. Assigning one would be inventing a fact
+// about a person from nothing, which is worse than the neutral word.
+for (const unknown of [undefined, "", "?", "x"]) {
+  const t = clock({ closes_in_hours: 2, sex: unknown });
+  assert.match(t, /close them in about/, `unknown sex is them, not a guess: ${t}`);
+  assert.ok(!/\bher\b|\bhim\b/.test(t));
+}
+
+// The two sentences must not fuse. They are separate claims and the markup has to keep them apart —
+// production rendered "about 2.0 hyou will find her five minutes in" with no rule for `.clock`.
+// Against `html`, not `script`: the stylesheet is not inside the page's <script id="globe"> block,
+// and asserting on the wrong half of the file would pass or fail for reasons unrelated to the rule.
+assert.match(html, /\.prow \.clock b\{[^}]*display:block/,
+             'the first sentence is its own block or the two run together');
+assert.match(html, /\.prow \.clock span\{[^}]*display:block/,
+             'and so is the second');
+
+console.log('globe_logic: ok (and the card says him, her or them, and says them apart)');
