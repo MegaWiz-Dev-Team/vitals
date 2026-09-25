@@ -3146,6 +3146,88 @@ pub fn hex32(b: &[u8; 32]) -> String {
 /// tapes have the same hash, and that is not a collision to defend against — it is the same bytes,
 /// and either patient replaying them arrives where she should. Keying by patient as well would
 /// have made one of them unable to find her own tape.
+/// One anchored shift, and what this ward can prove about the bytes behind it.
+///
+/// Both sources of truth appear here and neither is reconciled: `recorded` is what the hand-over
+/// wrote on the tape, `proved` is what replaying the kept bytes against the kept tape demonstrates,
+/// and `disagrees` is set when they name different bytes. That last field is the reason this type
+/// exists rather than a function returning one answer — a disagreement is a finding to publish, not
+/// a tie to break.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ShiftBytes {
+    pub patient_id: u64,
+    /// The leaf the chain holds for this shift, which is what everything else is checked against.
+    pub leaf: String,
+    /// The case her pack names **now**. Context for a human reading the list, never evidence: if
+    /// the pointer moved, this is the case she would be given today and not the one she played.
+    pub case: String,
+    /// The address the hand-over recorded, or `None` on every shift anchored before it did.
+    pub recorded: Option<String>,
+    /// `proved`, `ambiguous`, `unrebuildable`, or `no tape`.
+    pub verdict: &'static str,
+    /// The address replay demonstrated, when exactly one scenario fits.
+    pub proved: Option<String>,
+    /// Every address that fits equally, when a rubric-only correction left more than one.
+    pub candidates: Vec<String>,
+    /// A recorded address and a proved one naming different bytes. Published, never repaired.
+    pub disagrees: bool,
+}
+
+/// **Every shift the chain holds, and what this ward can prove about the bytes behind it.**
+///
+/// Read this before repairing anything. It changes nothing: it replays what is kept against what is
+/// anchored and reports, so a mismatch is a fact somebody decides about rather than a fix that has
+/// already happened.
+///
+/// The verdicts are kept apart on purpose. `no tape` is not `unrebuildable`: a tape missing here can
+/// still be recovered from a session this server is holding — [`recover_tape`] does exactly that —
+/// whereas bytes that were overwritten before the blob store existed are gone, and nothing will
+/// bring them back. One word for both would hide the recoverable case inside the lost one.
+pub fn bytes_behind_the_anchored_shifts(store: &crate::store::Store) -> Vec<ShiftBytes> {
+    let packs = packs(store);
+    let mut out = Vec::new();
+    for (key, seen) in store.list::<Seen>(SHIFT_CACHE) {
+        let Ok(patient_id) = key.trim_start_matches('p').parse::<u64>() else { continue };
+        for shift in seen.shifts() {
+            let leaf = hex32(&shift.run_hash);
+            let case = packs.get(&patient_id).map(|k| k.case.clone()).unwrap_or_default();
+            let recorded = store
+                .get::<StoredTape>(TAPE_STORE, &leaf)
+                .map(|t| t.played_id)
+                .filter(|id| !id.is_empty());
+
+            // No tape, no replay: there is nothing to check the kept bytes against, and saying
+            // "unrebuildable" here would blame the bytes for a tape that is the thing missing.
+            let Some(steps) = tape_by_hash(store, &leaf) else {
+                out.push(ShiftBytes {
+                    patient_id, leaf, case, recorded,
+                    verdict: "no tape", proved: None, candidates: Vec::new(), disagrees: false,
+                });
+                continue;
+            };
+
+            let (verdict, proved, candidates) =
+                match crate::ward_case::played_against(store, &leaf, &steps) {
+                    crate::ward_case::Played::Proved(id) => ("proved", Some(id), Vec::new()),
+                    crate::ward_case::Played::Ambiguous(ids) => ("ambiguous", None, ids),
+                    crate::ward_case::Played::Unrebuildable => {
+                        ("unrebuildable", None, Vec::new())
+                    }
+                };
+            // A disagreement needs both halves to exist. Nothing recorded is not a disagreement —
+            // it is the ordinary state of every shift anchored before the hand-over recorded it.
+            let disagrees = match (&recorded, &proved) {
+                (Some(r), Some(p)) => r != p,
+                _ => false,
+            };
+            out.push(ShiftBytes {
+                patient_id, leaf, case, recorded, verdict, proved, candidates, disagrees,
+            });
+        }
+    }
+    out
+}
+
 pub fn tape_by_hash(
     store: &crate::store::Store,
     run_hash: &str,
@@ -3158,8 +3240,25 @@ pub fn tape_by_hash(
 /// Content-addressed, so keeping the same tape twice is keeping it once — and so the name it is
 /// stored under is the name the chain will call it by.
 pub fn keep_tape(store: &crate::store::Store, tape: &StoredTape) -> Result<(), String> {
+    // **A writer with nothing to say does not erase one that had something.** Content-addressing is
+    // what makes this necessary rather than merely tidy: every writer of a given shift files under
+    // the same key, and only the hand-over knows the played address — the reconstructing writers
+    // pass an empty one by design, because guessing would be worse than silence. A plain put would
+    // let a rebuild of an already-anchored shift delete the hand-over's record, and the result would
+    // be indistinguishable from a shift that never recorded an address at all.
+    //
+    // Asymmetric on purpose. A later hand-over carrying a different address is a writer with
+    // evidence — a rubric corrected between two shifts that played identically — so it corrects the
+    // record rather than being ignored. Silence yields to knowledge; knowledge does not yield to
+    // silence.
+    let keeping = match store.get::<StoredTape>(TAPE_STORE, &tape.run_hash) {
+        Some(before) if tape.played_id.is_empty() && !before.played_id.is_empty() => {
+            StoredTape { played_id: before.played_id, ..tape.clone() }
+        }
+        _ => tape.clone(),
+    };
     store
-        .put(TAPE_STORE, &tape.run_hash, tape)
+        .put(TAPE_STORE, &keeping.run_hash, &keeping)
         .map_err(|e| format!("the tape could not be kept, so the shift is unrebuildable: {e}"))
 }
 

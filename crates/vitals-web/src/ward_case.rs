@@ -940,6 +940,78 @@ pub fn played_bytes(store: &crate::store::Store, id: &str) -> Option<PlayedBytes
     store.get(PLAYED_STORE, id)
 }
 
+/// Keep the current scored content of every case the ward already holds, and say how many.
+///
+/// The door keeps a blob on the way in, so everything published from now on is addressed. This is
+/// for what was already here: production is holding 106 cases filed before the blob store existed,
+/// and an anchored shift on one of those has nothing to be matched against until its bytes are
+/// kept. Idempotent, because the address is the bytes — running it twice keeps the same blobs.
+///
+/// It recovers the *current* version and only that. A case corrected before the blob store existed
+/// has lost its earlier bytes for good; that shift is [`Played::Unrebuildable`] and belongs in a
+/// list a reader can see, not filled in from whatever the store happens to hold today.
+///
+/// Packs that no longer validate are skipped, on the same reasoning as [`all`]: the door would
+/// refuse that kind today, so it is not content to hand a patient.
+pub fn seed_played_bytes(store: &crate::store::Store) -> usize {
+    let mut kept = 0;
+    for (_, pack) in store.list::<Value>(CASE_STORE) {
+        if validate_case(&pack).is_err() {
+            continue;
+        }
+        keep_played_bytes(store, &pack);
+        kept += 1;
+    }
+    kept
+}
+
+/// What this ward can prove about the bytes an already-anchored shift was played against.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Played {
+    /// One kept scenario reproduces the leaf the chain holds, under one rubric. Demonstrated.
+    Proved(String),
+    /// Several blobs fit: they share the scenario and differ in rubric, and a leaf commits to
+    /// nothing about the rubric. Both addresses are named because choosing between them would put
+    /// a number on a stranger's receipt that no evidence supports.
+    Ambiguous(Vec<String>),
+    /// Nothing this ward holds reproduces the leaf. The chart cannot be rebuilt, and saying so is
+    /// the honest end of that road.
+    Unrebuildable,
+}
+
+/// **Which kept bytes an anchored shift was played against, proved by replaying them.**
+///
+/// Nothing on the chain says which bytes a shift ran on — that is the defect this whole mechanism
+/// exists to end. But the leaf commits to `sce_hash(sce_json)` and to the tape, so replaying a
+/// candidate scenario against the tape the ward kept either reproduces the anchored leaf or does
+/// not. No field is taken on trust: the scenario hash is recomputed from the bytes, so a blob whose
+/// recorded `sce_sha256` were wrong could not talk its way into a match.
+///
+/// Blobs are grouped by their scenario bytes rather than by any recorded hash of them, which makes
+/// the ambiguity structural instead of incidental — every blob sharing a scenario stands or falls
+/// on one replay, and if that scenario fits, all of them fit equally. Which is the true state of
+/// the evidence: the leaf cannot separate two rubrics over one scenario.
+pub fn played_against(
+    store: &crate::store::Store,
+    leaf_hex: &str,
+    tape: &[vitals_replay::Step],
+) -> Played {
+    let mut by_scenario: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+    for (id, blob) in store.list::<PlayedBytes>(PLAYED_STORE) {
+        by_scenario.entry(blob.sce).or_default().push(id);
+    }
+    for (sce, mut ids) in by_scenario {
+        let Ok(r) = vitals_replay::replay(&sce, tape) else { continue };
+        let leaf = vitals_replay::leaf(&vitals_replay::sce_hash(&sce), tape, &r);
+        if crate::ward_chain::hex32(&leaf) != leaf_hex {
+            continue;
+        }
+        ids.sort();
+        return if ids.len() == 1 { Played::Proved(ids.remove(0)) } else { Played::Ambiguous(ids) };
+    }
+    Played::Unrebuildable
+}
+
 /// **The bytes a shift on this patient is being played against**, or empty when that is not a fact.
 ///
 /// Called at hand-over, which is the one moment a shift's played bytes are known rather than
