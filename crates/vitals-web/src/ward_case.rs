@@ -1217,6 +1217,18 @@ struct StoredTapeAddress {
 /// The scenario is compared through [`sce_of`] — the same function the ward itself called to get
 /// the text it played — so the two cannot drift into disagreeing about whitespace or key order and
 /// silently answer empty for every shift.
+///
+/// **Recording the address keeps the bytes behind it.** An address is only worth writing if the
+/// bytes are there when the receipt or the proof goes to look them up. The door keeps a blob on
+/// every push and the seed keeps one for every case the store lists, but a pack can reach the case
+/// store without passing either — every correction filed before the blob store existed did — and a
+/// shift played on one would record an address that resolved to nothing, reading unrebuildable the
+/// moment it was handed over. So the bytes are kept here, at the one moment they are known to be the
+/// ones played. (A guard, not the cause of the 26 Sep 2026 unrebuildable shifts: those had their
+/// bytes kept — other shifts proved against the same address — and failed on derivation instead.)
+/// [`keep_played_bytes`] is
+/// idempotent and addressed by content: for a case the door already kept it writes the same blob
+/// again, and it returns the same id [`played_id`] would, so nothing a leaf commits to can move.
 pub fn played_address(store: &crate::store::Store, patient_id: u64, sce_json: &str) -> String {
     let Some(case) = crate::ward_chain::packs(store).get(&patient_id).map(|k| k.case.clone()) else {
         return String::new();
@@ -1226,6 +1238,6 @@ pub fn played_address(store: &crate::store::Store, patient_id: u64, sce_json: &s
     }
     store
         .get::<Value>(CASE_STORE, &key_for(&case))
-        .map(|pack| played_id(&pack))
+        .map(|pack| keep_played_bytes(store, &pack))
         .unwrap_or_default()
 }

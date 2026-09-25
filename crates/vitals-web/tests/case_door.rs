@@ -1536,6 +1536,61 @@ fn a_shift_records_the_bytes_it_was_played_against() {
              bytes — that mislabelling is the defect the blobs exist to end");
 }
 
+/// **The address a shift records always resolves to bytes — even for a case the door never kept.**
+///
+/// A shift records the address of the bytes it was played against at hand-over. That address is
+/// only worth recording if the bytes are there to be found: the receipt that re-derives from played
+/// bytes, and the proof that decides which bytes produced a leaf, both look them up by it. The door
+/// keeps a blob on every push and the seed keeps one for every case the store lists — but a pack can
+/// reach the case store another way (every correction filed before the blob store existed did), and
+/// a shift played on such a pack would record an address with nothing behind it, and read
+/// unrebuildable the moment it was handed over. The test that precedes this one sets up exactly that
+/// state and checks only that the shift is addressed, one assertion short of checking the address
+/// resolves. This is that assertion.
+///
+/// So recording the address keeps the bytes. Keeping is idempotent and addressed by content, so for a
+/// case the door already kept this writes the same blob again and changes nothing; it only closes the
+/// gap for one it did not. It never touches what an existing leaf commits to.
+#[test]
+fn a_shift_keeps_the_bytes_it_records_even_on_a_case_the_door_never_kept() {
+    let s = Server::start();
+    assert_eq!(s.post("/api/ward/case", &a_pack()).0, 200);
+    let store = vitals_web::store::Store::open(s.state()).expect("the ward's own store");
+
+    let patient: vitals_web::ward::Pack = serde_json::from_value(json!({
+        "case": "auth-demo-1",
+        "persona": { "name": "อารีย์", "age": 62, "sex": "f", "country": "THA" },
+    }))
+    .expect("a patient the factory queued");
+    store
+        .put(vitals_web::ward_chain::PERSONA_STORE, "p7", &patient)
+        .expect("a bed on the board");
+
+    // A pack that reached the case store without passing the door — the way every correction filed
+    // before the blob store existed did. Nobody kept its bytes.
+    let mut unkept = a_pack();
+    unkept["version"] = json!("0.2.0");
+    unkept["sce"]["vitals0"]["hr"] = json!(124.0);
+    store
+        .put(vitals_web::ward_case::CASE_STORE,
+             &vitals_web::ward_case::key_for("auth-demo-1"), &unkept)
+        .expect("a case filed without the door");
+    let unkept_id = vitals_web::ward_case::played_id(&unkept);
+    assert!(vitals_web::ward_case::played_bytes(&store, &unkept_id).is_none(),
+            "the premise: nobody kept these bytes when they were filed");
+
+    // A stranger plays a shift on it, and the ward records what it was played on.
+    let played = vitals_web::ward_case::sce_of(&store, "auth-demo-1")
+        .expect("the scenario she plays");
+    let addr = vitals_web::ward_case::played_address(&store, 7, &played);
+    assert_eq!(addr, unkept_id, "the shift is addressed to the bytes it actually ran");
+
+    // The load-bearing assertion. Before this, the address named bytes nobody had kept.
+    assert!(vitals_web::ward_case::played_bytes(&store, &addr).is_some(),
+            "an address a shift records must resolve to its bytes — otherwise the shift is \
+             unrebuildable the moment it is handed over");
+}
+
 /// **The cases the ward already holds get blobs too**, or the repair only covers what arrives next.
 ///
 /// The door keeps a blob on every push, so every case published from now on is addressed. The ward
