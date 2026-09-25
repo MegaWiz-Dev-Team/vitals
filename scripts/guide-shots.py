@@ -75,13 +75,16 @@ try:
         if js("(()=>{const c=document.querySelector('#cmd'); return !!c && !c.disabled})()"): break
     time.sleep(2); shot("03-after-take")
     doc = cdp("DOM.getDocument", depth=1); node = cdp("DOM.querySelector", nodeId=doc["root"]["nodeId"], selector="#cmd").get("nodeId")
+    log["cmd_before"] = js("(()=>{const c=document.querySelector('#cmd'); return c? {disabled:c.disabled, value:c.value, focused:document.activeElement===c} : null})()")
     if node:
         cdp("DOM.focus", nodeId=node); cdp("Input.insertText", text="oxygen")
+        log["cmd_after_type"] = js("(()=>{const c=document.querySelector('#cmd'); return c? {value:c.value, focused:document.activeElement===c} : null})()")
         cdp("Input.dispatchKeyEvent", type="keyDown", key="Enter", code="Enter", windowsVirtualKeyCode=13, nativeVirtualKeyCode=13, text="\r", unmodifiedText="\r")
         cdp("Input.dispatchKeyEvent", type="keyUp", key="Enter", code="Enter", windowsVirtualKeyCode=13, nativeVirtualKeyCode=13)
-    time.sleep(4); shot("04-first-order")
+    time.sleep(4); log["didwork_after_enter"] = js("typeof DIDWORK!=='undefined' ? DIDWORK : null"); log["cmd_after_enter"] = js("(document.querySelector('#cmd')||{}).value"); shot("04-first-order")
     time.sleep(30); shot("05-treating")
-    log["handover_pressed"] = press("#endrun"); time.sleep(2.5); shot("06-handing-over")
+    log["endrun_before"] = js("(()=>{const b=document.querySelector('#endrun'); return b? {disabled:b.disabled, text:b.innerText, display:getComputedStyle(b).display} : null})()")
+    log["handover_pressed"] = press("#endrun"); time.sleep(2.5); log["strip_after_endrun"] = strip(); shot("06-handing-over")
     for _ in range(20):
         time.sleep(3)
         s = strip() or ""
