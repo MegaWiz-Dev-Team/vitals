@@ -906,6 +906,16 @@ assert.deepEqual([...mixed].sort(byClosest).map(p => p.patient_id), [12, 11, 10,
                  'a patient with no clock, or one already closed, is ordered ahead of a living one');
 
 // ── the card says both facts, in two sentences ──────────────────────────────
+// The cap's sentence is only sayable where the cap is on. Staging rendered it on 25 ก.ย. with the
+// cap off, on two patients who meet nothing of the sort — so the page reads the board rather than
+// assuming, and with no cap published it says only the half that is true.
+globalThis.ARRIVALCAP = null;
+const uncapped = clock(bed(1, 3.25));
+assert.match(uncapped, /the ward will close her in about 3\.3 h/);
+assert.ok(!/five minutes in/.test(uncapped),
+          `with no cap on the board the page may not promise one: ${uncapped}`);
+
+globalThis.ARRIVALCAP = { from_slot: 503728769, sim_minutes: 5 };
 const said = clock(bed(1, 3.25));
 assert.match(said, /the ward will close her in about 3\.3 h/,
              `the ward's own clock is the first sentence: ${said}`);

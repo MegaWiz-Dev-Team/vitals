@@ -600,9 +600,19 @@ pub fn debrief(sce_json: &str, tape: &[Step]) -> Result<Debrief, String> {
 /// Real time is the caller's to compute and the conversion is [`IDLE_SIM_PER_REAL`]: at one
 /// simulated minute per sixty real ones, a simulated second is a real minute, so simulated seconds
 /// divided by sixty is hours.
-pub fn sim_seconds_until_untreated_ending(st: &SceState, limit: f64) -> Option<f64> {
-    if st.outcome().is_some() {
-        return Some(0.0);
+///
+/// **The ending is returned with the time, and judging it is the caller's.** An outcome is terminal
+/// — the engine stops there — so a patient who reaches an ending nobody closes on will never be
+/// closed on this path at all, and a caller that treated every ending alike would print a countdown
+/// for a patient no clock is running against. This crate does not know which endings a ward acts
+/// on, and should not.
+pub fn sim_seconds_until_untreated_ending(st: &SceState, limit: f64) -> Option<(f64, String)> {
+    // The outcome is spelled the way `Replay.outcome` spells it — `format!("{o:?}")` — so a caller
+    // can judge it with the same rule it judges a real replay by, and the two cannot disagree about
+    // what ending she reached.
+    let named = |st: &SceState| st.outcome().map(|o| format!("{o:?}"));
+    if let Some(o) = named(st) {
+        return Some((0.0, o));
     }
     let mut ahead = st.clone();
     // A minute of simulated time per step: fine enough that the answer is never more than a minute
@@ -613,8 +623,8 @@ pub fn sim_seconds_until_untreated_ending(st: &SceState, limit: f64) -> Option<f
     while spent < limit {
         pass_idle(&mut ahead, STEP);
         spent += STEP;
-        if ahead.outcome().is_some() {
-            return Some(spent);
+        if let Some(o) = named(&ahead) {
+            return Some((spent, o));
         }
     }
     None

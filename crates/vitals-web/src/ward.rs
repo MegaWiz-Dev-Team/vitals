@@ -1358,6 +1358,20 @@ pub fn policy(
         // walks in; nothing stops the census going past it.
         "beds": on_ward,
         "beds_kept_free": BEDS,
+        // **Whether a stranger arriving meets a capped patient, and from which slot.** `null` is
+        // off, and off is what an unset deploy means. Published because a page cannot otherwise
+        // know: the card's "you will find her five minutes in" is only true when this is on, and
+        // on 25 ก.ย. staging rendered that line on both living beds with the cap off. A sentence
+        // the page can say when it is not so is a sentence the page should not be able to say.
+        "arrival_cap": (arrival_cap_from_slot() != u64::MAX).then(|| serde_json::json!({
+            "from_slot": arrival_cap_from_slot(),
+            "sim_minutes": vitals_replay::ARRIVAL_IDLE_CAP_SIM_SECONDS / 60.0,
+            "means": "a stranger opening a bed taken at or after this slot finds the patient at \
+                      this many simulated minutes into the case, however long the bed has really \
+                      been unattended. The ward's own clock is not capped — a patient nobody \
+                      comes to still dies of being left, and `closes_in_hours` on each patient is \
+                      the countdown to that",
+        })),
         "arrivals": {
             "every_minutes": crate::ward::arrival_minutes(),
             "derivation": "a patient arrives every so many minutes whether or not anybody is \

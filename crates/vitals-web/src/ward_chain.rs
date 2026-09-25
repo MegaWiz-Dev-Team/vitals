@@ -3047,19 +3047,35 @@ pub fn died_unattended(
     // The span itself, as a shift with no steps in it — which is what happened.
     let replay = vitals_replay::shift(&mut st, &[], idle_real);
     let Some(outcome) = replay.outcome.clone() else { return Ok(None) };
-    let finished = vitals_progress::record::Outcome::parse(&outcome).is_some_and(|o| {
-        matches!(
-            o,
-            vitals_progress::record::Outcome::DeathArrest
-                | vitals_progress::record::Outcome::DeathBiphasic
-        )
-    });
-    if !finished {
+    if !the_ward_closes_on(&outcome) {
         // She reached an ending the ward does not close on its own. A discharge nobody was there
         // to give is not a discharge, and ICU is a transfer: the next stranger continues her.
         return Ok(None);
     }
     Ok(Some(Unattended { outcome, since_slot: since, idle_slots, replay, state: st }))
+}
+
+/// **Is this an ending the ward closes a stay on by itself?**
+///
+/// Only the deaths. A discharge nobody was there to give is not a discharge and ICU is a transfer,
+/// so the ward leaves both for the next stranger to continue — which means a patient who reaches
+/// one of them is not on any clock the ward is running.
+///
+/// One function because two callers need the same answer and they are the two that must never
+/// disagree: `died_unattended`, which decides whether to close her, and `sim_seconds_left_
+/// unattended`, which decides whether to print a countdown about closing her. They did disagree —
+/// for one commit, 17d90c6, the second reported "about 0 h" for every patient whose engine had
+/// reached a non-death ending, which on production was seven treated patients alive past the clock
+/// and on staging was both living beds. A false sentence with a countdown's authority, caught on
+/// staging by the director before it went in front of anybody.
+pub fn the_ward_closes_on(outcome: &str) -> bool {
+    vitals_progress::record::Outcome::parse(outcome).is_some_and(|o| {
+        matches!(
+            o,
+            vitals_progress::record::Outcome::DeathArrest
+                | vitals_progress::record::Outcome::DeathBiphasic
+        )
+    })
 }
 
 /// A run hash as the tapes are keyed by it.
@@ -3787,7 +3803,13 @@ pub fn sim_seconds_left_unattended(
     // Bring her to now the way the ticker does — the whole gap, uncapped — and then ask the engine
     // how much further it would take her.
     vitals_replay::shift(&mut st, &[], idle_real);
-    Ok(vitals_replay::sim_seconds_until_untreated_ending(&st, horizon_sim_seconds))
+    // Only an ending the ward would actually close her on is a countdown. An outcome is terminal,
+    // so a patient who reaches a discharge or an ICU transfer on her own is not on this clock at
+    // all and never will be — `None`, and her card says nothing rather than "about 0 h" about a
+    // closure that is not coming.
+    Ok(vitals_replay::sim_seconds_until_untreated_ending(&st, horizon_sim_seconds)
+        .filter(|(_, ending)| the_ward_closes_on(ending))
+        .map(|(secs, _)| secs))
 }
 
 /// The store the ticker leaves each patient's remaining time in, for the board to publish.

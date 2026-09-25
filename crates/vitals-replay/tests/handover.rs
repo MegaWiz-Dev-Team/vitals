@@ -319,8 +319,14 @@ fn asking_how_long_she_has_does_not_shorten_it() {
     );
 
     // ep1 kills an untreated patient, so there is an answer and it is not zero.
-    let left = left.expect("ep1 left alone reaches an ending");
+    let (left, ending) = left.expect("ep1 left alone reaches an ending");
     assert!(left > 0.0, "a living patient has time left, however little");
+    // The ending comes back with the time, and judging it belongs to the caller: an outcome is
+    // terminal, so a patient who reaches one nobody closes on is on no clock at all. Spelled the
+    // way `Replay.outcome` spells it, so the ward can judge it with the rule it judges a real
+    // replay by — for one commit those two disagreed and every treated patient's card said
+    // "about 0 h" about a closure that was not coming.
+    assert_eq!(ending, "DeathArrest", "ep1 left alone arrests: {ending}");
 
     // And the answer is the truth: walk her that far and she is finished; stop a step short and she
     // is not. This is what ties the figure to the ticker's own physiology rather than to a formula.
@@ -335,5 +341,6 @@ fn asking_how_long_she_has_does_not_shorten_it() {
 
     // A patient already finished has none left, rather than an error or a negative.
     pass_idle(&mut st, left);
-    assert_eq!(sim_seconds_until_untreated_ending(&st, 3_600.0), Some(0.0));
+    assert_eq!(sim_seconds_until_untreated_ending(&st, 3_600.0),
+               Some((0.0, "DeathArrest".to_string())));
 }

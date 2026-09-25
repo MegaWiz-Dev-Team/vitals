@@ -696,6 +696,10 @@ let SAWBOARD = false;
 /* The door, and the people behind it. `closed` until a board says otherwise — the page must not
    offer a ward it has not been told is open. */
 let DOOR = "closed", WAITING = 0, WAITINGWHO = [];
+/* Whether the ward caps what an arrival meets. Null until a board says so, and null is off — the
+   card may not promise "five minutes in" on a ward that is not capping, which is what staging
+   rendered on 25 ก.ย. before the board published this. */
+let ARRIVALCAP = null;
 
 function render(j) {
   const rev = j && j.revision ? String(j.revision) : "";
@@ -713,6 +717,7 @@ function render(j) {
   if (j && Array.isArray(j.patients)) SAWBOARD = true;
   const q = (j && j.queue) || {};
   DOOR = typeof q.door === "string" ? q.door : "closed";
+  ARRIVALCAP = (j && j.policy && j.policy.arrival_cap) || null;
   WAITING = typeof q.waiting === "number" ? q.waiting : 0;
   WAITINGWHO = Array.isArray(q.waiting_patients) ? q.waiting_patients : [];
   // The legend's third key exists only where the thing it describes is on the globe.
@@ -1046,8 +1051,14 @@ function clock(p) {
   const h = p.closes_in_hours;
   if (h === undefined || h === null || !(h >= 0)) return "";
   const when = h < 1 ? `${Math.max(1, Math.round(h * 60))} min` : `${h < 10 ? h.toFixed(1) : Math.round(h)} h`;
-  return `<div class="clock"><b>the ward will close her in about ${when}</b>` +
-         `<span>you will find her five minutes in — treating her is still worth it</span></div>`;
+  /* The second sentence is the cap, so it is said only where the cap is on. With it off, a
+     stranger meets her exactly as long-abandoned as she is, and promising otherwise would be the
+     page inventing a mercy the ward is not giving. */
+  const mins = ARRIVALCAP && ARRIVALCAP.sim_minutes;
+  const meets = mins
+    ? `<span>you will find her ${mins === 5 ? "five" : mins} minutes in — treating her is still worth it</span>`
+    : "";
+  return `<div class="clock"><b>the ward will close her in about ${when}</b>${meets}</div>`;
 }
 
 /* Closest to dying first — the founder's ruling of 24 ก.ย., "เรียงเตียงตามใกล้ตาย".
