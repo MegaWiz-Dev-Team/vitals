@@ -3244,8 +3244,18 @@ fn read_response(
             // with a signer and a slot, so it is counted here from the board's own shifts and sits
             // on the window's clock from the first read rather than from the deploy that added it.
             // A counter would have been a copy of a record, and a copy has to be kept true.
+            // **The second the window opened, when it kept one.** The day's start is the fallback
+            // and not the preference: the window running on production opened at 02:02 and its day
+            // begins at 00:00, so comparing block times against midnight puts two hours of the
+            // take count outside the hand-over count. Nothing is anchored in them today — the two
+            // figures agree by luck — and a figure that depends on luck is the thing moving
+            // hand-overs onto the chain was meant to end.
             let since = funnel.get("since").and_then(|d| d.as_str()).map(str::to_string);
-            match (since.as_deref().and_then(ward_chain::day_start_ict), ward_chain::ward_signer()) {
+            let opened = funnel
+                .get("since_unix")
+                .and_then(serde_json::Value::as_i64)
+                .or_else(|| since.as_deref().and_then(ward_chain::day_start_ict));
+            match (opened, ward_chain::ward_signer()) {
                 (Some(opened), Some(me)) => {
                     let shifts = ward_chain::shifts_on_the_board(store);
                     let dated = ward_chain::cached_dater(store);

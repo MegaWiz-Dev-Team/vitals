@@ -207,6 +207,21 @@ struct Rec {
     /// take across days.
     #[serde(default)]
     funnel_since: Option<String>,
+    /// **The second the window opened**, beside the day a person reads.
+    ///
+    /// The day is what `/stats` prints and the second is what a figure is compared against. They
+    /// are not the same boundary: the window on production opened at 02:02 on 23 ก.ย. and its day
+    /// begins at 00:00, so a hand-over anchored in those two hours and two minutes would be inside
+    /// the take count and outside the hand-over count. Nothing was, which is why the two agree —
+    /// by luck, and the whole reason hand-overs were moved onto the chain was so a figure would
+    /// not depend on two clocks lining up.
+    ///
+    /// `None` on the window already open, which carries only a date and from which 02:02 cannot be
+    /// recovered. That is not a defect to paper over: the comparison falls back to the day's start
+    /// and the derivation says so, so a reader knows which boundary the number in front of them
+    /// used.
+    #[serde(default)]
+    funnel_since_unix: Option<i64>,
     /// Arrivals inside the window. The same event as `arrivals`, counted from a moment the other
     /// two steps share.
     #[serde(default)]
@@ -245,6 +260,12 @@ impl Usage {
         if me.rec.funnel_since.is_none() {
             let (day, _) = me.stamp();
             me.rec.funnel_since = Some(day);
+            me.rec.funnel_since_unix = Some(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0),
+            );
             me.rec.funnel_arrivals = 0;
             me.rec.bedsides_opened = 0;
             me.rec.shifts_taken = 0;
@@ -329,6 +350,7 @@ impl Usage {
     pub fn funnel(&self) -> serde_json::Value {
         serde_json::json!({
             "since": self.rec.funnel_since,
+            "since_unix": self.rec.funnel_since_unix,
             "arrivals": self.rec.funnel_arrivals,
             "arrivals_all_time": self.rec.arrivals,
             "bedsides_opened": self.rec.bedsides_opened,
@@ -343,7 +365,14 @@ impl Usage {
                            chain, no receipt and in no other number here — on 24 ก.ย. that was 18 \
                            of 33. Ward closures are not hand-overs and never reach this count: the \
                            ticker anchors them through the chain client, not through the dispatch \
-                           these are counted in. `hand_overs` is not tallied here at all \
+                           these are counted in. \
+                           **The boundary is `since_unix` when it is there and the start of \
+                           `since` in Bangkok when it is not** — a window opened before this \
+                           record kept a second cannot recover one, and the one on production \
+                           opened at 02:02 while its day begins at 00:00, so for that window the \
+                           boundary is midnight and is two hours early. Nothing is anchored in the \
+                           gap; the figures agree by luck and this sentence is how a reader knows \
+                           it. `hand_overs` is not tallied here at all \
                            — it is counted at read time off the board's own shifts, by signer and \
                            by the slot's block time, so it sits on this window's clock from the \
                            first read and anyone with the program id can recount it. All four \
@@ -931,6 +960,50 @@ mod tests {
     // including the two cases a counter could never have had, a ward closure after a human
     // hand-over and a slot with no block time yet. Removed rather than left passing against a
     // method kept alive to satisfy it.
+
+    /// **The window opened at a second, not at a day, and the figures compared against it say so.**
+    ///
+    /// `funnel_since` is a Bangkok day. The hand-over count is derived by comparing a shift's block
+    /// time against the start of that day — 00:00 ICT — while the take counter beside it actually
+    /// started at 02:02 on the morning the window opened. Two hours and two minutes apart, and the
+    /// two figures agree today only because nothing was anchored in them. The director found it
+    /// reading the diff, and it is in an incident row as agreeing by luck.
+    ///
+    /// So the window records the second it opened, and the comparison uses it when it is there.
+    /// The window already open on production carries only a date and 02:02 cannot be recovered
+    /// from it, so `day_start_ict` stays as the fallback — and the derivation has to say which of
+    /// the two it used rather than implying the boundary is exact either way.
+    #[test]
+    fn the_window_records_the_second_it_opened_and_not_only_the_day() {
+        let s = store("secondly");
+        let before = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let u = Usage::open(&s);
+        let f = u.funnel();
+
+        let opened = f["since_unix"].as_i64().expect("the window says what second it opened at");
+        assert!(opened >= before, "and it is this window's own second, not an older one: {opened}");
+
+        // The day is still published beside it: it is what a reader reads, and what every record
+        // written before this field existed has instead of a second.
+        assert!(f["since"].as_str().is_some(), "the day a person reads stays: {f}");
+
+        // A record from before this field — the one open on production since 23 ก.ย. — has no
+        // second and must not invent one. Its boundary is the day's start, and the derivation is
+        // the only place a reader can find out which of the two was used.
+        let mut old = Usage::open(&store("older"));
+        old.rec.funnel_since_unix = None;
+        let g = old.funnel();
+        assert!(g["since_unix"].is_null(), "a window opened before this field has no second: {g}");
+        let why = g["derivation"].as_str().unwrap_or_default();
+        assert!(
+            why.contains("midnight") || why.contains("00:00") || why.contains("start of that day"),
+            "and the derivation says the boundary is the day's start rather than the exact \
+             moment, because for that window it is: {why}"
+        );
+    }
 
     /// The case map stops taking new names at its ceiling, and keeps counting the ones it has.
     ///
