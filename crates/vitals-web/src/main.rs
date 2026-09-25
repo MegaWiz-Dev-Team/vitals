@@ -6030,10 +6030,23 @@ fn main() {
                 let as_it_stands_of = |case: &str| {
                     ward_sce(&store, case).ok().zip(ward_chain::rubric_for(&store, &root, case))
                 };
-                let rows = ward_chain::bytes_behind_the_anchored_shifts(
-                    &store, &admitted_of, &as_it_stands_of);
+                // A page, not the ward. A shift whose bytes are gone costs a walk through every
+                // kept scenario, so a full read of a ward with enough of them took 140 seconds on
+                // staging and held the only instance for all of it. The budget makes the wall time a
+                // property of the call: it returns what it checked, says so, and says where to
+                // continue. `after` carries the patient id the last call stopped on.
+                let after = param(&url, "after").and_then(|v| v.trim().parse::<u64>().ok());
+                let (rows, next) = ward_chain::bytes_behind_the_anchored_shifts(
+                    &store, &admitted_of, &as_it_stands_of,
+                    std::time::Duration::from_secs(5), after);
                 let count = |v: &str| rows.iter().filter(|r| r.verdict == v).count();
                 let _ = req.respond(json(serde_json::json!({
+                    // **Every count below is this page's, not the ward's.** Said first because a
+                    // partial tally that reads like a whole one is the kind of number somebody
+                    // repeats: 3 unrebuildable out of a page of 9 is not 3 out of the ward.
+                    "complete": next.is_none(),
+                    "next_after": next,
+                    "read_from": after,
                     "shifts": rows.len(),
                     // Four counts rather than "ok" and "not ok": the ways a chart fails to rebuild
                     // have different fixes, and one of them — a tape missing here — is recoverable
@@ -6047,7 +6060,15 @@ fn main() {
                     "disagreements": rows.iter().filter(|r| r.disagrees).count(),
                     "rows": rows,
                     "derivations": {
-                        "shifts": "every shift this ward has read off the chain, from the cache it \
+                        "complete": "false when the call ran out of its budget with patients left to \
+                                     check. The counts here are then this page's only, and the ward's \
+                                     totals are the sum of every page — ask again with \
+                                     `?after=<next_after>` until this says true",
+                        "next_after": "the patient this call stopped after, or null when it finished. \
+                                       Patients are checked in id order and a patient is never split \
+                                       across two calls, so continuing from here reads each shift \
+                                       exactly once",
+                        "shifts": "every shift on this page, read off the chain from the cache it \
                                    builds the board from. A patient whose history has not been \
                                    read yet is not counted here, so this is what is known and not \
                                    a claim about the chain as a whole",

@@ -1730,8 +1730,10 @@ fn the_ward_lists_what_it_can_prove_about_every_anchored_shift() {
     // about which bytes were chosen.
     let admitted_of = |_id: u64| Some(LONE_SLOT);
     let as_it_stands_of = |case: &str| standing(&store, case);
-    let rows = vitals_web::ward_chain::bytes_behind_the_anchored_shifts(
-        &store, &admitted_of, &as_it_stands_of);
+    let whole = std::time::Duration::from_secs(60);
+    let (rows, next) = vitals_web::ward_chain::bytes_behind_the_anchored_shifts(
+        &store, &admitted_of, &as_it_stands_of, whole, None);
+    assert_eq!(next, None, "a budget this generous finishes the ward in one call");
     let of = |id: u64| rows.iter().find(|r| r.patient_id == id).expect("a row per anchored shift");
     assert_eq!(rows.len(), 5, "one row per anchored shift, none dropped: {rows:#?}");
 
@@ -1757,6 +1759,33 @@ fn the_ward_lists_what_it_can_prove_about_every_anchored_shift() {
     assert_eq!(of(5).recorded.as_deref(), Some(addr_a.as_str()),
                "and the recorded address is reported as it stands, not quietly corrected");
     assert!(of(5).disagrees, "the two sources name different bytes, and the row says so");
+
+    // **Paging must not change a verdict.** A full read of a ward with shifts whose bytes are gone
+    // took 140 seconds on staging and held the only instance for all of it, so the call is bounded
+    // and resumable. That is safe only if the answer does not depend on where the cut fell — a
+    // verdict that moved with the page boundary would be a published fact decided by a stopwatch.
+    let mut paged: Vec<(u64, &str)> = Vec::new();
+    let mut cursor = None;
+    for _ in 0..16 {
+        let (page, stopped) = vitals_web::ward_chain::bytes_behind_the_anchored_shifts(
+            &store, &admitted_of, &as_it_stands_of, std::time::Duration::ZERO, cursor);
+        assert!(!page.is_empty(), "every call makes progress, or the cursor would never advance");
+        paged.extend(page.iter().map(|r| (r.patient_id, r.verdict)));
+        match stopped {
+            Some(at) => cursor = Some(at),
+            None => break,
+        }
+    }
+    let at_once: Vec<(u64, &str)> = rows.iter().map(|r| (r.patient_id, r.verdict)).collect();
+    assert_eq!(paged, at_once,
+               "read a patient at a time, the ward reports exactly what it reports in one call");
+
+    // And exactly once: a patient is never split across two calls, so no shift is counted twice.
+    let mut ids: Vec<u64> = paged.iter().map(|(id, _)| *id).collect();
+    let before = ids.len();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), before, "no shift is read twice across the pages");
 }
 
 /// **A writer that does not know what a shift was played against must not erase the answer.**

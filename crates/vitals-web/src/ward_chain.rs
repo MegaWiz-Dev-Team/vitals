@@ -3197,15 +3197,41 @@ pub fn bytes_behind_the_anchored_shifts(
     store: &crate::store::Store,
     admitted_of: &dyn Fn(u64) -> Option<u64>,
     as_it_stands_of: &dyn Fn(&str) -> Option<(String, String)>,
-) -> Vec<ShiftBytes> {
+    budget: std::time::Duration,
+    after: Option<u64>,
+) -> (Vec<ShiftBytes>, Option<u64>) {
     let packs = packs(store);
     let dated = cached_dater(store);
     let tape_of = |h: &str| tape_by_hash(store, h);
     let mut out = Vec::new();
     // The scenario each patient turned out to have been played on, so her later shifts try it first.
+    //
+    // Successes only. Sharing a *failure* across a patient's shifts looks like the same saving and is
+    // not sound on the history this exists to audit: before the door refused to change a case under a
+    // patient on the board, her bytes could move between two of her own shifts, so a scenario that
+    // reproduces no leaf of her first shift may still reproduce her second's. A shared failure would
+    // publish "unrebuildable" about a shift nobody had checked, which is the one thing this list must
+    // never do.
     let mut resolved: std::collections::HashMap<u64, Option<String>> = Default::default();
-    for (key, seen) in store.list::<Seen>(SHIFT_CACHE) {
-        let Ok(patient_id) = key.trim_start_matches('p').parse::<u64>() else { continue };
+
+    // Patients in a fixed order, so the cursor below means the same thing on every call.
+    let mut ward: Vec<(u64, Seen)> = store
+        .list::<Seen>(SHIFT_CACHE)
+        .into_iter()
+        .filter_map(|(key, seen)| {
+            key.trim_start_matches('p').parse::<u64>().ok().map(|id| (id, seen))
+        })
+        .collect();
+    ward.sort_by_key(|(id, _)| *id);
+
+    let started = std::time::Instant::now();
+    let mut stopped_after = None;
+    let mut waiting = ward
+        .into_iter()
+        .filter(|(id, _)| after.is_none_or(|from| *id > from))
+        .peekable();
+
+    while let Some((patient_id, seen)) = waiting.next() {
         let all = seen.shifts();
         for shift in &all {
             let leaf = hex32(&shift.run_hash);
@@ -3284,8 +3310,23 @@ pub fn bytes_behind_the_anchored_shifts(
                 patient_id, leaf, case, recorded, verdict, proved, candidates, disagrees,
             });
         }
+
+        // **Stopped between patients, never inside one.** A shift whose bytes are genuinely gone
+        // costs a walk through every kept scenario, and no ordering removes that — so a ward with
+        // enough of them takes minutes, and this runs on a service with one instance, where minutes
+        // means the ward answers nobody. The budget makes the wall time a property of the call rather
+        // than of the ward's history: it returns what it checked, says it is partial, and hands back
+        // where to continue. Partial and labelled beats complete and unavailable.
+        //
+        // Between patients because a patient's rows are read together and her later shifts reuse the
+        // scenario her earlier ones resolved; splitting her across two calls would throw that away
+        // and answer differently depending on where the cut fell.
+        if started.elapsed() >= budget && waiting.peek().is_some() {
+            stopped_after = Some(patient_id);
+            break;
+        }
     }
-    out
+    (out, stopped_after)
 }
 
 pub fn tape_by_hash(

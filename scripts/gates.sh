@@ -11,6 +11,17 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
+# One gate run on this machine at a time. Two sessions ran the workspace tests at once on
+# 25 Sep 2026 and the contention turned one RED with no failing test — a pre-flight on one side
+# cannot stop the other side starting, only a lock both sides take can. gates.sh re-runs itself
+# through scripts/gate-lock.sh once; under the lock GATE_LOCK_HELD is set and it proceeds.
+#
+# Both copies of this script must take it: cwf/ops holds the original and this is cwf/ward's, and a
+# lock one side takes serializes nothing.
+if [ "${GATE_LOCK_HELD:-}" != 1 ]; then
+  exec bash "$(dirname "$0")/gate-lock.sh" bash "$0" "$@"
+fi
+
 FAIL=0
 gate() {
   local name="$1"; shift
@@ -40,6 +51,9 @@ if command -v node >/dev/null 2>&1; then
   gate "door script"    bash scripts/ward-door-test.sh
   gate "opening check"  bash scripts/opening-check-test.sh
   gate "cases logic"    node crates/vitals-web/tests/world/cases_logic.mjs crates/vitals-web/static/world/review.html
+  # The lock's own harness — no cargo, so it costs nothing and proves the thing that stops two
+  # gate runs colliding still works.
+  gate "gate lock"      bash scripts/gate-lock-test.sh
 else
   printf '  \033[33mskip\033[0m  globe logic — node not installed (CI still runs it)\n'
 fi
