@@ -880,3 +880,62 @@ pub fn held_by_the_chain(
     }
     Ok(None)
 }
+
+// ── the bytes a shift was played against, kept ───────────────────────────────
+
+/// Where every version of a case's scored content lives, addressed by its own bytes.
+///
+/// Content-addressed and therefore append-only in practice: writing the same bytes twice writes
+/// the same record, and a correction is a new address rather than a replacement. That is the whole
+/// mechanism — the case store holds the pointer a new patient is placed on, and this holds what
+/// every anchored shift was actually played against.
+pub const PLAYED_STORE: &str = "ward_played_bytes";
+
+/// What a shift was played against: the scenario its leaf commits to, and the rubric its mark
+/// sheet is computed from.
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct PlayedBytes {
+    pub sce: String,
+    pub rubric: String,
+    /// `sce_hash(sce)` in hex — the one a leaf commits to, kept here so an already-anchored shift
+    /// can be matched to the bytes it was played on by replaying rather than by being told.
+    pub sce_sha256: String,
+}
+
+/// The address of a pack's scored content: **the scenario and the rubric together**.
+///
+/// Not the `sce` alone, although the leaf commits only to that. The receipt's mark sheet is
+/// recomputed from the rubric on every request, so a rubric corrected under an unchanged scenario
+/// would take the earlier blob's place and a stranger's sheet would be computed from a rubric they
+/// never played against — the same defect this whole mechanism exists to end, one layer down and
+/// invisible, because the leaf would not move and nothing would look wrong.
+pub fn played_id(pack: &Value) -> String {
+    let part = |k: &str| pack.get(k).map(|v| v.to_string()).unwrap_or_default();
+    let both = format!("{}\n{}", part("sce"), part("rubric"));
+    crate::ward_chain::hex32(&vitals_replay::sce_hash(&both))
+}
+
+/// Keep what this pack scores, under the address of those bytes. Idempotent by construction.
+pub fn keep_played_bytes(store: &crate::store::Store, pack: &Value) -> String {
+    let id = played_id(pack);
+    let part = |k: &str| pack.get(k).map(|v| v.to_string()).unwrap_or_default();
+    let _ = store.put(
+        PLAYED_STORE,
+        &id,
+        &PlayedBytes {
+            sce: part("sce"),
+            rubric: part("rubric"),
+            sce_sha256: sce_sha256(pack),
+        },
+    );
+    id
+}
+
+/// The bytes at an address, when this ward still holds them.
+///
+/// `None` is not a failure to be smoothed over: it is a shift whose case was published before this
+/// store existed, and the honest end of that road is telling a reader the chart cannot be rebuilt
+/// rather than rebuilding it from bytes nobody played.
+pub fn played_bytes(store: &crate::store::Store, id: &str) -> Option<PlayedBytes> {
+    store.get(PLAYED_STORE, id)
+}

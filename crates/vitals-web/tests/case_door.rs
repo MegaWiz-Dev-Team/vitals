@@ -1389,3 +1389,61 @@ fn the_scored_content_of_a_case_with_a_shift_on_chain_is_not_replaceable() {
     let (code, body) = s.post("/api/ward/case", &retitled);
     assert_eq!(code, 200, "presentation is not scored content: {body}");
 }
+
+/// **Every version of a case's scored content is kept, addressed by its own bytes.**
+///
+/// A shift's leaf commits to `sce_hash(sce_json)`, and its mark sheet is computed from the rubric.
+/// Both are read from whatever the case store holds *now*, so a corrected case rewrites what an
+/// anchored shift is shown to have been played against — which is why 31 production cases are
+/// pinned and cannot take the diagnosis fix at all.
+///
+/// The way out is the ordinary one: keep the bytes, address them by themselves, let the mutable
+/// pointer move. This is the keeping half. A pack arriving at the door leaves its scored content in
+/// the blob store under the hash of that content, so a later correction adds a blob rather than
+/// replacing the one an anchored shift was played on.
+///
+/// Addressed by `sce` **and** `rubric` together, because both decide what a receipt says: the leaf
+/// commits to the first and the sheet is computed from the second, and a rubric corrected under an
+/// unchanged scenario would otherwise silently take the earlier blob's place — the same defect one
+/// layer down. The `sce` hash is recorded inside the blob as well, because that is the one a leaf
+/// can be matched against when working out which bytes an already-anchored shift was played on.
+#[test]
+fn the_door_keeps_every_version_of_what_a_case_scores() {
+    let s = Server::start();
+    assert_eq!(s.post("/api/ward/case", &a_pack()).0, 200);
+
+    let store = vitals_web::store::Store::open(s.state()).expect("the ward's own store");
+    let first = vitals_web::ward_case::played_id(&a_pack());
+    let kept = vitals_web::ward_case::played_bytes(&store, &first)
+        .expect("the bytes a shift on this version would have been played against");
+    assert_eq!(kept.sce_sha256, vitals_web::ward_case::sce_sha256(&a_pack()),
+               "a blob knows the sce hash a leaf would name");
+    assert!(!kept.sce.is_empty() && !kept.rubric.is_empty(), "both halves are kept");
+
+    // A correction: new scored content, a moved version, nothing anchored against the case.
+    let mut fixed = a_pack();
+    fixed["version"] = json!("0.2.0");
+    fixed["sce"]["interventions"][0]["match"]["any_kw"] = json!(["pertussis", "whooping cough"]);
+    assert_eq!(s.post("/api/ward/case", &fixed).0, 200);
+
+    // **The first version is still there.** That is the whole point: an anchored shift played on it
+    // can still be re-derived from the bytes it was played on, not from the correction.
+    let second = vitals_web::ward_case::played_id(&fixed);
+    assert_ne!(second, first, "the correction changed what the case scores");
+    assert!(vitals_web::ward_case::played_bytes(&store, &first).is_some(),
+            "the version an anchored shift was played on must survive the correction");
+    assert!(vitals_web::ward_case::played_bytes(&store, &second).is_some(),
+            "and the correction is kept too, for the shifts that come after it");
+
+    // A rubric corrected under an unchanged scenario is a different blob, because the sheet a
+    // receipt shows is computed from it. Addressing on `sce` alone would have lost this one.
+    let mut regraded = a_pack();
+    regraded["version"] = json!("0.3.0");
+    regraded["rubric"]["items"][0]["points"] = json!(99);
+    assert_ne!(vitals_web::ward_case::played_id(&regraded), first,
+               "the rubric is part of what a case scores, so it is part of the address");
+
+    // Pushing the same bytes twice is one blob: they are addressed by themselves.
+    assert_eq!(s.post("/api/ward/case", &fixed).1["unchanged"], json!(true));
+    assert!(vitals_web::ward_case::played_bytes(&store, &second).is_some());
+}

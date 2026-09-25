@@ -5804,6 +5804,16 @@ fn main() {
                         }
                     }
                 }
+                // **Keep what this version scores before the pointer moves.** The case store holds
+                // what a new patient is placed on; this holds what every already-anchored shift was
+                // played against, so a correction adds bytes rather than replacing the ones a leaf
+                // commits to. Written first deliberately: a crash between the two leaves a blob
+                // nobody points at, which is harmless, rather than a pointer to bytes nobody kept,
+                // which is the failure the whole mechanism exists to prevent.
+                //
+                // Only here. The withdraw route below writes the same store, but it flips a flag
+                // and changes nothing a leaf or a mark sheet is computed from.
+                ward_case::keep_played_bytes(&store, &pack);
                 match store.put(ward_case::CASE_STORE, &key, &pack) {
                     Ok(()) => {
                         let _ = req.respond(json(serde_json::json!({
