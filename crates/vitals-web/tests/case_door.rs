@@ -1447,3 +1447,67 @@ fn the_door_keeps_every_version_of_what_a_case_scores() {
     assert_eq!(s.post("/api/ward/case", &fixed).1["unchanged"], json!(true));
     assert!(vitals_web::ward_case::played_bytes(&store, &second).is_some());
 }
+
+/// **A shift says which bytes it was played against, and says nothing when it cannot know.**
+///
+/// Keeping the blobs is half the repair; the other half is that a shift anchored from here on
+/// records the address of the bytes it ran on, so its receipt re-derives against those rather than
+/// against whatever the case store holds when somebody opens it years later.
+///
+/// The address is only recorded where it is a fact. The hand-over path is the one writer that *is*
+/// the play — it holds the scenario the session ran and the pack whose rubric its sheet comes from
+/// — so the rule lives here as one function rather than as a filter chain inside the request
+/// handler, and the cases where it must stay silent are tested as carefully as the case where it
+/// speaks. Every other writer of a tape is reconstructing somebody else's anchored shift and does
+/// not know what it was played on; those record nothing and are resolved by replay instead.
+///
+/// The load-bearing assertion is the last one: after a correction moves the case pointer, a shift
+/// still holding the *old* scenario is not labelled with the new bytes. A guess there would be
+/// indistinguishable from a fact, and would quietly re-create the defect the blobs exist to end.
+#[test]
+fn a_shift_records_the_bytes_it_was_played_against() {
+    let s = Server::start();
+    assert_eq!(s.post("/api/ward/case", &a_pack()).0, 200);
+    let store = vitals_web::store::Store::open(s.state()).expect("the ward's own store");
+
+    // A patient the ward is holding, queued for that case — what `packs` reads at hand-over.
+    let patient: vitals_web::ward::Pack = serde_json::from_value(json!({
+        "case": "auth-demo-1",
+        "persona": { "name": "อารีย์", "age": 62, "sex": "f", "country": "THA" },
+    }))
+    .expect("a patient the factory queued");
+    store
+        .put(vitals_web::ward_chain::PERSONA_STORE, "p7", &patient)
+        .expect("a bed on the board");
+
+    // The scenario a shift on her actually runs, taken the way the ward takes it.
+    let played = vitals_web::ward_case::sce_of(&store, "auth-demo-1")
+        .expect("the scenario the ward plays for this case");
+
+    let addr = vitals_web::ward_case::played_address(&store, 7, &played);
+    assert_eq!(addr, vitals_web::ward_case::played_id(&a_pack()),
+               "the shift is addressed to the bytes the door kept");
+    assert!(vitals_web::ward_case::played_bytes(&store, &addr).is_some(),
+            "and the address resolves to those bytes, which is the whole point of recording it");
+
+    // Silent where it would be guessing. A scenario that is not this pack's own means the case
+    // moved under the player: that shift is one prove-by-replay must resolve, not one to label.
+    assert!(vitals_web::ward_case::played_address(&store, 7, "{\"tick_seconds\":1.0}").is_empty(),
+            "a scenario that is not the pack's own is not evidence of anything");
+    assert!(vitals_web::ward_case::played_address(&store, 99, &played).is_empty(),
+            "and a patient this ward is not holding tells us nothing about what was played");
+
+    // A correction: the pointer moves, both blobs stand.
+    let mut fixed = a_pack();
+    fixed["version"] = json!("0.2.0");
+    fixed["sce"]["vitals0"]["hr"] = json!(124.0);
+    assert_eq!(s.post("/api/ward/case", &fixed).0, 200);
+
+    let now = vitals_web::ward_case::sce_of(&store, "auth-demo-1").expect("the corrected scenario");
+    assert_eq!(vitals_web::ward_case::played_address(&store, 7, &now),
+               vitals_web::ward_case::played_id(&fixed),
+               "a shift that starts after the correction is addressed to the corrected bytes");
+    assert!(vitals_web::ward_case::played_address(&store, 7, &played).is_empty(),
+            "and a shift still holding the scenario from before it is never labelled with the new \
+             bytes — that mislabelling is the defect the blobs exist to end");
+}
