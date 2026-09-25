@@ -2498,9 +2498,55 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
     let Some(pack) = ward_chain::packs(store).remove(&patient_id) else {
         return bad("the ward has no pack for that patient, so it cannot say which case this shift was");
     };
+    // **The bytes this shift was played on, before anything is computed from them.**
+    //
+    // This used to read the case store as it stands — `ward_sce` and `rubric_for` on `pack.case` —
+    // which meant correcting a case rewrote what an already-anchored shift was shown to have been
+    // played against. That is the whole reason cases with anchored shifts had to be pinned: the only
+    // way to keep a stranger's receipt honest was to never touch their case again.
+    //
+    // Her whole history replays against one scenario, which is sound because the door refuses to
+    // change what a case scores while a patient is on the board — so every shift of hers was played
+    // on the same bytes, and this shift's leaf is a valid probe for all of them.
+    let leaf_hex = ward_chain::hex32(&this.run_hash);
+    let Some(steps) = ward_chain::tape_by_hash(store, &leaf_hex) else {
+        return bad(
+            "this ward holds no tape for that shift, so there is nothing to check its case bytes              against and its chart cannot be rebuilt. The chain still carries the shift: what is              missing is here, not there",
+        );
+    };
+    // The case as it stands, for the proof to try last: a shift on a case nobody has corrected
+    // since needs no kept version, because the bytes sitting there reproduce its leaf. Read through
+    // the ward's own two lookups, since a case lives in the store when it came through the door and
+    // in a file when it is the season's — and a receipt must not be the third place that decides.
     let root = scenario_root();
-    let Ok(sce_json) = ward_sce(store, &pack.case) else {
-        return bad("this ward does not hold that case, so this shift cannot be replayed");
+    let as_it_stands = ward_sce(store, &pack.case)
+        .ok()
+        .zip(ward_chain::rubric_for(store, &root, &pack.case));
+    let (sce_json, rubric, bytes_note) =
+        match ward_case::bytes_for_receipt(store, &leaf_hex, &steps, as_it_stands) {
+        ward_case::ForReceipt::These { sce, rubric, played_id } => (
+            sce,
+            Some(rubric),
+            serde_json::json!({
+                "played_id": played_id,
+                "how_this_is_known": "the scenario and the rubric this shift was played against,                                       kept under the hash of those bytes. Proved: replaying this                                       scenario against the tape reproduces the leaf the chain                                       holds, so a correction to the case since then changes                                       nothing on this page",
+            }),
+        ),
+        // The chart rebuilds and the sheet cannot. Two claims, and collapsing them would either
+        // hide a rebuildable chart or invent a score.
+        ward_case::ForReceipt::ScenarioOnly { sce, candidates } => (
+            sce,
+            None,
+            serde_json::json!({
+                "candidates": candidates,
+                "how_this_is_known": "replaying this scenario against the tape reproduces the leaf                                       the chain holds, so the chart below is the one this shift                                       played. The leaf commits to nothing about the rubric, and                                       more than one rubric was kept for this scenario, so which                                       one marked this shift cannot be told from the chain and no                                       sheet is computed",
+            }),
+        ),
+        ward_case::ForReceipt::Unrebuildable => {
+            return bad(
+                "the bytes this shift was played against are not in this ward any more, so its                  chart cannot be rebuilt. Nothing is shown rather than a chart derived from the                  version this case is on today, which is not what this shift was played on",
+            )
+        }
     };
     let admitted = chain.patient(patient_id).ok().flatten().map(|p| p.admitted_slot).unwrap_or(0);
     // From the store, never from the chain. Every slot on this patient's chain was dated by the
@@ -2512,7 +2558,10 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
     let dated = ward_chain::cached_dater(store);
     match ward_chain::receipt(
         &sce_json,
-        ward_chain::rubric_for(store, &root, &pack.case).as_deref(),
+        // The rubric kept beside the scenario this shift was proved to have played, and never the
+        // one the case carries now. `None` is a rubric that cannot be told from the chain, which
+        // the sheet reports as not scored rather than guessing between the candidates above.
+        rubric.as_deref(),
         &shifts,
         &this,
         &|h| ward_chain::tape_by_hash(store, h),
@@ -2527,6 +2576,10 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
             if address != run_hash {
                 v["leaf"] = serde_json::json!(address);
             }
+            // **Which bytes this page was derived from**, published beside what was derived. A
+            // receipt that does not say what it was computed against cannot be checked by the
+            // person holding it, and "it looked right" is the state this whole mechanism replaced.
+            v["played_bytes"] = bytes_note;
             // The person and the case, in the words a reader knows them by: her face, her age and
             // her country, and the case's own title and level rather than its id. The id is a fact
             // about the filing and belongs with the leaf and the slot.

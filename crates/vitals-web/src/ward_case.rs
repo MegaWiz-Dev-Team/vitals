@@ -1012,6 +1012,106 @@ pub fn played_against(
     Played::Unrebuildable
 }
 
+/// Which bytes a receipt for an anchored shift must be derived from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ForReceipt {
+    /// Derive everything from these: the scenario reproduces the leaf, and one rubric goes with it.
+    These { sce: String, rubric: String, played_id: String },
+    /// The scenario is proved, so the chart rebuilds; which rubric marked this shift cannot be told
+    /// from a leaf, so no sheet can be computed. Two different claims, kept apart.
+    ScenarioOnly { sce: String, candidates: Vec<String> },
+    /// Nothing kept here reproduces the leaf. The chart cannot be rebuilt at all.
+    Unrebuildable,
+}
+
+/// **The bytes a receipt for this shift must derive from, resolved before anything is computed.**
+///
+/// Until this existed a receipt read the scenario and the rubric out of the case store as it stands,
+/// so correcting a case rewrote what an already-anchored shift was shown to have been played
+/// against. That is why cases with anchored shifts on them had to be pinned: the only way to keep a
+/// stranger's receipt honest was to never touch their case again.
+///
+/// The recorded address is **checked, not trusted**. It is a fact written by the only writer that
+/// knew, and one replay confirms it — so a receipt's claim rests on the chain's own leaf rather than
+/// on having been told. A record that does not reproduce the leaf is wrong about this shift,
+/// whatever wrote it, and the proof wins. Believing it instead would produce exactly the error this
+/// mechanism exists to prevent, wearing the authority of a recorded fact.
+///
+/// `as_it_stands` is the case's **current** scored content, supplied by the caller because the ward
+/// is what knows where a case lives — the store for anything that came through the door, a file for
+/// the season's. It is a candidate and never an answer: tried last, after every kept version, and
+/// accepted only if it reproduces the leaf. That ordering is the whole difference from the
+/// `rubric_for` this replaces, which handed the current rubric to every receipt and is the reason
+/// cases with anchored shifts on them had to be pinned. When it does reproduce the leaf it is proof
+/// of the same kind a blob gives: a case nobody has corrected since needs no kept version to be
+/// rebuildable.
+pub fn bytes_for_receipt(
+    store: &crate::store::Store,
+    leaf_hex: &str,
+    tape: &[vitals_replay::Step],
+    as_it_stands: Option<(String, String)>,
+) -> ForReceipt {
+    let reproduces = |sce: &str| -> bool {
+        vitals_replay::replay(sce, tape).is_ok_and(|r| {
+            crate::ward_chain::hex32(&vitals_replay::leaf(&vitals_replay::sce_hash(sce), tape, &r))
+                == leaf_hex
+        })
+    };
+
+    // The cheap road: an address the hand-over recorded, confirmed against the leaf.
+    if let Some(id) = store
+        .get::<StoredTapeAddress>(crate::ward_chain::TAPE_STORE, leaf_hex)
+        .map(|t| t.played_id)
+        .filter(|id| !id.is_empty())
+    {
+        if let Some(blob) = played_bytes(store, &id) {
+            if reproduces(&blob.sce) {
+                return ForReceipt::These { sce: blob.sce, rubric: blob.rubric, played_id: id };
+            }
+        }
+    }
+
+    match played_against(store, leaf_hex, tape) {
+        Played::Proved(id) => match played_bytes(store, &id) {
+            Some(blob) => ForReceipt::These { sce: blob.sce, rubric: blob.rubric, played_id: id },
+            // Proved against a blob that has gone missing between the two reads. Treated as lost
+            // rather than retried: the answer a reader gets should not depend on the race.
+            None => ForReceipt::Unrebuildable,
+        },
+        Played::Ambiguous(candidates) => match candidates.first().and_then(|id| played_bytes(store, id)) {
+            Some(blob) => ForReceipt::ScenarioOnly { sce: blob.sce, candidates },
+            None => ForReceipt::Unrebuildable,
+        },
+        // **The case as it stands is a candidate too, and proof is proof.** No blob is needed for a
+        // shift whose case has not been corrected since: if the bytes the case carries now reproduce
+        // the leaf, then those *are* the bytes this shift was played on, demonstrated by the same
+        // replay as any blob. Without this, a case filed before the blob store existed — or one the
+        // ward plays from a file — would read as unrebuildable while its own bytes sat there
+        // answering the question.
+        //
+        // Last, never first. A blob is a version deliberately kept; the live pack is whatever the
+        // store holds today, and it earns its place here only by reproducing the leaf.
+        Played::Unrebuildable => match as_it_stands {
+            Some((sce, rubric)) if reproduces(&sce) => {
+                ForReceipt::These { sce, rubric, played_id: String::new() }
+            }
+            _ => ForReceipt::Unrebuildable,
+        },
+    }
+}
+
+
+/// Just the address off a stored tape, so reading it does not deserialise every step.
+///
+/// The tape store's records are [`crate::ward_chain::StoredTape`]; this reads the one field this
+/// module needs. Every other field is ignored rather than required, so it keeps working if the
+/// record grows.
+#[derive(serde::Deserialize)]
+struct StoredTapeAddress {
+    #[serde(default)]
+    played_id: String,
+}
+
 /// **The bytes a shift on this patient is being played against**, or empty when that is not a fact.
 ///
 /// Called at hand-over, which is the one moment a shift's played bytes are known rather than

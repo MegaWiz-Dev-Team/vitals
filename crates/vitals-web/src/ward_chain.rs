@@ -3765,12 +3765,19 @@ pub fn rubric_of(root: &std::path::Path, case: &str) -> Option<String> {
     std::fs::read_to_string(root.join("demo/rubrics").join(format!("{case}.json"))).ok()
 }
 
-/// The mark sheet for a case, wherever this ward keeps it.
+/// The mark sheet a case carries **right now**, wherever this ward keeps it.
 ///
 /// A compiled case's rubric arrives inside the pack, through the case door, and lives in the store;
 /// only the season's cases have a file. Every receipt on this ward read the file and printed "not
 /// scored — this case has no rubric", which is a fact about where we looked. The receipt is where a
 /// stranger finds out what their shift earned.
+///
+/// **Never hand this to an anchored shift as its rubric.** It is the version the case is on today,
+/// and a receipt marked against it changes meaning every time somebody corrects the case — which is
+/// exactly why cases with anchored shifts on them had to be pinned and could not take the diagnosis
+/// fix. Its one honest use is as a *candidate* passed to [`crate::ward_case::bytes_for_receipt`],
+/// which accepts it only if replaying it reproduces the leaf the chain holds. A shift's rubric comes
+/// from the bytes that proof selects, and from nowhere else.
 pub fn rubric_for(
     store: &crate::store::Store,
     root: &std::path::Path,

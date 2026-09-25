@@ -1892,7 +1892,7 @@ fn a_receipt_derives_from_the_bytes_the_shift_was_played_on_or_says_it_cannot() 
     // Nothing recorded — every shift anchored before the hand-over wrote an address. Replay finds
     // the bytes anyway, which is what makes the backlog recoverable.
     file("");
-    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape) {
+    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, None) {
         ForReceipt::These { sce: got, rubric, played_id } => {
             assert_eq!(played_id, addr, "proved by replay, and named");
             assert_eq!(got, sce, "the scenario the leaf commits to");
@@ -1903,7 +1903,7 @@ fn a_receipt_derives_from_the_bytes_the_shift_was_played_on_or_says_it_cannot() 
 
     // Recorded and correct: the same answer, reached by being told rather than by searching.
     file(&addr);
-    assert!(matches!(vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape),
+    assert!(matches!(vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, None),
                      ForReceipt::These { ref played_id, .. } if *played_id == addr));
 
     // **Recorded and wrong.** Some other case's bytes, which do not reproduce this leaf. The record
@@ -1915,7 +1915,7 @@ fn a_receipt_derives_from_the_bytes_the_shift_was_played_on_or_says_it_cannot() 
     let wrong = vitals_web::ward_case::played_id(&other_case);
     assert_ne!(wrong, addr);
     file(&wrong);
-    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape) {
+    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, None) {
         ForReceipt::These { played_id, .. } => assert_eq!(
             played_id, addr,
             "a record that does not reproduce the leaf is wrong about this shift, and the proof wins"),
@@ -1929,7 +1929,7 @@ fn a_receipt_derives_from_the_bytes_the_shift_was_played_on_or_says_it_cannot() 
     regraded["rubric"]["items"][0]["points"] = json!(3);
     vitals_web::ward_case::keep_played_bytes(&store, &regraded);
     file("");
-    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape) {
+    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, None) {
         ForReceipt::ScenarioOnly { sce: got, candidates } => {
             assert_eq!(got, sce, "the chart is still rebuildable, because the scenario is proved");
             assert_eq!(candidates.len(), 2, "and both rubrics are named: {candidates:?}");
@@ -1938,7 +1938,77 @@ fn a_receipt_derives_from_the_bytes_the_shift_was_played_on_or_says_it_cannot() 
     }
 
     // A leaf whose bytes are gone. Not a blank sheet and not today's bytes — a refusal.
-    assert_eq!(vitals_web::ward_case::bytes_for_receipt(&store, &"7".repeat(64), &tape),
+    assert_eq!(vitals_web::ward_case::bytes_for_receipt(&store, &"7".repeat(64), &tape, None),
                ForReceipt::Unrebuildable,
                "the bytes this shift was played on are not here, and the honest answer says so");
+}
+
+/// **A case with no blob is still provable from the bytes it carries now.**
+///
+/// The 106 cases filed before the blob store existed have no kept version, and the ward plays some
+/// cases from files that never went through the door at all. For a shift on one of those, the case
+/// as it stands either reproduces the leaf the chain holds or it does not — and if it does, those
+/// *are* the bytes that shift was played on, demonstrated by exactly the same replay a blob passes.
+/// Calling it unrebuildable while its own bytes sat there answering the question would be a refusal
+/// dressed as honesty.
+///
+/// Checked last and never first: a blob is a version somebody deliberately kept, while the live pack
+/// is whatever the store holds today and earns its place only by reproducing the leaf. That ordering
+/// is the whole difference between this and the `rubric_for` it replaces, which handed every receipt
+/// the current rubric and is why cases with anchored shifts had to be pinned.
+#[test]
+fn a_case_with_no_blob_is_still_provable_from_the_bytes_it_carries_now() {
+    use vitals_web::ward_case::ForReceipt;
+
+    let s = Server::start();
+    let store = vitals_web::store::Store::open(s.state()).expect("the ward's own store");
+    let tape: Vec<vitals_replay::Step> = vec![];
+
+    // Filed straight into the store, the way the 106 were: no blob kept for it.
+    let mut pack = a_pack();
+    pack["case_id"] = json!("no-blob");
+    pack["sce"]["vitals0"]["hr"] = json!(103.0);
+    store
+        .put(vitals_web::ward_case::CASE_STORE, &vitals_web::ward_case::key_for("no-blob"), &pack)
+        .expect("a case filed before the blob store existed");
+    assert!(vitals_web::ward_case::played_bytes(&store,
+                &vitals_web::ward_case::played_id(&pack)).is_none(), "and no blob for it");
+
+    let sce = vitals_web::ward_case::sce_of(&store, "no-blob").expect("its scenario");
+    let r = vitals_replay::replay(&sce, &tape).expect("it replays");
+    let leaf = vitals_web::ward_chain::hex32(
+        &vitals_replay::leaf(&vitals_replay::sce_hash(&sce), &tape, &r));
+    vitals_web::ward_chain::keep_tape(&store, &vitals_web::ward_chain::StoredTape {
+        patient_id: 9, run_hash: leaf.clone(), steps: tape.clone(), played_id: String::new(),
+    }).expect("tape kept");
+
+    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, standing(&store, "no-blob")) {
+        ForReceipt::These { sce: got, rubric, played_id } => {
+            assert_eq!(got, sce, "its own bytes reproduce the leaf, so they are the played bytes");
+            assert!(rubric.contains("items"), "with the rubric they are filed beside: {rubric}");
+            assert!(played_id.is_empty(),
+                    "and no address is claimed, because no kept version was matched — the proof is \
+                     the replay and not a blob somebody filed");
+        }
+        other => panic!("the case's own bytes answer this: {other:?}"),
+    }
+
+    // Correct the case, leaving the shift anchored on the older bytes. Now the live pack does not
+    // reproduce the leaf, and there is no blob either — which is the honest unrebuildable.
+    let mut fixed = pack.clone();
+    fixed["sce"]["vitals0"]["hr"] = json!(104.0);
+    store
+        .put(vitals_web::ward_case::CASE_STORE, &vitals_web::ward_case::key_for("no-blob"), &fixed)
+        .expect("a correction, as a pre-blob-store one landed");
+    assert_eq!(vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, standing(&store, "no-blob")),
+               ForReceipt::Unrebuildable,
+               "the version it was played on is gone, and the current one does not reproduce the \
+                leaf, so nothing here can rebuild it");
+}
+
+/// The case's scored content as the store holds it now, the way the ward hands it to the proof.
+fn standing(store: &vitals_web::store::Store, case: &str) -> Option<(String, String)> {
+    let pack: Value = store.get(vitals_web::ward_case::CASE_STORE,
+                                &vitals_web::ward_case::key_for(case))?;
+    Some((pack.get("sce")?.to_string(), pack.get("rubric")?.to_string()))
 }
