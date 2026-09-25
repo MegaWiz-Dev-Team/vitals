@@ -35,4 +35,36 @@ out="$(GATE_LOCK_WAIT=3 GATE_LOCK_DIR="$L" bash scripts/gate-lock.sh echo ran 2>
   && ok "a live lock is waited on and the cap refuses (exit 3), never runs the command" || bad "live lock not respected (rc=$rc): $out"
 rm -rf "$L"
 
+# 5. a lock whose holder has not yet published its pid is a holder mid-publication, not a stale
+#    lock: it is waited on. Here the pid appears after a second and is alive, so the capped wait
+#    must refuse — never break the lock and run.
+mkdir -p "$L"
+( sleep 1; echo $$ > "$L/pid"; echo now > "$L/since" ) &
+out="$(GATE_LOCK_WAIT=3 GATE_LOCK_GRACE=5 GATE_LOCK_DIR="$L" bash scripts/gate-lock.sh echo ran 2>&1)"; rc=$?
+wait
+[ "$rc" -eq 3 ] && ! printf '%s' "$out" | grep -q '^ran' && ! printf '%s' "$out" | grep -q 'breaking' \
+  && ok "a lock without a pid yet is waited on, not broken (holder published 1 s later; rc=$rc)" || bad "a lock mid-publication was broken (rc=$rc): $out"
+rm -rf "$L"
+
+# 6. a lock that stays without a pid past the grace is a holder that died between mkdir and
+#    publishing — broken, and the command runs.
+mkdir -p "$L"
+t0=$(date +%s); out="$(GATE_LOCK_GRACE=2 GATE_LOCK_DIR="$L" bash scripts/gate-lock.sh echo ran 2>&1)"; dt=$(( $(date +%s) - t0 ))
+printf '%s' "$out" | grep -q 'breaking an unowned lock' && printf '%s' "$out" | grep -q '^ran' && [ "$dt" -lt 10 ] \
+  && ok "a lock with no pid past the grace is broken and the command runs (${dt}s)" || bad "unowned lock not broken after grace (${dt}s): $out"
+rm -rf "$L"
+
+# 7. release removes only a lock this process still owns: if the path was re-taken by another
+#    holder while the command ran, the exit leaves that holder's lock alone.
+GATE_LOCK_DIR="$L" bash scripts/gate-lock.sh bash -c "echo 999999 > '$L/pid'"
+[ -d "$L" ] && [ "$(cat "$L/pid" 2>/dev/null)" = 999999 ] \
+  && ok "release leaves a lock that another holder re-took (pid file now reads theirs)" || bad "release removed a lock it no longer owned (dir present=$([ -d "$L" ] && echo yes || echo no))"
+rm -rf "$L"
+
+# 8. a stale break leaves no debris beside the lock path.
+mkdir -p "$L"; echo 999999 > "$L/pid"
+GATE_LOCK_DIR="$L" bash scripts/gate-lock.sh true >/dev/null 2>&1
+[ -z "$(ls -d "$L".stale.* 2>/dev/null)" ] && [ ! -d "$L" ] && ok "a stale break leaves nothing behind" || bad "stale break left debris: $(ls -d "$L"* 2>/dev/null | tr '\n' ' ')"
+rm -rf "$L" "$L".stale.* 2>/dev/null
+
 echo; printf '%d passed, %d failed\n' "$PASS" "$FAIL"; [ "$FAIL" -eq 0 ]
