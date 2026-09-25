@@ -803,21 +803,29 @@ console.log('globe_logic: ok (and a bed that cannot be opened is not offered)');
 // the only thing on this page that fetches from somebody else's server, which is why every rule
 // about it is checked here rather than trusted.
 const iframes = html.match(/<iframe\b[^>]*>/g) || [];
-assert.equal(iframes.length, 1, `the page carries exactly one embed: ${iframes.length}`);
-const film = iframes[0];
+assert.ok(iframes.length >= 1, 'the page carries the film as an embed, not a button');
 
-assert.match(film, /src="https:\/\/www\.youtube-nocookie\.com\/embed\/uOpv-_d7-s0[?"]/,
-             `from the no-cookie host, and the film the founder named: ${film}`);
-assert.match(film, /[?&](amp;)?rel=0/, `no other channel's videos at the end of ours: ${film}`);
-// `&amp;` is how an ampersand is written in an attribute, so the separator is either.
-assert.match(film, /[?&](amp;)?modestbranding=1/, film);
-assert.ok(!/autoplay/i.test(film),
-          `nothing plays at somebody who has not asked for it: ${film}`);
-assert.match(film, /loading="lazy"/,
-             `and nothing is fetched from Google until the box is near the screen: ${film}`);
-assert.match(film, /title="[^"]*Vital Signs[^"]*"/,
-             `a screen reader is told what the frame is: ${film}`);
-assert.ok(!/allow="[^"]*autoplay/.test(film), `not even permitted to: ${film}`);
+// The count was never the rule — it was the state on 18 September, when the film was the only
+// embed. The rule is what an embed has to be, so every one of them is held to it. A second video
+// (the technical demo) joined on 26 September and the privacy page names both.
+for (const frame of iframes) {
+  assert.match(frame, /src="https:\/\/www\.youtube-nocookie\.com\/embed\//,
+               `every embed comes from the no-cookie host: ${frame}`);
+  assert.match(frame, /[?&](amp;)?rel=0/, `no other channel's videos at the end of ours: ${frame}`);
+  // `&amp;` is how an ampersand is written in an attribute, so the separator is either.
+  assert.match(frame, /[?&](amp;)?modestbranding=1/, frame);
+  assert.ok(!/autoplay/i.test(frame),
+            `nothing plays at somebody who has not asked for it: ${frame}`);
+  assert.match(frame, /loading="lazy"/,
+               `and nothing is fetched from Google until the box is near the screen: ${frame}`);
+  assert.match(frame, /title="[^"]+"/, `a screen reader is told what the frame is: ${frame}`);
+  assert.ok(!/allow="[^"]*autoplay/.test(frame), `not even permitted to: ${frame}`);
+}
+
+// The founder's film is still on the page, whichever order the embeds sit in.
+const film = iframes.find(f => /\/embed\/uOpv-_d7-s0[?"]/.test(f));
+assert.ok(film, `the film the founder named is still here: ${iframes.join(' | ')}`);
+assert.match(film, /title="[^"]*Vital Signs[^"]*"/, film);
 
 assert.match(html, /Vital Signs · 3 min · the patients are simulated, the shortage is not\./,
              'the caption says what it is and how long it takes, in the ward\'s own sentence');
