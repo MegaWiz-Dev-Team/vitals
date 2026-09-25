@@ -2521,7 +2521,11 @@ async function showMarks(){
     /* The floor under everything else. The rows below still show every point that was earned —
        and there are usually a lot of them, because these are good runs — so the head has to say
        why the total is not their sum, in the one sentence that is actually the lesson. */
-    next=`The patient died. ${m.capped_from} of ${m.max} were earned; a station where she dies `
+    /* `pro().s` rather than "she": this head is shown at the end of a ward shift as well as a
+       season station, and the ward admits men and women — Anas Chraibi is seven and Jean-Pierre
+       Mbuyi is fifty-five. Found by the patient-words gate on 25 ก.ย., which exists because the
+       card had said "her" about both of them on the front page that morning. */
+    next=`The patient died. ${m.capped_from} of ${m.max} were earned; a station where ${pro().s} dies `
       +'cannot pass, whatever else was right.';
   }
   else next=nextLine(m.score,m.max,!!m.exam);
