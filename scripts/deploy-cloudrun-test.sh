@@ -91,7 +91,12 @@ MSG
     exit 0 ;;
 
   "run services")
+    # The service as it is before the deploy carries the arrival-cap slot when a case says so
+    # (STUB_SERVICE_CAP=<slot>); a service that has never had one carries no such variable.
+    CAPENV=""
+    [ -n "${STUB_SERVICE_CAP:-}" ] && CAPENV="{ \"name\": \"VITALS_ARRIVAL_CAP_FROM_SLOT\", \"value\": \"$STUB_SERVICE_CAP\" }"
     say_json "{
+      \"spec\": { \"template\": { \"spec\": { \"containers\": [ { \"env\": [ $CAPENV ] } ] } } },
       \"status\": {
         \"url\": \"${STUB_URL-https://vitals.example.run.app}\",
         \"traffic\": [ { \"percent\": 100, \"revisionName\": \"${STUB_TRAFFIC_REV-vitals-00007-abc}\" } ]
@@ -208,6 +213,23 @@ run "the arrival interval rides on every deploy and is printed" accepts "── 
   -- VITALS_WARD_ARRIVAL_MINUTES=60
 run "the arrival interval defaults to the founder's 60 and says so" accepts "── arrivals  every 60 min" \
   --
+
+# The arrival cap's slot (founder's ruling ข, 23 ก.ย. 2026: whoever arrives finds her five minutes
+# in) is a ratchet, not a setting: every shift taken since it was set derived its chart capped,
+# and its leaf on the chain commits to that replay. A deploy that dropped the slot — the trap
+# the interval fell into on 22 ก.ย. — or moved it would change what those shifts re-derive to.
+run "the cap slot rides on the deploy when named, and the line says which shifts it reaches" accepts "── cap       arrivals find her five minutes in, for shifts from slot 503728770" \
+  -- VITALS_ARRIVAL_CAP_FROM_SLOT=503728770
+run "the cap is off, and says so, when nothing names it and the service carries none" accepts "── cap       off" \
+  -- STUB_SERVICE_CAP=
+run "a slot the service already carries is carried forward when the shell names none" accepts "for shifts from slot 503728770 (VITALS_ARRIVAL_CAP_FROM_SLOT; earlier shifts derive uncapped) — carried from the service" \
+  -- STUB_SERVICE_CAP=503728770
+run "the same slot as the service's passes" accepts "for shifts from slot 503728770" \
+  -- STUB_SERVICE_CAP=503728770 VITALS_ARRIVAL_CAP_FROM_SLOT=503728770
+run "a slot that differs from the service's is refused before the build — the slot is a ratchet" rejects "ratchet" \
+  -- STUB_SERVICE_CAP=503728770 VITALS_ARRIVAL_CAP_FROM_SLOT=503800000
+run "moving the slot takes the founder's word, printed" accepts "── founder's word on moving the cap slot: ย้ายได้" \
+  -- STUB_SERVICE_CAP=503728770 VITALS_ARRIVAL_CAP_FROM_SLOT=503800000 CAP_SLOT_WORD=ย้ายได้
 run "concurrency is printed next to the service" accepts "── concurrency 80 requests in flight per instance" \
   --
 run "concurrency can be set, and the deploy says what it set" accepts "── concurrency 40 requests in flight per instance" \

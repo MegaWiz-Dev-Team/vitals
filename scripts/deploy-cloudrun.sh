@@ -198,6 +198,50 @@ if [ "$SERVICE" = "vitals-world" ]; then
   ARRIVAL_MINUTES="${VITALS_WARD_ARRIVAL_MINUTES:-60}"
   env_add "VITALS_WARD_ARRIVAL_MINUTES=$ARRIVAL_MINUTES"
   echo "── arrivals  every $ARRIVAL_MINUTES min (VITALS_WARD_ARRIVAL_MINUTES; 0 turns the clock off)"
+  # The slot the arrival cap begins at — the founder's ruling ข of 23 Sep 2026 (whoever arrives
+  # finds her five minutes in), on the ward as VITALS_ARRIVAL_CAP_FROM_SLOT, off when unset.
+  # Named here like the interval, because --set-env-vars replaces the whole environment — and
+  # unlike the interval it is a ratchet: every shift taken since the slot was set derived its
+  # chart capped, and its leaf on the chain commits to that replay. A deploy that dropped the
+  # slot or moved it would change what those shifts re-derive to — the failure of 23 Sep (a case
+  # replaced under an anchored shift) in another shape. So the slot the service already carries
+  # is read first, before anything is built: carried forward when the shell names none, refused
+  # when the shell names a different one, and only the founder's word — printed — moves it.
+  # `docs/internal/week2-world/cap_gaps.py <ward url>` prints the slot a first setting must not
+  # precede: every human shift before it has to derive uncapped.
+  SERVICE_BEFORE="$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format=json 2>/dev/null || true)"
+  SERVICE_CAP="$(printf '%s' "$SERVICE_BEFORE" | python3 -c '
+import json, sys
+try:
+    s = json.load(sys.stdin)
+    env = s["spec"]["template"]["spec"]["containers"][0].get("env", [])
+    print(next((e.get("value", "") for e in env if e.get("name") == "VITALS_ARRIVAL_CAP_FROM_SLOT"), ""))
+except Exception:
+    print("")
+' 2>/dev/null)"
+  CAP_FROM_SLOT="${VITALS_ARRIVAL_CAP_FROM_SLOT:-}"
+  CAP_NOTE=""
+  if [ -n "$SERVICE_CAP" ] && [ -z "$CAP_FROM_SLOT" ]; then
+    CAP_FROM_SLOT="$SERVICE_CAP"
+    CAP_NOTE=" — carried from the service, which has capped from that slot since it was set"
+  elif [ -n "$SERVICE_CAP" ] && [ "$CAP_FROM_SLOT" != "$SERVICE_CAP" ]; then
+    if [ -z "${CAP_SLOT_WORD:-}" ]; then
+      echo "refusing: the service caps arrivals from slot $SERVICE_CAP and this deploy names $CAP_FROM_SLOT." >&2
+      echo "The slot is a ratchet: every shift taken since $SERVICE_CAP derived its chart capped, and its leaf on the" >&2
+      echo "chain commits to that replay — moving the slot makes those shifts unverifiable. Leave" >&2
+      echo "VITALS_ARRIVAL_CAP_FROM_SLOT unset to carry $SERVICE_CAP, or put the founder's word in CAP_SLOT_WORD." >&2
+      echo "Nothing was built." >&2
+      exit 1
+    fi
+    echo "── founder's word on moving the cap slot: $CAP_SLOT_WORD"
+    CAP_NOTE=" — moved from $SERVICE_CAP on the founder's word"
+  fi
+  if [ -n "$CAP_FROM_SLOT" ]; then
+    env_add "VITALS_ARRIVAL_CAP_FROM_SLOT=$CAP_FROM_SLOT"
+    echo "── cap       arrivals find her five minutes in, for shifts from slot $CAP_FROM_SLOT (VITALS_ARRIVAL_CAP_FROM_SLOT; earlier shifts derive uncapped)$CAP_NOTE"
+  else
+    echo "── cap       off — VITALS_ARRIVAL_CAP_FROM_SLOT unset and the service carries none; the clocks show, nobody arriving is capped"
+  fi
 fi
 echo "── concurrency $CONCURRENCY requests in flight per instance (CONCURRENCY; streams count, one per open tab)"
 if [ "$MIN_INSTANCES" = 0 ]; then
