@@ -46,8 +46,8 @@ try:
             time.sleep(0.5)
     else:
         sys.exit("Chrome did not answer on its debugging port")
-    import websocket
-    ws = websocket.create_connection(tabs[0]["webSocketDebuggerUrl"], timeout=90)
+    import websocket  # page_target_note: /json lists browser_ui targets first; attach to type "page"
+    ws = websocket.create_connection([x for x in tabs if x.get("type") == "page"][0]["webSocketDebuggerUrl"], timeout=90)
     seq = [0]
     def cdp(method, **params):
         seq[0] += 1
@@ -84,6 +84,8 @@ try:
     cdp("Page.enable")
     # a headless window has no focus, so nothing can be typed into it until focus is emulated
     cdp("Emulation.setFocusEmulationEnabled", enabled=True)
+    w, h = [int(x) for x in os.environ.get("LEAVE_CHECK_WIN", "412,915").split(",")]
+    cdp("Emulation.setDeviceMetricsOverride", width=w, height=h, deviceScaleFactor=1, mobile=(w < 600))
     # load until the bedside has drawn: a cold instance or a long pass can hold the first paint
     for attempt in range(2):
         cdp("Page.navigate", url=URL)

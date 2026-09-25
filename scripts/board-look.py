@@ -43,8 +43,8 @@ try:
             time.sleep(0.5)
     else:
         sys.exit("Chrome did not answer on its debugging port")
-    import websocket  # pip: websocket-client — the same dependency the face checks use
-    ws = websocket.create_connection(tabs[0]["webSocketDebuggerUrl"], timeout=60)
+    import websocket  # page_target_note: /json lists browser_ui targets first; attach to type "page"  # pip: websocket-client — the same dependency the face checks use
+    ws = websocket.create_connection([x for x in tabs if x.get("type") == "page"][0]["webSocketDebuggerUrl"], timeout=60)
     seq = [0]
     def cdp(method, **params):
         seq[0] += 1
