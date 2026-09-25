@@ -54,8 +54,12 @@ try:
         for t in ("mouseMoved", "mousePressed", "mouseReleased"):
             cdp("Input.dispatchMouseEvent", type=t, x=box[0], y=box[1], button="left", clickCount=1)
         return True
-    def shot(name):
-        js("window.scrollTo(0,0)"); time.sleep(0.6)
+    def shot(name, focus=None):
+        # The page is captured as the viewport shows it; `focus` scrolls one element to the middle
+        # first, so a picture of the monitor is a picture of the monitor and not of the header.
+        if focus: js(f"(()=>{{const e=document.querySelector({json.dumps(focus)}); if(e) e.scrollIntoView({{block:'center'}}); return !!e}})()")
+        else: js("window.scrollTo(0,0)")
+        time.sleep(0.6)
         png = cdp("Page.captureScreenshot", format="png")["data"]
         path = os.path.join(OUT, name + ".png"); open(path, "wb").write(base64.b64decode(png))
         log["shots"][name] = {"strip": js("(document.querySelector('#wardsay')||{}).innerText||null"), "file": path}
@@ -82,13 +86,21 @@ try:
         cdp("Input.dispatchKeyEvent", type="keyDown", key="Enter", code="Enter", windowsVirtualKeyCode=13, nativeVirtualKeyCode=13, text="\r", unmodifiedText="\r")
         cdp("Input.dispatchKeyEvent", type="keyUp", key="Enter", code="Enter", windowsVirtualKeyCode=13, nativeVirtualKeyCode=13)
     time.sleep(4); log["didwork_after_enter"] = js("typeof DIDWORK!=='undefined' ? DIDWORK : null"); log["cmd_after_enter"] = js("(document.querySelector('#cmd')||{}).value"); shot("04-first-order")
-    time.sleep(30); shot("05-treating")
+    time.sleep(30); shot("05-treating", focus="#m-spo2")
+    log["monitor_after"] = js("(()=>{const q=s=>(document.querySelector(s)||{}).innerText; return {hr:q('#m-hr'), spo2:q('#m-spo2'), bp:q('#m-bp'), rr:q('#m-rr')}})()")
     log["endrun_before"] = js("(()=>{const b=document.querySelector('#endrun'); return b? {disabled:b.disabled, text:b.innerText, display:getComputedStyle(b).display} : null})()")
-    log["handover_pressed"] = press("#endrun"); time.sleep(2.5); log["strip_after_endrun"] = strip(); shot("06-handing-over")
-    for _ in range(20):
-        time.sleep(3)
+    # The guide says it: hand over is pressed twice — the first press arms the button (it reads
+    # "press again to record" for six seconds), the second sends the shift to the chain.
+    log["handover_armed"] = press("#endrun"); time.sleep(1.2)
+    log["endrun_armed_text"] = js("(document.querySelector('#endrun')||{}).innerText")
+    shot("06-handing-over", focus="#endrun")
+    log["handover_sent"] = press("#endrun")
+    handed = None
+    for _ in range(30):
+        time.sleep(2)
         s = strip() or ""
-        if "anchor" not in s.lower() and "handing" not in s.lower(): break
+        if "handed over" in s.lower(): handed = s; break
+    log["strip_after_handover"] = handed or strip()
     time.sleep(2); shot("07-handed-over")
     href = js("(()=>{const a=[...document.querySelectorAll('a')].find(a=>/receipt|\\/shift\\//i.test(a.href+' '+a.innerText)); return a? a.href : null})()")
     log["receipt_href"] = href
