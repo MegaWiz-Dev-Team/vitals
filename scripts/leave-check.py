@@ -16,12 +16,13 @@ It hands the patient back at the end so no staging bed is left half-taken, close
 and checks nothing of its own is left holding a stream. Never run against production: a take
 there is a real shift on the real chain.
 
-What it has proven so far (25 Sep 2026, staging 00098, six runs): a browser leaving the bedside
-makes no call to /api/ward/anchor, and a hand-over with nothing on the tape anchors nothing.
-What it has not: the take itself — `#fv-treat` only shuts the first-visit cover, the take is the
-strip's `#wardtake`, and in those runs that button was found but not under the pointer, so no
-order was ever given and the reminder on return is proven only by the synthetic route. The
-trigger a phone fires is unverified by this script; that is a phone in a hand for thirty seconds.
+What it proves (25 Sep 2026, staging, a fresh patient): the take, the order line opening, an
+order given, no call to /api/ward/anchor on leaving, and — on the synthetic route — the strip
+reading exactly "You still have <name>. Hand over before you go — nothing you did counts until
+you do." What it cannot prove: that a real app switch fires the event. Headless Chrome keeps a
+page "visible" through a tab switch and through the page lifecycle, so the two browser routes
+never hide it; the route that draws the reminder is a dispatched, bubbling visibilitychange —
+the listener and the drawing, never the phone. That is thirty seconds with a phone in a hand.
 """
 import json, os, shutil, subprocess, sys, time, urllib.request
 
@@ -130,28 +131,48 @@ try:
     report["visibility_before_leaving"] = js("document.visibilityState")
     if focused:
         cdp("Input.insertText", text=ORDER)
-        cdp("Input.dispatchKeyEvent", type="keyDown", key="Enter", code="Enter", windowsVirtualKeyCode=13, nativeVirtualKeyCode=13)
+        report["order_line_value"] = js("(document.querySelector('#cmd')||{}).value")
+        # Enter as a browser sends it: the key down carries the carriage return as text, which is
+        # what submits a form; a bare keyDown without text does not
+        cdp("Input.dispatchKeyEvent", type="keyDown", key="Enter", code="Enter", windowsVirtualKeyCode=13, nativeVirtualKeyCode=13, text="\r", unmodifiedText="\r")
         cdp("Input.dispatchKeyEvent", type="keyUp", key="Enter", code="Enter", windowsVirtualKeyCode=13, nativeVirtualKeyCode=13)
         time.sleep(4)
     report["order_given"] = js("typeof DIDWORK!=='undefined' ? DIDWORK : null")
     report["strip_before_leaving"] = strip()
-    # the app switch: Chrome's own lifecycle, hidden then visible
-    cdp("Page.setWebLifecycleState", state="frozen"); time.sleep(1.5)
-    hidden_seen = js("document.visibilityState")
-    cdp("Page.setWebLifecycleState", state="active"); time.sleep(2.5)
-    report["visibility_via_lifecycle"] = {"while_frozen": hidden_seen, "after": js("document.visibilityState")}
-    report["strip_on_return"] = strip()
-    report["route"] = "browser lifecycle (frozen → active)"
-    if not (report["strip_on_return"] or "").lower().startswith("you still have"):
-        # the browser did not change visibility for this page: prove the listener with a synthetic
-        # event, and say so — this route proves the page, not the phone
+    # the app switch, three routes from the strongest down; the first that draws the reminder is
+    # the one reported, and the report says which
+    def said_it(s): return (s or "").lower().startswith("you still have")
+    # 1. another tab in front, then this one again — the browser itself hides and shows the page
+    other = cdp("Target.createTarget", url="about:blank").get("targetId")
+    me = cdp("Target.getTargetInfo").get("targetInfo", {}).get("targetId")
+    if other:
+        cdp("Target.activateTarget", targetId=other); time.sleep(1.5)
+        hidden_seen = js("document.visibilityState")
+        if me: cdp("Target.activateTarget", targetId=me)
+        time.sleep(0.4); first = strip(); time.sleep(1.5)
+        report["visibility_via_tabs"] = {"while_behind": hidden_seen, "after": js("document.visibilityState")}
+        report["strip_on_return_tabs"] = first if said_it(first) else strip()
+        cdp("Target.closeTarget", targetId=other)
+    report["route"] = "another tab in front, then back (the browser fired it)" if said_it(report.get("strip_on_return_tabs")) else None
+    # 2. Chrome's page lifecycle, frozen then active
+    if not report["route"]:
+        cdp("Page.setWebLifecycleState", state="frozen"); time.sleep(1.5)
+        hidden_seen = js("document.visibilityState")
+        cdp("Page.setWebLifecycleState", state="active"); time.sleep(0.4); first = strip(); time.sleep(1.5)
+        report["visibility_via_lifecycle"] = {"while_frozen": hidden_seen, "after": js("document.visibilityState")}
+        report["strip_on_return_lifecycle"] = first if said_it(first) else strip()
+        if said_it(report["strip_on_return_lifecycle"]): report["route"] = "page lifecycle (frozen → active)"
+    # 3. a synthetic event — bubbling, as the real one does, or a window listener never hears it —
+    #    which proves the listener and the drawing, never the browser
+    if not report["route"]:
         js("""(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,get:()=>'hidden'});
-               document.dispatchEvent(new Event('visibilitychange'));
+               document.dispatchEvent(new Event('visibilitychange',{bubbles:true}));
                Object.defineProperty(document,'visibilityState',{configurable:true,get:()=>'visible'});
-               document.dispatchEvent(new Event('visibilitychange')); return true})()""")
-        time.sleep(1.5)
-        report["strip_on_return_synthetic"] = strip()
-        report["route"] = "synthetic visibilitychange — proves the listener, not the browser"
+               document.dispatchEvent(new Event('visibilitychange',{bubbles:true})); return true})()""")
+        time.sleep(0.4); first = strip(); time.sleep(1.5)
+        report["strip_on_return_synthetic"] = first if said_it(first) else strip()
+        report["route"] = "synthetic visibilitychange — proves the listener, not the browser" if said_it(report["strip_on_return_synthetic"]) else "no route drew the reminder"
+    report["strip_on_return"] = report.get("strip_on_return_tabs") or report.get("strip_on_return_lifecycle") or report.get("strip_on_return_synthetic")
     report["anchor_calls_while_leaving"] = js("performance.getEntriesByType('resource').filter(e=>/\\/api\\/ward\\/anchor/.test(e.name)).length")
     # hand her back so the bed is not left half-taken
     report["handed_back"] = press("#endrun")  # the strip's own "hand over" button (bay.js:4803)
