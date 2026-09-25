@@ -3163,7 +3163,7 @@ pub struct ShiftBytes {
     pub case: String,
     /// The address the hand-over recorded, or `None` on every shift anchored before it did.
     pub recorded: Option<String>,
-    /// `proved`, `ambiguous`, `unrebuildable`, or `no tape`.
+    /// `proved`, `proved as it stands`, `ambiguous`, `unrebuildable`, `no tape` or `not asked`.
     pub verdict: &'static str,
     /// The address replay demonstrated, when exactly one scenario fits.
     pub proved: Option<String>,
@@ -3182,13 +3182,26 @@ pub struct ShiftBytes {
 /// The verdicts are kept apart on purpose. `no tape` is not `unrebuildable`: a tape missing here can
 /// still be recovered from a session this server is holding — [`recover_tape`] does exactly that —
 /// whereas bytes that were overwritten before the blob store existed are gone, and nothing will
-/// bring them back. One word for both would hide the recoverable case inside the lost one.
-pub fn bytes_behind_the_anchored_shifts(store: &crate::store::Store) -> Vec<ShiftBytes> {
+/// bring them back. One word for both would hide the recoverable case inside the lost one. `not
+/// asked` is a third: this ward never learned when that patient was admitted, so there is no honest
+/// derivation for her at all and nothing has been claimed about her bytes.
+///
+/// `admitted_of` returns `None` rather than a default for a patient the chain was not asked about.
+/// Zero would be a number, and every leaf derived from it would be wrong in the same direction —
+/// a page of confident "unrebuildable" about shifts nobody had actually checked.
+pub fn bytes_behind_the_anchored_shifts(
+    store: &crate::store::Store,
+    admitted_of: &dyn Fn(u64) -> Option<u64>,
+    as_it_stands_of: &dyn Fn(&str) -> Option<(String, String)>,
+) -> Vec<ShiftBytes> {
     let packs = packs(store);
+    let dated = cached_dater(store);
+    let tape_of = |h: &str| tape_by_hash(store, h);
     let mut out = Vec::new();
     for (key, seen) in store.list::<Seen>(SHIFT_CACHE) {
         let Ok(patient_id) = key.trim_start_matches('p').parse::<u64>() else { continue };
-        for shift in seen.shifts() {
+        let all = seen.shifts();
+        for shift in &all {
             let leaf = hex32(&shift.run_hash);
             let case = packs.get(&patient_id).map(|k| k.case.clone()).unwrap_or_default();
             let recorded = store
@@ -3206,14 +3219,44 @@ pub fn bytes_behind_the_anchored_shifts(store: &crate::store::Store) -> Vec<Shif
                 continue;
             };
 
-            let (verdict, proved, candidates) =
-                match crate::ward_case::played_against(store, &leaf, &steps) {
-                    crate::ward_case::Played::Proved(id) => ("proved", Some(id), Vec::new()),
-                    crate::ward_case::Played::Ambiguous(ids) => ("ambiguous", None, ids),
-                    crate::ward_case::Played::Unrebuildable => {
-                        ("unrebuildable", None, Vec::new())
-                    }
-                };
+            // Without her admission slot there is no honest derivation: the idle time before her
+            // first shift is measured from it, and guessing zero would move every leaf and report
+            // the whole patient unrebuildable. Said as its own verdict rather than folded into one
+            // that blames the bytes.
+            let Some(admitted_slot) = admitted_of(patient_id) else {
+                out.push(ShiftBytes {
+                    patient_id, leaf, case, recorded,
+                    verdict: "not asked", proved: None, candidates: Vec::new(), disagrees: false,
+                });
+                continue;
+            };
+            let deriving = Deriving {
+                shifts: &all, this: shift, tape_of: &tape_of, admitted_slot, dated: &dated,
+            };
+
+            // **The same question the receipt asks, asked the same way.** This list describes what
+            // each receipt would do, so it calls what the receipt calls — including the case as it
+            // stands, tried last. Asking a narrower question here is how the published list came to
+            // report every shift on production unrebuildable while their receipts rendered: the list
+            // searched only kept versions, the receipt also accepts the live bytes when they
+            // reproduce the leaf, and a reader had no way to tell which of them was lying.
+            let (verdict, proved, candidates) = match crate::ward_case::bytes_for_receipt(
+                store, &leaf, &steps, &deriving, as_it_stands_of(&case),
+            ) {
+                crate::ward_case::ForReceipt::These { played_id, .. } if !played_id.is_empty() => {
+                    ("proved", Some(played_id), Vec::new())
+                }
+                // Proved, and by the bytes the case carries now rather than a version anybody kept.
+                // Its own verdict because it is the actionable one: seeding pins these, and until
+                // somebody does, the next correction to that case takes the shift with it.
+                crate::ward_case::ForReceipt::These { .. } => {
+                    ("proved as it stands", None, Vec::new())
+                }
+                crate::ward_case::ForReceipt::ScenarioOnly { candidates, .. } => {
+                    ("ambiguous", None, candidates)
+                }
+                crate::ward_case::ForReceipt::Unrebuildable => ("unrebuildable", None, Vec::new()),
+            };
             // A disagreement needs both halves to exist. Nothing recorded is not a disagreement —
             // it is the ordinary state of every shift anchored before the hand-over recorded it.
             let disagrees = match (&recorded, &proved) {
@@ -3550,6 +3593,72 @@ pub fn id_as_words(id: &str) -> String {
     body.replace('_', " ")
 }
 
+/// Everything needed to re-derive one anchored shift's leaf, kept together so no caller can supply
+/// half of it.
+///
+/// The leaf commits to a reduction taken from the state this shift began on, and that state depends
+/// on her earlier shifts, on the slots the chain dates them to, and on the arrival cap as it was
+/// applied at the time. A caller holding only the tape cannot produce it. Bundling the rest means
+/// the compiler asks for the context rather than a proof quietly deriving something simpler.
+pub struct Deriving<'a> {
+    /// Every shift the chain holds for this patient — the earlier ones are what she is resumed from.
+    pub shifts: &'a [crate::ward::ShiftOnChain],
+    /// The shift being derived.
+    pub this: &'a crate::ward::ShiftOnChain,
+    pub tape_of: &'a dyn Fn(&str) -> Option<Vec<vitals_replay::Step>>,
+    pub admitted_slot: u64,
+    pub dated: &'a dyn Fn(u64) -> Option<i64>,
+}
+
+/// **The patient as she was when this stranger arrived** — the one place that decides it.
+///
+/// Every shift the chain anchored before this one, replayed, plus the idle time between the slots
+/// the chain dates, plus the arrival cap exactly as it was applied when this shift was played. The
+/// signer and the slot decide that last part, and getting it wrong moves the leaf.
+///
+/// It is a function because two callers need the same answer, and the number they need it for is the
+/// one everything else rests on. A shift's leaf commits to the reduction taken from this state, so
+/// the receipt that shows a chart and the proof that decides which bytes produced it must agree to
+/// the byte. They did not: the proof replayed the tape from the initial state, which is right only
+/// for a first shift with nothing before it, and called good bytes unrebuildable for every other
+/// shift on the ward. One derivation read by both is the only version of this that stays true — a
+/// copy agrees on the day it is written and not afterwards.
+pub fn state_this_shift_began_on(
+    sce_json: &str,
+    d: &Deriving,
+) -> Result<(vitals_sce::runtime::SceState, usize), String> {
+    let before: Vec<crate::ward::ShiftOnChain> =
+        d.shifts.iter().filter(|s| s.slot < d.this.slot).copied().collect();
+    resumed(
+        sce_json,
+        &before,
+        d.tape_of,
+        d.admitted_slot,
+        d.this.slot,
+        d.dated,
+        cap_on_arrival(
+            d.this.slot,
+            Some(&d.this.signer),
+            crate::ward::arrival_cap_from_slot(),
+            ward_signer().as_ref(),
+        ),
+    )
+}
+
+/// The leaf this shift produces when re-derived against `sce_json`, or `None` if it cannot be.
+///
+/// The question every proof asks: *do these bytes produce the leaf the chain holds?* Derived through
+/// [`state_this_shift_began_on`], so it is the receipt's own arithmetic and not a second opinion.
+pub fn leaf_if_played_on(
+    sce_json: &str,
+    tape: &[vitals_replay::Step],
+    d: &Deriving,
+) -> Option<String> {
+    let (mut st, _played) = state_this_shift_began_on(sce_json, d).ok()?;
+    let r = vitals_replay::shift(&mut st, tape, 0.0);
+    Some(hex32(&vitals_replay::leaf(&vitals_replay::sce_hash(sce_json), tape, &r)))
+}
+
 /// What one shift was, for somebody who never played it.
 ///
 /// Everything here is either on the chain or recomputed in front of the reader from bytes the
@@ -3584,15 +3693,8 @@ pub fn receipt(
                  nobody can check is not a receipt")
     })?;
 
-    // The patient as she was when this stranger arrived: every shift the chain anchored before
-    // this one, and the idle time between them.
-    let before: Vec<crate::ward::ShiftOnChain> =
-        shifts.iter().filter(|s| s.slot < this.slot).copied().collect();
-    let (mut st, played) = // An anchored shift being re-derived: capped exactly as it was played, which the signer and
-    // the slot decide. Get this wrong and the leaf moves.
-    resumed(sce_json, &before, tape_of, admitted_slot, this.slot, dated,
-            cap_on_arrival(this.slot, Some(&this.signer), crate::ward::arrival_cap_from_slot(),
-                           ward_signer().as_ref()))?;
+    let deriving = Deriving { shifts, this, tape_of, admitted_slot, dated };
+    let (mut st, played) = state_this_shift_began_on(sce_json, &deriving)?;
     let r = vitals_replay::shift(&mut st, &tape, 0.0);
 
     let det = rubric_json.and_then(|rj| vitals_osce::det_for_run(sce_json, &tape, rj).ok());

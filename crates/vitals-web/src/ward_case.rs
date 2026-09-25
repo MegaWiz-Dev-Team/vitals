@@ -995,15 +995,18 @@ pub fn played_against(
     store: &crate::store::Store,
     leaf_hex: &str,
     tape: &[vitals_replay::Step],
+    d: &crate::ward_chain::Deriving,
 ) -> Played {
     let mut by_scenario: std::collections::BTreeMap<String, Vec<String>> = Default::default();
     for (id, blob) in store.list::<PlayedBytes>(PLAYED_STORE) {
         by_scenario.entry(blob.sce).or_default().push(id);
     }
     for (sce, mut ids) in by_scenario {
-        let Ok(r) = vitals_replay::replay(&sce, tape) else { continue };
-        let leaf = vitals_replay::leaf(&vitals_replay::sce_hash(&sce), tape, &r);
-        if crate::ward_chain::hex32(&leaf) != leaf_hex {
+        // Through the receipt's own derivation, never a replay from the initial state. A shift's
+        // leaf commits to a reduction taken after her earlier shifts and the idle time between
+        // them, so a fresh replay answers a different question and answers it wrongly for every
+        // shift that had anything happen before it.
+        if crate::ward_chain::leaf_if_played_on(&sce, tape, d).as_deref() != Some(leaf_hex) {
             continue;
         }
         ids.sort();
@@ -1049,13 +1052,11 @@ pub fn bytes_for_receipt(
     store: &crate::store::Store,
     leaf_hex: &str,
     tape: &[vitals_replay::Step],
+    d: &crate::ward_chain::Deriving,
     as_it_stands: Option<(String, String)>,
 ) -> ForReceipt {
     let reproduces = |sce: &str| -> bool {
-        vitals_replay::replay(sce, tape).is_ok_and(|r| {
-            crate::ward_chain::hex32(&vitals_replay::leaf(&vitals_replay::sce_hash(sce), tape, &r))
-                == leaf_hex
-        })
+        crate::ward_chain::leaf_if_played_on(sce, tape, d).as_deref() == Some(leaf_hex)
     };
 
     // The cheap road: an address the hand-over recorded, confirmed against the leaf.
@@ -1071,7 +1072,7 @@ pub fn bytes_for_receipt(
         }
     }
 
-    match played_against(store, leaf_hex, tape) {
+    match played_against(store, leaf_hex, tape, d) {
         Played::Proved(id) => match played_bytes(store, &id) {
             Some(blob) => ForReceipt::These { sce: blob.sce, rubric: blob.rubric, played_id: id },
             // Proved against a blob that has gone missing between the two reads. Treated as lost

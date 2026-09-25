@@ -2498,6 +2498,14 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
     let Some(pack) = ward_chain::packs(store).remove(&patient_id) else {
         return bad("the ward has no pack for that patient, so it cannot say which case this shift was");
     };
+    let admitted = chain.patient(patient_id).ok().flatten().map(|p| p.admitted_slot).unwrap_or(0);
+    // From the store, never from the chain. Every slot on this patient's chain was dated by the
+    // call that found it — `find_shift` above walks her history, and the walk files the block times
+    // the listing hands it — so this reads them rather than asking again, one round trip per slot,
+    // with a reader waiting on the answer. A slot nothing has dated yet carries no time and the row
+    // says so, which is the same thing this page has always done with a slot the chain would not
+    // date.
+    let dated = ward_chain::cached_dater(store);
     // **The bytes this shift was played on, before anything is computed from them.**
     //
     // This used to read the case store as it stands — `ward_sce` and `rubric_for` on `pack.case` —
@@ -2509,9 +2517,17 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
     // change what a case scores while a patient is on the board — so every shift of hers was played
     // on the same bytes, and this shift's leaf is a valid probe for all of them.
     let leaf_hex = ward_chain::hex32(&this.run_hash);
+    // The context the proof needs, built once and shared with the receipt below, so the bytes are
+    // chosen by the same arithmetic that renders the chart rather than by a simpler stand-in.
+    let tape_of = |h: &str| ward_chain::tape_by_hash(store, h);
+    let deriving = ward_chain::Deriving {
+        shifts: &shifts, this: &this, tape_of: &tape_of, admitted_slot: admitted, dated: &dated,
+    };
     let Some(steps) = ward_chain::tape_by_hash(store, &leaf_hex) else {
         return bad(
-            "this ward holds no tape for that shift, so there is nothing to check its case bytes              against and its chart cannot be rebuilt. The chain still carries the shift: what is              missing is here, not there",
+            "this ward holds no tape for that shift, so there is nothing to check its case \
+                bytes against and its chart cannot be rebuilt. The chain still carries the \
+                shift: what is missing is here, not there",
         );
     };
     // The case as it stands, for the proof to try last: a shift on a case nobody has corrected
@@ -2523,13 +2539,16 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
         .ok()
         .zip(ward_chain::rubric_for(store, &root, &pack.case));
     let (sce_json, rubric, bytes_note) =
-        match ward_case::bytes_for_receipt(store, &leaf_hex, &steps, as_it_stands) {
+        match ward_case::bytes_for_receipt(store, &leaf_hex, &steps, &deriving, as_it_stands) {
         ward_case::ForReceipt::These { sce, rubric, played_id } => (
             sce,
             Some(rubric),
             serde_json::json!({
                 "played_id": played_id,
-                "how_this_is_known": "the scenario and the rubric this shift was played against,                                       kept under the hash of those bytes. Proved: replaying this                                       scenario against the tape reproduces the leaf the chain                                       holds, so a correction to the case since then changes                                       nothing on this page",
+                "how_this_is_known": "the scenario and the rubric this shift was played \
+                    against, kept under the hash of those bytes. Proved: replaying this scenario \
+                    against the tape reproduces the leaf the chain holds, so a correction to the \
+                    case since then changes nothing on this page",
             }),
         ),
         // The chart rebuilds and the sheet cannot. Two claims, and collapsing them would either
@@ -2539,23 +2558,22 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
             None,
             serde_json::json!({
                 "candidates": candidates,
-                "how_this_is_known": "replaying this scenario against the tape reproduces the leaf                                       the chain holds, so the chart below is the one this shift                                       played. The leaf commits to nothing about the rubric, and                                       more than one rubric was kept for this scenario, so which                                       one marked this shift cannot be told from the chain and no                                       sheet is computed",
+                "how_this_is_known": "replaying this scenario against the tape reproduces \
+                    the leaf the chain holds, so the chart below is the one this shift played. \
+                    The leaf commits to nothing about the rubric, and more than one rubric was \
+                    kept for this scenario, so which one marked this shift cannot be told from \
+                    the chain and no sheet is computed",
             }),
         ),
         ward_case::ForReceipt::Unrebuildable => {
             return bad(
-                "the bytes this shift was played against are not in this ward any more, so its                  chart cannot be rebuilt. Nothing is shown rather than a chart derived from the                  version this case is on today, which is not what this shift was played on",
+            "the bytes this shift was played against are not in this ward any more, so \
+                    its chart cannot be rebuilt. Nothing is shown rather than a chart derived \
+                    from the version this case is on today, which is not what this shift was \
+                    played on",
             )
         }
     };
-    let admitted = chain.patient(patient_id).ok().flatten().map(|p| p.admitted_slot).unwrap_or(0);
-    // From the store, never from the chain. Every slot on this patient's chain was dated by the
-    // call that found it — `find_shift` above walks her history, and the walk files the block times
-    // the listing hands it — so this reads them rather than asking again, one round trip per slot,
-    // with a reader waiting on the answer. A slot nothing has dated yet carries no time and the row
-    // says so, which is the same thing this page has always done with a slot the chain would not
-    // date.
-    let dated = ward_chain::cached_dater(store);
     match ward_chain::receipt(
         &sce_json,
         // The rubric kept beside the scenario this shift was proved to have played, and never the
@@ -3577,6 +3595,15 @@ fn door(path: &str) -> bool {
         // secret. What it produces is read at `/api/ward/bytes`, which is public, because the list
         // of shifts this ward cannot rebuild is a fact a stranger is owed rather than ours to keep.
         || path == "/api/ward/seed"
+        // And reading the integrity list is an operator's too, which is a correction: it was public
+        // on the reasoning that a shift this ward cannot rebuild is a fact a stranger is owed. True,
+        // but this is the wrong surface for it. Unseeded, the list answered "77 of 77 shifts
+        // unrebuildable" on production — a sentence about the ward never having looked, published as
+        // a finding about the chain, and the worst thing a project about verifiable replay could
+        // say. The per-shift honesty a stranger is owed belongs on their own receipt, where it is
+        // checkable in context; an aggregate that reads catastrophically before its own setup step
+        // has run is a footgun whoever is holding it.
+        || path == "/api/ward/bytes"
         // `/api/ward/case/<id>/withdraw` — taking a case out of service is the factory's door too,
         // and a public one would let a stranger empty the ward's catalogue.
         || (path.starts_with("/api/ward/case/") && path.ends_with("/withdraw"))
@@ -5980,7 +6007,31 @@ fn main() {
             // holding that receipt is owed. Read-only — it replays what is kept against what is
             // anchored and reports, so reading it never changes what a receipt says.
             (Method::Get, "/api/ward/bytes") => {
-                let rows = ward_chain::bytes_behind_the_anchored_shifts(&store);
+                // The chain, only if a shift actually needs it. A ward with nothing anchored asks
+                // nobody anything, and a chain that cannot be reached leaves every row "not asked"
+                // rather than deriving from an admission slot of zero and calling the result a
+                // finding.
+                let chain = std::cell::OnceCell::new();
+                let admitted: std::cell::RefCell<std::collections::HashMap<u64, Option<u64>>> =
+                    Default::default();
+                let admitted_of = |id: u64| -> Option<u64> {
+                    if let Some(known) = admitted.borrow().get(&id) {
+                        return *known;
+                    }
+                    let c: &Option<ward_chain::WardChain> =
+                        chain.get_or_init(|| ward_chain::WardChain::connect().ok());
+                    let slot = c.as_ref().and_then(|c| {
+                        c.patient(id).ok().flatten().map(|p| p.admitted_slot)
+                    });
+                    admitted.borrow_mut().insert(id, slot);
+                    slot
+                };
+                let root = scenario_root();
+                let as_it_stands_of = |case: &str| {
+                    ward_sce(&store, case).ok().zip(ward_chain::rubric_for(&store, &root, case))
+                };
+                let rows = ward_chain::bytes_behind_the_anchored_shifts(
+                    &store, &admitted_of, &as_it_stands_of);
                 let count = |v: &str| rows.iter().filter(|r| r.verdict == v).count();
                 let _ = req.respond(json(serde_json::json!({
                     "shifts": rows.len(),
@@ -5988,9 +6039,11 @@ fn main() {
                     // have different fixes, and one of them — a tape missing here — is recoverable
                     // from a session this server still holds.
                     "proved": count("proved"),
+                    "proved_as_it_stands": count("proved as it stands"),
                     "ambiguous": count("ambiguous"),
                     "unrebuildable": count("unrebuildable"),
                     "no_tape": count("no tape"),
+                    "not_asked": count("not asked"),
                     "disagreements": rows.iter().filter(|r| r.disagrees).count(),
                     "rows": rows,
                     "derivations": {
@@ -5998,6 +6051,16 @@ fn main() {
                                    builds the board from. A patient whose history has not been \
                                    read yet is not counted here, so this is what is known and not \
                                    a claim about the chain as a whole",
+                        "proved_as_it_stands": "the same proof, passed by the bytes the case \
+                                                carries now rather than by a version anybody kept. \
+                                                The receipt is correct today and nothing pins it: \
+                                                the next correction to that case takes this shift \
+                                                with it, and seeding is what fixes that",
+                        "not_asked": "this ward could not learn when that patient was admitted, so \
+                                      there is no honest derivation for her and nothing has been \
+                                      claimed about her bytes. Her idle time before the first \
+                                      shift is measured from that slot, and assuming zero would \
+                                      move every leaf and report her whole history unrebuildable",
                         "proved": "the leaf the chain holds for the shift, replayed against every \
                                    set of case bytes this ward kept, with exactly one reproducing \
                                    it. Demonstrated rather than recorded: the chain says nothing \
