@@ -936,6 +936,15 @@ pub struct WardRead<'a> {
     pub packs: &'a std::collections::BTreeMap<u64, Pack>,
     /// The start of *this week*, as a slot. `None` asks for the ward's whole life.
     pub since: Option<u64>,
+    /// **How much longer each open patient has if nobody comes**, in simulated seconds, by patient
+    /// id — the ticker's own answer, left in `CLOSES_IN_STORE` by the pass that rebuilt her.
+    ///
+    /// Handed in rather than computed here: this struct carries the chain's facts and no store, and
+    /// giving it one so the board could replay sixteen charts would put a simulation on a page
+    /// load. Absent for a patient the ticker has not reached, could not rebuild, or whose case does
+    /// not finish her inside the horizon — and absent means the card says nothing, never a stale
+    /// number read as current.
+    pub closes_in: &'a std::collections::BTreeMap<u64, f64>,
     /// The slot the chain was read at. A number without its read time is not evidence.
     pub as_of_slot: u64,
     /// This server's wall clock. Nothing a reader sees is measured from it any more — every time
@@ -1153,6 +1162,13 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                 // them. Null until the ward has asked for the block time.
                 "admitted_at": at_slot(r.times, p.admitted_slot),
                 "closed_at": at_slot(r.times, p.closed_slot),
+                // **When the ward will close her, if nobody comes** — the ruling's ordering, and
+                // the reason she is where she is in the list. Real hours, because a simulated
+                // second is a real minute at 1:60 and nobody reads a countdown in simulated
+                // seconds. Uncapped on purpose: this is how long *she* has, not what an arrival
+                // meets — those are two facts and the card says them in two sentences so neither
+                // carries the other's meaning.
+                "closes_in_hours": r.closes_in.get(&p.patient_id).map(|s| s / 60.0),
                 "name": pack.map(|k| k.persona.name.clone()),
                 "age": pack.map(|k| k.persona.age),
                 "country": pack.map(|k| k.persona.country.clone()),

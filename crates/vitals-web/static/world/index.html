@@ -1005,16 +1005,64 @@ function row(p, showCountry) {
      refreshed this read. Said on the row so a stranger opening the bedside knows before pressing
      anything. Not tied to `openable`: a stale chart is not a shut bed. */
   const stale = p.history ? `<div class="shut">${escapeHtml(p.history)}</div>` : "";
+  /* **Two facts, in two sentences, because one number cannot carry both.**
+
+     `closes_in_hours` is the ward's own clock: how long *she* has if nobody comes, uncapped, and
+     the reason she is where she is in this list. The second line is what the person who presses
+     will actually meet — the founder's ruling of 23 ก.ย., that whoever comes gets to treat rather
+     than watch a death, which caps what an arrival is handed at five simulated minutes.
+
+     They are deliberately not combined. A single "about Y h left" would have ranked by how lethal
+     her case is rather than by who is closest to dying, because the cap hands every patient alone
+     more than five hours the same starting state — two people on the same case, one alone eleven
+     hours and one six, would have sat in the same place with the same number. */
+  const closes = clock(p);
   /* Two lines and a button: who and where on the first, how they are on the second. The order is
      the order a stranger reads them in — the name is what they are looking for, the bed is how the
      ward is arranged, and the state is what decides whether to take this one. */
   li.innerHTML = `${img}<div>
     <div class="who"><b>${escapeHtml(p.name || ("patient " + p.patient_id))}${age}</b>${bed}</div>
-    <div class="meta"><span class="state ${st}" title="${escapeHtml(line.title)}">${escapeHtml(line.text)}</span>${diff}${where}${end}</div>${shut}${stale}${note}</div>
+    <div class="meta"><span class="state ${st}" title="${escapeHtml(line.title)}">${escapeHtml(line.text)}</span>${diff}${where}${end}${treated(p)}</div>${closes}${shut}${stale}${note}</div>
     <a class="take${canTake ? "" : " look"}" href="/ward/${encodeURIComponent(p.patient_id)}">${canTake ? "treat" : "view"}</a>`;
   return li;
 }
 function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+/* How many strangers have treated her, as a bare number and no sentence about what it bought.
+   The record says patients who were treated are alive past ten hours while the untouched living are
+   all under it — but the treated are the ones somebody chose to open from a board showing a face, a
+   country and a level, so the number is shown and the inference is not drawn for the reader. */
+function treated(p) {
+  const n = p.shifts || 0;
+  if (!n) return "";
+  return `<span class="tag">${n} shift${n === 1 ? "" : "s"}</span>`;
+}
+
+/* The ward's clock on this bed, and what an arrival meets. Nothing at all when the ticker has no
+   answer for her — a patient admitted since its last pass, one whose chart would not rebuild, or a
+   case that does not finish her inside the horizon. Silence is the honest state there; a number
+   left over from an hour ago would read as current and nothing would look wrong. */
+function clock(p) {
+  const h = p.closes_in_hours;
+  if (h === undefined || h === null || !(h >= 0)) return "";
+  const when = h < 1 ? `${Math.max(1, Math.round(h * 60))} min` : `${h < 10 ? h.toFixed(1) : Math.round(h)} h`;
+  return `<div class="clock"><b>the ward will close her in about ${when}</b>` +
+         `<span>you will find her five minutes in — treating her is still worth it</span></div>`;
+}
+
+/* Closest to dying first — the founder's ruling of 24 ก.ย., "เรียงเตียงตามใกล้ตาย".
+   Ordered by the ward's own uncapped clock, so the patient the ticker reaches next is at the top;
+   a newcomer then picks the bed with two hours left rather than bed 1. Anyone the ward has no clock
+   for follows, in the order the board gave them, and the closed and discharged come last: they are
+   not a choice anybody is being asked to make. */
+function byClosest(a, b) {
+  const rank = p => (stateOf(p) === "went_home" || stateOf(p) === "died") ? 2
+    : (typeof p.closes_in_hours === "number" && p.closes_in_hours >= 0) ? 0 : 1;
+  const ra = rank(a), rb = rank(b);
+  if (ra !== rb) return ra - rb;
+  if (ra === 0) return a.closes_in_hours - b.closes_in_hours;
+  return 0;
+}
 
 // One country's doctors, in the panel: the latest figure with its year, the series as a sparkline
 // (people per doctor, log scale, a falling line is the mission's direction), and the ~10-year
@@ -1086,7 +1134,9 @@ function renderPanel(id) {
     /* Who is here now, then who has been here — and, while the ward is opening, who is queued for
        a bed in it. Each group announces itself and its own count; a group with nobody in it is not
        drawn at all rather than drawn empty. */
-    for (const [label, rows] of [["In beds", groups.inBeds],
+    /* Ordered inside the group that can be taken from; "Left the ward" is a record and keeps the
+       board's own order, since nobody is being asked to choose from it. */
+    for (const [label, rows] of [["In beds", [...groups.inBeds].sort(byClosest)],
                                  ["Waiting for the door", queued],
                                  ["Left the ward", groups.left]]) {
       if (!rows.length) continue;
@@ -1134,7 +1184,9 @@ function renderBeds() {
         : bedsEmptyWords(DOOR, WAITING);
   } else {
     $("pempty").hidden = true;
-    for (const p of list) $("plist").appendChild(row(p, true));
+    /* Closest to dying first. A newcomer reading top to bottom then picks the bed with two hours
+       left rather than bed 1, which is what the ruling is for. */
+    for (const p of [...list].sort(byClosest)) $("plist").appendChild(row(p, true));
   }
   $("panel").classList.remove("open");
 }

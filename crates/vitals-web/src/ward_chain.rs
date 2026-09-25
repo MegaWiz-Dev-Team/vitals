@@ -797,6 +797,11 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
         unrebuildable: &lost,
         unread: &h.unread,
         since: Some(as_of.saturating_sub(WEEK_SLOTS)),
+        // Each open patient's remaining time, as the ticker last computed it. Read rather than
+        // recomputed: the pass that rebuilt her wrote it, and replaying sixteen charts to build a
+        // board would put a simulation on a page load. A patient the ticker has not reached yet
+        // simply is not in the map, and her card says nothing about a clock rather than guessing.
+        closes_in: &closes_in(store, &patients),
         as_of_slot: as_of,
         now_unix: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -2474,7 +2479,33 @@ fn reap(
         );
         let closing = match found {
             Ok(Some(u)) => u,
-            Ok(None) => continue,
+            // Still open: ask the one question further, and leave the answer where the board can
+            // publish it. This is the ordering the founder asked for — "เรียงเตียงตามใกล้ตาย" — and
+            // it is the ticker's own clock, because it is computed from the rebuild the ticker just
+            // did rather than from a proxy for how long she has been lying there.
+            Ok(None) => {
+                let left = sim_seconds_left_unattended(
+                    &sce,
+                    &seen.shifts(),
+                    &|h| tape_by_hash(store, h),
+                    p.admitted_slot,
+                    now_slot,
+                    &dater(chain, store),
+                    CLOSES_IN_HORIZON_SIM_SECONDS,
+                );
+                match left {
+                    Ok(Some(secs)) => {
+                        let _ = store.put(CLOSES_IN_STORE, &format!("p{}", p.patient_id), &secs);
+                    }
+                    // No ending inside the horizon, or her chart could not be rebuilt: the card
+                    // says nothing rather than a number, so the old answer is cleared rather than
+                    // left to go stale and be read as current.
+                    _ => {
+                        store.del(CLOSES_IN_STORE, &format!("p{}", p.patient_id));
+                    }
+                }
+                continue;
+            }
             Err(e) => {
                 out.notes.push(format!("patient {} could not be rebuilt and was left as found: {e}", p.patient_id));
                 continue;
@@ -3000,9 +3031,10 @@ pub fn died_unattended(
 ) -> Result<Option<Unattended>, String> {
     // Where her chart stops: the last shift anybody anchored, or her admission if nobody has.
     let since = shifts.iter().map(|s| s.slot).max().unwrap_or(admitted_slot).max(admitted_slot);
-    let (mut st, _) = // Same: `died_unattended` resumes to the last anchor and then hands the engine the whole
-    // uncapped gap itself. This is the ticker's half of the ruling and it must never be capped.
-    resumed(sce_json, shifts, tape_of, admitted_slot, since, dated, false)?;
+    // `died_unattended` resumes only to the last anchor and then hands the engine the whole
+    // uncapped gap itself. This is the ticker's half of the founder's ruling and must never be
+    // capped, which is why the flag below is false and why the trailing span here is zero.
+    let (mut st, _) = resumed(sce_json, shifts, tape_of, admitted_slot, since, dated, false)?;
     // The slots stay on the record — they are the chain's own name for the span, and what a
     // stranger re-derives it from. What the engine is handed is what those two blocks say the span
     // lasted in seconds.
@@ -3715,4 +3747,78 @@ pub fn cap_on_arrival(
         return false;
     }
     signer_at_now != Some(ward)
+}
+
+
+/// **How much longer she has, if nobody comes** — the ranking the board is ordered by.
+///
+/// The same rebuild `died_unattended` does, asked one question further: not *has* the engine
+/// finished her, but *when will it*. The ward's ticker asks the first of every open bed every
+/// minute and this asks the second of the ones still alive, so the ordering on the board is the
+/// ticker's own clock rather than a proxy for it.
+///
+/// Uncapped, deliberately, and this is the half of the founder's ruling the ranking belongs to: she
+/// gets worse for every hour nobody comes, so the patient who has been alone longest on the most
+/// lethal case is the one closest to dying and the one the list must put first. The cap is what the
+/// person who arrives is handed, which is a different sentence on the card and not this number.
+///
+/// `None` when the case does not finish her inside `horizon` — a countdown longer than that is a
+/// fiction, and saying nothing is better than saying a number nobody should plan by.
+///
+/// It costs a second rebuild of each living patient per pass, on top of the one `died_unattended`
+/// already does. That is the honest price of not changing a contract six tests pin at midnight; if
+/// it ever shows in the tick's timing, the fix is to return the state from the first rebuild rather
+/// than to make this cheaper.
+pub fn sim_seconds_left_unattended(
+    sce_json: &str,
+    shifts: &[crate::ward::ShiftOnChain],
+    tape_of: &dyn Fn(&str) -> Option<Vec<vitals_replay::Step>>,
+    admitted_slot: u64,
+    now_slot: u64,
+    dated: &dyn Fn(u64) -> Option<i64>,
+    horizon_sim_seconds: f64,
+) -> Result<Option<f64>, String> {
+    let since = shifts.iter().map(|s| s.slot).max().unwrap_or(admitted_slot).max(admitted_slot);
+    let (mut st, _) = resumed(sce_json, shifts, tape_of, admitted_slot, since, dated, false)?;
+    let idle_real = match (dated(since), dated(now_slot)) {
+        (Some(a), Some(b)) if b > a => (b - a) as f64,
+        _ => 0.0,
+    };
+    // Bring her to now the way the ticker does — the whole gap, uncapped — and then ask the engine
+    // how much further it would take her.
+    vitals_replay::shift(&mut st, &[], idle_real);
+    Ok(vitals_replay::sim_seconds_until_untreated_ending(&st, horizon_sim_seconds))
+}
+
+/// The store the ticker leaves each patient's remaining time in, for the board to publish.
+///
+/// Written by the pass that already rebuilt her and read by the board, rather than recomputed where
+/// the board is built: `WardRead` carries the chain's facts and no store, and giving it one so it
+/// could replay sixteen charts on every read would put a simulation on a page load.
+pub const CLOSES_IN_STORE: &str = "ward_closes_in";
+
+/// How far ahead the ranking looks: twelve simulated hours, which at 1:60 is thirty real days.
+/// Past that the number is not a countdown anybody can act on.
+pub const CLOSES_IN_HORIZON_SIM_SECONDS: f64 = 12.0 * 3_600.0;
+
+
+/// Each open patient's remaining time as the ticker last left it, by patient id.
+///
+/// Missing entries are the normal case rather than an error: a patient admitted since the last
+/// pass, one whose chart could not be rebuilt, and one whose case does not finish her inside the
+/// horizon all belong out of this map, and all three mean the same thing to the card — say nothing
+/// about a clock.
+pub fn closes_in(
+    store: &crate::store::Store,
+    patients: &[crate::ward::PatientOnChain],
+) -> std::collections::BTreeMap<u64, f64> {
+    patients
+        .iter()
+        .filter(|p| p.closed_slot == 0)
+        .filter_map(|p| {
+            store
+                .get::<f64>(CLOSES_IN_STORE, &format!("p{}", p.patient_id))
+                .map(|secs| (p.patient_id, secs))
+        })
+        .collect()
 }

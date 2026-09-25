@@ -47,12 +47,13 @@ const sandbox = [grabConst('ALPHA3'), grabConst('FULL_NAME'), grab('displayName'
   grab('peoplePerDoctor'), grab('latestOf'), grab('tenYearTrend'), grab('fmtTrend'), grab('fmtPeople'), grab('doctorLine'),
   grab('worldAverage'), grab('missionLine'), grab('doctorBin'),
   grab('yearValue'), grab('yearRange'), grab('doctorLineAt'), grab('worldAverageAt'), grab('missionLineAt'),
-  grab('escapeHtml'), grab('portraitImg'), grab('onTheGlobe'),
-  'return { displayName, FULL_NAME, countryId, countryCounts, visible, inBeds, canTakeShift, censusFigures, ALPHA3, openingCountry, openingLongitude, countryGroups, countryHeading, waitingCounts, figuresFor, bedsEmptyWords, shouldReload, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg, onTheGlobe };'].join('\n');
+  grab('escapeHtml'), grab('portraitImg'), grab('onTheGlobe'), grab('clock'), grab('treated'), grab('byClosest'),
+  'return { displayName, FULL_NAME, countryId, countryCounts, visible, inBeds, canTakeShift, censusFigures, ALPHA3, openingCountry, openingLongitude, countryGroups, countryHeading, waitingCounts, figuresFor, bedsEmptyWords, shouldReload, whenMs, relative, absolute, stateLine, stateOf, onBoard, paintOf, hoverText, STATE_LABEL, DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin, yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg, onTheGlobe, clock, treated, byClosest };'].join('\n');
 const { displayName, FULL_NAME, countryId, countryCounts, inBeds, canTakeShift, censusFigures, visible, ALPHA3, openingCountry, openingLongitude, countryGroups, countryHeading, waitingCounts, figuresFor, bedsEmptyWords, shouldReload, whenMs, relative, absolute, stateLine,
   stateOf, onBoard, paintOf, hoverText, STATE_LABEL,
   DOCTOR_BINS, peoplePerDoctor, latestOf, tenYearTrend, fmtTrend, fmtPeople, doctorLine, worldAverage, missionLine, doctorBin,
-  yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg, onTheGlobe } = new Function(sandbox)();
+  yearValue, yearRange, doctorLineAt, worldAverageAt, missionLineAt, portraitImg, onTheGlobe,
+  clock, treated, byClosest } = new Function(sandbox)();
 
 // ── countryId ────────────────────────────────────────────────────────────────
 // world-atlas 110m keys its shapes by ISO numeric, as strings ("764"); the ward sends alpha-3.
@@ -872,3 +873,66 @@ assert.match(rowSrcStale, /p\.history/,
 assert.ok(!/p\.history\s*&&\s*p\.openable/.test(rowSrcStale) && !/p\.openable\s*&&\s*p\.history/.test(rowSrcStale),
           `and does not tie it to openable — a stale chart is not a shut bed: ${rowSrcStale}`);
 console.log('globe_logic: ok (and a stale history is said on the row)');
+
+
+// ── closest to dying first, and two facts that are not one number ────────────
+//
+// The founder, 24 ก.ย.: "ก) เรียงเตียงตามใกล้ตาย + บอกเวลา" — rank the beds by who is closest to
+// dying and say the time on the card. The ranking is the ward's own uncapped clock: how long *she*
+// has if nobody comes. What the card also says, separately, is what the person who presses will
+// meet, which the arrival cap fixes at five simulated minutes.
+//
+// They cannot be one figure. Under the cap every patient alone more than five hours hands her
+// arrival the same state, so a single "about Y h left" would rank by how lethal her case is rather
+// than by who the ticker reaches next — two people on one case, alone eleven hours and six, would
+// sit in the same place with the same number, and the one about to be closed would not be first.
+
+const bed = (id, h, extra = {}) => ({ patient_id: id, state: "on_ward", bed: 1, closes_in_hours: h, ...extra });
+
+// The ranking is by the ward's clock, ascending: whoever it reaches next is read first.
+const byClock = [bed(1, 9), bed(2, 0.5), bed(3, 4)];
+assert.deepEqual([...byClock].sort(byClosest).map(p => p.patient_id), [2, 3, 1],
+                 'the beds are not ordered by who the ward closes next');
+
+// A patient the ticker has no answer for is not ranked ahead of one it does — she follows, and the
+// closed and discharged come last because nobody is being asked to choose from them.
+const mixed = [
+  { patient_id: 10, state: "died", closes_in_hours: 0.1 },
+  bed(11, undefined),
+  bed(12, 2),
+  { patient_id: 13, state: "went_home" },
+];
+assert.deepEqual([...mixed].sort(byClosest).map(p => p.patient_id), [12, 11, 10, 13],
+                 'a patient with no clock, or one already closed, is ordered ahead of a living one');
+
+// ── the card says both facts, in two sentences ──────────────────────────────
+const said = clock(bed(1, 3.25));
+assert.match(said, /the ward will close her in about 3\.3 h/,
+             `the ward's own clock is the first sentence: ${said}`);
+assert.match(said, /five minutes in/,
+             `and what an arrival actually meets is the second: ${said}`);
+assert.ok(!/about 3\.3 h left/.test(said),
+          `neither sentence may read as "time left for you", which is the number that cannot exist: ${said}`);
+
+// Under an hour is said in minutes; nobody acts on "0.3 h".
+assert.match(clock(bed(1, 0.4)), /about 24 min/);
+// And never "0 min" on a patient who is still alive.
+assert.match(clock(bed(1, 0.001)), /about 1 min/);
+
+// No clock, no sentence. A number left from an hour ago would read as current and nothing would
+// look wrong, which is the failure this silence exists to prevent.
+for (const missing of [undefined, null, -1, NaN]) {
+  assert.equal(clock(bed(1, missing)), '', `a missing clock must say nothing, not ${missing}`);
+}
+
+// ── the shift count is a number, and nothing is claimed for it ──────────────
+assert.equal(treated({ shifts: 0 }), '', 'nobody has treated her, so there is nothing to say');
+assert.match(treated({ shifts: 1 }), /1 shift\b/);
+assert.match(treated({ shifts: 3 }), /3 shifts/);
+// The record says treated patients outlive untouched ones, and they are also the ones somebody
+// chose to open from a board showing a face and a country. The number is shown; the inference is
+// not drawn for the reader.
+assert.ok(!/alive|surviv|saved|longer/i.test(treated({ shifts: 3 })),
+          'the count must not claim what a shift buys');
+
+console.log('globe_logic: ok (and the closest to dying is read first)');

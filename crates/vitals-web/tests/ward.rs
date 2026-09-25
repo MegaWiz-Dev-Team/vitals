@@ -13,6 +13,12 @@
 
 use vitals_web::ward::{census, to_admit, PatientOnChain, ShiftOnChain, BEDS};
 
+/// No patient has a remaining-time figure in these fixtures: none of them has been through a
+/// ticker pass. That is a real state on the ward too — a patient admitted since the last pass —
+/// and the board's contract for it is that her card says nothing about a clock rather than
+/// guessing one.
+static NO_CLOCKS: std::collections::BTreeMap<u64, f64> = std::collections::BTreeMap::new();
+
 fn patient(id: u64, state: u8, shifts: u32, admitted: u64, closed: u64) -> PatientOnChain {
     PatientOnChain {
         patient_id: id, state, shifts, admitted_slot: admitted, closed_slot: closed,
@@ -36,6 +42,9 @@ fn read<'a>(
     as_of_slot: u64,
 ) -> vitals_web::ward::WardRead<'a> {
     vitals_web::ward::WardRead {
+        // No ticker has run against these fixtures, so nobody has a clock — the same state as a
+        // patient admitted since the last pass, whose card says nothing about one.
+        closes_in: &NO_CLOCKS,
         patients, shifts, packs, since, as_of_slot, now_unix: 1_760_000_000, source: "devnet:ABC",
         times: nothing_dated(), seconds_per_slot: None,
         // Every tape the chain names is here, which is the ward working. The one test about the
@@ -697,6 +706,9 @@ fn the_globe_reads_every_field_it_renders() {
         (900, now as i64 - 3600),
     ]);
     let v = ward_payload(&vitals_web::ward::WardRead {
+        // No ticker has run against these fixtures, so nobody has a clock — the same state as a
+        // patient admitted since the last pass, whose card says nothing about one.
+        closes_in: &NO_CLOCKS,
         cases: &[],
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 4_000, now_unix: now, source: "devnet:ABC",
@@ -744,6 +756,9 @@ fn the_globe_reads_every_field_it_renders() {
     // state an abandoned shift leaves behind, and showing it as "on shift" would tell a stranger
     // the room is taken when it is free for them to walk into.
     let expired = ward_payload(&vitals_web::ward::WardRead {
+        // No ticker has run against these fixtures, so nobody has a clock — the same state as a
+        // patient admitted since the last pass, whose card says nothing about one.
+        closes_in: &NO_CLOCKS,
         cases: &[],
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: lease_ends + 1, now_unix: now, source: "devnet:ABC",
@@ -955,6 +970,9 @@ fn every_time_the_ward_publishes_is_a_slot_or_a_z() {
 
     let payloads = [
         ward_payload(&vitals_web::ward::WardRead {
+        // No ticker has run against these fixtures, so nobody has a clock — the same state as a
+        // patient admitted since the last pass, whose card says nothing about one.
+        closes_in: &NO_CLOCKS,
             patients: &patients, shifts: &[], packs: &packs,
             since: Some(1), as_of_slot: 4_000, now_unix: 1_760_000_000, source: "devnet:ABC",
         unrebuildable: nothing_lost(), unread: nothing_unread(),
@@ -1079,6 +1097,9 @@ fn a_patient_the_ward_cannot_describe_holds_no_bed() {
                 bed, or they wedge the ward shut against a queue that is full");
 
     let v = ward_payload(&vitals_web::ward::WardRead {
+        // No ticker has run against these fixtures, so nobody has a clock — the same state as a
+        // patient admitted since the last pass, whose card says nothing about one.
+        closes_in: &NO_CLOCKS,
         cases: &[],
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
@@ -1132,6 +1153,9 @@ fn the_payload_publishes_how_many_are_in_beds_beside_how_many_are_on_the_chain()
     });
 
     let v = ward_payload(&vitals_web::ward::WardRead {
+        // No ticker has run against these fixtures, so nobody has a clock — the same state as a
+        // patient admitted since the last pass, whose card says nothing about one.
+        closes_in: &NO_CLOCKS,
         cases: &[],
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
@@ -1554,6 +1578,9 @@ fn a_time_on_the_board_is_the_slots_own_block_time() {
     let shifts = vec![shift_by(1, 7, handed)];
     let packs = nobody();
     let v = ward_payload(&vitals_web::ward::WardRead {
+        // No ticker has run against these fixtures, so nobody has a clock — the same state as a
+        // patient admitted since the last pass, whose card says nothing about one.
+        closes_in: &NO_CLOCKS,
         patients: &patients, shifts: &shifts, packs: &packs, cases: &[],
         unrebuildable: nothing_lost(), unread: nothing_unread(), since: None, as_of_slot: as_of,
         now_unix: now, source: "devnet:ABC", times: &times, seconds_per_slot: None,
@@ -1895,6 +1922,9 @@ fn a_bed_whose_case_the_ward_cannot_draw_is_not_offered() {
     let catalogue = [in_the_catalogue("ddx-boerhaave-4-en")];
 
     let v = ward_payload(&WardRead {
+        // No ticker has run against these fixtures, so nobody has a clock — the same state as a
+        // patient admitted since the last pass, whose card says nothing about one.
+        closes_in: &NO_CLOCKS,
         cases: &catalogue,
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
@@ -2069,6 +2099,9 @@ fn an_unrefreshed_history_is_said_on_the_row_and_the_bed_stays_offered() {
     unread.insert(2u64, "HTTP status client error (429 Too Many Requests)".to_string());
 
     let v = ward_payload(&WardRead {
+        // No ticker has run against these fixtures, so nobody has a clock — the same state as a
+        // patient admitted since the last pass, whose card says nothing about one.
+        closes_in: &NO_CLOCKS,
         patients: &patients, shifts: &[], packs: &BTreeMap::new(), since: None, as_of_slot: 1_000,
         now_unix: 1_760_000_000, source: "devnet:ABC", times: &BTreeMap::new(),
         seconds_per_slot: None, unrebuildable: &BTreeMap::new(), cases: &[],
@@ -2093,6 +2126,9 @@ fn an_unrefreshed_history_is_said_on_the_row_and_the_bed_stays_offered() {
     assert!(listed[0].as_str().unwrap_or("").contains("429"), "and why");
 
     let quiet = ward_payload(&WardRead {
+        // No ticker has run against these fixtures, so nobody has a clock — the same state as a
+        // patient admitted since the last pass, whose card says nothing about one.
+        closes_in: &NO_CLOCKS,
         patients: &patients, shifts: &[], packs: &BTreeMap::new(), since: None, as_of_slot: 1_000,
         now_unix: 1_760_000_000, source: "devnet:ABC", times: &BTreeMap::new(),
         seconds_per_slot: None, unrebuildable: &BTreeMap::new(), cases: &[],
@@ -2110,6 +2146,9 @@ fn the_board_publishes_the_catalogues_status_beside_its_counts() {
     use vitals_web::ward::{ward_payload, WardRead};
     use vitals_web::ward_chain::{catalogue_status, door_here};
     let v = ward_payload(&WardRead {
+        // No ticker has run against these fixtures, so nobody has a clock — the same state as a
+        // patient admitted since the last pass, whose card says nothing about one.
+        closes_in: &NO_CLOCKS,
         patients: &[], shifts: &[], packs: &BTreeMap::new(), since: None, as_of_slot: 1_000,
         now_unix: 1_760_000_000, source: "devnet:ABC", times: &BTreeMap::new(),
         seconds_per_slot: None, unrebuildable: &BTreeMap::new(), cases: &[], unread: &BTreeMap::new(),
@@ -2150,6 +2189,9 @@ fn the_catalogue_counts_what_a_patient_can_be_placed_on() {
         case("gone-reviewed", false, true),
     ];
     let v = ward_payload(&WardRead {
+        // No ticker has run against these fixtures, so nobody has a clock — the same state as a
+        // patient admitted since the last pass, whose card says nothing about one.
+        closes_in: &NO_CLOCKS,
         patients: &[], shifts: &[], packs: &BTreeMap::new(), since: None, as_of_slot: 1_000,
         now_unix: 1_760_000_000, source: "devnet:ABC", times: &BTreeMap::new(),
         seconds_per_slot: None, unrebuildable: &BTreeMap::new(), cases: &cases,
