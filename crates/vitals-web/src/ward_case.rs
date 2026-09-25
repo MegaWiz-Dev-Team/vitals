@@ -939,3 +939,35 @@ pub fn keep_played_bytes(store: &crate::store::Store, pack: &Value) -> String {
 pub fn played_bytes(store: &crate::store::Store, id: &str) -> Option<PlayedBytes> {
     store.get(PLAYED_STORE, id)
 }
+
+/// **The bytes a shift on this patient is being played against**, or empty when that is not a fact.
+///
+/// Called at hand-over, which is the one moment a shift's played bytes are known rather than
+/// deduced: the session holds the scenario it actually ran, and the pack queued for the patient
+/// holds the rubric her sheet will be computed from. Recording the address then means her receipt
+/// re-derives against the bytes she was treated on, however many corrections the case takes
+/// afterwards.
+///
+/// Empty is a real answer and appears three ways — the ward is not holding this patient, her case
+/// is not in the store, or the scenario she is being played on is not the one her pack now names.
+/// The last is the case the caller must not paper over: it means the case moved under the player,
+/// and such a shift is one to resolve by replaying candidate blobs against the leaf the chain
+/// holds, never one to label with whatever the store happens to say today. An address written on a
+/// guess reads exactly like an address written on a fact, which is the confusion the blobs exist
+/// to end.
+///
+/// The scenario is compared through [`sce_of`] — the same function the ward itself called to get
+/// the text it played — so the two cannot drift into disagreeing about whitespace or key order and
+/// silently answer empty for every shift.
+pub fn played_address(store: &crate::store::Store, patient_id: u64, sce_json: &str) -> String {
+    let Some(case) = crate::ward_chain::packs(store).get(&patient_id).map(|k| k.case.clone()) else {
+        return String::new();
+    };
+    if sce_of(store, &case).as_deref() != Some(sce_json) {
+        return String::new();
+    }
+    store
+        .get::<Value>(CASE_STORE, &key_for(&case))
+        .map(|pack| played_id(&pack))
+        .unwrap_or_default()
+}

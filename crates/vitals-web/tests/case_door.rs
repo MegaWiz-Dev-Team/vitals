@@ -1497,13 +1497,27 @@ fn a_shift_records_the_bytes_it_was_played_against() {
     assert!(vitals_web::ward_case::played_address(&store, 99, &played).is_empty(),
             "and a patient this ward is not holding tells us nothing about what was played");
 
-    // A correction: the pointer moves, both blobs stand.
+    // **While she is on the board the bytes cannot move at all.** The door refuses to change what a
+    // case scores when it cannot prove no anchored shift is riding on it, which is why the
+    // mislabelling below is rare rather than routine — but rare is not never, and it is already in
+    // production: 31 cases took corrections before this rule existed.
     let mut fixed = a_pack();
     fixed["version"] = json!("0.2.0");
     fixed["sce"]["vitals0"]["hr"] = json!(124.0);
-    assert_eq!(s.post("/api/ward/case", &fixed).0, 200);
+    let (code, refusal) = s.post("/api/ward/case", &fixed);
+    assert_eq!(code, 503, "a patient is on this case: {refusal}");
+    assert!(refusal["refused"].as_str().unwrap_or_default().contains("what that case scores"),
+            "and it refuses on the scored content, not on the pack as a whole: {refusal}");
+
+    // So reach the state those 31 are already in, the way they got there: the pointer moved while a
+    // shift was riding on the older bytes. Nothing but the pointer changes; the blobs both stand.
+    store
+        .put(vitals_web::ward_case::CASE_STORE,
+             &vitals_web::ward_case::key_for("auth-demo-1"), &fixed)
+        .expect("the corrected case, as a pre-rule correction left it");
 
     let now = vitals_web::ward_case::sce_of(&store, "auth-demo-1").expect("the corrected scenario");
+    assert_ne!(now, played, "the correction really did change the scenario");
     assert_eq!(vitals_web::ward_case::played_address(&store, 7, &now),
                vitals_web::ward_case::played_id(&fixed),
                "a shift that starts after the correction is addressed to the corrected bytes");

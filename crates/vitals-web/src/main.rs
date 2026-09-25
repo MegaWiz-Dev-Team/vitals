@@ -6559,10 +6559,23 @@ fn main() {
                     }
                 };
                 let run_hash = hex(&leaf(&sce_hash(&s.sce_json), &s.tape, &r));
+                // **What this shift was played against, recorded where it is known.** This is the
+                // one path that *is* the play: the session holds the scenario it ran on, and the
+                // pack holds the rubric its sheet will be computed from. Every other writer of a
+                // tape is reconstructing a shift somebody else already anchored and does not know
+                // what it was played on — those record nothing, and prove-by-replay is how they
+                // are learned. A guess written here would be indistinguishable from a fact.
+                //
+                // The scenario is checked against the session's own before the address is taken.
+                // The door refuses to change a case's scored content while a patient is on shift,
+                // so they should never differ; if they ever do, the case moved under the player
+                // and this shift is one prove-by-replay must resolve, not one to label wrongly.
+                let played_id = ward_case::played_address(&store, w.patient_id, &s.sce_json);
                 let kept = ward_chain::keep_tape(&store, &ward_chain::StoredTape {
                     patient_id: w.patient_id,
                     run_hash: run_hash.clone(),
                     steps: s.tape.clone(),
+                    played_id,
                 });
                 // Frozen from here. The tape has been reduced and the leaf named; anything more
                 // would be a step onto a tape that has already been counted.

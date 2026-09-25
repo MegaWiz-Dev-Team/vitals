@@ -1215,7 +1215,8 @@ fn a_receipt_address_this_ward_never_played_is_refused_without_reading_the_chain
 
     let ours = "a".repeat(64);
     let strangers = "9f2c1e5a7b3d4c6e8a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f6071";
-    keep_tape(&store, &StoredTape { patient_id: 7, run_hash: ours.clone(), steps: vec![] })
+    keep_tape(&store, &StoredTape { patient_id: 7, run_hash: ours.clone(), steps: vec![],
+                                    played_id: String::new() })
         .expect("the tape is kept");
 
     assert!(worth_reading_the_chain_for(&store, &ours),
@@ -1972,7 +1973,8 @@ fn one_patients_failed_history_does_not_black_out_the_board() {
         let mut seen = Seen::default();
         seen.absorb(vec![(shift, "sig1".to_string())], Some(("sig1".to_string(), 100)));
         store.put(SHIFT_CACHE, &format!("p{id}"), &seen).expect("cached");
-        keep_tape(&store, &StoredTape { patient_id: id, run_hash: hex(b), steps: vec![] })
+        keep_tape(&store, &StoredTape { patient_id: id, run_hash: hex(b), steps: vec![],
+                                        played_id: String::new() })
             .expect("tape kept");
     };
     seed(1, 0x11);

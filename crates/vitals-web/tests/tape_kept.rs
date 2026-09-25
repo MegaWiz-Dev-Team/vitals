@@ -118,6 +118,10 @@ fn an_anchored_leaf_with_no_tape_is_repaired_from_a_session_that_reduces_to_it()
         patient_id: 1789538329,
         run_hash: leaf_of(&short),
         steps: short.clone(),
+        // These tapes are built from steps, not played through a case, so there are no case bytes
+        // for them to be addressed to. What this file is about is which hash the tape is kept
+        // under; the address is a separate fact and has its own test.
+        played_id: String::new(),
     })
     .expect("kept");
 

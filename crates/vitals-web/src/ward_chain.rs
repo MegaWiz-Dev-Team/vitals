@@ -2358,6 +2358,10 @@ fn repair_one(
                 patient_id: p.patient_id,
                 run_hash: hash.clone(),
                 steps: tape.clone(),
+                // Reconstructing a shift somebody else anchored: this path does not know what it
+                // was played against, and an empty address says so. Prove-by-replay is how it is
+                // learned; a guess here would be a fact nobody could tell from one.
+                played_id: String::new(),
             })
             .ok()?;
             Some(tape)
@@ -2923,6 +2927,20 @@ pub struct StoredTape {
     /// Hex of the hash the leaf commits to. The key this tape is found by.
     pub run_hash: String,
     pub steps: Vec<vitals_replay::Step>,
+    /// **The bytes this shift was played against**, as `ward_case::played_id` addresses them: the
+    /// scenario its leaf commits to and the rubric its mark sheet is computed from.
+    ///
+    /// Recorded here because a tape alone does not say which case it was played on — the receipt
+    /// reads the case store, and a corrected case therefore rewrote what an anchored shift was
+    /// shown to have been played against. With this, a receipt can ask for the bytes rather than
+    /// for whatever is current.
+    ///
+    /// `#[serde(default)]` and empty on every tape kept before this field existed, which is all of
+    /// them: those shifts were anchored before anything recorded it, and the honest way to learn
+    /// what they were played on is to replay against a candidate and see whether the leaf comes
+    /// back — never to assume the current case and write that down as though it were known.
+    #[serde(default)]
+    pub played_id: String,
 }
 
 /// Rebuild the patient as she is now: every anchored shift, in the chain's order, and the time
@@ -3161,7 +3179,10 @@ pub fn keep_for_anchor(
     tape: &[vitals_replay::Step],
 ) -> Result<String, String> {
     let run_hash = hex32(&rec.run_hash);
-    keep_tape(store, &StoredTape { patient_id, run_hash: run_hash.clone(), steps: tape.to_vec() })?;
+    // Recorded by the hand-over path, which knows; empty here, where this is rebuilding a record
+    // for a shift already on chain and does not.
+    keep_tape(store, &StoredTape { patient_id, run_hash: run_hash.clone(), steps: tape.to_vec(),
+                                   played_id: String::new() })?;
     // And the chain's own name for this shift. The leaf binds the player, the declaration and the
     // tape; the run hash binds only the tape, and two strangers who did the same things share one.
     // It cannot be recomputed later — `RecordWire` carries no commitment, by design — so it is
@@ -3219,6 +3240,17 @@ pub fn recover_tape(
             patient_id,
             run_hash: leaf_hex.to_string(),
             steps: tape.clone(),
+            // **This path proves the scenario and not the rubric, so it cannot form the address.**
+            // The loop above is prove-by-replay already: a candidate whose leaf reproduces the one
+            // the chain holds is demonstrably the scenario this shift was played on. But a blob is
+            // addressed by the scenario *and* the rubric, and a leaf commits to nothing about the
+            // rubric, so the second half is not recoverable here by any amount of replaying.
+            //
+            // Empty rather than the address of a blob that merely shares this scenario: two blobs
+            // can carry one scenario under different rubrics, and picking either would be a guess
+            // wearing the clothes of a proof. The receipt's own verifier resolves what it can and
+            // says unrebuildable for what it cannot.
+            played_id: String::new(),
         })
         .ok()?;
         return Some(tape.clone());
