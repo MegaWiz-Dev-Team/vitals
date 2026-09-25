@@ -1882,6 +1882,24 @@ fn the_seed_and_the_integrity_list_are_both_the_operators() {
     assert!(vitals_web::ward_case::played_bytes(&store, &addr).is_some(),
             "and the case filed before the blob store existed is now addressable by its own bytes");
 
+    // One anchored shift, so the answer below carries a row and not only its counts. A consumer
+    // reads `rows[].verdict`, and a fixture with an empty list pins the envelope and leaves every
+    // field of a row unguarded.
+    {
+        let shift = vitals_web::ward::ShiftOnChain {
+            patient_id: 4242, signer: [1; 32], slot: LONE_SLOT, run_hash: [0xab; 32],
+        };
+        let mut seen = vitals_web::ward_chain::Seen::default();
+        seen.absorb(vec![(shift, "sig".to_string())], Some(("sig".to_string(), LONE_SLOT)));
+        store.put(vitals_web::ward_chain::SHIFT_CACHE, "p4242", &seen).expect("cached");
+        vitals_web::ward_chain::keep_tape(&store, &vitals_web::ward_chain::StoredTape {
+            patient_id: 4242,
+            run_hash: vitals_web::ward_chain::hex32(&[0xab; 32]),
+            steps: vec![],
+            played_id: String::new(),
+        }).expect("tape kept");
+    }
+
     // Reading is an operator's too — unseeded it would answer "every shift unrebuildable", which
     // is a sentence about this ward never having looked and not a fact about the chain.
     assert_eq!(s.get("/api/ward/bytes").0, 401, "the list is not a stranger's to read");
@@ -1894,8 +1912,32 @@ fn the_seed_and_the_integrity_list_are_both_the_operators() {
         assert!(body["derivations"].get(named).is_some(),
                 "and says how {named} is known, because a count nobody can check is a claim: {body}");
     }
-    assert_eq!(body["shifts"], json!(0), "no shift is anchored in this ward yet");
-    assert_eq!(body["rows"], json!([]), "and an empty ward publishes an empty list, not a null");
+    assert_eq!(body["shifts"], json!(1), "the one shift this ward has read");
+    let row = &body["rows"][0];
+    for named in ["patient_id", "leaf", "case", "recorded", "verdict", "proved", "candidates",
+                  "disagrees"] {
+        assert!(row.get(named).is_some(), "a row names {named}: {row}");
+    }
+    assert_eq!(row["patient_id"], json!(4242));
+    // No chain in a test, so her admission slot cannot be learned and the honest verdict is that
+    // nothing was asked about her bytes — not a claim that they are missing.
+    assert_eq!(row["verdict"], json!("not asked"));
+    assert_eq!(body["not_asked"], json!(1));
+
+    // **The payload this test just read is written out for its consumers.**
+    //
+    // `scripts/bytes-read.sh` on cwf/ops pages this route and sums it, and it was built by hand
+    // against the shape as described rather than as served — which is the shape that took the case
+    // factory down for twelve hours in September: a hand-built consumer goes on passing while the
+    // producer's field moves underneath it. So the answer this test actually received is written
+    // where a consumer can assert against it, the same way the globe's card is tested against the
+    // board the ward builds rather than a row somebody typed. Rename a field here and the consumer
+    // fails loudly instead of quietly becoming fiction.
+    let contract = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/contract");
+    std::fs::create_dir_all(&contract).expect("somewhere to put the answer a reader is tested on");
+    std::fs::write(contract.join("bytes.json"),
+                   serde_json::to_string_pretty(&body).expect("the answer serialises"))
+        .expect("the reader's fixture is written from the answer this test read");
 
     // Seeding again is the same ward, not a second copy of it.
     let (code, again) = s.post("/api/ward/seed", &json!({}));
