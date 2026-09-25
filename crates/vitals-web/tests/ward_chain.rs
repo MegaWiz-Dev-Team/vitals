@@ -2265,6 +2265,20 @@ fn the_queue_block_and_the_policy_block_describe_the_same_ward() {
                 "it has to say that arrivals are on a clock and do not wait for a bed: {filled}");
     }
 
+    // **And the same interval, as a figure.** The sentence said "every thirty minutes by default"
+    // for three days after 7fd82c2 moved the binary default to 60, so one JSON answer carried a
+    // sentence contradicting a number printed a few lines above it. This test was written to stop a
+    // block describing a ward the ward no longer is, and it checked the words and not the figure —
+    // which is how the figure drifted underneath it.
+    let every = vitals_web::ward::arrival_minutes();
+    assert!(filled.contains(&every.to_string()),
+            "the sentence names the interval the ward actually admits on ({every}): {filled}");
+    for spelled in ["thirty", "fifteen", "sixty", "ten minutes", "five minutes"] {
+        assert!(!filled.contains(spelled),
+                "and never spells the interval as a word, because a word cannot be derived from \
+                 the value and is what drifted last time: {filled}");
+    }
+
     let _ = std::fs::remove_dir_all(&dir);
 }
 
