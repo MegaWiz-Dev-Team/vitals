@@ -67,4 +67,13 @@ GATE_LOCK_DIR="$L" bash scripts/gate-lock.sh true >/dev/null 2>&1
 [ -z "$(ls -d "$L".stale.* 2>/dev/null)" ] && [ ! -d "$L" ] && ok "a stale break leaves nothing behind" || bad "stale break left debris: $(ls -d "$L"* 2>/dev/null | tr '\n' ' ')"
 rm -rf "$L" "$L".stale.* 2>/dev/null
 
+# 9. a release that declines (the lock was re-taken, so the ownership test fails) must not turn
+#    the command's exit status: a green run stays 0 and a failing one keeps its code. Otherwise
+#    the thing installed to stop false reds would produce one, in the most confusing place.
+GATE_LOCK_DIR="$L" bash scripts/gate-lock.sh bash -c "echo 999999 > '$L/pid'; exit 0"; rc0=$?
+rm -rf "$L"
+GATE_LOCK_DIR="$L" bash scripts/gate-lock.sh bash -c "echo 999999 > '$L/pid'; exit 5"; rc5=$?
+rm -rf "$L"
+[ "$rc0" -eq 0 ] && [ "$rc5" -eq 5 ] && ok "a declining release leaves the command's exit status alone (0 stays 0, 5 stays 5)" || bad "a declining release changed the exit status (got $rc0 for 0, $rc5 for 5)"
+
 echo; printf '%d passed, %d failed\n' "$PASS" "$FAIL"; [ "$FAIL" -eq 0 ]
