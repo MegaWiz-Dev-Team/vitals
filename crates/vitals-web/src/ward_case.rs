@@ -897,6 +897,19 @@ pub const PLAYED_STORE: &str = "ward_played_bytes";
 pub struct PlayedBytes {
     pub sce: String,
     pub rubric: String,
+    /// True when these bytes arrived by [`offer_bytes`] rather than through the case door.
+    ///
+    /// Changes no address — the address is the scenario and the rubric — and changes no proof: an
+    /// offered blob counts for exactly the same reason a door-kept one does, because replaying it
+    /// reproduces the leaf the chain holds. It is here so a repaired receipt can say the true
+    /// sentence. "These bytes were recompiled and offered, and they reproduce the leaf" is a
+    /// different thing to tell a reader than "these bytes came through the door", and a reader
+    /// deciding how much to trust a chart is entitled to the difference.
+    ///
+    /// `#[serde(default)]` and false on every blob kept before the offer route existed, which is
+    /// the truth about them: they came through the door.
+    #[serde(default)]
+    pub offered: bool,
     /// `sce_hash(sce)` in hex — the one a leaf commits to, kept here so an already-anchored shift
     /// can be matched to the bytes it was played on by replaying rather than by being told.
     pub sce_sha256: String,
@@ -926,9 +939,93 @@ pub fn keep_played_bytes(store: &crate::store::Store, pack: &Value) -> String {
             sce: part("sce"),
             rubric: part("rubric"),
             sce_sha256: sce_sha256(pack),
+            offered: false,
         },
     );
     id
+}
+
+/// What happened to an offer of bytes for a shift this ward cannot rebuild.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Offered {
+    /// Replaying these bytes reproduces the leaf the chain holds. Kept, under this address.
+    Proved(String),
+    /// The same bytes are already kept here. Nothing to do, and said rather than reported as news.
+    AlreadyHere(String),
+    /// They do not reproduce that leaf. Nothing is written — a recompile of the wrong commit is
+    /// refused by the same arithmetic every receipt rests on, not by anybody's judgement.
+    DoesNotFit,
+    /// Their scenario is already kept under a different rubric. Keeping them would leave two
+    /// rubrics for one scenario, and a leaf commits to nothing about the rubric — so every receipt
+    /// proved through that scenario would stop publishing a score at all. The addresses it collides
+    /// with are named, so somebody can see what they nearly did.
+    WouldUnscore(Vec<String>),
+    /// The case door would refuse this pack, so this refuses it too. An offer is the door minus the
+    /// pointer move, not a way around the door.
+    NotACase,
+}
+
+/// **Offer bytes as the ones an anchored shift was played on.** They prove themselves or are refused.
+///
+/// Production carries five shifts whose case bytes were corrected before this store existed. Their
+/// receipts refuse, which is honest and useless: the bytes are gone from the store and not from the
+/// world, because the factory is deterministic and recompiling at the commit that produced a pack
+/// gives that pack back.
+///
+/// Offering asserts nothing. The bytes count only if replaying them reproduces the leaf the chain
+/// holds — the same arithmetic that decides every other receipt — and the live catalogue is never
+/// touched, so this cannot put an old version back on the ward for a new patient to be given.
+///
+/// Aimed at one leaf rather than at the ward: one derivation instead of one per anchored shift, so a
+/// call cannot stall the instance, and a pack that reproduces nothing is attributable to the shift it
+/// was aimed at rather than lost in a batch.
+pub fn offer_bytes(
+    store: &crate::store::Store,
+    pack: &Value,
+    leaf_hex: &str,
+    tape: &[vitals_replay::Step],
+    d: &crate::ward_chain::Deriving,
+) -> Offered {
+    if validate_case(pack).is_err() {
+        return Offered::NotACase;
+    }
+    let id = played_id(pack);
+    if played_bytes(store, &id).is_some() {
+        return Offered::AlreadyHere(id);
+    }
+    let sce = pack.get("sce").map(|v| v.to_string()).unwrap_or_default();
+
+    // Does it explain this shift at all? Asked before the collision guard, because a recompile of
+    // the wrong thing should be told it is wrong rather than warned about a hazard it never reached.
+    if crate::ward_chain::leaf_if_played_on(&sce, tape, d).as_deref() != Some(leaf_hex) {
+        return Offered::DoesNotFit;
+    }
+
+    // These bytes are not already here, so a blob carrying this same scenario carries a different
+    // rubric — and two rubrics for one scenario is a scenario no receipt can be scored through.
+    let mut collides: Vec<String> = store
+        .list::<PlayedBytes>(PLAYED_STORE)
+        .into_iter()
+        .filter(|(_, blob)| blob.sce == sce)
+        .map(|(at, _)| at)
+        .collect();
+    if !collides.is_empty() {
+        collides.sort();
+        return Offered::WouldUnscore(collides);
+    }
+
+    let part = |k: &str| pack.get(k).map(|v| v.to_string()).unwrap_or_default();
+    let _ = store.put(
+        PLAYED_STORE,
+        &id,
+        &PlayedBytes {
+            sce: part("sce"),
+            rubric: part("rubric"),
+            sce_sha256: sce_sha256(pack),
+            offered: true,
+        },
+    );
+    Offered::Proved(id)
 }
 
 /// The bytes at an address, when this ward still holds them.

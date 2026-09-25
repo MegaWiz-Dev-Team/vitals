@@ -3177,6 +3177,25 @@ pub struct ShiftBytes {
     pub disagrees: bool,
 }
 
+/// The shift the chain holds under this leaf, with the patient's whole history beside it.
+///
+/// The history is what makes the leaf re-derivable: the reduction it commits to is taken from the
+/// state her earlier shifts left, so a caller holding only the leaf cannot check anything. Read from
+/// the cache the board is built from, so it answers about shifts this ward has actually read.
+pub fn shift_at_leaf(
+    store: &crate::store::Store,
+    leaf_hex: &str,
+) -> Option<(u64, Vec<crate::ward::ShiftOnChain>, crate::ward::ShiftOnChain)> {
+    for (key, seen) in store.list::<Seen>(SHIFT_CACHE) {
+        let Ok(patient_id) = key.trim_start_matches('p').parse::<u64>() else { continue };
+        let all = seen.shifts();
+        if let Some(this) = all.iter().find(|s| hex32(&s.run_hash) == leaf_hex).copied() {
+            return Some((patient_id, all, this));
+        }
+    }
+    None
+}
+
 /// **Every shift the chain holds, and what this ward can prove about the bytes behind it.**
 ///
 /// Read this before repairing anything. It changes nothing: it replays what is kept against what is
@@ -3226,12 +3245,32 @@ pub fn bytes_behind_the_anchored_shifts(
 
     let started = std::time::Instant::now();
     let mut stopped_after = None;
-    let mut waiting = ward
-        .into_iter()
-        .filter(|(id, _)| after.is_none_or(|from| *id > from))
-        .peekable();
+    let waiting = ward.into_iter().filter(|(id, _)| after.is_none_or(|from| *id > from));
 
-    while let Some((patient_id, seen)) = waiting.next() {
+    let mut last_done: Option<u64> = None;
+    for (patient_id, seen) in waiting {
+        // **Stopped between patients, never inside one, and asked before she is started.**
+        //
+        // A shift whose bytes are genuinely gone costs a walk through every kept scenario, and no
+        // ordering removes that — so a ward with enough of them takes minutes, and this runs on a
+        // service with one instance, where minutes means the ward answers nobody. The budget makes
+        // the wall time a property of the call rather than of the ward's history: it returns what it
+        // checked, says it is partial, and hands back where to continue. Partial and labelled beats
+        // complete and unavailable.
+        //
+        // Asked here rather than after she finishes, because checking afterwards meant a patient
+        // begun at 4.9 s could run for another twelve — the worst call was the budget plus one
+        // exhaustive walk, 17 s on staging. Asked before, the worst is one walk and the budget is
+        // what it says. The first patient always runs, so a call cannot come back empty and leave
+        // the cursor where it was.
+        //
+        // Between patients because her later shifts reuse the scenario her earlier ones resolved,
+        // and because splitting her across two calls would answer differently depending on where the
+        // cut fell — a verdict decided by a stopwatch.
+        if last_done.is_some() && started.elapsed() >= budget {
+            stopped_after = last_done;
+            break;
+        }
         let all = seen.shifts();
         for shift in &all {
             let leaf = hex32(&shift.run_hash);
@@ -3311,20 +3350,7 @@ pub fn bytes_behind_the_anchored_shifts(
             });
         }
 
-        // **Stopped between patients, never inside one.** A shift whose bytes are genuinely gone
-        // costs a walk through every kept scenario, and no ordering removes that — so a ward with
-        // enough of them takes minutes, and this runs on a service with one instance, where minutes
-        // means the ward answers nobody. The budget makes the wall time a property of the call rather
-        // than of the ward's history: it returns what it checked, says it is partial, and hands back
-        // where to continue. Partial and labelled beats complete and unavailable.
-        //
-        // Between patients because a patient's rows are read together and her later shifts reuse the
-        // scenario her earlier ones resolved; splitting her across two calls would throw that away
-        // and answer differently depending on where the cut fell.
-        if started.elapsed() >= budget && waiting.peek().is_some() {
-            stopped_after = Some(patient_id);
-            break;
-        }
+        last_done = Some(patient_id);
     }
     (out, stopped_after)
 }

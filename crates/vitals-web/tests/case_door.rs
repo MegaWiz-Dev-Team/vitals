@@ -2152,6 +2152,141 @@ fn standing_of(store: &vitals_web::store::Store, case: &str) -> Option<(String, 
     standing(store, case)
 }
 
+/// **The offer route takes the door's secret, names its shift, and refuses without writing.**
+///
+/// The shapes are pinned because this is what an operator reads five times in a row while repairing
+/// five shifts, and a refusal that looks like a success would be repaired-in-the-log and broken on
+/// the ward.
+#[test]
+fn the_offer_route_is_the_operators_and_names_the_shift_it_is_for() {
+    let s = Server::start();
+
+    // It writes, so it is the factory's door and not the page's.
+    assert_eq!(s.post_with("/api/ward/offer", &a_pack(), None).0, 401,
+               "a write with no secret is refused");
+    assert_eq!(s.post_with("/api/ward/offer", &a_pack(), Some("not-the-token")).0, 401,
+               "and somebody else's secret is not this door's");
+
+    // A leaf is required, and has to look like one.
+    let (code, body) = s.post("/api/ward/offer", &a_pack());
+    assert_eq!(code, 400, "{body}");
+    Server::reads_as_sentences(&body);
+    assert!(body["refused"].as_str().unwrap_or_default().contains("?leaf="),
+            "it says what is missing and how to give it: {body}");
+    assert_eq!(s.post("/api/ward/offer?leaf=nonsense", &a_pack()).0, 400);
+
+    // A leaf this ward has read no shift under is a 404 and not a silent nothing: the operator has
+    // the wrong leaf, and a 200 would read as a repair.
+    let (code, body) = s.post(&format!("/api/ward/offer?leaf={}", "a".repeat(64)), &a_pack());
+    assert_eq!(code, 404, "{body}");
+    Server::reads_as_sentences(&body);
+    assert!(body["refused"].as_str().unwrap_or_default().contains("no shift"), "{body}");
+}
+
+/// **Bytes may be offered for a shift that cannot be rebuilt, and the offer proves itself or is
+/// refused.**
+///
+/// Production carries five anchored shifts whose case bytes were corrected before the blob store
+/// existed. Their receipts now refuse, which is honest and not useful: the bytes are gone from the
+/// store but not from the world, because the factory is deterministic and recompiling at the commit
+/// that produced a pack gives the pack back byte for byte.
+///
+/// So an offer is the door minus the pointer move — same validation, same content-addressed blob, the
+/// live catalogue untouched. Nothing is asserted by offering: the bytes count only if replaying them
+/// reproduces the leaf the chain holds, which is the same arithmetic every other receipt rests on. A
+/// recompile of the wrong commit is refused by that arithmetic rather than by anybody's judgement.
+///
+/// Aimed at one leaf rather than at the ward, for two reasons. It costs one derivation instead of one
+/// per anchored shift, so it cannot stall the instance; and a pack that reproduces nothing is
+/// attributable to the shift it was aimed at instead of being a failure somewhere in a batch.
+#[test]
+fn bytes_can_be_offered_for_a_shift_and_the_offer_proves_itself_or_is_refused() {
+    use vitals_web::ward_case::Offered;
+
+    let s = Server::start();
+    let store = vitals_web::store::Store::open(s.state()).expect("the ward's own store");
+    let tape: Vec<vitals_replay::Step> = vec![];
+
+    // The case as it was played, and the leaf a shift on it produced — then the correction that
+    // replaced it, the way the pre-blob-store ones did. The played bytes are now nowhere.
+    let mut played = a_pack();
+    played["case_id"] = json!("gone");
+    played["sce"]["vitals0"]["hr"] = json!(101.0);
+    store.put(vitals_web::ward_case::CASE_STORE,
+              &vitals_web::ward_case::key_for("gone"), &played).expect("filed");
+    let sce = vitals_web::ward_case::sce_of(&store, "gone").expect("its scenario");
+    let leaf = leaf_the_receipts_way(&store, &sce, &tape, LONE_SLOT);
+    let mut corrected = played.clone();
+    corrected["sce"]["vitals0"]["hr"] = json!(102.0);
+    store.put(vitals_web::ward_case::CASE_STORE,
+              &vitals_web::ward_case::key_for("gone"), &corrected).expect("corrected");
+
+    let shifts = lone(LONE_SLOT);
+    let tape_of = |h: &str| vitals_web::ward_chain::tape_by_hash(&store, h);
+    let deriving = vitals_web::ward_chain::Deriving {
+        shifts: &shifts, this: &shifts[0], tape_of: &tape_of,
+        admitted_slot: LONE_SLOT, dated: &ward_dated,
+    };
+    // Nothing here rebuilds it: that is the state the five are in.
+    assert_eq!(vitals_web::ward_case::bytes_for_receipt(
+                   &store, &leaf, &tape, &deriving, standing(&store, "gone"), None),
+               vitals_web::ward_case::ForReceipt::Unrebuildable);
+
+    // A recompile of the wrong thing does not reproduce the leaf, and is refused without writing.
+    let mut wrong = played.clone();
+    wrong["sce"]["vitals0"]["hr"] = json!(133.0);
+    let before = vitals_web::ward_case::played_bytes(
+        &store, &vitals_web::ward_case::played_id(&wrong)).is_none();
+    assert!(before, "the wrong pack is not in the store to begin with");
+    assert_eq!(vitals_web::ward_case::offer_bytes(&store, &wrong, &leaf, &tape, &deriving),
+               Offered::DoesNotFit,
+               "bytes that do not reproduce the leaf are refused by the arithmetic, not by judgement");
+    assert!(vitals_web::ward_case::played_bytes(
+                &store, &vitals_web::ward_case::played_id(&wrong)).is_none(),
+            "and a refused offer writes nothing at all");
+
+    // The right one reproduces the leaf and is kept.
+    let addr = vitals_web::ward_case::played_id(&played);
+    assert_eq!(vitals_web::ward_case::offer_bytes(&store, &played, &leaf, &tape, &deriving),
+               Offered::Proved(addr.clone()));
+    assert!(vitals_web::ward_case::played_bytes(&store, &addr).is_some(), "kept under its own bytes");
+
+    // And the receipt rebuilds from them, while the live catalogue is untouched.
+    match vitals_web::ward_case::bytes_for_receipt(
+              &store, &leaf, &tape, &deriving, standing(&store, "gone"), None) {
+        vitals_web::ward_case::ForReceipt::These { played_id, .. } => assert_eq!(played_id, addr),
+        other => panic!("the offered bytes reproduce the leaf, so the receipt has them: {other:?}"),
+    }
+    assert_eq!(vitals_web::ward_case::sce_of(&store, "gone").as_deref(),
+               Some(corrected["sce"].to_string().as_str()),
+               "the case a new patient would be given is still the corrected one — an offer is not a \
+                way to put an old version back on the ward");
+
+    // Offering the same bytes again is not a second blob and does not pretend to be news.
+    assert_eq!(vitals_web::ward_case::offer_bytes(&store, &played, &leaf, &tape, &deriving),
+               Offered::AlreadyHere(addr.clone()));
+
+    // **The hazard.** A rubric corrected under this scenario would leave two rubrics for one
+    // scenario, and every receipt proved through it would publish no score at all. Refused, and the
+    // address it collides with is named so somebody can see what they nearly did.
+    let mut regraded = played.clone();
+    regraded["rubric"]["items"][0]["points"] = json!(11);
+    assert_eq!(vitals_web::ward_case::offer_bytes(&store, &regraded, &leaf, &tape, &deriving),
+               Offered::WouldUnscore(vec![addr.clone()]),
+               "an offer that would take the sheet off a receipt that has one is refused");
+    assert!(vitals_web::ward_case::played_bytes(
+                &store, &vitals_web::ward_case::played_id(&regraded)).is_none(),
+            "and writes nothing");
+
+    // A pack the door itself would refuse is refused here too: an offer is the door minus the
+    // pointer move, not a way around the door.
+    let mut junk = played.clone();
+    junk["difficulty"] = json!("wizard");
+    assert_eq!(vitals_web::ward_case::offer_bytes(&store, &junk, &leaf, &tape, &deriving),
+               Offered::NotACase,
+               "the door's own validation still applies");
+}
+
 /// The slot these one-shift fixtures put their shift in, and her admission — the same, so there is
 /// no idle time to account for and the fixture stays about which bytes are chosen.
 const LONE_SLOT: u64 = 120;

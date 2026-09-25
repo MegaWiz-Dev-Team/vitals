@@ -2540,17 +2540,33 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
         .zip(ward_chain::rubric_for(store, &root, &pack.case));
     let (sce_json, rubric, bytes_note) =
         match ward_case::bytes_for_receipt(store, &leaf_hex, &steps, &deriving, as_it_stands, None) {
-        ward_case::ForReceipt::These { sce, rubric, played_id } => (
+        ward_case::ForReceipt::These { sce, rubric, played_id } => {
+            // Whether these bytes came through the door or were recompiled and offered. It changes
+            // nothing about the proof — an offered blob counts because replaying it reproduces the
+            // leaf, exactly as a door-kept one does — and a reader deciding how much to trust a
+            // chart is entitled to know which of the two they are looking at.
+            let offered = ward_case::played_bytes(store, &played_id).is_some_and(|b| b.offered);
+            (
             sce,
             Some(rubric),
             serde_json::json!({
                 "played_id": played_id,
-                "how_this_is_known": "the scenario and the rubric this shift was played \
-                    against, kept under the hash of those bytes. Proved: replaying this scenario \
-                    against the tape reproduces the leaf the chain holds, so a correction to the \
-                    case since then changes nothing on this page",
+                "offered": offered,
+                "how_this_is_known": if offered {
+                    "the scenario and the rubric this shift was played against, recompiled and \
+                     offered to this ward rather than taken through the case door, and kept under \
+                     the hash of those bytes. Proved the same way as any other: replaying this \
+                     scenario against the tape reproduces the leaf the chain holds. The offer \
+                     asserted nothing — it counts because it reproduces the leaf"
+                } else {
+                    "the scenario and the rubric this shift was played against, kept under the \
+                     hash of those bytes. Proved: replaying this scenario against the tape \
+                     reproduces the leaf the chain holds, so a correction to the case since then \
+                     changes nothing on this page"
+                },
             }),
-        ),
+        )
+        },
         // The chart rebuilds and the sheet cannot. Two claims, and collapsing them would either
         // hide a rebuildable chart or invent a score.
         ward_case::ForReceipt::ScenarioOnly { sce, candidates } => (
@@ -3595,6 +3611,11 @@ fn door(path: &str) -> bool {
         // secret. What it produces is read at `/api/ward/bytes`, which is public, because the list
         // of shifts this ward cannot rebuild is a fact a stranger is owed rather than ours to keep.
         || path == "/api/ward/seed"
+        // Offering bytes for a shift that cannot be rebuilt. It writes, so it is the factory's
+        // secret — and although an offer asserts nothing (bytes count only if they reproduce the
+        // leaf), a public one would let a stranger fill the blob store with candidates that every
+        // unrebuildable shift then has to walk through.
+        || path == "/api/ward/offer"
         // And reading the integrity list is an operator's too, which is a correction: it was public
         // on the reasoning that a shift this ward cannot rebuild is a fact a stranger is owed. True,
         // but this is the wrong surface for it. Unseeded, the list answered "77 of 77 shifts
@@ -5975,6 +5996,131 @@ fn main() {
             }
             // What the ward is holding, without the scenarios: a pack is twenty kilobytes and
             // nobody reading the catalogue needs one.
+            // **Bytes offered as the ones an anchored shift was played on.**
+            //
+            // The door minus the pointer move: same validation, same content-addressed blob, the
+            // live catalogue untouched. Five shifts on production were played on case bytes that
+            // were corrected before the blob store existed, and their receipts refuse — honest and
+            // useless, because the factory is deterministic and the bytes are recoverable by
+            // recompiling at the commit that produced them.
+            //
+            // Nothing is asserted by offering. `?leaf=` names the shift the bytes are claimed for,
+            // and they are kept only if replaying them reproduces the leaf the chain holds, which
+            // is the arithmetic every other receipt already rests on. One leaf per call: one
+            // derivation rather than one per anchored shift, and a pack that reproduces nothing is
+            // attributable to the shift it was aimed at.
+            (Method::Post, "/api/ward/offer") => {
+                let Some(leaf) = param(&url, "leaf").filter(|l| ward_chain::is_shift_hash(l)) else {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "refused": "name the shift these bytes are offered for: \
+                                    ?leaf=<the 64-character leaf the chain holds>",
+                    }), 400));
+                    continue;
+                };
+                // The same reading the door does, with the same limit: an offered pack is a pack.
+                let body = match read_body(&mut req, CASE_MAX) {
+                    Ok(b) => b,
+                    Err(BadBody::TooLong) => {
+                        let _ = req.respond(json_code(serde_json::json!({
+                            "refused": format!("a case pack is at most {CASE_MAX} bytes")
+                        }), 413));
+                        continue;
+                    }
+                    Err(BadBody::NotText) => {
+                        let _ = req.respond(json_code(serde_json::json!({
+                            "refused": "that body is not UTF-8 text"
+                        }), 400));
+                        continue;
+                    }
+                };
+                let pack: serde_json::Value = match serde_json::from_str(&body) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let _ = req.respond(json_code(serde_json::json!({
+                            "refused": format!("that is not a case pack: {e}")
+                        }), 400));
+                        continue;
+                    }
+                };
+                let Some((patient_id, shifts, this)) = ward_chain::shift_at_leaf(&store, &leaf) else {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "refused": "this ward has read no shift under that leaf, so there is nothing \
+                                    to check these bytes against",
+                    }), 404));
+                    continue;
+                };
+                let Some(steps) = ward_chain::tape_by_hash(&store, &leaf) else {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "refused": "this ward holds no tape for that shift, so nothing can be \
+                                    replayed against its leaf. What is missing is here, not on the \
+                                    chain",
+                    }), 409));
+                    continue;
+                };
+                let admitted = ward_chain::WardChain::connect()
+                    .ok()
+                    .and_then(|c| c.patient(patient_id).ok().flatten())
+                    .map(|p| p.admitted_slot);
+                let Some(admitted_slot) = admitted else {
+                    let _ = req.respond(json_code(serde_json::json!({
+                        "refused": "this ward could not learn when that patient was admitted, and \
+                                    the idle time before her first shift is measured from it — so \
+                                    there is no honest derivation to check these bytes against",
+                    }), 503));
+                    continue;
+                };
+                let tape_of = |h: &str| ward_chain::tape_by_hash(&store, h);
+                let deriving = ward_chain::Deriving {
+                    shifts: &shifts, this: &this, tape_of: &tape_of, admitted_slot,
+                    dated: &ward_chain::cached_dater(&store),
+                };
+                let out = match ward_case::offer_bytes(&store, &pack, &leaf, &steps, &deriving) {
+                    ward_case::Offered::Proved(at) => serde_json::json!({
+                        "kept": at,
+                        "patient_id": patient_id,
+                        "proved": "replaying these bytes reproduces the leaf the chain holds for \
+                                   this shift, so they are the bytes it was played on. The receipt \
+                                   rebuilds from them from now on, and says they were offered \
+                                   rather than taken through the door",
+                        "catalogue": "unchanged — an offer is not a way to put an old version back \
+                                      on the ward for a new patient to be given",
+                    }),
+                    ward_case::Offered::AlreadyHere(at) => serde_json::json!({
+                        "kept": at,
+                        "unchanged": true,
+                        "note": "these exact bytes are already here, so there was nothing to do",
+                    }),
+                    ward_case::Offered::DoesNotFit => serde_json::json!({
+                        "refused": "replaying these bytes does not reproduce the leaf the chain \
+                                    holds for this shift, so they are not what it was played on. \
+                                    Nothing was written. A recompile of the wrong commit is refused \
+                                    here by the same arithmetic that decides every receipt",
+                    }),
+                    ward_case::Offered::WouldUnscore(at) => serde_json::json!({
+                        "refused": "these bytes carry a scenario this ward already keeps under a \
+                                    different rubric. A leaf commits to the scenario and the tape \
+                                    and to nothing about the rubric, so keeping both would leave \
+                                    two rubrics for one scenario and every receipt proved through \
+                                    it would stop publishing a score at all. Nothing was written",
+                        "collides_with": at,
+                        // Not a count. Counting the receipts this would unscore means re-deriving
+                        // every anchored shift against that scenario, which is the slow pass and is
+                        // not worth running on a refusal; a cheap count would be the shifts carrying
+                        // a recorded address, which is almost none of them and would read as a
+                        // reassuring zero. The list says which receipts are proved through what.
+                        "which_receipts": "read /api/ward/bytes to see the shifts proved through \
+                                           that scenario",
+                    }),
+                    ward_case::Offered::NotACase => serde_json::json!({
+                        "refused": "the case door would refuse this pack, so this refuses it too. \
+                                    An offer is the door minus the pointer move, not a way around \
+                                    the door",
+                    }),
+                };
+                let code = if out.get("refused").is_some() { 409 } else { 200 };
+                let _ = req.respond(json_code(out, code));
+                continue;
+            }
             // **Keep the bytes of every case this ward already holds.** Idempotent, and nothing
             // else: no shift is re-derived, no receipt changes, no case is corrected. It only
             // makes the current version of each case addressable, so the shifts anchored on it
