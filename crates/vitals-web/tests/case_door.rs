@@ -1852,3 +1852,93 @@ fn the_seed_takes_the_doors_secret_and_the_list_of_what_cannot_be_rebuilt_is_pub
 fn body_kept(s: &Server) -> Value {
     s.post("/api/ward/seed", &json!({})).1["cases_kept"].clone()
 }
+
+/// **A receipt derives from the bytes the shift was played on, or says it cannot.**
+///
+/// This is the fix the 31 pinned cases are waiting for. Today a receipt reads the scenario and the
+/// rubric out of the case store as it stands, so correcting a case rewrites what an anchored shift
+/// is shown to have been played against — which is why those cases cannot take the diagnosis fix at
+/// all. Resolving the played bytes first is what unpins them.
+///
+/// The recorded address is checked, not trusted. It is a fact written by the only writer that knew,
+/// and checking it costs one replay and makes the receipt's claim self-supporting: if the recorded
+/// bytes do not reproduce the leaf the chain holds, the record is wrong about this shift and the
+/// proof wins. A receipt that believed a bad record would be wrong in exactly the way this whole
+/// mechanism exists to prevent, and would carry the authority of having been told.
+#[test]
+fn a_receipt_derives_from_the_bytes_the_shift_was_played_on_or_says_it_cannot() {
+    use vitals_web::ward_case::ForReceipt;
+
+    let s = Server::start();
+    let store = vitals_web::store::Store::open(s.state()).expect("the ward's own store");
+    let tape: Vec<vitals_replay::Step> = vec![];
+
+    // A case, and the leaf a shift on it produces.
+    let pack = a_pack();
+    assert_eq!(s.post("/api/ward/case", &pack).0, 200);
+    let sce = vitals_web::ward_case::sce_of(&store, "auth-demo-1").expect("its scenario");
+    let r = vitals_replay::replay(&sce, &tape).expect("it replays");
+    let leaf = vitals_web::ward_chain::hex32(
+        &vitals_replay::leaf(&vitals_replay::sce_hash(&sce), &tape, &r));
+    let addr = vitals_web::ward_case::played_id(&pack);
+
+    let file = |recorded: &str| {
+        vitals_web::ward_chain::keep_tape(&store, &vitals_web::ward_chain::StoredTape {
+            patient_id: 7, run_hash: leaf.clone(), steps: tape.clone(),
+            played_id: recorded.to_string(),
+        }).expect("tape kept");
+    };
+
+    // Nothing recorded — every shift anchored before the hand-over wrote an address. Replay finds
+    // the bytes anyway, which is what makes the backlog recoverable.
+    file("");
+    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape) {
+        ForReceipt::These { sce: got, rubric, played_id } => {
+            assert_eq!(played_id, addr, "proved by replay, and named");
+            assert_eq!(got, sce, "the scenario the leaf commits to");
+            assert!(rubric.contains("items"), "and the rubric kept beside it: {rubric}");
+        }
+        other => panic!("the bytes are here and reproduce the leaf: {other:?}"),
+    }
+
+    // Recorded and correct: the same answer, reached by being told rather than by searching.
+    file(&addr);
+    assert!(matches!(vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape),
+                     ForReceipt::These { ref played_id, .. } if *played_id == addr));
+
+    // **Recorded and wrong.** Some other case's bytes, which do not reproduce this leaf. The record
+    // loses to the proof rather than the receipt deriving a sheet from bytes nobody played.
+    let mut other_case = a_pack();
+    other_case["case_id"] = json!("auth-demo-other");
+    other_case["sce"]["vitals0"]["hr"] = json!(141.0);
+    assert_eq!(s.post("/api/ward/case", &other_case).0, 200);
+    let wrong = vitals_web::ward_case::played_id(&other_case);
+    assert_ne!(wrong, addr);
+    file(&wrong);
+    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape) {
+        ForReceipt::These { played_id, .. } => assert_eq!(
+            played_id, addr,
+            "a record that does not reproduce the leaf is wrong about this shift, and the proof wins"),
+        other => panic!("the real bytes are still here: {other:?}"),
+    }
+
+    // A rubric corrected under an unchanged scenario. The chart can be rebuilt and the sheet cannot,
+    // and those are different claims: the scenario is proved, the rubric is unknowable from a leaf.
+    let mut regraded = a_pack();
+    regraded["version"] = json!("0.4.0");
+    regraded["rubric"]["items"][0]["points"] = json!(3);
+    vitals_web::ward_case::keep_played_bytes(&store, &regraded);
+    file("");
+    match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape) {
+        ForReceipt::ScenarioOnly { sce: got, candidates } => {
+            assert_eq!(got, sce, "the chart is still rebuildable, because the scenario is proved");
+            assert_eq!(candidates.len(), 2, "and both rubrics are named: {candidates:?}");
+        }
+        other => panic!("two rubrics fit one leaf; a sheet from either would be a guess: {other:?}"),
+    }
+
+    // A leaf whose bytes are gone. Not a blank sheet and not today's bytes — a refusal.
+    assert_eq!(vitals_web::ward_case::bytes_for_receipt(&store, &"7".repeat(64), &tape),
+               ForReceipt::Unrebuildable,
+               "the bytes this shift was played on are not here, and the honest answer says so");
+}
