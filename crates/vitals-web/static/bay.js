@@ -1860,13 +1860,14 @@ async function step(q,named){
    itself (`text`) is untouched: it is what the matcher reads and what the tape keeps.
    `named` is threaded, not stashed in a module variable, because the tick loop paints too and a
    flag set here would be consumed by whichever paint happened to land first. */
-function doOrder(text,shown,named){ disarmEnd(); ev('order','▸',shown||text);
+function doOrder(text,shown,named){ DIDWORK=true; disarmEnd(); ev('order','▸',shown||text);
   step('&do='+encodeURIComponent(text), named===undefined?namesADiagnosis(text):named); }
 async function askHer(q,shown){
   if(asking||!id)return; asking=true; $('#send').disabled=true;
   /* What was asked, as a person would read it back. `q` is what goes to the server — on the ward
      an intervention id, which is what her case is keyed by — and typing gets the same string
      both ways. */
+  DIDWORK=true;   // a question is work: it is on the tape and it is lost with the rest.
   turn('you','you',shown||q);
   const d=turn('her think', ep().who.split(' · ')[0], '…');
   step('&tick=5');                                   // talking costs time
@@ -2132,6 +2133,29 @@ function disarmLeave(){
   if(LEAVEWAS!==null&&$('#wardsay')){ $('#wardsay').innerHTML=LEAVEWAS; LEAVEWAS=null; }
   const b=$('#wardback-shift'); if(!b)return;
   b.classList.remove('armed'); b.textContent=leaveWords(false).label;
+}
+
+/* **Whether somebody is about to walk away from work that will not exist.**
+
+   Eighteen of the thirty-three people who have ever taken a patient on this ward left without
+   handing over, and every one of their tapes is anchored nowhere: no chain, no receipt, no number
+   we publish. That is by design — the program refuses a leaf extending no head, and a page that
+   has closed cannot sign the tape it was holding — but nobody was told at the moment it mattered.
+   The cover says "nothing counts until you hand over" once, before they have done anything.
+
+   `didWork` and not `handedOver`, on a ward shift: the exact population. Somebody who has taken a
+   patient and done nothing yet has nothing to lose, and somebody who has handed over has already
+   kept it. Pure, so the harness reads the condition rather than a paraphrase of it. */
+function leavingUnrecorded(ward, taken, didWork, handedOver){
+  return !!ward && !!taken && !!didWork && !handedOver;
+}
+
+/* What they are told, on return rather than on the way out — a phone that switches apps shows no
+   dialog, and the first stranger to finish a shift here was on Android. Naming her is the point:
+   the thing being lost is a person's treatment, not a form. */
+function unrecordedWords(name){
+  return 'You still have ' + (name || 'this patient') +
+         '. Hand over before you go — nothing you did counts until you do.';
 }
 
 function leaveWords(armed){
@@ -4112,6 +4136,10 @@ bootLang();
    read and not a patient you can treat. That is the honest state — you have not
    taken the shift yet — and it needs no second flag to enforce. */
 let WARDSHIFT=null, WARDPENDING=null;
+/* Has this stranger done anything to her yet, and has it been kept. Set where the two things
+   happen rather than inferred from the transcript: the transcript carries the ward's own lines
+   too, and "somebody did something" is not the same question as "there is something on screen". */
+let DIDWORK=false, HANDEDOVER=false;
 
 /* What a stranger may not do yet, said in the words the page will show them.
    `null` on the Eternal entry, always: there is no head to take there, and a gate that reached
@@ -4373,6 +4401,32 @@ function monitorWhereItIsRead(){
   else if(rail&&mon.parentElement!==rail) rail.insertBefore(mon, rail.firstChild);
 }
 addEventListener('resize', monitorWhereItIsRead);
+
+/* **Telling somebody at the moment it matters, on the device they are actually using.**
+
+   `visibilitychange` is the one that counts and `beforeunload` is the desktop courtesy, not the
+   other way round. A phone switching apps fires visibilitychange and frequently never fires
+   beforeunload at all — and the first stranger ever to finish a shift on this ward was on an
+   Android phone, so a prompt built the usual way round would miss exactly the person the eighteen
+   of thirty-three is about.
+
+   Nothing can be shown while the page is hidden, so the reminder is given on the way **back**:
+   somebody who switched away and returned still has her, and that is the moment they can act on
+   it. For the ones who never return there is nothing a page can do — the tape cannot be signed by
+   a key that has gone, which is why this is a reminder and never an auto-anchor. */
+addEventListener('visibilitychange', () => {
+  if(document.visibilityState !== 'visible') return;
+  if(!leavingUnrecorded(WARD, !takeFirst(WARD, id, null), DIDWORK, HANDEDOVER)) return;
+  wardSay('<b class="gone">' + esc(unrecordedWords((WARDSHIFT && WARDSHIFT.name) || '')) + '</b>');
+});
+
+addEventListener('beforeunload', (e) => {
+  if(!leavingUnrecorded(WARD, !takeFirst(WARD, id, null), DIDWORK, HANDEDOVER)) return;
+  /* The browser shows its own words here and ours are not permitted, which is the whole reason
+     this is the lesser half: it can say "leave site?" and cannot say what is being thrown away. */
+  e.preventDefault();
+  e.returnValue = '';
+});
 
 /* Every control that treats her, opened or closed in one place.
    Called when the page opens her and again when the head is taken, so there is one answer to
@@ -4927,6 +4981,7 @@ async function handOverInner(){
                    ' <a href="/ward/'+WARD+'">open '+pro().o+' again</a>');
   }
   if(a.error)return wardSay(esc(a.error));
+  HANDEDOVER=true;
   stopBeating(); leaseStop();
   /* The receipt is the point of the whole thing and it had no link: a stranger who just anchored
      a shift was told it landed and given a way back to the globe, and nothing that shows what

@@ -894,3 +894,55 @@ assert.match(deadWords('', 'dead', null, false), /^This patient has died\./);
 assert.equal(deadWords('Nadege Toussaint', 'Stable', null, true), null);
 
 console.log('shift_logic: ok (and a patient with no pulse is not asked anything)');
+
+
+// ── nobody walks away from work that will not exist ─────────────────────────
+//
+// Eighteen of the thirty-three people who have ever taken a patient here left without handing
+// over, and every one of those tapes is anchored nowhere — no chain, no receipt, no number we
+// publish. The cover says "nothing counts until you hand over" once, before they have done
+// anything at all. This says it at the moment it is about to be true.
+const { leavingUnrecorded, unrecordedWords } = new Function(
+  [grab('leavingUnrecorded'), grab('unrecordedWords'),
+   'return { leavingUnrecorded, unrecordedWords };'].join('\n'))();
+
+// The exact population: holding a ward patient, has done something, has not handed over.
+assert.equal(leavingUnrecorded('1790068323', true, true, false), true);
+
+// And nobody else. Somebody who has done nothing has nothing to lose; somebody who handed over
+// has already kept it; somebody who never took the shift is not holding anybody; and the Eternal
+// bay is not a ward.
+assert.equal(leavingUnrecorded('1790068323', true, false, false), false, 'no work, nothing lost');
+assert.equal(leavingUnrecorded('1790068323', true, true, true), false, 'handed over, already kept');
+assert.equal(leavingUnrecorded('1790068323', false, true, false), false, 'never took the shift');
+assert.equal(leavingUnrecorded(null, true, true, false), false, 'the season is not a ward');
+
+// Her name, because the thing being lost is a person's treatment and not a form.
+assert.match(unrecordedWords('Nadege Toussaint'), /You still have Nadege Toussaint\./);
+assert.match(unrecordedWords('Nadege Toussaint'), /nothing you did counts until you do/);
+// A patient the page cannot name is still somebody.
+assert.match(unrecordedWords(''), /^You still have this patient\./);
+
+// ── the event the page actually listens on ──────────────────────────────────
+//
+// This is the check for a thing that reviews as correct and does nothing on the device it was
+// written for. A phone switching apps fires visibilitychange and frequently never fires
+// beforeunload; the first stranger to finish a shift on this ward was on an Android phone. So
+// visibilitychange is the trigger that matters and beforeunload is the desktop courtesy.
+assert.match(script, /addEventListener\('visibilitychange'/,
+             'the page must listen on the event a phone actually sends');
+assert.ok(script.indexOf("addEventListener('visibilitychange'") <
+          script.indexOf("addEventListener('beforeunload'"),
+          'visibilitychange is the one that matters and is written first');
+
+// The reminder is given on the way back, because nothing can be drawn while the page is hidden.
+const vis = script.slice(script.indexOf("addEventListener('visibilitychange'"));
+assert.match(vis.slice(0, 400), /visibilityState !== 'visible'\) return/,
+             'the reminder is for the return, not for the leaving: a hidden page draws nothing');
+
+// And it is a reminder, never an anchor. The key is the page's and a tape nobody signs cannot be
+// made to count by the server wishing it.
+assert.ok(!/visibilitychange[\s\S]{0,600}\/api\/ward\/anchor/.test(script),
+          'leaving must not anchor anything on the stranger\'s behalf');
+
+console.log('shift_logic: ok (and nobody walks away from work that will not exist)');
