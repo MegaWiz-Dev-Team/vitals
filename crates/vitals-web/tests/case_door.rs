@@ -1789,3 +1789,66 @@ fn keeping_a_tape_again_never_erases_the_address_already_on_it() {
     assert_eq!(store.get::<StoredTape>(TAPE_STORE, &other.run_hash).expect("it").played_id, "",
                "an empty address on a new tape is the ordinary state, not an erasure");
 }
+
+/// **The seed takes the door's secret; the list of what cannot be rebuilt is public.**
+///
+/// Two routes with opposite answers to the same question, which is why they are tested together.
+/// Seeding writes, and an operator asks for it deliberately — the founder's rule on this repair is
+/// that nothing is fixed behind anybody's back, and a seed running by itself on every cold start
+/// would be the first step of exactly that. Reading changes nothing, and a shift this ward cannot
+/// rebuild is a fact the person holding that receipt is owed rather than ours to keep.
+///
+/// The shapes are pinned here because this is the surface somebody reads on staging before deciding
+/// what to repair. A count that quietly stopped being published would make a clean list out of a
+/// ward with findings in it.
+#[test]
+fn the_seed_takes_the_doors_secret_and_the_list_of_what_cannot_be_rebuilt_is_public() {
+    let s = Server::start();
+    let store = vitals_web::store::Store::open(s.state()).expect("the ward's own store");
+
+    // A case filed the way the 106 in production were: before any blob was kept.
+    let mut pack = a_pack();
+    pack["case_id"] = json!("pre-seed");
+    store
+        .put(vitals_web::ward_case::CASE_STORE, &vitals_web::ward_case::key_for("pre-seed"), &pack)
+        .expect("a case filed before the blob store existed");
+    let addr = vitals_web::ward_case::played_id(&pack);
+    assert!(vitals_web::ward_case::played_bytes(&store, &addr).is_none(), "nothing kept for it yet");
+
+    // It writes, so it is the factory's door and not the page's.
+    assert_eq!(s.post_with("/api/ward/seed", &json!({}), None).0, 401,
+               "a write with no secret is refused");
+    assert_eq!(s.post_with("/api/ward/seed", &json!({}), Some("not-the-token")).0, 401,
+               "and somebody else's secret is not this door's");
+
+    let (code, body) = s.post("/api/ward/seed", &json!({}));
+    assert_eq!(code, 200, "{body}");
+    Server::reads_as_sentences(&body);
+    assert!(body["cases_kept"].as_u64().unwrap_or(0) >= 1, "it says how many it kept: {body}");
+    assert!(vitals_web::ward_case::played_bytes(&store, &addr).is_some(),
+            "and the case filed before the blob store existed is now addressable by its own bytes");
+
+    // Reading takes no secret at all.
+    let (code, body) = s.get("/api/ward/bytes");
+    assert_eq!(code, 200, "{body}");
+    Server::reads_as_sentences(&body);
+    for named in ["shifts", "proved", "ambiguous", "unrebuildable", "no_tape", "disagreements",
+                  "rows"] {
+        assert!(body.get(named).is_some(), "the published list names {named}: {body}");
+        assert!(body["derivations"].get(named).is_some(),
+                "and says how {named} is known, because a count nobody can check is a claim: {body}");
+    }
+    assert_eq!(body["shifts"], json!(0), "no shift is anchored in this ward yet");
+    assert_eq!(body["rows"], json!([]), "and an empty ward publishes an empty list, not a null");
+
+    // Seeding again is the same ward, not a second copy of it.
+    let (code, again) = s.post("/api/ward/seed", &json!({}));
+    assert_eq!(code, 200);
+    assert_eq!(again["cases_kept"], body_kept(&s), "asking twice keeps the same cases");
+}
+
+/// How many cases the seed says it keeps, asked afresh. Small helper so the assertion above reads
+/// as the sentence it is rather than as two nested calls.
+fn body_kept(s: &Server) -> Value {
+    s.post("/api/ward/seed", &json!({})).1["cases_kept"].clone()
+}

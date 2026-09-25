@@ -3519,6 +3519,11 @@ fn door(path: &str) -> bool {
         // secret and never the page's. Exact match: nothing else starts with it.
         || path == "/api/ward/tick"
         || path == "/api/ward/case"
+        // Keeping the bytes of every case already filed here. A write, and one an operator asks for
+        // deliberately rather than something that happens on a cold start — so it takes the door's
+        // secret. What it produces is read at `/api/ward/bytes`, which is public, because the list
+        // of shifts this ward cannot rebuild is a fact a stranger is owed rather than ours to keep.
+        || path == "/api/ward/seed"
         // `/api/ward/case/<id>/withdraw` — taking a case out of service is the factory's door too,
         // and a public one would let a stranger empty the ward's catalogue.
         || (path.starts_with("/api/ward/case/") && path.ends_with("/withdraw"))
@@ -5890,6 +5895,88 @@ fn main() {
             }
             // What the ward is holding, without the scenarios: a pack is twenty kilobytes and
             // nobody reading the catalogue needs one.
+            // **Keep the bytes of every case this ward already holds.** Idempotent, and nothing
+            // else: no shift is re-derived, no receipt changes, no case is corrected. It only
+            // makes the current version of each case addressable, so the shifts anchored on it
+            // can be matched to bytes instead of to whatever the store holds on the day somebody
+            // reads them.
+            //
+            // An operator's route on purpose. The founder's rule on this repair is that a
+            // mismatch is published and never fixed behind anybody's back, and a seed that ran by
+            // itself on every cold start would be the first step of exactly that.
+            (Method::Post, "/api/ward/seed") => {
+                let kept = ward_case::seed_played_bytes(&store);
+                let _ = req.respond(json(serde_json::json!({
+                    "cases_kept": kept,
+                    "derivations": {
+                        "cases_kept": "every case in this ward's store whose pack still validates, \
+                                       its current scored content kept under the hash of those \
+                                       bytes. Idempotent: the address is the bytes, so asking \
+                                       twice keeps the same blobs. This repairs nothing and \
+                                       re-derives no shift — it only makes the version each case \
+                                       is on now addressable. A version overwritten before this \
+                                       store existed is not here and cannot be recovered by \
+                                       asking again",
+                    },
+                })));
+                continue;
+            }
+            // **What this ward can prove about the bytes behind every shift the chain holds.**
+            //
+            // Public, and deliberately so: a shift this ward cannot rebuild is a fact the person
+            // holding that receipt is owed. Read-only — it replays what is kept against what is
+            // anchored and reports, so reading it never changes what a receipt says.
+            (Method::Get, "/api/ward/bytes") => {
+                let rows = ward_chain::bytes_behind_the_anchored_shifts(&store);
+                let count = |v: &str| rows.iter().filter(|r| r.verdict == v).count();
+                let _ = req.respond(json(serde_json::json!({
+                    "shifts": rows.len(),
+                    // Four counts rather than "ok" and "not ok": the ways a chart fails to rebuild
+                    // have different fixes, and one of them — a tape missing here — is recoverable
+                    // from a session this server still holds.
+                    "proved": count("proved"),
+                    "ambiguous": count("ambiguous"),
+                    "unrebuildable": count("unrebuildable"),
+                    "no_tape": count("no tape"),
+                    "disagreements": rows.iter().filter(|r| r.disagrees).count(),
+                    "rows": rows,
+                    "derivations": {
+                        "shifts": "every shift this ward has read off the chain, from the cache it \
+                                   builds the board from. A patient whose history has not been \
+                                   read yet is not counted here, so this is what is known and not \
+                                   a claim about the chain as a whole",
+                        "proved": "the leaf the chain holds for the shift, replayed against every \
+                                   set of case bytes this ward kept, with exactly one reproducing \
+                                   it. Demonstrated rather than recorded: the chain says nothing \
+                                   about which bytes a shift was played on",
+                        "ambiguous": "several kept blobs reproduce the leaf. They share the \
+                                      scenario and differ in the rubric, and a leaf commits to the \
+                                      scenario and the tape and to nothing about the rubric, so \
+                                      which rubric scored this shift cannot be told from the \
+                                      chain. Both addresses are named rather than one chosen",
+                        "unrebuildable": "no kept bytes reproduce the leaf. The version this shift \
+                                          was played on is not in this ward any more, and its \
+                                          chart cannot be rebuilt from anything here",
+                        "no_tape": "this ward holds no tape under that leaf, so there is nothing \
+                                    to replay the bytes against. A different problem from the one \
+                                    above and sometimes recoverable, because a session this \
+                                    server is still holding may reduce to that leaf",
+                        "disagreements": "the address the hand-over recorded on the tape names \
+                                          different bytes than replay proves. Published and never \
+                                          reconciled: a mismatch is for somebody to decide about, \
+                                          and nothing here repairs a receipt",
+                        "rows": "one row per shift read off the chain. `leaf` is what the chain \
+                                 holds and everything else is checked against it. `recorded` is \
+                                 the address the hand-over wrote on the tape, absent on every \
+                                 shift anchored before it did that. `proved` is what replaying the \
+                                 kept bytes demonstrates. `case` is the case her pack names now — \
+                                 context for a reader and never evidence, because if the pointer \
+                                 moved it is the case she would be given today and not the one she \
+                                 played",
+                    },
+                })));
+                continue;
+            }
             (Method::Get, "/api/ward/cases") => {
                 let mut cases: Vec<serde_json::Value> = ward_case::all(&store)
                     .into_iter()
