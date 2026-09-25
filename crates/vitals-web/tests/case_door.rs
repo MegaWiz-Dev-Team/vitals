@@ -1632,3 +1632,107 @@ fn an_anchored_shift_is_matched_to_its_bytes_by_replaying_them() {
                      Played::Unrebuildable),
             "a leaf no kept bytes reproduce is unrebuildable, and says so");
 }
+
+/// **Every shift the chain holds, and what this ward can prove about the bytes behind it.**
+///
+/// This is the list to read before anything is repaired. One row per anchored shift: the leaf, the
+/// patient, the case her pack names now, what the hand-over recorded if it recorded anything, and
+/// what replaying the kept bytes against the kept tape actually demonstrates.
+///
+/// Both sources are reported, never reconciled. A recorded address and a proved one that name
+/// different bytes is a finding — the case moved under a shift, or something wrote an address it
+/// could not know — and the row says so and changes nothing. Every defect on this ward so far came
+/// from a second source of truth added without asking what happens when it disagrees with the
+/// first; here the answer is that the disagreement is published.
+///
+/// Four verdicts, because the ways a chart fails to rebuild are not the same thing: the bytes are
+/// missing, or several fit equally, or the tape itself was never kept here — which is a different
+/// problem with a different fix, and collapsing it into "unrebuildable" would hide it.
+#[test]
+fn the_ward_lists_what_it_can_prove_about_every_anchored_shift() {
+    let s = Server::start();
+    assert_eq!(s.post("/api/ward/case", &a_pack()).0, 200);
+    let store = vitals_web::store::Store::open(s.state()).expect("the ward's own store");
+
+    let played = vitals_web::ward_case::sce_of(&store, "auth-demo-1").expect("the scenario");
+    let tape: Vec<vitals_replay::Step> = vec![];
+    let r = vitals_replay::replay(&played, &tape).expect("the scenario replays");
+    let real = vitals_web::ward_chain::hex32(
+        &vitals_replay::leaf(&vitals_replay::sce_hash(&played), &tape, &r));
+    let right = vitals_web::ward_case::played_id(&a_pack());
+
+    // Four patients, one shift each, covering the four things that can be true.
+    let anchor = |id: u64, leaf: &str, recorded: &str, keep_the_tape: bool| {
+        let shift = vitals_web::ward::ShiftOnChain {
+            patient_id: id, signer: [1; 32], slot: 100,
+            run_hash: {
+                let mut b = [0u8; 32];
+                for (i, c) in b.iter_mut().enumerate() {
+                    *c = u8::from_str_radix(&leaf[i * 2..i * 2 + 2], 16).expect("hex");
+                }
+                b
+            },
+        };
+        let mut seen = vitals_web::ward_chain::Seen::default();
+        seen.absorb(vec![(shift, format!("sig{id}"))], Some((format!("sig{id}"), 100)));
+        store.put(vitals_web::ward_chain::SHIFT_CACHE, &format!("p{id}"), &seen).expect("cached");
+        let patient: vitals_web::ward::Pack = serde_json::from_value(json!({
+            "case": "auth-demo-1",
+            "persona": { "name": "อารีย์", "age": 62, "sex": "f", "country": "THA" },
+        })).expect("a patient");
+        store.put(vitals_web::ward_chain::PERSONA_STORE, &format!("p{id}"), &patient).expect("bed");
+        if keep_the_tape {
+            vitals_web::ward_chain::keep_tape(&store, &vitals_web::ward_chain::StoredTape {
+                patient_id: id,
+                run_hash: leaf.to_string(),
+                steps: tape.clone(),
+                played_id: recorded.to_string(),
+            })
+            .expect("tape kept");
+        }
+    };
+
+    anchor(1, &real, &right, true);            // proved, and the recording agrees
+    anchor(2, &real, "", true);               // proved, nothing recorded — the pre-piece-two shifts
+    anchor(3, &"a".repeat(64), "", true);     // a tape, but no bytes reproduce that leaf
+    anchor(4, &"b".repeat(64), "", false);    // no tape kept here at all
+
+    let rows = vitals_web::ward_chain::bytes_behind_the_anchored_shifts(&store);
+    let of = |id: u64| rows.iter().find(|r| r.patient_id == id).expect("a row per anchored shift");
+
+    assert_eq!(rows.len(), 4, "one row per anchored shift, none dropped: {rows:#?}");
+
+    assert_eq!(of(1).verdict, "proved");
+    assert_eq!(of(1).proved.as_deref(), Some(right.as_str()));
+    assert_eq!(of(1).recorded.as_deref(), Some(right.as_str()));
+    assert!(!of(1).disagrees, "the hand-over recorded what replay proves");
+
+    assert_eq!(of(2).verdict, "proved", "a shift from before the recording existed is recoverable");
+    assert_eq!(of(2).proved.as_deref(), Some(right.as_str()));
+    assert_eq!(of(2).recorded, None, "and it is honest that nothing was recorded");
+    assert!(!of(2).disagrees, "nothing recorded is not a disagreement");
+
+    assert_eq!(of(3).verdict, "unrebuildable", "a leaf no kept bytes reproduce");
+    assert_eq!(of(3).proved, None);
+
+    assert_eq!(of(4).verdict, "no tape", "a tape this ward never kept is its own problem");
+    assert_eq!(of(4).proved, None);
+
+    // The row every reader is here for. A recorded address that disagrees with the proof is
+    // published as a disagreement, and nothing is repaired.
+    let mut regraded = a_pack();
+    regraded["version"] = json!("0.9.0");
+    regraded["rubric"]["items"][0]["points"] = json!(7);
+    regraded["sce"]["vitals0"]["hr"] = json!(133.0);
+    let elsewhere = vitals_web::ward_case::keep_played_bytes(&store, &regraded);
+    assert_ne!(elsewhere, right, "different bytes, so a different address");
+    anchor(5, &real, &elsewhere, true);
+
+    let rows = vitals_web::ward_chain::bytes_behind_the_anchored_shifts(&store);
+    let five = rows.iter().find(|r| r.patient_id == 5).expect("her row");
+    assert_eq!(five.verdict, "proved", "replay still proves which bytes reproduce the leaf");
+    assert_eq!(five.proved.as_deref(), Some(right.as_str()));
+    assert_eq!(five.recorded.as_deref(), Some(elsewhere.as_str()),
+               "and the recorded address is reported as it stands, not quietly corrected");
+    assert!(five.disagrees, "the two sources name different bytes, and the row says so");
+}
