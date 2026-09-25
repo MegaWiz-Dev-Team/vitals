@@ -1525,3 +1525,110 @@ fn a_shift_records_the_bytes_it_was_played_against() {
             "and a shift still holding the scenario from before it is never labelled with the new \
              bytes — that mislabelling is the defect the blobs exist to end");
 }
+
+/// **The cases the ward already holds get blobs too**, or the repair only covers what arrives next.
+///
+/// The door keeps a blob on every push, so every case published from now on is addressed. The ward
+/// in production is holding 106 cases that were filed before the blob store existed, and an
+/// anchored shift on one of those has nothing to be matched against. Seeding walks what the store
+/// holds and keeps each case's current scored content under its own address.
+///
+/// It only recovers the *current* version. A case corrected before the blob store existed has lost
+/// its earlier bytes for good — that is the honest unrebuildable, and it is a fact to publish, not
+/// a gap to fill with whatever the store holds today.
+#[test]
+fn the_ward_seeds_a_blob_for_every_case_it_already_holds() {
+    let s = Server::start();
+    let store = vitals_web::store::Store::open(s.state()).expect("the ward's own store");
+
+    // Two cases filed the way the 106 were: straight into the store, before any blob was kept.
+    let mut filed = vec![];
+    for (id, hr) in [("pre-door-1", 110.0), ("pre-door-2", 96.0)] {
+        let mut pack = a_pack();
+        pack["case_id"] = json!(id);
+        pack["sce"]["vitals0"]["hr"] = json!(hr);
+        store
+            .put(vitals_web::ward_case::CASE_STORE, &vitals_web::ward_case::key_for(id), &pack)
+            .expect("a case filed before the blob store existed");
+        assert!(vitals_web::ward_case::played_bytes(&store,
+                    &vitals_web::ward_case::played_id(&pack)).is_none(),
+                "no blob yet — this is the state the seeding exists to repair");
+        filed.push(pack);
+    }
+
+    let kept = vitals_web::ward_case::seed_played_bytes(&store);
+    assert!(kept >= 2, "every case the ward holds now has its bytes kept, not only these two: {kept}");
+    for pack in &filed {
+        assert!(vitals_web::ward_case::played_bytes(&store,
+                    &vitals_web::ward_case::played_id(pack)).is_some(),
+                "a case filed before the blob store existed can now be addressed");
+    }
+
+    // Idempotent because the address *is* the bytes: seeding twice keeps the same blobs.
+    assert_eq!(vitals_web::ward_case::seed_played_bytes(&store), kept,
+               "seeding again keeps the same blobs rather than a second copy of each");
+}
+
+/// **An already-anchored shift is matched to its bytes by replaying them**, not by being told.
+///
+/// Nothing on chain says which bytes a shift was played on — that is the whole defect. But the leaf
+/// does: it commits to `sce_hash(sce_json)` and to the tape, so replaying a candidate blob's
+/// scenario against the tape the ward kept either reproduces the anchored leaf or does not. A blob
+/// that reproduces it is what this shift was played on, demonstrated rather than assumed.
+///
+/// Three outcomes, and the two that are not a clean match are the point of the exercise:
+///
+///   * one blob reproduces the leaf — proved, and its address can be recorded;
+///   * several do — they share a scenario and differ only in rubric, which a leaf commits to
+///     nothing about, so which rubric scored this shift cannot be told from the chain. A coin flip
+///     here would put a number on a stranger's receipt that no evidence supports;
+///   * none does — the bytes are not in this ward any more, and the chart cannot be rebuilt.
+///
+/// The ambiguous case is why recording the address forward at hand-over is not merely an
+/// efficiency: for a shift anchored before that recording existed, on a case that later takes a
+/// rubric-only correction, replay can never recover the second half of the address.
+#[test]
+fn an_anchored_shift_is_matched_to_its_bytes_by_replaying_them() {
+    use vitals_web::ward_case::Played;
+
+    let s = Server::start();
+    assert_eq!(s.post("/api/ward/case", &a_pack()).0, 200);
+    let store = vitals_web::store::Store::open(s.state()).expect("the ward's own store");
+
+    // A real shift: somebody opened her chart, did nothing, and handed over. The tape is empty and
+    // the leaf is as binding as any other.
+    let played = vitals_web::ward_case::sce_of(&store, "auth-demo-1").expect("the scenario");
+    let tape: Vec<vitals_replay::Step> = vec![];
+    let r = vitals_replay::replay(&played, &tape).expect("the scenario replays");
+    let anchored = vitals_web::ward_chain::hex32(
+        &vitals_replay::leaf(&vitals_replay::sce_hash(&played), &tape, &r));
+
+    match vitals_web::ward_case::played_against(&store, &anchored, &tape) {
+        Played::Proved(id) => assert_eq!(id, vitals_web::ward_case::played_id(&a_pack()),
+                                        "the blob that reproduces the leaf is the one the door kept"),
+        other => panic!("one blob reproduces this leaf and it should have been proved: {other:?}"),
+    }
+
+    // A rubric corrected under an unchanged scenario. Both blobs reproduce the leaf, because the
+    // leaf commits to the scenario and the tape and to nothing about the rubric.
+    let mut regraded = a_pack();
+    regraded["version"] = json!("0.2.0");
+    regraded["rubric"]["items"][0]["points"] = json!(99);
+    vitals_web::ward_case::keep_played_bytes(&store, &regraded);
+
+    match vitals_web::ward_case::played_against(&store, &anchored, &tape) {
+        Played::Ambiguous(ids) => {
+            assert_eq!(ids.len(), 2, "both rubrics fit the same leaf: {ids:?}");
+            assert!(ids.contains(&vitals_web::ward_case::played_id(&a_pack()))
+                    && ids.contains(&vitals_web::ward_case::played_id(&regraded)),
+                    "and it names both rather than picking one: {ids:?}");
+        }
+        other => panic!("two blobs share this scenario; picking one would be a guess: {other:?}"),
+    }
+
+    // A leaf nothing here reproduces. Not an error and not a blank — a shift whose chart this ward
+    // can no longer rebuild, which is a fact a reader is owed.
+    assert!(matches!(vitals_web::ward_case::played_against(&store, &"0".repeat(64), &tape),
+                     Played::Unrebuildable),
+            "a leaf no kept bytes reproduce is unrebuildable, and says so");
+}
