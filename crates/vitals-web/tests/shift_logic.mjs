@@ -605,9 +605,55 @@ assert.equal(wardGuide(true, 0, 1).at, 3,
              'an order without a question still counts — the steps mark what has happened, they \
               do not police the order it happened in');
 
-// The steps never change what they say, only which one is live. A strip whose words move under a
-// reader is a strip they stop reading.
+// The steps never change what they say as the counts change, only which one is live. A strip whose
+// words move under a reader is a strip they stop reading. What they *do* depend on is what the box
+// can do right now — see below, where that distinction is the whole point.
 assert.deepEqual(wardGuide(true, 0, 0).steps, wardGuide(true, 9, 9).steps);
+
+// ── the strip cannot promise what the box will not do ────────────────────────
+//
+// On 25 ก.ย. a real shift on staging followed step two exactly: the strip said "Order what is
+// needed — try oxygen", the box opens in `ask`, and the receipt came back `0:13 ASKED oxygen` with
+// nothing given, the monitor still at 87 %, and 5 of 40 with "nothing given yet" under ATTACHED.
+// The strip was promising an outcome that the box in its opening state does not produce.
+//
+// The fix that was NOT taken: having the box read a drug name typed under `ask` as an order. Ask and
+// order are different events on the tape and the rubric scores them apart, so converting one into
+// the other changes the artefact the chain anchors — and it administers a drug to somebody who meant
+// to ask whether she had had it, which is the worse mistake of the two to make on a ward. The mode
+// buttons would also become decoration, which is a second answer to what the box will do.
+const inAsk = wardGuide(true, 3, 0, 'ask');
+assert.match(inAsk.steps[1], /press drugs/i,
+             'while the box is in ask, step two names the press that makes an order possible');
+const ordering = wardGuide(true, 3, 0, 'drug');
+assert.match(ordering.steps[1], /^Order what is needed/,
+             'and once an order mode is on, it stops telling them to do what they have done');
+assert.doesNotMatch(ordering.steps[1], /press drugs/i);
+assert.equal(wardGuide(true, 3, 0).steps[1], inAsk.steps[1],
+             'no mode given is the box as it opens, so the cautious sentence is the default');
+
+// The press it names is the label on the button, read off the page rather than typed here: renaming
+// the button without this line is how the strip starts naming a press nobody can find.
+assert.match(script, /\{id:'drug',\s*label:'drugs'/,
+             "the drugs button is still called drugs, which is what the strip tells them to press");
+
+// ── one sentence in the box, decided in one place ────────────────────────────
+//
+// The box's enabled state and the box's placeholder are two answers to one question — may this
+// person type? — and they were computed apart: `wardGate` set `disabled` from `no` and left the
+// sentence to `renderChips`, whose call there is guarded on `#chips` existing. On a surface without
+// chips the box opened and went on promising "press Treat her to start" to somebody thirty seconds
+// into treating her. Both now read the same function.
+const { boxPlaceholder } = new Function([grab('boxPlaceholder'), 'return { boxPlaceholder };'].join('\n'))();
+
+assert.equal(boxPlaceholder('press Treat her to start', 'ask', 'authored ask', 'authored order', 'her'),
+             'press Treat her to start',
+             'the refusal wins: a box that invites typing and refuses it is the bug, dressed as an invitation');
+assert.equal(boxPlaceholder(null, 'ask', 'authored ask', 'authored order', 'her'), 'authored ask');
+assert.equal(boxPlaceholder(null, 'drug', 'authored ask', 'authored order', 'her'), 'authored order');
+assert.match(boxPlaceholder(null, 'ask', '', '', 'her'), /ask her anything/i,
+             'and with nothing authored it still names the person in the bed');
+assert.match(boxPlaceholder(null, 'drug', '', '', 'her'), /type the order/i);
 
 console.log('shift_logic: ok (and the page says what a shift consists of)');
 

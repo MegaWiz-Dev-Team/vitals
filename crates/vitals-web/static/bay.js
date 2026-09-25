@@ -1203,9 +1203,22 @@ function renderChips(){
   });
   /* The one line a stranger reads when they try to type. `no` wins: an ask bar that says "ask her
      anything…" and refuses to be typed in is the bug the founder found, dressed as an invitation. */
-  $('#cmd').placeholder = no ? no : (mode==='ask'
-    ? (PACK.ui.ask_placeholder || `ask ${pro().o} anything…`)
-    : (PACK.ui.order_placeholder || 'or type the order yourself…'));
+  $('#cmd').placeholder = boxPlaceholder(no, mode, PACK.ui.ask_placeholder,
+                                        PACK.ui.order_placeholder, pro().o);
+}
+
+/* The one line a stranger reads when they try to type, decided in one place.
+   `no` wins: an ask bar that says "ask her anything…" and refuses to be typed in is the bug the
+   founder found, dressed as an invitation. It lives in a function because two places need the
+   answer — `renderChips`, and `wardGate` where the box's *enabled* state is set from the same
+   `no`. Those are two answers to one question ("may this person type?") and they were computed
+   apart: wardGate set `disabled` and left the sentence to renderChips, whose call there is guarded
+   on `#chips` existing. On a surface without chips the box opened, and went on promising "press
+   Treat her to start" to somebody thirty seconds into treating her. */
+function boxPlaceholder(no, mode, askWords, orderWords, whom){
+  if(no) return no;
+  return mode==='ask' ? (askWords || `ask ${whom} anything…`)
+                      : (orderWords || 'or type the order yourself…');
 }
 /* What the transcript reads when a chip is pressed, which is not always what the chip fires.
    At a station an ask chip *is* the question — "any allergies?" is the button and the line — so the
@@ -1957,12 +1970,24 @@ function autoHandOver(left, orders, taken, handing){
   return left<=0 && orders>0 && !!taken && !handing;
 }
 
-function wardGuide(taken, asked, orders){
+/* The strip cannot promise something the box in its current state will not do.
+   Step two said "Order what is needed — try oxygen" whatever mode was on, and the box opens in
+   `ask`: a stranger who did exactly what the strip said got `ASKED oxygen` on the receipt, nothing
+   on the patient, and 5 of 40 with "nothing given yet" under ATTACHED. Found by a real shift on
+   staging on 25 ก.ย.
+   The fix is not for the box to read a drug name under `ask` as an order. Ask and order are
+   different things on the tape and the rubric scores them apart, so converting one into the other
+   would change the anchored artefact — and it would give a drug to somebody who meant to ask
+   whether she had had it, which is the worse of the two mistakes to make on a ward. So the sentence
+   names the press instead, and names it only while the press is needed. */
+function wardGuide(taken, asked, orders, mode){
   if(!taken) return null;
+  const ordering = !!mode && mode!=='ask';
   return {
     at: orders>0 ? 3 : (asked>0 ? 2 : 1),
     steps: ['Ask or examine — the answers go on the chart',
-            'Order what is needed — try oxygen',
+            ordering ? 'Order what is needed — try oxygen'
+                     : 'Press drugs, then order — try oxygen',
             'Press Hand over when done — nothing counts until you do'],
   };
 }
@@ -4478,7 +4503,7 @@ function paintGuide(){
   if(!$('#wardguide'))bar.insertAdjacentHTML('afterend', '<div id="wardguide"></div>');
   const el=$('#wardguide'); if(!el)return;
   const taken=!takeFirst(WARD, id, null);
-  el.innerHTML=guideHtml(taken?wardGuide(true, ASKED, ORDERED):null, LEASEMIN);
+  el.innerHTML=guideHtml(taken?wardGuide(true, ASKED, ORDERED, mode):null, LEASEMIN);
 }
 
 function wardGate(){
@@ -4492,7 +4517,14 @@ function wardGate(){
     const el=$(sel); if(el)el.hidden=!showsTally(!!WARD, el.textContent);
   });
   const cmd=$('#cmd'), send=$('#send'), mic=$('#mic');
-  if(cmd)cmd.disabled=!!no;   // the placeholder is renderChips's, and it runs below
+  /* Both halves of the same question, together. The sentence used to be left to `renderChips`
+     below, whose call is guarded on `#chips` existing — so a surface without chips opened the box
+     and kept its pre-shift promise. */
+  if(cmd){
+    cmd.disabled=!!no;
+    cmd.placeholder=boxPlaceholder(no, mode, PACK.ui.ask_placeholder,
+                                   PACK.ui.order_placeholder, pro().o);
+  }
   if(send)send.disabled=!!no;
   if(mic)mic.disabled=!!no;
   if($('#chips'))renderChips();
