@@ -963,7 +963,7 @@ fn a_shift_receipt_carries_what_the_chain_holds_and_what_anybody_can_recompute()
     };
     let shifts = [anchored("first", 1_000_010), anchored("mine", 1_000_020)];
 
-    let r = receipt(&sce, None, &shifts, &shifts[1], &chart, &pack, 1_000_000, &dated)
+    let r = receipt(&sce, None, &shifts, &shifts[1], &chart, &pack, 1_000_000, &dated, None)
         .expect("a receipt for a shift the chain names");
 
     assert_eq!(r["patient_id"], 42);
@@ -1025,7 +1025,7 @@ fn a_receipt_says_when_its_hash_names_more_than_one_shift() {
     second.signer = [9; 32];
     let shifts = [anchored("same", 1_000_010), second];
 
-    let r = receipt(&sce, None, &shifts, &shifts[0], &chart, &pack, 1_000_000, &dated).expect("a receipt");
+    let r = receipt(&sce, None, &shifts, &shifts[0], &chart, &pack, 1_000_000, &dated, None).expect("a receipt");
     assert_eq!(r["also_anchored"], 1,
                "one other shift on this ward has the same tape, and the receipt says so rather \
                 than presenting itself as the only one");
@@ -1033,7 +1033,7 @@ fn a_receipt_says_when_its_hash_names_more_than_one_shift() {
     assert!(note.contains("same tape") || note.contains("same bytes"), "{note}");
 
     // A hash that names exactly one shift says nothing, because there is nothing to say.
-    let alone = receipt(&sce, None, &shifts[..1], &shifts[0], &chart, &pack, 1_000_000, &dated).unwrap();
+    let alone = receipt(&sce, None, &shifts[..1], &shifts[0], &chart, &pack, 1_000_000, &dated, None).unwrap();
     assert_eq!(alone["also_anchored"], 0);
     assert!(alone["also_anchored_note"].is_null());
 }
@@ -1216,7 +1216,7 @@ fn a_receipt_address_this_ward_never_played_is_refused_without_reading_the_chain
     let ours = "a".repeat(64);
     let strangers = "9f2c1e5a7b3d4c6e8a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f6071";
     keep_tape(&store, &StoredTape { patient_id: 7, run_hash: ours.clone(), steps: vec![],
-                                    played_id: String::new() })
+                                    played_id: String::new(), arrival_capped: None })
         .expect("the tape is kept");
 
     assert!(worth_reading_the_chain_for(&store, &ours),
@@ -1535,7 +1535,7 @@ fn the_words_a_stranger_reads_are_never_an_id() {
         endemic: false,
     };
     let shifts = [anchored("mine", 1_000_020)];
-    let r = receipt(&sce, None, &shifts, &shifts[0], &chart, &pack, 1_000_000, &dated)
+    let r = receipt(&sce, None, &shifts, &shifts[0], &chart, &pack, 1_000_000, &dated, None)
         .expect("a receipt");
 
     let rows = r["timeline"].as_array().expect("a timeline");
@@ -1974,7 +1974,7 @@ fn one_patients_failed_history_does_not_black_out_the_board() {
         seen.absorb(vec![(shift, "sig1".to_string())], Some(("sig1".to_string(), 100)));
         store.put(SHIFT_CACHE, &format!("p{id}"), &seen).expect("cached");
         keep_tape(&store, &StoredTape { patient_id: id, run_hash: hex(b), steps: vec![],
-                                        played_id: String::new() })
+                                        played_id: String::new(), arrival_capped: None })
             .expect("tape kept");
     };
     seed(1, 0x11);

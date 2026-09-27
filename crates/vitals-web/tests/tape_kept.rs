@@ -121,7 +121,7 @@ fn an_anchored_leaf_with_no_tape_is_repaired_from_a_session_that_reduces_to_it()
         // These tapes are built from steps, not played through a case, so there are no case bytes
         // for them to be addressed to. What this file is about is which hash the tape is kept
         // under; the address is a separate fact and has its own test.
-        played_id: String::new(),
+        played_id: String::new(), arrival_capped: None
     })
     .expect("kept");
 
@@ -281,4 +281,30 @@ fn a_closing_shift_is_proven_to_be_the_empty_one() {
     let played = ShiftOnChain { run_hash: [7; 32], ..this };
     assert!(closing_tape(&sce, &[], &|_| None, admitted, &played, &dated).is_none(),
             "an empty tape is filed only where the chain's own hash says it belongs");
+}
+
+/// **The side of the cap the hand-over recorded survives every later writer that does not know it.**
+///
+/// Only the hand-over is the play, so only it knows whether the gap before the shift was capped.
+/// The anchor and the repair file the same tape again under the same hash, knowing nothing about the
+/// cap; if their `None` overwrote the hand-over's answer, a receipt would be back to asking whichever
+/// instance served it — the disagreement behind the unrebuildable receipts of 25 Sep 2026.
+#[test]
+fn the_side_of_the_cap_a_shift_recorded_survives_a_writer_that_does_not_know_it() {
+    let st = store("cap-side");
+    let hash = "c".repeat(64);
+    let tape = |cap: Option<bool>| StoredTape {
+        patient_id: 3, run_hash: hash.clone(), steps: vec![Step::Tick(1.0)],
+        played_id: String::new(), arrival_capped: cap,
+    };
+    assert_eq!(vitals_web::ward_chain::recorded_cap(&st, &hash), None, "nothing is recorded yet");
+
+    keep_tape(&st, &tape(Some(false))).expect("the hand-over keeps it");
+    assert_eq!(vitals_web::ward_chain::recorded_cap(&st, &hash), Some(false));
+
+    // The anchor, then a repair, each re-filing the same tape without an answer.
+    keep_tape(&st, &tape(None)).expect("the anchor keeps it again");
+    keep_tape(&st, &tape(None)).expect("and a repair");
+    assert_eq!(vitals_web::ward_chain::recorded_cap(&st, &hash), Some(false),
+               "a writer that does not know the side of the cap erased the one that did");
 }

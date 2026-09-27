@@ -2366,6 +2366,7 @@ fn repair_one(
                 // was played against, and an empty address says so. Prove-by-replay is how it is
                 // learned; a guess here would be a fact nobody could tell from one.
                 played_id: String::new(),
+                arrival_capped: None,
             })
             .ok()?;
             Some(tape)
@@ -2945,6 +2946,18 @@ pub struct StoredTape {
     /// back — never to assume the current case and write that down as though it were known.
     #[serde(default)]
     pub played_id: String,
+    /// **Which side of the arrival cap this shift was played on**, written by the hand-over — the
+    /// one path that knows, because it is the play.
+    ///
+    /// Whether the idle gap before a stranger's shift was capped used to be decided again by every
+    /// reader, from whatever that instance's environment and key said at the time; on 25 Sep 2026
+    /// two instances disagreed and three receipts stopped proving until the leaf was used to decide.
+    /// Recorded here, the answer is a fact about the shift rather than about the machine asking.
+    ///
+    /// `None` on every tape kept before this existed and on every reconstructing writer, which do
+    /// not know — those are still resolved by replaying against the leaf.
+    #[serde(default)]
+    pub arrival_capped: Option<bool>,
 }
 
 /// Rebuild the patient as she is now: every anchored shift, in the chain's order, and the time
@@ -3303,6 +3316,7 @@ pub fn bytes_behind_the_anchored_shifts(
             };
             let deriving = Deriving {
                 shifts: &all, this: shift, tape_of: &tape_of, admitted_slot, dated: &dated,
+                recorded_cap: recorded_cap(store, &leaf),
             };
 
             // **The same question the receipt asks, asked the same way.** This list describes what
@@ -3362,6 +3376,11 @@ pub fn tape_by_hash(
     store.get::<StoredTape>(TAPE_STORE, run_hash).map(|t| t.steps)
 }
 
+/// The side of the arrival cap the hand-over recorded for this shift, if it recorded one.
+pub fn recorded_cap(store: &crate::store::Store, run_hash: &str) -> Option<bool> {
+    store.get::<StoredTape>(TAPE_STORE, run_hash).and_then(|t| t.arrival_capped)
+}
+
 /// Keep a finished shift's tape, addressed by the hash its leaf commits to.
 ///
 /// Content-addressed, so keeping the same tape twice is keeping it once — and so the name it is
@@ -3378,11 +3397,16 @@ pub fn keep_tape(store: &crate::store::Store, tape: &StoredTape) -> Result<(), S
     // evidence — a rubric corrected between two shifts that played identically — so it corrects the
     // record rather than being ignored. Silence yields to knowledge; knowledge does not yield to
     // silence.
+    //
+    // The side of the cap follows the same rule: only the hand-over knows it, so a writer without
+    // it keeps the one already recorded.
     let keeping = match store.get::<StoredTape>(TAPE_STORE, &tape.run_hash) {
-        Some(before) if tape.played_id.is_empty() && !before.played_id.is_empty() => {
-            StoredTape { played_id: before.played_id, ..tape.clone() }
+        Some(before) => {
+            let played_id = if tape.played_id.is_empty() { before.played_id } else { tape.played_id.clone() };
+            let arrival_capped = tape.arrival_capped.or(before.arrival_capped);
+            StoredTape { played_id, arrival_capped, ..tape.clone() }
         }
-        _ => tape.clone(),
+        None => tape.clone(),
     };
     store
         .put(TAPE_STORE, &keeping.run_hash, &keeping)
@@ -3408,7 +3432,7 @@ pub fn keep_for_anchor(
     // Recorded by the hand-over path, which knows; empty here, where this is rebuilding a record
     // for a shift already on chain and does not.
     keep_tape(store, &StoredTape { patient_id, run_hash: run_hash.clone(), steps: tape.to_vec(),
-                                   played_id: String::new() })?;
+                                   played_id: String::new(), arrival_capped: None })?;
     // And the chain's own name for this shift. The leaf binds the player, the declaration and the
     // tape; the run hash binds only the tape, and two strangers who did the same things share one.
     // It cannot be recomputed later — `RecordWire` carries no commitment, by design — so it is
@@ -3477,6 +3501,7 @@ pub fn recover_tape(
             // wearing the clothes of a proof. The receipt's own verifier resolves what it can and
             // says unrebuildable for what it cannot.
             played_id: String::new(),
+            arrival_capped: None,
         })
         .ok()?;
         return Some(tape.clone());
@@ -3692,6 +3717,10 @@ pub struct Deriving<'a> {
     pub tape_of: &'a dyn Fn(&str) -> Option<Vec<vitals_replay::Step>>,
     pub admitted_slot: u64,
     pub dated: &'a dyn Fn(u64) -> Option<i64>,
+    /// The side of the arrival cap this shift recorded when it was played ([`recorded_cap`]), which
+    /// decides ahead of anything this instance would choose. `None` for shifts played before it was
+    /// recorded: those fall back to the environment, then to the leaf.
+    pub recorded_cap: Option<bool>,
 }
 
 /// **The patient as she was when this stranger arrived** — the one place that decides it.
@@ -3741,6 +3770,8 @@ pub fn state_this_shift_began_on_with(
     d: &Deriving,
     default_cap: bool,
 ) -> Result<(vitals_sce::runtime::SceState, usize), String> {
+    // What the shift wrote down when it was played outranks what this instance would choose.
+    let default_cap = d.recorded_cap.unwrap_or(default_cap);
     let before: Vec<crate::ward::ShiftOnChain> =
         d.shifts.iter().filter(|s| s.slot < d.this.slot).copied().collect();
     let derive = |cap: bool| {
@@ -3801,10 +3832,11 @@ pub fn leaf_if_played_on(
 /// **The harm is this shift's own.** `vitals_replay::shift` reports only what this tape added, so
 /// a stranger who walked into a patient somebody else hurt is answerable for what they did and
 /// nothing else.
-// Eight arguments, and every one of them is a different fact this function is not allowed to go
+// Nine arguments, and every one of them is a different fact this function is not allowed to go
 // and find for itself: the case, the mark sheet, her chain, this shift, the tapes, the pack, the
-// slot she was admitted at, and how to date a slot. A struct here would be the same eight fields
-// with a name, and the callers would fill it in the same order.
+// slot she was admitted at, how to date a slot, and the side of the cap the shift recorded. A
+// struct here would be the same nine fields with a name, and the callers would fill it in the
+// same order.
 #[allow(clippy::too_many_arguments)]
 pub fn receipt(
     sce_json: &str,
@@ -3815,6 +3847,7 @@ pub fn receipt(
     pack: &crate::ward::Pack,
     admitted_slot: u64,
     dated: &dyn Fn(u64) -> Option<i64>,
+    recorded_cap: Option<bool>,
 ) -> Result<serde_json::Value, String> {
     let hash = hex32(&this.run_hash);
     let tape = tape_of(&hash).ok_or_else(|| {
@@ -3822,7 +3855,7 @@ pub fn receipt(
                  nobody can check is not a receipt")
     })?;
 
-    let deriving = Deriving { shifts, this, tape_of, admitted_slot, dated };
+    let deriving = Deriving { shifts, this, tape_of, admitted_slot, dated, recorded_cap };
     let (mut st, played) = state_this_shift_began_on(sce_json, &deriving)?;
     let r = vitals_replay::shift(&mut st, &tape, 0.0);
 

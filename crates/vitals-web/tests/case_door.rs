@@ -1674,7 +1674,7 @@ fn an_anchored_shift_is_matched_to_its_bytes_by_replaying_them() {
     let tape_of = |h: &str| vitals_web::ward_chain::tape_by_hash(&store, h);
     let deriving = vitals_web::ward_chain::Deriving {
         shifts: &shifts, this: &shifts[0], tape_of: &tape_of,
-        admitted_slot: LONE_SLOT, dated: &ward_dated,
+        admitted_slot: LONE_SLOT, dated: &ward_dated, recorded_cap: None,
     };
 
     match vitals_web::ward_case::bytes_for_receipt(&store, &anchored, &tape, &deriving, None, None) {
@@ -1773,7 +1773,7 @@ fn the_ward_lists_what_it_can_prove_about_every_anchored_shift() {
                 patient_id: id,
                 run_hash: leaf.to_string(),
                 steps: tape.clone(),
-                played_id: recorded.to_string(),
+                played_id: recorded.to_string(), arrival_capped: None
             })
             .expect("tape kept");
         }
@@ -1872,7 +1872,7 @@ fn keeping_a_tape_again_never_erases_the_address_already_on_it() {
         patient_id: 7,
         run_hash: leaf.clone(),
         steps: vec![],
-        played_id: played_id.to_string(),
+        played_id: played_id.to_string(), arrival_capped: None
     };
     let on_it = |store: &vitals_web::store::Store| -> String {
         store.get::<StoredTape>(TAPE_STORE, &leaf).expect("the tape").played_id
@@ -1956,7 +1956,7 @@ fn the_seed_and_the_integrity_list_are_both_the_operators() {
             patient_id: 4242,
             run_hash: vitals_web::ward_chain::hex32(&[0xab; 32]),
             steps: vec![],
-            played_id: String::new(),
+            played_id: String::new(), arrival_capped: None
         }).expect("tape kept");
     }
 
@@ -2041,13 +2041,13 @@ fn a_receipt_derives_from_the_bytes_the_shift_was_played_on_or_says_it_cannot() 
     let tape_of = |h: &str| vitals_web::ward_chain::tape_by_hash(&store, h);
     let deriving = vitals_web::ward_chain::Deriving {
         shifts: &shifts, this: &shifts[0], tape_of: &tape_of,
-        admitted_slot: LONE_SLOT, dated: &ward_dated,
+        admitted_slot: LONE_SLOT, dated: &ward_dated, recorded_cap: None,
     };
 
     let file = |recorded: &str| {
         vitals_web::ward_chain::keep_tape(&store, &vitals_web::ward_chain::StoredTape {
             patient_id: 7, run_hash: leaf.clone(), steps: tape.clone(),
-            played_id: recorded.to_string(),
+            played_id: recorded.to_string(), arrival_capped: None
         }).expect("tape kept");
     };
 
@@ -2142,10 +2142,10 @@ fn a_case_with_no_blob_is_still_provable_from_the_bytes_it_carries_now() {
     let tape_of = |h: &str| vitals_web::ward_chain::tape_by_hash(&store, h);
     let deriving = vitals_web::ward_chain::Deriving {
         shifts: &shifts, this: &shifts[0], tape_of: &tape_of,
-        admitted_slot: LONE_SLOT, dated: &ward_dated,
+        admitted_slot: LONE_SLOT, dated: &ward_dated, recorded_cap: None,
     };
     vitals_web::ward_chain::keep_tape(&store, &vitals_web::ward_chain::StoredTape {
-        patient_id: 9, run_hash: leaf.clone(), steps: tape.clone(), played_id: String::new(),
+        patient_id: 9, run_hash: leaf.clone(), steps: tape.clone(), played_id: String::new(), arrival_capped: None
     }).expect("tape kept");
 
     match vitals_web::ward_case::bytes_for_receipt(&store, &leaf, &tape, &deriving, standing(&store, "no-blob"), None) {
@@ -2212,13 +2212,13 @@ fn trying_the_likely_candidates_first_does_not_change_the_answer() {
     let tape_of = |h: &str| vitals_web::ward_chain::tape_by_hash(&store, h);
     let deriving = vitals_web::ward_chain::Deriving {
         shifts: &shifts, this: &shifts[0], tape_of: &tape_of,
-        admitted_slot: LONE_SLOT, dated: &ward_dated,
+        admitted_slot: LONE_SLOT, dated: &ward_dated, recorded_cap: None,
     };
 
     let answer = |recorded: &str, hint: Option<&str>, standing: bool| {
         vitals_web::ward_chain::keep_tape(&store, &vitals_web::ward_chain::StoredTape {
             patient_id: 7, run_hash: leaf.clone(), steps: tape.clone(),
-            played_id: recorded.to_string(),
+            played_id: recorded.to_string(), arrival_capped: None
         }).expect("tape kept");
         vitals_web::ward_case::bytes_for_receipt(
             &store, &leaf, &tape, &deriving,
@@ -2327,7 +2327,7 @@ fn bytes_can_be_offered_for_a_shift_and_the_offer_proves_itself_or_is_refused() 
     let tape_of = |h: &str| vitals_web::ward_chain::tape_by_hash(&store, h);
     let deriving = vitals_web::ward_chain::Deriving {
         shifts: &shifts, this: &shifts[0], tape_of: &tape_of,
-        admitted_slot: LONE_SLOT, dated: &ward_dated,
+        admitted_slot: LONE_SLOT, dated: &ward_dated, recorded_cap: None,
     };
     // Nothing here rebuilds it: that is the state the five are in.
     assert_eq!(vitals_web::ward_case::bytes_for_receipt(
@@ -2490,7 +2490,7 @@ fn a_strangers_shift_re_derives_on_the_side_of_the_cap_it_was_played_on() {
     let this = vitals_web::ward::ShiftOnChain { patient_id: 12, signer: [7u8; 32], slot, run_hash: rh };
     let shifts = [this];
     let d = vitals_web::ward_chain::Deriving {
-        shifts: &shifts, this: &this, tape_of: &tape_of, admitted_slot: admitted, dated: &dated,
+        shifts: &shifts, this: &this, tape_of: &tape_of, admitted_slot: admitted, dated: &dated, recorded_cap: None,
     };
 
     // Re-derived on an instance holding the ward key, where a stranger past the boundary defaults to
@@ -2501,6 +2501,55 @@ fn a_strangers_shift_re_derives_on_the_side_of_the_cap_it_was_played_on() {
     let re = vitals_web::ward_chain::hex32(&vitals_replay::leaf(&vitals_replay::sce_hash(&sce), &steps, &r));
     assert_eq!(re, played_uncapped,
                "a shift played uncapped re-derives uncapped, whichever side the replay defaults to");
+}
+
+/// **What a shift was derived from is written down when it is played, not rediscovered.**
+///
+/// The probe above finds the side of the cap by replaying this shift's own tape against both — which
+/// works only while that tape is in hand, and leaves the answer to whichever instance asks. A shift
+/// played now records the side it was played on beside its tape, and a re-derivation reads that
+/// record first. Here the probe is starved of the tape on purpose: the record alone must bring the
+/// shift back to the leaf it was anchored with, against an environment that would default the other
+/// way.
+#[test]
+fn a_shift_re_derives_from_the_side_of_the_cap_it_recorded_without_needing_its_tape() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../demo/scenarios/ep4-pulmonary-embolism.json");
+    let sce = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let dated = |slot: u64| -> Option<i64> { (slot != 0).then(|| 1_789_000_000 + (slot as i64 * 2) / 5) };
+    let admitted = 50u64;
+    let slot = 450_050u64;
+    let steps: Vec<vitals_replay::Step> =
+        vec![vitals_replay::Step::Tick(60.0), vitals_replay::Step::Tick(30.0)];
+    let no_tapes = |_: &str| -> Option<Vec<vitals_replay::Step>> { None };
+    let leaf_from = |cap: bool| {
+        let (mut st, _) =
+            vitals_web::ward_chain::resumed(&sce, &[], &no_tapes, admitted, slot, &dated, cap)
+                .expect("she resumes");
+        let r = vitals_replay::shift(&mut st, &steps, 0.0);
+        vitals_web::ward_chain::hex32(&vitals_replay::leaf(&vitals_replay::sce_hash(&sce), &steps, &r))
+    };
+    let played_uncapped = leaf_from(false);
+    assert_ne!(played_uncapped, leaf_from(true), "the premise: past the cap the two sides differ");
+
+    let mut rh = [0u8; 32];
+    for (i, c) in rh.iter_mut().enumerate() {
+        *c = u8::from_str_radix(&played_uncapped[i * 2..i * 2 + 2], 16).expect("hex");
+    }
+    let this = vitals_web::ward::ShiftOnChain { patient_id: 12, signer: [7u8; 32], slot, run_hash: rh };
+    let shifts = [this];
+    // No tape anywhere: the probe has nothing to replay, so only the record can decide.
+    let d = vitals_web::ward_chain::Deriving {
+        shifts: &shifts, this: &this, tape_of: &no_tapes, admitted_slot: admitted, dated: &dated,
+        recorded_cap: Some(false),
+    };
+    let (mut st, _) = vitals_web::ward_chain::state_this_shift_began_on_with(&sce, &d, true)
+        .expect("she re-derives");
+    let r = vitals_replay::shift(&mut st, &steps, 0.0);
+    let re = vitals_web::ward_chain::hex32(&vitals_replay::leaf(&vitals_replay::sce_hash(&sce), &steps, &r));
+    assert_eq!(re, played_uncapped,
+               "the side the shift recorded decides, even when the environment defaults the other way \
+                and the tape is not here to probe with");
 }
 
 #[test]
@@ -2544,7 +2593,7 @@ fn the_proof_re_derives_a_leaf_the_way_the_receipt_does() {
         let leaf = vitals_web::ward_chain::hex32(
             &vitals_replay::leaf(&vitals_replay::sce_hash(&sce), &steps, &r));
         vitals_web::ward_chain::keep_tape(&store, &vitals_web::ward_chain::StoredTape {
-            patient_id: 11, run_hash: leaf.clone(), steps: steps.clone(), played_id: String::new(),
+            patient_id: 11, run_hash: leaf.clone(), steps: steps.clone(), played_id: String::new(), arrival_capped: None
         }).expect("tape kept");
         let mut b = [0u8; 32];
         for (i, c) in b.iter_mut().enumerate() {
@@ -2582,7 +2631,7 @@ fn the_proof_re_derives_a_leaf_the_way_the_receipt_does() {
         let steps = tape_of(leaf).expect("her tape");
         let deriving = vitals_web::ward_chain::Deriving {
             shifts: &shifts, this: &shifts[n], tape_of: &tape_of,
-            admitted_slot: admitted, dated: &dated,
+            admitted_slot: admitted, dated: &dated, recorded_cap: None,
         };
         let got = vitals_web::ward_case::bytes_for_receipt(
             &store, leaf, &steps, &deriving, None, None);
