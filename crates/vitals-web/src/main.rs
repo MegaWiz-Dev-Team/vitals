@@ -2492,8 +2492,13 @@ fn ward_chart(store: &store::Store, patient_id: u64) -> serde_json::Value {
 
 fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
     let bad = |why: &str| serde_json::json!({ "error": why });
+    // Three kinds of refusal, and the page must not wear one headline for all of them: a hash the
+    // chain does not hold (`absent`), a chain that could not be asked (`unread` — try again), and a
+    // shift that exists but cannot be shown (everything else).
+    let absent = |why: &str| serde_json::json!({ "error": why, "absent": true });
+    let unread = |why: &str| serde_json::json!({ "error": why, "unread": true });
     if !ward_chain::is_shift_hash(address) {
-        return bad("that is not the name of a shift");
+        return absent("that is not the name of a shift");
     }
     // **Two addresses, one page.** The run hash names the tape — two strangers who did exactly the
     // same things to the same case share one, and the receipt says so. The leaf names this shift
@@ -2503,17 +2508,17 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
     let run_hash = &ward_chain::run_hash_of_leaf(store, address).unwrap_or_else(|| address.to_string());
     let chain = match ward_chain::WardChain::connect() {
         Ok(c) => c,
-        Err(e) => return bad(&e),
+        Err(e) => return unread(&e),
     };
     let found = match ward_chain::find_shift(&chain, store, run_hash) {
         Ok(Some(f)) => f,
         Ok(None) => {
-            return bad(
+            return absent(
                 "no shift on this ward has that hash. It may never have been anchored, or it may \
                  belong to another ward — this one does not guess between them",
             )
         }
-        Err(e) => return bad(&e),
+        Err(e) => return unread(&e),
     };
     let (patient_id, shifts, this) = found;
     let Some(pack) = ward_chain::packs(store).remove(&patient_id) else {
@@ -2675,8 +2680,18 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
 fn receipt_page(r: &serde_json::Value, board: &serde_json::Value) -> String {
     let esc = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
     if let Some(why) = r["error"].as_str() {
+        // The headline is the kind of refusal, and the reason under it is the detail.
+        let (headline, then) = if r["unread"].as_bool() == Some(true) {
+            ("This shift could not be read just now",
+             "<p>The chain did not answer this ward's question, so nothing is shown rather than a \
+              guess. The shift itself is not affected — try again in a minute.</p>")
+        } else if r["absent"].as_bool() == Some(true) {
+            ("No such shift", "")
+        } else {
+            ("This shift cannot be shown", "")
+        };
         return format!(
-            "<!doctype html><meta charset=utf-8><title>No such shift — Vitals World</title>\
+            "<!doctype html><meta charset=utf-8><title>{headline} — Vitals World</title>\
              <link rel=\"icon\" type=\"image/svg+xml\" href=\"/world/favicon.svg\">\
              <meta name=viewport content='width=device-width,initial-scale=1'>\
              <style>body{{font:16px/1.6 ui-sans-serif,system-ui,sans-serif;max-width:34rem;\
@@ -2684,7 +2699,7 @@ fn receipt_page(r: &serde_json::Value, board: &serde_json::Value) -> String {
              .k{{font:.72rem/1.5 ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;\
              color:#7b8a86;margin:1.6rem 0 .3rem}}ul.beds{{list-style:none;padding:0;margin:0}}\
              ul.beds li{{margin:.35rem 0}}\
-             </style><h1>No such shift</h1><p>{why}</p>{beds}<p><a href=/>← the globe</a></p>",
+             </style><h1>{headline}</h1><p>{why}</p>{then}{beds}<p><a href=/>← the globe</a></p>",
             why = esc(why),
             beds = beds_on_offer(board),
         );
@@ -10262,5 +10277,31 @@ mod tests {
         let page = receipt_page(&anon, &serde_json::Value::Null);
         assert!(page.contains("handed on, still on the ward"), "{page}");
         assert!(!page.contains(" she ") && !page.contains(" he "), "{page}");
+    }
+
+    /// **A chain that could not be read is never a shift that does not exist.**
+    ///
+    /// 27 Sep 2026, production: the receipt of a real, anchored shift answered "No such shift —
+    /// HTTP status client error (429 Too Many Requests)". Every refusal on this page wore that one
+    /// headline, so a read the chain turned away told a judge the shift was never there — the
+    /// opposite of what the product says about itself. Three different answers, three headlines.
+    #[test]
+    fn a_chain_that_could_not_be_read_is_never_a_shift_that_does_not_exist() {
+        let null = serde_json::Value::Null;
+
+        let unread = serde_json::json!({ "error": "429 Too Many Requests", "unread": true });
+        let page = receipt_page(&unread, &null);
+        assert!(!page.contains("No such shift"),
+                "a failed read told the reader the shift does not exist: {page}");
+        assert!(page.contains("could not be read"), "and it says what did happen: {page}");
+        assert!(page.contains("try again"), "and what the reader can do about it: {page}");
+
+        let absent = serde_json::json!({ "error": "no shift on this ward has that hash", "absent": true });
+        assert!(receipt_page(&absent, &null).contains("No such shift"),
+                "a hash the chain was asked about and does not hold is the one case that headline fits");
+
+        let cannot = serde_json::json!({ "error": "the bytes this shift was played against are not here" });
+        let page = receipt_page(&cannot, &null);
+        assert!(!page.contains("No such shift"), "a shift that exists but cannot be rebuilt is not absent: {page}");
     }
 }
