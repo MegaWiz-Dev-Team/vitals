@@ -893,8 +893,13 @@ fn the_doors_own_refusals_read_as_sentences() {
     assert_eq!(code, 401, "the door took somebody else's token: {body}");
     let said = body["error"].as_str().unwrap_or_default();
     assert!(!said.contains("  "), "the refusal has a hole in it: {said:?}");
-    assert!(said.contains("VITALS_DOOR_TOKEN"),
-            "and it names the variable the operator has to set: {said:?}");
+    // It used to name the variable too, on the reading that only the operator sees it. That reading
+    // was half right: the operator's factory logs it, and so does every stranger's curl, because the
+    // 401 goes back to whoever knocked. The variable's name is a map to the secret, so it moved to the
+    // server's own startup log (the security audit of 25–27 Sep 2026, NEW-2); the sentence stays, and
+    // still tells the operator what is wrong.
+    assert!(!said.contains("VITALS_"), "the refusal names an environment variable: {said:?}");
+    assert!(said.contains("token"), "and it still says what was wrong: {said:?}");
 
     // The same door, with no token at all.
     let (code, body) = s.post_with("/api/ward/case", &a_pack(), None);

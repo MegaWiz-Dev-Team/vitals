@@ -143,9 +143,12 @@ fn a_ward_with_no_door_token_does_not_open_the_doors_at_all() {
         assert_eq!(code, 503,
                    "{door} must say it has no secret to check against, and never fall back to the \
                     page's: {body}");
-        assert!(body.contains("VITALS_DOOR_TOKEN"),
-                "and the sentence has to name what is missing, because the person reading it is \
-                 the one who can set it: {body}");
+        // It used to name the missing variable, so the person who can set it would know which.
+        // The reply goes to whoever knocked, though, so the name moved to the server's startup log
+        // (security audit NEW-2, 27 Sep 2026) and the reply now says where to look. The operator still
+        // learns what is missing; a stranger learns only that the doors are shut.
+        assert!(!body.contains("VITALS_"), "the reply names an environment variable: {body}");
+        assert!(body.contains("log"), "and it tells the operator where to find what is missing: {body}");
     }
 }
 

@@ -3361,8 +3361,8 @@ fn read_response(
                 (_, None) => {
                     funnel["hand_overs"] = serde_json::Value::Null;
                     funnel["hand_overs_unknown"] = serde_json::json!(
-                        "this host holds neither VITALS_OPERATOR nor a relay key, so it cannot \
-                         tell its own closures from a stranger's hand-over and will not guess");
+                        "this host cannot tell its own closures from a stranger's hand-over, so it \
+                         will not guess");
                 }
                 // No window, no figure: the three steps above it are not counting either.
                 (None, _) => {
@@ -3454,6 +3454,47 @@ fn json(v: impl Serialize) -> Response<std::io::Cursor<Vec<u8>>> {
 /// is a page the front end renders, not a status code it apologises for.
 fn json_code(v: impl Serialize, code: u16) -> Response<std::io::Cursor<Vec<u8>>> {
     json(v).with_status_code(code)
+}
+
+/// **The security headers every response carries.**
+///
+/// Until 27 Sep 2026 the ward sent none. Its page is where a stranger signs a transaction, so a site
+/// able to frame it invisibly could steer that signature — clickjacking — and nothing said not to.
+///
+/// * `frame-ancestors 'none'` + `X-Frame-Options: DENY` — nobody frames the ward, not even the ward:
+///   no page of ours frames another (its only frames are the YouTube films, which is us framing them,
+///   not them framing us). Both spellings, because older browsers read only the second.
+/// * `nosniff` — a JSON answer is never run as a script because a browser guessed its type.
+/// * `strict-origin-when-cross-origin` — a link out tells the other site where it came from, not the
+///   path, so a shift or receipt URL does not leak into somebody's analytics.
+/// * HSTS, one year, **no `includeSubDomains`** — this host is only ever served over HTTPS, and the
+///   rule is kept to it rather than committing every other name under the domain.
+/// * `Permissions-Policy` — off for what the ward never uses; **the microphone stays on for this
+///   origin**, because the bedside's 🎤 button uses SpeechRecognition and switching it off would take
+///   voice away from somebody who needs it.
+///
+/// Only framing is enforced from the Content-Security-Policy. A script/style policy needs its own
+/// audit — the page carries inline script and embeds YouTube-nocookie and Google Fonts — and a wrong
+/// one would break the ward, which is a worse outcome than the gap it closes.
+fn harden<R: std::io::Read>(r: Response<R>) -> Response<R> {
+    const HEADERS: [(&[u8], &[u8]); 6] = [
+        (b"X-Content-Type-Options", b"nosniff"),
+        (b"X-Frame-Options", b"DENY"),
+        (b"Content-Security-Policy", b"frame-ancestors 'none'"),
+        (b"Referrer-Policy", b"strict-origin-when-cross-origin"),
+        (b"Strict-Transport-Security", b"max-age=31536000"),
+        (b"Permissions-Policy", b"camera=(), geolocation=(), payment=(), usb=(), microphone=(self)"),
+    ];
+    HEADERS
+        .iter()
+        .fold(r, |r, (k, v)| r.with_header(Header::from_bytes(*k, *v).expect("a static header")))
+}
+
+/// **The one door every response leaves through**, so no route can send one without the headers.
+/// There are some two hundred answers in this file; adding the headers at each would be a list that
+/// is complete on the day it is written. `tests/security_headers.rs` reads one of each kind.
+fn send_hardened<R: std::io::Read>(req: tiny_http::Request, resp: Response<R>) -> std::io::Result<()> {
+    req.respond(harden(resp))
 }
 
 /// How far from the end of `X-Forwarded-For` the caller's address sits.
@@ -3637,8 +3678,27 @@ fn bearer_ok(req: &tiny_http::Request, token: &Option<String>) -> bool {
         .iter()
         .find(|h| h.field.equiv("authorization"))
         .map(|h| h.value.as_str().trim())
-        .map(|v| v.strip_prefix("Bearer ").unwrap_or(v) == want)
+        .map(|v| secret_eq(v.strip_prefix("Bearer ").unwrap_or(v), want))
         .unwrap_or(false)
+}
+
+/// **Whether a presented secret is the expected one, in time that does not depend on either.**
+///
+/// This guards the door token, which opens every write path. `==` on strings stops at the first
+/// byte that differs, so how long a refusal takes says how much of a guess was right — a timing
+/// side-channel on the secret (security audit M2, 25 Sep 2026). Both sides are hashed to 32 bytes
+/// first, so the comparison runs the same length whatever the secret's length or content, and every
+/// byte is examined rather than stopping early. Even an early exit would only reveal where two
+/// SHA-256 digests first differ, which says nothing about the secret. `black_box` keeps the compiler
+/// from turning the accumulate-every-byte loop back into an early return.
+fn secret_eq(given: &str, want: &str) -> bool {
+    use sha2::{Digest, Sha256};
+    let (a, b) = (Sha256::digest(given.as_bytes()), Sha256::digest(want.as_bytes()));
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= std::hint::black_box(x ^ y);
+    }
+    std::hint::black_box(diff) == 0
 }
 
 /// Why a request body was refused. Both are the caller's, and neither is a 500.
@@ -3726,6 +3786,13 @@ fn main() {
     // The factory's own key. Deliberately a second variable rather than a second use of the first:
     // the page's token is printed into `bay.js` and this one must never be.
     let door_token = std::env::var("VITALS_DOOR_TOKEN").ok().filter(|s| !s.is_empty());
+    // The operator's half of the door's refusal. A caller knocking on a ward with no door token is
+    // told only that the doors are shut; which variable is missing is said here, once, in the log
+    // the operator reads — never in a reply to whoever asked. Stderr, not stdout: the harnesses read
+    // stdout only up to the port line and a later `println!` would break their pipe.
+    if ward_mode() && door_token.is_none() {
+        eprintln!("door       shut — VITALS_DOOR_TOKEN is unset, so every factory door answers 503");
+    }
     let loopback = addr.starts_with("127.") || addr.starts_with("localhost");
     if !loopback && token.is_none() {
         // Refusing to start is the only honest option. Bound to a public interface with no token,
@@ -4121,10 +4188,10 @@ fn main() {
                     let path = req.url().split('?').next().unwrap_or("/").to_string();
                     let resp = read_response(&req, &path, &view, &store, &state, &counts, &page_token);
                     let _ = match resp {
-                        Some(r) => req.respond(r),
+                        Some(r) => send_hardened(req, r),
                         // Routed here by the table but not served by it: answer rather than drop,
                         // and the table's test is what stops the two disagreeing.
-                        None => req.respond(
+                        None => send_hardened(req, 
                             Response::from_data(b"not found".to_vec()).with_status_code(404),
                         ),
                     };
@@ -4150,9 +4217,9 @@ fn main() {
                 let resp =
                     read_response(&back, &path, &ward_view, &store, &state_dir, &usage, &token);
                 let _ = match resp {
-                    Some(r) => back.respond(r),
-                    None => back
-                        .respond(Response::from_data(b"not found".to_vec()).with_status_code(404)),
+                    Some(r) => send_hardened(back, r),
+                    None => send_hardened(back,
+                        Response::from_data(b"not found".to_vec()).with_status_code(404)),
                 };
             }
             continue;
@@ -4205,7 +4272,7 @@ fn main() {
                 }
             };
             if let Some(why) = why {
-                let _ = req.respond(json_code(rebuild::cannot_rebuild(&why), 409));
+                let _ = send_hardened(req, json_code(rebuild::cannot_rebuild(&why), 409));
                 continue;
             }
         }
@@ -4221,12 +4288,12 @@ fn main() {
                     .with_status_code(301)
                     .with_header(Header::from_bytes(&b"Location"[..], to.as_bytes()).unwrap()),
             };
-            let _ = req.respond(resp);
+            let _ = send_hardened(req, resp);
             continue;
         }
 
         if guarded(&path) && !bearer_ok(&req, &token) {
-            let _ = req.respond(
+            let _ = send_hardened(req, 
                 Response::from_string(r#"{"error":"unauthorised"}"#)
                     .with_status_code(401)
                     .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap()),
@@ -4237,17 +4304,17 @@ fn main() {
             // No secret of their own, no doors. Never the page's token as a fallback: that is the
             // bug this split exists for, and a fallback is how it would come back.
             let Some(want) = door_token.clone() else {
-                let _ = req.respond(json_code(serde_json::json!({
-                    "error": "this ward has no VITALS_DOOR_TOKEN, so the factory's doors are \
-                              shut. They take their own secret and never the page's — the page's \
-                              is printed into bay.js for every visitor"
+                let _ = send_hardened(req, json_code(serde_json::json!({
+                    "error": "the factory's doors are shut on this ward — its startup log says \
+                              what is missing"
                 }), 503));
                 continue;
             };
             if !bearer_ok(&req, &Some(want)) {
-                let _ = req.respond(json_code(serde_json::json!({
-                    "error": "unauthorised — the factory's doors take VITALS_DOOR_TOKEN, which \
-                              is not the token the page carries"
+                let _ = send_hardened(req, json_code(serde_json::json!({
+                    // "No", and nothing about which secret or where it lives — the operator
+                    // reading the log knows which token the doors take; a stranger learns nothing.
+                    "error": "unauthorised — this door did not recognise the token it was given"
                 }), 401));
                 continue;
             }
@@ -4287,7 +4354,7 @@ fn main() {
             if let meter::Verdict::SlowDown { retry_secs } =
                 meter.allow_free(&format!("review:{}", client_addr(&req)), &store)
             {
-                let _ = req.respond(json_code(
+                let _ = send_hardened(req, json_code(
                     serde_json::json!({
                         "error": "too many submissions from this address — give it a minute",
                         "retry_in": retry_secs,
@@ -4328,13 +4395,13 @@ fn main() {
                     },
                 },
             };
-            let _ = req.respond(resp);
+            let _ = send_hardened(req, resp);
             continue;
         }
         if path == "/api/say" {
             said.retain(|t| t.elapsed() < Duration::from_secs(60));
             if said.len() >= SAY_PER_MIN {
-                let _ = req.respond(json(serde_json::json!({ "error": "too many questions — give the patient a moment" })));
+                let _ = send_hardened(req, json(serde_json::json!({ "error": "too many questions — give the patient a moment" })));
                 continue;
             }
             said.push(Instant::now());
@@ -4351,7 +4418,7 @@ fn main() {
                 let page = compose(if ward_mode() { WORLD } else { LANDING });
                 let resp = squeezed(&req, page.into_bytes(), b"text/html; charset=utf-8")
                     .with_header(never_kept());
-                let _ = req.respond(resp);
+                let _ = send_hardened(req, resp);
                 continue;
             }
             (Method::Get, "/play") => {
@@ -4359,7 +4426,7 @@ fn main() {
                 // does not widen anything: reaching the page and reaching the API are one
                 // boundary. The token itself now rides on /bay.js, which this same process serves.
                 let page = compose(PAGE);
-                let _ = req.respond(
+                let _ = send_hardened(req, 
                     Response::from_string(page).with_header(
                         Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
                             .unwrap(),
@@ -4375,7 +4442,7 @@ fn main() {
             // same open door and is gone; the 404 at the bottom of this match is the right answer
             // for it, and `session.rs` holds it to that.
             (Method::Get, "/slides") | (Method::Get, "/slides/") => {
-                let _ = req.respond(html(&format!("{DECK}{PRESENT}")));
+                let _ = send_hardened(req, html(&format!("{DECK}{PRESENT}")));
                 continue;
             }
 
@@ -4390,7 +4457,7 @@ fn main() {
                     .filter(|n| n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
                 match safe.and_then(|n| std::fs::read(clips_dir().join(format!("{n}.mp4"))).ok()) {
                     Some(bytes) => {
-                        let _ = req.respond(
+                        let _ = send_hardened(req, 
                             Response::from_data(bytes)
                                 .with_header(Header::from_bytes(&b"Content-Type"[..], &b"video/mp4"[..]).unwrap())
                                 .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=86400"[..]).unwrap()),
@@ -4413,7 +4480,7 @@ fn main() {
                     .and_then(|f| std::fs::read(f).ok());
                 match hit {
                     Some(bytes) => {
-                        let _ = req.respond(
+                        let _ = send_hardened(req, 
                             Response::from_data(bytes)
                                 .with_header(Header::from_bytes(&b"Content-Type"[..], &b"image/jpeg"[..]).unwrap())
                                 .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=86400"[..]).unwrap()),
@@ -4433,7 +4500,7 @@ fn main() {
                 let key = p.trim_start_matches("/img/cases/");
                 match CASE_IMG.iter().find(|(k, _, _)| *k == key) {
                     Some((_, bytes, mime)) => {
-                        let _ = req.respond(
+                        let _ = send_hardened(req, 
                             Response::from_data(*bytes)
                                 .with_header(Header::from_bytes(&b"Content-Type"[..], mime.as_bytes()).unwrap())
                                 .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=86400"[..]).unwrap()),
@@ -4447,7 +4514,7 @@ fn main() {
                 let key = p.trim_start_matches("/img/").trim_end_matches(".jpg");
                 match STILLS.iter().chain(KEY_ART.iter()).find(|(k, _)| *k == key) {
                     Some((_, bytes)) => {
-                        let _ = req.respond(
+                        let _ = send_hardened(req, 
                             Response::from_data(*bytes)
                                 .with_header(Header::from_bytes(&b"Content-Type"[..], &b"image/jpeg"[..]).unwrap())
                                 .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=86400"[..]).unwrap()),
@@ -4463,7 +4530,7 @@ fn main() {
                     "/device/pump" => PUMP,
                     _ => MONITOR,
                 };
-                let _ = req.respond(Response::from_string(page).with_header(
+                let _ = send_hardened(req, Response::from_string(page).with_header(
                     Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..]).unwrap(),
                 ));
                 continue;
@@ -4548,7 +4615,7 @@ fn main() {
                         .as_ref()
                         .map(|(_, m, _, what)| (*what, *m))
                         .unwrap_or(("this address", 0));
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "error": if per_min > 0 {
                             format!("{what} has opened {per_min} runs in a minute, which is all \
                                      this ward counts for one — give it a minute")
@@ -4567,7 +4634,7 @@ fn main() {
                 // first episode on the host whose front page is a globe (ruling 13: nothing of the
                 // season lives here). A mistyped id is a mistyped id, and it is answered as one.
                 if ward_mode() && param(&url, "patient").is_some_and(|p| p.parse::<u64>().is_err()) {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "error": "a patient id is a whole number, and this host has no episodes to \
                                   open instead",
                         "the_ward_is": "/api/ward"
@@ -4576,7 +4643,7 @@ fn main() {
                 }
                 if let Some(patient_id) = param(&url, "patient").and_then(|p| p.parse::<u64>().ok()) {
                     if !ward_mode() {
-                        let _ = req.respond(json_code(serde_json::json!({
+                        let _ = send_hardened(req, json_code(serde_json::json!({
                             "error": "this host has no ward",
                             "the_ward_is": "https://world.vitals.academy"
                         }), 404));
@@ -4591,14 +4658,14 @@ fn main() {
                             map.insert(id.clone(), s);
                             persist(&store, &id, map.get_mut(&id).expect("just inserted"), true);
                             drop(map);
-                            let _ = req.respond(json(serde_json::json!({
+                            let _ = send_hardened(req, json(serde_json::json!({
                                 "id": id, "view": view, "ward": ward
                             })));
                         }
                         // Said in words rather than as a code: every one of these is a thing the
                         // person standing at her bed can understand and act on.
                         Err(why) => {
-                            let _ = req.respond(json_code(serde_json::json!({ "error": why }), 409));
+                            let _ = send_hardened(req, json_code(serde_json::json!({ "error": why }), 409));
                         }
                     }
                     continue;
@@ -4609,7 +4676,7 @@ fn main() {
                 // here.
                 if let Some(case_id) = param(&url, "review") {
                     if !ward_mode() {
-                        let _ = req.respond(json_code(serde_json::json!({
+                        let _ = send_hardened(req, json_code(serde_json::json!({
                             "error": "this host has no ward and no catalogue to review",
                             "the_ward_is": "https://world.vitals.academy"
                         }), 404));
@@ -4626,12 +4693,12 @@ fn main() {
                             drop(map);
                             // Not counted in `usage`: nobody played a case here, somebody read one.
                             // The month's figures are about learners at bedsides.
-                            let _ = req.respond(json(serde_json::json!({
+                            let _ = send_hardened(req, json(serde_json::json!({
                                 "id": id, "view": view, "review": review
                             })));
                         }
                         Err(why) => {
-                            let _ = req.respond(json_code(serde_json::json!({ "error": why }), 404));
+                            let _ = send_hardened(req, json_code(serde_json::json!({ "error": why }), 404));
                         }
                     }
                     continue;
@@ -4652,7 +4719,7 @@ fn main() {
                 // station ids: "never the EP1 fallback, because playing EP1 under a station's
                 // name would anchor the wrong case." It is the same sentence for every other id.
                 if !every_case().contains(&ep.as_str()) {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "error": "no such case",
                     }), 404));
                     continue;
@@ -4687,7 +4754,7 @@ fn main() {
                         let why = ward::may_step(s.ward.is_some(), s.commit.is_some(), s.handed_over)
                             .unwrap_err();
                         drop(map);
-                        let _ = req.respond(json_code(serde_json::json!({ "error": why }), 409));
+                        let _ = send_hardened(req, json_code(serde_json::json!({ "error": why }), 409));
                         continue;
                     }
                     Some(s) => {
@@ -4795,7 +4862,7 @@ fn main() {
                         let was_over = s.over();
                         if !was_over {
                             if let Err(e) = s.ring_the_bell() {
-                                let _ = req.respond(json(serde_json::json!({ "error": e })));
+                                let _ = send_hardened(req, json(serde_json::json!({ "error": e })));
                                 continue;
                             }
                         }
@@ -5094,7 +5161,7 @@ fn main() {
                 let (hist, status, pulse, spo2, ep, shift) = {
                     let mut map = sessions.lock().unwrap();
                     let Some(s) = map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) else {
-                        let _ = req.respond(no_such_session());
+                        let _ = send_hardened(req, no_such_session());
                         continue;
                     };
                     // The question goes on the tape. The answer never will.
@@ -5136,7 +5203,7 @@ fn main() {
                     // lives in the pack the ward branch below loads. A sentence that is true from
                     // here beats one that needs a store read to be polite, and `plain_words`
                     // forbids composing it out of a pronoun instead.
-                    let _ = req.respond(json(serde_json::json!({
+                    let _ = send_hardened(req, json(serde_json::json!({
                         "reply": "The patient has no pulse and cannot answer. Start CPR, or hand over.",
                         "asked": serde_json::Value::Null,
                         "cannot_answer": true,
@@ -5157,7 +5224,7 @@ fn main() {
                         // ward no longer holds. Said plainly, because the alternative on a page
                         // whose whole claim is that the chart is the chain is a confident sentence
                         // from nobody.
-                        let _ = req.respond(json(serde_json::json!({
+                        let _ = send_hardened(req, json(serde_json::json!({
                             "error": "this patient's case is not on this ward — examine, order and treat instead",
                         })));
                         continue;
@@ -5175,7 +5242,7 @@ fn main() {
                     // who asked for Thai is told that rather than left to wonder — the same note
                     // the bay puts on a model's reply that drifted, for the same reason.
                     let off = !lang::reply_is_in(want, &said.words);
-                    let _ = req.respond(json(serde_json::json!({
+                    let _ = send_hardened(req, json(serde_json::json!({
                         "reply": said.words,
                         "who": pack.persona.name,
                         "asked": said.matched,
@@ -5185,7 +5252,7 @@ fn main() {
                 }
 
                 let Some(pt) = patient.as_ref() else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no gateway — the patient has no voice here" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no gateway — the patient has no voice here" })));
                     continue;
                 };
                 // The bay is free and the inference is paid for by donations, so the spend is
@@ -5194,14 +5261,14 @@ fn main() {
                 match meter.allow(&client_addr(&req), &store) {
                     meter::Verdict::Ok => {}
                     meter::Verdict::SlowDown { retry_secs } => {
-                        let _ = req.respond(json_code(serde_json::json!({
+                        let _ = send_hardened(req, json_code(serde_json::json!({
                             "error": "the patient needs a moment — you are asking faster than the bay allows",
                             "retry_in": retry_secs,
                         }), 429));
                         continue;
                     }
                     meter::Verdict::Ceiling => {
-                        let _ = req.respond(json_code(serde_json::json!({
+                        let _ = send_hardened(req, json_code(serde_json::json!({
                             "error": "this month's compute is spent",
                             "ceiling": meter.view(),
                         }), 429));
@@ -5213,7 +5280,7 @@ fn main() {
                 // a confident voice is worse for a candidate than no answer at all, because there
                 // is nothing on the screen to tell them it was the wrong patient talking.
                 let Some(persona) = personas.get(&ep) else {
-                    let _ = req.respond(json(serde_json::json!({
+                    let _ = send_hardened(req, json(serde_json::json!({
                         "error": "this patient has no voice here — examine, order and treat instead",
                     })));
                     continue;
@@ -5315,7 +5382,7 @@ fn main() {
                     ))
                     .with_status_code(404),
                 };
-                let _ = req.respond(resp);
+                let _ = send_hardened(req, resp);
                 continue;
             }
             (Method::Get, p) if ward_mode() && p.starts_with("/ward/") => {
@@ -5366,14 +5433,14 @@ fn main() {
                     None => ward_page_missing("that is not a patient id",
                                               &ward_now(&ward_view, &store, &state_dir)),
                 };
-                let _ = req.respond(html(&body));
+                let _ = send_hardened(req, html(&body));
                 continue;
             }
             (Method::Get, p) if p.starts_with("/api/sce/") => {
                 let want = p.trim_start_matches("/api/sce/");
                 match archive::answer(want, &live_scenarios(), &sce_archive_dir()) {
                     archive::Answer::Retired(text) => {
-                        let _ = req.respond(
+                        let _ = send_hardened(req, 
                             Response::from_string(text)
                                 .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap())
                                 // Content-addressed: these bytes cannot change without changing
@@ -5473,8 +5540,8 @@ fn main() {
                 if ward_mode() {
                     // One implementation, in `read_response`, which the reader pool also calls.
                     match read_response(&req, &path, &ward_view, &store, &state_dir, &usage, &token) {
-                        Some(r) => { let _ = req.respond(r); }
-                        None => { let _ = req.respond(json_code(serde_json::json!({}), 404)); }
+                        Some(r) => { let _ = send_hardened(req, r); }
+                        None => { let _ = send_hardened(req, json_code(serde_json::json!({}), 404)); }
                     }
                     continue;
                 }
@@ -5545,7 +5612,7 @@ fn main() {
                 let table = match authors::load(&root.join(authors::AUTHORS_PATH)) {
                     Ok(t) => t,
                     Err(e) => {
-                        let _ = req.respond(json(serde_json::json!({ "error": e })));
+                        let _ = send_hardened(req, json(serde_json::json!({ "error": e })));
                         continue;
                     }
                 };
@@ -5612,7 +5679,7 @@ fn main() {
                 // the authors endpoint holds — never from a fresh scan.
                 let leaf = param(&url, "leaf").unwrap_or_default().to_lowercase();
                 if payer.is_none() || leaf.is_empty() {
-                    let _ = req.respond(json(serde_json::json!({ "paid": false, "unknown": true })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "paid": false, "unknown": true })));
                     continue;
                 }
                 // What this process paid, which is the ordinary case: the run just finished here.
@@ -5702,7 +5769,7 @@ fn main() {
             // as long as somebody kept a tab open, and the ward would serve nobody else.
             (Method::Get, "/api/ward/stream") if ward_mode() => {
                 if WARD_WATCHERS.load(std::sync::atomic::Ordering::Relaxed) >= WARD_STREAMS {
-                    let _ = req.respond(
+                    let _ = send_hardened(req, 
                         json(serde_json::json!({
                             "error": format!("{WARD_STREAMS} boards are already watching"),
                             "poll_instead": "/api/ward"
@@ -5779,7 +5846,7 @@ fn main() {
             // will be asked to treat.
             (Method::Post, "/api/ward/case") => {
                 if !ward_mode() {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "error": "this host has no ward",
                         "the_ward_is": "https://world.vitals.academy/api/ward/case"
                     }), 404));
@@ -5788,13 +5855,13 @@ fn main() {
                 let body = match read_body(&mut req, CASE_MAX) {
                     Ok(b) => b,
                     Err(BadBody::TooLong) => {
-                        let _ = req.respond(json_code(serde_json::json!({
+                        let _ = send_hardened(req, json_code(serde_json::json!({
                             "refused": format!("a case pack is at most {CASE_MAX} bytes")
                         }), 413));
                         continue;
                     }
                     Err(BadBody::NotText) => {
-                        let _ = req.respond(json_code(serde_json::json!({
+                        let _ = send_hardened(req, json_code(serde_json::json!({
                             "refused": "that body is not UTF-8 text"
                         }), 400));
                         continue;
@@ -5803,7 +5870,7 @@ fn main() {
                 let pack: serde_json::Value = match serde_json::from_str(&body) {
                     Ok(v) => v,
                     Err(e) => {
-                        let _ = req.respond(json_code(serde_json::json!({
+                        let _ = send_hardened(req, json_code(serde_json::json!({
                             "refused": format!("that is not a case pack: {e}")
                         }), 400));
                         continue;
@@ -5814,7 +5881,7 @@ fn main() {
                     // 422 and not 400: the JSON was fine and the case is not. The compiler is the
                     // only thing that can act on the difference, and it reads this in a log.
                     Err(why) => {
-                        let _ = req.respond(json_code(serde_json::json!({ "refused": why }), 422));
+                        let _ = send_hardened(req, json_code(serde_json::json!({ "refused": why }), 422));
                         continue;
                     }
                 };
@@ -5836,7 +5903,7 @@ fn main() {
                     // The same bytes twice is not a store, and saying "stored" for work that did
                     // not happen is the habit this whole day has been spent unlearning.
                     if ward_case::identical_to(&held, &pack) {
-                        let _ = req.respond(json(serde_json::json!({
+                        let _ = send_hardened(req, json(serde_json::json!({
                             "stored": summary.case_id,
                             "unchanged": true,
                             "note": "already held, byte-identical — nothing was written",
@@ -5846,7 +5913,7 @@ fn main() {
                     }
                     let reviewed = !held.get("provisional").and_then(|p| p.as_bool()).unwrap_or(true);
                     if reviewed {
-                        let _ = req.respond(json_code(serde_json::json!({
+                        let _ = send_hardened(req, json_code(serde_json::json!({
                             "refused": format!(
                                 "{} is already here and has been clinically reviewed, so it is \
                                  add-only: a reviewed case is replaced by publishing a new id",
@@ -5866,7 +5933,7 @@ fn main() {
                             // wrong thing. Refusing is recoverable; a shift that stops verifying is
                             // not.
                             Err(why) => {
-                                let _ = req.respond(json_code(serde_json::json!({
+                                let _ = send_hardened(req, json_code(serde_json::json!({
                                     "refused": format!(
                                         "this ward cannot tell whether the chain carries a shift \
                                          against {}, so it will not change what that case scores: \
@@ -5877,7 +5944,7 @@ fn main() {
                                 continue;
                             }
                             Ok(Some(who)) => {
-                                let _ = req.respond(json_code(serde_json::json!({
+                                let _ = send_hardened(req, json_code(serde_json::json!({
                                     "refused": format!(
                                         "the chain carries a shift against {} ({who}), so changing \
                                          what it scores would stop that shift re-deriving. Publish \
@@ -5894,7 +5961,7 @@ fn main() {
                         // unmoved version and an unmoved compiler.commit is a silent edit, and the
                         // identifiers are the only thing a reader can tell two packs apart by.
                         if !ward_case::identity_moved(&held, &pack) {
-                            let _ = req.respond(json_code(serde_json::json!({
+                            let _ = send_hardened(req, json_code(serde_json::json!({
                                 "refused": format!(
                                     "{} would score differently but nothing says so: the same \
                                      version and the same compiler.commit. Bump meta.version for \
@@ -5922,7 +5989,7 @@ fn main() {
                 ward_case::keep_played_bytes(&store, &pack);
                 match store.put(ward_case::CASE_STORE, &key, &pack) {
                     Ok(()) => {
-                        let _ = req.respond(json(serde_json::json!({
+                        let _ = send_hardened(req, json(serde_json::json!({
                             "stored": summary.case_id,
                             "provisional": summary.provisional,
         "status": ward_chain::catalogue_status(ward_chain::door_here()),
@@ -5930,7 +5997,7 @@ fn main() {
                         })));
                     }
                     Err(e) => {
-                        let _ = req.respond(json_code(serde_json::json!({
+                        let _ = send_hardened(req, json_code(serde_json::json!({
                             "refused": format!("the case could not be stored: {e}")
                         }), 503));
                     }
@@ -5948,7 +6015,7 @@ fn main() {
             // are deleting the packs the chain's patients depend on, or emptying the ward.
             (Method::Post, p) if p.starts_with("/api/ward/case/") && p.ends_with("/withdraw") => {
                 if !ward_mode() {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "error": "this host has no ward"
                     }), 404));
                     continue;
@@ -5961,7 +6028,7 @@ fn main() {
                 let key = ward_case::key_for(&id);
                 let Some(mut pack) = store.get::<serde_json::Value>(ward_case::CASE_STORE, &key)
                 else {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "refused": format!("{id} is not a case this ward holds")
                     }), 404));
                     continue;
@@ -5969,7 +6036,7 @@ fn main() {
                 // The same rule as replacing one, and for the same reason: somebody has played a
                 // reviewed case and the chain carries what they did.
                 if !pack.get("provisional").and_then(|p| p.as_bool()).unwrap_or(true) {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "refused": format!(
                             "{id} is reviewed, and a reviewed case is not withdrawn: somebody has \
                              played it and the chain carries shifts against it"
@@ -5980,14 +6047,14 @@ fn main() {
                 pack["withdrawn"] = serde_json::Value::Bool(true);
                 match store.put(ward_case::CASE_STORE, &key, &pack) {
                     Ok(()) => {
-                        let _ = req.respond(json(serde_json::json!({
+                        let _ = send_hardened(req, json(serde_json::json!({
                             "withdrawn": id,
                             "kept": "the pack stays in the store and stays readable: the \
                                      patients already on this case are rebuilt from it",
                         })));
                     }
                     Err(e) => {
-                        let _ = req.respond(json_code(serde_json::json!({
+                        let _ = send_hardened(req, json_code(serde_json::json!({
                             "refused": format!("the case could not be withdrawn: {e}")
                         }), 503));
                     }
@@ -6011,7 +6078,7 @@ fn main() {
             // attributable to the shift it was aimed at.
             (Method::Post, "/api/ward/offer") => {
                 let Some(leaf) = param(&url, "leaf").filter(|l| ward_chain::is_shift_hash(l)) else {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "refused": "name the shift these bytes are offered for: \
                                     ?leaf=<the 64-character leaf the chain holds>",
                     }), 400));
@@ -6021,13 +6088,13 @@ fn main() {
                 let body = match read_body(&mut req, CASE_MAX) {
                     Ok(b) => b,
                     Err(BadBody::TooLong) => {
-                        let _ = req.respond(json_code(serde_json::json!({
+                        let _ = send_hardened(req, json_code(serde_json::json!({
                             "refused": format!("a case pack is at most {CASE_MAX} bytes")
                         }), 413));
                         continue;
                     }
                     Err(BadBody::NotText) => {
-                        let _ = req.respond(json_code(serde_json::json!({
+                        let _ = send_hardened(req, json_code(serde_json::json!({
                             "refused": "that body is not UTF-8 text"
                         }), 400));
                         continue;
@@ -6036,21 +6103,21 @@ fn main() {
                 let pack: serde_json::Value = match serde_json::from_str(&body) {
                     Ok(v) => v,
                     Err(e) => {
-                        let _ = req.respond(json_code(serde_json::json!({
+                        let _ = send_hardened(req, json_code(serde_json::json!({
                             "refused": format!("that is not a case pack: {e}")
                         }), 400));
                         continue;
                     }
                 };
                 let Some((patient_id, shifts, this)) = ward_chain::shift_at_leaf(&store, &leaf) else {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "refused": "this ward has read no shift under that leaf, so there is nothing \
                                     to check these bytes against",
                     }), 404));
                     continue;
                 };
                 let Some(steps) = ward_chain::tape_by_hash(&store, &leaf) else {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "refused": "this ward holds no tape for that shift, so nothing can be \
                                     replayed against its leaf. What is missing is here, not on the \
                                     chain",
@@ -6062,7 +6129,7 @@ fn main() {
                     .and_then(|c| c.patient(patient_id).ok().flatten())
                     .map(|p| p.admitted_slot);
                 let Some(admitted_slot) = admitted else {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "refused": "this ward could not learn when that patient was admitted, and \
                                     the idle time before her first shift is measured from it — so \
                                     there is no honest derivation to check these bytes against",
@@ -6118,7 +6185,7 @@ fn main() {
                     }),
                 };
                 let code = if out.get("refused").is_some() { 409 } else { 200 };
-                let _ = req.respond(json_code(out, code));
+                let _ = send_hardened(req, json_code(out, code));
                 continue;
             }
             // **Keep the bytes of every case this ward already holds.** Idempotent, and nothing
@@ -6132,7 +6199,7 @@ fn main() {
             // itself on every cold start would be the first step of exactly that.
             (Method::Post, "/api/ward/seed") => {
                 let kept = ward_case::seed_played_bytes(&store);
-                let _ = req.respond(json(serde_json::json!({
+                let _ = send_hardened(req, json(serde_json::json!({
                     "cases_kept": kept,
                     "derivations": {
                         "cases_kept": "every case in this ward's store whose pack still validates, \
@@ -6186,7 +6253,7 @@ fn main() {
                     &store, &admitted_of, &as_it_stands_of,
                     std::time::Duration::from_secs(5), after);
                 let count = |v: &str| rows.iter().filter(|r| r.verdict == v).count();
-                let _ = req.respond(json(serde_json::json!({
+                let _ = send_hardened(req, json(serde_json::json!({
                     // **Every count below is this page's, not the ward's.** Said first because a
                     // partial tally that reads like a whole one is the kind of number somebody
                     // repeats: 3 unrebuildable out of a page of 9 is not 3 out of the ward.
@@ -6288,7 +6355,7 @@ fn main() {
                     cases.retain(|c| c["withdrawn"] != serde_json::Value::Bool(true));
                 }
                 cases.sort_by(|a, b| a["case_id"].as_str().cmp(&b["case_id"].as_str()));
-                let _ = req.respond(json(serde_json::json!({
+                let _ = send_hardened(req, json(serde_json::json!({
                     "cases": cases,
                     // The catalogue page shows this beneath its counts; it never types the date.
                     "status": ward_chain::catalogue_status(ward_chain::door_here()),
@@ -6307,7 +6374,7 @@ fn main() {
             }
             (Method::Post, "/api/ward/tick") => {
                 if !ward_mode() {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "ward": "not on this host",
                         "the_ward_is": "https://world.vitals.academy/api/ward/tick"
                     }), 404));
@@ -6349,7 +6416,7 @@ fn main() {
                     let store = match store::Store::open(std::path::PathBuf::from(&state)) {
                         Ok(s) => s,
                         Err(e) => {
-                            let _ = req.respond(json_code(
+                            let _ = send_hardened(req, json_code(
                                 serde_json::json!({ "error": format!("no store for the pass: {e}") }),
                                 503,
                             ));
@@ -6376,13 +6443,13 @@ fn main() {
                         }),
                     };
                     let (code, body) = ward_chain::tick_response(ran, began.elapsed());
-                    let _ = req.respond(json_code(body, code));
+                    let _ = send_hardened(req, json_code(body, code));
                 });
                 continue;
             }
             (Method::Post, "/api/ward/queue") => {
                 if !ward_mode() {
-                    let _ = req.respond(json(serde_json::json!({
+                    let _ = send_hardened(req, json(serde_json::json!({
                         "ward": "not on this host",
                         "the_ward_is": "https://world.vitals.academy/api/ward/queue"
                     })));
@@ -6392,7 +6459,7 @@ fn main() {
                     // Answered as "come back later" rather than as a refusal of the caller: the
                     // factory is right to be pushing, the ward is simply not open yet, and a 4xx
                     // would read in its log as a pack it should stop building.
-                    let _ = req.respond(
+                    let _ = send_hardened(req, 
                         json(serde_json::json!({
                             "door": ward_chain::door_here().word(),
                             "why": "the ward is not open yet. It opens when the founder says so, \
@@ -6410,14 +6477,14 @@ fn main() {
                 let body = match read_body(&mut req, QUEUE_MAX) {
                     Ok(b) => b,
                     Err(BadBody::TooLong) => {
-                        let _ = req.respond(json(serde_json::json!({
+                        let _ = send_hardened(req, json(serde_json::json!({
                             "error": format!("a page of packs is at most {QUEUE_MAX} bytes — send \
                                               fewer per push, the queue keeps what it is given")
                         })));
                         continue;
                     }
                     Err(BadBody::NotText) => {
-                        let _ = req.respond(json(serde_json::json!({
+                        let _ = send_hardened(req, json(serde_json::json!({
                             "error": "that body is not UTF-8 text"
                         })));
                         continue;
@@ -6433,10 +6500,10 @@ fn main() {
                     // was sent would look exactly like a factory that was working.
                     Ok(push) => {
                         let report = ward_chain::enqueue(&store, push.packs);
-                        let _ = req.respond(json(report));
+                        let _ = send_hardened(req, json(report));
                     }
                     Err(e) => {
-                        let _ = req.respond(json(serde_json::json!({
+                        let _ = send_hardened(req, json(serde_json::json!({
                             "error": format!("that is not a page of packs: {e}"),
                             "shape": {"packs": [{
                                 "case": "one of the ids in /api/ward's policy.catalogue",
@@ -6470,13 +6537,13 @@ fn main() {
                 // put their hands on a patient.
                 let door = ward_chain::door_here();
                 if !door.plays() {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "refused": door.refusal(), "door": door.word()
                     }), 409));
                     continue;
                 }
                 let Some(who) = param(&url, "player").and_then(|k| pubkey(&k)) else {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "error": "no player key — the browser signs its own shift, so it has to \
                                   say which key it will sign with"
                     }), 400));
@@ -6493,7 +6560,7 @@ fn main() {
                         .get(&param(&url, "id").unwrap_or_default())
                         .map(|s| (s.ward.is_some(), s.review.clone()));
                     if let Some((false, review)) = kind {
-                        let _ = req.respond(json_code(serde_json::json!({
+                        let _ = send_hardened(req, json_code(serde_json::json!({
                             "error": if review.is_some() {
                                 "this is a review run — the case is being read, not played on \
                                  anybody. Nothing here is on the ward or on the chain"
@@ -6507,7 +6574,7 @@ fn main() {
                 let chain = match ward_chain::WardChain::connect() {
                     Ok(c) => c,
                     Err(e) => {
-                        let _ = req.respond(json_code(serde_json::json!({ "error": e }), 503));
+                        let _ = send_hardened(req, json_code(serde_json::json!({ "error": e }), 503));
                         continue;
                     }
                 };
@@ -6553,7 +6620,7 @@ fn main() {
                                         if ward::may_declare(p.lease_holder, who.to_bytes()) => {}
                                     Ok(Some(_)) => {
                                         drop(map);
-                                        let _ = req.respond(json_code(serde_json::json!({
+                                        let _ = send_hardened(req, json_code(serde_json::json!({
                                             "refused": "her head is not yours — take the shift \
                                                         before declaring it"
                                         }), 409));
@@ -6561,14 +6628,14 @@ fn main() {
                                     }
                                     Ok(None) => {
                                         drop(map);
-                                        let _ = req.respond(json_code(serde_json::json!({
+                                        let _ = send_hardened(req, json_code(serde_json::json!({
                                             "error": "no such patient on this ward"
                                         }), 404));
                                         continue;
                                     }
                                     Err(e) => {
                                         drop(map);
-                                        let _ = req.respond(json_code(serde_json::json!({
+                                        let _ = send_hardened(req, json_code(serde_json::json!({
                                             "error": format!("her chart could not be read: {e}")
                                         }), 503));
                                         continue;
@@ -6595,7 +6662,7 @@ fn main() {
                                 // the program will refuse.
                                 if s.anchored {
                                     drop(map);
-                                    let _ = req.respond(json_code(serde_json::json!({
+                                    let _ = send_hardened(req, json_code(serde_json::json!({
                                         "refused": ward_chain::ALREADY_ANCHORED
                                     }), 409));
                                     continue;
@@ -6605,7 +6672,7 @@ fn main() {
                                 // reducer, so what lands on chain is what a verifier recomputes.
                                 let Some((chash, cslot, _)) = s.commit else {
                                     drop(map);
-                                    let _ = req.respond(json_code(serde_json::json!({
+                                    let _ = send_hardened(req, json_code(serde_json::json!({
                                         "error": "this shift was never declared — the chain \
                                                   refuses a shift that was not declared before it \
                                                   was played"
@@ -6614,7 +6681,7 @@ fn main() {
                                 };
                                 let Some(prev_head) = hex32(&w.head) else {
                                     drop(map);
-                                    let _ = req.respond(json_code(serde_json::json!({
+                                    let _ = send_hardened(req, json_code(serde_json::json!({
                                         "error": "this session does not know which head it extends"
                                     }), 500));
                                     continue;
@@ -6628,11 +6695,11 @@ fn main() {
                                     ward_chain::cap_on_arrival(w.taken_slot, None, ward::arrival_cap_from_slot(), ward_chain::ward_signer().as_ref()))) {
                                     Some(Ok((mut st, _))) => vitals_replay::shift(&mut st, &s.tape, 0.0),
                                     Some(Err(e)) => { drop(map);
-                                        let _ = req.respond(json_code(
+                                        let _ = send_hardened(req, json_code(
                                             serde_json::json!({ "error": e }), 409));
                                         continue; }
                                     None => { drop(map);
-                                        let _ = req.respond(json_code(serde_json::json!({
+                                        let _ = send_hardened(req, json_code(serde_json::json!({
                                             "error": "the chain could not be read, so this shift \
                                                       cannot be reduced against the patient it \
                                                       was played on"
@@ -6671,17 +6738,17 @@ fn main() {
                 };
                 match built {
                     Err(e) => {
-                        let _ = req.respond(json_code(serde_json::json!({ "error": e }), 409));
+                        let _ = send_hardened(req, json_code(serde_json::json!({ "error": e }), 409));
                     }
                     Ok((ix, work)) => match chain.prepare(ix, &who) {
                         Ok(pending) => {
                             let msg = hex_bytes(&pending.message());
                             ward_pendings.lock().unwrap()
                                 .insert(who.to_string(), WardPending { pending, work, player: who });
-                            let _ = req.respond(json(serde_json::json!({ "sign": msg })));
+                            let _ = send_hardened(req, json(serde_json::json!({ "sign": msg })));
                         }
                         Err(e) => {
-                            let _ = req.respond(json_code(serde_json::json!({ "error": e }), 503));
+                            let _ = send_hardened(req, json_code(serde_json::json!({ "error": e }), 503));
                         }
                     },
                 }
@@ -6702,7 +6769,7 @@ fn main() {
                 // is still there, which is true whatever the door says.
                 let door = ward_chain::door_here();
                 if leaving && !door.plays() {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "refused": door.refusal(), "door": door.word()
                     }), 409));
                     continue;
@@ -6710,7 +6777,7 @@ fn main() {
                 let patient = param(&url, "id")
                     .and_then(|id| sessions.lock().unwrap().get(&id).and_then(|s| s.ward.as_ref().map(|w| w.patient_id)));
                 let Some(patient) = patient else {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "error": "no shift of that name is running here"
                     }), 404));
                     continue;
@@ -6727,16 +6794,16 @@ fn main() {
                     if let Err(e) = &freed {
                         eprintln!("ward       a page left patient {patient} and the head did not come back: {e}");
                     }
-                    let _ = req.respond(json(serde_json::json!({ "freed": freed.is_ok() })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "freed": freed.is_ok() })));
                 } else if param(&url, "done").is_some() {
                     // The shift ended properly — handed over, or handed back. The head is already
                     // back on chain, so the ward forgets this page rather than sweeping a head
                     // nobody is holding and paying for a transaction to say so.
                     beats.lock().unwrap().remove(&patient);
-                    let _ = req.respond(json(serde_json::json!({ "heard": true, "watching": false })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "heard": true, "watching": false })));
                 } else {
                     beats.lock().unwrap().insert(patient, now_ms());
-                    let _ = req.respond(json(serde_json::json!({
+                    let _ = send_hardened(req, json(serde_json::json!({
                         "heard": true,
                         "beat_again_in_seconds": BEAT_EVERY.as_secs(),
                     })));
@@ -6745,15 +6812,15 @@ fn main() {
             }
             (Method::Get, "/api/ward/submit") if ward_mode() => {
                 let Some(who) = param(&url, "player").and_then(|k| pubkey(&k)) else {
-                    let _ = req.respond(json_code(serde_json::json!({ "error": "no player key" }), 400));
+                    let _ = send_hardened(req, json_code(serde_json::json!({ "error": "no player key" }), 400));
                     continue;
                 };
                 let Some(sig) = param(&url, "sig").and_then(|h| sig64(&h)) else {
-                    let _ = req.respond(json_code(serde_json::json!({ "error": "no signature" }), 400));
+                    let _ = send_hardened(req, json_code(serde_json::json!({ "error": "no signature" }), 400));
                     continue;
                 };
                 let Some(work) = ward_pendings.lock().unwrap().remove(&who.to_string()) else {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "error": "nothing of yours is waiting to be signed"
                     }), 409));
                     continue;
@@ -6761,14 +6828,14 @@ fn main() {
                 let chain = match ward_chain::WardChain::connect() {
                     Ok(c) => c,
                     Err(e) => {
-                        let _ = req.respond(json_code(serde_json::json!({ "error": e }), 503));
+                        let _ = send_hardened(req, json_code(serde_json::json!({ "error": e }), 503));
                         continue;
                     }
                 };
                 let tx = match work.pending.signed(&sig) {
                     Ok(tx) => tx,
                     Err(e) => {
-                        let _ = req.respond(json_code(serde_json::json!({ "error": e }), 400));
+                        let _ = send_hardened(req, json_code(serde_json::json!({ "error": e }), 400));
                         continue;
                     }
                 };
@@ -6872,7 +6939,7 @@ fn main() {
                         }))
                     }
                 };
-                let _ = req.respond(answer);
+                let _ = send_hardened(req, answer);
                 continue;
             }
             // The end of a shift: hand her over. Not the end of her stay — that is the engine's
@@ -6883,11 +6950,11 @@ fn main() {
                 let caller = param(&url, "player");
                 let mut map = sessions.lock().unwrap();
                 let Some(s) = map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) else {
-                    let _ = req.respond(no_such_session());
+                    let _ = send_hardened(req, no_such_session());
                     continue;
                 };
                 let Some(w) = s.ward.clone() else {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "error": "this run is not a shift on the ward — the bay's own ending is \
                                   /api/finish, and it ends a case rather than handing a patient on"
                     }), 409));
@@ -6896,7 +6963,7 @@ fn main() {
                 // A shift the chain has already taken is not reduced again: the same minutes
                 // cannot be filed twice, and the sentence that says so is the ward's own.
                 if s.anchored {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "refused": ward_chain::ALREADY_ANCHORED
                     }), 409));
                     continue;
@@ -6904,7 +6971,7 @@ fn main() {
                 // Reduced from the patient this shift walked into, so the harm and the beats are
                 // this stranger's own and not the ones they inherited.
                 let Some(rebuild) = ward_rebuild(&store, w.patient_id) else {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "error": "the chain could not be read, so this shift cannot be reduced \
                                   against the patient it was played on — nothing is recorded"
                     }), 503));
@@ -6924,7 +6991,7 @@ fn main() {
                 let r = match base {
                     Ok((mut st, _)) => vitals_replay::shift(&mut st, &s.tape, 0.0),
                     Err(e) => {
-                        let _ = req.respond(json_code(serde_json::json!({ "error": e }), 409));
+                        let _ = send_hardened(req, json_code(serde_json::json!({ "error": e }), 409));
                         continue;
                     }
                 };
@@ -6976,13 +7043,13 @@ fn main() {
                              record until its leaf extends her head on chain",
                 });
                 if let Err(e) = kept {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "error": e,
                         "shift": out["shift"].clone(),
                     }), 500));
                     continue;
                 }
-                let _ = req.respond(json(out));
+                let _ = send_hardened(req, json(out));
                 continue;
             }
             // The factory again, after admission: the rest of her portraits (ruling 10, and the
@@ -6990,14 +7057,14 @@ fn main() {
             // and add-only, so a face the board has shown cannot be changed underneath it.
             (Method::Post, p) if p.starts_with("/api/ward/pack/") => {
                 if !ward_mode() {
-                    let _ = req.respond(json(serde_json::json!({
+                    let _ = send_hardened(req, json(serde_json::json!({
                         "ward": "not on this host",
                         "the_ward_is": "https://world.vitals.academy/api/ward/pack/<patient_id>"
                     })));
                     continue;
                 }
                 if !ward_chain::door_open_here() {
-                    let _ = req.respond(
+                    let _ = send_hardened(req, 
                         json(serde_json::json!({
                             "door": ward_chain::door_here().word(),
                             "why": "the ward is not open yet, so the factory has nothing to do \
@@ -7020,7 +7087,7 @@ fn main() {
                     && who.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)))
                     .then_some(who);
                 if patient_id.is_none() && queued.is_none() {
-                    let _ = req.respond(
+                    let _ = send_hardened(req, 
                         json(serde_json::json!({
                             "error": "that is neither a patient id nor a pack id"
                         }))
@@ -7031,7 +7098,7 @@ fn main() {
                 let body = match read_body(&mut req, QUEUE_MAX) {
                     Ok(b) => b,
                     Err(_) => {
-                        let _ = req.respond(json(serde_json::json!({
+                        let _ = send_hardened(req, json(serde_json::json!({
                             "error": "that body is not UTF-8 text, or is past the limit"
                         })));
                         continue;
@@ -7050,10 +7117,10 @@ fn main() {
                             }
                             _ => unreachable!("one of the two was matched above"),
                         };
-                        let _ = req.respond(json(r));
+                        let _ = send_hardened(req, json(r));
                     }
                     Err(e) => {
-                        let _ = req.respond(json(serde_json::json!({
+                        let _ = send_hardened(req, json(serde_json::json!({
                             "error": format!("that is not a set of portraits: {e}"),
                             "shape": {"portrait": {
                                 "<one of stable improving deteriorating critical arrest recovered>":
@@ -7070,7 +7137,7 @@ fn main() {
             // The ward host's mark. Public, unguarded and cached for a year: it is on every page
             // of the ward, it never changes without a deploy, and nothing about it is a secret.
             (Method::Get, "/world/apple-touch-icon.png") => {
-                let _ = req.respond(
+                let _ = send_hardened(req, 
                     Response::from_data(TOUCH_ICON_WORLD)
                         .with_header(
                             Header::from_bytes(&b"Content-Type"[..], &b"image/png"[..]).unwrap(),
@@ -7091,14 +7158,14 @@ fn main() {
             // `/start` and `/start/` are the same page because both are what a person types, and
             // a trailing slash deciding whether somebody gets help is not a rule worth having.
             (Method::Get, p) if ward_mode() && (p == "/start" || p == "/start/") => {
-                let _ = req.respond(html(WARD_START));
+                let _ = send_hardened(req, html(WARD_START));
                 continue;
             }
             (Method::Get, p) if ward_mode() && p.starts_with("/start/img/") => {
                 let want = &p["/start/img/".len()..];
                 match WARD_START_IMG.iter().find(|(name, _)| *name == want) {
                     Some((_, bytes)) => {
-                        let _ = req.respond(
+                        let _ = send_hardened(req, 
                             Response::from_data(*bytes)
                                 .with_header(
                                     Header::from_bytes(&b"Content-Type"[..], &b"image/jpeg"[..])
@@ -7111,7 +7178,7 @@ fn main() {
                     // whole of the answer: the set is closed, so nothing a stranger types reaches
                     // past it.
                     None => {
-                        let _ = req.respond(
+                        let _ = send_hardened(req, 
                             Response::from_string("no such picture").with_status_code(404),
                         );
                     }
@@ -7119,7 +7186,7 @@ fn main() {
                 continue;
             }
             (Method::Get, "/world/favicon.svg") => {
-                let _ = req.respond(
+                let _ = send_hardened(req, 
                     Response::from_data(FAVICON_WORLD)
                         .with_header(
                             Header::from_bytes(&b"Content-Type"[..], &b"image/svg+xml"[..]).unwrap(),
@@ -7138,7 +7205,7 @@ fn main() {
                 let css = BAY_CSS.replace(BUILD_STAMP, BUILD);
                 let resp = squeezed(&req, css.into_bytes(), b"text/css; charset=utf-8")
                     .with_header(forever());
-                let _ = req.respond(resp);
+                let _ = send_hardened(req, resp);
                 continue;
             }
             (Method::Get, p) if p == "/bay.js" || p.starts_with("/bay.js?") => {
@@ -7147,7 +7214,7 @@ fn main() {
                     .replace(BUILD_STAMP, BUILD);
                 let resp = squeezed(&req, js.into_bytes(), b"application/javascript; charset=utf-8")
                     .with_header(forever());
-                let _ = req.respond(resp);
+                let _ = send_hardened(req, resp);
                 continue;
             }
             // One shift, for somebody who never played it. Public and unguarded: a receipt only
@@ -7159,10 +7226,10 @@ fn main() {
                 let id = p.trim_start_matches("/api/ward/patient/").trim_end_matches('/');
                 match id.parse::<u64>() {
                     Ok(patient_id) => {
-                        let _ = req.respond(json(ward_chart(&store, patient_id)));
+                        let _ = send_hardened(req, json(ward_chart(&store, patient_id)));
                     }
                     Err(_) => {
-                        let _ = req.respond(json_code(serde_json::json!({
+                        let _ = send_hardened(req, json_code(serde_json::json!({
                             "error": "a patient id is a whole number"
                         }), 404));
                     }
@@ -7171,7 +7238,7 @@ fn main() {
             }
             (Method::Get, p) if ward_mode() && p.starts_with("/api/shift/") => {
                 let hash = p.trim_start_matches("/api/shift/");
-                let _ = req.respond(json(ward_receipt(&store, hash)));
+                let _ = send_hardened(req, json(ward_receipt(&store, hash)));
                 continue;
             }
             // The tape itself, by the hash its leaf commits to. This is what makes the rest
@@ -7181,7 +7248,7 @@ fn main() {
                 let hash = p.trim_start_matches("/api/tape/");
                 match ward_chain::tape_by_hash(&store, hash) {
                     Some(steps) => {
-                        let _ = req.respond(json(serde_json::json!({
+                        let _ = send_hardened(req, json(serde_json::json!({
                             "run_hash": hash,
                             "steps": steps,
                             "how_to_check": "replay these steps against the case's scenario with \
@@ -7189,7 +7256,7 @@ fn main() {
                         })));
                     }
                     None => {
-                        let _ = req.respond(json_code(serde_json::json!({
+                        let _ = send_hardened(req, json_code(serde_json::json!({
                             "error": "this ward does not hold that tape"
                         }), 404));
                     }
@@ -7202,7 +7269,7 @@ fn main() {
                 // A refusal here offers the beds that are open, off the board this host already
                 // holds — the person reading it came to treat somebody (UX review F1).
                 let board = answer["error"].is_string().then(|| ward_now(&ward_view, &store, &state_dir));
-                let _ = req.respond(html(&receipt_page(&answer, &board.unwrap_or(serde_json::Value::Null))));
+                let _ = send_hardened(req, html(&receipt_page(&answer, &board.unwrap_or(serde_json::Value::Null))));
                 continue;
             }
             // The ward's census. Public, and every figure on it carries where it came from —
@@ -7213,7 +7280,7 @@ fn main() {
                     // vitals.academy is the Eternal entry and is never redeployed for the sprint
                     // (CWF_PLAN.md ruling 8). Answering here with an empty ward would be a
                     // number about a thing this host does not run.
-                    let _ = req.respond(json(serde_json::json!({
+                    let _ = send_hardened(req, json(serde_json::json!({
                         "ward": "not on this host",
                         "the_ward_is": "https://world.vitals.academy/api/ward",
                         "why": "the ward is its own host and its own service, so this entry is \
@@ -7227,8 +7294,8 @@ fn main() {
                 // callers" there were two implementations, and the drift was found by a test hook
                 // that existed in one of them — so the delegation is the point, not the tidiness.
                 match read_response(&req, &path, &ward_view, &store, &state_dir, &usage, &token) {
-                    Some(r) => { let _ = req.respond(r); }
-                    None => { let _ = req.respond(Response::from_data(b"not found".to_vec()).with_status_code(404)); }
+                    Some(r) => { let _ = send_hardened(req, r); }
+                    None => { let _ = send_hardened(req, Response::from_data(b"not found".to_vec()).with_status_code(404)); }
                 }
                 continue;
             }
@@ -7238,7 +7305,7 @@ fn main() {
                 // that has not opened — a number that is true elsewhere is still a wrong answer
                 // here. Say so, and point at where the real one lives.
                 if ward_mode() {
-                    let _ = req.respond(json(serde_json::json!({
+                    let _ = send_hardened(req, json(serde_json::json!({
                         "ward": "not open yet",
                         "opens": "week 2 of Crypto World's Fair, 21-27 Sep 2026",
                         "chain_for_the_eternal_entry": "https://vitals.academy/api/chain"
@@ -7321,15 +7388,15 @@ fn main() {
             // carries exactly what the program will stamp into the leaf.
             (Method::Get, "/api/commit") => {
                 let Some(c) = &chain else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no chain configured" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no chain configured" })));
                     continue;
                 };
                 let Some(id) = param(&url, "id") else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no session" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no session" })));
                     continue;
                 };
                 let Some(who) = param(&url, "player").and_then(|p| pubkey(&p)) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no player key" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no player key" })));
                     continue;
                 };
                 let person = param(&url, "account").and_then(|p| pubkey(&p)).unwrap_or(who);
@@ -7337,7 +7404,7 @@ fn main() {
                     let map = sessions.lock().unwrap();
                     let Some(s) = map.get(&id) else {
                         drop(map);
-                        let _ = req.respond(no_such_session());
+                        let _ = send_hardened(req, no_such_session());
                         continue;
                     };
                     (sce_hash(&s.sce_json), s.ep.clone())
@@ -7354,7 +7421,7 @@ fn main() {
                 // Refused before anything binds: letting a player commit "exam" on a station
                 // with no rubric would promise a star that can never be scored into existence.
                 if mode == 1 && rubric_path(&ep).is_none() {
-                    let _ = req.respond(json(serde_json::json!({
+                    let _ = send_hardened(req, json(serde_json::json!({
                         "error": "this station has no rubric yet — an exam here could never be scored; play it as practice"
                     })));
                     continue;
@@ -7380,20 +7447,20 @@ fn main() {
                 let id = param(&url, "id").unwrap_or_default();
                 let caller = param(&url, "player");
                 let Some(c) = chain.as_ref() else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no chain connected" })));
                     continue;
                 };
                 let mut map = sessions.lock().unwrap();
                 let Some(s) = map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) else {
-                    let _ = req.respond(no_such_session());
+                    let _ = send_hardened(req, no_such_session());
                     continue;
                 };
                 if !s.over() {
-                    let _ = req.respond(json(serde_json::json!({ "error": "the run has not finished" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "the run has not finished" })));
                     continue;
                 }
                 if s.anchored {
-                    let _ = req.respond(json(serde_json::json!({ "error": "already anchored" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "already anchored" })));
                     continue;
                 }
                 // Rebuild the run from the tape through the shared reducer rather than from the
@@ -7401,7 +7468,7 @@ fn main() {
                 let r = match replay(&s.sce_json, &s.tape) {
                     Ok(r) => r,
                     Err(e) => {
-                        let _ = req.respond(json(serde_json::json!({ "error": e })));
+                        let _ = send_hardened(req, json(serde_json::json!({ "error": e })));
                         continue;
                     }
                 };
@@ -7409,7 +7476,7 @@ fn main() {
                 // will sign with — the server has no way to produce that signature, which is what
                 // makes the credential the player's rather than the server's.
                 let Some(who) = param(&url, "player").and_then(|p| pubkey(&p)) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no player key" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no player key" })));
                     continue;
                 };
                 // The machine signs; the person owns. Absent an account the two are the same, which
@@ -7421,7 +7488,7 @@ fn main() {
                 // program will refuse it anyway, since it reads the commitment account and finds
                 // nothing open, but the person typing deserves to know what was missing.
                 let Some((chash, cslot, _nonce)) = s.commit else {
-                    let _ = req.respond(json(serde_json::json!({
+                    let _ = send_hardened(req, json(serde_json::json!({
                         "error": "this run was never committed — the chain refuses runs that were not declared before play"
                     })));
                     continue;
@@ -7430,7 +7497,7 @@ fn main() {
                     match record_for(person.to_bytes(), sce, sce, s.difficulty, s.exam_mode, &s.tape, &r, chash, cslot) {
                         Ok(rec) => rec,
                         Err(e) => {
-                            let _ = req.respond(json(serde_json::json!({ "error": e })));
+                            let _ = send_hardened(req, json(serde_json::json!({ "error": e })));
                             continue;
                         }
                     };
@@ -7451,7 +7518,7 @@ fn main() {
                             rec.rubric_hash = rh;
                         }
                         Err(e) => {
-                            let _ = req.respond(json(serde_json::json!({ "error": e })));
+                            let _ = send_hardened(req, json(serde_json::json!({ "error": e })));
                             continue;
                         }
                     }
@@ -7468,7 +7535,7 @@ fn main() {
                     // reading it as zero would truncate every leaf this server holds.
                     Err(e) => {
                         drop(t);
-                        let _ = req.respond(json(serde_json::json!({
+                        let _ = send_hardened(req, json(serde_json::json!({
                             "error": format!("cannot anchor without reading the tree first: {e}"),
                         })));
                         continue;
@@ -7490,7 +7557,7 @@ fn main() {
                     }
                     Reconciled::Short { local, chain } => {
                         drop(t);
-                        let _ = req.respond(json(serde_json::json!({
+                        let _ = send_hardened(req, json(serde_json::json!({
                             "error": "this server cannot prove what it has already anchored, \
                                       so it will not anchor more",
                             "leaves_here": local,
@@ -7537,11 +7604,11 @@ fn main() {
             (Method::Get, "/api/claim") => {
                 let level: u8 = param(&url, "level").and_then(|v| v.parse().ok()).unwrap_or(2);
                 let Some(c) = chain.as_ref() else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no chain connected" })));
                     continue;
                 };
                 let Some(who) = param(&url, "player").and_then(|p| pubkey(&p)) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no player key" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no player key" })));
                     continue;
                 };
                 let id = param(&url, "account").and_then(|p| pubkey(&p)).unwrap_or(who);
@@ -7564,11 +7631,11 @@ fn main() {
             // Who this machine is, and whose record it may write to.
             (Method::Get, "/api/account") => {
                 let Some(c) = chain.as_ref() else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no chain connected" })));
                     continue;
                 };
                 let Some(dev) = param(&url, "device").and_then(|p| pubkey(&p)) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no device key" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no device key" })));
                     continue;
                 };
                 let person = param(&url, "account").and_then(|p| pubkey(&p)).unwrap_or(dev);
@@ -7590,11 +7657,11 @@ fn main() {
             // a score you can only see on the machine that earned it is not a credential.
             (Method::Get, "/api/progress") => {
                 let Some(c) = chain.as_ref() else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no chain connected" })));
                     continue;
                 };
                 let Some(person) = param(&url, "account").and_then(|p| pubkey(&p)) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no account" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no account" })));
                     continue;
                 };
                 match c.progress(&person) {
@@ -7617,14 +7684,14 @@ fn main() {
             // was asked sits next to what was answered and a verifier can re-derive the count.
             (Method::Get, "/api/stars") => {
                 let Some(c) = chain.as_ref() else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no chain connected" })));
                     continue;
                 };
                 let Some(person) = param(&url, "account")
                     .or_else(|| param(&url, "player"))
                     .and_then(|p| pubkey(&p))
                 else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no account" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no account" })));
                     continue;
                 };
                 let tree_id = tree.lock().unwrap().tree_id;
@@ -7680,16 +7747,16 @@ fn main() {
             // Link or unlink a machine. Signed by one that is already trusted.
             (Method::Get, "/api/link") => {
                 let Some(c) = chain.as_ref() else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no chain connected" })));
                     continue;
                 };
                 let Some(dev) = param(&url, "player").and_then(|p| pubkey(&p)) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no player key" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no player key" })));
                     continue;
                 };
                 let person = param(&url, "account").and_then(|p| pubkey(&p)).unwrap_or(dev);
                 let Some(other) = param(&url, "device").and_then(|p| pubkey(&p)) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no device to link" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no device to link" })));
                     continue;
                 };
                 let on = param(&url, "off").is_none();
@@ -7714,19 +7781,19 @@ fn main() {
             // into its slot and send. If it does not verify, nothing is sent.
             (Method::Get, "/api/submit") => {
                 let Some(c) = chain.as_ref() else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no chain connected" })));
                     continue;
                 };
                 let Some(who) = param(&url, "player").and_then(|p| pubkey(&p)) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no player key" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no player key" })));
                     continue;
                 };
                 let Some(sig) = param(&url, "sig").and_then(|h| sig64(&h)) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no signature" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no signature" })));
                     continue;
                 };
                 let Some(work) = pendings.lock().unwrap().remove(&who.to_string()) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "nothing waiting to be signed" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "nothing waiting to be signed" })));
                     continue;
                 };
                 // Only an anchor put a leaf on the list, so only an anchor takes one back off.
@@ -7737,13 +7804,13 @@ fn main() {
                         if speculative {
                             unwind_leaf(&mut tree.lock().unwrap().leaves, work.index);
                         }
-                        let _ = req.respond(json(serde_json::json!({ "error": e })));
+                        let _ = send_hardened(req, json(serde_json::json!({ "error": e })));
                         continue;
                     }
                 };
                 let id = work.account;
                 if let Some((hash, nonce, mode)) = work.commit {
-                    let _ = req.respond(match c.submit(&tx) {
+                    let _ = send_hardened(req, match c.submit(&tx) {
                         Ok(()) => match c.commitment(&id) {
                             // Read back rather than assumed: the slot was assigned on chain, and
                             // the record built at anchor time must carry the same one the program
@@ -7769,7 +7836,7 @@ fn main() {
                     continue;
                 }
                 if work.link {
-                    let _ = req.respond(match c.submit(&tx) {
+                    let _ = send_hardened(req, match c.submit(&tx) {
                         Ok(()) => {
                             let n = c.account(&id).map(|a| a.authorities.len()).unwrap_or(0);
                             json(serde_json::json!({ "linked": true, "devices": n }))
@@ -7799,7 +7866,7 @@ fn main() {
                                 .and_then(|s2| prove.signed(&s2))
                                 .and_then(|tx2| c.submit(&tx2));
                             if let Err(e) = sent {
-                                let _ = req.respond(json(serde_json::json!({
+                                let _ = send_hardened(req, json(serde_json::json!({
                                     "anchored": true, "proven": false,
                                     "error": format!("anchored, but the proof did not land: {e}"),
                                 })));
@@ -7850,7 +7917,7 @@ fn main() {
             }
             _ => Response::from_string("not found").with_status_code(404),
         };
-        let _ = req.respond(resp);
+        let _ = send_hardened(req, resp);
     }
 }
 
@@ -8744,6 +8811,18 @@ mod tests {
             20,
             "if this ever fails, the platform question was settled and this test should say how"
         );
+    }
+
+    /// The door secret is accepted only when it is exactly the secret. `secret_eq` replaced `==`
+    /// for timing (security audit M2); what it must never do is accept a near miss — a prefix, the
+    /// secret with more after it, one byte changed, or nothing at all.
+    #[test]
+    fn a_secret_is_accepted_only_when_it_is_exactly_the_secret() {
+        assert!(secret_eq("the-door-token", "the-door-token"));
+        assert!(!secret_eq("the-door-tokeN", "the-door-token"), "one byte different");
+        assert!(!secret_eq("the-door-toke", "the-door-token"), "a prefix of the secret");
+        assert!(!secret_eq("the-door-token-and-more", "the-door-token"), "the secret with more after it");
+        assert!(!secret_eq("", "the-door-token"), "nothing at all");
     }
 
     /// The setting is a deployment fact, and a nonsense value must not disable the guard.
