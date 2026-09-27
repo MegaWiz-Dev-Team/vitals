@@ -4140,8 +4140,16 @@ fn main() {
 
     // One slow local model, and /api/say holds a worker for as long as it takes. Without a
     // ceiling a single caller can occupy the GPU indefinitely.
-    let mut said: Vec<Instant> = Vec::new();
-    const SAY_PER_MIN: usize = 20;
+    //
+    // Per caller since 27 Sep 2026 (security audit L1): a single shared bucket let one stranger who
+    // asked fast silence every other bed. Twenty a minute each, keyed by the address the platform
+    // observed (`client_addr`), plus an instance-wide ceiling — which is what the one bucket was for.
+    // On the model path one slow local model answers every question, so that ceiling stays twenty; the
+    // ward answers from the case file and runs no model, so its ceiling only has to stop a flood.
+    let mut said: std::collections::HashMap<String, Vec<Instant>> = std::collections::HashMap::new();
+    let mut said_all: Vec<Instant> = Vec::new();
+    const SAY_PER_CALLER_PER_MIN: usize = 20;
+    let say_ceiling_per_min: usize = if ward_mode() { 600 } else { 20 };
 
     // `mut` for exactly one route: reading a request body needs the request mutably, and the
     // match below borrows it for the whole of its scrutinee. See `/api/review`.
@@ -4399,12 +4407,24 @@ fn main() {
             continue;
         }
         if path == "/api/say" {
-            said.retain(|t| t.elapsed() < Duration::from_secs(60));
-            if said.len() >= SAY_PER_MIN {
+            let window = Duration::from_secs(60);
+            said_all.retain(|t| t.elapsed() < window);
+            let mine = said.entry(client_addr(&req)).or_default();
+            mine.retain(|t| t.elapsed() < window);
+            if mine.len() >= SAY_PER_CALLER_PER_MIN || said_all.len() >= say_ceiling_per_min {
                 let _ = send_hardened(req, json(serde_json::json!({ "error": "too many questions — give the patient a moment" })));
                 continue;
             }
-            said.push(Instant::now());
+            let now = Instant::now();
+            mine.push(now);
+            said_all.push(now);
+            // Forget callers who have gone quiet, so the table cannot grow without bound.
+            if said.len() > 4096 {
+                said.retain(|_, ts| {
+                    ts.retain(|t| t.elapsed() < window);
+                    !ts.is_empty()
+                });
+            }
         }
 
         let resp = match (req.method(), path.as_str()) {

@@ -4101,18 +4101,57 @@ pub fn hand_overs_in_window(
 /// `None` on a host holding neither — a read-only ward that publishes somebody else's board. There
 /// the honest answer is that it cannot tell its own shifts from anyone's, and the caller says so
 /// rather than counting every closure as a hand-over.
+///
+/// **A key is cached once it is known, and a failure is never cached.** This used to keep whatever
+/// the first call found for the life of the process — including a `None` from a keypair file that
+/// could not be read yet, which on a cold start behind a secret mount left an instance keyless for
+/// its whole life, silently, while its neighbours had the key. Two instances disagreeing about who
+/// the ward is is the condition behind the unrebuildable receipts of 25 Sep 2026. Now a key that
+/// could not be read is retried on the next call and said once in the log, and only a found key is
+/// kept.
 pub fn ward_signer() -> Option<[u8; 32]> {
-    use solana_sdk::signature::Signer;
-    static ME: std::sync::OnceLock<Option<[u8; 32]>> = std::sync::OnceLock::new();
-    *ME.get_or_init(|| {
-        if let Ok(o) = std::env::var("VITALS_OPERATOR") {
-            return Pubkey::from_str(&o).ok().map(|p| p.to_bytes());
+    static ME: std::sync::OnceLock<[u8; 32]> = std::sync::OnceLock::new();
+    static SAID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if let Some(k) = ME.get() {
+        return Some(*k);
+    }
+    match load_ward_signer(std::env::var("VITALS_OPERATOR").ok(), std::env::var("VITALS_KEYPAIR").ok()) {
+        Ok(Some(k)) => {
+            let _ = ME.set(k);
+            Some(k)
         }
-        std::env::var("VITALS_KEYPAIR")
-            .ok()
-            .and_then(|p| read_keypair_file(p).ok())
-            .map(|k| k.pubkey().to_bytes())
-    })
+        Ok(None) => None,
+        Err(e) => {
+            // Once per instance: a log line on every request would bury the one that matters.
+            if !SAID.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                eprintln!("ward key   {e} — cannot tell this ward's closures from a stranger's until \
+                           it can be read; trying again on the next call");
+            }
+            None
+        }
+    }
+}
+
+/// **The ward's key from its two sources, or why it could not be had.**
+///
+/// `Ok(None)` is a host holding neither — a read-only ward publishing somebody else's board, which is
+/// legitimate. `Err` is a host that was told where its key is and could not use it; that must never
+/// look the same as having no key, because the first is a fault to fix and the second is a choice.
+pub fn load_ward_signer(
+    operator: Option<String>,
+    keypair_path: Option<String>,
+) -> Result<Option<[u8; 32]>, String> {
+    if let Some(o) = operator {
+        return Pubkey::from_str(&o)
+            .map(|p| Some(p.to_bytes()))
+            .map_err(|_| "VITALS_OPERATOR is set but is not a public key".to_string());
+    }
+    match keypair_path {
+        Some(p) => read_keypair_file(&p)
+            .map(|k| Some(k.pubkey().to_bytes()))
+            .map_err(|e| format!("the keypair file named by VITALS_KEYPAIR could not be read ({e})")),
+        None => Ok(None),
+    }
 }
 
 /// Every anchored shift this ward knows about, with the patient it belongs to.
