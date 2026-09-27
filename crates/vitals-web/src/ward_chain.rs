@@ -364,6 +364,13 @@ impl WardChain {
         store: &crate::store::Store,
         budget: &Budget,
     ) -> Result<Reading, String> {
+        // **The budget is read before the chain is asked, not only between transactions.** The
+        // listing below is itself the expensive call — ~50 s each while devnet answers 429 — and on
+        // 27 Sep 2026 every patient after the pass's ten seconds still paid one, so a ten-second
+        // pass took twenty minutes. A spent budget is a stop, with the reason, like any other.
+        if let Some(why) = budget.spent(0, std::time::Instant::now()) {
+            return Ok(Reading { added: 0, stopped: Some(why) });
+        }
         let pda = self.patient_pda(patient_id);
         let until = seen.until().and_then(|s| Signature::from_str(&s).ok());
         let sigs = self
@@ -669,8 +676,8 @@ pub struct Histories {
 /// one 429 — throwing away twenty-six accounts that had just been read correctly in a single
 /// `getProgramAccounts`. Now the failure is recorded against the patient and the loop goes on.
 ///
-/// And it asks before it pays: [`needs_listing`] on the chain's own shift count and the tapes on
-/// disk, the same as the ticker's pass. A patient nothing has happened to is never listed, so on a
+/// And it asks before it pays: [`needs_listing`] on the chain's own shift count, the same as the
+/// ticker's pass. A missing tape is found below from the cached shifts, with no listing. A patient nothing has happened to is never listed, so on a
 /// quiet ward the board rebuild makes no listings at all and there is nothing to 429.
 pub fn histories(
     store: &crate::store::Store,
@@ -687,7 +694,7 @@ pub fn histories(
         let key = format!("p{}", p.patient_id);
         let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
         let known = seen.shifts();
-        if needs_listing(p.shifts, known.len(), missing_tapes(store, &known).is_empty()) {
+        if needs_listing(p.shifts, known.len()) {
             h.listed += 1;
             match refresh(p.patient_id, &mut seen) {
                 Ok(read) => {
@@ -2009,12 +2016,15 @@ pub fn spans_line(took: std::time::Duration, spans: &[Span]) -> String {
 /// be empty on the first pass after a start, and on a service that redeploys every commit the first
 /// pass is the one worth making fast.
 ///
-/// Both halves are needed: the count alone misses a tape that left the store while the chain stood
-/// still, which is the failure the repair exists for. A cache holding *more* than the chain says
-/// exists is listed rather than trusted, because a duplicate could otherwise hide a real leaf
-/// behind a count that happens to match.
-pub fn needs_listing(chain_shifts: u32, cached_shifts: usize, tapes_all_present: bool) -> bool {
-    chain_shifts as usize != cached_shifts || !tapes_all_present
+/// **The count alone decides** (27 Sep 2026). A tape that left the store while the chain stood still
+/// is still repaired — from the shifts already cached, which is all a listing could have told it:
+/// the listing starts at the newest signature the cache holds, so with the counts agreeing it
+/// returns nothing. Listing those patients anyway cost a patient whose tape is gone for good one
+/// empty round trip every pass, ~50 s each under devnet's 429s. A cache holding *more* than the
+/// chain says exists is listed rather than trusted, because a duplicate could otherwise hide a real
+/// leaf behind a count that happens to match.
+pub fn needs_listing(chain_shifts: u32, cached_shifts: usize) -> bool {
+    chain_shifts as usize != cached_shifts
 }
 
 /// What `POST /api/ward/tick` answers, given what the gate gave it.
@@ -2304,7 +2314,8 @@ fn repair_one(
     // Ask before paying. `p.shifts` came free with the patient, and the tape check is local; the
     // listing below is the one that waits on devnet's mood.
     let known = seen.shifts();
-    if !needs_listing(p.shifts, known.len(), missing_tapes(store, &known).is_empty()) {
+    let listing = needs_listing(p.shifts, known.len());
+    if !listing && missing_tapes(store, &known).is_empty() {
         return (notes, false, seen, true);
     }
     // Three outcomes, and the two that are not a clean read are different from each other.
@@ -2319,7 +2330,9 @@ fn repair_one(
     //
     // Persistence and trust are separate decisions. Conflating them is what the old code did in
     // both directions at once: it persisted a partial history *and* trusted it.
-    let whole = match chain.refresh(p.patient_id, &mut seen, store, budget) {
+    // Counts agree and a tape is missing: straight to the repair, from the cache. Current by the
+    // same premise as the skip above, so it may be decided on.
+    let whole = if !listing { true } else { match chain.refresh(p.patient_id, &mut seen, store, budget) {
         Err(e) => {
             notes.push(format!("patient {}'s history could not be read: {e}", p.patient_id));
             return (notes, true, seen, false);
@@ -2334,8 +2347,10 @@ fn repair_one(
             }
             reading.whole()
         }
-    };
-    let _ = store.put(SHIFT_CACHE, &key, &seen);
+    } };
+    if listing {
+        let _ = store.put(SHIFT_CACHE, &key, &seen);
+    }
     let shifts = seen.shifts();
     let missing = missing_tapes(store, &shifts);
     if missing.is_empty() {

@@ -1674,23 +1674,22 @@ fn a_slow_pass_says_how_the_time_was_spread() {
 /// because staging redeploys on every commit and an in-memory note would be empty on exactly the
 /// pass that matters, the first one after a start.
 ///
-/// Both halves are needed. The count alone would miss a tape that disappeared from the store while
-/// the chain stood still, which is the failure the repair exists for in the first place.
+/// **A missing tape is repaired from the cache, not by listing again** (27 Sep 2026). This test used
+/// to require a listing when the counts agreed and a tape was gone. But the listing starts at the
+/// newest signature the cache holds, so with the counts agreeing it can only return nothing — and a
+/// patient whose tape is gone for good paid that empty listing on every pass, ~50 s each while devnet
+/// answered 429. The repair still runs for her: it works from the shifts already cached.
 #[test]
 fn a_patient_the_chain_has_not_moved_is_not_listed() {
     use vitals_web::ward_chain::needs_listing;
 
-    assert!(!needs_listing(3, 3, true),
-            "three leaves on chain, three in the cache, every tape here — a listing cannot add \
-             anything, and asking costs ten seconds when devnet is in a mood");
-    assert!(!needs_listing(0, 0, true), "and a patient nobody has treated yet is not listed either");
+    assert!(!needs_listing(3, 3),
+            "three leaves on chain, three in the cache — a listing cannot add anything, and asking \
+             costs ten seconds when devnet is in a mood, fifty when it is refusing");
+    assert!(!needs_listing(0, 0), "and a patient nobody has treated yet is not listed either");
 
-    assert!(needs_listing(4, 3, true), "a new leaf on chain: her cache is behind and must catch up");
-    assert!(needs_listing(3, 3, false),
-            "the counts agree and a tape is gone from the store — the case the repair exists for, \
-             and the reason the count alone is not the whole condition");
-    assert!(needs_listing(4, 3, false), "both at once is still listed, once");
-    assert!(needs_listing(3, 4, true),
+    assert!(needs_listing(4, 3), "a new leaf on chain: her cache is behind and must catch up");
+    assert!(needs_listing(3, 4),
             "more in the cache than the chain says exist is an anomaly, and an anomaly is listed \
              rather than trusted — a duplicate in the cache would otherwise hide a real leaf");
 }
