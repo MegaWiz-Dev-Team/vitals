@@ -87,6 +87,12 @@ MSG
   "run deploy")
     [ "${STUB_DEPLOY_FAIL:-0}" = 1 ] && { echo "ERROR: (gcloud.run.deploy) stub deploy failure" >&2; exit 1; }
     echo "stub: deploying..." >&2
+    # What the service is handed, so a case can check where a value comes from.
+    prev=""; for a in "$@"; do
+      [ "$prev" = "--set-secrets" ] && echo "stub secrets: $a" >&2
+      [ "$prev" = "--set-env-vars" ] && echo "stub env: $a" >&2
+      prev="$a"
+    done
     printf '%s\n' "${STUB_REVISION-vitals-00007-abc}"
     exit 0 ;;
 
@@ -95,6 +101,11 @@ MSG
     # (STUB_SERVICE_CAP=<slot>); a service that has never had one carries no such variable.
     CAPENV=""
     [ -n "${STUB_SERVICE_CAP:-}" ] && CAPENV="{ \"name\": \"VITALS_ARRIVAL_CAP_FROM_SLOT\", \"value\": \"$STUB_SERVICE_CAP\" }"
+    # And its RPC from a secret when a case says so (STUB_SERVICE_RPC_SECRET=<name>).
+    if [ -n "${STUB_SERVICE_RPC_SECRET:-}" ]; then
+      [ -n "$CAPENV" ] && CAPENV="$CAPENV,"
+      CAPENV="$CAPENV{ \"name\": \"VITALS_RPC\", \"valueFrom\": { \"secretKeyRef\": { \"name\": \"$STUB_SERVICE_RPC_SECRET\", \"key\": \"latest\" } } }"
+    fi
     say_json "{
       \"spec\": { \"template\": { \"spec\": { \"containers\": [ { \"env\": [ $CAPENV ] } ] } } },
       \"status\": {
@@ -228,6 +239,20 @@ run "the same slot as the service's passes" accepts "for shifts from slot 503728
   -- STUB_SERVICE_CAP=503728770 VITALS_ARRIVAL_CAP_FROM_SLOT=503728770
 run "a slot that differs from the service's is refused before the build — the slot is a ratchet" rejects "ratchet" \
   -- STUB_SERVICE_CAP=503728770 VITALS_ARRIVAL_CAP_FROM_SLOT=503800000
+# A dedicated RPC's url carries its API key, so it lives in Secret Manager and reaches the service
+# as a secret — never in --set-env-vars, where `services describe` and this log would show it. And
+# like the cap it is carried: a deploy from a shell that never heard of the secret must not quietly
+# put the ward back on the public endpoint that rate-limited it.
+run "a named RPC secret reaches the service as a secret" accepts "stub secrets: /relay/id.json=vitals-relay-key:latest,VITALS_TOKEN=vitals-token:latest,VITALS_DOOR_TOKEN=vitals-door-token:latest,VITALS_RPC=vitals-rpc-url:latest" \
+  -- VITALS_RPC_SECRET=vitals-rpc-url
+run "and it is said by name, never by value" accepts "── rpc       from secret vitals-rpc-url" \
+  -- VITALS_RPC_SECRET=vitals-rpc-url
+run "an RPC secret the service already uses is carried when the shell names none" accepts "── rpc       from secret vitals-rpc-url — carried from the service" \
+  -- STUB_SERVICE_RPC_SECRET=vitals-rpc-url
+run "carried even over a public url left in the shell" accepts "VITALS_RPC=vitals-rpc-url:latest" \
+  -- STUB_SERVICE_RPC_SECRET=vitals-rpc-url VITALS_RPC=https://api.devnet.solana.com
+run "with no secret anywhere the public endpoint is used, and said" accepts "── rpc       https://api.devnet.solana.com" \
+  -- STUB_SERVICE_RPC_SECRET=
 run "moving the slot takes the founder's word, printed" accepts "── founder's word on moving the cap slot: ย้ายได้" \
   -- STUB_SERVICE_CAP=503728770 VITALS_ARRIVAL_CAP_FROM_SLOT=503800000 CAP_SLOT_WORD=ย้ายได้
 run "concurrency is printed next to the service" accepts "── concurrency 80 requests in flight per instance" \

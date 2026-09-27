@@ -166,7 +166,7 @@ impl Chain {
 
     /// Assemble, sign the relay's half, and leave the player's slot empty.
     fn prepare(&self, player: &Pubkey, ixs: Vec<SolInstruction>) -> Result<Pending, String> {
-        let bh = self.rpc.get_latest_blockhash().map_err(|e| e.to_string())?;
+        let bh = self.rpc.get_latest_blockhash().map_err(|e| vitals_web::rpc_scrub::scrub(&e.to_string()))?;
         let msg = Message::new_with_blockhash(&ixs, Some(&self.relay.pubkey()), &bh);
         let slot = msg
             .account_keys
@@ -182,7 +182,7 @@ impl Chain {
         self.rpc
             .send_and_confirm_transaction(tx)
             .map(|_| ())
-            .map_err(|e| program_log(&e.to_string()))
+            .map_err(|e| program_log(&vitals_web::rpc_scrub::scrub(&e.to_string())))
     }
 
     /// Anchor one finished run and prove it in the same transaction.
@@ -288,7 +288,7 @@ impl Chain {
         let got = self
             .rpc
             .get_account_with_commitment(&pda, CommitmentConfig::confirmed())
-            .map_err(|e| format!("could not read the tree account: {e}"))?;
+            .map_err(|e| vitals_web::rpc_scrub::scrub(&format!("could not read the tree account: {e}")))?;
         match got.value {
             None => Ok(None),
             Some(acct) => <TreeAccount as borsh::BorshDeserialize>::deserialize(&mut &acct.data[..])
@@ -487,7 +487,7 @@ impl Chain {
         let accounts = self
             .rpc
             .get_program_accounts(&self.program_id)
-            .map_err(|e| format!("could not list the program's accounts: {e}"))?;
+            .map_err(|e| vitals_web::rpc_scrub::scrub(&format!("could not list the program's accounts: {e}")))?;
 
         let mut per_case: BTreeMap<String, u64> = BTreeMap::new();
         let mut case_of_leaf: BTreeMap<String, String> = BTreeMap::new();

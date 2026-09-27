@@ -481,7 +481,8 @@ fn cluster_of(url: &str) -> &'static str {
 
 /// An RPC failure as a sentence, not a debug dump.
 fn why(e: RpcError) -> String {
-    e.to_string()
+    // The client quotes the url it failed on, and a dedicated RPC's url is a key.
+    crate::rpc_scrub::scrub(&e.to_string())
 }
 
 /// Where each patient's read-so-far lives in the store.

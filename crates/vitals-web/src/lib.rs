@@ -21,6 +21,7 @@ pub mod payout;
 pub mod reading;
 pub mod rebuild;
 pub mod review;
+pub mod rpc_scrub;
 pub mod serve;
 pub mod store;
 pub mod usage;

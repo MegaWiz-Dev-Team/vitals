@@ -314,7 +314,7 @@ impl Payer {
         // from a URL, because a URL is a string somebody can point anywhere.
         let genesis = rpc
             .get_genesis_hash()
-            .map_err(|e| format!("cannot check which cluster this is, so not paying anyone: {e}"))?
+            .map_err(|e| crate::rpc_scrub::scrub(&format!("cannot check which cluster this is, so not paying anyone: {e}")))?
             .to_string();
         if genesis != DEVNET_GENESIS {
             return Err(format!(
@@ -381,7 +381,7 @@ impl Payer {
         let sigs = self
             .rpc
             .get_signatures_for_address(&self.key.pubkey())
-            .map_err(|e| format!("cannot read this wallet's history, so not paying: {e}"))?;
+            .map_err(|e| crate::rpc_scrub::scrub(&format!("cannot read this wallet's history, so not paying: {e}")))?;
         if sigs.len() >= SCAN_LIMIT {
             // One page is all this reads. Past it the oldest payments fall out of view and a
             // leaf could be paid a second time, so say so loudly rather than pay from a
@@ -467,7 +467,7 @@ impl Payer {
         let tx = self
             .rpc
             .get_transaction(&sig, UiTransactionEncoding::Base64)
-            .map_err(|e| format!("cannot read {signature}, so not trusting its memo: {e}"))?;
+            .map_err(|e| crate::rpc_scrub::scrub(&format!("cannot read {signature}, so not trusting its memo: {e}")))?;
         Ok(tx
             .transaction
             .transaction
@@ -496,7 +496,7 @@ impl Payer {
             data: memo(leaf, split.author, split.platform).into_bytes(),
         });
 
-        let bh = self.rpc.get_latest_blockhash().map_err(|e| e.to_string())?;
+        let bh = self.rpc.get_latest_blockhash().map_err(|e| crate::rpc_scrub::scrub(&e.to_string()))?;
         let msg = Message::new_with_blockhash(&ixs, Some(&self.key.pubkey()), &bh);
         let mut tx = Transaction::new_unsigned(msg);
         tx.try_sign(&[&self.key], bh).map_err(|e| e.to_string())?;
@@ -516,9 +516,10 @@ impl Payer {
             Err(e) => {
                 eprintln!(
                     "payout: outcome unknown for leaf {leaf} — held until restart, and the chain \
-                     scan is the record: {e}"
+                     scan is the record: {}",
+                    crate::rpc_scrub::scrub(&e.to_string())
                 );
-                return Err(format!("the payout's outcome is unknown: {e}"));
+                return Err(crate::rpc_scrub::scrub(&format!("the payout's outcome is unknown: {e}")));
             }
         };
         Ok(Paid {

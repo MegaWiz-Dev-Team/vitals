@@ -136,7 +136,6 @@ fi
 
 echo "── project   $PROJECT / $REGION"
 echo "── service   $SERVICE"
-echo "── rpc       $RPC"
 
 # State goes to Firestore, not a disk: a Cloud Run container has none that survives a request.
 # Setting the project is what selects that backend — see store.rs.
@@ -164,7 +163,6 @@ env_add() {
 }
 
 env_add "GOOGLE_CLOUD_PROJECT=$PROJECT"
-env_add "VITALS_RPC=$RPC"
 env_add "VITALS_PROGRAM_ID=$PROGRAM_ID"
 env_add "VITALS_SCENARIOS=/app"
 env_add "VITALS_KEYPAIR=/relay/id.json"
@@ -301,6 +299,39 @@ SECRETS="/relay/id.json=vitals-relay-key:latest,VITALS_TOKEN=vitals-token:latest
 # without this, which is deliberate — a fallback to the page's token is the bug it replaces.
 [ "$SERVICE" = "vitals-world" ] && SECRETS="$SECRETS,VITALS_DOOR_TOKEN=vitals-door-token:latest"
 [ -n "$HEIMDALL" ] && SECRETS="$SECRETS,HEIMDALL_API_KEY=heimdall-key:latest"
+
+# The RPC. A dedicated provider's url carries its API key, so it lives in Secret Manager and
+# reaches the service as a secret — never in --set-env-vars, where `services describe` and this
+# log would show it to anybody who can read either. And it is carried like the cap slot: the
+# public endpoint rate-limited the ward into twenty-minute passes on 27 Sep 2026, and a deploy from
+# a shell that never heard of the secret must not quietly put it back there. VITALS_RPC_SECRET
+# names one; `none` goes back to a plain url on purpose.
+SERVICE_BEFORE="${SERVICE_BEFORE:-$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format=json 2>/dev/null || true)}"
+SERVICE_RPC_SECRET="$(printf '%s' "$SERVICE_BEFORE" | python3 -c '
+import json, sys
+try:
+    s = json.load(sys.stdin)
+    env = s["spec"]["template"]["spec"]["containers"][0].get("env", [])
+    ref = next((e.get("valueFrom", {}).get("secretKeyRef", {}) for e in env if e.get("name") == "VITALS_RPC"), {})
+    print(ref.get("name", ""))
+except Exception:
+    print("")
+' 2>/dev/null)"
+RPC_SECRET="${VITALS_RPC_SECRET:-}"
+RPC_NOTE=""
+if [ -z "$RPC_SECRET" ] && [ -n "$SERVICE_RPC_SECRET" ]; then
+  RPC_SECRET="$SERVICE_RPC_SECRET"
+  RPC_NOTE=" — carried from the service"
+fi
+[ "$RPC_SECRET" = none ] && RPC_SECRET=""
+if [ -n "$RPC_SECRET" ]; then
+  SECRETS="$SECRETS,VITALS_RPC=$RPC_SECRET:latest"
+  echo "── rpc       from secret $RPC_SECRET$RPC_NOTE (its url carries a key, so it is named, never shown)"
+  [ -n "${VITALS_RPC:-}" ] && echo "── rpc       the shell's VITALS_RPC is ignored: the secret decides"
+else
+  env_add "VITALS_RPC=$RPC"
+  echo "── rpc       $RPC"
+fi
 
 # The same rule as voice, applied to money. `--set-env-vars` replaces the whole environment, so a
 # deploy run from a shell with VITALS_PAYOUT_* exported would, until this block existed, ship a
