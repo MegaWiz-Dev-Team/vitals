@@ -129,7 +129,9 @@ for PACK in "$@"; do
       exit 1
     fi
   fi
-  ANSWER="$(curl -sS -m 120 -X POST -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  # The header is read from a descriptor, never passed as an argument: argv is visible to every
+  # process on the machine through `ps`, and on 27 Sep 2026 a plain `pgrep -fl` printed the door token.
+  ANSWER="$(curl -sS -m 120 -X POST -H @<(printf 'authorization: Bearer %s\n' "$TOKEN") -H 'content-type: application/json' \
       --data-binary @"$PACK" -w '\n%{http_code}' "$WARD/api/ward/case" 2>/dev/null)"
   CODE="${ANSWER##*$'\n'}"; BODY="${ANSWER%$'\n'*}"
   if [ "$CODE" = 200 ]; then

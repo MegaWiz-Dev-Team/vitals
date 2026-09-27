@@ -45,7 +45,9 @@ while :; do
   fi
   q=""; [ -n "$after" ] && q="?after=$after"
   t0=$(python3 -c 'import time; print(time.time())')
-  ANSWER="$(curl -sS -m 300 -H "authorization: Bearer $TOKEN" -w '\n%{http_code}' "$WARD/api/ward/bytes$q" 2>/dev/null)"
+  # The header comes from a descriptor, never argv: argv is readable by every process on the machine
+  # through `ps`, and on 27 Sep 2026 a plain `pgrep -fl` printed this token while this line ran.
+  ANSWER="$(curl -sS -m 300 -H @<(printf 'authorization: Bearer %s\n' "$TOKEN") -w '\n%{http_code}' "$WARD/api/ward/bytes$q" 2>/dev/null)"
   t1=$(python3 -c 'import time; print(time.time())')
   CODE="${ANSWER##*$'\n'}"; BODY="${ANSWER%$'\n'*}"
   wall="$(python3 -c "print(round($t1 - $t0, 1))")"

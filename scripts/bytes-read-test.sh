@@ -25,7 +25,14 @@ cat > "$WORK/bin/curl" <<'STUB'
 #!/usr/bin/env bash
 url="${@: -1}"
 n=$(( $(cat "$STUB_CALLS" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$STUB_CALLS"
-auth=0; for a in "$@"; do case "$a" in "authorization: Bearer stub-door-token") auth=1 ;; esac; done
+# The token must reach curl through a descriptor (-H @file), never as an argument: an argument is
+# readable by every process on the machine. A token seen in argv is recorded and fails the run.
+auth=0; for a in "$@"; do
+  case "$a" in
+    *stub-door-token*) [ "${a#@}" = "$a" ] && echo "$a" >> "$STUB_ARGV_LEAK" ;;
+  esac
+  case "$a" in @*) grep -qx "authorization: Bearer stub-door-token" "${a#@}" 2>/dev/null && auth=1 ;; esac
+done
 [ "$auth" = 1 ] || { printf '{"error":"door"}\n401'; exit 0; }
 echo "$url" >> "$STUB_URLS"
 [ "${STUB_FAIL_AT:-0}" = "$n" ] && { printf 'ward busy\n503'; exit 0; }
@@ -47,8 +54,8 @@ ok()  { printf '  \033[32mpass\033[0m  %s\n' "$1"; PASS=$((PASS+1)); }
 bad() { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; FAIL=$((FAIL+1)); }
 run() { # run <env...> -- <target>
   local envs=(); while [ "$1" != "--" ]; do envs+=("$1"); shift; done; shift
-  rm -f "$WORK/calls" "$WORK/urls"
-  env -i PATH="$WORK/bin:/usr/bin:/bin" HOME="$WORK" TMPDIR="$WORK" STUB_CALLS="$WORK/calls" STUB_URLS="$WORK/urls" "${envs[@]}" bash "$TARGET" "$@" 2>&1
+  rm -f "$WORK/calls" "$WORK/urls" "$WORK/argv-leak"
+  env -i PATH="$WORK/bin:/usr/bin:/bin" HOME="$WORK" TMPDIR="$WORK" STUB_CALLS="$WORK/calls" STUB_URLS="$WORK/urls" STUB_ARGV_LEAK="$WORK/argv-leak" "${envs[@]}" bash "$TARGET" "$@" 2>&1
 }
 
 echo "── bytes-read ──"
@@ -61,6 +68,12 @@ printf '%s' "$out" | grep -q 'shifts 22 · proved 11 · proved as it stands 1 ·
 
 # 2. every call carries the door token; the token is never printed.
 printf '%s' "$out" | grep -q 'stub-door-token' && bad "the token was printed" || ok "the token reaches the door and never the output"
+
+# 2b. and never through curl's arguments, where any process on the machine can read it (`ps`).
+out="$(run -- staging)"
+[ ! -s "$WORK/argv-leak" ] && [ "$(cat "$WORK/calls")" = 3 ] \
+  && ok "the token reaches curl through a descriptor, never its arguments" \
+  || bad "the token was on curl's command line: $(cat "$WORK/argv-leak" 2>/dev/null | head -1)"
 
 # 3. a page that fails stops the read and says the totals are partial; exit non-zero.
 out="$(run STUB_FAIL_AT=2 -- staging)"; rc=$?
