@@ -323,7 +323,20 @@ if [ -z "$RPC_SECRET" ] && [ -n "$SERVICE_RPC_SECRET" ]; then
   RPC_SECRET="$SERVICE_RPC_SECRET"
   RPC_NOTE=" — carried from the service"
 fi
-[ "$RPC_SECRET" = none ] && RPC_SECRET=""
+if [ "$RPC_SECRET" = none ]; then
+  # Cloud Run will not turn a variable that came from a secret into a plain one in the same deploy
+  # ("Cannot update environment variable [VITALS_RPC] to string literal because it has already been
+  # set with a different type" — 28 Sep 2026, after the image was already built). Refused here,
+  # before the build, rather than after it.
+  if [ -n "$SERVICE_RPC_SECRET" ]; then
+    echo "refusing: the service takes VITALS_RPC from secret $SERVICE_RPC_SECRET, and Cloud Run cannot turn" >&2
+    echo "it back into a plain value in one deploy. Remove the secret from the service first" >&2
+    echo "(gcloud run services update $SERVICE --remove-secrets VITALS_RPC — which leaves it with no RPC" >&2
+    echo "until this deploy lands), then deploy again. Nothing was built." >&2
+    exit 1
+  fi
+  RPC_SECRET=""
+fi
 if [ -n "$RPC_SECRET" ]; then
   SECRETS="$SECRETS,VITALS_RPC=$RPC_SECRET:latest"
   echo "── rpc       from secret $RPC_SECRET$RPC_NOTE (its url carries a key, so it is named, never shown)"

@@ -251,6 +251,8 @@ run "an RPC secret the service already uses is carried when the shell names none
   -- STUB_SERVICE_RPC_SECRET=vitals-rpc-url
 run "carried even over a public url left in the shell" accepts "VITALS_RPC=vitals-rpc-url:latest" \
   -- STUB_SERVICE_RPC_SECRET=vitals-rpc-url VITALS_RPC=https://api.devnet.solana.com
+run "going back to a plain url while the service holds the secret is refused before any build" rejects "Cloud Run cannot turn" \
+  -- STUB_SERVICE_RPC_SECRET=vitals-rpc-url VITALS_RPC_SECRET=none
 run "with no secret anywhere the public endpoint is used, and said" accepts "── rpc       https://api.devnet.solana.com" \
   -- STUB_SERVICE_RPC_SECRET=
 run "moving the slot takes the founder's word, printed" accepts "── founder's word on moving the cap slot: ย้ายได้" \
