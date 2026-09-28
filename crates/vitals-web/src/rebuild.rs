@@ -36,8 +36,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub struct Held(&'static AtomicBool);
 
 /// Take the gate, or `None` if somebody already has it.
+///
+/// `then`, never `then_some`: `then_some(Held(flag))` builds the `Held` even for a taker that is
+/// refused, and dropping it released the gate its holder still had (28 Sep 2026 — fifteen board
+/// reads at once, and passes overlapping each other).
 pub fn take(flag: &'static AtomicBool) -> Option<Held> {
-    (!flag.swap(true, Ordering::SeqCst)).then_some(Held(flag))
+    (!flag.swap(true, Ordering::SeqCst)).then(|| Held(flag))
 }
 
 impl Drop for Held {

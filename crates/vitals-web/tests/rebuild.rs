@@ -126,3 +126,31 @@ fn a_gate_is_given_back_even_when_the_worker_panics() {
     drop(next);
     assert!(!FLAG.load(Ordering::SeqCst), "and it gives the gate back on the ordinary way out too");
 }
+
+/// **A refused taker leaves the gate exactly as it found it — held.**
+///
+/// 28 Sep 2026, production: fifteen board reads of ~500 s each running at once, and the ward's pass
+/// overlapping itself. `take` was `(!flag.swap(true)).then_some(Held(flag))` — and `then_some`
+/// builds its argument whether or not it is used, so every refused taker made a `Held`, threw it
+/// away, and its `Drop` released a gate somebody else was holding. The test above checked that the
+/// second taker is refused, and never that the gate was still shut behind it.
+///
+/// The same gate keeps two ward passes from closing one patient twice on chain.
+#[test]
+fn a_refused_taker_does_not_open_the_gate_it_was_refused() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use vitals_web::rebuild::take;
+
+    static FLAG: AtomicBool = AtomicBool::new(false);
+
+    let first = take(&FLAG).expect("a free gate is taken");
+    for n in 2..=5 {
+        assert!(take(&FLAG).is_none(), "taker {n} is refused");
+        assert!(FLAG.load(Ordering::SeqCst),
+                "and after refusing taker {n} the gate is still held by the first — a refusal \
+                 that opens the gate lets the next taker through");
+    }
+    drop(first);
+    assert!(!FLAG.load(Ordering::SeqCst), "the holder gives it back");
+    assert!(take(&FLAG).is_some(), "and then it can be taken again");
+}
