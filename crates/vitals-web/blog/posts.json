@@ -1,0 +1,306 @@
+[
+ {
+  "id": 63,
+  "source": "https://colosseum.com/arena/projects/vitals-1/updates/63",
+  "published": "2026-09-15T23:40:04.287000+07:00",
+  "title": "Day 2: Vitals World is open",
+  "slug": "day-2-vitals-world-is-open",
+  "images": [
+   {
+    "file": "63-1.jpg",
+    "alt": "The Vitals World globe, before the ward opened"
+   }
+  ],
+  "paras": [
+   "Day 2 : Vitals World is open: a public hospital ward on Solana that never runs out of patients.",
+   "One patient, many strangers, and the chart is the chain. Anyone in the world takes a shift in the browser — no signup, no wallet — treats her for a few minutes and hands over. The next stranger opens her exactly where you left her, and nobody can rewrite what happened.",
+   "Spin the globe, find a patient by country, take a shift. Shifts open in week 2 (21–27 Sep). Follow along.",
+   "world.vitals.academy"
+  ],
+  "correction": null
+ },
+ {
+  "id": 112,
+  "source": "https://colosseum.com/arena/projects/vitals-1/updates/112",
+  "published": "2026-09-16T23:46:53.719000+07:00",
+  "title": "Day 3: the globe is live",
+  "slug": "day-3-the-globe-is-live",
+  "images": [
+   {
+    "file": "112-1.gif",
+    "alt": "The globe coloured by people per doctor, with the year slider moving back to 2000"
+   }
+  ],
+  "paras": [
+   "Day 3. world.vitals.academy is live: every country coloured by people per doctor (World Bank/WHO), with a slider back to 2000 — the number we exist to bring down 1% a year. Behind it, on our staging ward: the first patient nobody owned went home after two strangers' shifts, anchored on Solana devnet; two others died because nobody came, and the chain says so. New: a case factory compiling our own library into the ward's engine (66 so far, provisional), and a patient factory spanning 74 countries. Door opens when the queue is full and the first cases pass our clinical advisor. https://world.vitals.academy/?src=colosseum"
+  ],
+  "correction": null
+ },
+ {
+  "id": 158,
+  "source": "https://colosseum.com/arena/projects/vitals-1/updates/158",
+  "published": "2026-09-17T23:46:55+07:00",
+  "title": "Day 4: the case factory",
+  "slug": "day-4-the-case-factory",
+  "images": [
+   {
+    "file": "158-1.gif",
+    "alt": "The ward's front page: spin the globe, find a patient, take a shift"
+   }
+  ],
+  "paras": [
+   "Day 4. The ward has a case factory now: our own case library is compiled into the ward's deterministic engine by a validator that refuses what it cannot model honestly. 78 cases are in the ward tonight — 18 written for the countries our patients come from first (Niger, South Sudan, Somalia, Malawi, Papua New Guinea, Yemen, Chad, Rwanda …), 60 translated from our Thai library. All provisional until our clinical advisor has reviewed them; nothing opens before that. Also today: a review mode where anyone can open any case without touching a bed or the chain; a chart page for every patient who has left; receipts that read as a story with the on-chain proof folded below; times read from block time, not slot arithmetic; a bed freed within a minute of a closed tab. Staging census tonight: 17 admitted · 1 went home · 9 died unattended · 27 shifts.",
+   "https://world.vitals.academy/?src=colosseum"
+  ],
+  "correction": null
+ },
+ {
+  "id": 209,
+  "source": "https://colosseum.com/arena/projects/vitals-1/updates/209",
+  "published": "2026-09-18T23:46:57.154000+07:00",
+  "title": "Day 5: the patient factory",
+  "slug": "day-5-the-patient-factory",
+  "images": [
+   {
+    "file": "209-1.jpg",
+    "alt": "How the patient factory builds only as many patients as the queue is short"
+   },
+   {
+    "file": "209-2.jpg",
+    "alt": "Countries drawn by their share of the doctor shortage"
+   },
+   {
+    "file": "209-3.jpg",
+    "alt": "A person from the pool, a case from the ward's catalogue, and a face judged before it is shown"
+   },
+   {
+    "file": "209-4.jpg",
+    "alt": "Every write lands the moment it is true, so a crash never makes a second copy"
+   }
+  ],
+  "paras": [
+   "Day 5 — the patient factory. A public ward needs patients nobody wrote by hand. So the ward has a factory: a job every ten minutes that reads the ward and builds exactly as many patients as the queue is short. A patient is three things — a case the ward already holds, a person we invented, and her picture. The factory writes none of the medicine, admits nobody, and holds no key. Who: a pool of 400 invented people from 74 countries, both sexes per country, no ages — the case carries the band. Where from: the draw is weighted by people per doctor (World Bank, each country's latest year). The country furthest behind its share is drawn next; spread rules keep the board looking like the world (≤ 2 per country in the last 20, ≥ 12 countries, ≥ 6 regions, no region 40 draws without a patient, ≤ 40 % of beds). A refused draw is redrawn, never skipped, and every redraw is written into the plan. Which case: from the ward's own catalogue only — sex must match, age inside a window around the case's patient, one persona is one person. Her face: one base made locally, five states edited on Vertex, each edit judged twice — same person? shows the state? — or left out. No picture of a dead patient. Why it never duplicates: writes land the moment they are true; the door is content-addressed; a crash costs a minute, never a second copy. Tonight: 20 patients from 18 countries waiting at the production door (preview). 40 image edits a day, ≈ USD 1 a day at list price. https://world.vitals.academy/?src=colosseum"
+  ],
+  "correction": null
+ },
+ {
+  "id": 256,
+  "source": "https://colosseum.com/arena/projects/vitals-1/updates/256",
+  "published": "2026-09-20T00:20:48.833000+07:00",
+  "title": "Day 6: what the chain actually does",
+  "slug": "day-6-what-the-chain-does",
+  "images": [
+   {
+    "file": "256-1.jpg",
+    "alt": "One native program on devnet: a patient is an account holding the hash of her last shift"
+   },
+   {
+    "file": "256-2.jpg",
+    "alt": "Four instructions make a shift: commit, take, anchor, free"
+   },
+   {
+    "file": "256-3.jpg",
+    "alt": "The next stranger's browser rebuilds her chart from every leaf"
+   },
+   {
+    "file": "256-4.jpg",
+    "alt": "The relay pays; every number the ward shows is re-countable from the chain"
+   }
+  ],
+  "paras": [
+   "Day 6. People keep asking what the chain actually does in a medical simulator, so here it is. Each patient is one account on Solana. It holds her state, who has her right now, and one hash: her last shift. That's it. Her chart isn't stored anywhere. When you open her, your browser pulls every shift ever anchored on her, replays the tapes through the same physics engine, and that's the chart. If our server lied, your replay wouldn't match. A shift is four small transactions. Commit (which case, without saying which). TakeShift (a ten-minute lease). You play in the browser, nothing on chain. AnchorShift, one leaf, and it becomes her new head. It carries the head you think you're extending. If someone anchored before you, the program says StaleHead and writes nothing. That rule caught our own demo driver before it caught anyone else. Costs: 10,000 lamports a shift, two signatures. Our relay pays. Nobody makes a wallet. What the chain doesn't do: judge the medicine. That's the rubric, replayable from the tape, shown separately. 32-second walkthrough attached. https://world.vitals.academy/?src=colosseum"
+  ],
+  "correction": null
+ },
+ {
+  "id": "eternal",
+  "source": "https://colosseum.com/arena/projects/vitals",
+  "published": "2026-09-20T11:45:00+07:00",
+  "title": "Vitals: our Colosseum Eternal entry",
+  "slug": "vitals-colosseum-eternal-entry",
+  "images": [],
+  "correction": null,
+  "paras": [
+   "We submitted Vitals to Colosseum Eternal on 20 September 2026. This is the entry as we described it.",
+   "Vitals is a real-time clinical emergency you play in the browser: a deterministic physiology engine, not a script, decides whether the patient lives. Any run can be reduced to one hash and anchored on Solana, and anyone can replay the tape and recompute the score without trusting us. Built on Embla, our production clinical-simulation engine — 433 authored cases, 671 scored runs, 1st place at NECTEC AI for Thai 2026. Free to every learner, forever.",
+   "Play it: https://vitals.academy/play\nTechnical demo (2 min): https://youtu.be/Swe4KJXmODM\nSource: https://github.com/MegaWiz-Dev-Team/vitals",
+   "Its sister entry, Vitals World, is a public ward on the same engine and the same chain, in the Crypto World's Fair. Its builder updates follow below."
+  ]
+ },
+ {
+  "id": 300,
+  "source": "https://colosseum.com/arena/projects/vitals-1/updates/300",
+  "published": "2026-09-21T00:28:05.857000+07:00",
+  "title": "A model that cannot hallucinate, and a ward that already couldn't",
+  "slug": "a-model-that-cannot-hallucinate",
+  "images": [],
+  "paras": [
+   "20 Sep — a model that \"cannot hallucinate\" launched this week; our ward already couldn't",
+   "TypeSafe AI's Jev returns typed decisions with calibrated probabilities instead of prose. Honest comparison: Jev's guarantee is about shape — it can only answer from declared options, and can still pick the wrong one. Vitals World's core has no model: a deterministic physiology engine, every shift a tape, replayed from the chain to the same state — by our ward, or by anyone who runs the open engine — and checkable against the chain. Nothing to hallucinate because nothing is guessing.",
+   "The one place a Jev-style typed check would help us is the guard on the patient's voice, which today matches phrases and could miss a paraphrased slip. Plan and evaluation bar written (recall on paraphrase, false-positive rate, calibration, latency). Not built — step 0 is a person reading fifty replies by eye.",
+   "Built today, staging revisions 00062 → 00067:",
+   "• Boot 41.6 s → 3.3 s: the tape repair ran before the port opened.",
+   "• Ward pass 100 s → ~2 s quiet: it listed every patient's chain history three times per pass against a rate-limited public RPC. Now: ask the chain's own shift count first; list only what moved; share the result; budget the pass.",
+   "• Three bugs found by reading: a boot that could delete the only copy of a tape it was about to restore; a refresh gate one panic would have left stuck for the life of the process; a pass that trusted a half-read history for a chain write. Each fixed with a test.",
+   "Lesson, three times in two days: a rule that lives only in a comment has a shelf life. The fix each time was a test, not a better sentence.",
+   "Devnet · free · replayable by anyone — world.vitals.academy"
+  ],
+  "correction": null
+ },
+ {
+  "id": 354,
+  "source": "https://colosseum.com/arena/projects/vitals-1/updates/354",
+  "published": "2026-09-22T00:30:05.386000+07:00",
+  "title": "The ward opened last night",
+  "slug": "the-ward-opened",
+  "images": [
+   {
+    "file": "354-1.jpg",
+    "alt": "A frame from the opening film"
+   }
+  ],
+  "paras": [
+   "The ward opened last night. 21 Sep 2026, 21:30 ICT — two and a half hours after the 19:00 we had announced to ourselves, because the founder's cloud login expired at 18:52 and the deploy identity was missing one IAM permission. Nothing clever; just the ordinary way a deadline goes.",
+   "Three patients are in beds right now, and they came from where the globe says the shortage is: Eric Habimana (Rwanda), Juma Shabani (Tanzania), Nelson Tau (Papua New Guinea). Twenty more are queued. 75 cases are placeable, every one of them marked provisional — not yet reviewed by our clinical advisor — and the ward says so on the board, at the bedside, and on every receipt.",
+   "Nobody has taken a shift yet. 381 people have opened the globe since the door turned; zero shifts are anchored on chain. That is the honest headline three hours in, and we do not yet know which of two things it is: people are not arriving at a patient at all, or they arrive and do not know how to begin. Those have opposite fixes — one is an announcement problem, the other is a page asking a stranger for something they have not been taught. So the next deploy ships two counters, bedsides opened and shifts taken, and the answer decides whether we build a tutorial or go and tell people the ward is open. Building the tutorial first would be building for a thing that might not be broken.",
+   "What went in before the door opened, measured on staging:",
+   "Boot 41.6 s → ~6 s. The tape repair was running before the port opened; a visitor arriving during a start waited for work nobody had asked for.",
+   "The every-minute ward pass, 100 s → ~4 s. It was listing every patient's chain history three times per pass against a rate-limited public endpoint. Now it asks the chain's own shift count first and lists only what moved.",
+   "The pass became a route. Cloud Scheduler calls it every minute, single-flight, because the container only gets CPU while it is answering a request — an in-process timer on a quiet ward has nothing to run on.",
+   "One 429 no longer blacks out the board. A single rate-limited history used to make the whole ward unreadable; now that patient's row says her chart may be a shift behind and the other twenty-five stay fresh.",
+   "Four correctness bugs, all found by reading rather than by failing: a boot that could delete the only copy of a tape it was about to restore; a refresh gate that one panic would have stuck for the life of the process; a pass that trusted a half-read history for a decision that writes to the chain; and a refill that would have admitted a patient onto a case the clinical advisor had withdrawn.",
+   "The lesson keeps arriving in the same shape. Last night the page said \"open for play since 21 Sep 2026\" for two hours while the door was shut and nobody could take a shift — because I built that sentence from a date instead of from the door. A claim composed from a constant cannot be wrong, because nothing checks it. The fix, as every time this week, is a test rather than a better sentence.",
+   "Devnet. Free. The door is open at world.vitals.academy — and if you take a shift, the next stranger starts exactly where you leave the patient.",
+   "Opening film: https://youtu.be/uOpv-_d7-s0"
+  ],
+  "correction": "Correction, 28 September: “381 people have opened the globe” counts front-page visits, not people. We have since confirmed that link-preview crawlers are counted in that number too."
+ },
+ {
+  "id": 413,
+  "source": "https://colosseum.com/arena/projects/vitals-1/updates/413",
+  "published": "2026-09-23T00:33:49.293000+07:00",
+  "title": "Nine patients died today because nobody came",
+  "slug": "nobody-came",
+  "images": [
+   {
+    "file": "413-1.jpg",
+    "alt": "20 patients in beds, 9 died today, 0 shifts completed"
+   },
+   {
+    "file": "413-2.jpg",
+    "alt": "The ward's front page on 22 September"
+   }
+  ],
+  "paras": [
+   "Nine patients died on our ward today because nobody came.",
+   "We opened Vitals World to the public 24 hours ago — a ward anyone can walk into, pick a patient, and treat for ten minutes. No signup, no wallet, works on a phone.",
+   "In those 24 hours the front page was served 549 times and a patient's bedside 10 times, and not one shift was completed. 31 patients admitted, 19 on the ward right now from 15 countries, twelve dead.",
+   "The patients are invented. The countries are not, and neither is the arithmetic that sends them: who arrives is weighted by that country's people per doctor, so a country with twice the shortage sends twice the patients. Every death is written to Solana devnet as \"died, nobody on shift\" — a record we cannot quietly delete, and anyone can recount.",
+   "It is uncomfortable to publish a zero on the day after launch. We are publishing it because it is the entire point. A ward where nobody comes is what most of the world already has; the only difference is that here you can watch it happen and the count is public.",
+   "If you are a clinician, a student, or simply curious: ten minutes, one shift. world.vitals.academy — and if you bounce off it, tell us where. That is worth more to us than a like."
+  ],
+  "correction": null
+ },
+ {
+  "id": 467,
+  "source": "https://colosseum.com/arena/projects/vitals-1/updates/467",
+  "published": "2026-09-24T00:35:35.706000+07:00",
+  "title": "Yesterday nobody came. Today eleven shifts",
+  "slug": "eleven-shifts",
+  "images": [
+   {
+    "file": "467-1.jpg",
+    "alt": "The ward's front page on 23 September, with its first shifts"
+   }
+  ],
+  "paras": [
+   "Yesterday nobody came. Today eleven shifts, and two patients went home.",
+   "Twenty-four hours ago we published a zero on this board: a ward open to the whole world, and not one shift taken. Thirty-one patients had been admitted by then and twelve had died with nobody at the bedside. We published it because it was the entire point — a ward where nobody comes is what most of the world already has; the only difference here is that you can watch it happen and the count is public.",
+   "Today, in the same window the same endpoint counts: 100 front pages served, 27 bedsides opened, 11 shifts the chain accepted, from 3 different people. Two patients were treated and discharged — one in Burundi and one in Chad. They are the first patients in this ward to go home.",
+   "The patients are invented. The countries are not, and neither is the arithmetic that sends them: who arrives is weighted by that country's people per doctor, the layer under the globe (World Bank/WHO, latest year), so a country with twice the shortage sends twice the patients. One doctor per 540 people worldwide; about one per 7,000 in Ethiopia and one per 26,000 in Niger. Of the 48 patients admitted so far, 36 came from African countries — Niger, South Sudan, Somalia, Malawi, Chad, Burundi, Sierra Leone, Rwanda, Tanzania and others — and 11 from South and Southeast Asia, where the same arithmetic is milder but real: Thailand publishes one doctor per 1,487 people (Ministry of Public Health, 2024), Indonesia one per 1,650 (Kemenkes, 2024), against one per 370 in Japan (MHLW, 2024). WHO projects a shortfall of 11 million health workers by 2030, over half of it in Africa — health workers, not doctors, and their figure, not ours.",
+   "That shortage is why this project exists. We build clinical simulation for a living, and the countries with the fewest doctors also have the fewest people free to supervise anyone learning to be one — so practice, the part that actually makes a clinician, is missing exactly where it is needed most. A ward the whole world can walk into is our attempt at that, and today is the first day it showed any sign of working.",
+   "We are not going to dress it up. 34 patients have still died here with nobody at the bedside, against 2 who went home, and most patients on this board have had exactly one shift: nobody has yet handed over to a stranger and had a stranger pick it up. The handover is the whole idea and it is not working yet. Every one of those 34 deaths is written to Solana devnet as \"died, nobody on shift\" — a record we cannot quietly delete, and anyone can recount. That number is what we are working against, and we have a long way to go.",
+   "What changed between the zero and today was not traffic. It was the product: the way in from the globe to a bedside, and what a bedside asks of you in the first ten seconds. Same deterministic engine, same tapes on chain, same public counters — recount every figure above at world.vitals.academy/api/ward and /api/usage.",
+   "If you took one of those 11 shifts: thank you. If you bounced off, we would rather hear where than hear nothing. Ten minutes, one patient — world.vitals.academy"
+  ],
+  "correction": "Correction, 28 September: “11 shifts the chain accepted, from 3 different people” should read 3 different keys. The ward counts keys, not people: there is no signup, so one person can hold several keys."
+ },
+ {
+  "id": 525,
+  "source": "https://colosseum.com/arena/projects/vitals-1/updates/525",
+  "published": "2026-09-25T07:35:22.810000+07:00",
+  "title": "58 patients have died. 57 had nobody on shift",
+  "slug": "fifty-seven-had-nobody",
+  "images": [
+   {
+    "file": "525-1.jpg",
+    "alt": "78 patients admitted, 68 never opened by anyone, 10 treated by a stranger"
+   }
+  ],
+  "paras": [
+   "58 patients have died on this ward. 57 of them had nobody on shift at all.",
+   "That is what the chain says tonight, and it is not the sentence we sat down to write. Yesterday we published that the handover — a stranger picking up where another stranger left off — had not happened yet, and that it was the whole idea. It has now happened once. A woman in Niger was treated by one person, handed over, and picked up by a second; she is alive at 44 hours. One other patient has been treated more than once: a 63-year-old woman from Myanmar in bed 5, five shifts, all five signed by the same key — somebody who kept coming back. She is alive at 23 hours.",
+   "The rest of the board is the other half of the story. Of 78 patients admitted since we opened, ten have been opened by a stranger even once: two went home, one died fifteen minutes after her handover, seven are still in their beds. The other 68 were never opened by anyone. Left alone, a case runs to its own ending in about ten hours, and that is exactly where the deaths sit — 10 h, 12 h, 13 h.",
+   "We are not going to turn that into \"a visit saves a patient\". Fifteen shifts across ten patients, one person accounting for seven of them, and the patients nobody treated are the patients nobody picked: a board people choose from by face, country and difficulty is not a trial, and we will not dress it as one. What the record does say plainly is the thing this ward was built to test, and we would rather have been wrong: when nobody comes, they die, and the count is public either way.",
+   "The gap we can act on is one step earlier. Today: 337 front pages served, 77 bedsides opened, 33 shifts taken, 15 handed over. A shift that ends without a handover anchors nothing — no receipt, no tape, nothing for the next person to replay — so eighteen people put their hands on a patient tonight and left nothing behind for anyone. That is a product problem with our name on it, not a traffic problem.",
+   "Shipped tonight, and the ward is answering from it: revision vitals-world-00044-87k. It carries the factory the branch actually checks, and a fix you can see on a bedside — production's binary held personas for 20 countries, so a patient from any of the other 54 showed no country at all on the bedside or the receipt; that is gone. And the two numbers above are now on the page itself: /api/usage and /stats publish takes and handovers separately, the handovers counted off the chain at read time, so the gap can be checked without asking us. The board that ranks patients by how long they have left is the founder's ruling tonight and is being built; it lands with the idle cap or not at all, because a board that promises hours it cannot deliver is worse than one that says nothing.",
+   "Why the patients are from where they are: admissions are weighted by each country's people per doctor (World Bank/WHO, latest year) — one per 540 worldwide, about one per 7,000 in Ethiopia, one per 26,000 in Niger. 37 countries have sent someone: 58 of the 78 from African countries, 16 from South and Southeast Asia, where Thailand publishes one doctor per 1,487 people (Ministry of Public Health, 2024) and Indonesia one per 1,650 (Kemenkes, 2024) against one per 370 in Japan (MHLW, 2024). France, the UK, Japan and Korea are on the board too — the weighting sends fewer of them, not none.",
+   "Every figure above is countable without us: world.vitals.academy/api/ward and /api/usage, and each death is on Solana devnet as \"died, nobody on shift\" — a line we cannot quietly take back.",
+   "Ten minutes, one patient, and hand over when your time is up. The handover is what makes the next person's shift possible, and tonight it happened once. world.vitals.academy"
+  ],
+  "correction": null
+ },
+ {
+  "id": 602,
+  "source": "https://colosseum.com/arena/projects/vitals-1/updates/602",
+  "published": "2026-09-26T20:47:24.157000+07:00",
+  "title": "Week 2: a receipt that refuses to guess",
+  "slug": "week-2-a-receipt-that-refuses-to-guess",
+  "images": [
+   {
+    "file": "602-1.jpg",
+    "alt": "What is proved: 85 of 95 shifts before the fix, 90 of 97 after"
+   },
+   {
+    "file": "602-2.jpg",
+    "alt": "What broke in week 2: 14 hours, 14 minutes, 3 incidents"
+   }
+  ],
+  "paras": [
+   "Week 2 — a receipt that refuses to guess",
+   "What we built. Every version of a case is now kept under the hash of its own bytes. A receipt is rebuilt from the bytes the shift was actually played on, not from whatever the case has become since. Replay those same bytes and you get the same receipt back.",
+   "What we learned. When the bytes are gone, the receipt shows nothing rather than a chart derived from today's version of the case. Nobody's mark improves, and we did not soften the marking. We held ourselves to it. Just after midnight on 26 September, 85 of 95 anchored shifts replayed to the exact leaf the chain holds, and 10 did not. Five of the ten were played on a case version that was overwritten on 23 September; their receipts show nothing, as designed. The other five still had their bytes, and the fault was ours: the live shift and its replay disagreed about one rule, an idle cap. That fix went out at 01:06, and the same check then read 90 of 97 proved, with two of those five still open. (Both reads are from the ward's own integrity check, not yet public; times are Bangkok.)",
+   "What broke, in public. A renamed field left the ward with no new patients for 14 hours. We wrote a new version over a case the chain already had a shift against, and put the original back, byte for byte, in 14 minutes. Our own test browsers held the ward's connections for days and turned real visitors away. Three incidents, all written down.",
+   "What's next. A security check, an audit, the road to mainnet, and an explanation of how it all works.",
+   "Ward: world.vitals.academy · demo (2 min, live product): https://youtu.be/JEoNwBoIqZ0 · weekly update (1 min): https://youtu.be/UONdHIoWkJQ"
+  ],
+  "correction": null
+ },
+ {
+  "id": 662,
+  "source": "https://colosseum.com/arena/projects/vitals-1/updates/662",
+  "published": "2026-09-27T20:48:21.124000+07:00",
+  "title": "Week 3: the plan, before we are held to it",
+  "slug": "week-3-the-plan",
+  "images": [
+   {
+    "file": "662-1.jpg",
+    "alt": "The week-3 plan: four builds shipped, five goals"
+   }
+  ],
+  "paras": [
+   "Week 3 — the plan, before we are held to it",
+   "This is what we will work on from 28 September to 4 October, posted now so that next Sunday's update can be checked against it.",
+   "Where the ward is tonight. Four builds went to production today. Every response now carries six security headers, the ward compares its door token in constant time, and a refusal no longer names our internal configuration. Each visitor now has their own limit on questions to a patient, where before the whole ward shared one. Every shift records which side of the idle cap it was played on, so its receipt never has to guess. And the ward got slow: its loop went from a median of about 15 seconds a pass on 25 September to about 19 minutes on 27 September, as patients grew from 97 to 183 while devnet was rate-limiting our reads. A fix shipped this evening brought it back to about a minute or two on its first passes, and a receipt the chain cannot answer for at that moment now says “could not be read just now — try again” instead of “No such shift”.",
+   "The plan.",
+   "1. Security, across the board. Finish the app-side pass: a content-security policy with integrity checks, a fresh scan, and every row of our test table green or explained.",
+   "2. Watching the ward. Alerts when the relay wallet runs low, an anchor fails, receipts start being refused, or the patient factory stops.",
+   "3. The old receipts. Every old receipt that could not be rebuilt (seven, as of 26 September) either proved, or given a written reason why it cannot be.",
+   "4. A ward that keeps up. The loop reliably under a minute as the ward grows, and the integrity check measured for how much it can carry.",
+   "5. The pitch. A two-minute clip for the final submission.",
+   "What we are not doing this week: anything that touches money, mainnet or a treasury key. Where mainnet readiness stands goes in next week's update, told plainly, not promised here.",
+   "Ward: world.vitals.academy · last week: colosseum.com/arena/projects/vitals-1/updates/602"
+  ],
+  "correction": null
+ }
+]

@@ -7,6 +7,7 @@
 //! Deliberately small. No framework, no database, no build step: tiny_http, a single HTML page,
 //! and sessions in a map. The point is to make the automaton playable, not to ship a platform.
 
+mod blog;
 mod chain;
 use vitals_web::{
     archive, authors, fuel, lang, meter, news2, patient, payout, reading, review, store, usage,
@@ -2075,6 +2076,10 @@ fn main() {
         // company — and anything deeper moves permanently to the game origin. 301 on purpose:
         // the split is a recorded decision, not a phase. Everything the apex serves carries its
         // own short cache life so a proxy caching the apex never holds anything of the game's.
+        if host_of(&req) == APEX && blog::is_blog(&path) {
+            let _ = req.respond(blog_response(&path));
+            continue;
+        }
         if host_of(&req) == APEX {
             let resp = match apex_target(&url) {
                 None => html(&front_door(&path)).with_header(
@@ -3926,6 +3931,18 @@ fn front_door(path: &str) -> String {
     }
 }
 
+/// A blog page or image, cached like the rest of the apex; an unknown path is a 404 page.
+fn blog_response(path: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+    let cache = || Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=300"[..]).unwrap();
+    match blog::serve(path) {
+        Some(blog::Page::Html(h)) => html(h).with_header(cache()),
+        Some(blog::Page::Image(bytes, ctype)) => Response::from_data(bytes.to_vec())
+            .with_header(Header::from_bytes(&b"Content-Type"[..], ctype.as_bytes()).unwrap())
+            .with_header(cache()),
+        None => html(blog::NOT_FOUND).with_status_code(404),
+    }
+}
+
 fn apex_target(url: &str) -> Option<String> {
     let path = url.split('?').next().unwrap_or("/");
     // The landing and the two documents about the company stay on the front door. Everything
@@ -3937,7 +3954,9 @@ fn apex_target(url: &str) -> Option<String> {
     // answering with the policy — rather than with a 301 to a host called `devnet` — is the
     // difference between a URL that reads as the company's and one that reads as an artefact of
     // our hosting.
-    (!matches!(path, "/" | "/privacy" | "/terms")).then(|| format!("{GAME_ORIGIN}{url}"))
+    // The blog stays too: a builder update is shared by its address, like the policy.
+    (!matches!(path, "/" | "/privacy" | "/terms") && !blog::is_blog(path))
+        .then(|| format!("{GAME_ORIGIN}{url}"))
 }
 
 /// Where to listen, with the platform's word winning over ours.
@@ -4539,6 +4558,45 @@ mod tests {
         for p in ["/privacy", "/terms"] {
             assert!(!front_door(p).contains(BUILD_STAMP), "{p} went out unstamped");
             assert!(front_door(p).contains(BUILD), "{p} does not say which build it describes");
+        }
+    }
+
+    // ── the blog ────────────────────────────────────────────────────────────
+
+    /// The builder updates live on the apex: a post shared as vitals.academy/blog/… is read at
+    /// the name it was shared as, not bounced to a host called `devnet`.
+    #[test]
+    fn the_apex_serves_the_blog_itself() {
+        for p in ["/blog", "/blog/", "/blog/week-3-the-plan", "/blog/img/662-1.jpg", "/blog/no-such-post"] {
+            assert_eq!(apex_target(p), None, "{p} must not 301 off the apex");
+        }
+        assert!(apex_target("/blogger").is_some(), "only /blog and below belong to the blog");
+        assert!(matches!(blog::serve("/blog"), Some(blog::Page::Html(_))));
+        assert!(matches!(blog::serve("/blog/"), Some(blog::Page::Html(_))));
+        assert!(matches!(blog::serve("/blog/img/662-1.jpg"), Some(blog::Page::Image(_, "image/jpeg"))));
+        assert!(blog::serve("/blog/no-such-post").is_none());
+    }
+
+    /// Every post is on the index, names the Colosseum update it reproduces, and every link or
+    /// image a blog page points at under /blog is one the blog serves.
+    #[test]
+    fn every_blog_link_and_image_resolves() {
+        let Some(blog::Page::Html(index)) = blog::serve("/blog") else { panic!("the blog has no index") };
+        for (route, page) in blog::PAGES {
+            if *route != "/blog" {
+                assert!(index.contains(&format!("href=\"{route}\"")), "{route} is not on the index");
+                assert!(page.contains("https://colosseum.com/arena/projects/"), "{route} does not name its source");
+            }
+            for attr in ["href=\"", "src=\""] {
+                for (at, _) in page.match_indices(attr) {
+                    let s = at + attr.len();
+                    let e = s + page[s..].find('"').expect("unterminated attribute");
+                    let target = &page[s..e];
+                    if blog::is_blog(target) {
+                        assert!(blog::serve(target).is_some(), "{route} points at {target}, which is not served");
+                    }
+                }
+            }
         }
     }
 

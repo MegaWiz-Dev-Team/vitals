@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Week 2: a receipt that refuses to guess · Vitals blog</title>
+<meta name="description" content="What we built. Every version of a case is now kept under the hash of its own bytes. A receipt is rebuilt from the bytes the shift was actually played on, not from whatever the…">
+<meta property="og:title" content="Week 2: a receipt that refuses to guess · Vitals blog">
+<meta property="og:description" content="What we built. Every version of a case is now kept under the hash of its own bytes. A receipt is rebuilt from the bytes the shift was actually played on, not from whatever the…">
+<meta property="og:image" content="https://vitals.academy/blog/img/602-1.jpg">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🫀</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{--ground:#F5F8F8;--surface:#FFFFFF;--ink:#0F1719;--ink-2:#48585C;--ink-3:#7E8F93;
+  --rule:#D9E2E2;--rule-soft:#E8EEEE;--proven:#0B6E58;--attested:#A24714;--attested-soft:#F6E9E1}
+@media (prefers-color-scheme:dark){:root{--ground:#0B1113;--surface:#121B1D;--ink:#E9F0F0;--ink-2:#9CAEB1;
+  --ink-3:#68797D;--rule:#223033;--rule-soft:#1A2528;--proven:#42D2A7;--attested:#E5924F;--attested-soft:#2A1C12}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;
+  font-size:17px;line-height:1.7;-webkit-font-smoothing:antialiased}
+a{color:var(--proven);overflow-wrap:anywhere}
+h1,h2{font-family:Archivo,Arial,sans-serif;margin:0;text-wrap:balance;line-height:1.15}
+.wrap{max-width:44rem;margin:0 auto;padding-inline:clamp(1rem,4vw,2rem)}
+.rail{border-bottom:1px solid var(--rule-soft);padding-block:.8rem;font-family:"IBM Plex Mono",monospace;font-size:.72rem;
+  letter-spacing:.1em;color:var(--ink-3);display:flex;gap:1rem;flex-wrap:wrap}
+.rail a{color:var(--ink);text-decoration:none;font-weight:600;letter-spacing:.14em}
+.meta{font-family:"IBM Plex Mono",monospace;font-size:.78rem;color:var(--ink-3);letter-spacing:.04em}
+header.post{padding-block:clamp(1.8rem,6vw,3.2rem) 1.2rem}
+header.post h1{font-size:clamp(1.8rem,5vw,2.6rem);font-weight:800;margin-block:.5rem}
+article p{margin:0 0 1.1rem}
+figure{margin:1.6rem 0}
+figure img{display:block;max-width:100%;height:auto;border:1px solid var(--rule);border-radius:8px;background:var(--surface)}
+figcaption{font-size:.82rem;color:var(--ink-3);margin-top:.4rem}
+.fix{background:var(--attested-soft);border-left:3px solid var(--attested);padding:.8rem 1rem;border-radius:4px;
+  font-size:.92rem;margin:1.6rem 0}
+.pager{display:flex;justify-content:space-between;gap:1rem;border-top:1px solid var(--rule);margin-top:2.4rem;
+  padding-top:1.2rem;font-size:.92rem;flex-wrap:wrap}
+.list{list-style:none;margin:0;padding:0}
+.list li{border-bottom:1px solid var(--rule-soft);padding-block:1.1rem}
+.list h2{font-size:1.25rem;margin:.25rem 0 .35rem}
+.list h2 a{color:var(--ink);text-decoration:none}
+.list h2 a:hover{color:var(--proven)}
+.list p{margin:0;color:var(--ink-2);font-size:.95rem}
+.tag{font-family:"IBM Plex Mono",monospace;font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--proven)}
+footer{border-top:1px solid var(--rule-soft);margin-top:3rem;padding-block:1.4rem 2.4rem;font-size:.82rem;color:var(--ink-3)}
+footer a{margin-right:1rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="rail"><a href="/">VITALS</a><a href="/blog">BLOG</a><span>builder updates, as published</span></div>
+<article>
+<header class="post">
+<div class="tag">Vitals World · Crypto World&#x27;s Fair</div>
+<h1>Week 2: a receipt that refuses to guess</h1>
+<div class="meta"><time datetime="2026-09-26T20:47:24.157000+07:00">26 September 2026, 20:47 ICT</time> · first published as <a href="https://colosseum.com/arena/projects/vitals-1/updates/602" rel="noopener">builder update #602 on Colosseum</a></div>
+</header>
+<p>What we built. Every version of a case is now kept under the hash of its own bytes. A receipt is rebuilt from the bytes the shift was actually played on, not from whatever the case has become since. Replay those same bytes and you get the same receipt back.</p>
+<figure><img src="/blog/img/602-1.jpg" alt="What is proved: 85 of 95 shifts before the fix, 90 of 97 after" loading="lazy"><figcaption>What is proved: 85 of 95 shifts before the fix, 90 of 97 after</figcaption></figure>
+<figure><img src="/blog/img/602-2.jpg" alt="What broke in week 2: 14 hours, 14 minutes, 3 incidents" loading="lazy"><figcaption>What broke in week 2: 14 hours, 14 minutes, 3 incidents</figcaption></figure>
+<p>What we learned. When the bytes are gone, the receipt shows nothing rather than a chart derived from today&#x27;s version of the case. Nobody&#x27;s mark improves, and we did not soften the marking. We held ourselves to it. Just after midnight on 26 September, 85 of 95 anchored shifts replayed to the exact leaf the chain holds, and 10 did not. Five of the ten were played on a case version that was overwritten on 23 September; their receipts show nothing, as designed. The other five still had their bytes, and the fault was ours: the live shift and its replay disagreed about one rule, an idle cap. That fix went out at 01:06, and the same check then read 90 of 97 proved, with two of those five still open. (Both reads are from the ward&#x27;s own integrity check, not yet public; times are Bangkok.)</p>
+<p>What broke, in public. A renamed field left the ward with no new patients for 14 hours. We wrote a new version over a case the chain already had a shift against, and put the original back, byte for byte, in 14 minutes. Our own test browsers held the ward&#x27;s connections for days and turned real visitors away. Three incidents, all written down.</p>
+<p>What&#x27;s next. A security check, an audit, the road to mainnet, and an explanation of how it all works.</p>
+<p>Ward: <a href="https://world.vitals.academy/?src=blog" rel="noopener">world.vitals.academy</a> · demo (2 min, live product): <a href="https://youtu.be/JEoNwBoIqZ0" rel="noopener">https://youtu.be/JEoNwBoIqZ0</a> · weekly update (1 min): <a href="https://youtu.be/UONdHIoWkJQ" rel="noopener">https://youtu.be/UONdHIoWkJQ</a></p>
+</article>
+<nav class="pager"><a href="/blog/fifty-seven-had-nobody">← 58 patients have died. 57 had nobody on shift</a><a href="/blog/week-3-the-plan">Week 3: the plan, before we are held to it →</a></nav>
+<footer>
+<div><a href="/">Vitals</a><a href="/blog">Blog</a><a href="https://world.vitals.academy/?src=blog" rel="noopener">Vitals World</a><a href="/privacy">Privacy</a><a href="/terms">Terms of use</a></div>
+<p>Every post here was first published as a builder update on Colosseum and is reproduced as it was written. Where we later found a figure was wrong, a dated correction sits under the post. The patients in Vitals World are simulated; the cases are for practice and are not medical advice.</p>
+<p>Built by MegaWiz Co., Ltd. (Bangkok, Thailand) · paripol@megawiz.co</p>
+</footer>
+</div>
+</body>
+</html>
