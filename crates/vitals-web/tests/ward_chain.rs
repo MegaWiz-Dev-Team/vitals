@@ -2376,3 +2376,23 @@ fn a_case_another_bed_holds_is_taken_last_rather_than_refused() {
     assert!(choose_next(&only_repeat, &empty, &nothing_placeable).is_none(),
             "a withdrawn case is refused whether or not it is a repeat");
 }
+
+/// **What a slow pass spent waiting on the chain, said in the same line as the pass.**
+///
+/// 28 Sep 2026, production at ~218 patients: passes of 370–560 s and receipts over 120 s, with CPU at
+/// 30–45 % and memory fine — a server waiting on something. The Solana client already counts its own
+/// requests, their time, and how much of that time was spent backing off a rate limit; nothing
+/// printed it, so "is it the RPC?" was a guess. Now the line answers it.
+#[test]
+fn a_slow_pass_says_how_long_it_waited_on_the_chain() {
+    use std::time::Duration;
+    use vitals_web::ward_chain::rpc_line;
+
+    assert_eq!(rpc_line(412, Duration::from_millis(38_240), Duration::from_millis(30_100)),
+               "rpc 412 requests · 38.2s waiting · 30.1s of it backing off a rate limit");
+    assert_eq!(rpc_line(9, Duration::from_millis(1_200), Duration::ZERO),
+               "rpc 9 requests · 1.2s waiting",
+               "no rate limit hit is not mentioned, rather than printed as zero");
+    assert_eq!(rpc_line(0, Duration::ZERO, Duration::ZERO), "rpc none",
+               "a pass that asked the chain nothing says so");
+}

@@ -292,6 +292,13 @@ impl WardChain {
         })
     }
 
+    /// The client's running count of what the chain has cost this handle: requests, time spent on
+    /// them, and time spent backing off a rate limit. Diff two readings to cost a piece of work.
+    pub fn transport(&self) -> (usize, std::time::Duration, std::time::Duration) {
+        let s = self.rpc.get_transport_stats();
+        (s.request_count, s.elapsed_time, s.rate_limited_time)
+    }
+
     /// The program these patients live on.
     pub fn program_id(&self) -> &Pubkey {
         &self.program_id
@@ -2131,6 +2138,23 @@ pub fn slow_pass_note(
         said.push_str(&parts);
     }
     Some(said)
+}
+
+/// What the chain cost a piece of work, from the client's own count: requests, the time spent on
+/// them, and how much of that was spent backing off a rate limit. See the test for why it is said.
+pub fn rpc_line(
+    requests: usize,
+    waiting: std::time::Duration,
+    rate_limited: std::time::Duration,
+) -> String {
+    if requests == 0 {
+        return "rpc none".to_string();
+    }
+    let mut said = format!("rpc {requests} requests · {:.1}s waiting", waiting.as_secs_f64());
+    if !rate_limited.is_zero() {
+        said.push_str(&format!(" · {:.1}s of it backing off a rate limit", rate_limited.as_secs_f64()));
+    }
+    said
 }
 
 /// Put back every tape the chain names and this ward has lost, from what the server still holds.

@@ -3013,7 +3013,12 @@ fn refresh_behind(held: &WardView, state: &str) {
         let began = Instant::now();
         let fresh = match store::Store::open(std::path::PathBuf::from(&dir)) {
             Ok(store) => match ward_chain::WardChain::connect() {
-                Ok(c) => Some(ward_chain::read_ward(&c, &store)),
+                Ok(c) => {
+                    let board = ward_chain::read_ward(&c, &store);
+                    let (n, waited, limited) = c.transport();
+                    println!("ward       board read · {}", ward_chain::rpc_line(n, waited, limited));
+                    Some(board)
+                }
                 Err(e) => {
                     let mut v = ward::ward_unavailable("unconfigured", &e);
                     v["queue"] = ward_chain::queue_block(&store);
@@ -8396,7 +8401,9 @@ fn one_pass(store: &store::Store, root: &std::path::Path) -> Option<Result<ward_
         })
         .collect();
     let began = Instant::now();
+    let rpc_before = chain.transport();
     let t = ward_chain::tick(&chain, store, root, now_secs(), &held);
+    let rpc_after = chain.transport();
     for note in &t.notes {
         println!("ward       {note}");
     }
@@ -8438,7 +8445,8 @@ fn one_pass(store: &store::Store, root: &std::path::Path) -> Option<Result<ward_
     // Any pass that took more than ten seconds, not only the first; the sentence is `ward_chain`'s
     // so the shape can be tested without a deploy.
     if let Some(note) = ward_chain::slow_pass_note(began.elapsed(), t.pace, &t.spans) {
-        println!("ward       {note}");
+        println!("ward       {note} · {}", ward_chain::rpc_line(
+            rpc_after.0 - rpc_before.0, rpc_after.1 - rpc_before.1, rpc_after.2 - rpc_before.2));
     }
     Some(Ok(t))
 }
