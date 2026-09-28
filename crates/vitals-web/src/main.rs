@@ -5479,7 +5479,17 @@ fn main() {
                         // Somebody got past the globe to a person. Counted here, where the page is
                         // actually served, so the gap between this and `shifts_taken` says whether
                         // a quiet ward is one nobody found or one nobody knew how to start.
-                        usage.lock().unwrap().opened_a_bedside(&store);
+                        // Not a link preview or our own headless capture: a card drawn under a
+                        // pasted link is not somebody at her bedside.
+                        let agent = req
+                            .headers()
+                            .iter()
+                            .find(|h| h.field.equiv("user-agent"))
+                            .map(|h| h.value.as_str().to_string())
+                            .unwrap_or_default();
+                        if !vitals_web::usage::is_not_a_person(&agent) {
+                            usage.lock().unwrap().opened_a_bedside(&store);
+                        }
                         let board = ward_now(&ward_view, &store, &state_dir);
                         let her = board["patients"]
                             .as_array()

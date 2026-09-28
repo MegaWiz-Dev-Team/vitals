@@ -641,6 +641,25 @@ pub fn day_key(epoch_secs: u64) -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
+/// A link-preview fetcher, a crawler, or a headless browser — something that loads a page without
+/// anybody looking at it. Read from the User-Agent only for this decision and not kept.
+///
+/// The in-app browsers of Facebook and LINE are people who tapped a link and are counted; the
+/// fetchers that draw the card under a pasted link are not (26 Sep 2026: nine fetches of one
+/// patient page in six minutes by `facebookexternalhit`, counted as nine bedsides).
+pub fn is_not_a_person(user_agent: &str) -> bool {
+    let ua = user_agent.to_ascii_lowercase();
+    if ua.trim().is_empty() {
+        return true;
+    }
+    const MARKS: [&str; 15] = [
+        "facebookexternalhit", "facebookcatalog", "slackbot", "twitterbot", "discordbot",
+        "telegrambot", "whatsapp/", "linkedinbot", "googlebot", "bingbot", "headlesschrome",
+        "crawler", "spider", "bot/", "+https://line.me",
+    ];
+    MARKS.iter().any(|m| ua.contains(m))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1026,3 +1045,4 @@ mod tests {
         assert_eq!(u.rec.by_case["case-0"], before + 1, "a known case stopped counting");
     }
 }
+
