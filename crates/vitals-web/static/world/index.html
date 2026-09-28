@@ -74,8 +74,11 @@ h1 .second{display:block;color:var(--proven);font-size:.72em;font-weight:600;mar
    panel never goes under 380 px, which is the width the rows were overflowing at. */
 @media (min-width:1280px){
   .wrap{display:grid;grid-template-columns:minmax(0,620px) minmax(380px,1fr);gap:0 1.6rem;
-    grid-template-areas:"rail rail" "head film" "mission film" "figs film" "sub panel"
-      "stage panel" "tray panel" "links links";align-items:start}
+    grid-template-areas:"rail rail" "head film" "mission film" "figs film" ". film" "sub panel"
+      "stage panel" "tray panel" "links links";
+    /* The empty row under the figures takes whatever height the two films need beyond the
+       headline, mission and figures, so those three stay together instead of being spread apart. */
+    grid-template-rows:auto auto auto auto 1fr auto auto auto auto;align-items:start}
   /* The film takes the top of the right column and the beds sit under it. Measured at 1460×900
      before this was kept: the panel's top has to stay inside the first screen, or the film goes
      under the globe instead and the beds keep the column. */
