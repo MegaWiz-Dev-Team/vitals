@@ -74,15 +74,15 @@ h1 .second{display:block;color:var(--proven);font-size:.72em;font-weight:600;mar
    panel never goes under 380 px, which is the width the rows were overflowing at. */
 @media (min-width:1280px){
   .wrap{display:grid;grid-template-columns:minmax(0,620px) minmax(380px,1fr);gap:0 1.6rem;
-    grid-template-areas:"rail rail" "head film" "mission film" "figs film" ". film" "sub panel"
-      "stage panel" "tray panel" "links links";
-    /* The empty row under the figures takes whatever height the two films need beyond the
-       headline, mission and figures, so those three stay together instead of being spread apart. */
-    grid-template-rows:auto auto auto auto 1fr auto auto auto auto;align-items:start}
+    grid-template-areas:"rail rail" "head film" "mission film" "figs film" "sub panel"
+      "stage panel" "tray demo" "links links";align-items:start}
   /* The film takes the top of the right column and the beds sit under it. Measured at 1460×900
      before this was kept: the panel's top has to stay inside the first screen, or the film goes
      under the globe instead and the beds keep the column. */
-  .wrap>.films{grid-area:film;margin-top:1.2rem}
+  .wrap>.film{grid-area:film;margin-top:1.2rem}
+  /* The demo has its own cell. It used to take grid-area:film too, so from 4b03a9a (26 Sep) it lay
+     exactly over the film and the two captions overprinted (found 28 Sep). */
+  .wrap>.film.demo{grid-area:demo}
   .wrap>.rail{grid-area:rail}
   .wrap>h1{grid-area:head;margin-top:1.2rem}
   .wrap>.mission{grid-area:mission}
@@ -180,9 +180,6 @@ canvas#globe.dragging{cursor:grabbing}
 .prow .clock span{display:block;color:var(--ink-2)}
 /* A 16:9 box the width of whatever column it is in, so the frame never decides the layout. */
 .film{margin:1.2rem 0 0;padding:0}
-/* The films share one grid cell through this box. Each used to take grid-area:film itself, so the
-   demo (26 Sep) was laid exactly over the film and their captions overprinted (found 28 Sep). */
-.films>.film:first-child{margin-top:0}
 .film-box{position:relative;aspect-ratio:16/9;max-width:100%;border-radius:.75rem;overflow:hidden;
   border:1px solid var(--rule);background:#000}
 .film-box iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
@@ -252,7 +249,7 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
      headline. */
   .wrap>*{order:9}
   .wrap>.rail{order:0} .wrap>h1{order:1} .wrap>.mission{order:2} .wrap>.figures{order:3}
-  .wrap>.panel{order:4;margin:.2rem 0 .2rem} .wrap>.films{order:5} .wrap>.sub{order:6}
+  .wrap>.panel{order:4;margin:.2rem 0 .2rem} .wrap>.film{order:5} .wrap>.sub{order:6}
   .wrap>.stage{order:7}
   .wrap>.tray{order:7} .wrap>.links{order:8}
   .globe-wrap{max-width:100%}
@@ -309,7 +306,6 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
        there is no autoplay — in the query or in `allow` — because nothing here plays at a reader
        who has not asked. A content blocker removes the frame and every other thing on this page
        still works. -->
-  <div class="films">
   <figure class="film">
     <div class="film-box">
       <iframe src="https://www.youtube-nocookie.com/embed/uOpv-_d7-s0?rel=0&amp;modestbranding=1"
@@ -324,7 +320,7 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
        one shift end to end on this ward, recorded 25 Sep 2026 — the globe, a bed, the questions and
        orders, the hand-over, the receipt, the devnet transaction, and a second stranger picking the
        same bed up from the chain. Same embed rules as the film above: nocookie, lazy, no autoplay. -->
-  <figure class="film">
+  <figure class="film demo">
     <div class="film-box">
       <iframe src="https://www.youtube-nocookie.com/embed/JEoNwBoIqZ0?rel=0&amp;modestbranding=1"
               title="Vitals World — the ward, one shift, end to end" loading="lazy"
@@ -333,7 +329,6 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
     </div>
     <figcaption>One shift, end to end · 2 min · this ward, recorded 25 Sep 2026 — no slides, no code.</figcaption>
   </figure>
-  </div>
 
   <p class="sub">Drag the globe · hover a country · click a ring</p>
 
