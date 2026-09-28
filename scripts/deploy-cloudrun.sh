@@ -42,6 +42,10 @@ MIN_INSTANCES="${MIN_INSTANCES:-0}"
 # server serves reads on a pool and streams on their own threads, so the count is not a promise
 # the container cannot keep; 80 is Cloud Run's own default. Printed below, next to the service.
 CONCURRENCY="${CONCURRENCY:-80}"
+# 1 GiB since 28 Sep 2026: at 512 MiB the ward was killed for memory every few minutes once it held
+# ~210 patients ("Memory limit of 512 MiB exceeded"), and every restart re-read all of them, so the
+# ticks timed out at 300 s in a loop. Printed below, next to the service.
+MEMORY="${MEMORY:-1Gi}"
 PROGRAM_ID="${VITALS_PROGRAM_ID:-}"
 RPC="${VITALS_RPC:-https://api.devnet.solana.com}"
 # Heimdall needs a GPU and cannot run here. Reach the machine that has one — when there is one.
@@ -135,7 +139,7 @@ if ! AUTH_ERR="$(gcloud auth print-access-token 2>&1 >/dev/null)"; then
 fi
 
 echo "── project   $PROJECT / $REGION"
-echo "── service   $SERVICE"
+echo "── service   $SERVICE · memory $MEMORY"
 
 # State goes to Firestore, not a disk: a Cloud Run container has none that survives a request.
 # Setting the project is what selects that backend — see store.rs.
@@ -507,7 +511,7 @@ REVISION="$(gcloud run deploy "$SERVICE" \
   --allow-unauthenticated \
   --port 8474 \
   --min-instances "$MIN_INSTANCES" --max-instances 1 --concurrency "$CONCURRENCY" \
-  --cpu 1 --memory 512Mi \
+  --cpu 1 --memory "$MEMORY" \
   --set-env-vars "^@^$ENV" \
   --set-secrets "$SECRETS" \
   --format='value(status.latestCreatedRevisionName)')"
