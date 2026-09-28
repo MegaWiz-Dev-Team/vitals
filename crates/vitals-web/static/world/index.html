@@ -52,6 +52,10 @@ body{margin:0;background:var(--ground);color:var(--ink);
 .figures .fig b{font:800 1.9rem/1.1 Archivo,system-ui,sans-serif;letter-spacing:-.01em;
   text-transform:none;color:var(--ink)}
 .figures .fig:first-child b{color:var(--proven)}
+/* The line under the figures that says the cases are unreviewed: a full row of the figures' own
+   flex box, so it sits under the numbers it qualifies and never shares a grid cell with the
+   mission line (it did, on staging 00125, and the two overprinted each other). */
+.figures .reviewnote{flex-basis:100%;margin:-.8rem 0 0;font-size:.85rem;line-height:1.45;color:var(--ink-2);max-width:44em}
 h1{font-family:Archivo,Arial,sans-serif;font-weight:800;font-size:clamp(1.15rem,2.4vw,1.7rem);line-height:1.2;letter-spacing:-.015em;margin:1.4rem 0 0;text-wrap:balance;overflow-wrap:anywhere}
 /* One line each, on a screen wide enough to hold them. The headline and the sentence under it are
    what a stranger reads first and they were three lines and two between them; the size comes down
@@ -291,10 +295,6 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
        now` are the ward's own; the other three are the chain's and are left out when the census
        does not carry them. -->
   <div class="figures" id="figures" aria-live="polite"></div>
-  <!-- The ward's cases are practice written by engineers until a clinician has reviewed them, and
-       the board says so in words (founder, 28 Sep) — our opening post claimed it did, and it did
-       not. Filled from policy.catalogue in /api/ward; hidden when every case is reviewed. -->
-  <p class="mission" id="reviewnote" hidden></p>
 
   <!-- The film. This iframe is the only thing on this page that fetches from a server other than
        ours, and the privacy page names it beside the typefaces for that reason. `youtube-nocookie`
@@ -785,15 +785,18 @@ function renderCensus() {
   /* What the door is doing is part of what these numbers mean: "0 in beds" on a ward with twenty
      patients queued behind a door that has not opened reads as a ward that lost them. */
   const figs = figuresFor(DOOR, census, patients, beds, WAITING);
-  $("figures").innerHTML = figs
-    .map(([k, v]) => `<span class="fig"><b>${v}</b>${k}</span>`).join("");
+  /* The ward's cases are practice written by engineers until a clinician has reviewed them, and the
+     board says so in words under its numbers (founder, 28 Sep) — our opening post claimed it did,
+     and it did not. From policy.catalogue; absent when every case is reviewed. */
   const cat = CATALOGUE || {};
   const unreviewed = typeof cat.provisional === "number" ? cat.provisional : 0;
   const all = unreviewed + (typeof cat.reviewed === "number" ? cat.reviewed : 0);
-  $("reviewnote").hidden = !unreviewed;
-  $("reviewnote").textContent = !unreviewed ? "" : (unreviewed === all ? "Every case on this ward is"
-    : `${unreviewed} of ${all} cases on this ward are`) + " provisional: written and compiled by " +
-    "engineers, not yet clinically reviewed. It is practice, not clinical guidance.";
+  const note = !unreviewed ? "" : `<p class="reviewnote" id="reviewnote">${unreviewed === all
+    ? "Every case on this ward is" : `${unreviewed} of ${all} cases on this ward are`} provisional: ` +
+    "written and compiled by engineers, not yet clinically reviewed. It is practice, not clinical " +
+    "guidance.</p>";
+  $("figures").innerHTML = figs
+    .map(([k, v]) => `<span class="fig"><b>${v}</b>${k}</span>`).join("") + note;
 }
 
 // ── panel + tray ──────────────────────────────────────────────────────────────────────────────
