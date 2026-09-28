@@ -291,6 +291,10 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
        now` are the ward's own; the other three are the chain's and are left out when the census
        does not carry them. -->
   <div class="figures" id="figures" aria-live="polite"></div>
+  <!-- The ward's cases are practice written by engineers until a clinician has reviewed them, and
+       the board says so in words (founder, 28 Sep) — our opening post claimed it did, and it did
+       not. Filled from policy.catalogue in /api/ward; hidden when every case is reviewed. -->
+  <p class="mission" id="reviewnote" hidden></p>
 
   <!-- The film. This iframe is the only thing on this page that fetches from a server other than
        ours, and the privacy page names it beside the typefaces for that reason. `youtube-nocookie`
@@ -780,6 +784,13 @@ function renderCensus() {
   const figs = figuresFor(DOOR, census, patients, beds, WAITING);
   $("figures").innerHTML = figs
     .map(([k, v]) => `<span class="fig"><b>${v}</b>${k}</span>`).join("");
+  const cat = (j && j.policy && j.policy.catalogue) || {};
+  const unreviewed = typeof cat.provisional === "number" ? cat.provisional : 0;
+  const all = unreviewed + (typeof cat.reviewed === "number" ? cat.reviewed : 0);
+  $("reviewnote").hidden = !unreviewed;
+  $("reviewnote").textContent = !unreviewed ? "" : (unreviewed === all ? "Every case on this ward is"
+    : `${unreviewed} of ${all} cases on this ward are`) + " provisional: written and compiled by " +
+    "engineers, not yet clinically reviewed. It is practice, not clinical guidance.";
 }
 
 // ── panel + tray ──────────────────────────────────────────────────────────────────────────────

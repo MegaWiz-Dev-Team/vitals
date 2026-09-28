@@ -2166,6 +2166,8 @@ fn open_shift(
     };
     let ward_view = serde_json::json!({
         "patient_id": patient_id,
+        // Said at the bedside when the case has not been clinically reviewed.
+        "provisional": case_provisional(store, &pack.case),
         "case": pack.case,
         "name": pack.persona.name,
         "country": pack.persona.country,
@@ -2655,6 +2657,7 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
                 ward_case::fill_persona(&c.title, &pack.persona)
             }));
             v["difficulty"] = serde_json::json!(held.as_ref().map(|c| c.difficulty.clone()));
+            v["provisional"] = serde_json::json!(held.as_ref().map(|c| c.provisional));
             v["age"] = serde_json::json!(pack.persona.age);
             v["sex"] = serde_json::json!(pack.persona.sex);
             v["country"] = serde_json::json!(pack.persona.country);
@@ -2673,6 +2676,20 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
         }
         Err(e) => bad(&e),
     }
+}
+
+/// What a provisional case says about itself, on the receipt and anywhere else it is printed.
+const UNREVIEWED_NOTE: &str = "<p class=note><b>Not clinically reviewed.</b> This case is provisional: \
+    written and compiled by engineers and not yet checked by a clinician. It is practice, not \
+    clinical guidance.</p>";
+
+/// Whether the case a patient plays is provisional, from the case as this ward holds it. `None`
+/// for a case the ward cannot look up — said as nothing rather than guessed.
+fn case_provisional(store: &store::Store, case: &str) -> Option<bool> {
+    store
+        .get::<serde_json::Value>(ward_case::CASE_STORE, &ward_case::key_for(case))
+        .and_then(|c| ward_case::validate_case(&c).ok())
+        .map(|c| c.provisional)
 }
 
 /// The receipt as a page. Plain on purpose: it is a record, and a record that needs decoration to
@@ -2874,6 +2891,7 @@ fn receipt_page(r: &serde_json::Value, board: &serde_json::Value) -> String {
          <h1>{name}</h1>\
          <p class=note>{who}</p>\
          <p>{case_line}</p>\
+         {unreviewed}\
          <h2>what happened</h2>\
          {timeline}\
          <h2>how it ended</h2>\
@@ -2890,6 +2908,9 @@ fn receipt_page(r: &serde_json::Value, board: &serde_json::Value) -> String {
          <p><a href=/ward/{pid}>← {poss} chart</a> · <a href=/>the ward</a></p>",
         shift = r["shift"],
         name = esc(r["name"].as_str().unwrap_or("a patient")),
+        // Said only when the case is known to be provisional; a reviewed case, or one this ward
+        // cannot look up, carries no label rather than a guessed one.
+        unreviewed = if r["provisional"].as_bool() == Some(true) { UNREVIEWED_NOTE } else { "" },
         omitted = esc(r["judged_omitted"].as_str().unwrap_or("")),
         tape = esc(r["tape"].as_str().unwrap_or("#")),
         outcome = cap(&outcome),
@@ -10307,6 +10328,31 @@ mod tests {
         let page = receipt_page(&anon, &serde_json::Value::Null);
         assert!(page.contains("handed on, still on the ward"), "{page}");
         assert!(!page.contains(" she ") && !page.contains(" he "), "{page}");
+    }
+
+    /// **A receipt says when its case has not been clinically reviewed.**
+    ///
+    /// 28 Sep 2026: our own opening post said the ward marked every provisional case "on the board,
+    /// at the bedside, and on every receipt". It did not — only in review mode and in /api/ward —
+    /// and the post now carries a correction. The receipt is where a player shows somebody what
+    /// they did, so it is where the limit has to be said in words (founder's word, 28 Sep).
+    #[test]
+    fn a_receipt_says_when_its_case_is_not_clinically_reviewed() {
+        let null = serde_json::Value::Null;
+        let base = serde_json::json!({
+            "shift": 1, "name": "Maria Bautista", "case": "ddx-boerhaave-4-en",
+            "case_title": "Chest pain after vomiting", "patient_id": 7, "did": {},
+        });
+        let mut provisional = base.clone();
+        provisional["provisional"] = serde_json::json!(true);
+        let page = receipt_page(&provisional, &null).to_lowercase();
+        assert!(page.contains("not clinically reviewed"), "a provisional case must say so: {page}");
+        assert!(page.contains("not clinical guidance"), "and what that means for the reader: {page}");
+
+        let mut reviewed = base.clone();
+        reviewed["provisional"] = serde_json::json!(false);
+        assert!(!receipt_page(&reviewed, &null).to_lowercase().contains("not clinically reviewed"),
+                "a reviewed case is not labelled as one that is not");
     }
 
     /// **A chain that could not be read is never a shift that does not exist.**

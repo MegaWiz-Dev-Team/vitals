@@ -1020,6 +1020,8 @@ pub fn waiting_rows(
                 "sex": pack.persona.sex,
                 "country": pack.persona.country,
                 "difficulty": pack.difficulty.clone().or_else(|| held.map(|c| c.difficulty.clone())),
+                // Whether her case has been clinically reviewed; null when the ward cannot say.
+                "provisional": held.map(|c| c.provisional),
                 "endemic": pack.endemic,
                 // Filled for **her**, not for the case's own patient. A case is authored about
                 // a patient of its own and the ward places whoever the factory drew inside the
@@ -1199,6 +1201,10 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                         .or_else(|| difficulty_of(&k.case).map(str::to_string))
                 }),
                 "endemic": pack.map(|k| k.endemic).unwrap_or(false),
+                // Whether her case has been clinically reviewed; null when the ward cannot say.
+                "provisional": pack.and_then(|k| {
+                    r.cases.iter().find(|c| c.case_id == k.case).map(|c| c.provisional)
+                }),
                 // What to draw now, and everything there is to draw. The board gets both so it
                 // can change her picture the moment it learns her status without asking again —
                 // and so a reader can see that the set is a set.

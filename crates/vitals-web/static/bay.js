@@ -4731,7 +4731,8 @@ function chartPage(c, why){
     +face
     +'<h1>'+esc(c.name||('patient '+c.patient_id))+'</h1>'
     +'<p>'+[esc(agePhrase(c.age)), c.country_name?'from '+esc(c.country_name):'',
-            c.case_title?esc(c.case_title):'', c.difficulty?esc(c.difficulty):'']
+            c.case_title?esc(c.case_title):'', c.difficulty?esc(c.difficulty):'',
+            c.provisional===true?'not clinically reviewed':'']
         .filter(Boolean).join(' · ')+'</p>'
     +(why?'<p class="bed">'+esc(why)+'</p>':'')
     +'<p><b>'+esc(cap(g.s))+' '+esc(what)+'</b>'
@@ -4787,7 +4788,10 @@ async function openShift(){
   }
   WARDCARD=built.entry; WARDCHIPS=built.chips; WARDLABEL=built.labels;
   WARDPENDING=r.id; WARDSHIFT=r.ward;
-  $('#wardwho').textContent=(r.ward.name||('patient '+WARD))+' · '+(r.ward.country||'—');
+  /* A case nobody clinically trained has checked says so where the stranger stands (founder,
+     28 Sep): our opening post claimed the bedside did, and it did not. */
+  $('#wardwho').textContent=(r.ward.name||('patient '+WARD))+' · '+(r.ward.country||'—')
+    +(r.ward.provisional===true?' · not clinically reviewed':'');
   /* The frame is about to hold her face, so what a screen reader is told about it is her name. */
   $('#fallback').alt=r.ward.name||'the patient';
   $('#lobby').classList.add('hide'); $('#game').classList.remove('hide','waiting');
