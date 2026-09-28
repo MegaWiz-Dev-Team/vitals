@@ -725,6 +725,7 @@ let DOOR = "closed", WAITING = 0, WAITINGWHO = [];
    card may not promise "five minutes in" on a ward that is not capping, which is what staging
    rendered on 25 ก.ย. before the board published this. */
 let ARRIVALCAP = null;
+let CATALOGUE = null;
 
 function render(j) {
   const rev = j && j.revision ? String(j.revision) : "";
@@ -743,6 +744,8 @@ function render(j) {
   const q = (j && j.queue) || {};
   DOOR = typeof q.door === "string" ? q.door : "closed";
   ARRIVALCAP = (j && j.policy && j.policy.arrival_cap) || null;
+  // Kept across stream updates that carry no policy: the last catalogue this page was told of.
+  if (j && j.policy && j.policy.catalogue) CATALOGUE = j.policy.catalogue;
   WAITING = typeof q.waiting === "number" ? q.waiting : 0;
   WAITINGWHO = Array.isArray(q.waiting_patients) ? q.waiting_patients : [];
   // The legend's third key exists only where the thing it describes is on the globe.
@@ -784,7 +787,7 @@ function renderCensus() {
   const figs = figuresFor(DOOR, census, patients, beds, WAITING);
   $("figures").innerHTML = figs
     .map(([k, v]) => `<span class="fig"><b>${v}</b>${k}</span>`).join("");
-  const cat = (j && j.policy && j.policy.catalogue) || {};
+  const cat = CATALOGUE || {};
   const unreviewed = typeof cat.provisional === "number" ? cat.provisional : 0;
   const all = unreviewed + (typeof cat.reviewed === "number" ? cat.reviewed : 0);
   $("reviewnote").hidden = !unreviewed;
