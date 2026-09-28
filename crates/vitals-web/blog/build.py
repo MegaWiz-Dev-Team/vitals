@@ -148,8 +148,9 @@ def post_page(i, p) -> str:
             for im in p["images"]:
                 h += (f'<figure><img src="/blog/img/{im["file"]}" alt="{html.escape(im["alt"])}" loading="lazy">'
                       f'<figcaption>{html.escape(im["alt"])}</figcaption></figure>\n')
-    if p.get("correction"):
-        h += f'<div class="fix">{html.escape(p["correction"])}</div>\n'
+    fixes = p.get("correction") or []
+    for fix in [fixes] if isinstance(fixes, str) else fixes:
+        h += f'<div class="fix">{html.escape(fix)}</div>\n'
     h += "</article>\n<nav class=\"pager\">"
     h += f'<a href="/blog/{POSTS[i-1]["slug"]}">← {html.escape(POSTS[i-1]["title"])}</a>' if i > 0 else "<span></span>"
     h += f'<a href="/blog/{POSTS[i+1]["slug"]}">{html.escape(POSTS[i+1]["title"])} →</a>' if i + 1 < len(POSTS) else '<a href="/blog">All posts</a>'

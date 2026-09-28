@@ -173,7 +173,10 @@
    "Devnet. Free. The door is open at world.vitals.academy — and if you take a shift, the next stranger starts exactly where you leave the patient.",
    "Opening film: https://youtu.be/uOpv-_d7-s0"
   ],
-  "correction": "Correction, 28 September: “381 people have opened the globe” counts front-page visits, not people. We have since confirmed that link-preview crawlers are counted in that number too."
+  "correction": [
+   "Correction, 28 September: “381 people have opened the globe” counts front-page visits, not people. We have since confirmed that link-preview crawlers are counted in that number too.",
+   "Correction, 28 September: “the ward says so on the board, at the bedside, and on every receipt” was not true. The cases were and are provisional, but the ward did not say so on the board, at the bedside or on receipts — only in its review mode and in its public data (/api/ward)."
+  ]
  },
  {
   "id": 413,
