@@ -296,6 +296,13 @@ pub fn stamp_host(v: &mut serde_json::Value, door: crate::ward_chain::Door, revi
     v["revision"] = serde_json::json!(revision);
 }
 
+/// How long a board this host read stays fresh: `base`, or twice what the last read cost, whichever
+/// is longer — capped at ten minutes. See the test for the night this was measured.
+pub fn board_ttl(base: std::time::Duration, last_read: Option<std::time::Duration>) -> std::time::Duration {
+    let cap = std::time::Duration::from_secs(600);
+    last_read.map_or(base, |d| base.max(d * 2)).min(cap)
+}
+
 pub fn board_use(
     age: Option<std::time::Duration>,
     stored: bool,

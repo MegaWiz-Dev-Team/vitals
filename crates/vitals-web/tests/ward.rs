@@ -2493,3 +2493,25 @@ fn a_gap_is_capped_only_for_a_stranger_arriving_after_the_boundary() {
     // A boundary nobody has set is a cap that is off, so an unset deploy changes no patient.
     assert!(!cap_on_arrival(u64::MAX - 1, None, u64::MAX, Some(&ward)));
 }
+
+/// **A board that takes longer to read than it stays fresh is read without pause.**
+///
+/// 28 Sep 2026, production at 218 patients: a board read took 67–93 s against a 30 s freshness, so
+/// every read finished already stale, the next request started another, and the instance spent most
+/// of its time re-reading the board — while the ward's own pass, competing for the same store,
+/// stretched to 100–140 s. The freshness a board is given now grows with what the last read cost:
+/// twice it, so reading is at most about a third of the instance's time, never below the base and
+/// never beyond ten minutes.
+#[test]
+fn a_board_stays_fresh_for_twice_what_it_cost_to_read() {
+    use std::time::Duration;
+    use vitals_web::ward::board_ttl;
+    let base = Duration::from_secs(30);
+
+    assert_eq!(board_ttl(base, None), base, "before any read, the base");
+    assert_eq!(board_ttl(base, Some(Duration::from_secs(5))), base, "a cheap read changes nothing");
+    assert_eq!(board_ttl(base, Some(Duration::from_secs(70))), Duration::from_secs(140),
+               "a 70 s read keeps the board 140 s, so reading is a third of the time, not all of it");
+    assert_eq!(board_ttl(base, Some(Duration::from_secs(3_600))), Duration::from_secs(600),
+               "and never beyond ten minutes, however bad one read was");
+}

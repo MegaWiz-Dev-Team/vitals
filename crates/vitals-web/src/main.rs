@@ -2903,6 +2903,9 @@ fn receipt_page(r: &serde_json::Value, board: &serde_json::Value) -> String {
 /// One at a time: every request that finds the board stale would otherwise start its own chain
 /// read, and twenty tabs on the globe would be twenty reads of the same thing.
 static BOARD_READING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// What the last board read cost, in milliseconds (0 = none yet) — the board stays fresh for twice
+/// this ([`ward::board_ttl`]), so a slow read cannot keep the instance reading without pause.
+static LAST_BOARD_READ_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Is a ward pass running right now — in the ticker thread, or inside a scheduler's request?
 ///
@@ -2931,7 +2934,12 @@ fn ward_now(held: &WardView, store: &store::Store, state: &str) -> serde_json::V
     // What the last process to run here left behind, when this one has nothing of its own. Read
     // once, and only when memory is empty: the store is the fallback, never the hot path.
     let kept = cached.is_none().then(|| ward_chain::last_board(store)).flatten();
-    let mut v = match (ward::board_use(age, kept.is_some(), WARD_TTL), cached) {
+    let last_read = match LAST_BOARD_READ_MS.load(std::sync::atomic::Ordering::Relaxed) {
+        0 => None,
+        ms => Some(Duration::from_millis(ms)),
+    };
+    let ttl = ward::board_ttl(WARD_TTL, last_read);
+    let mut v = match (ward::board_use(age, kept.is_some(), ttl), cached) {
         (ward::Board::Serve, Some(v)) => v,
         (ward::Board::ServeAndRefresh, Some(v)) => {
             refresh_behind(held, state);
@@ -3035,6 +3043,10 @@ fn refresh_behind(held: &WardView, state: &str) {
             // Provenance is stamped by `read_ward` itself now, where the board is made: a board
             // it had to serve from the store (`fall_back`) arrives saying `from: store`, and
             // restamping it here as `chain` would relabel a stale board as fresh.
+            LAST_BOARD_READ_MS.store(
+                began.elapsed().as_millis().max(1) as u64,
+                std::sync::atomic::Ordering::Relaxed,
+            );
             println!(
                 "ward       board refreshed behind the answer in {:.1}s — {beds} patients",
                 began.elapsed().as_secs_f64()
