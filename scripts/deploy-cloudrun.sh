@@ -26,6 +26,9 @@ cd "$(dirname "$0")/.."
 PROJECT="${VITALS_GCP_PROJECT:-}"
 REGION="${REGION:-asia-southeast1}"
 SERVICE="${SERVICE:-vitals}"
+# Named, not hardcoded: the founder's rule since 20 Sep 2026 is min-instances 0 on every service,
+# and this line said 1 — a deploy from here would have quietly put a warm instance back on the bill.
+MIN_INSTANCES="${MIN_INSTANCES:-0}"
 PROGRAM_ID="${VITALS_PROGRAM_ID:-}"
 RPC="${VITALS_RPC:-https://api.devnet.solana.com}"
 # Heimdall needs a GPU and cannot run here. Reach the machine that has one — when there is one.
@@ -302,7 +305,7 @@ REVISION="$(gcloud run deploy "$SERVICE" \
   --image "$IMAGE" \
   --allow-unauthenticated \
   --port 8474 \
-  --min-instances 1 --max-instances 1 --concurrency 8 \
+  --min-instances "$MIN_INSTANCES" --max-instances 1 --concurrency 8 \
   --cpu 1 --memory 512Mi \
   --set-env-vars "^@^$ENV" \
   --set-secrets "$SECRETS" \
