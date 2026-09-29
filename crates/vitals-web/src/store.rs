@@ -443,12 +443,24 @@ impl Store {
                 let url = format!("{base}/{kind}?pageSize=300{page}");
                 // Through the same one-retry path as every other call: a long paged list is
                 // exactly where a token can go stale halfway.
-                let Ok(r) = self.with_token(|tok| {
+                // A page that fails ends the list — and says so. It used to end it silently, and on
+                // 29 Sep 2026 a list of large blobs came back short with no trace of why.
+                let r = match self.with_token(|tok| {
                     ureq::get(&url).set("Authorization", &format!("Bearer {tok}")).call().map_err(Box::new)
-                }) else {
-                    break;
+                }) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("store      list {kind} stopped after {} documents: {e}", out.len());
+                        break;
+                    }
                 };
-                let Ok(v): Result<serde_json::Value, _> = r.into_json() else { break };
+                let v: serde_json::Value = match r.into_json() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!("store      list {kind} stopped after {} documents: {e}", out.len());
+                        break;
+                    }
+                };
                 for d in v["documents"].as_array().unwrap_or(&Vec::new()) {
                     let Some(name) = d["name"].as_str().and_then(|n| n.rsplit('/').next()) else {
                         continue;

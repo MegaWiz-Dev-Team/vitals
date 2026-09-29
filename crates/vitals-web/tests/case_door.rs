@@ -2352,6 +2352,16 @@ fn bytes_can_be_offered_for_a_shift_and_the_offer_proves_itself_or_is_refused() 
     assert_eq!(vitals_web::ward_case::offer_bytes(&store, &played, &leaf, &tape, &deriving),
                Offered::Proved(addr.clone()));
     assert!(vitals_web::ward_case::played_bytes(&store, &addr).is_some(), "kept under its own bytes");
+    // **And the shift now says which bytes it was played on** (29 Sep 2026). On production the five
+    // offers were proved and kept, and their receipts still said "cannot be shown": the receipt
+    // found them only by listing every kept blob, which a large store did not return whole. The
+    // tape carries the address from now on, and the receipt reads it directly, as it does for
+    // every shift the hand-over recorded.
+    let recorded = |store: &vitals_web::store::Store| store
+        .get::<vitals_web::ward_chain::StoredTape>(vitals_web::ward_chain::TAPE_STORE, &leaf)
+        .map(|t| t.played_id);
+    assert_eq!(recorded(&store).as_deref(), Some(addr.as_str()),
+               "a proved offer records its address on the shift's tape");
 
     // And the receipt rebuilds from them, while the live catalogue is untouched.
     match vitals_web::ward_case::bytes_for_receipt(
@@ -2367,6 +2377,19 @@ fn bytes_can_be_offered_for_a_shift_and_the_offer_proves_itself_or_is_refused() 
     // Offering the same bytes again is not a second blob and does not pretend to be news.
     assert_eq!(vitals_web::ward_case::offer_bytes(&store, &played, &leaf, &tape, &deriving),
                Offered::AlreadyHere(addr.clone()));
+
+    // The production state of 29 Sep: the bytes are kept, the tape names nothing. Offering them
+    // again proves them against this leaf and records the address — without a second blob.
+    let mut bare = store
+        .get::<vitals_web::ward_chain::StoredTape>(vitals_web::ward_chain::TAPE_STORE, &leaf)
+        .expect("the tape");
+    bare.played_id = String::new();
+    store.put(vitals_web::ward_chain::TAPE_STORE, &leaf, &bare).expect("the tape, as production has it");
+    assert_eq!(vitals_web::ward_case::offer_bytes(&store, &played, &leaf, &tape, &deriving),
+               Offered::AlreadyHere(addr.clone()));
+    assert_eq!(recorded(&store).as_deref(), Some(addr.as_str()),
+               "bytes already kept, offered for this leaf again, are recorded on its tape once they \
+                reproduce it");
 
     // **The hazard.** A rubric corrected under this scenario would leave two rubrics for one
     // scenario, and every receipt proved through it would publish no score at all. Refused, and the

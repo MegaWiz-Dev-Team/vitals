@@ -990,10 +990,26 @@ pub fn offer_bytes(
         return Offered::NotACase;
     }
     let id = played_id(pack);
+    let sce = pack.get("sce").map(|v| v.to_string()).unwrap_or_default();
+    // The shift's tape names the bytes once they are proved, so its receipt reads them directly
+    // instead of finding them by listing every kept blob — which a large store did not return
+    // whole on production, 29 Sep 2026: five offers proved and kept, five receipts still refused.
+    let record = || {
+        let _ = crate::ward_chain::keep_tape(store, &crate::ward_chain::StoredTape {
+            patient_id: d.this.patient_id,
+            run_hash: leaf_hex.to_string(),
+            steps: tape.to_vec(),
+            played_id: id.clone(),
+            arrival_capped: None,
+        });
+    };
     if played_bytes(store, &id).is_some() {
+        // Already kept — and if they reproduce this leaf, the shift is told so.
+        if crate::ward_chain::leaf_if_played_on(&sce, tape, d).as_deref() == Some(leaf_hex) {
+            record();
+        }
         return Offered::AlreadyHere(id);
     }
-    let sce = pack.get("sce").map(|v| v.to_string()).unwrap_or_default();
 
     // Does it explain this shift at all? Asked before the collision guard, because a recompile of
     // the wrong thing should be told it is wrong rather than warned about a hazard it never reached.
@@ -1025,6 +1041,7 @@ pub fn offer_bytes(
             offered: true,
         },
     );
+    record();
     Offered::Proved(id)
 }
 
