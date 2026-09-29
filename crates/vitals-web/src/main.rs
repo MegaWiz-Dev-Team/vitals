@@ -8,6 +8,7 @@
 //! and sessions in a map. The point is to make the automaton playable, not to ship a platform.
 
 mod chain;
+mod fonts;
 use vitals_web::{
     archive, authors, fuel, lang, meter, news2, patient, payout, reading, rebuild, review, serve,
     store, usage, ward, ward_case, ward_chain,
@@ -3553,10 +3554,26 @@ fn json_code(v: impl Serialize, code: u16) -> Response<std::io::Cursor<Vec<u8>>>
 /// audit — the page carries inline script and embeds YouTube-nocookie and Google Fonts — and a wrong
 /// one would break the ward, which is a worse outcome than the gap it closes.
 fn harden<R: std::io::Read>(r: Response<R>) -> Response<R> {
-    const HEADERS: [(&[u8], &[u8]); 6] = [
+    const HEADERS: [(&[u8], &[u8]); 8] = [
         (b"X-Content-Type-Options", b"nosniff"),
         (b"X-Frame-Options", b"DENY"),
-        (b"Content-Security-Policy", b"frame-ancestors 'none'"),
+        // Every kind of resource has a rule, and each third party is named: portraits from
+        // storage.googleapis.com, the YouTube-nocookie films, GA4 after consent. Fonts are ours.
+        // 'unsafe-inline' stays for script and style because the pages carry both inline; removing
+        // it is its own piece of work (29 Sep 2026, SECURITY_REPORT).
+        (b"Content-Security-Policy", b"default-src 'self'; \
+            script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; \
+            style-src 'self' 'unsafe-inline'; \
+            img-src 'self' data: blob: https://storage.googleapis.com https://www.googletagmanager.com https://*.google-analytics.com; \
+            font-src 'self'; \
+            connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; \
+            media-src 'self' blob: data:; \
+            frame-src https://www.youtube-nocookie.com; \
+            worker-src 'self' blob:; \
+            manifest-src 'self'; \
+            object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"),
+        (b"Cross-Origin-Opener-Policy", b"same-origin"),
+        (b"Cross-Origin-Resource-Policy", b"same-site"),
         (b"Referrer-Policy", b"strict-origin-when-cross-origin"),
         (b"Strict-Transport-Security", b"max-age=31536000"),
         (b"Permissions-Policy", b"camera=(), geolocation=(), payment=(), usb=(), microphone=(self)"),
@@ -7294,6 +7311,25 @@ fn main() {
                 }
                 continue;
             }
+            // The ward's typefaces, compiled in (`src/fonts.rs`). Names are content hashes, so a face
+            // never changes under its name and can be cached for a year; the stylesheet cannot.
+            (Method::Get, "/fonts/fonts.css") => {
+                let _ = send_hardened(req, Response::from_string(fonts::CSS)
+                    .with_header(Header::from_bytes(&b"Content-Type"[..], &b"text/css; charset=utf-8"[..]).unwrap())
+                    .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=86400"[..]).unwrap()));
+                continue;
+            }
+            (Method::Get, p) if p.starts_with("/fonts/") => {
+                let name = p.trim_start_matches("/fonts/");
+                let resp = match fonts::FILES.iter().find(|(n, _)| *n == name) {
+                    Some((_, bytes)) => Response::from_data(*bytes)
+                        .with_header(Header::from_bytes(&b"Content-Type"[..], &b"font/woff2"[..]).unwrap())
+                        .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=31536000, immutable"[..]).unwrap()),
+                    None => Response::from_data(Vec::new()).with_status_code(404),
+                };
+                let _ = send_hardened(req, resp);
+                continue;
+            }
             (Method::Get, "/world/favicon.svg") => {
                 let _ = send_hardened(req, 
                     Response::from_data(FAVICON_WORLD)
@@ -8126,7 +8162,10 @@ fn apex_target(url: &str) -> Option<String> {
     // answering with the policy — rather than with a 301 to a host called `devnet` — is the
     // difference between a URL that reads as the company's and one that reads as an artefact of
     // our hosting.
-    (!matches!(path, "/" | "/privacy" | "/terms")).then(|| format!("{GAME_ORIGIN}{url}"))
+    // Its typefaces too: the front door's pages load /fonts/, and a font redirected to another
+    // origin would need CORS the redirect cannot give it.
+    (!(matches!(path, "/" | "/privacy" | "/terms") || path.starts_with("/fonts/")))
+        .then(|| format!("{GAME_ORIGIN}{url}"))
 }
 
 /// Where to listen, with the platform's word winning over ours.

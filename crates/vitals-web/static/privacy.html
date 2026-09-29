@@ -6,9 +6,8 @@
 <meta name="description" content="What Vitals stores, what leaves the machine, and the one thing on this site that cannot be undone.">
 <!-- No analytics tag on this page or on /terms, deliberately. Every other page loads GA4 behind a
      consent gate; a page whose subject is what we collect should not be collecting while you read
-     it. The fonts below are still Google's, and §8 says so rather than hiding it. -->
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+     it. The fonts are served by this site itself since 29 Sep 2026, and §8 says so. -->
+<link rel="stylesheet" href="/fonts/fonts.css">
 <style>
 :root{--ground:#F5F8F8;--surface:#fff;--surface-2:#EDF2F2;--ink:#0F1719;--ink-2:#48585C;--ink-3:#7E8F93;
 --rule:#D9E2E2;--rule-soft:#E8EEEE;--proven:#0B6E58;--proven-soft:#E2F0EB;--attested:#A24714}
@@ -396,15 +395,14 @@ so a control that could ever render something a learner typed cannot report it.<
 <p><strong>/review loads no analytics at all</strong>, and neither does this page or
 <a href="/terms">the terms page</a>.</p>
 <h3>Fonts</h3>
-<p>Most pages here, this one included, load their typefaces from
-<span class="mono">fonts.googleapis.com</span> and <span class="mono">fonts.gstatic.com</span>. That
-is a request from your browser to Google, it happens before any banner, and consent does not gate
-it. A content blocker stops it and every page still reads fine.</p>
+<p>The typefaces are served by this site itself. Until 29 September 2026 they came from Google's
+font servers, which meant a request from your browser to Google before any banner; they no longer
+do. All four are under the SIL Open Font License.</p>
 <h3>The films on the front page</h3>
 <p>The globe page carries two embedded videos &mdash; the film, and a recording of one shift on this
 ward &mdash; both from
-<span class="mono">www.youtube-nocookie.com</span>. That is the second server this site asks your
-browser to talk to, and the first that carries a player. It is fetched when the box comes near
+<span class="mono">www.youtube-nocookie.com</span>. That is the one server other than ours that a
+page here asks your browser to talk to before you have been asked anything, and it carries a player. It is fetched when the box comes near
 your screen rather than when the page opens, it sets no cookie until you press play &mdash; which is
 what that host is for &mdash; and nothing about it plays on its own. A content blocker removes the
 frame and the rest of the page is unchanged.</p>

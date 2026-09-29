@@ -6,10 +6,10 @@
 //! leaves through, and this test reads one of each kind of response so a route cannot quietly
 //! bypass it.
 //!
-//! What is deliberately *not* enforced yet: a script/style Content-Security-Policy. The page carries
-//! inline script and embeds YouTube-nocookie and Google Fonts, so a wrong policy would break the ward;
-//! it needs its own audit first. Framing is enforced now because it is the part that protects the
-//! signature and it restricts nothing the page itself does.
+//! The Content-Security-Policy is now the whole policy (29 Sep 2026), after an audit of everything
+//! the pages load: our own origin, portraits from storage.googleapis.com, the two YouTube-nocookie
+//! films, and GA4 after consent. Fonts are served by the ward itself. Inline script and style are
+//! still allowed — the pages carry both, and removing them is its own piece of work.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, Command, Stdio};
@@ -112,6 +112,18 @@ fn every_kind_of_response_carries_the_security_headers() {
         need("x-content-type-options", "nosniff");
         need("x-frame-options", "DENY");
         need("content-security-policy", "frame-ancestors 'none'");
+        // The whole policy, not framing alone (29 Sep 2026): every kind of resource has a rule, so
+        // nothing falls back to "anything goes" (ZAP 10055, "no fallback"), and each third party
+        // the pages actually use is named rather than allowed by wildcard.
+        need("content-security-policy", "default-src 'self'");
+        need("content-security-policy", "object-src 'none'");
+        need("content-security-policy", "base-uri 'self'");
+        need("content-security-policy", "form-action 'self'");
+        need("content-security-policy", "font-src 'self'");
+        need("content-security-policy", "frame-src https://www.youtube-nocookie.com");
+        need("content-security-policy", "img-src 'self' data: blob: https://storage.googleapis.com");
+        need("cross-origin-opener-policy", "same-origin");
+        need("cross-origin-resource-policy", "same-site");
         need("referrer-policy", "strict-origin-when-cross-origin");
         need("strict-transport-security", "max-age=");
         // The bedside's 🎤 button uses SpeechRecognition: the microphone stays allowed for this
