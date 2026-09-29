@@ -25,9 +25,7 @@ HEAD = """<!doctype html>
 <meta property="og:title" content="{title}">
 <meta property="og:description" content="{desc}">
 {og_image}<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🫀</text></svg>">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/fonts/fonts.css">
 <style>
 :root{{--ground:#F5F8F8;--surface:#FFFFFF;--ink:#0F1719;--ink-2:#48585C;--ink-3:#7E8F93;
   --rule:#D9E2E2;--rule-soft:#E8EEEE;--proven:#0B6E58;--attested:#A24714;--attested-soft:#F6E9E1}}
