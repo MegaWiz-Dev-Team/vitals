@@ -995,18 +995,28 @@ pub fn offer_bytes(
     // instead of finding them by listing every kept blob — which a large store did not return
     // whole on production, 29 Sep 2026: five offers proved and kept, five receipts still refused.
     let record = || {
-        let _ = crate::ward_chain::keep_tape(store, &crate::ward_chain::StoredTape {
+        // Said in the log either way: a record that silently failed to land is how five
+        // repaired receipts went on refusing with nothing to show why.
+        match crate::ward_chain::keep_tape(store, &crate::ward_chain::StoredTape {
             patient_id: d.this.patient_id,
             run_hash: leaf_hex.to_string(),
             steps: tape.to_vec(),
             played_id: id.clone(),
             arrival_capped: None,
-        });
+        }) {
+            Ok(()) => eprintln!("offer      {leaf_hex}: bytes {id} recorded on the shift's tape"),
+            Err(e) => eprintln!("offer      {leaf_hex}: bytes {id} proved but not recorded: {e}"),
+        }
     };
     if played_bytes(store, &id).is_some() {
         // Already kept — and if they reproduce this leaf, the shift is told so.
-        if crate::ward_chain::leaf_if_played_on(&sce, tape, d).as_deref() == Some(leaf_hex) {
-            record();
+        match crate::ward_chain::leaf_if_played_on(&sce, tape, d) {
+            Some(l) if l == leaf_hex => record(),
+            other => eprintln!(
+                "offer      {leaf_hex}: bytes {id} already kept, and do not reproduce this leaf \
+                 here (derived {})",
+                other.as_deref().unwrap_or("nothing")
+            ),
         }
         return Offered::AlreadyHere(id);
     }
