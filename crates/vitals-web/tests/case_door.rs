@@ -2526,6 +2526,55 @@ fn a_strangers_shift_re_derives_on_the_side_of_the_cap_it_was_played_on() {
                "a shift played uncapped re-derives uncapped, whichever side the replay defaults to");
 }
 
+/// **A shift played while this ward could not date its slots re-derives the way it was played.**
+///
+/// 30 Sep 2026, production: seven receipts had refused since the 22nd–24th. Recompiling their cases
+/// changed nothing — the bytes were already the ones played. Amelia Machava's shift (whooping cough,
+/// leaf a9ef4c2c…) reproduces only with **no idle time** before it: when it was played the ward
+/// could not yet put a time on her admission slot, and `resumed` advances an undated span by
+/// nothing. The receipt, which can date that slot now, re-derived five hours of illness she never
+/// had. The leaf decides between the two, as it already decides the side of the arrival cap.
+#[test]
+fn a_shift_played_before_its_slots_could_be_dated_re_derives_the_way_it_was_played() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../demo/scenarios/ep4-pulmonary-embolism.json");
+    let sce = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let admitted = 50u64;
+    let slot = 450_050u64;
+    // Today the ward can date both slots: 180 000 real seconds between them.
+    let dated = |s: u64| -> Option<i64> { (s == admitted || s == slot).then(|| 1_789_000_000 + (s as i64 * 2) / 5) };
+    let steps: Vec<vitals_replay::Step> =
+        vec![vitals_replay::Step::Tick(60.0), vitals_replay::Step::Tick(30.0)];
+    let no_tapes = |_: &str| -> Option<Vec<vitals_replay::Step>> { None };
+    let leaf_with = |dated: &dyn Fn(u64) -> Option<i64>| {
+        let (mut st, _) = vitals_web::ward_chain::resumed(&sce, &[], &no_tapes, admitted, slot, dated, false)
+            .expect("she resumes");
+        let r = vitals_replay::shift(&mut st, &steps, 0.0);
+        vitals_web::ward_chain::hex32(&vitals_replay::leaf(&vitals_replay::sce_hash(&sce), &steps, &r))
+    };
+    // As it was played: the ward could not date the slots, so she was taken with no idle time.
+    let played = leaf_with(&|_| None);
+    assert_ne!(played, leaf_with(&dated), "the premise: dating the gap changes the leaf");
+
+    let mut rh = [0u8; 32];
+    for (i, c) in rh.iter_mut().enumerate() {
+        *c = u8::from_str_radix(&played[i * 2..i * 2 + 2], 16).expect("hex");
+    }
+    let anchored = played.clone();
+    let tape_of = |h: &str| -> Option<Vec<vitals_replay::Step>> { (h == anchored).then(|| steps.clone()) };
+    let this = vitals_web::ward::ShiftOnChain { patient_id: 13, signer: [7u8; 32], slot, run_hash: rh };
+    let shifts = [this];
+    let d = vitals_web::ward_chain::Deriving {
+        shifts: &shifts, this: &this, tape_of: &tape_of, admitted_slot: admitted, dated: &dated,
+        recorded_cap: None,
+    };
+    let (mut st, _) = vitals_web::ward_chain::state_this_shift_began_on_with(&sce, &d, false)
+        .expect("she re-derives");
+    let r = vitals_replay::shift(&mut st, &steps, 0.0);
+    let re = vitals_web::ward_chain::hex32(&vitals_replay::leaf(&vitals_replay::sce_hash(&sce), &steps, &r));
+    assert_eq!(re, played, "the receipt re-derives the patient the shift was actually played on");
+}
+
 /// **What a shift was derived from is written down when it is played, not rediscovered.**
 ///
 /// The probe above finds the side of the cap by replaying this shift's own tape against both — which

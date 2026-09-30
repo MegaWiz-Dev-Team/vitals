@@ -3819,16 +3819,6 @@ pub fn state_this_shift_began_on_with(
     };
     let first = derive(default_cap)?;
 
-    // The trailing gap `resumed` caps: from her last anchored shift, or her admission, to this one.
-    let since = before.iter().map(|s| s.slot).max().unwrap_or(d.admitted_slot);
-    let gap = match ((d.dated)(since), (d.dated)(d.this.slot)) {
-        (Some(a), Some(b)) if b > a => (b - a) as f64,
-        _ => 0.0,
-    };
-    if vitals_replay::idle_sim_seconds(gap) <= vitals_replay::ARRIVAL_IDLE_CAP_SIM_SECONDS {
-        return Ok(first);
-    }
-
     let Some(tape) = (d.tape_of)(&hex32(&d.this.run_hash)) else { return Ok(first) };
     let sce_hash = vitals_replay::sce_hash(sce_json);
     let reproduces = |st: &vitals_sce::runtime::SceState| {
@@ -3839,10 +3829,34 @@ pub fn state_this_shift_began_on_with(
     if reproduces(&first.0) {
         return Ok(first);
     }
-    match derive(!default_cap) {
-        Ok(other) if reproduces(&other.0) => Ok(other),
-        _ => Ok(first),
+
+    // The trailing gap `resumed` caps: from her last anchored shift, or her admission, to this one.
+    // Past the cap, the other side of it is the second candidate.
+    let since = before.iter().map(|s| s.slot).max().unwrap_or(d.admitted_slot);
+    let gap = match ((d.dated)(since), (d.dated)(d.this.slot)) {
+        (Some(a), Some(b)) if b > a => (b - a) as f64,
+        _ => 0.0,
+    };
+    if vitals_replay::idle_sim_seconds(gap) > vitals_replay::ARRIVAL_IDLE_CAP_SIM_SECONDS {
+        if let Ok(other) = derive(!default_cap) {
+            if reproduces(&other.0) {
+                return Ok(other);
+            }
+        }
     }
+
+    // **The gap as the live ward saw it when it could not date it** (30 Sep 2026). `resumed` advances
+    // an undated span by nothing, so a shift taken before the ward could put a time on its slot was
+    // played on a patient with no idle time before it — seven production receipts, 22–24 Sep. The
+    // same shift re-derived today, with the slot dated, gains hours of illness it never had. The
+    // leaf decides, exactly as for the cap: a wrong candidate cannot reproduce it by accident.
+    let undated_now = |s: u64| if s == d.this.slot { None } else { (d.dated)(s) };
+    if let Ok(z) = resumed(sce_json, &before, d.tape_of, d.admitted_slot, d.this.slot, &undated_now, default_cap) {
+        if reproduces(&z.0) {
+            return Ok(z);
+        }
+    }
+    Ok(first)
 }
 
 /// The leaf this shift produces when re-derived against `sce_json`, or `None` if it cannot be.
