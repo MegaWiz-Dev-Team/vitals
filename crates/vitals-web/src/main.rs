@@ -8,6 +8,7 @@
 //! and sessions in a map. The point is to make the automaton playable, not to ship a platform.
 
 mod blog;
+mod fonts;
 mod chain;
 use vitals_web::{
     archive, authors, fuel, lang, meter, news2, patient, payout, reading, review, store, usage,
@@ -2077,7 +2078,7 @@ fn main() {
         // the split is a recorded decision, not a phase. Everything the apex serves carries its
         // own short cache life so a proxy caching the apex never holds anything of the game's.
         if host_of(&req) == APEX && blog::is_blog(&path) {
-            let _ = req.respond(blog_response(&path));
+            let _ = send_hardened(req, blog_response(&path));
             continue;
         }
         if host_of(&req) == APEX {
@@ -2089,12 +2090,12 @@ fn main() {
                     .with_status_code(301)
                     .with_header(Header::from_bytes(&b"Location"[..], to.as_bytes()).unwrap()),
             };
-            let _ = req.respond(resp);
+            let _ = send_hardened(req, resp);
             continue;
         }
 
         if guarded(&path) && !bearer_ok(&req, &token) {
-            let _ = req.respond(
+            let _ = send_hardened(req, 
                 Response::from_string(r#"{"error":"unauthorised"}"#)
                     .with_status_code(401)
                     .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap()),
@@ -2136,7 +2137,7 @@ fn main() {
             if let meter::Verdict::SlowDown { retry_secs } =
                 meter.allow_free(&format!("review:{}", client_addr(&req)), &store)
             {
-                let _ = req.respond(json_code(
+                let _ = send_hardened(req, json_code(
                     serde_json::json!({
                         "error": "too many submissions from this address — give it a minute",
                         "retry_in": retry_secs,
@@ -2177,21 +2178,40 @@ fn main() {
                     },
                 },
             };
-            let _ = req.respond(resp);
+            let _ = send_hardened(req, resp);
             continue;
         }
         if path == "/api/say" {
             said.retain(|t| t.elapsed() < Duration::from_secs(60));
             if said.len() >= SAY_PER_MIN {
-                let _ = req.respond(json(serde_json::json!({ "error": "too many questions — give the patient a moment" })));
+                let _ = send_hardened(req, json(serde_json::json!({ "error": "too many questions — give the patient a moment" })));
                 continue;
             }
             said.push(Instant::now());
         }
 
         let resp = match (req.method(), path.as_str()) {
+            // The typefaces, compiled in (src/fonts.rs). Names are content hashes, so a face never
+            // changes under its name and is cached for a year; the stylesheet is not.
+            (Method::Get, "/fonts/fonts.css") => {
+                let _ = send_hardened(req, Response::from_string(fonts::CSS)
+                    .with_header(Header::from_bytes(&b"Content-Type"[..], &b"text/css; charset=utf-8"[..]).unwrap())
+                    .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=86400"[..]).unwrap()));
+                continue;
+            }
+            (Method::Get, p) if p.starts_with("/fonts/") => {
+                let name = p.trim_start_matches("/fonts/");
+                let resp = match fonts::FILES.iter().find(|(n, _)| *n == name) {
+                    Some((_, bytes)) => Response::from_data(*bytes)
+                        .with_header(Header::from_bytes(&b"Content-Type"[..], &b"font/woff2"[..]).unwrap())
+                        .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=31536000, immutable"[..]).unwrap()),
+                    None => Response::from_data(Vec::new()).with_status_code(404),
+                };
+                let _ = send_hardened(req, resp);
+                continue;
+            }
             (Method::Get, "/") => {
-                let _ = req.respond(html(LANDING));
+                let _ = send_hardened(req, html(LANDING));
                 continue;
             }
             (Method::Get, "/play") => {
@@ -2201,7 +2221,7 @@ fn main() {
                     Some(tk) => PAGE.replace("__VITALS_TOKEN__", tk),
                     None => PAGE.replace("__VITALS_TOKEN__", ""),
                 };
-                let _ = req.respond(
+                let _ = send_hardened(req, 
                     Response::from_string(page).with_header(
                         Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
                             .unwrap(),
@@ -2217,7 +2237,7 @@ fn main() {
             // same open door and is gone; the 404 at the bottom of this match is the right answer
             // for it, and `session.rs` holds it to that.
             (Method::Get, "/slides") | (Method::Get, "/slides/") => {
-                let _ = req.respond(html(&format!("{DECK}{PRESENT}")));
+                let _ = send_hardened(req, html(&format!("{DECK}{PRESENT}")));
                 continue;
             }
 
@@ -2232,7 +2252,7 @@ fn main() {
                     .filter(|n| n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
                 match safe.and_then(|n| std::fs::read(clips_dir().join(format!("{n}.mp4"))).ok()) {
                     Some(bytes) => {
-                        let _ = req.respond(
+                        let _ = send_hardened(req, 
                             Response::from_data(bytes)
                                 .with_header(Header::from_bytes(&b"Content-Type"[..], &b"video/mp4"[..]).unwrap())
                                 .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=86400"[..]).unwrap()),
@@ -2255,7 +2275,7 @@ fn main() {
                     .and_then(|f| std::fs::read(f).ok());
                 match hit {
                     Some(bytes) => {
-                        let _ = req.respond(
+                        let _ = send_hardened(req, 
                             Response::from_data(bytes)
                                 .with_header(Header::from_bytes(&b"Content-Type"[..], &b"image/jpeg"[..]).unwrap())
                                 .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=86400"[..]).unwrap()),
@@ -2275,7 +2295,7 @@ fn main() {
                 let key = p.trim_start_matches("/img/cases/");
                 match CASE_IMG.iter().find(|(k, _, _)| *k == key) {
                     Some((_, bytes, mime)) => {
-                        let _ = req.respond(
+                        let _ = send_hardened(req, 
                             Response::from_data(*bytes)
                                 .with_header(Header::from_bytes(&b"Content-Type"[..], mime.as_bytes()).unwrap())
                                 .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=86400"[..]).unwrap()),
@@ -2289,7 +2309,7 @@ fn main() {
                 let key = p.trim_start_matches("/img/").trim_end_matches(".jpg");
                 match STILLS.iter().chain(KEY_ART.iter()).find(|(k, _)| *k == key) {
                     Some((_, bytes)) => {
-                        let _ = req.respond(
+                        let _ = send_hardened(req, 
                             Response::from_data(*bytes)
                                 .with_header(Header::from_bytes(&b"Content-Type"[..], &b"image/jpeg"[..]).unwrap())
                                 .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=86400"[..]).unwrap()),
@@ -2305,7 +2325,7 @@ fn main() {
                     "/device/pump" => PUMP,
                     _ => MONITOR,
                 };
-                let _ = req.respond(Response::from_string(page).with_header(
+                let _ = send_hardened(req, Response::from_string(page).with_header(
                     Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..]).unwrap(),
                 ));
                 continue;
@@ -2372,7 +2392,7 @@ fn main() {
                 if let meter::Verdict::SlowDown { retry_secs } =
                     meter.allow_free(&format!("new:{}", client_addr(&req)), &store)
                 {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "error": "too many new runs from this address — give it a minute",
                         "retry_in": retry_secs,
                     }), 429));
@@ -2394,7 +2414,7 @@ fn main() {
                 // station ids: "never the EP1 fallback, because playing EP1 under a station's
                 // name would anchor the wrong case." It is the same sentence for every other id.
                 if !every_case().contains(&ep.as_str()) {
-                    let _ = req.respond(json_code(serde_json::json!({
+                    let _ = send_hardened(req, json_code(serde_json::json!({
                         "error": "no such case",
                     }), 404));
                     continue;
@@ -2527,7 +2547,7 @@ fn main() {
                         let was_over = s.over();
                         if !was_over {
                             if let Err(e) = s.ring_the_bell() {
-                                let _ = req.respond(json(serde_json::json!({ "error": e })));
+                                let _ = send_hardened(req, json(serde_json::json!({ "error": e })));
                                 continue;
                             }
                         }
@@ -2803,7 +2823,7 @@ fn main() {
                 let caller = param(&url, "player");
                 let q = param(&url, "q").unwrap_or_default();
                 let Some(pt) = patient.as_ref() else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no gateway — the patient has no voice here" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no gateway — the patient has no voice here" })));
                     continue;
                 };
                 // The bay is free and the inference is paid for by donations, so the spend is
@@ -2812,14 +2832,14 @@ fn main() {
                 match meter.allow(&client_addr(&req), &store) {
                     meter::Verdict::Ok => {}
                     meter::Verdict::SlowDown { retry_secs } => {
-                        let _ = req.respond(json_code(serde_json::json!({
+                        let _ = send_hardened(req, json_code(serde_json::json!({
                             "error": "the patient needs a moment — you are asking faster than the bay allows",
                             "retry_in": retry_secs,
                         }), 429));
                         continue;
                     }
                     meter::Verdict::Ceiling => {
-                        let _ = req.respond(json_code(serde_json::json!({
+                        let _ = send_hardened(req, json_code(serde_json::json!({
                             "error": "this month's compute is spent",
                             "ceiling": meter.view(),
                         }), 429));
@@ -2837,7 +2857,7 @@ fn main() {
                 let (hist, status, spo2, ep) = {
                     let mut map = sessions.lock().unwrap();
                     let Some(s) = map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) else {
-                        let _ = req.respond(no_such_session());
+                        let _ = send_hardened(req, no_such_session());
                         continue;
                     };
                     // The question goes on the tape. The answer never will.
@@ -2849,7 +2869,7 @@ fn main() {
                 // a confident voice is worse for a candidate than no answer at all, because there
                 // is nothing on the screen to tell them it was the wrong patient talking.
                 let Some(persona) = personas.get(&ep) else {
-                    let _ = req.respond(json(serde_json::json!({
+                    let _ = send_hardened(req, json(serde_json::json!({
                         "error": "this patient has no voice here — examine, order and treat instead",
                     })));
                     continue;
@@ -2931,7 +2951,7 @@ fn main() {
                 let want = p.trim_start_matches("/api/sce/");
                 match archive::answer(want, &live_scenarios(), &sce_archive_dir()) {
                     archive::Answer::Retired(text) => {
-                        let _ = req.respond(
+                        let _ = send_hardened(req, 
                             Response::from_string(text)
                                 .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap())
                                 // Content-addressed: these bytes cannot change without changing
@@ -3092,7 +3112,7 @@ fn main() {
                 let table = match authors::load(&root.join(authors::AUTHORS_PATH)) {
                     Ok(t) => t,
                     Err(e) => {
-                        let _ = req.respond(json(serde_json::json!({ "error": e })));
+                        let _ = send_hardened(req, json(serde_json::json!({ "error": e })));
                         continue;
                     }
                 };
@@ -3159,7 +3179,7 @@ fn main() {
                 // the authors endpoint holds — never from a fresh scan.
                 let leaf = param(&url, "leaf").unwrap_or_default().to_lowercase();
                 if payer.is_none() || leaf.is_empty() {
-                    let _ = req.respond(json(serde_json::json!({ "paid": false, "unknown": true })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "paid": false, "unknown": true })));
                     continue;
                 }
                 // What this process paid, which is the ordinary case: the run just finished here.
@@ -3313,15 +3333,15 @@ fn main() {
             // carries exactly what the program will stamp into the leaf.
             (Method::Get, "/api/commit") => {
                 let Some(c) = &chain else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no chain configured" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no chain configured" })));
                     continue;
                 };
                 let Some(id) = param(&url, "id") else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no session" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no session" })));
                     continue;
                 };
                 let Some(who) = param(&url, "player").and_then(|p| pubkey(&p)) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no player key" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no player key" })));
                     continue;
                 };
                 let person = param(&url, "account").and_then(|p| pubkey(&p)).unwrap_or(who);
@@ -3329,7 +3349,7 @@ fn main() {
                     let map = sessions.lock().unwrap();
                     let Some(s) = map.get(&id) else {
                         drop(map);
-                        let _ = req.respond(no_such_session());
+                        let _ = send_hardened(req, no_such_session());
                         continue;
                     };
                     (sce_hash(&s.sce_json), s.ep.clone())
@@ -3346,7 +3366,7 @@ fn main() {
                 // Refused before anything binds: letting a player commit "exam" on a station
                 // with no rubric would promise a star that can never be scored into existence.
                 if mode == 1 && rubric_path(&ep).is_none() {
-                    let _ = req.respond(json(serde_json::json!({
+                    let _ = send_hardened(req, json(serde_json::json!({
                         "error": "this station has no rubric yet — an exam here could never be scored; play it as practice"
                     })));
                     continue;
@@ -3372,20 +3392,20 @@ fn main() {
                 let id = param(&url, "id").unwrap_or_default();
                 let caller = param(&url, "player");
                 let Some(c) = chain.as_ref() else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no chain connected" })));
                     continue;
                 };
                 let mut map = sessions.lock().unwrap();
                 let Some(s) = map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) else {
-                    let _ = req.respond(no_such_session());
+                    let _ = send_hardened(req, no_such_session());
                     continue;
                 };
                 if !s.over() {
-                    let _ = req.respond(json(serde_json::json!({ "error": "the run has not finished" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "the run has not finished" })));
                     continue;
                 }
                 if s.anchored {
-                    let _ = req.respond(json(serde_json::json!({ "error": "already anchored" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "already anchored" })));
                     continue;
                 }
                 // Rebuild the run from the tape through the shared reducer rather than from the
@@ -3393,7 +3413,7 @@ fn main() {
                 let r = match replay(&s.sce_json, &s.tape) {
                     Ok(r) => r,
                     Err(e) => {
-                        let _ = req.respond(json(serde_json::json!({ "error": e })));
+                        let _ = send_hardened(req, json(serde_json::json!({ "error": e })));
                         continue;
                     }
                 };
@@ -3401,7 +3421,7 @@ fn main() {
                 // will sign with — the server has no way to produce that signature, which is what
                 // makes the credential the player's rather than the server's.
                 let Some(who) = param(&url, "player").and_then(|p| pubkey(&p)) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no player key" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no player key" })));
                     continue;
                 };
                 // The machine signs; the person owns. Absent an account the two are the same, which
@@ -3413,7 +3433,7 @@ fn main() {
                 // program will refuse it anyway, since it reads the commitment account and finds
                 // nothing open, but the person typing deserves to know what was missing.
                 let Some((chash, cslot, _nonce)) = s.commit else {
-                    let _ = req.respond(json(serde_json::json!({
+                    let _ = send_hardened(req, json(serde_json::json!({
                         "error": "this run was never committed — the chain refuses runs that were not declared before play"
                     })));
                     continue;
@@ -3422,7 +3442,7 @@ fn main() {
                     match record_for(person.to_bytes(), sce, sce, s.difficulty, s.exam_mode, &s.tape, &r, chash, cslot) {
                         Ok(rec) => rec,
                         Err(e) => {
-                            let _ = req.respond(json(serde_json::json!({ "error": e })));
+                            let _ = send_hardened(req, json(serde_json::json!({ "error": e })));
                             continue;
                         }
                     };
@@ -3443,7 +3463,7 @@ fn main() {
                             rec.rubric_hash = rh;
                         }
                         Err(e) => {
-                            let _ = req.respond(json(serde_json::json!({ "error": e })));
+                            let _ = send_hardened(req, json(serde_json::json!({ "error": e })));
                             continue;
                         }
                     }
@@ -3460,7 +3480,7 @@ fn main() {
                     // reading it as zero would truncate every leaf this server holds.
                     Err(e) => {
                         drop(t);
-                        let _ = req.respond(json(serde_json::json!({
+                        let _ = send_hardened(req, json(serde_json::json!({
                             "error": format!("cannot anchor without reading the tree first: {e}"),
                         })));
                         continue;
@@ -3482,7 +3502,7 @@ fn main() {
                     }
                     Reconciled::Short { local, chain } => {
                         drop(t);
-                        let _ = req.respond(json(serde_json::json!({
+                        let _ = send_hardened(req, json(serde_json::json!({
                             "error": "this server cannot prove what it has already anchored, \
                                       so it will not anchor more",
                             "leaves_here": local,
@@ -3529,11 +3549,11 @@ fn main() {
             (Method::Get, "/api/claim") => {
                 let level: u8 = param(&url, "level").and_then(|v| v.parse().ok()).unwrap_or(2);
                 let Some(c) = chain.as_ref() else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no chain connected" })));
                     continue;
                 };
                 let Some(who) = param(&url, "player").and_then(|p| pubkey(&p)) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no player key" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no player key" })));
                     continue;
                 };
                 let id = param(&url, "account").and_then(|p| pubkey(&p)).unwrap_or(who);
@@ -3556,11 +3576,11 @@ fn main() {
             // Who this machine is, and whose record it may write to.
             (Method::Get, "/api/account") => {
                 let Some(c) = chain.as_ref() else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no chain connected" })));
                     continue;
                 };
                 let Some(dev) = param(&url, "device").and_then(|p| pubkey(&p)) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no device key" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no device key" })));
                     continue;
                 };
                 let person = param(&url, "account").and_then(|p| pubkey(&p)).unwrap_or(dev);
@@ -3582,11 +3602,11 @@ fn main() {
             // a score you can only see on the machine that earned it is not a credential.
             (Method::Get, "/api/progress") => {
                 let Some(c) = chain.as_ref() else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no chain connected" })));
                     continue;
                 };
                 let Some(person) = param(&url, "account").and_then(|p| pubkey(&p)) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no account" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no account" })));
                     continue;
                 };
                 match c.progress(&person) {
@@ -3609,14 +3629,14 @@ fn main() {
             // was asked sits next to what was answered and a verifier can re-derive the count.
             (Method::Get, "/api/stars") => {
                 let Some(c) = chain.as_ref() else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no chain connected" })));
                     continue;
                 };
                 let Some(person) = param(&url, "account")
                     .or_else(|| param(&url, "player"))
                     .and_then(|p| pubkey(&p))
                 else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no account" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no account" })));
                     continue;
                 };
                 let tree_id = tree.lock().unwrap().tree_id;
@@ -3672,16 +3692,16 @@ fn main() {
             // Link or unlink a machine. Signed by one that is already trusted.
             (Method::Get, "/api/link") => {
                 let Some(c) = chain.as_ref() else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no chain connected" })));
                     continue;
                 };
                 let Some(dev) = param(&url, "player").and_then(|p| pubkey(&p)) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no player key" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no player key" })));
                     continue;
                 };
                 let person = param(&url, "account").and_then(|p| pubkey(&p)).unwrap_or(dev);
                 let Some(other) = param(&url, "device").and_then(|p| pubkey(&p)) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no device to link" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no device to link" })));
                     continue;
                 };
                 let on = param(&url, "off").is_none();
@@ -3706,19 +3726,19 @@ fn main() {
             // into its slot and send. If it does not verify, nothing is sent.
             (Method::Get, "/api/submit") => {
                 let Some(c) = chain.as_ref() else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no chain connected" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no chain connected" })));
                     continue;
                 };
                 let Some(who) = param(&url, "player").and_then(|p| pubkey(&p)) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no player key" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no player key" })));
                     continue;
                 };
                 let Some(sig) = param(&url, "sig").and_then(|h| sig64(&h)) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "no signature" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "no signature" })));
                     continue;
                 };
                 let Some(work) = pendings.lock().unwrap().remove(&who.to_string()) else {
-                    let _ = req.respond(json(serde_json::json!({ "error": "nothing waiting to be signed" })));
+                    let _ = send_hardened(req, json(serde_json::json!({ "error": "nothing waiting to be signed" })));
                     continue;
                 };
                 // Only an anchor put a leaf on the list, so only an anchor takes one back off.
@@ -3729,13 +3749,13 @@ fn main() {
                         if speculative {
                             unwind_leaf(&mut tree.lock().unwrap().leaves, work.index);
                         }
-                        let _ = req.respond(json(serde_json::json!({ "error": e })));
+                        let _ = send_hardened(req, json(serde_json::json!({ "error": e })));
                         continue;
                     }
                 };
                 let id = work.account;
                 if let Some((hash, nonce, mode)) = work.commit {
-                    let _ = req.respond(match c.submit(&tx) {
+                    let _ = send_hardened(req, match c.submit(&tx) {
                         Ok(()) => match c.commitment(&id) {
                             // Read back rather than assumed: the slot was assigned on chain, and
                             // the record built at anchor time must carry the same one the program
@@ -3761,7 +3781,7 @@ fn main() {
                     continue;
                 }
                 if work.link {
-                    let _ = req.respond(match c.submit(&tx) {
+                    let _ = send_hardened(req, match c.submit(&tx) {
                         Ok(()) => {
                             let n = c.account(&id).map(|a| a.authorities.len()).unwrap_or(0);
                             json(serde_json::json!({ "linked": true, "devices": n }))
@@ -3791,7 +3811,7 @@ fn main() {
                                 .and_then(|s2| prove.signed(&s2))
                                 .and_then(|tx2| c.submit(&tx2));
                             if let Err(e) = sent {
-                                let _ = req.respond(json(serde_json::json!({
+                                let _ = send_hardened(req, json(serde_json::json!({
                                     "anchored": true, "proven": false,
                                     "error": format!("anchored, but the proof did not land: {e}"),
                                 })));
@@ -3842,7 +3862,7 @@ fn main() {
             }
             _ => Response::from_string("not found").with_status_code(404),
         };
-        let _ = req.respond(resp);
+        let _ = send_hardened(req, resp);
     }
 }
 
@@ -3943,6 +3963,32 @@ fn blog_response(path: &str) -> Response<std::io::Cursor<Vec<u8>>> {
     }
 }
 
+/// **Every response leaves with the security headers** (ported from the ward, 30 Sep 2026). Framing
+/// is same-origin only: the bay frames its own /device/ pages, and DENY turned that panel into a
+/// black box on the ward for three days. The full content-security policy is not here yet — this
+/// build serves the Eternal game, whose pages load a different set of things, and it gets its own
+/// audit before a policy that could break it.
+fn harden<R: std::io::Read>(r: Response<R>) -> Response<R> {
+    const HEADERS: [(&[u8], &[u8]); 8] = [
+        (b"X-Content-Type-Options", b"nosniff"),
+        (b"X-Frame-Options", b"SAMEORIGIN"),
+        (b"Content-Security-Policy", b"frame-ancestors 'self'; object-src 'none'; base-uri 'self'"),
+        (b"Referrer-Policy", b"strict-origin-when-cross-origin"),
+        (b"Strict-Transport-Security", b"max-age=31536000"),
+        (b"Permissions-Policy", b"camera=(), geolocation=(), payment=(), usb=(), microphone=(self)"),
+        (b"Cross-Origin-Opener-Policy", b"same-origin"),
+        (b"Cross-Origin-Resource-Policy", b"same-site"),
+    ];
+    HEADERS
+        .iter()
+        .fold(r, |r, (k, v)| r.with_header(Header::from_bytes(*k, *v).expect("a static header")))
+}
+
+/// The one door every response leaves through, so no route can send one without the headers.
+fn send_hardened<R: std::io::Read>(req: tiny_http::Request, resp: Response<R>) -> std::io::Result<()> {
+    req.respond(harden(resp))
+}
+
 fn apex_target(url: &str) -> Option<String> {
     let path = url.split('?').next().unwrap_or("/");
     // The landing and the two documents about the company stay on the front door. Everything
@@ -3955,7 +4001,8 @@ fn apex_target(url: &str) -> Option<String> {
     // difference between a URL that reads as the company's and one that reads as an artefact of
     // our hosting.
     // The blog stays too: a builder update is shared by its address, like the policy.
-    (!matches!(path, "/" | "/privacy" | "/terms") && !blog::is_blog(path))
+    // And its typefaces: a font redirected to another origin would need CORS the redirect cannot give.
+    (!matches!(path, "/" | "/privacy" | "/terms") && !blog::is_blog(path) && !path.starts_with("/fonts/"))
         .then(|| format!("{GAME_ORIGIN}{url}"))
 }
 
