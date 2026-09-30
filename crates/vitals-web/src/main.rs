@@ -3583,7 +3583,9 @@ fn json_code(v: impl Serialize, code: u16) -> Response<std::io::Cursor<Vec<u8>>>
 fn harden<R: std::io::Read>(r: Response<R>) -> Response<R> {
     const HEADERS: [(&[u8], &[u8]); 8] = [
         (b"X-Content-Type-Options", b"nosniff"),
-        (b"X-Frame-Options", b"DENY"),
+        // SAMEORIGIN, not DENY: the bedside frames its own /device/ pages (30 Sep 2026 — DENY
+        // turned the monitor, ventilator and pump panel into a black box from 27 Sep).
+        (b"X-Frame-Options", b"SAMEORIGIN"),
         // Every kind of resource has a rule, and each third party is named: portraits from
         // storage.googleapis.com, the YouTube-nocookie films, GA4 after consent. Fonts are ours.
         // 'unsafe-inline' stays for script and style because the pages carry both inline; removing
@@ -3595,10 +3597,10 @@ fn harden<R: std::io::Read>(r: Response<R>) -> Response<R> {
             font-src 'self'; \
             connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; \
             media-src 'self' blob: data:; \
-            frame-src https://www.youtube-nocookie.com; \
+            frame-src 'self' https://www.youtube-nocookie.com; \
             worker-src 'self' blob:; \
             manifest-src 'self'; \
-            object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"),
+            object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"),
         (b"Cross-Origin-Opener-Policy", b"same-origin"),
         (b"Cross-Origin-Resource-Policy", b"same-site"),
         (b"Referrer-Policy", b"strict-origin-when-cross-origin"),

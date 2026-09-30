@@ -110,8 +110,12 @@ fn every_kind_of_response_carries_the_security_headers() {
             assert!(v.contains(must), "{what} ({path}): {name} is {v:?}, expected it to contain {must:?}");
         };
         need("x-content-type-options", "nosniff");
-        need("x-frame-options", "DENY");
-        need("content-security-policy", "frame-ancestors 'none'");
+        // Same origin only, never 'none' (30 Sep 2026): the bedside frames its own /device/ pages —
+        // the monitor, the ventilator, the pump — and DENY, shipped on 27 Sep, turned that panel
+        // into a black box for three days. Another site still cannot frame the ward.
+        need("x-frame-options", "SAMEORIGIN");
+        need("content-security-policy", "frame-ancestors 'self'");
+        need("content-security-policy", "frame-src 'self' https://www.youtube-nocookie.com");
         // The whole policy, not framing alone (29 Sep 2026): every kind of resource has a rule, so
         // nothing falls back to "anything goes" (ZAP 10055, "no fallback"), and each third party
         // the pages actually use is named rather than allowed by wildcard.
@@ -120,7 +124,6 @@ fn every_kind_of_response_carries_the_security_headers() {
         need("content-security-policy", "base-uri 'self'");
         need("content-security-policy", "form-action 'self'");
         need("content-security-policy", "font-src 'self'");
-        need("content-security-policy", "frame-src https://www.youtube-nocookie.com");
         need("content-security-policy", "img-src 'self' data: blob: https://storage.googleapis.com");
         need("cross-origin-opener-policy", "same-origin");
         need("cross-origin-resource-policy", "same-site");
