@@ -3433,10 +3433,25 @@ fn read_response(
                 .or_else(|| since.as_deref().and_then(ward_chain::day_start_ict));
             match (opened, ward_chain::ward_signer()) {
                 (Some(opened), Some(me)) => {
-                    let shifts = ward_chain::shifts_on_the_board(store);
-                    let dated = ward_chain::cached_dater(store);
-                    let (n, undatable) =
-                        ward_chain::hand_overs_in_window(&shifts, &me, &dated, opened);
+                    // Held for two minutes (30 Sep 2026): counting reads the time of every shift's
+                    // slot from the store one document at a time — 256 reads, ~8 s, on every
+                    // request. A stats figure two minutes old is still the chain's count.
+                    /// When it was counted, for which window, and the count.
+                    type Count = (Instant, i64, (u64, u64));
+                    static HELD: std::sync::Mutex<Option<Count>> = std::sync::Mutex::new(None);
+                    let held = HELD.lock().ok().and_then(|h| {
+                        h.filter(|(at, o, _)| *o == opened && at.elapsed() < Duration::from_secs(120))
+                            .map(|(_, _, v)| v)
+                    });
+                    let (n, undatable) = held.unwrap_or_else(|| {
+                        let shifts = ward_chain::shifts_on_the_board(store);
+                        let dated = ward_chain::cached_dater(store);
+                        let v = ward_chain::hand_overs_in_window(&shifts, &me, &dated, opened);
+                        if let Ok(mut h) = HELD.lock() {
+                            *h = Some((Instant::now(), opened, v));
+                        }
+                        v
+                    });
                     funnel["hand_overs"] = serde_json::json!(n);
                     if undatable > 0 {
                         // Said rather than swallowed: a slot with no block time cannot be placed in
