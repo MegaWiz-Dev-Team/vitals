@@ -42,9 +42,14 @@ impl Server {
     }
     /// Status, headers (names lowercased) and body of a GET, read whole (HTTP/1.0: never chunked).
     fn get(&self, path: &str) -> (u16, Vec<(String, String)>, Vec<u8>) {
+        self.get_as("127.0.0.1", path)
+    }
+    /// The same GET, as it arrives for a named host — the front door answers `vitals.academy`
+    /// differently from the game's host.
+    fn get_as(&self, host: &str, path: &str) -> (u16, Vec<(String, String)>, Vec<u8>) {
         let mut s = std::net::TcpStream::connect(("127.0.0.1", self.port)).expect("connect");
         s.set_read_timeout(Some(std::time::Duration::from_secs(20))).ok();
-        write!(s, "GET {path} HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n").expect("send");
+        write!(s, "GET {path} HTTP/1.0\r\nHost: {host}\r\n\r\n").expect("send");
         let mut raw = Vec::new();
         let _ = s.read_to_end(&mut raw);
         let split = raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap_or(raw.len());
@@ -105,4 +110,22 @@ fn the_front_doors_typefaces_come_from_itself() {
         assert!(!body.contains("fonts.googleapis.com") && !body.contains("fonts.gstatic.com"),
                 "{page} still loads fonts from Google");
     }
+}
+
+/// **The front door serves its fonts as fonts** (30 Sep 2026). v0.10.1 kept /fonts/ on the apex
+/// rather than redirecting it, and then answered it with the landing page — `text/html` — so every
+/// page on vitals.academy fell back to system type. The tests above asked the game's host.
+#[test]
+fn the_front_door_serves_its_fonts_as_fonts() {
+    let s = Server::start();
+    let (status, h, css) = s.get_as("vitals.academy", "/fonts/fonts.css");
+    assert_eq!(status, 200);
+    assert!(header(&h, "content-type").is_some_and(|c| c.starts_with("text/css")),
+            "the apex answered its stylesheet as {:?}", header(&h, "content-type"));
+    let css = String::from_utf8(css).expect("utf-8");
+    let first = css.split("url(/fonts/").nth(1).and_then(|r| r.split(')').next()).expect("a face");
+    let (status, h, body) = s.get_as("vitals.academy", &format!("/fonts/{first}"));
+    assert_eq!(status, 200);
+    assert_eq!(header(&h, "content-type"), Some("font/woff2"));
+    assert!(body.starts_with(b"wOF2"));
 }

@@ -2081,7 +2081,10 @@ fn main() {
             let _ = send_hardened(req, blog_response(&path));
             continue;
         }
-        if host_of(&req) == APEX {
+        // The typefaces go on to their own routes below: the front door keeps /fonts/ (a font
+        // redirected to the game's host would need CORS), and answering it with the landing page
+        // served the stylesheet as text/html (v0.10.1, 30 Sep 2026).
+        if host_of(&req) == APEX && !path.starts_with("/fonts/") {
             let resp = match apex_target(&url) {
                 None => html(&front_door(&path)).with_header(
                     Header::from_bytes(&b"Cache-Control"[..], &b"public, max-age=300"[..]).unwrap(),
