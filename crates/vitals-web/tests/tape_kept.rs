@@ -121,7 +121,7 @@ fn an_anchored_leaf_with_no_tape_is_repaired_from_a_session_that_reduces_to_it()
         // These tapes are built from steps, not played through a case, so there are no case bytes
         // for them to be addressed to. What this file is about is which hash the tape is kept
         // under; the address is a separate fact and has its own test.
-        played_id: String::new(), arrival_capped: None
+        played_id: String::new(), arrival_capped: None, idle_before_secs: None
     })
     .expect("kept");
 
@@ -295,7 +295,7 @@ fn the_side_of_the_cap_a_shift_recorded_survives_a_writer_that_does_not_know_it(
     let hash = "c".repeat(64);
     let tape = |cap: Option<bool>| StoredTape {
         patient_id: 3, run_hash: hash.clone(), steps: vec![Step::Tick(1.0)],
-        played_id: String::new(), arrival_capped: cap,
+        played_id: String::new(), arrival_capped: cap, idle_before_secs: None,
     };
     assert_eq!(vitals_web::ward_chain::recorded_cap(&st, &hash), None, "nothing is recorded yet");
 
@@ -307,4 +307,20 @@ fn the_side_of_the_cap_a_shift_recorded_survives_a_writer_that_does_not_know_it(
     keep_tape(&st, &tape(None)).expect("and a repair");
     assert_eq!(vitals_web::ward_chain::recorded_cap(&st, &hash), Some(false),
                "a writer that does not know the side of the cap erased the one that did");
+}
+
+/// The idle time before a shift, recorded by the hand-over, survives writers that do not know it —
+/// the same rule as the side of the cap.
+#[test]
+fn the_idle_time_a_shift_recorded_survives_a_writer_that_does_not_know_it() {
+    let st = store("idle-before");
+    let hash = "d".repeat(64);
+    let tape = |idle: Option<f64>| StoredTape {
+        patient_id: 3, run_hash: hash.clone(), steps: vec![Step::Tick(1.0)],
+        played_id: String::new(), arrival_capped: None, idle_before_secs: idle,
+    };
+    keep_tape(&st, &tape(Some(0.0))).expect("the hand-over keeps it");
+    keep_tape(&st, &tape(None)).expect("the anchor keeps it again");
+    assert_eq!(vitals_web::ward_chain::recorded_idle(&st, &hash), Some(0.0),
+               "a writer that does not know the idle time erased the one that did");
 }

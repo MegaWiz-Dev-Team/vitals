@@ -2407,6 +2407,7 @@ fn repair_one(
                 // learned; a guess here would be a fact nobody could tell from one.
                 played_id: String::new(),
                 arrival_capped: None,
+                idle_before_secs: None,
             })
             .ok()?;
             Some(tape)
@@ -2998,6 +2999,11 @@ pub struct StoredTape {
     /// not know — those are still resolved by replaying against the leaf.
     #[serde(default)]
     pub arrival_capped: Option<bool>,
+    /// **The idle time, in real seconds, this shift was played after** — the trailing gap the live
+    /// ward gave her, recorded by the hand-over. `None` on tapes kept before 30 Sep 2026 and on
+    /// writers that do not know it.
+    #[serde(default)]
+    pub idle_before_secs: Option<f64>,
 }
 
 /// Rebuild the patient as she is now: every anchored shift, in the chain's order, and the time
@@ -3027,6 +3033,38 @@ pub fn resumed(
     // Whether the trailing gap is the one a stranger arriving meets, or the one that happened.
     // Decided by `cap_on_arrival` at the call site, which knows whose slot this is.
     cap_trailing: bool,
+) -> Result<(vitals_sce::runtime::SceState, usize), String> {
+    resumed_with(sce_json, shifts, tape_of, admitted_slot, now_slot, dated, cap_trailing, None)
+}
+
+/// The real seconds of the trailing gap `resumed` would give her — from her last anchored shift,
+/// or her admission, to `now_slot`, as `dated` can date it (0 when it cannot).
+pub fn trailing_gap(
+    shifts: &[crate::ward::ShiftOnChain],
+    admitted_slot: u64,
+    now_slot: u64,
+    dated: &dyn Fn(u64) -> Option<i64>,
+) -> f64 {
+    let since = shifts.iter().map(|s| s.slot).max().unwrap_or(admitted_slot);
+    match (dated(since), dated(now_slot)) {
+        (Some(a), Some(b)) if b > a => (b - a) as f64,
+        _ => 0.0,
+    }
+}
+
+/// [`resumed`] with the trailing gap, in real seconds, given rather than dated — the gap a shift
+/// recorded when it was played (30 Sep 2026: seven receipts refused because the live ward could not
+/// date a slot the receipt later could). `None` dates it as [`resumed`] does.
+#[allow(clippy::too_many_arguments)]
+pub fn resumed_with(
+    sce_json: &str,
+    shifts: &[crate::ward::ShiftOnChain],
+    tape_of: &dyn Fn(&str) -> Option<Vec<vitals_replay::Step>>,
+    admitted_slot: u64,
+    now_slot: u64,
+    dated: &dyn Fn(u64) -> Option<i64>,
+    cap_trailing: bool,
+    trailing_real_secs: Option<f64>,
 ) -> Result<(vitals_sce::runtime::SceState, usize), String> {
     // How long she was alone between two slots, in real seconds, as the chain dates them. It was
     // the slot count times 0.4 s — and devnet was producing slots at 0.166 s on 17 ก.ย., so every
@@ -3062,7 +3100,7 @@ pub fn resumed(
     // because this function cannot see whose moment `now_slot` is: a live arrival, a human shift
     // being rebuilt, or a closure the ward signed. Seven callers know that and this one does not,
     // so each passes the answer rather than restating the rule.
-    let gap = span(since, now_slot);
+    let gap = trailing_real_secs.unwrap_or_else(|| span(since, now_slot));
     vitals_replay::pass_idle(
         &mut st,
         if cap_trailing {
@@ -3357,6 +3395,7 @@ pub fn bytes_behind_the_anchored_shifts(
             let deriving = Deriving {
                 shifts: &all, this: shift, tape_of: &tape_of, admitted_slot, dated: &dated,
                 recorded_cap: recorded_cap(store, &leaf),
+                recorded_idle: recorded_idle(store, &leaf),
             };
 
             // **The same question the receipt asks, asked the same way.** This list describes what
@@ -3421,6 +3460,11 @@ pub fn recorded_cap(store: &crate::store::Store, run_hash: &str) -> Option<bool>
     store.get::<StoredTape>(TAPE_STORE, run_hash).and_then(|t| t.arrival_capped)
 }
 
+/// The idle time before this shift, as the hand-over recorded it, if it did.
+pub fn recorded_idle(store: &crate::store::Store, run_hash: &str) -> Option<f64> {
+    store.get::<StoredTape>(TAPE_STORE, run_hash).and_then(|t| t.idle_before_secs)
+}
+
 /// Keep a finished shift's tape, addressed by the hash its leaf commits to.
 ///
 /// Content-addressed, so keeping the same tape twice is keeping it once — and so the name it is
@@ -3444,7 +3488,8 @@ pub fn keep_tape(store: &crate::store::Store, tape: &StoredTape) -> Result<(), S
         Some(before) => {
             let played_id = if tape.played_id.is_empty() { before.played_id } else { tape.played_id.clone() };
             let arrival_capped = tape.arrival_capped.or(before.arrival_capped);
-            StoredTape { played_id, arrival_capped, ..tape.clone() }
+            let idle_before_secs = tape.idle_before_secs.or(before.idle_before_secs);
+            StoredTape { played_id, arrival_capped, idle_before_secs, ..tape.clone() }
         }
         None => tape.clone(),
     };
@@ -3472,7 +3517,8 @@ pub fn keep_for_anchor(
     // Recorded by the hand-over path, which knows; empty here, where this is rebuilding a record
     // for a shift already on chain and does not.
     keep_tape(store, &StoredTape { patient_id, run_hash: run_hash.clone(), steps: tape.to_vec(),
-                                   played_id: String::new(), arrival_capped: None })?;
+                                   played_id: String::new(), arrival_capped: None,
+                                   idle_before_secs: None })?;
     // And the chain's own name for this shift. The leaf binds the player, the declaration and the
     // tape; the run hash binds only the tape, and two strangers who did the same things share one.
     // It cannot be recomputed later — `RecordWire` carries no commitment, by design — so it is
@@ -3542,6 +3588,7 @@ pub fn recover_tape(
             // says unrebuildable for what it cannot.
             played_id: String::new(),
             arrival_capped: None,
+            idle_before_secs: None,
         })
         .ok()?;
         return Some(tape.clone());
@@ -3761,6 +3808,9 @@ pub struct Deriving<'a> {
     /// decides ahead of anything this instance would choose. `None` for shifts played before it was
     /// recorded: those fall back to the environment, then to the leaf.
     pub recorded_cap: Option<bool>,
+    /// The idle time before this shift as it recorded it ([`recorded_idle`]); it decides the
+    /// trailing gap ahead of dating it today. `None` for shifts played before it was recorded.
+    pub recorded_idle: Option<f64>,
 }
 
 /// **The patient as she was when this stranger arrived** — the one place that decides it.
@@ -3815,7 +3865,7 @@ pub fn state_this_shift_began_on_with(
     let before: Vec<crate::ward::ShiftOnChain> =
         d.shifts.iter().filter(|s| s.slot < d.this.slot).copied().collect();
     let derive = |cap: bool| {
-        resumed(sce_json, &before, d.tape_of, d.admitted_slot, d.this.slot, d.dated, cap)
+        resumed_with(sce_json, &before, d.tape_of, d.admitted_slot, d.this.slot, d.dated, cap, d.recorded_idle)
     };
     let first = derive(default_cap)?;
 
@@ -3902,6 +3952,7 @@ pub fn receipt(
     admitted_slot: u64,
     dated: &dyn Fn(u64) -> Option<i64>,
     recorded_cap: Option<bool>,
+    recorded_idle: Option<f64>,
 ) -> Result<serde_json::Value, String> {
     let hash = hex32(&this.run_hash);
     let tape = tape_of(&hash).ok_or_else(|| {
@@ -3909,7 +3960,7 @@ pub fn receipt(
                  nobody can check is not a receipt")
     })?;
 
-    let deriving = Deriving { shifts, this, tape_of, admitted_slot, dated, recorded_cap };
+    let deriving = Deriving { shifts, this, tape_of, admitted_slot, dated, recorded_cap, recorded_idle };
     let (mut st, played) = state_this_shift_began_on(sce_json, &deriving)?;
     let r = vitals_replay::shift(&mut st, &tape, 0.0);
 

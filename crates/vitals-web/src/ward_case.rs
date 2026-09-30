@@ -1003,6 +1003,7 @@ pub fn offer_bytes(
             steps: tape.to_vec(),
             played_id: id.clone(),
             arrival_capped: None,
+            idle_before_secs: None,
         }) {
             Ok(()) => eprintln!("offer      {leaf_hex}: bytes {id} recorded on the shift's tape"),
             Err(e) => eprintln!("offer      {leaf_hex}: bytes {id} proved but not recorded: {e}"),

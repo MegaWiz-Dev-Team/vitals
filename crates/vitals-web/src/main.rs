@@ -324,6 +324,11 @@ struct WardShift {
     /// saved before this existed, which falls back to asking as before.
     #[serde(default)]
     arrival_capped: Option<bool>,
+    /// **The idle time, in real seconds, she was taken after** — decided once, when she was opened,
+    /// from what this ward could date then, and written beside the tape at the hand-over so no
+    /// receipt has to re-date it (30 Sep 2026). `None` in a session saved before it existed.
+    #[serde(default)]
+    idle_before_secs: Option<f64>,
     /// The head this shift extends, hex. Named before the work rather than read after it: the
     /// program refuses a reveal that does not extend the head it was told, and that refusal is
     /// the mechanic.
@@ -457,7 +462,7 @@ impl Session {
             // Resumed to the slot this shift opened at, not to now: the shift's own clock started
             // then, and the idle time since belongs to whoever comes next.
             (Some(w), Some(p)) => {
-                let (mut st, _) = ward_chain::resumed(
+                let (mut st, _) = ward_chain::resumed_with(
                     &sce_json,
                     &p.shifts,
                     tape_of,
@@ -471,6 +476,7 @@ impl Session {
                     // is at or after the boundary, so a restore hands back the patient the play
                     // was on rather than a sicker one.
                     arrival_capped(w),
+                    w.idle_before_secs,
                 )?;
                 let r = vitals_replay::shift(&mut st, &saved.tape, 0.0);
                 (st, r)
@@ -2137,7 +2143,9 @@ fn open_shift(
     // Decided here, once, and carried with the shift: every later step of this play reads this.
     let capped =
         ward_chain::cap_on_arrival(now_slot, None, ward::arrival_cap_from_slot(), ward_chain::ward_signer().as_ref());
-    let (state, played) = ward_chain::resumed(
+    let idle_before = ward_chain::trailing_gap(
+        &seen.shifts(), her.admitted_slot, now_slot, &ward_chain::dater_to_now(store, now_slot));
+    let (state, played) = ward_chain::resumed_with(
         &sce_json,
         &seen.shifts(),
         &|h| ward_chain::tape_by_hash(store, h),
@@ -2150,6 +2158,7 @@ fn open_shift(
         // The case the cap was made for: somebody opening a bed now. Nobody has signed anything at
         // this slot, so the boundary alone decides, and what she meets is what the card promises.
         capped,
+        Some(idle_before),
     )?;
 
     let head = hex(&her.head);
@@ -2158,6 +2167,7 @@ fn open_shift(
         index: played as u32,
         taken_slot: now_slot,
         arrival_capped: Some(capped),
+        idle_before_secs: Some(idle_before),
         head: head.clone(),
         // Her whole set, carried into the session so every view can name the right one without
         // reaching for the store.
@@ -2552,6 +2562,7 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
     let deriving = ward_chain::Deriving {
         shifts: &shifts, this: &this, tape_of: &tape_of, admitted_slot: admitted, dated: &dated,
         recorded_cap: ward_chain::recorded_cap(store, &leaf_hex),
+        recorded_idle: ward_chain::recorded_idle(store, &leaf_hex),
     };
     let Some(steps) = ward_chain::tape_by_hash(store, &leaf_hex) else {
         return bad(
@@ -2633,6 +2644,7 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
         admitted,
         &dated,
         ward_chain::recorded_cap(store, &leaf_hex),
+        ward_chain::recorded_idle(store, &leaf_hex),
     ) {
         Ok(mut v) => {
             // The chain's own name for this shift, when the address was one or when this server
@@ -6264,6 +6276,7 @@ fn main() {
                     shifts: &shifts, this: &this, tape_of: &tape_of, admitted_slot,
                     dated: &ward_chain::cached_dater(&store),
                     recorded_cap: ward_chain::recorded_cap(&store, &leaf),
+                    recorded_idle: ward_chain::recorded_idle(&store, &leaf),
                 };
                 let out = match ward_case::offer_bytes(&store, &pack, &leaf, &steps, &deriving) {
                     ward_case::Offered::Proved(at) => serde_json::json!({
@@ -6811,12 +6824,12 @@ fn main() {
                                     continue;
                                 };
                                 let rebuild = ward_rebuild(&store, w.patient_id);
-                                let r = match rebuild.as_ref().map(|b| ward_chain::resumed(
+                                let r = match rebuild.as_ref().map(|b| ward_chain::resumed_with(
                                     &s.sce_json, &b.shifts,
                                     &|h| ward_chain::tape_by_hash(&store, h),
                                     b.admitted_slot, w.taken_slot,
                                     &ward_chain::cached_dater(&store),
-                                    arrival_capped(w))) {
+                                    arrival_capped(w), w.idle_before_secs)) {
                                     Some(Ok((mut st, _))) => vitals_replay::shift(&mut st, &s.tape, 0.0),
                                     Some(Err(e)) => { drop(map);
                                         let _ = send_hardened(req, json_code(
@@ -7101,7 +7114,7 @@ fn main() {
                     }), 503));
                     continue;
                 };
-                let base = ward_chain::resumed(
+                let base = ward_chain::resumed_with(
                     &s.sce_json,
                     &rebuild.shifts,
                     &|h| ward_chain::tape_by_hash(&store, h),
@@ -7111,6 +7124,7 @@ fn main() {
                     // The same answer the play was given, or this reduction computes a leaf from a
                     // different patient than the one the tape was played on.
                     arrival_capped(&w),
+                    w.idle_before_secs,
                 );
                 let r = match base {
                     Ok((mut st, _)) => vitals_replay::shift(&mut st, &s.tape, 0.0),
@@ -7139,6 +7153,8 @@ fn main() {
                     played_id,
                     // The side of the cap this play was given, so a receipt reads it, not re-asks.
                     arrival_capped: Some(arrival_capped(&w)),
+                    // And the idle time it was given, for the same reason.
+                    idle_before_secs: w.idle_before_secs,
                 });
                 // Frozen from here. The tape has been reduced and the leaf named; anything more
                 // would be a step onto a tape that has already been counted.
@@ -8654,6 +8670,7 @@ mod tests {
             index: 0,
             taken_slot: 1,
             arrival_capped: None,
+            idle_before_secs: None,
             head: "00".repeat(32),
             faces: faces.clone(),
             age: 8,
@@ -8723,6 +8740,7 @@ mod tests {
             index: 0,
             taken_slot: 1,
             arrival_capped: None,
+            idle_before_secs: None,
             head: "00".repeat(32),
             // Nobody has photographed him. Not a missing pack, not a closed door — a patient on
             // the ward whose face has not been made yet, which is the ordinary state of a patient
