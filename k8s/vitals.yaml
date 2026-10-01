@@ -49,7 +49,9 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
+        runAsGroup: 10001
         fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
       containers:
         - name: vitals-web
           image: vitals-web:latest
@@ -74,7 +76,14 @@ spec:
               valueFrom: {secretKeyRef: {name: vitals-secrets, key: heimdall-key, optional: true}}
             - {name: VITALS_KEYPAIR, value: "/relay/id.json"}
             - {name: VITALS_CLIPS,   value: "/clips"}
+          # The root filesystem is read-only: everything the server writes goes to /state, and
+          # /tmp is a scratch emptyDir for anything a library insists on writing there.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
           volumeMounts:
+            - {name: tmp, mountPath: /tmp}
             - {name: state, mountPath: /state}
             - {name: relay, mountPath: /relay, readOnly: true}
             - {name: clips, mountPath: /clips, readOnly: true}
@@ -93,6 +102,8 @@ spec:
             requests: {cpu: 100m, memory: 128Mi}
             limits:   {cpu: "2",  memory: 1Gi}
       volumes:
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}
         - name: state
           persistentVolumeClaim: {claimName: vitals-state}
         - name: relay
