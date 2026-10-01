@@ -3968,14 +3968,18 @@ fn blog_response(path: &str) -> Response<std::io::Cursor<Vec<u8>>> {
 
 /// **Every response leaves with the security headers** (ported from the ward, 30 Sep 2026). Framing
 /// is same-origin only: the bay frames its own /device/ pages, and DENY turned that panel into a
-/// black box on the ward for three days. The full content-security policy is not here yet — this
-/// build serves the Eternal game, whose pages load a different set of things, and it gets its own
-/// audit before a policy that could break it.
+/// black box on the ward for three days.
+///
+/// The content-security policy is the ward's, fitted to what this build's pages load (audited
+/// 1 Oct 2026): every script, style, font, frame and fetch is same-origin except Google's tag.
+/// The one other origin is the game's own: the front door answers only `/`, `/privacy`, `/terms`,
+/// the blog and its fonts, so the landing's teaser films, case art and usage count are 301s to
+/// `GAME_ORIGIN` — a policy without it would leave the landing's ring of cases dark.
 fn harden<R: std::io::Read>(r: Response<R>) -> Response<R> {
     const HEADERS: [(&[u8], &[u8]); 8] = [
         (b"X-Content-Type-Options", b"nosniff"),
         (b"X-Frame-Options", b"SAMEORIGIN"),
-        (b"Content-Security-Policy", b"frame-ancestors 'self'; object-src 'none'; base-uri 'self'"),
+        (b"Content-Security-Policy", CSP.as_bytes()),
         (b"Referrer-Policy", b"strict-origin-when-cross-origin"),
         (b"Strict-Transport-Security", b"max-age=31536000"),
         (b"Permissions-Policy", b"camera=(), geolocation=(), payment=(), usb=(), microphone=(self)"),
@@ -3986,6 +3990,26 @@ fn harden<R: std::io::Read>(r: Response<R>) -> Response<R> {
         .iter()
         .fold(r, |r, (k, v)| r.with_header(Header::from_bytes(*k, *v).expect("a static header")))
 }
+
+/// `harden`'s content-security policy. `'unsafe-inline'` stays for scripts and styles: every page
+/// is one file with its script and style inline, and the inline `<script>` that loads Google's tag
+/// is what a nonce would have to cover on every page at once.
+const CSP: &str = concat!(
+    "default-src 'self'; ",
+    "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; ",
+    "style-src 'self' 'unsafe-inline'; ",
+    "img-src 'self' data: blob: https://devnet.vitals.academy https://www.googletagmanager.com https://*.google-analytics.com; ",
+    "font-src 'self'; ",
+    "connect-src 'self' https://devnet.vitals.academy https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; ",
+    "media-src 'self' blob: data: https://devnet.vitals.academy; ",
+    "frame-src 'self'; ",
+    "worker-src 'self' blob:; ",
+    "manifest-src 'self'; ",
+    "object-src 'none'; ",
+    "base-uri 'self'; ",
+    "form-action 'self'; ",
+    "frame-ancestors 'self'",
+);
 
 /// The one door every response leaves through, so no route can send one without the headers.
 fn send_hardened<R: std::io::Read>(req: tiny_http::Request, resp: Response<R>) -> std::io::Result<()> {

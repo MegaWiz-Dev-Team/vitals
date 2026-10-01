@@ -82,6 +82,8 @@ fn the_front_door_answers_with_the_security_headers() {
         need("x-content-type-options", "nosniff");
         need("x-frame-options", "SAMEORIGIN");
         need("content-security-policy", "frame-ancestors 'self'");
+        need("content-security-policy", "default-src 'self'");
+        need("content-security-policy", "object-src 'none'");
         need("referrer-policy", "strict-origin-when-cross-origin");
         need("strict-transport-security", "max-age=");
         need("permissions-policy", "microphone=(self)");
@@ -128,4 +130,61 @@ fn the_front_door_serves_its_fonts_as_fonts() {
     assert_eq!(status, 200);
     assert_eq!(header(&h, "content-type"), Some("font/woff2"));
     assert!(body.starts_with(b"wOF2"));
+}
+
+/// The value of one directive in a policy, as its list of sources.
+fn directive<'a>(csp: &'a str, name: &str) -> Vec<&'a str> {
+    csp.split(';')
+        .map(str::trim)
+        .find(|d| d.split_whitespace().next() == Some(name))
+        .map(|d| d.split_whitespace().skip(1).collect())
+        .unwrap_or_default()
+}
+
+/// **The landing's films, art and count are allowed where they actually come from** (1 Oct 2026).
+/// The front door keeps only its own pages and sends everything else to the game's host with a
+/// 301, so the landing's `/clip/`, `/img/` and `/api/usage` arrive from that origin. The policy
+/// asked here is the one the apex sends; the origin is the one its own redirect names, so the two
+/// cannot drift apart without this failing.
+#[test]
+fn the_front_doors_policy_allows_the_origin_it_redirects_to() {
+    let s = Server::start();
+    let (status, h, _) = s.get_as("vitals.academy", "/");
+    assert_eq!(status, 200);
+    let csp = header(&h, "content-security-policy").expect("a policy").to_string();
+    for (path, dir) in [("/clip/ep1_teaser.mp4", "media-src"), ("/img/stable.jpg", "img-src"), ("/api/usage", "connect-src")] {
+        let (status, h, _) = s.get_as("vitals.academy", path);
+        assert_eq!(status, 301, "{path} is sent to the game's host");
+        let to = header(&h, "location").expect("a Location");
+        let origin = to.splitn(4, '/').take(3).collect::<Vec<_>>().join("/");
+        assert!(directive(&csp, dir).contains(&origin.as_str()),
+                "{path} is redirected to {origin}, which the front door's {dir} refuses: {csp}");
+    }
+}
+
+/// **Nothing the pages load comes from an origin the policy does not name.** Every script the
+/// pages add by hand is checked against `script-src`, the one directive an absolute URL in this
+/// build reaches.
+#[test]
+fn every_script_origin_in_the_pages_is_in_the_policy() {
+    let s = Server::start();
+    let (_, h, _) = s.get("/");
+    let csp = header(&h, "content-security-policy").expect("a policy").to_string();
+    let scripts = directive(&csp, "script-src");
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
+    let mut pages = vec![];
+    for e in std::fs::read_dir(dir).expect("static").flatten() {
+        let p = e.path();
+        if p.extension().is_some_and(|x| x == "html") { pages.push(p) }
+    }
+    assert!(pages.len() >= 5);
+    for p in pages {
+        let body = std::fs::read_to_string(&p).expect("page");
+        for hit in body.split(".src='https://").skip(1).chain(body.split("<script src=\"https://").skip(1)) {
+            let host = hit.split(['/', '\'', '"']).next().unwrap_or("");
+            let origin = format!("https://{host}");
+            assert!(scripts.contains(&origin.as_str()) || scripts.contains(&"'self'") && host.is_empty(),
+                    "{} loads a script from {origin}, which script-src refuses", p.display());
+        }
+    }
 }
