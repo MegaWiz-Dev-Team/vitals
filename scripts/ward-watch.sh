@@ -47,6 +47,12 @@ WINDOW="${WATCH_WINDOW_MINS:-30}"
 PASS_MAX="${WATCH_PASS_MAX_SECS:-120}"
 MAX_5XX="${WATCH_MAX_5XX:-10}"
 STATE_DIR="${WATCH_STATE_DIR:-$HOME/.vitals/watch}"
+# The webhook (the Asgard Discord channel, 2 Oct 2026) lives in a file only its owner can read, so
+# it is never in the launchd plist, the repo, or an argument. The env var still wins when set.
+WEBHOOK_FILE="${WATCH_WEBHOOK_FILE:-$STATE_DIR/webhook.url}"
+if [ -z "${WATCH_WEBHOOK_URL:-}" ] && [ -r "$WEBHOOK_FILE" ]; then
+  WATCH_WEBHOOK_URL="$(head -1 "$WEBHOOK_FILE" | tr -d '[:space:]')"
+fi
 NOW="${WATCH_NOW:-$(date +%s)}"
 
 ALERTS=()

@@ -74,6 +74,12 @@ rm -f "$WORK/leak"; out="$(run STUB_RUNS=10 WATCH_WEBHOOK_URL=https://hooks.exam
 [ -s "$WORK/posts" ] && [ ! -s "$WORK/leak" ] \
   && ok "the webhook is posted to, and its URL never appears in an argument" || bad "webhook posted=$(cat "$WORK/posts" 2>/dev/null) leak=$(cat "$WORK/leak" 2>/dev/null)"
 
+rm -f "$WORK/leak" "$WORK/posts" "$WORK/state/staging.alerts"; mkdir -p "$WORK/state"
+printf 'https://hooks.example/hook-secret-from-file\n' > "$WORK/state/webhook.url"
+out="$(run STUB_RUNS=10 -- staging)"; rm -f "$WORK/state/webhook.url"
+[ -s "$WORK/posts" ] && [ ! -s "$WORK/leak" ] \
+  && ok "a webhook kept in the state dir's file is used, and never appears in an argument" || bad "file webhook posted=$(cat "$WORK/posts" 2>/dev/null) leak=$(cat "$WORK/leak" 2>/dev/null)"
+
 out="$(run -- prod)"; rc=$?
 [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q refusing && ok "an unknown target is refused" || bad "unknown target accepted: $out"
 
