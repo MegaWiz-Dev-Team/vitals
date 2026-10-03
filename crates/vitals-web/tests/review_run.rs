@@ -388,3 +388,26 @@ fn an_order_the_case_does_not_model_is_said_back_except_a_diagnosis() {
     let (_, v) = s.get(&format!("/api/step?id={id}&do=octreotide"));
     assert!(v.get("unrecognised").is_none(), "no tab, no change: {v}");
 }
+
+/// **A device the case does not model is said back** (eval of 3 Oct 2026: 7 of 15 device presses
+/// on production — intubation, IV fluids, lying flat — attached nothing in a case that models none
+/// of them, and the bedside said nothing). One the case does model is not reported.
+#[test]
+fn a_device_the_case_does_not_model_is_said_back() {
+    let s = Server::start();
+    let mut pack = a_pack();
+    pack["case_id"] = json!("embla-kit-1");
+    pack["rubric"]["case"] = json!("embla-kit-1");
+    pack["sce"]["interventions"].as_array_mut().expect("interventions").push(json!(
+        { "id": "tx_oxygen", "label": "Oxygen", "match": { "any_kw": ["oxygen"] }, "effects": [] }));
+    assert_eq!(s.post("/api/ward/case", &pack).0, 200);
+    let (_, run) = s.get("/api/new?review=embla-kit-1");
+    let id = run["id"].as_str().expect("a session").to_string();
+
+    let (code, v) = s.get(&format!("/api/kit?id={id}&dev=ett"));
+    assert_eq!(code, 200, "{v}");
+    assert_eq!(v["not_modelled"], true, "intubation in a case with no airway is said back: {v}");
+
+    let (_, v) = s.get(&format!("/api/kit?id={id}&dev=o2&set=10"));
+    assert!(v.get("not_modelled").is_none(), "oxygen, which the case models, is not: {v}");
+}

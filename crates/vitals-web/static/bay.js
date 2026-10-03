@@ -952,6 +952,9 @@ async function commit(k, value){
   if(v.error) return ev('note','—',v.error);
   ev('order','▸', kitL(k,'label')+(value!=null?` · ${value} ${k.unit}`:''));
   paint(v);
+  /* The server says when this case models no such support, so nothing was attached — said rather
+     than a silent press (3 Oct 2026: seven of fifteen device presses on production did nothing). */
+  if(v.not_modelled) ev('note','—','this case does not model “'+kitL(k,'label')+'”, so nothing was attached.');
 }
 async function detach(devId){
   const v=await (await fetch(`/api/kit?id=${id}&dev=${devId}&off=1`+asMe()+langQ())).json();

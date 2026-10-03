@@ -5086,6 +5086,7 @@ fn main() {
                         // The picker goes through the same matcher a typed order does, so it can
                         // end a run the same way. Counted from the same edge — and, like `/api/step`,
                         // it lands nothing at all on a run the bell has already ended.
+                        let mut not_modelled = false;
                         let was_over = s.over();
                         if was_over {
                             // Time has been called. Nothing more goes on the patient, and
@@ -5127,6 +5128,10 @@ fn main() {
                         } else if let Some(phrase) = kit_phrase(&dev, set) {
                             // Go through the matcher, so the physiology moves exactly as it would
                             // for someone who typed it. The picker is a convenience, not a bypass.
+                            // Asked before it is applied: a phrase no intervention claims attaches nothing, and the
+                            // bedside said nothing about it either — 7 of 15 device presses on production (3 Oct 2026
+                            // eval) were intubation, IV fluids or lying flat in a case that models none of them.
+                            not_modelled = s.state.resolve(&phrase).is_none();
                             let emitted = s.state.apply(&phrase);
                             s.beats.extend(emitted.iter().map(render_beat));
                             s.tape.push(Step::did(&phrase));
@@ -5152,6 +5157,10 @@ fn main() {
                         count_finish(&mut usage.lock().unwrap(), s, was_over, &store);
                         if !was_over {
                             persist(&store, &id, s, true);
+                        }
+                        let mut v = serde_json::to_value(v).unwrap_or_default();
+                        if not_modelled {
+                            v["not_modelled"] = serde_json::Value::Bool(true);
                         }
                         json(v)
                     }
