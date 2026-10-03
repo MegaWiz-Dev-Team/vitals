@@ -1885,9 +1885,10 @@ async function step(q,named){
    `named` is threaded, not stashed in a module variable, because the tick loop paints too and a
    flag set here would be consumed by whichever paint happened to land first. */
 function doOrder(text,shown,named){ DIDWORK=true; disarmEnd(); ev('order','▸',shown||text);
-  /* On the ward the tab goes with the order, so the diagnosis tab is read as a diagnosis and no
-     other tab is — the server only narrows what the words are matched against. */
-  step('&do='+encodeURIComponent(text)+(WARD?'&mode='+encodeURIComponent(mode):''), named===undefined?namesADiagnosis(text):named); }
+  /* On the ward — a shift or a reviewer's run of the same case — the tab goes with the order, so
+     the diagnosis tab is read as a diagnosis and no other tab is; the server only narrows what the
+     words are matched against. A reviewer sees exactly what a player sees. */
+  step('&do='+encodeURIComponent(text)+(WARDSURFACE?'&mode='+encodeURIComponent(mode):''), named===undefined?namesADiagnosis(text):named); }
 async function askHer(q,shown){
   if(asking||!id)return; asking=true; $('#send').disabled=true;
   /* What was asked, as a person would read it back. `q` is what goes to the server — on the ward
