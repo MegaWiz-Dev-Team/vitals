@@ -4587,10 +4587,14 @@ function paintNoPulse(status, when){
   if(cmd){
     cmd.disabled=gone||untaken;
     if(gone)cmd.value='';
-    /* The real placeholder, kept once the first time it is replaced, because the second call would
-       otherwise keep "She cannot answer." as the thing it restores. */
-    if(cmd.dataset.ask===undefined)cmd.dataset.ask=cmd.placeholder||'';
-    cmd.placeholder=gone?'She cannot answer.':cmd.dataset.ask;
+    /* Said only while she cannot answer, and on her way back the box gets the sentence for the tab
+       it is in — from the same function `renderChips` uses. It used to restore whatever the box
+       said the first time this ran, so every repaint put "ask her anything…" back over the order
+       and diagnosis tabs (found 3 Oct 2026 on a reviewer's run). */
+    if(gone) cmd.placeholder='She cannot answer.';
+    else if(cmd.placeholder==='She cannot answer.')
+      cmd.placeholder=boxPlaceholder(takeFirst(WARD, id, pro().o), mode, PACK.ui.ask_placeholder,
+                                     PACK.ui.order_placeholder, pro().o);
   }
   if(send)send.disabled=gone||untaken;
   if(mic)mic.disabled=gone||untaken;
