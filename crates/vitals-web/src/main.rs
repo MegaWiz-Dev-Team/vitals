@@ -1262,7 +1262,9 @@ impl Session {
                 .filter(|e| !(sealed && e.kind == HARM))
                 .map(|e| Note {
                     t: e.t_sec,
-                    kind: e.kind.clone(),
+                    // A question the case recognised is recorded the way an order is, so the
+                    // marks can see it — and the chart says what it was: asked, not ordered.
+                    kind: if e.kind == "action" && e.text.starts_with("ask_") { "asked".into() } else { e.kind.clone() },
                     text: if self.state.is_intervention(&e.text) {
                         // An order, recorded by id. Never the id itself: the case's own label,
                         // or what the player typed to reach it, and only then — for a case that
@@ -1516,6 +1518,41 @@ const CASE_IMG: &[(&str, &[u8], &str)] = &[
 fn resolve_order(st: &SceState, act: &str) -> String {
     st.resolve(act)
         .or_else(|| lang::canonical_order(act).and_then(|en| st.resolve(en)))
+        .unwrap_or_default()
+}
+
+/// Turn the question just asked into the question recognised, so the marks can see it.
+///
+/// Only when it is the last step on the tape and the shift is live: the action is applied now,
+/// and replay applies it where the tape puts it, so anywhere but the end the two would disagree
+/// about the second it happened. Otherwise the plain `Ask` stays — uncredited, exactly as before.
+/// Her reply is the answer on screen; the case's history beat is what replay keeps, so the beats
+/// this emits are not shown. Returns whether the question was credited.
+fn credit_question(tape: &mut Vec<Step>, state: &mut SceState, live: bool, q: &str, ask_id: &str) -> bool {
+    let last_is_this = matches!(tape.last(), Some(Step::Ask(t)) if *t == vitals_sce::text::canon(q));
+    if !(live && last_is_this) {
+        return false;
+    }
+    tape.pop();
+    let _ = state.apply_id(ask_id);
+    tape.push(Step::acted(q, ask_id));
+    true
+}
+
+/// [`resolve_order`] for a learner who said which tab they were in (the ward's bay sends it).
+///
+/// The diagnosis tab is resolved against diagnoses only, and every other tab against everything
+/// but diagnoses — so a diagnosis cannot be captured by a question or a treatment that shares a
+/// word with it ("…upper airway obstruction" was charted as *securing the airway*), and a
+/// treatment cannot be charted as a diagnosis. Then the same layers as before, in the same
+/// order, each under the same filter: the case's own matcher, the language table, and the
+/// plain-names table. No tab — the Eternal page, an old client — is exactly [`resolve_order`].
+fn resolve_order_in(st: &SceState, act: &str, tab: Option<&str>) -> String {
+    let Some(tab) = tab else { return resolve_order(st, act) };
+    let keep = |id: &str| (tab == "dx") == id.starts_with("dx_");
+    st.resolve_where(act, keep)
+        .or_else(|| lang::canonical_order(act).and_then(|en| st.resolve_where(en, keep)))
+        .or_else(|| lang::plain_names(act).and_then(|p| st.resolve_where(&p, keep)))
         .unwrap_or_default()
 }
 
@@ -4905,6 +4942,7 @@ fn main() {
                         // what decides whether this request is the one that rings the bell.
                         let was_over = s.over();
                         let acted = !was_over && param(&url, "do").is_some();
+                        let mut unrecognised: Option<String> = None;
                         // ── nothing lands on a run that is already over ─────────────────────
                         // Post-bell orders and ticks used to go on the tape: the engine ignored
                         // them, but `Step::Tick` was pushed unconditionally, so a client that
@@ -4923,7 +4961,11 @@ fn main() {
                                 // is offer the English order a non-English phrase names — which the same
                                 // matcher then rules on. So a translation can add recognition and can
                                 // never redirect an order a case author already spelled out.
-                                let id = resolve_order(&s.state, &act);
+                                // Which tab the order was typed in, if the bay said — only names the bay
+                                // draws are believed, so a made-up value is the same as no tab at all.
+                                let tab = param(&url, "mode")
+                                    .filter(|m| matches!(m.as_str(), "dx" | "drug" | "lab" | "exam" | "proc" | "ask"));
+                                let id = resolve_order_in(&s.state, &act, tab.as_deref());
                                 // ── the defibrillator, when the case did not claim the words ──
                                 // Second, never first, so the rule above holds for it too: a
                                 // station that defines its own shock intervention keeps it. Only
@@ -4949,6 +4991,12 @@ fn main() {
                                     };
                                     s.beats.extend(emitted.iter().map(render_beat));
                                     s.tape.push(Step::acted(&act, &id));
+                                    // Said back to the learner, so an order the case does not model is
+                                    // not silently swallowed — except in the diagnosis tab, where "the
+                                    // case did not recognise that" would be "that is not the answer".
+                                    if id.is_empty() && tab.as_deref().is_some_and(|t| t != "dx") {
+                                        unrecognised = Some(act.clone());
+                                    }
                                     // The picture the order asked for, if this station has one. It
                                     // hangs off the id the tape already carries and goes nowhere
                                     // near it — the line above is the whole of what replay sees.
@@ -4982,6 +5030,10 @@ fn main() {
                         // left running against a finished case must not be a write per second.
                         if !was_over {
                             persist(&store, &id, s, acted || s.over());
+                        }
+                        let mut v = serde_json::to_value(v).unwrap_or_default();
+                        if let Some(u) = unrecognised {
+                            v["unrecognised"] = serde_json::Value::String(u);
                         }
                         json(v)
                     }
@@ -5375,6 +5427,22 @@ fn main() {
                     {
                         let mut map = sessions.lock().unwrap();
                         if let Some(s) = map.get_mut(&id) {
+                            // ── a question the case knows is a question asked, on the record ──────
+                            // The rubric's "Asked about: …" rows look for the question's id among
+                            // the run's actions, and the ward wrote every question as an inert
+                            // `Step::Ask` — so no shift could ever earn them (found 3 Oct 2026: a
+                            // receipt reading ASKED pain beside "0 of 2 · Asked about: pain").
+                            // When the case recognised the question, it goes on the tape the way an
+                            // order does — the words and the id — and is applied, so replay credits
+                            // it exactly as the run did. Only when the question is the last thing on
+                            // the tape and the shift is live: applied anywhere else, the action would
+                            // land at a different second from the one replay gives it. Tapes made
+                            // before this change hold no such step, so every anchored leaf stands.
+                            if let Some(ask_id) = said.matched.as_deref().filter(|m| m.starts_with("ask_")) {
+                                let live = !s.over()
+                                    && ward::may_step(s.ward.is_some(), s.commit.is_some(), s.handed_over).is_ok();
+                                credit_question(&mut s.tape, &mut s.state, live, &q, ask_id);
+                            }
                             s.said.push(("user".into(), q));
                             s.said.push(("assistant".into(), said.words.clone()));
                             persist(&store, &id, s, true);
@@ -9954,6 +10022,80 @@ mod tests {
 
         // Nobody understood it: still the empty answer the tape is entitled to.
         assert_eq!(resolve_order(&ep1, "ยาหอมสักซอง"), "");
+    }
+
+    /// A compiled ward pack, as the door keeps it, made into a playable state.
+    fn ward_pack_state(file: &str) -> SceState {
+        let path = format!("{}/tests/fixtures/ward-packs/{file}", env!("CARGO_MANIFEST_DIR"));
+        let pack: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).expect("fixture")).expect("json");
+        let sce: vitals_sce::Sce = serde_json::from_value(pack["sce"].clone()).expect("sce");
+        SceState::new(sce)
+    }
+
+    /// **The tab decides what the words are matched against** (eval of 3 Oct 2026: every typed
+    /// order a player made on production, re-resolved). Two correct diagnoses were typed and
+    /// neither was credited: one was captured by a history question keyed on "asthma", one by the
+    /// airway treatment keyed on "airway". A brand name was not recognised at all.
+    #[test]
+    fn the_diagnosis_tab_reads_a_diagnosis_and_no_other_tab_does() {
+        let asthma = ward_pack_state("ddx-bronchospasm-acute-asthma-exacerbation-1-en.pack.json");
+        // Untabbed, as before: the history question wins, which is the bug — kept for the Eternal page.
+        assert_eq!(resolve_order(&asthma, "Acute asthmatic attack"), "ask_prior_bronchodilator_use_known");
+        assert_eq!(resolve_order_in(&asthma, "Acute asthmatic attack", Some("dx")), "dx_bronchospasm_acute_asthma_exacerbation");
+        // A diagnosis typed in another tab is not credited as one, nor as anything else that shares its words.
+        assert!(!resolve_order_in(&asthma, "Acute asthmatic attack", Some("drug")).starts_with("dx_"));
+        // A brand name reaches the drug the case knows by its generic name.
+        assert_eq!(resolve_order(&asthma, "Ventolin NB"), "");
+        assert_eq!(resolve_order_in(&asthma, "Ventolin NB", Some("drug")), "tx_bronchodilator");
+        // A chip press still lands on its own id in its own tab.
+        assert_eq!(resolve_order_in(&asthma, "tx_oxygen", Some("drug")), "tx_oxygen");
+        assert_eq!(resolve_order_in(&asthma, "dx_bronchospasm_acute_asthma_exacerbation", Some("dx")),
+                   "dx_bronchospasm_acute_asthma_exacerbation");
+
+        let epi = ward_pack_state("ddx-epiglottitis-3-en.pack.json");
+        let typed = "Deep neck infection with impending upper airway obstruction";
+        assert_eq!(resolve_order(&epi, typed), "tx_airway", "untabbed: the bug as found");
+        assert!(!resolve_order_in(&epi, typed, Some("dx")).starts_with("tx_"),
+                "in the diagnosis tab a diagnosis phrase must never be charted as securing the airway");
+        // And securing the airway, from the procedure-ish tabs, is still securing the airway.
+        assert_eq!(resolve_order_in(&epi, "intubate, secure the airway", Some("drug")), "tx_airway");
+    }
+
+    /// **A question the case recognises is a question asked, on the record** (3 Oct 2026). The
+    /// rubric's "Asked about" rows look for the question's id among the run's actions; the ward
+    /// wrote every question as an inert `Ask`, so none could ever be earned. Credited only at the
+    /// end of a live tape — and a tape that never did this replays to the marks it always had.
+    #[test]
+    fn a_recognised_question_earns_its_asked_about_mark_and_only_at_the_end_of_a_live_tape() {
+        let path = format!("{}/tests/fixtures/ward-packs/ddx-epiglottitis-3-en.pack.json", env!("CARGO_MANIFEST_DIR"));
+        let pack: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let sce_json = pack["sce"].to_string();
+        let rubric_json = pack["rubric"].to_string();
+        let ask = "ask_excessive_alcohol_use";
+        let row = "Asked about: Excessive alcohol use";
+        let earned = |tape: &[Step]| {
+            let (_, det) = vitals_osce::sheet_for_run(&sce_json, tape, &rubric_json).expect("scores");
+            det.items.iter().find(|i| i.label == row).map(|i| i.earned_points()).expect("the row")
+        };
+
+        let q = "do you drink much alcohol?";
+        let before = vec![Step::Tick(5.0), Step::asked(q)];
+        assert_eq!(earned(&before), 0, "as the ward wrote it until today: asked, and worth nothing");
+
+        let mut tape = before.clone();
+        let mut state = ward_pack_state("ddx-epiglottitis-3-en.pack.json");
+        let _ = state.tick(5.0);
+        assert!(credit_question(&mut tape, &mut state, true, q, ask));
+        assert!(matches!(tape.last(), Some(Step::Act { id, .. }) if id == ask), "{tape:?}");
+        assert!(earned(&tape) > 0, "asked, recognised, and paid for");
+
+        // Not at the end of the tape, or not on a live shift: left exactly as it was.
+        let mut late = vec![Step::asked(q), Step::Tick(5.0)];
+        assert!(!credit_question(&mut late, &mut state, true, q, ask));
+        assert!(matches!(late.first(), Some(Step::Ask(_))));
+        let mut over = before.clone();
+        assert!(!credit_question(&mut over, &mut state, false, q, ask));
+        assert_eq!(over, before);
     }
 
     /// The same case, played identically, once through English chips and once by typing Thai.

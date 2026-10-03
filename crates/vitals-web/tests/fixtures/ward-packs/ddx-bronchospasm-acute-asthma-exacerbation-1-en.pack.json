@@ -1,0 +1,1140 @@
+{
+  "case_id": "ddx-bronchospasm-acute-asthma-exacerbation-1-en",
+  "source": {
+    "repo": "embla-cases",
+    "ref": "worktree",
+    "sha256": "bd102247ca1273ec14fc67a5a0c06365088a89ab5a1cf736997122735494bd59"
+  },
+  "title": "Elderly {sex_word} with wheezing and dyspnoea",
+  "country": null,
+  "difficulty": "student",
+  "clinical_tier": 3,
+  "specialty": "eir-pulmonology",
+  "care_setting": "ER",
+  "language": "en",
+  "tags": [],
+  "endemic": false,
+  "provisional": true,
+  "review": {
+    "status": "provisional",
+    "by": null,
+    "date": null
+  },
+  "version": "0.1.1",
+  "archetype": "hypoxic_respiratory_failure",
+  "archetype_label": "hypoxic respiratory failure",
+  "patient": {
+    "age": 67,
+    "sex": "female"
+  },
+  "presentation": {
+    "chief_complaint": "Expiratory wheezing, present since last night.",
+    "hpi": "A {age}-year-old {sex_word} patient presents with expiratory wheezing starting last night, along with dyspnoea and dry cough. No fever, no sputum, no history of contact with infected patients, and no international travel in the past 4 weeks. {He_she} was previously diagnosed with chronic sinusitis and has used bronchodilator inhalers in the past.",
+    "setting": null
+  },
+  "sce": {
+    "_note": "Compiled by vitals-casefactory from embla-cases ddx-bronchospasm-acute-asthma-exacerbation-1-en under the hypoxic_respiratory_failure archetype. Provisional: clinically shaped by a deterministic compiler, not clinically reviewed. Untreated the patient reaches death in about 10 sim minutes; every critical order in the plan turns it.",
+    "debrief": {
+      "avoid": [
+        {
+          "id": "tx_sedation",
+          "label": "Sedative before the airway",
+          "why": "a sedative before the airway was secured — the last of the breathing goes"
+        },
+        {
+          "id": "tx_beta_blocker",
+          "label": "Beta-blocker or rate-slowing drug",
+          "why": "a beta-blocker or rate-slowing drug where it deepens the failure"
+        }
+      ],
+      "expect": [
+        {
+          "id": "tx_bronchodilator",
+          "label": "Bronchodilator"
+        },
+        {
+          "id": "tx_oxygen",
+          "label": "Oxygen",
+          "within_sec": 300.0
+        }
+      ]
+    },
+    "initial_state": "presenting",
+    "interventions": [
+      {
+        "effects": [
+          {
+            "flag": "bronchodilator_given"
+          },
+          {
+            "cap": 99.0,
+            "delta": {
+              "spo2": 4.0
+            }
+          },
+          {
+            "delta": {
+              "rr": -2.0
+            },
+            "floor": 4.0
+          },
+          {
+            "beat": "nebuliser hissing — the wheeze loosens"
+          }
+        ],
+        "id": "tx_bronchodilator",
+        "label": "Bronchodilator",
+        "match": {
+          "any_kw": [
+            "salbutamol",
+            "albuterol",
+            "terbutaline",
+            "bronchodilator",
+            "ipratropium",
+            "saba",
+            "ยาพ่น",
+            "ขยายหลอดลม",
+            "tx_bronchodilator"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "flag": "oxygen_given"
+          },
+          {
+            "cap": 99.0,
+            "delta": {
+              "spo2": 3.0
+            }
+          },
+          {
+            "beat": "oxygen on — the reservoir bag fills and the trace steadies a little"
+          }
+        ],
+        "equipment": "o2",
+        "equipment_setting": 10.0,
+        "id": "tx_oxygen",
+        "label": "Oxygen",
+        "match": {
+          "any_kw": [
+            "oxygen",
+            "high-flow",
+            "high flow",
+            "non-rebreather",
+            "nasal cannula",
+            "face mask",
+            "o2 mask",
+            "ออกซิเจน",
+            "tx_oxygen"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "flag": "steroids_given"
+          },
+          {
+            "beat": "steroid given — for the hours ahead, not this minute"
+          }
+        ],
+        "id": "tx_steroids",
+        "label": "Systemic corticosteroid",
+        "match": {
+          "any_kw": [
+            "prednisolone",
+            "prednisone",
+            "dexamethasone",
+            "hydrocortisone",
+            "methylprednisolone",
+            "corticosteroid",
+            "steroid",
+            "สเตียรอยด์",
+            "tx_steroids"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "flag": "admit_given"
+          },
+          {
+            "beat": "admitted to a monitored bed — the team is told what to watch for"
+          }
+        ],
+        "id": "tx_admit",
+        "label": "Admit to a monitored bed",
+        "match": {
+          "any_kw": [
+            "admit",
+            "icu",
+            "hdu",
+            "intensive care",
+            "high-dependency",
+            "high dependency",
+            "monitored bed",
+            "ccu",
+            "step-down",
+            "รับไว้",
+            "รับนอน",
+            "แอดมิท",
+            "tx_admit"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "flag": "monitor_given"
+          },
+          {
+            "beat": "continuous monitoring set — the numbers are watched, not assumed"
+          }
+        ],
+        "id": "tx_monitor",
+        "label": "Monitoring plan",
+        "match": {
+          "any_kw": [
+            "monitoring",
+            "monitor",
+            "reassess",
+            "serial",
+            "ติดตาม",
+            "เฝ้าระวัง",
+            "ประเมินซ้ำ",
+            "strict fluid balance",
+            "tx_monitor"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "flag": "explain_given"
+          },
+          {
+            "beat": "the situation is explained plainly and consent is taken"
+          }
+        ],
+        "id": "tx_explain",
+        "label": "Explain and obtain consent",
+        "match": {
+          "any_kw": [
+            "explain",
+            "communicat",
+            "consent",
+            "counsel",
+            "อธิบาย",
+            "ให้ความรู้",
+            "แจ้งญาติ",
+            "tx_explain"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "delta": {
+              "spo2": -6.0
+            },
+            "floor": 40.0
+          },
+          {
+            "delta": {
+              "rr": -4.0
+            },
+            "floor": 4.0
+          },
+          {
+            "beat": "a sedative before the airway was secured — the last of the breathing goes"
+          }
+        ],
+        "harm": "a sedative before the airway was secured — the last of the breathing goes",
+        "id": "tx_sedation",
+        "label": "Sedative before the airway",
+        "match": {
+          "any_kw": [
+            "sedat",
+            "midazolam",
+            "diazepam",
+            "lorazepam",
+            "benzodiazepine",
+            "tx_sedation"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "delta": {
+              "sbp": -8.0
+            },
+            "floor": 30.0
+          },
+          {
+            "delta": {
+              "hr": -10.0
+            },
+            "floor": 30.0
+          },
+          {
+            "beat": "a beta-blocker or rate-slowing drug where it deepens the failure"
+          }
+        ],
+        "harm": "a beta-blocker or rate-slowing drug where it deepens the failure",
+        "id": "tx_beta_blocker",
+        "label": "Beta-blocker or rate-slowing drug",
+        "match": {
+          "any_kw": [
+            "beta-blocker",
+            "beta blocker",
+            "calcium-channel blocker",
+            "calcium channel blocker",
+            "metoprolol",
+            "propranolol",
+            "bisoprolol",
+            "carvedilol",
+            "verapamil",
+            "diltiazem",
+            "tx_beta_blocker"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "flag": "dx_named"
+          },
+          {
+            "beat": "the working diagnosis is written on the chart"
+          }
+        ],
+        "id": "dx_bronchospasm_acute_asthma_exacerbation",
+        "label": "Name the diagnosis",
+        "match": {
+          "any_kw": [
+            "bronchospasm / acute asthma exacerbation",
+            "asthma attack",
+            "acute severe asthma",
+            "life-threatening asthma",
+            "life threatening asthma",
+            "bronchospasm",
+            "dx_bronchospasm_acute_asthma_exacerbation"
+          ],
+          "not_kw": [
+            "salbutamol",
+            "albuterol",
+            "terbutaline",
+            "bronchodilator",
+            "ipratropium",
+            "saba",
+            "ยาพ่น",
+            "ขยายหลอดลม",
+            "oxygen",
+            "high-flow",
+            "high flow",
+            "non-rebreather",
+            "nasal cannula",
+            "face mask",
+            "o2 mask",
+            "ออกซิเจน",
+            "prednisolone",
+            "prednisone",
+            "dexamethasone",
+            "hydrocortisone",
+            "methylprednisolone",
+            "corticosteroid",
+            "steroid",
+            "สเตียรอยด์",
+            "admit",
+            "icu",
+            "hdu",
+            "intensive care",
+            "high-dependency",
+            "high dependency",
+            "monitored bed",
+            "ccu",
+            "step-down",
+            "รับไว้",
+            "รับนอน",
+            "แอดมิท",
+            "monitoring",
+            "monitor",
+            "reassess",
+            "serial",
+            "ติดตาม",
+            "เฝ้าระวัง",
+            "ประเมินซ้ำ",
+            "strict fluid balance",
+            "explain",
+            "communicat",
+            "consent",
+            "counsel",
+            "อธิบาย",
+            "ให้ความรู้",
+            "แจ้งญาติ",
+            "sedat",
+            "midazolam",
+            "diazepam",
+            "lorazepam",
+            "benzodiazepine",
+            "beta-blocker",
+            "beta blocker",
+            "calcium-channel blocker",
+            "calcium channel blocker",
+            "metoprolol",
+            "propranolol",
+            "bisoprolol",
+            "carvedilol",
+            "verapamil",
+            "diltiazem",
+            "peak expiratory flow rate",
+            "peak",
+            "flow",
+            "rate",
+            "pulse oximetry",
+            "pulse",
+            "oximetry",
+            "chest x-ray",
+            "x-ray",
+            "diffuse expiratory wheeze bilaterally",
+            "diffuse",
+            "bilaterally",
+            "accessory muscle use",
+            "accessory",
+            "muscle",
+            "prolonged expiratory phase",
+            "prolonged",
+            "phase"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "Peak expiratory flow rate: 210 (L/min) — PEFR 70% of predicted — moderate obstruction"
+          }
+        ],
+        "id": "ix_peak_expiratory_flow_rate",
+        "label": "Peak expiratory flow rate",
+        "match": {
+          "any_kw": [
+            "peak expiratory flow rate",
+            "peak",
+            "flow",
+            "rate",
+            "ix_peak_expiratory_flow_rate"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "Pulse oximetry: 93 (%)"
+          }
+        ],
+        "id": "ix_pulse_oximetry",
+        "label": "Pulse oximetry",
+        "match": {
+          "any_kw": [
+            "pulse oximetry",
+            "pulse",
+            "oximetry",
+            "ix_pulse_oximetry"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "Chest X-ray: Normal heart size, no lung parenchymal lesion, no pleural effusion/pneumothorax"
+          }
+        ],
+        "id": "ix_chest_x_ray",
+        "label": "Chest X-ray",
+        "match": {
+          "any_kw": [
+            "chest x-ray",
+            "x-ray",
+            "ix_chest_x_ray"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "CBC: WBC 8.2 (eosinophils 8%), Hb 12.8, Plt 230 — Mild eosinophilia; no leukocytosis to suggest bacterial infection."
+          }
+        ],
+        "id": "ix_cbc",
+        "label": "CBC",
+        "match": {
+          "any_kw": [
+            "ix_cbc"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "Diffuse expiratory wheeze heard bilaterally"
+          }
+        ],
+        "id": "exam_diffuse_expiratory_wheeze_bilaterally",
+        "label": "Examine: Diffuse expiratory wheeze bilaterally",
+        "match": {
+          "any_kw": [
+            "diffuse expiratory wheeze bilaterally",
+            "diffuse",
+            "bilaterally",
+            "exam_diffuse_expiratory_wheeze_bilaterally"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "Mild intercostal retraction accessory muscle use"
+          }
+        ],
+        "id": "exam_accessory_muscle_use",
+        "label": "Examine: Accessory muscle use",
+        "match": {
+          "any_kw": [
+            "accessory muscle use",
+            "accessory",
+            "muscle",
+            "exam_accessory_muscle_use"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "Prolonged expiratory phase, I:E ratio approximately 1:3"
+          }
+        ],
+        "id": "exam_prolonged_expiratory_phase",
+        "label": "Examine: Prolonged expiratory phase",
+        "match": {
+          "any_kw": [
+            "prolonged expiratory phase",
+            "prolonged",
+            "phase",
+            "exam_prolonged_expiratory_phase"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: expiratory wheeze"
+          }
+        ],
+        "id": "ask_expiratory_wheeze",
+        "label": "Ask: Expiratory wheeze",
+        "match": {
+          "any_kw": [
+            "expiratory wheeze",
+            "ask_expiratory_wheeze"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: significant dyspnoea"
+          }
+        ],
+        "id": "ask_significant_dyspnoea",
+        "label": "Ask: Significant dyspnoea",
+        "match": {
+          "any_kw": [
+            "significant dyspnoea",
+            "significant",
+            "dyspnoea",
+            "ask_significant_dyspnoea"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: chronic sinusitis (known diagnosis)"
+          }
+        ],
+        "id": "ask_chronic_sinusitis",
+        "label": "Ask: Chronic sinusitis (known diagnosis)",
+        "match": {
+          "any_kw": [
+            "chronic sinusitis (known diagnosis)",
+            "chronic",
+            "sinusitis",
+            "diagnosis",
+            "ask_chronic_sinusitis"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: prior bronchodilator use / known asthma"
+          }
+        ],
+        "id": "ask_prior_bronchodilator_use_known",
+        "label": "Ask: Prior bronchodilator use / known asthma",
+        "match": {
+          "any_kw": [
+            "prior",
+            "asthma",
+            "ask_prior_bronchodilator_use_known"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: cough"
+          }
+        ],
+        "id": "ask_cough",
+        "label": "Ask: Cough",
+        "match": {
+          "any_kw": [
+            "cough",
+            "ask_cough"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: no recent international travel"
+          }
+        ],
+        "id": "ask_no_recent_international_travel",
+        "label": "Ask: No recent international travel",
+        "match": {
+          "any_kw": [
+            "no recent international travel",
+            "international",
+            "travel",
+            "ask_no_recent_international_travel"
+          ]
+        }
+      }
+    ],
+    "outcomes": [
+      {
+        "id": "win_discharge",
+        "kind": "win",
+        "label": "Treated in time — observed and discharged"
+      },
+      {
+        "id": "death_arrest",
+        "kind": "death",
+        "label": "Untreated too long — the arrest could not be reversed"
+      }
+    ],
+    "setting": "ED",
+    "states": [
+      {
+        "bands": [
+          {
+            "status": "critical",
+            "when": {
+              "op": "lt",
+              "value": 79.0,
+              "var": "spo2"
+            }
+          }
+        ],
+        "dynamics": [
+          {
+            "floor": 60.0,
+            "rate_per_min": -2.8,
+            "var": "spo2"
+          },
+          {
+            "ceil": 40.0,
+            "rate_per_min": 1.4,
+            "var": "rr"
+          },
+          {
+            "ceil": 134.0,
+            "rate_per_min": 3.0,
+            "var": "hr"
+          }
+        ],
+        "id": "presenting",
+        "status": "deteriorating",
+        "transitions": [
+          {
+            "outcome": "death_arrest",
+            "when": {
+              "any": [
+                {
+                  "op": "lt",
+                  "value": 65.0,
+                  "var": "spo2"
+                }
+              ]
+            }
+          },
+          {
+            "to_state": "stabilising",
+            "when": {
+              "all": [
+                {
+                  "done": "tx_bronchodilator"
+                },
+                {
+                  "done": "tx_oxygen"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "bands": [],
+        "dynamics": [
+          {
+            "ceil": 96.0,
+            "rate_per_min": 6.0,
+            "var": "spo2"
+          },
+          {
+            "floor": 18.0,
+            "rate_per_min": -3.6666666666666665,
+            "var": "rr"
+          },
+          {
+            "floor": 95.0,
+            "rate_per_min": -6.5,
+            "var": "hr"
+          }
+        ],
+        "id": "stabilising",
+        "status": "improving",
+        "transitions": []
+      }
+    ],
+    "tick_seconds": 1.0,
+    "triggers": [
+      {
+        "do": [
+          {
+            "outcome": "win_discharge"
+          }
+        ],
+        "id": "recovered",
+        "once": true,
+        "when": {
+          "all": [
+            {
+              "in_state": "stabilising"
+            },
+            {
+              "op": "ge",
+              "value": 300.0,
+              "var": "t_in_state"
+            }
+          ]
+        }
+      },
+      {
+        "do": [
+          {
+            "set": {
+              "gcs": 12.0
+            }
+          },
+          {
+            "beat": "the answers come slower — the eyes open only to a voice"
+          }
+        ],
+        "id": "obtunded",
+        "once": true,
+        "when": {
+          "all": [
+            {
+              "in_state": "presenting"
+            },
+            {
+              "op": "lt",
+              "value": 79.0,
+              "var": "spo2"
+            }
+          ]
+        }
+      },
+      {
+        "do": [
+          {
+            "set": {
+              "gcs": 15.0
+            }
+          },
+          {
+            "beat": "awake, oriented, asking what happened"
+          }
+        ],
+        "id": "wakes",
+        "once": true,
+        "when": {
+          "all": [
+            {
+              "in_state": "stabilising"
+            },
+            {
+              "op": "ge",
+              "value": 150.0,
+              "var": "t_in_state"
+            }
+          ]
+        }
+      },
+      {
+        "do": [
+          {
+            "harm": "oxygen was not given by 5:00 — the window closed"
+          },
+          {
+            "beat": "the window for one of the orders has closed"
+          }
+        ],
+        "id": "late_oxygen",
+        "once": true,
+        "when": {
+          "all": [
+            {
+              "in_state": "presenting"
+            },
+            {
+              "op": "ge",
+              "value": 300.0,
+              "var": "t_elapsed"
+            },
+            {
+              "not": {
+                "done": "tx_oxygen"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "variables": {},
+    "vitals0": {
+      "dbp": 84.0,
+      "gcs": 15,
+      "hr": 104.0,
+      "rr": 26.0,
+      "sbp": 138.0,
+      "spo2": 93.0,
+      "temp": 37.1
+    }
+  },
+  "rubric": {
+    "case": "ddx-bronchospasm-acute-asthma-exacerbation-1-en",
+    "items": [
+      {
+        "label": "Asked about: Chronic sinusitis (known diagnosis)",
+        "needle": "ask_chronic_sinusitis",
+        "points": 2,
+        "type": "action"
+      },
+      {
+        "label": "Asked about: Prior bronchodilator use / known asthma",
+        "needle": "ask_prior_bronchodilator_use_known",
+        "points": 2,
+        "type": "action"
+      },
+      {
+        "label": "Asked about: No recent international travel",
+        "needle": "ask_no_recent_international_travel",
+        "points": 2,
+        "type": "action"
+      },
+      {
+        "label": "Examined: Diffuse expiratory wheeze bilaterally",
+        "needle": "exam_diffuse_expiratory_wheeze_bilaterally",
+        "points": 2,
+        "type": "action"
+      },
+      {
+        "label": "Examined: Accessory muscle use",
+        "needle": "exam_accessory_muscle_use",
+        "points": 2,
+        "type": "action"
+      },
+      {
+        "label": "Examined: Prolonged expiratory phase",
+        "needle": "exam_prolonged_expiratory_phase",
+        "points": 1,
+        "type": "action"
+      },
+      {
+        "label": "Ordered: Peak expiratory flow rate",
+        "needle": "ix_peak_expiratory_flow_rate",
+        "points": 2,
+        "type": "action"
+      },
+      {
+        "label": "Ordered: Pulse oximetry",
+        "needle": "ix_pulse_oximetry",
+        "points": 2,
+        "type": "action"
+      },
+      {
+        "label": "Ordered: Chest X-ray",
+        "needle": "ix_chest_x_ray",
+        "points": 1,
+        "type": "action"
+      },
+      {
+        "label": "Ordered: CBC",
+        "needle": "ix_cbc",
+        "points": 1,
+        "type": "action"
+      },
+      {
+        "label": "Named the diagnosis",
+        "needle": "dx_bronchospasm_acute_asthma_exacerbation",
+        "points": 10,
+        "type": "action"
+      },
+      {
+        "label": "Bronchodilator",
+        "needle": "tx_bronchodilator",
+        "points": 3,
+        "type": "action"
+      },
+      {
+        "by_sec": 300.0,
+        "label": "Oxygen within 5:00",
+        "needle": "tx_oxygen",
+        "points": 2,
+        "type": "action_by"
+      },
+      {
+        "any_of": [
+          "win_discharge"
+        ],
+        "label": "The patient survives to discharge",
+        "points": 3,
+        "type": "outcome"
+      },
+      {
+        "label": "Did not give: sedative before the airway",
+        "needle": "a sedative before the airway was secured — the last of the breathing goes",
+        "points": 2,
+        "type": "no_harm"
+      },
+      {
+        "label": "Did not give: beta-blocker or rate-slowing drug",
+        "needle": "a beta-blocker or rate-slowing drug where it deepens the failure",
+        "points": 2,
+        "type": "no_harm"
+      },
+      {
+        "label": "Avoided: oxygen was not given by 5:00",
+        "needle": "oxygen was not given by 5:00 — the window closed",
+        "points": 1,
+        "type": "no_harm"
+      },
+      {
+        "allow": [
+          "tx_steroids",
+          "tx_admit",
+          "tx_monitor",
+          "tx_explain",
+          "tx_sedation",
+          "tx_beta_blocker"
+        ],
+        "label": "Ordered nothing this patient did not need",
+        "max_penalty": 6,
+        "per_item": 2,
+        "type": "no_unindicated"
+      }
+    ],
+    "pass_bps": 7000,
+    "status": "provisional — compiled by vitals-casefactory from embla-cases ddx-bronchospasm-acute-asthma-exacerbation-1-en v0.1.1 (sha256:bd102247ca1273ec) under the hypoxic_respiratory_failure archetype: management_plan→action/action_by, red_flags→no_harm, correct_diagnosis→action, expected_workup→action, outcome from the replay. Judged dimensions dropped (communication). Points scaled to 40 from the case's rubric dimension weights. Pass mark 70 % — the ward's, not the case's own exam mark of 60 %. Not clinically reviewed."
+  },
+  "voice": {
+    "ask_chronic_sinusitis": {
+      "finding": "Chronic sinusitis (known diagnosis)",
+      "present": true,
+      "reveal": "on_direct_ask",
+      "words": "The doctor once told me I had chronic sinusitis, but I didn't follow up with treatment."
+    },
+    "ask_cough": {
+      "finding": "Cough",
+      "present": true,
+      "reveal": "on_ask",
+      "words": "I cough often, especially at night. It's a dry cough, no phlegm."
+    },
+    "ask_expiratory_wheeze": {
+      "finding": "Expiratory wheeze",
+      "present": true,
+      "reveal": "volunteered",
+      "words": "When I breathe out, there is a strange sound, like a whistle."
+    },
+    "ask_no_recent_international_travel": {
+      "finding": "No recent international travel",
+      "present": true,
+      "reveal": "on_direct_ask",
+      "words": "I haven't been out of the country at all lately."
+    },
+    "ask_prior_bronchodilator_use_known": {
+      "finding": "Prior bronchodilator use / known asthma",
+      "present": true,
+      "reveal": "on_direct_ask",
+      "words": "I used to use an inhaler before, but I stopped on my own because I thought I was cured."
+    },
+    "ask_significant_dyspnoea": {
+      "finding": "Significant dyspnoea",
+      "present": true,
+      "reveal": "on_ask",
+      "words": "I can't breathe very well, I feel tight in my chest."
+    }
+  },
+  "management": [
+    {
+      "step": "Administer oxygen via nasal cannula to maintain SpO2 ≥94%",
+      "interventions": [
+        "tx_oxygen"
+      ]
+    },
+    {
+      "step": "SABA bronchodilator (salbutamol) via nebuliser or MDI+spacer every 20 minutes × 3 doses",
+      "interventions": [
+        "tx_bronchodilator"
+      ]
+    },
+    {
+      "step": "Systemic corticosteroid (prednisolone 40 mg PO or hydrocortisone 100 mg IV) to reduce inflammation",
+      "interventions": [
+        "tx_steroids"
+      ]
+    },
+    {
+      "step": "Repeat PEFR and SpO2 measurements after medication to assess response",
+      "interventions": []
+    },
+    {
+      "step": "Consider ipratropium bromide combination in moderate-severe attack",
+      "interventions": [
+        "tx_bronchodilator"
+      ]
+    },
+    {
+      "step": "Plan follow-up: review long-term ICS use, identify triggers (cats/sinus), action plan",
+      "interventions": []
+    }
+  ],
+  "criteria": [],
+  "timed": {
+    "oxygen": {
+      "named_sec": 300.0,
+      "by_sec": 300.0,
+      "sentence": "SpO2 below 92% on room air — must administer oxygen immediately"
+    }
+  },
+  "vitals_assumed": [
+    "gcs"
+  ],
+  "placeholders": {
+    "age": 1,
+    "sex": 2
+  },
+  "replay": {
+    "untreated_death_sec": 600.0,
+    "win_path": [
+      {
+        "t_sec": 20.0,
+        "id": "tx_bronchodilator"
+      },
+      {
+        "t_sec": 40.0,
+        "id": "tx_oxygen"
+      },
+      {
+        "t_sec": 50.0,
+        "id": "tx_steroids"
+      },
+      {
+        "t_sec": 67.0,
+        "id": "tx_admit"
+      },
+      {
+        "t_sec": 84.0,
+        "id": "tx_monitor"
+      },
+      {
+        "t_sec": 101.0,
+        "id": "tx_explain"
+      },
+      {
+        "t_sec": 118.0,
+        "id": "ask_chronic_sinusitis"
+      },
+      {
+        "t_sec": 135.0,
+        "id": "ask_prior_bronchodilator_use_known"
+      },
+      {
+        "t_sec": 152.0,
+        "id": "ask_no_recent_international_travel"
+      },
+      {
+        "t_sec": 169.0,
+        "id": "exam_diffuse_expiratory_wheeze_bilaterally"
+      },
+      {
+        "t_sec": 186.0,
+        "id": "exam_accessory_muscle_use"
+      },
+      {
+        "t_sec": 203.0,
+        "id": "exam_prolonged_expiratory_phase"
+      },
+      {
+        "t_sec": 220.0,
+        "id": "ix_peak_expiratory_flow_rate"
+      },
+      {
+        "t_sec": 237.0,
+        "id": "ix_pulse_oximetry"
+      },
+      {
+        "t_sec": 254.0,
+        "id": "ix_chest_x_ray"
+      },
+      {
+        "t_sec": 271.0,
+        "id": "ix_cbc"
+      },
+      {
+        "t_sec": 288.0,
+        "id": "dx_bronchospasm_acute_asthma_exacerbation"
+      }
+    ],
+    "win_sec": 340.0,
+    "win_outcome": "win_discharge",
+    "golden_score": {
+      "earned": 40,
+      "max": 40,
+      "pass_bps": 7000
+    }
+  },
+  "compiler": {
+    "name": "vitals-casefactory",
+    "version": "0.9.4",
+    "commit": "ccd73727b039"
+  }
+}

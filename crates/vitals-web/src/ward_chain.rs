@@ -3987,9 +3987,12 @@ pub fn receipt(
             vitals_replay::Step::Tick(dt) => at += dt,
             vitals_replay::Step::Do(text) => timeline.push(serde_json::json!({
                 "at": at, "kind": "order", "text": text, "said": said(text) })),
+            // A question the case recognised travels as an `Act` with an `ask_` id (3 Oct 2026),
+            // so it reads ASKED like any other question. An order nobody recognised has an empty
+            // id, and its row says what was typed rather than nothing.
             vitals_replay::Step::Act { text, id } => timeline.push(serde_json::json!({
-                "at": at, "kind": "order", "text": text, "id": id,
-                "said": said(id).or_else(|| said(text)) })),
+                "at": at, "kind": if id.starts_with("ask_") { "asked" } else { "order" }, "text": text, "id": id,
+                "said": if id.is_empty() { said(text) } else { said(id) } })),
             vitals_replay::Step::Ask(q) => timeline.push(serde_json::json!({
                 "at": at, "kind": "asked", "text": q, "said": said(q) })),
             _ => {}

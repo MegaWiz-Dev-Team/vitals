@@ -1175,8 +1175,15 @@ const chipRows=()=>(WARDSURFACE&&WARDCHIPS)||CHIPS[ep().id]||{};
    want every drug, and remembered while the page lives so a mode change and back does not fold the
    tray under their hand. */
 const chipsOpen={};
+/* On the ward the diagnosis is typed, never pressed. A compiled case carries one diagnosis — the
+   right one — so its chip was the answer printed on a button: one press earned "Named the
+   diagnosis" without naming anything (found 3 Oct 2026, chosen by the founder: type it). The tab
+   stays, empty, with the box asking for the diagnosis; the server reads that tab against
+   diagnoses only. Stations and the season keep their differential chips — a list to choose from,
+   not an answer. */
+const typedDiagnosis=m=>!!WARDSURFACE && m==='dx';
 function renderChips(){
-  const c0=chipRows()[mode]||[];
+  const c0=typedDiagnosis(mode)?[]:(chipRows()[mode]||[]);
   const c=examMode()?shuffled(c0,seedOf((id||'')+':'+ep().id+':'+mode)):c0;
   const m=mode;
   /* Four, then the rest behind one press.
@@ -1217,6 +1224,7 @@ function renderChips(){
    Treat her to start" to somebody thirty seconds into treating her. */
 function boxPlaceholder(no, mode, askWords, orderWords, whom){
   if(no) return no;
+  if(typedDiagnosis(mode)) return 'type the diagnosis, as you would write it in the chart…';
   return mode==='ask' ? (askWords || `ask ${whom} anything…`)
                       : (orderWords || 'or type the order yourself…');
 }
@@ -1450,7 +1458,7 @@ function paint(v,named){
 /* Orders and events are different kinds of fact and a real chart never runs them together in
    one column of lowercase fragments. The tag says which, and the rule down the left carries it
    at a glance. */
-const KIND={action:'ORDER', action_refused:'REFUSED', equipment:'DEVICE', harm:'HARM', outcome:'OUTCOME',
+const KIND={action:'ORDER', asked:'ASKED', action_refused:'REFUSED', equipment:'DEVICE', harm:'HARM', outcome:'OUTCOME',
  /* A shock is not an order in the sense the mark sheet means — `vitals-osce` reads `action`
     rows as intervention ids — so it carries its own kind all the way to here. On the chart it
     reads like what it is: a thing that was done, at a second, at an energy. */
@@ -1867,6 +1875,9 @@ async function step(q,named){
   if(heed(v))return;
   if(v.error)return ev('note','—',v.error);
   paint(v,named);
+  /* The server says when it could not place an order in this case (never for a diagnosis — that
+     would be marking it). Said here so a typed order the case does not model is not swallowed. */
+  if(v.unrecognised)ev('note','—','“'+v.unrecognised+'” is not something this case models, so nothing was given. The buttons above are what it does model.');
 }
 /* `shown` is what the button said, when a button said it — the feed is a transcript of the
    station and a transcript that quotes words the candidate never read is not one. The order
@@ -1874,7 +1885,9 @@ async function step(q,named){
    `named` is threaded, not stashed in a module variable, because the tick loop paints too and a
    flag set here would be consumed by whichever paint happened to land first. */
 function doOrder(text,shown,named){ DIDWORK=true; disarmEnd(); ev('order','▸',shown||text);
-  step('&do='+encodeURIComponent(text), named===undefined?namesADiagnosis(text):named); }
+  /* On the ward the tab goes with the order, so the diagnosis tab is read as a diagnosis and no
+     other tab is — the server only narrows what the words are matched against. */
+  step('&do='+encodeURIComponent(text)+(WARD?'&mode='+encodeURIComponent(mode):''), named===undefined?namesADiagnosis(text):named); }
 async function askHer(q,shown){
   if(asking||!id)return; asking=true; $('#send').disabled=true;
   /* What was asked, as a person would read it back. `q` is what goes to the server — on the ward

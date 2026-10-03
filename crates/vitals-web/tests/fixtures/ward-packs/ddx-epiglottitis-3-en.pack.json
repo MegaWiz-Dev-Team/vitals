@@ -1,0 +1,1656 @@
+{
+  "case_id": "ddx-epiglottitis-3-en",
+  "source": {
+    "repo": "embla-cases",
+    "ref": "worktree",
+    "sha256": "3bdd6043427d2c23a62c7729c11a00b0de9e6ea9e20a397e4b3f2c7f311e1598"
+  },
+  "title": "Elderly {sex_word} with sore throat, fever, and abnormal breathing sounds",
+  "country": null,
+  "difficulty": "intern",
+  "clinical_tier": 4,
+  "specialty": "eir-ent",
+  "care_setting": "ER",
+  "language": "en",
+  "tags": [],
+  "endemic": false,
+  "provisional": true,
+  "review": {
+    "status": "provisional",
+    "by": null,
+    "date": null
+  },
+  "version": "0.1.1",
+  "archetype": "hypoxic_respiratory_failure",
+  "archetype_label": "hypoxic respiratory failure",
+  "patient": {
+    "age": 78,
+    "sex": "female"
+  },
+  "presentation": {
+    "chief_complaint": "Sore throat, abnormal breathing sounds, and fever.",
+    "hpi": "A {age}-year-old {sex_word} patient presents with a sore throat that started with moderate intensity, pain score 5/10, located at the left tonsil, back of the neck, left side of the neck, palate, and pharynx, with no radiation. Leaning forward slightly improves the symptoms. {He_she} has a high fever, inspiratory stridor, voice change, and dysphagia. {He_she} has hypertension and is on medication. No abnormal drooling. No history of international travel.",
+    "setting": null
+  },
+  "sce": {
+    "_note": "Compiled by vitals-casefactory from embla-cases ddx-epiglottitis-3-en under the hypoxic_respiratory_failure archetype. Provisional: clinically shaped by a deterministic compiler, not clinically reviewed. Untreated the patient reaches death in about 10 sim minutes; every critical order in the plan turns it.",
+    "debrief": {
+      "avoid": [
+        {
+          "id": "tx_sedation",
+          "label": "Sedative before the airway",
+          "why": "a sedative before the airway was secured — the last of the breathing goes"
+        },
+        {
+          "id": "tx_beta_blocker",
+          "label": "Beta-blocker or rate-slowing drug",
+          "why": "a beta-blocker or rate-slowing drug where it deepens the failure"
+        }
+      ],
+      "expect": [
+        {
+          "id": "tx_antibiotics",
+          "label": "Broad-spectrum antibiotics"
+        },
+        {
+          "id": "tx_airway",
+          "label": "Airway protection",
+          "within_sec": 300.0
+        },
+        {
+          "id": "tx_oxygen",
+          "label": "Oxygen"
+        }
+      ]
+    },
+    "initial_state": "presenting",
+    "interventions": [
+      {
+        "effects": [
+          {
+            "flag": "antibiotics_given"
+          },
+          {
+            "beat": "broad-spectrum antibiotic in — after the cultures, inside the hour"
+          }
+        ],
+        "id": "tx_antibiotics",
+        "label": "Broad-spectrum antibiotics",
+        "match": {
+          "any_kw": [
+            "antibiotic",
+            "antimicrobial",
+            "ceftriaxone",
+            "meropenem",
+            "piperacillin",
+            "tazobactam",
+            "cefotaxime",
+            "ceftazidime",
+            "vancomycin",
+            "metronidazole",
+            "ampicillin",
+            "amoxicillin",
+            "gentamicin",
+            "amikacin",
+            "azithromycin",
+            "erythromycin",
+            "clindamycin",
+            "doxycycline",
+            "penicillin",
+            "benzylpenicillin",
+            "cloxacillin",
+            "flucloxacillin",
+            "co-trimoxazole",
+            "cotrimoxazole",
+            "trimethoprim",
+            "ยาปฏิชีวนะ",
+            "tx_antibiotics"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "flag": "airway_given"
+          },
+          {
+            "cap": 99.0,
+            "delta": {
+              "spo2": 4.0
+            }
+          },
+          {
+            "beat": "the airway is protected — suction, positioning, and a plan to intubate if it slips"
+          }
+        ],
+        "equipment": "ett",
+        "id": "tx_airway",
+        "label": "Airway protection",
+        "match": {
+          "any_kw": [
+            "intubat",
+            "endotracheal",
+            "secure the airway",
+            "airway",
+            "bag-valve",
+            "ventilat",
+            "tracheostomy",
+            "cricothyro",
+            "ใส่ท่อช่วยหายใจ",
+            "ทางเดินหายใจ",
+            "tx_airway"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "flag": "oxygen_given"
+          },
+          {
+            "cap": 99.0,
+            "delta": {
+              "spo2": 3.0
+            }
+          },
+          {
+            "beat": "oxygen on — the reservoir bag fills and the trace steadies a little"
+          }
+        ],
+        "equipment": "o2",
+        "equipment_setting": 10.0,
+        "id": "tx_oxygen",
+        "label": "Oxygen",
+        "match": {
+          "any_kw": [
+            "oxygen",
+            "high-flow",
+            "high flow",
+            "non-rebreather",
+            "nasal cannula",
+            "face mask",
+            "o2 mask",
+            "ออกซิเจน",
+            "tx_oxygen"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "flag": "steroids_given"
+          },
+          {
+            "beat": "steroid given — for the hours ahead, not this minute"
+          }
+        ],
+        "id": "tx_steroids",
+        "label": "Systemic corticosteroid",
+        "match": {
+          "any_kw": [
+            "prednisolone",
+            "prednisone",
+            "dexamethasone",
+            "hydrocortisone",
+            "methylprednisolone",
+            "corticosteroid",
+            "steroid",
+            "สเตียรอยด์",
+            "tx_steroids"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "flag": "admit_given"
+          },
+          {
+            "beat": "admitted to a monitored bed — the team is told what to watch for"
+          }
+        ],
+        "id": "tx_admit",
+        "label": "Admit to a monitored bed",
+        "match": {
+          "any_kw": [
+            "admit",
+            "icu",
+            "hdu",
+            "intensive care",
+            "high-dependency",
+            "high dependency",
+            "monitored bed",
+            "ccu",
+            "step-down",
+            "รับไว้",
+            "รับนอน",
+            "แอดมิท",
+            "tx_admit"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "flag": "monitor_given"
+          },
+          {
+            "beat": "continuous monitoring set — the numbers are watched, not assumed"
+          }
+        ],
+        "id": "tx_monitor",
+        "label": "Monitoring plan",
+        "match": {
+          "any_kw": [
+            "monitoring",
+            "monitor",
+            "reassess",
+            "serial",
+            "ติดตาม",
+            "เฝ้าระวัง",
+            "ประเมินซ้ำ",
+            "strict fluid balance",
+            "tx_monitor"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "flag": "explain_given"
+          },
+          {
+            "beat": "the situation is explained plainly and consent is taken"
+          }
+        ],
+        "id": "tx_explain",
+        "label": "Explain and obtain consent",
+        "match": {
+          "any_kw": [
+            "explain",
+            "communicat",
+            "consent",
+            "counsel",
+            "อธิบาย",
+            "ให้ความรู้",
+            "แจ้งญาติ",
+            "tx_explain"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "flag": "nil_by_mouth_given"
+          },
+          {
+            "beat": "nothing by mouth — a nasogastric tube drains the stomach"
+          }
+        ],
+        "id": "tx_nil_by_mouth",
+        "label": "Nothing by mouth",
+        "match": {
+          "any_kw": [
+            "nothing by mouth",
+            "nil by mouth",
+            "npo",
+            "nasogastric",
+            "ng tube",
+            "งดน้ำงดอาหาร",
+            "tx_nil_by_mouth"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "delta": {
+              "spo2": -6.0
+            },
+            "floor": 40.0
+          },
+          {
+            "delta": {
+              "rr": -4.0
+            },
+            "floor": 4.0
+          },
+          {
+            "beat": "a sedative before the airway was secured — the last of the breathing goes"
+          }
+        ],
+        "harm": "a sedative before the airway was secured — the last of the breathing goes",
+        "id": "tx_sedation",
+        "label": "Sedative before the airway",
+        "match": {
+          "any_kw": [
+            "sedat",
+            "midazolam",
+            "diazepam",
+            "lorazepam",
+            "benzodiazepine",
+            "tx_sedation"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "delta": {
+              "sbp": -8.0
+            },
+            "floor": 30.0
+          },
+          {
+            "delta": {
+              "hr": -10.0
+            },
+            "floor": 30.0
+          },
+          {
+            "beat": "a beta-blocker or rate-slowing drug where it deepens the failure"
+          }
+        ],
+        "harm": "a beta-blocker or rate-slowing drug where it deepens the failure",
+        "id": "tx_beta_blocker",
+        "label": "Beta-blocker or rate-slowing drug",
+        "match": {
+          "any_kw": [
+            "beta-blocker",
+            "beta blocker",
+            "calcium-channel blocker",
+            "calcium channel blocker",
+            "metoprolol",
+            "propranolol",
+            "bisoprolol",
+            "carvedilol",
+            "verapamil",
+            "diltiazem",
+            "tx_beta_blocker"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "flag": "dx_named"
+          },
+          {
+            "beat": "the working diagnosis is written on the chart"
+          }
+        ],
+        "id": "dx_acute_epiglottitis",
+        "label": "Name the diagnosis",
+        "match": {
+          "any_kw": [
+            "acute epiglottitis",
+            "supraglottitis",
+            "dx_acute_epiglottitis"
+          ],
+          "not_kw": [
+            "antibiotic",
+            "antimicrobial",
+            "ceftriaxone",
+            "meropenem",
+            "piperacillin",
+            "tazobactam",
+            "cefotaxime",
+            "ceftazidime",
+            "vancomycin",
+            "metronidazole",
+            "ampicillin",
+            "amoxicillin",
+            "gentamicin",
+            "amikacin",
+            "azithromycin",
+            "erythromycin",
+            "clindamycin",
+            "doxycycline",
+            "penicillin",
+            "benzylpenicillin",
+            "cloxacillin",
+            "flucloxacillin",
+            "co-trimoxazole",
+            "cotrimoxazole",
+            "trimethoprim",
+            "ยาปฏิชีวนะ",
+            "intubat",
+            "endotracheal",
+            "secure the airway",
+            "airway",
+            "bag-valve",
+            "ventilat",
+            "tracheostomy",
+            "cricothyro",
+            "ใส่ท่อช่วยหายใจ",
+            "ทางเดินหายใจ",
+            "oxygen",
+            "high-flow",
+            "high flow",
+            "non-rebreather",
+            "nasal cannula",
+            "face mask",
+            "o2 mask",
+            "ออกซิเจน",
+            "prednisolone",
+            "prednisone",
+            "dexamethasone",
+            "hydrocortisone",
+            "methylprednisolone",
+            "corticosteroid",
+            "steroid",
+            "สเตียรอยด์",
+            "admit",
+            "icu",
+            "hdu",
+            "intensive care",
+            "high-dependency",
+            "high dependency",
+            "monitored bed",
+            "ccu",
+            "step-down",
+            "รับไว้",
+            "รับนอน",
+            "แอดมิท",
+            "monitoring",
+            "monitor",
+            "reassess",
+            "serial",
+            "ติดตาม",
+            "เฝ้าระวัง",
+            "ประเมินซ้ำ",
+            "strict fluid balance",
+            "explain",
+            "communicat",
+            "consent",
+            "counsel",
+            "อธิบาย",
+            "ให้ความรู้",
+            "แจ้งญาติ",
+            "nothing by mouth",
+            "nil by mouth",
+            "npo",
+            "nasogastric",
+            "ng tube",
+            "งดน้ำงดอาหาร",
+            "sedat",
+            "midazolam",
+            "diazepam",
+            "lorazepam",
+            "benzodiazepine",
+            "beta-blocker",
+            "beta blocker",
+            "calcium-channel blocker",
+            "calcium channel blocker",
+            "metoprolol",
+            "propranolol",
+            "bisoprolol",
+            "carvedilol",
+            "verapamil",
+            "diltiazem",
+            "lateral soft-tissue neck x-ray",
+            "lateral",
+            "soft-tissue",
+            "x-ray",
+            "complete blood count",
+            "complete",
+            "blood culture",
+            "culture",
+            "arterial blood gas",
+            "arterial",
+            "inspiratory stridor audible without stethoscope",
+            "audible",
+            "stethoscope",
+            "muffled voice quality",
+            "muffled",
+            "oropharynx erythematous, left tonsil enlarged",
+            "oropharynx",
+            "erythematous",
+            "enlarged",
+            "elderly patient appears unwell, accessory muscle use",
+            "elderly",
+            "appears",
+            "unwell",
+            "accessory",
+            "muscle",
+            "general"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "Lateral soft-tissue neck X-ray: Normal heart size, no lung parenchymal lesions, no pleural effusion/pneumothorax."
+          }
+        ],
+        "id": "ix_lateral_soft_tissue_neck_x_ray",
+        "label": "Lateral soft-tissue neck X-ray",
+        "match": {
+          "any_kw": [
+            "lateral soft-tissue neck x-ray",
+            "lateral",
+            "soft-tissue",
+            "x-ray",
+            "ix_lateral_soft_tissue_neck_x_ray"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "Complete blood count: WBC 16.4 x10^9/L, neutrophils 88% — Marked leukocytosis with neutrophilia strongly suggestive of bacterial infection."
+          }
+        ],
+        "id": "ix_complete_blood_count",
+        "label": "Complete blood count",
+        "match": {
+          "any_kw": [
+            "complete blood count",
+            "complete",
+            "ix_complete_blood_count"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "Blood culture: Pending (2 sets collected) — Blood cultures pending. Empirical IV antibiotics started."
+          }
+        ],
+        "id": "ix_blood_culture",
+        "label": "Blood culture",
+        "match": {
+          "any_kw": [
+            "blood culture",
+            "culture",
+            "ix_blood_culture"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "Arterial blood gas: pH 7.38, PO₂ 72 mmHg, PCO₂ 42 mmHg, HCO₃ 24 mmol/L — Mild hypoxaemia consistent with partial airway obstruction. No significant respiratory acidosis yet."
+          }
+        ],
+        "id": "ix_arterial_blood_gas",
+        "label": "Arterial blood gas",
+        "match": {
+          "any_kw": [
+            "arterial blood gas",
+            "arterial",
+            "ix_arterial_blood_gas"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "Inspiratory stridor clearly audible without a stethoscope."
+          }
+        ],
+        "id": "exam_inspiratory_stridor_audible_without_stet",
+        "label": "Examine: Inspiratory stridor audible without stethoscope",
+        "match": {
+          "any_kw": [
+            "inspiratory stridor audible without stethoscope",
+            "audible",
+            "stethoscope",
+            "exam_inspiratory_stridor_audible_without_stet"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "Muffled, heavy voice quality, similar to a hot-potato voice."
+          }
+        ],
+        "id": "exam_muffled_voice_quality",
+        "label": "Examine: Muffled voice quality",
+        "match": {
+          "any_kw": [
+            "muffled voice quality",
+            "muffled",
+            "exam_muffled_voice_quality"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "Erythematous pharynx, left tonsil larger and more erythematous than the right, no pus."
+          }
+        ],
+        "id": "exam_oropharynx_erythematous_left_tonsil_enla",
+        "label": "Examine: Oropharynx erythematous, left tonsil enlarged",
+        "match": {
+          "any_kw": [
+            "oropharynx erythematous, left tonsil enlarged",
+            "oropharynx",
+            "erythematous",
+            "enlarged",
+            "exam_oropharynx_erythematous_left_tonsil_enla"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "Elderly patient appears weak, using accessory muscles for respiration."
+          }
+        ],
+        "id": "exam_elderly_patient_appears_unwell_accessory",
+        "label": "Examine: Elderly patient appears unwell, accessory muscle use",
+        "match": {
+          "any_kw": [
+            "elderly patient appears unwell, accessory muscle use",
+            "elderly",
+            "appears",
+            "unwell",
+            "accessory",
+            "muscle",
+            "general",
+            "exam_elderly_patient_appears_unwell_accessory"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: pain improves with leaning forward"
+          }
+        ],
+        "id": "ask_pain_improves_with_leaning_forward",
+        "label": "Ask: Pain improves with leaning forward",
+        "match": {
+          "any_kw": [
+            "pain improves with leaning forward",
+            "improves",
+            "leaning",
+            "forward",
+            "ask_pain_improves_with_leaning_forward"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: throat pain present"
+          }
+        ],
+        "id": "ask_throat_pain_present",
+        "label": "Ask: Throat pain present",
+        "match": {
+          "any_kw": [
+            "throat pain present",
+            "throat",
+            "ask_throat_pain_present"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: stabbing quality of pain"
+          }
+        ],
+        "id": "ask_stabbing_quality_of_pain",
+        "label": "Ask: Stabbing quality of pain",
+        "match": {
+          "any_kw": [
+            "stabbing quality of pain",
+            "stabbing",
+            "ask_stabbing_quality_of_pain"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: pain at left tonsil"
+          }
+        ],
+        "id": "ask_pain_at_left_tonsil",
+        "label": "Ask: Pain at left tonsil",
+        "match": {
+          "any_kw": [
+            "pain at left tonsil",
+            "ask_pain_at_left_tonsil"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: pain at back of neck"
+          }
+        ],
+        "id": "ask_pain_at_back_of_neck",
+        "label": "Ask: Pain at back of neck",
+        "match": {
+          "any_kw": [
+            "pain at back of neck",
+            "back",
+            "ask_pain_at_back_of_neck"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: pain at left side of neck"
+          }
+        ],
+        "id": "ask_pain_at_left_side_of",
+        "label": "Ask: Pain at left side of neck",
+        "match": {
+          "any_kw": [
+            "pain at left side of neck",
+            "side",
+            "ask_pain_at_left_side_of"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: pain at palate"
+          }
+        ],
+        "id": "ask_pain_at_palate",
+        "label": "Ask: Pain at palate",
+        "match": {
+          "any_kw": [
+            "pain at palate",
+            "palate",
+            "ask_pain_at_palate"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: pain at pharynx"
+          }
+        ],
+        "id": "ask_pain_at_pharynx",
+        "label": "Ask: Pain at pharynx",
+        "match": {
+          "any_kw": [
+            "pain at pharynx",
+            "pharynx",
+            "ask_pain_at_pharynx"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: pain intensity 5/10"
+          }
+        ],
+        "id": "ask_pain_intensity_5_10",
+        "label": "Ask: Pain intensity 5/10",
+        "match": {
+          "any_kw": [
+            "pain intensity 5/10",
+            "intensity",
+            "ask_pain_intensity_5_10"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: no pain radiation"
+          }
+        ],
+        "id": "ask_no_pain_radiation",
+        "label": "Ask: No pain radiation",
+        "match": {
+          "any_kw": [
+            "no pain radiation",
+            "radiation",
+            "ask_no_pain_radiation"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: well-localised pain (precision 8/10)"
+          }
+        ],
+        "id": "ask_well_localised_pain",
+        "label": "Ask: Well-localised pain (precision 8/10)",
+        "match": {
+          "any_kw": [
+            "well-localised pain (precision 8/10)",
+            "well-localised",
+            "precision",
+            "ask_well_localised_pain"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: moderate onset speed (speed 5/10)"
+          }
+        ],
+        "id": "ask_moderate_onset_speed",
+        "label": "Ask: Moderate onset speed (speed 5/10)",
+        "match": {
+          "any_kw": [
+            "moderate onset speed (speed 5/10)",
+            "moderate",
+            "onset",
+            "speed",
+            "ask_moderate_onset_speed"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: stimulant drug use"
+          }
+        ],
+        "id": "ask_stimulant_drug_use",
+        "label": "Ask: Stimulant drug use",
+        "match": {
+          "any_kw": [
+            "stimulant drug use",
+            "stimulant",
+            "drug",
+            "ask_stimulant_drug_use"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: dysphagia"
+          }
+        ],
+        "id": "ask_dysphagia",
+        "label": "Ask: Dysphagia",
+        "match": {
+          "any_kw": [
+            "dysphagia",
+            "ask_dysphagia"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: dyspnoea / difficulty breathing"
+          }
+        ],
+        "id": "ask_dyspnoea_difficulty_breathing",
+        "label": "Ask: Dyspnoea / difficulty breathing",
+        "match": {
+          "any_kw": [
+            "dyspnoea",
+            "breathing",
+            "ask_dyspnoea_difficulty_breathing"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: excessive alcohol use"
+          }
+        ],
+        "id": "ask_excessive_alcohol_use",
+        "label": "Ask: Excessive alcohol use",
+        "match": {
+          "any_kw": [
+            "excessive alcohol use",
+            "excessive",
+            "alcohol",
+            "ask_excessive_alcohol_use"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: fever present"
+          }
+        ],
+        "id": "ask_fever_present",
+        "label": "Ask: Fever present",
+        "match": {
+          "any_kw": [
+            "fever present",
+            "fever",
+            "ask_fever_present"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: hypertension / antihypertensive medication"
+          }
+        ],
+        "id": "ask_hypertension_antihypertensive_medication",
+        "label": "Ask: Hypertension / antihypertensive medication",
+        "match": {
+          "any_kw": [
+            "hypertension / antihypertensive medication",
+            "hypertension",
+            "antihypertensive",
+            "medication",
+            "ask_hypertension_antihypertensive_medication"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: inspiratory stridor"
+          }
+        ],
+        "id": "ask_inspiratory_stridor",
+        "label": "Ask: Inspiratory stridor",
+        "match": {
+          "any_kw": [
+            "inspiratory stridor",
+            "ask_inspiratory_stridor"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: no recent international travel"
+          }
+        ],
+        "id": "ask_no_recent_international_travel",
+        "label": "Ask: No recent international travel",
+        "match": {
+          "any_kw": [
+            "no recent international travel",
+            "international",
+            "travel",
+            "ask_no_recent_international_travel"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: dysphonia / voice change"
+          }
+        ],
+        "id": "ask_dysphonia_voice_change",
+        "label": "Ask: Dysphonia / voice change",
+        "match": {
+          "any_kw": [
+            "dysphonia / voice change",
+            "dysphonia",
+            "change",
+            "ask_dysphonia_voice_change"
+          ]
+        }
+      },
+      {
+        "effects": [
+          {
+            "beat": "history: no hypersalivation / drooling"
+          }
+        ],
+        "id": "ask_no_hypersalivation_drooling",
+        "label": "Ask: No hypersalivation / drooling",
+        "match": {
+          "any_kw": [
+            "no hypersalivation / drooling",
+            "hypersalivation",
+            "drooling",
+            "ask_no_hypersalivation_drooling"
+          ]
+        }
+      }
+    ],
+    "outcomes": [
+      {
+        "id": "win_icu",
+        "kind": "win",
+        "label": "Treated in time — handed over to intensive care, improving"
+      },
+      {
+        "id": "death_arrest",
+        "kind": "death",
+        "label": "Untreated too long — the arrest could not be reversed"
+      }
+    ],
+    "setting": "ED",
+    "states": [
+      {
+        "bands": [
+          {
+            "status": "critical",
+            "when": {
+              "op": "lt",
+              "value": 79.5,
+              "var": "spo2"
+            }
+          }
+        ],
+        "dynamics": [
+          {
+            "floor": 60.0,
+            "rate_per_min": -2.9,
+            "var": "spo2"
+          },
+          {
+            "ceil": 38.0,
+            "rate_per_min": 1.4,
+            "var": "rr"
+          },
+          {
+            "ceil": 142.0,
+            "rate_per_min": 3.0,
+            "var": "hr"
+          }
+        ],
+        "id": "presenting",
+        "status": "deteriorating",
+        "transitions": [
+          {
+            "outcome": "death_arrest",
+            "when": {
+              "any": [
+                {
+                  "op": "lt",
+                  "value": 65.0,
+                  "var": "spo2"
+                }
+              ]
+            }
+          },
+          {
+            "to_state": "stabilising",
+            "when": {
+              "all": [
+                {
+                  "done": "tx_antibiotics"
+                },
+                {
+                  "done": "tx_airway"
+                },
+                {
+                  "done": "tx_oxygen"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "bands": [],
+        "dynamics": [
+          {
+            "ceil": 96.0,
+            "rate_per_min": 6.0,
+            "var": "spo2"
+          },
+          {
+            "floor": 18.0,
+            "rate_per_min": -3.3333333333333335,
+            "var": "rr"
+          },
+          {
+            "floor": 95.0,
+            "rate_per_min": -7.833333333333333,
+            "var": "hr"
+          }
+        ],
+        "id": "stabilising",
+        "status": "improving",
+        "transitions": []
+      }
+    ],
+    "tick_seconds": 1.0,
+    "triggers": [
+      {
+        "do": [
+          {
+            "outcome": "win_icu"
+          }
+        ],
+        "id": "recovered",
+        "once": true,
+        "when": {
+          "all": [
+            {
+              "in_state": "stabilising"
+            },
+            {
+              "op": "ge",
+              "value": 300.0,
+              "var": "t_in_state"
+            }
+          ]
+        }
+      },
+      {
+        "do": [
+          {
+            "set": {
+              "gcs": 12.0
+            }
+          },
+          {
+            "beat": "the answers come slower — the eyes open only to a voice"
+          }
+        ],
+        "id": "obtunded",
+        "once": true,
+        "when": {
+          "all": [
+            {
+              "in_state": "presenting"
+            },
+            {
+              "op": "lt",
+              "value": 79.5,
+              "var": "spo2"
+            }
+          ]
+        }
+      },
+      {
+        "do": [
+          {
+            "set": {
+              "gcs": 15.0
+            }
+          },
+          {
+            "beat": "awake, oriented, asking what happened"
+          }
+        ],
+        "id": "wakes",
+        "once": true,
+        "when": {
+          "all": [
+            {
+              "in_state": "stabilising"
+            },
+            {
+              "op": "ge",
+              "value": 150.0,
+              "var": "t_in_state"
+            }
+          ]
+        }
+      },
+      {
+        "do": [
+          {
+            "harm": "airway protection was not given by 5:00 — the window closed"
+          },
+          {
+            "beat": "the window for one of the orders has closed"
+          }
+        ],
+        "id": "late_airway",
+        "once": true,
+        "when": {
+          "all": [
+            {
+              "in_state": "presenting"
+            },
+            {
+              "op": "ge",
+              "value": 300.0,
+              "var": "t_elapsed"
+            },
+            {
+              "not": {
+                "done": "tx_airway"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "variables": {},
+    "vitals0": {
+      "dbp": 92.0,
+      "gcs": 15,
+      "hr": 112.0,
+      "rr": 24.0,
+      "sbp": 158.0,
+      "spo2": 94.0,
+      "temp": 38.6
+    }
+  },
+  "rubric": {
+    "case": "ddx-epiglottitis-3-en",
+    "items": [
+      {
+        "label": "Asked about: Stimulant drug use",
+        "needle": "ask_stimulant_drug_use",
+        "points": 2,
+        "type": "action"
+      },
+      {
+        "label": "Asked about: Excessive alcohol use",
+        "needle": "ask_excessive_alcohol_use",
+        "points": 2,
+        "type": "action"
+      },
+      {
+        "label": "Asked about: Hypertension / antihypertensive medication",
+        "needle": "ask_hypertension_antihypertensive_medication",
+        "points": 2,
+        "type": "action"
+      },
+      {
+        "label": "Examined: Inspiratory stridor audible without stethoscope",
+        "needle": "exam_inspiratory_stridor_audible_without_stet",
+        "points": 2,
+        "type": "action"
+      },
+      {
+        "label": "Examined: Muffled voice quality",
+        "needle": "exam_muffled_voice_quality",
+        "points": 2,
+        "type": "action"
+      },
+      {
+        "label": "Examined: Oropharynx erythematous, left tonsil enlarged",
+        "needle": "exam_oropharynx_erythematous_left_tonsil_enla",
+        "points": 1,
+        "type": "action"
+      },
+      {
+        "label": "Ordered: Lateral soft-tissue neck X-ray",
+        "needle": "ix_lateral_soft_tissue_neck_x_ray",
+        "points": 2,
+        "type": "action"
+      },
+      {
+        "label": "Ordered: Complete blood count",
+        "needle": "ix_complete_blood_count",
+        "points": 2,
+        "type": "action"
+      },
+      {
+        "label": "Ordered: Blood culture",
+        "needle": "ix_blood_culture",
+        "points": 1,
+        "type": "action"
+      },
+      {
+        "label": "Ordered: Arterial blood gas",
+        "needle": "ix_arterial_blood_gas",
+        "points": 1,
+        "type": "action"
+      },
+      {
+        "label": "Named the diagnosis",
+        "needle": "dx_acute_epiglottitis",
+        "points": 10,
+        "type": "action"
+      },
+      {
+        "label": "Broad-spectrum antibiotics",
+        "needle": "tx_antibiotics",
+        "points": 2,
+        "type": "action"
+      },
+      {
+        "by_sec": 300.0,
+        "label": "Airway protection within 5:00",
+        "needle": "tx_airway",
+        "points": 2,
+        "type": "action_by"
+      },
+      {
+        "label": "Oxygen",
+        "needle": "tx_oxygen",
+        "points": 1,
+        "type": "action"
+      },
+      {
+        "any_of": [
+          "win_icu"
+        ],
+        "label": "The patient survives to intensive care",
+        "points": 3,
+        "type": "outcome"
+      },
+      {
+        "label": "Did not give: sedative before the airway",
+        "needle": "a sedative before the airway was secured — the last of the breathing goes",
+        "points": 2,
+        "type": "no_harm"
+      },
+      {
+        "label": "Did not give: beta-blocker or rate-slowing drug",
+        "needle": "a beta-blocker or rate-slowing drug where it deepens the failure",
+        "points": 2,
+        "type": "no_harm"
+      },
+      {
+        "label": "Avoided: airway protection was not given by 5:00",
+        "needle": "airway protection was not given by 5:00 — the window closed",
+        "points": 1,
+        "type": "no_harm"
+      },
+      {
+        "allow": [
+          "tx_steroids",
+          "tx_admit",
+          "tx_monitor",
+          "tx_explain",
+          "tx_nil_by_mouth",
+          "tx_sedation",
+          "tx_beta_blocker"
+        ],
+        "label": "Ordered nothing this patient did not need",
+        "max_penalty": 6,
+        "per_item": 2,
+        "type": "no_unindicated"
+      }
+    ],
+    "pass_bps": 7000,
+    "status": "provisional — compiled by vitals-casefactory from embla-cases ddx-epiglottitis-3-en v0.1.1 (sha256:3bdd6043427d2c23) under the hypoxic_respiratory_failure archetype: management_plan→action/action_by, red_flags→no_harm, correct_diagnosis→action, expected_workup→action, outcome from the replay. Judged dimensions dropped (communication). Points scaled to 40 from the case's rubric dimension weights. Pass mark 70 % — the ward's, not the case's own exam mark of 60 %. Not clinically reviewed."
+  },
+  "voice": {
+    "ask_dysphagia": {
+      "finding": "Dysphagia",
+      "present": true,
+      "reveal": "on_ask",
+      "words": "It is very difficult to swallow. I have to try several times."
+    },
+    "ask_dysphonia_voice_change": {
+      "finding": "Dysphonia / voice change",
+      "present": true,
+      "reveal": "on_ask",
+      "words": "My daughter said my voice has changed. It sounds heavy and abnormal."
+    },
+    "ask_dyspnoea_difficulty_breathing": {
+      "finding": "Dyspnoea / difficulty breathing",
+      "present": true,
+      "reveal": "on_ask",
+      "words": "Breathing feels tight, not as easy as usual."
+    },
+    "ask_excessive_alcohol_use": {
+      "finding": "Excessive alcohol use",
+      "present": true,
+      "reveal": "on_direct_ask",
+      "words": "I drink sometimes, but not much. Just once in a while."
+    },
+    "ask_fever_present": {
+      "finding": "Fever present",
+      "present": true,
+      "reveal": "on_ask",
+      "words": "I have a fever. I have been hot since last night."
+    },
+    "ask_hypertension_antihypertensive_medication": {
+      "finding": "Hypertension / antihypertensive medication",
+      "present": true,
+      "reveal": "on_direct_ask",
+      "words": "I have high blood pressure. I take medicine every day."
+    },
+    "ask_inspiratory_stridor": {
+      "finding": "Inspiratory stridor",
+      "present": true,
+      "reveal": "on_ask",
+      "words": "When I breathe, I hear a loud sound in my throat. It sounds strange."
+    },
+    "ask_moderate_onset_speed": {
+      "finding": "Moderate onset speed (speed 5/10)",
+      "present": true,
+      "reveal": "on_ask",
+      "words": "It gradually got worse, it did not happen suddenly."
+    },
+    "ask_no_hypersalivation_drooling": {
+      "finding": "No hypersalivation / drooling",
+      "present": false,
+      "reveal": "on_ask",
+      "words": "I do not have any abnormal drooling."
+    },
+    "ask_no_pain_radiation": {
+      "finding": "No pain radiation",
+      "present": true,
+      "reveal": "on_ask",
+      "words": "It does not radiate anywhere else, it is just in the neck area."
+    },
+    "ask_no_recent_international_travel": {
+      "finding": "No recent international travel",
+      "present": true,
+      "reveal": "on_direct_ask",
+      "words": "I have not been abroad. I am old, so I do not go anywhere much."
+    },
+    "ask_pain_at_back_of_neck": {
+      "finding": "Pain at back of neck",
+      "present": true,
+      "reveal": "on_ask",
+      "words": "The back of my neck hurts too."
+    },
+    "ask_pain_at_left_side_of": {
+      "finding": "Pain at left side of neck",
+      "present": true,
+      "reveal": "on_ask",
+      "words": "The left side of my neck also feels like the pain is radiating down."
+    },
+    "ask_pain_at_left_tonsil": {
+      "finding": "Pain at left tonsil",
+      "present": true,
+      "reveal": "on_ask",
+      "words": "It hurts particularly badly at my left tonsil."
+    },
+    "ask_pain_at_palate": {
+      "finding": "Pain at palate",
+      "present": true,
+      "reveal": "on_ask",
+      "words": "My palate also hurts when I swallow."
+    },
+    "ask_pain_at_pharynx": {
+      "finding": "Pain at pharynx",
+      "present": true,
+      "reveal": "on_ask",
+      "words": "Deep in my throat, it hurts constantly. It does not go away."
+    },
+    "ask_pain_improves_with_leaning_forward": {
+      "finding": "Pain improves with leaning forward",
+      "present": true,
+      "reveal": "on_ask",
+      "words": "Leaning forward makes it feel a bit better."
+    },
+    "ask_pain_intensity_5_10": {
+      "finding": "Pain intensity 5/10",
+      "present": true,
+      "reveal": "on_ask",
+      "words": "Five out of ten. It is tolerable but very annoying."
+    },
+    "ask_stabbing_quality_of_pain": {
+      "finding": "Stabbing quality of pain",
+      "present": true,
+      "reveal": "on_ask",
+      "words": "It feels like something sharp is stabbing inside."
+    },
+    "ask_stimulant_drug_use": {
+      "finding": "Stimulant drug use",
+      "present": true,
+      "reveal": "on_direct_ask",
+      "words": "I have used drugs sometimes..."
+    },
+    "ask_throat_pain_present": {
+      "finding": "Throat pain present",
+      "present": true,
+      "reveal": "volunteered",
+      "words": "I have a sore throat. It has been hurting since this morning."
+    },
+    "ask_well_localised_pain": {
+      "finding": "Well-localised pain (precision 8/10)",
+      "present": true,
+      "reveal": "on_ask",
+      "words": "I can point clearly to where it hurts."
+    }
+  },
+  "management": [
+    {
+      "step": "Admit to ICU immediately, monitor airway 24 hours a day.",
+      "interventions": [
+        "tx_airway",
+        "tx_admit",
+        "tx_monitor"
+      ]
+    },
+    {
+      "step": "Call ENT team and senior anaesthetist to prepare for controlled intubation.",
+      "interventions": [
+        "tx_airway"
+      ]
+    },
+    {
+      "step": "Provide high-flow oxygen to maintain SpO₂ ≥ 95%.",
+      "interventions": [
+        "tx_oxygen"
+      ]
+    },
+    {
+      "step": "Ceftriaxone 2g IV q24h + metronidazole if anaerobes are suspected.",
+      "interventions": [
+        "tx_antibiotics"
+      ]
+    },
+    {
+      "step": "Dexamethasone 0.15 mg/kg IV to reduce oedema.",
+      "interventions": [
+        "tx_steroids"
+      ]
+    },
+    {
+      "step": "Monitor BP closely due to hypertension and tachycardia.",
+      "interventions": [
+        "tx_monitor"
+      ]
+    },
+    {
+      "step": "NPO, provide IV fluids and electrolytes.",
+      "interventions": [
+        "tx_nil_by_mouth"
+      ]
+    }
+  ],
+  "criteria": [],
+  "timed": {
+    "airway": {
+      "named_sec": 300.0,
+      "by_sec": 300.0,
+      "sentence": "Admit to ICU immediately, monitor airway 24 hours a day."
+    }
+  },
+  "vitals_assumed": [
+    "gcs"
+  ],
+  "placeholders": {
+    "age": 1,
+    "sex": 3
+  },
+  "replay": {
+    "untreated_death_sec": 601.0,
+    "win_path": [
+      {
+        "t_sec": 20.0,
+        "id": "tx_antibiotics"
+      },
+      {
+        "t_sec": 40.0,
+        "id": "tx_airway"
+      },
+      {
+        "t_sec": 60.0,
+        "id": "tx_oxygen"
+      },
+      {
+        "t_sec": 70.0,
+        "id": "tx_steroids"
+      },
+      {
+        "t_sec": 86.0,
+        "id": "tx_admit"
+      },
+      {
+        "t_sec": 102.0,
+        "id": "tx_monitor"
+      },
+      {
+        "t_sec": 118.0,
+        "id": "tx_explain"
+      },
+      {
+        "t_sec": 134.0,
+        "id": "tx_nil_by_mouth"
+      },
+      {
+        "t_sec": 150.0,
+        "id": "ask_stimulant_drug_use"
+      },
+      {
+        "t_sec": 166.0,
+        "id": "ask_excessive_alcohol_use"
+      },
+      {
+        "t_sec": 182.0,
+        "id": "ask_hypertension_antihypertensive_medication"
+      },
+      {
+        "t_sec": 198.0,
+        "id": "exam_inspiratory_stridor_audible_without_stet"
+      },
+      {
+        "t_sec": 214.0,
+        "id": "exam_muffled_voice_quality"
+      },
+      {
+        "t_sec": 230.0,
+        "id": "exam_oropharynx_erythematous_left_tonsil_enla"
+      },
+      {
+        "t_sec": 246.0,
+        "id": "ix_lateral_soft_tissue_neck_x_ray"
+      },
+      {
+        "t_sec": 262.0,
+        "id": "ix_complete_blood_count"
+      },
+      {
+        "t_sec": 278.0,
+        "id": "ix_blood_culture"
+      },
+      {
+        "t_sec": 294.0,
+        "id": "ix_arterial_blood_gas"
+      },
+      {
+        "t_sec": 310.0,
+        "id": "dx_acute_epiglottitis"
+      }
+    ],
+    "win_sec": 360.0,
+    "win_outcome": "win_icu",
+    "golden_score": {
+      "earned": 40,
+      "max": 40,
+      "pass_bps": 7000
+    }
+  },
+  "compiler": {
+    "name": "vitals-casefactory",
+    "version": "0.9.4",
+    "commit": "ccd73727b039"
+  }
+}

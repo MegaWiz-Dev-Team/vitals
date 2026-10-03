@@ -1463,6 +1463,30 @@ pub fn canonical_order(text: &str) -> Option<&'static str> {
     best.map(|(_, v)| v)
 }
 
+/// Names people type for a thing the case knows by another name — each one taken from a real
+/// typed order the ward failed to recognise (eval of 3 Oct 2026, docs/internal/eval). A brand
+/// becomes its generic, a lay phrasing becomes the phrasing the case files use. Engineering
+/// recognition, not a clinical table: every row names the same drug or the same phrase, never a
+/// substitute, and a row is added only from a miss somebody actually typed.
+const PLAIN_NAMES: &[(&str, &str)] = &[
+    ("ventolin", "salbutamol"),
+    ("asthmatic attack", "asthma attack"),
+];
+
+/// `text` with any name in [`PLAIN_NAMES`] replaced by the name the cases use, or `None` if it
+/// carries none. The rest of the order is kept, so "Ventolin NB" becomes "salbutamol NB".
+pub fn plain_names(text: &str) -> Option<String> {
+    let mut t = vitals_sce::text::canon(text).to_lowercase();
+    let mut changed = false;
+    for (said, plain) in PLAIN_NAMES {
+        if t.contains(said) {
+            t = t.replace(said, plain);
+            changed = true;
+        }
+    }
+    changed.then_some(t)
+}
+
 /// Does this reply look like it came back in the language that was asked for?
 ///
 /// A soft check, and only ever used to add a note beside an answer that is shown anyway. The

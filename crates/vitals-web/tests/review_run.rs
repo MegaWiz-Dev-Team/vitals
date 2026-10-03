@@ -357,3 +357,34 @@ fn a_patient_has_a_page_after_the_bed() {
     let (code, _) = s.get("/api/ward/patient/1789528325");
     assert_ne!(code, 401);
 }
+
+/// **An order the case does not model is said back, except a diagnosis** (eval of 3 Oct 2026).
+///
+/// A typed order that matched nothing went on the tape as an empty resolution and the player was
+/// told nothing — "octreotide" in a GI-bleed case simply vanished. The bay now sends its tab, and
+/// the step says which order it could not place. Never in the diagnosis tab: "not recognised"
+/// there would tell the candidate their diagnosis is wrong. And no tab — the Eternal page, an old
+/// client — answers exactly as before.
+#[test]
+fn an_order_the_case_does_not_model_is_said_back_except_a_diagnosis() {
+    let s = Server::start();
+    let mut pack = a_pack();
+    pack["case_id"] = json!("embla-unrecognised-1");
+    pack["rubric"]["case"] = json!("embla-unrecognised-1");
+    assert_eq!(s.post("/api/ward/case", &pack).0, 200);
+    let (_, run) = s.get("/api/new?review=embla-unrecognised-1");
+    let id = run["id"].as_str().expect("a session").to_string();
+
+    let (code, v) = s.get(&format!("/api/step?id={id}&do=octreotide%20infusion&mode=drug"));
+    assert_eq!(code, 200, "{v}");
+    assert_eq!(v["unrecognised"], "octreotide infusion", "the order nobody could place is said back: {v}");
+
+    let (_, v) = s.get(&format!("/api/step?id={id}&do=crystalloid%20fluids&mode=drug"));
+    assert!(v.get("unrecognised").is_none(), "an order the case knows is not reported: {v}");
+
+    let (_, v) = s.get(&format!("/api/step?id={id}&do=some%20wrong%20disease&mode=dx"));
+    assert!(v.get("unrecognised").is_none(), "a diagnosis is never marked by being refused: {v}");
+
+    let (_, v) = s.get(&format!("/api/step?id={id}&do=octreotide"));
+    assert!(v.get("unrecognised").is_none(), "no tab, no change: {v}");
+}

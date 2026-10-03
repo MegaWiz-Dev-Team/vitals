@@ -644,7 +644,18 @@ assert.match(script, /\{id:'drug',\s*label:'drugs'/,
 // sentence to `renderChips`, whose call there is guarded on `#chips` existing. On a surface without
 // chips the box opened and went on promising "press Treat her to start" to somebody thirty seconds
 // into treating her. Both now read the same function.
-const { boxPlaceholder } = new Function([grab('boxPlaceholder'), 'return { boxPlaceholder };'].join('\n'))();
+const { boxPlaceholder } = new Function(['const WARDSURFACE=false;', grabLine('typedDiagnosis'), grab('boxPlaceholder'), 'return { boxPlaceholder };'].join('\n'))();
+// On the ward the diagnosis is typed: the one chip a compiled case carried was the answer.
+const ward = new Function(['const WARDSURFACE=true;', grabLine('typedDiagnosis'), grab('boxPlaceholder'),
+                           'return { boxPlaceholder, typedDiagnosis };'].join('\n'))();
+assert.equal(ward.typedDiagnosis('dx'), true);
+assert.equal(ward.typedDiagnosis('drug'), false);
+assert.match(ward.boxPlaceholder(null, 'dx', 'authored ask', 'authored order', 'her'), /type the diagnosis/i,
+             'the diagnosis tab asks for the diagnosis, since there is no button to press');
+assert.equal(ward.boxPlaceholder('press Treat her to start', 'dx', '', '', 'her'), 'press Treat her to start',
+             'and the refusal still wins');
+assert.equal(boxPlaceholder(null, 'dx', 'authored ask', 'authored order', 'her'), 'authored order',
+             'off the ward a diagnosis row still has its differential to choose from');
 
 assert.equal(boxPlaceholder('press Treat her to start', 'ask', 'authored ask', 'authored order', 'her'),
              'press Treat her to start',

@@ -625,9 +625,20 @@ impl SceState {
     /// playing, writes the answer onto the tape, and replay never has to ask again — which is what
     /// lets recognition get better without changing what an anchored run did.
     pub fn resolve(&self, text: &str) -> Option<String> {
+        self.resolve_where(text, |_| true)
+    }
+
+    /// [`resolve`](Self::resolve), among only the interventions whose id `keep` accepts.
+    ///
+    /// For a caller that knows what kind of thing the learner meant — the ward's diagnosis tab
+    /// means a diagnosis — so a diagnosis typed there cannot be captured by a question or a
+    /// treatment declared earlier that happens to share one of its words ("acute asthmatic
+    /// attack" landing on a history question keyed on "asthma"). Recognition only: the answer
+    /// goes on the tape as an id, so replay never filters anything.
+    pub fn resolve_where(&self, text: &str, keep: impl Fn(&str) -> bool) -> Option<String> {
         let sce_rc = Arc::clone(&self.sce);
         let t = crate::text::canon(text).to_lowercase();
-        self.match_intervention(&sce_rc, &t).map(|i| sce_rc.interventions[i].id.clone())
+        self.match_intervention_where(&sce_rc, &t, &keep).map(|i| sce_rc.interventions[i].id.clone())
     }
 
     /// Apply an intervention the caller has already identified.
@@ -920,12 +931,19 @@ impl SceState {
     }
 
     fn match_intervention(&self, sce: &Sce, text: &str) -> Option<usize> {
+        self.match_intervention_where(sce, text, &|_: &str| true)
+    }
+
+    fn match_intervention_where(&self, sce: &Sce, text: &str, keep: &dyn Fn(&str) -> bool) -> Option<usize> {
         // Both sides canonicalised: the learner may type through an IME, and a case authored in
         // Japanese may carry full-width keywords for the same reason. Comparing raw would make
         // matching depend on which keyboard wrote the case file.
         let t = crate::text::canon(text).to_lowercase();
         let has = |k: &str| t.contains(&crate::text::canon(k).to_lowercase());
         for (i, iv) in sce.interventions.iter().enumerate() {
+            if !keep(&iv.id) {
+                continue;
+            }
             let m = &iv.matcher;
             let has_positive = !m.any_kw.is_empty() || !m.all_groups.is_empty();
             let any_ok = m.any_kw.is_empty() || m.any_kw.iter().any(|k| has(k));
