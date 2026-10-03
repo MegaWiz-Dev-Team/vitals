@@ -1,0 +1,7 @@
+# Findings that are not secrets, each by its exact fingerprint (commit:file:rule:line), so the full-
+# history scan stays strict for everything else. Never add a real key here: rotate it instead.
+#
+# A fixture: the made-up key in the RPC scrubber's test, written at 18:58 ICT on 27 Sep 2026,
+# before the dedicated RPC account (and so any real key) existed. The test needs a key-shaped
+# token to prove the scrubber removes one.
+755c44dbe929fcd0cc7edcf70f72fa61dbbdc85f:crates/vitals-web/tests/rpc_scrub.rs:generic-api-key:12
