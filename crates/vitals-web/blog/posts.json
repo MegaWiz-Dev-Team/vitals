@@ -110,7 +110,9 @@
   "paras": [
    "Day 6. People keep asking what the chain actually does in a medical simulator, so here it is. Each patient is one account on Solana. It holds her state, who has her right now, and one hash: her last shift. That's it. Her chart isn't stored anywhere. When you open her, your browser pulls every shift ever anchored on her, replays the tapes through the same physics engine, and that's the chart. If our server lied, your replay wouldn't match. A shift is four small transactions. Commit (which case, without saying which). TakeShift (a ten-minute lease). You play in the browser, nothing on chain. AnchorShift, one leaf, and it becomes her new head. It carries the head you think you're extending. If someone anchored before you, the program says StaleHead and writes nothing. That rule caught our own demo driver before it caught anyone else. Costs: 10,000 lamports a shift, two signatures. Our relay pays. Nobody makes a wallet. What the chain doesn't do: judge the medicine. That's the rubric, replayable from the tape, shown separately. 32-second walkthrough attached. https://world.vitals.academy/?src=colosseum"
   ],
-  "correction": null
+  "correction": [
+   "Correction, 3 October: we wrote that a shift costs 10,000 lamports. That is the fee for one of its transactions, each signed twice. A shift is three transactions, 30,000 lamports, plus one more the first time a player's account is opened. Our relay pays all of them."
+  ]
  },
  {
   "id": "eternal",
@@ -277,7 +279,9 @@
    "What's next. A security check, an audit, the road to mainnet, and an explanation of how it all works.",
    "Ward: world.vitals.academy · demo (2 min, live product): https://youtu.be/JEoNwBoIqZ0 · weekly update (1 min): https://youtu.be/UONdHIoWkJQ"
   ],
-  "correction": null
+  "correction": [
+   "Correction, 1 October: we put five of these receipts down to a case version replaced on 23 September. The replacement happened, but it was not why they failed: the ward keeps the bytes each shift played, and those were intact. Like the others, they failed because the ward could not yet date the gap before the shift. All of them prove as of 30 September."
+  ]
  },
  {
   "id": 662,
