@@ -48,6 +48,7 @@ needs to prove competence to a residency programme in another country.
   - `crates/vitals-sce`: the physiology engine.
   - `crates/vitals-factory`: the case and patient factory.
   - Gates: `scripts/gates.sh`.
+- **Watch:** [the live ward, 2 min](https://youtu.be/_7uoV7UcClA) · [the pitch, 2 min](https://youtu.be/O6dSxXtzfYk).
 - **Architecture and integrations:** [`docs/WORLD_ARCHITECTURE.md`](https://github.com/MegaWiz-Dev-Team/vitals/blob/cwf/ops/docs/WORLD_ARCHITECTURE.md).
 
 ## 🏆 Traction — Embla's, not Vitals'
