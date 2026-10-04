@@ -25,6 +25,28 @@ pub struct Store {
 /// Both halves earn their place. The percentage keeps a long token from being held to its last
 /// second; the five minutes keep a short one from being held at all, because a token that expires
 /// in the middle of a request is a request that fails for no reason the caller can act on.
+/// One store call slow enough to explain a slow pass.
+///
+/// On 4 Oct, passes stalled for ~15.0 s on one patient at a time, in steps that share nothing but
+/// this store (repair, reap, beds). The chain calls timed themselves and were not it. A call this
+/// slow is named here by its document path, with the token's time apart from the call's.
+pub const SLOW_STORE: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// The log line for one store call that took [`SLOW_STORE`] or longer in all, and `None` under it.
+/// The path is what follows `/documents/`. It carries no secret: the token travels in a header.
+pub fn slow_store_line(url: &str, token: std::time::Duration, call: std::time::Duration, outcome: &str) -> Option<String> {
+    (token + call >= SLOW_STORE).then(|| {
+        let path = url.split_once("/documents/").map_or(url, |(_, p)| p);
+        format!("slow firestore · {path} · token {:.1}s · call {:.1}s · {outcome}", token.as_secs_f64(), call.as_secs_f64())
+    })
+}
+
+fn note_slow_store(url: &str, token: std::time::Duration, call: std::time::Duration, outcome: &str) {
+    if let Some(line) = slow_store_line(url, token, call, outcome) {
+        eprintln!("store      {line}");
+    }
+}
+
 pub fn refresh_after(expires_in: u64) -> std::time::Duration {
     let eighty = expires_in.saturating_mul(4) / 5;
     let five_early = expires_in.saturating_sub(300);
@@ -347,10 +369,21 @@ impl Store {
     /// `map_err(Box::new)` and the 401 branch reads through the box.
     fn with_token<T>(
         &self,
+        url: &str,
         mut run: impl FnMut(&str) -> Result<T, Box<ureq::Error>>,
     ) -> Result<T, String> {
-        let token = self.token()?;
-        match run(&token) {
+        let asked = std::time::Instant::now();
+        let token = self.token();
+        let token_took = asked.elapsed();
+        let token = match token {
+            Ok(t) => t,
+            Err(e) => {
+                note_slow_store(url, token_took, std::time::Duration::ZERO, &format!("token: {e}"));
+                return Err(e);
+            }
+        };
+        let called = std::time::Instant::now();
+        let out = match run(&token) {
             Ok(v) => Ok(v),
             Err(e) if matches!(*e, ureq::Error::Status(401, _)) => {
                 self.tokens.invalidate();
@@ -358,12 +391,15 @@ impl Store {
                 run(&token).map_err(|e| e.to_string())
             }
             Err(e) => Err(e.to_string()),
-        }
+        };
+        let outcome = match &out { Ok(_) => "ok".to_string(), Err(e) => e.clone() };
+        note_slow_store(url, token_took, called.elapsed(), &outcome);
+        out
     }
 
     fn fs_put(&self, url: &str, body: serde_json::Value) -> Result<(), String> {
         // PATCH creates or replaces. POST would refuse the second write to the same id.
-        self.with_token(|tok| {
+        self.with_token(url, |tok| {
             ureq::patch(url)
                 .set("Authorization", &format!("Bearer {tok}"))
                 .send_json(body.clone())
@@ -373,7 +409,7 @@ impl Store {
     }
 
     fn fs_get(&self, url: &str) -> Option<serde_json::Value> {
-        self.with_token(|tok| {
+        self.with_token(url, |tok| {
             ureq::get(url).set("Authorization", &format!("Bearer {tok}")).call().map_err(Box::new)
         })
             .ok()?
@@ -445,7 +481,7 @@ impl Store {
                 // exactly where a token can go stale halfway.
                 // A page that fails ends the list — and says so. It used to end it silently, and on
                 // 29 Sep 2026 a list of large blobs came back short with no trace of why.
-                let r = match self.with_token(|tok| {
+                let r = match self.with_token(&url, |tok| {
                     ureq::get(&url).set("Authorization", &format!("Bearer {tok}")).call().map_err(Box::new)
                 }) {
                     Ok(r) => r,
@@ -588,7 +624,7 @@ impl Store {
     fn sweep_firestore(&self, kind: &str, max_age: std::time::Duration, limit: usize) -> usize {
         let Backend::Firestore { base } = &self.backend else { return 0 };
         let url = format!("{base}/{kind}?pageSize=300");
-        let Ok(r) = self.with_token(|tok| {
+        let Ok(r) = self.with_token(&url, |tok| {
             ureq::get(&url).set("Authorization", &format!("Bearer {tok}")).call().map_err(Box::new)
         }) else {
             return 0;
