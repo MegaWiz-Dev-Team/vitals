@@ -228,9 +228,11 @@ pub fn plan(i: &Inputs) -> Plan {
         }
     }
 
-    // Who is in a bed right now, by country, for the cap.
+    // Who is in a bed right now, by country, for the cap. A resting patient is not counted
+    // ([`crate::door::BoardPatient::is_resting`]): she can hold her bed for days, and counting her
+    // kept the largest need in the pool out for eleven (Niger, 23 Sep – 4 Oct).
     let mut in_beds: BTreeMap<String, usize> = BTreeMap::new();
-    for p in i.ward.open() {
+    for p in i.ward.open().filter(|p| !p.is_resting()) {
         if let Some(c) = &p.country {
             *in_beds.entry(c.clone()).or_default() += 1;
         }

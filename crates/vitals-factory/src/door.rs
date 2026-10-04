@@ -158,6 +158,13 @@ impl BoardPatient {
     pub fn is_open(&self) -> bool {
         matches!(self.state.as_str(), "on_ward" | "on_shift")
     }
+    /// Is she resting? Handed over by a stranger, and her case no longer finishes her inside the
+    /// ward's horizon, so she can hold the bed for days, waiting for the next one. Niger's patient
+    /// held bed 1 from 23 Sep to 4 Oct like this. The country cap is about who arrives, and a
+    /// resting patient is not arriving.
+    pub fn is_resting(&self) -> bool {
+        self.state == "on_ward" && self.handed_over.is_some() && self.closes_in_hours.is_none()
+    }
     /// The case the bed holds: `case`, the one name the board gives it.
     pub fn case_held(&self) -> Option<&str> {
         self.case.as_deref()
