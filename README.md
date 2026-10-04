@@ -46,11 +46,17 @@ needs to prove competence to a residency programme in another country.
   - `crates/vitals-sce`: the physiology engine.
   - `crates/vitals-factory`: the case and patient factory.
   - Gates: `scripts/gates.sh`.
+- **Watch:** [the live ward, 2 min](https://youtu.be/_7uoV7UcClA) · [the pitch, 2 min](https://youtu.be/O6dSxXtzfYk).
 - **Architecture and integrations:** [`docs/WORLD_ARCHITECTURE.md`](https://github.com/MegaWiz-Dev-Team/vitals/blob/cwf/ops/docs/WORLD_ARCHITECTURE.md).
 
 ## Watch it run
 
-- **[One shift, end to end](https://youtu.be/JEoNwBoIqZ0)** · 2 min — the live ward on
+- **[The live ward, end to end](https://youtu.be/_7uoV7UcClA)** · 2 min, 4 Oct 2026. The ward and
+  the globe, a shift taken (staging, labelled), the graded grader, a hand-over and its receipt,
+  "346 of 346" shifts rebuilt (read 4 Oct, 09:34 ICT), and the relay's runway. Narration is an AI
+  voice (ElevenLabs).
+- **[Who we are and why](https://youtu.be/O6dSxXtzfYk)** · 2 min. The founder's pitch.
+- **[One shift, end to end](https://youtu.be/JEoNwBoIqZ0)** · 2 min, an earlier cut. The live ward on
   [world.vitals.academy](https://world.vitals.academy), recorded 25 Sep 2026: the globe, a bed, the
   questions and the orders, the hand-over, the receipt, the devnet transaction it made, and a second
   stranger picking the same bed up from the chain. Every press is a real gesture on the page; no
