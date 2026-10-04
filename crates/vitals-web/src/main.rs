@@ -2984,6 +2984,26 @@ static LAST_BOARD_READ_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::Ato
 /// and two passes closing the same patient would anchor a closing shift twice. Held through
 /// `rebuild::take`, so a pass that panics gives it back.
 static TICKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// When the last `POST /api/ward/tick` arrived, in unix seconds; 0 if none has since boot.
+///
+/// The scheduler's tick holds its request open for the whole pass, so the pass runs with the
+/// instance's CPU. The in-process ticker runs a pass with no request open, and on Cloud Run that
+/// is a pass on a throttled CPU: per-patient work went from ~35 ms to ~700 ms and passes from
+/// 15–40 s to 5–7 minutes, while the scheduler's own tick, arriving mid-pass, was refused 409 —
+/// 202 times in 33 hours (3 Oct 2026). So the in-process ticker is now the fallback it was meant
+/// to be: it runs only when no scheduled tick has arrived for [`SELF_TICK_AFTER`].
+static LAST_SCHEDULED_TICK: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// How long without a scheduled tick before the ward ticks itself. Two and a half minutes: one
+/// missed scheduler minute is not an outage, and the watcher reads a stale board at fifteen.
+const SELF_TICK_AFTER: u64 = 150;
+
+/// Whether the in-process ticker should run a pass now — only as the fallback for a ward no
+/// scheduler is driving (a laptop, staging, or a scheduler that stopped).
+fn self_tick_due(now: u64, last_scheduled: u64) -> bool {
+    last_scheduled == 0 || now.saturating_sub(last_scheduled) >= SELF_TICK_AFTER
+}
 /// The session sweep runs once per process, after the first pass's repair — whichever caller ran
 /// that pass. A flag rather than a local in the thread, so a scheduler that always wins the gate
 /// does not leave the sweep never run.
@@ -4209,6 +4229,11 @@ fn main() {
             let mut last_trouble = String::new();
             loop {
                 std::thread::sleep(WARD_TICK);
+                // A scheduler is driving the ward: its tick runs the pass with the CPU its request
+                // holds. Ticking here as well raced it and lost the CPU (see LAST_SCHEDULED_TICK).
+                if !self_tick_due(now_secs(), LAST_SCHEDULED_TICK.load(std::sync::atomic::Ordering::Relaxed)) {
+                    continue;
+                }
                 // The one pass, shared with `POST /api/ward/tick`. `None` means a scheduler's
                 // request holds the gate this minute, which is the pass happening — not a fault.
                 match one_pass(&store, &root) {
@@ -6604,6 +6629,7 @@ fn main() {
                 continue;
             }
             (Method::Post, "/api/ward/tick") => {
+                LAST_SCHEDULED_TICK.store(now_secs(), std::sync::atomic::Ordering::Relaxed);
                 if !ward_mode() {
                     let _ = send_hardened(req, json_code(serde_json::json!({
                         "ward": "not on this host",
@@ -10031,6 +10057,16 @@ mod tests {
 
         // Nobody understood it: still the empty answer the tape is entitled to.
         assert_eq!(resolve_order(&ep1, "ยาหอมสักซอง"), "");
+    }
+
+    /// **The in-process ticker steps aside while a scheduler drives the ward** (3 Oct 2026: its
+    /// passes ran on a throttled CPU for 5–7 minutes while the scheduler's tick was refused 409).
+    #[test]
+    fn the_ward_ticks_itself_only_when_no_scheduler_has() {
+        assert!(self_tick_due(1_000, 0), "no scheduled tick since boot: tick ourselves");
+        assert!(!self_tick_due(1_000, 990), "a tick ten seconds ago: the scheduler has this minute");
+        assert!(!self_tick_due(1_000, 1_000 - SELF_TICK_AFTER + 1));
+        assert!(self_tick_due(1_000, 1_000 - SELF_TICK_AFTER), "a scheduler silent this long is a scheduler gone");
     }
 
     /// A compiled ward pack, as the door keeps it, made into a playable state.
