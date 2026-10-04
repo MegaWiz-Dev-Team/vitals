@@ -5971,6 +5971,24 @@ fn main() {
                 v["anchored"] = serde_json::json!(t.leaves.len());
                 v["tree_id"] = serde_json::json!(t.tree_id);
                 v["connected"] = serde_json::json!(chain.is_some());
+                // The ward pays for admissions, which a player's run never does — and they are
+                // almost all of what it spends. Quoted as days at the ward's own arrival clock,
+                // with the measured costs beside it so the division can be checked.
+                if ward_mode() {
+                    if let Some(l) = v["relay"]["lamports"].as_u64() {
+                        let every = ward::arrival_minutes();
+                        if let Some((per_day, days)) = fuel::ward_runway(l, every) {
+                            v["relay"]["ward_runway"] = serde_json::json!({
+                                "days_left": days,
+                                "lamports_per_day": per_day,
+                                "lamports_per_admission": fuel::WARD_ADMISSION_LAMPORTS,
+                                "lamports_per_closing": fuel::WARD_CLOSURE_LAMPORTS,
+                                "admits_every_minutes": every,
+                                "measured": "3 Oct 2026, the relay's last 200 transactions on devnet",
+                            });
+                        }
+                    }
+                }
                 json(v)
             }
             // The treasury page, always — no env var in this handler, so there is nothing to

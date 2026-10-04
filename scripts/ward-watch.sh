@@ -9,8 +9,9 @@
 # when the set of alerts *changes* — a stuck alert is said once, and its clearing is said once too.
 #
 # The checks, and why each is one:
-#   relay      the relay pays every anchor; empty, and nobody can hand over (devnet play money now,
-#              real money on mainnet). Alert under WATCH_MIN_RUNS runs left (default 5000).
+#   relay      the relay pays every admission and anchor; empty, and nobody can hand over (devnet
+#              play money now, real money on mainnet). Alert under WATCH_MIN_DAYS days of ward left
+#              (default 14) — or, from a server that reports no days, WATCH_MIN_RUNS runs (5000).
 #   board      the pass re-keeps the board; a board older than WATCH_BOARD_MAX_SECS (default 900)
 #              means the ward stopped moving — 28 Sep 2026 it sat 12+ minutes old while passes died.
 #   queue      the patient factory keeps the queue full; fewer than WATCH_MIN_QUEUE waiting (default 3)
@@ -41,6 +42,7 @@ esac
 export CLOUDSDK_ACTIVE_CONFIG_NAME="$CONFIG"
 
 MIN_RUNS="${WATCH_MIN_RUNS:-5000}"
+MIN_DAYS="${WATCH_MIN_DAYS:-14}"
 BOARD_MAX="${WATCH_BOARD_MAX_SECS:-900}"
 MIN_QUEUE="${WATCH_MIN_QUEUE:-3}"
 WINDOW="${WATCH_WINDOW_MINS:-30}"
@@ -60,10 +62,18 @@ say() { printf '%-8s %-6s %s\n' "$1" "$2" "$3"; [ "$2" = ALERT ] && ALERTS+=("$1
 
 # ── the ward's own public answers ────────────────────────────────────────────
 FUEL="$(curl -s -m 60 "$WARD/api/fuel" 2>/dev/null)"
-RUNS="$(printf '%s' "$FUEL" | python3 -c 'import json,sys
-try: print(json.load(sys.stdin)["relay"]["runs_left"])
-except Exception: print("")' 2>/dev/null)"
-if [ -z "$RUNS" ]; then say relay ALERT "the relay balance could not be read from /api/fuel"
+# Days at the ward's own pace when the ward reports them (4 Oct 2026): runs_left divides by a
+# player's run and never counted the admissions, ~99 % of what the ward's relay spends, so it said
+# ~50× too much and this alert would have fired after the relay was already empty.
+read -r DAYS RUNS <<<"$(printf '%s' "$FUEL" | python3 -c 'import json,sys
+try:
+    r=json.load(sys.stdin)["relay"]; w=r.get("ward_runway") or {}
+    print(w.get("days_left","-"), r.get("runs_left","-"))
+except Exception: print("- -")' 2>/dev/null)"
+if [ "$DAYS" != "-" ] && [ -n "$DAYS" ]; then
+  if [ "$DAYS" -lt "$MIN_DAYS" ]; then say relay ALERT "$DAYS days of ward left (under $MIN_DAYS) — refill the relay"
+  else say relay ok "$DAYS days of ward left"; fi
+elif [ "$RUNS" = "-" ] || [ -z "$RUNS" ]; then say relay ALERT "the relay balance could not be read from /api/fuel"
 elif [ "$RUNS" -lt "$MIN_RUNS" ]; then say relay ALERT "$RUNS runs left (under $MIN_RUNS) — refill the relay"
 else say relay ok "$RUNS runs left"; fi
 

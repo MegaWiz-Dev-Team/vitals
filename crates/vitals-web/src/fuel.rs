@@ -47,6 +47,31 @@ pub const LAMPORTS_PER_RUN: u64 = FEE_LAMPORTS_PER_TX * TX_PER_RUN;
 
 const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
 
+/// What the ward's own relay spends to admit one patient: the account her chart lives in, rent and
+/// fee. **Measured** on devnet, 3 Oct 2026, from the relay's last 200 transactions: every admission
+/// moved exactly 1,493,440 lamports out of the relay (1,488,440 rent-exempt deposit + 5,000 fee).
+/// `runs_left` divides by a player's run and never saw this — and on the ward it is ~99 % of the
+/// spend, which made the quoted runway about fifty times too long.
+pub const WARD_ADMISSION_LAMPORTS: u64 = 1_493_440;
+
+/// What closing that patient's shift costs when the ward closes it itself: three transactions,
+/// one signature each, 5,000 lamports a signature. Measured with the admission above.
+pub const WARD_CLOSURE_LAMPORTS: u64 = 15_000;
+
+/// The ward's runway at the arrival clock it is running: lamports a day, and whole days left.
+///
+/// One admission and one closing per arrival — the ward's own floor. A stranger's shift costs a
+/// little more than the ward's closing (two signatures, not one), so a busier ward runs out a
+/// little sooner than this says; the figure is labelled as the ward's own rate for that reason.
+/// `None` when the ward admits nobody (`arrival_minutes` 0): no clock, no runway to quote.
+pub fn ward_runway(lamports: u64, arrival_minutes: u64) -> Option<(u64, u64)> {
+    if arrival_minutes == 0 {
+        return None;
+    }
+    let per_day = (24 * 60 / arrival_minutes).max(1) * (WARD_ADMISSION_LAMPORTS + WARD_CLOSURE_LAMPORTS);
+    Some((per_day, lamports / per_day))
+}
+
 /// The treasury the donate page prints, QRs and links to the explorer.
 pub const TREASURY: &str = "9FJRwWnTNQXB9ff5SSmQKytCdVYqTQQPUz1b4zX9mt8y";
 
@@ -478,6 +503,19 @@ mod tests {
         assert_eq!(FEE_LAMPORTS_PER_TX, 10_000);
         assert_eq!(TX_PER_RUN, 3);
         assert_eq!(LAMPORTS_PER_RUN, 30_000);
+    }
+
+    /// **The ward's runway counts what the ward actually spends** (3 Oct 2026: runs_left said
+    /// 62,044 runs for a relay that, admitting a patient an hour, lasts about seven weeks).
+    #[test]
+    fn the_ward_runway_counts_the_admissions_the_relay_pays_for() {
+        // The measured day: 24 admissions and 24 closings.
+        let (per_day, days) = ward_runway(1_861_325_493, 60).expect("a clock");
+        assert_eq!(per_day, 24 * (1_493_440 + 15_000));
+        assert_eq!(days, 51, "the 3 Oct relay, at one patient an hour");
+        assert!(ward_runway(1_861_325_493, 0).is_none(), "no arrivals, no runway to quote");
+        // Floor, never rounded up: a day it cannot pay for is not a day.
+        assert_eq!(ward_runway(per_day - 1, 60).unwrap().1, 0);
     }
 
     #[test]

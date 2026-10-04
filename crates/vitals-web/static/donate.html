@@ -2626,6 +2626,19 @@ var qrcode = function() {
     /* 2 · the relay's fuel, and the runs it buys at a divisor printed in full. */
     if(typeof r.lamports==='number'){
       set('fRelay',r.sol,'SOL in the fee relay, on '+esc(r.cluster||'?'));
+      /* On the ward the relay also pays to admit every patient, which a player's run never does —
+         and admissions are nearly all of what it spends. So the ward leads with days at its own
+         arrival clock, divisor printed; a runs figure alone said ~50× too much (3 Oct 2026). */
+      const w=r.ward_runway;
+      if(w){
+        $('fRelayWhy').innerHTML='<strong>\u2248 '+num(w.days_left)+' more days of the ward at its current pace.</strong> '+
+          'One patient every '+num(w.admits_every_minutes)+' minutes, and each one costs the relay '+num(w.lamports_per_admission)+
+          ' lamports to admit (her chart\u2019s account, rent and fee) and '+num(w.lamports_per_closing)+' to close: '+
+          num(w.lamports_per_day)+' lamports a day. Measured '+esc(w.measured)+'. A busier ward spends a little more. '+
+          'Exact balance '+num(r.lamports)+' lamports.'+
+          (r.address?'<br><span class="mono">'+esc(r.address)+'</span> '+
+            (r.explorer?'\u00b7 '+link(r.explorer,'verify on the explorer'):''):'');
+      } else
       $('fRelayWhy').innerHTML='<strong>\u2248 '+num(r.runs_left)+' more runs can be recorded.</strong> '+
         'Divided at '+num(c.lamports_per_run)+' lamports per run: '+num(c.fee_lamports_per_tx)+
         ' lamports a transaction \u00d7 '+c.tx_per_run+' transactions (anchor, prove, and opening a '+

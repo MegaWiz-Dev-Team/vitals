@@ -10,7 +10,8 @@ cat > "$WORK/bin/curl" <<'STUB'
 #!/usr/bin/env bash
 for a in "$@"; do case "$a" in *hook-secret*) echo "$a" >> "$STUB_ARGV_LEAK" ;; esac; done
 case "$*" in
-  *api/fuel*) printf '{"relay":{"runs_left":%s}}' "${STUB_RUNS:-65000}" ;;
+  *api/fuel*) if [ -n "${STUB_DAYS:-}" ]; then printf '{"relay":{"runs_left":%s,"ward_runway":{"days_left":%s}}}' "${STUB_RUNS:-65000}" "$STUB_DAYS"
+              else printf '{"relay":{"runs_left":%s}}' "${STUB_RUNS:-65000}"; fi ;;
   *api/ward*) [ "${STUB_BOARD_DOWN:-0}" = 1 ] && exit 0
               printf '{"board":{"kept_at":%s},"queue":{"door":"open","waiting":%s}}' "${STUB_KEPT:-1000000}" "${STUB_WAITING:-20}" ;;
   *) cat > /dev/null; echo "posted" >> "$STUB_POSTS" ;;
@@ -79,6 +80,13 @@ printf 'https://hooks.example/hook-secret-from-file\n' > "$WORK/state/webhook.ur
 out="$(run STUB_RUNS=10 -- staging)"; rm -f "$WORK/state/webhook.url"
 [ -s "$WORK/posts" ] && [ ! -s "$WORK/leak" ] \
   && ok "a webhook kept in the state dir's file is used, and never appears in an argument" || bad "file webhook posted=$(cat "$WORK/posts" 2>/dev/null) leak=$(cat "$WORK/leak" 2>/dev/null)"
+
+rm -f "$WORK/state/production.alerts"
+out="$(run STUB_DAYS=51 STUB_RUNS=62000 -- production)"
+printf '%s' "$out" | grep -q "relay    ok     51 days of ward left" && ok "days of ward are read when the ward reports them" || bad "days not read: $out"
+out="$(run STUB_DAYS=9 STUB_RUNS=62000 -- production)"
+printf '%s' "$out" | grep -q "relay    ALERT  9 days of ward left" \
+  && ok "under fourteen days is an alert even while runs_left still looks huge" || bad "low days missed: $out"
 
 out="$(run -- prod)"; rc=$?
 [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q refusing && ok "an unknown target is refused" || bad "unknown target accepted: $out"
