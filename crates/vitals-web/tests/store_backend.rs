@@ -129,3 +129,25 @@ fn a_slow_store_call_is_named_by_its_path_and_split_into_token_and_call() {
         "slow firestore · tapes?pageSize=300 · token 15.0s · call 0.0s · token: timed out"
     );
 }
+
+/// 00080 kept every DNS answer and the stalls stayed: every one a Firestore call of exactly
+/// 15.0 s that answered in the end, no slow lookup logged. That is a connection being opened slowly,
+/// the shape of a lost SYN being sent again at 1, 3, 7 and 15 s. Each attempt to connect now has
+/// three seconds, and a call that fails to connect is tried again. Nothing was sent, so a write is
+/// as safe to repeat as a read. Any other failure is not retried. The worst case is no longer
+/// than what it replaces.
+#[test]
+fn a_call_that_fails_to_connect_is_tried_again_and_nothing_else_is() {
+    use vitals_web::store::{retry_connect, CONNECT_TRIES, CONNECT_WITHIN};
+    #[derive(Debug, PartialEq)]
+    enum E { Connect, Status }
+    let connect = |e: &E| *e == E::Connect;
+    let mut left = 2;
+    let (r, n) = retry_connect(CONNECT_TRIES, connect, || if left > 0 { left -= 1; Err(E::Connect) } else { Ok(7) });
+    assert_eq!((r, n), (Ok(7), 3), "two failed connects, then the answer");
+    let (r, n) = retry_connect(CONNECT_TRIES, connect, || Err::<u8, _>(E::Status));
+    assert_eq!((r, n), (Err(E::Status), 1), "an answer that is a failure is not asked twice");
+    let (r, n) = retry_connect(CONNECT_TRIES, connect, || Err::<u8, _>(E::Connect));
+    assert_eq!((r, n), (Err(E::Connect), CONNECT_TRIES), "and it stops");
+    assert!(CONNECT_WITHIN * CONNECT_TRIES as u32 <= std::time::Duration::from_secs(15), "never slower than the stall it replaces");
+}
