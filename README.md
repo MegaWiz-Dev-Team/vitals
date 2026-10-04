@@ -24,6 +24,31 @@ needs to prove competence to a residency programme in another country.
 
 ---
 
+## Vitals World: the Crypto World's Fair 2026 entry
+
+> **Start here if you came from the Crypto World's Fair.** The ward at
+> [world.vitals.academy](https://world.vitals.academy) is built on the **`cwf/*` branches**;
+> [`cwf/ops`](https://github.com/MegaWiz-Dev-Team/vitals/tree/cwf/ops) is the one deployed. They sit on top of the tag
+> [`cwf-start`](https://github.com/MegaWiz-Dev-Team/vitals/tree/cwf-start) (05a0ad7, 11 Sep 2026). Everything
+> before that tag is prior work: the single-player game described below, which was our Colosseum Eternal entry.
+
+- **What it is:** a public ward of simulated patients on Solana devnet.
+  - Patients arrive on a clock, drawn by each country's people per doctor.
+  - Anyone can take a shift in the browser, with no signup and no wallet.
+  - Each hand-over anchors a leaf that must extend the patient's head.
+  - The ward's own key anchors the deaths nobody attended.
+- **Read it yourself** (all public GETs on world.vitals.academy):
+  - `/api/ward`: the census and the patients, with how each number is derived.
+  - `/api/ward/patient/<id>`: one patient's shifts and their signers.
+  - `/api/shift/<hash>`: a receipt.
+  - `/api/tape/<hash>`: the bytes a shift played. Replay them against the case's scenario with `vitals-replay` and the leaf must come out as that hash.
+- **Code (on `cwf/ops`):**
+  - `crates/vitals-program`: the Solana program, native `solana-program`.
+  - `crates/vitals-web`: the ward server and its pages.
+  - `crates/vitals-sce`: the physiology engine.
+  - `crates/vitals-factory`: the case and patient factory.
+  - Gates: `scripts/gates.sh`.
+
 ## 🏆 Traction — Embla's, not Vitals'
 
 Vitals started on 2026-08-22. Every figure in this section belongs to **Embla**, the clinical
