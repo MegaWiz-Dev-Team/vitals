@@ -2633,7 +2633,7 @@ var qrcode = function() {
       if(w){
         $('fRelayWhy').innerHTML='<strong>\u2248 '+num(w.days_left)+' more days of the ward at its current pace.</strong> '+
           'One patient every '+num(w.admits_every_minutes)+' minutes, and each one costs the relay '+num(w.lamports_per_admission)+
-          ' lamports to admit (her chart\u2019s account, rent and fee) and '+num(w.lamports_per_closing)+' to close: '+
+          ' lamports to admit (the patient\u2019s chart account: rent and fee) and '+num(w.lamports_per_closing)+' to close: '+
           num(w.lamports_per_day)+' lamports a day. Measured '+esc(w.measured)+'. A busier ward spends a little more. '+
           'Exact balance '+num(r.lamports)+' lamports.'+
           (r.address?'<br><span class="mono">'+esc(r.address)+'</span> '+
