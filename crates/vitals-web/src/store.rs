@@ -65,11 +65,46 @@ impl ureq::Resolver for KeptDns {
     }
 }
 
-/// The store's one HTTP agent. It looks hosts up through [`KeptDns`] and, as before, keeps no
-/// connection between calls: a write is never sent down a socket the server may have closed.
+/// The store's one HTTP agent. It looks hosts up through [`KeptDns`], gives each attempt to open a
+/// connection [`CONNECT_WITHIN`], and, as before, keeps no connection between calls: a write is
+/// never sent down a socket the server may have closed.
 fn http() -> &'static ureq::Agent {
     static AGENT: std::sync::OnceLock<ureq::Agent> = std::sync::OnceLock::new();
-    AGENT.get_or_init(|| ureq::AgentBuilder::new().resolver(KeptDns).max_idle_connections(0).build())
+    AGENT.get_or_init(|| {
+        ureq::AgentBuilder::new().resolver(KeptDns).timeout_connect(CONNECT_WITHIN).max_idle_connections(0).build()
+    })
+}
+
+/// How long one attempt to open a connection may take.
+///
+/// On 4 Oct the store's stalls were all exactly 15.0 s and all answered in the end, after DNS was
+/// kept (00080) — a connection opened slowly, as when a lost SYN is sent again at 1, 3, 7 and 15 s.
+/// Three seconds and a fresh attempt beats waiting for the fourth resend.
+pub const CONNECT_WITHIN: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// Attempts a call gets to connect. Five times three seconds is the fifteen it replaces, at worst.
+pub const CONNECT_TRIES: usize = 5;
+
+/// `run` again while it fails to connect, up to `tries` times in all, and how many it took.
+///
+/// A connection that never opened has sent nothing, so a write is as safe to repeat as a read.
+/// Anything else (a status, a reset after sending) is returned as it is.
+pub fn retry_connect<T, E>(tries: usize, failed_to_connect: impl Fn(&E) -> bool, mut run: impl FnMut() -> Result<T, E>) -> (Result<T, E>, usize) {
+    let mut n = 0;
+    loop {
+        n += 1;
+        let r = run();
+        match &r {
+            Err(e) if n < tries && failed_to_connect(e) => continue,
+            _ => return (r, n),
+        }
+    }
+}
+
+/// Did this call fail before a connection opened?
+#[allow(clippy::borrowed_box)] // the store's errors are boxed (see `with_token`); this reads one where it is
+fn failed_to_connect(e: &Box<ureq::Error>) -> bool {
+    matches!(&**e, ureq::Error::Transport(t) if t.kind() == ureq::ErrorKind::ConnectionFailed)
 }
 
 /// One store call slow enough to explain a slow pass.
@@ -430,7 +465,12 @@ impl Store {
             }
         };
         let called = std::time::Instant::now();
-        let out = match run(&token) {
+        let (first, tries) = retry_connect(CONNECT_TRIES, failed_to_connect, || run(&token));
+        if tries > 1 {
+            let path = url.split_once("/documents/").map_or(url, |(_, p)| p);
+            eprintln!("store      connect tried {tries} times · {path} · {:.1}s", called.elapsed().as_secs_f64());
+        }
+        let out = match first {
             Ok(v) => Ok(v),
             Err(e) if matches!(*e, ureq::Error::Status(401, _)) => {
                 self.tokens.invalidate();
