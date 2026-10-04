@@ -2396,3 +2396,21 @@ fn a_slow_pass_says_how_long_it_waited_on_the_chain() {
     assert_eq!(rpc_line(0, Duration::ZERO, Duration::ZERO), "rpc none",
                "a pass that asked the chain nothing says so");
 }
+
+/// Three times on 4 Oct a production pass took 75–122 s with one patient at about 15.0 s inside
+/// the repair, and no line said which chain call it was or whether it answered. A call that slow
+/// is now named in the log. Its error goes through the scrub, because a dedicated RPC's url is a
+/// key, and the solana client quotes it in every transport error.
+#[test]
+fn a_slow_chain_call_is_named_and_its_error_never_carries_the_key() {
+    use std::time::Duration;
+    use vitals_web::ward_chain::{slow_rpc_line, SLOW_RPC};
+    assert_eq!(slow_rpc_line("getTransaction", 7, SLOW_RPC - Duration::from_millis(1), None), None,
+               "under the threshold nothing is said");
+    let line = slow_rpc_line("getSignaturesForAddress", 1790136001, Duration::from_millis(15_063), None).unwrap();
+    assert_eq!(line, "slow rpc · getSignaturesForAddress for patient 1790136001 · 15.1s · answered");
+    let failed = slow_rpc_line("getTransaction", 7, Duration::from_millis(15_034),
+        Some("HTTP status client error (429 Too Many Requests) for url (https://rpc.example.com/?api-key=0123456789abcdef0123)")).unwrap();
+    assert!(failed.starts_with("slow rpc · getTransaction for patient 7 · 15.0s · failed: HTTP status client error (429"), "{failed}");
+    assert!(!failed.contains("0123456789abcdef0123"), "the key is scrubbed: {failed}");
+}
