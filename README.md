@@ -46,6 +46,7 @@ needs to prove competence to a residency programme in another country.
   - `crates/vitals-sce`: the physiology engine.
   - `crates/vitals-factory`: the case and patient factory.
   - Gates: `scripts/gates.sh`.
+- **Architecture and integrations:** [`docs/WORLD_ARCHITECTURE.md`](https://github.com/MegaWiz-Dev-Team/vitals/blob/cwf/ops/docs/WORLD_ARCHITECTURE.md).
 
 ## Watch it run
 
