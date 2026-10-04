@@ -53,4 +53,7 @@ pub fn is_read_only(method: &str, path: &str) -> bool {
     // The guide's own pictures: a closed set inside the server, so this prefix cannot reach
     // anything the server does not already refuse.
     path.starts_with("/start/img/")
+        // A shift's receipt: reads the store and the chain, writes only the chain-derived shift
+        // cache. Served beside the pass, because the writing loop answered them one at a time.
+        || path.starts_with("/shift/")
 }

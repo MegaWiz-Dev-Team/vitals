@@ -3429,6 +3429,17 @@ fn read_response(
     usage: &Arc<Mutex<usage::Usage>>,
     token: &Option<String>,
 ) -> Option<Response<std::io::Cursor<Vec<u8>>>> {
+    // A receipt, beside the pass rather than behind every write (4 Oct 2026). On the writing loop
+    // receipts were answered one at a time and behind any order: five read at once on staging had
+    // a p90 of 21 s, twenty a p90 of 34 s, with four reader threads idle. Building one reads the
+    // store and the chain; its one write is the shift cache, which it refreshes from the chain, so
+    // two readers writing it write the same chain-derived rows.
+    if path.starts_with("/shift/") {
+        let hash = path.trim_start_matches("/shift/");
+        let answer = ward_receipt(store, hash);
+        let board = answer["error"].is_string().then(|| ward_now(view, store, state));
+        return Some(html(&receipt_page(&answer, &board.unwrap_or(serde_json::Value::Null))));
+    }
     match path {
         "/api/ward" => {
             // **A slow read, made askable for.** The board's first read on a cold instance goes to

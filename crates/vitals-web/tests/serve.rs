@@ -15,6 +15,11 @@ fn only_the_routes_that_change_nothing_leave_the_writing_loop() {
     for read in ["/api/ward", "/api/usage", "/review", "/privacy", "/stats", "/start", "/start/"] {
         assert!(is_read_only("GET", read), "{read} changes nothing and may be served off the loop");
     }
+    // A shift's receipt (4 Oct 2026): it reads the store and the chain and writes only the shift
+    // cache it refreshed from the chain. On the writing loop five at once had a p90 of 21 s.
+    assert!(is_read_only("GET", "/shift/8640569c44d5073ae7c09bd2b1d6ce248cfb69f3762a873be28b8c152c05775a"),
+            "a receipt is read beside the pass");
+    assert!(!is_read_only("POST", "/shift/8640569c"), "and only a GET of one");
     // The files those pages pull.
     for asset in ["/bay.css", "/bay.js", "/favicon.ico", "/world/favicon.svg",
                   "/world/apple-touch-icon.png", "/start/img/01-globe.jpg",
