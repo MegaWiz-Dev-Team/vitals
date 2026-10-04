@@ -380,17 +380,17 @@ impl WardChain {
         }
         let pda = self.patient_pda(patient_id);
         let until = seen.until().and_then(|s| Signature::from_str(&s).ok());
-        let sigs = self
-            .rpc
-            .get_signatures_for_address_with_config(
-                &pda,
-                GetConfirmedSignaturesForAddress2Config {
-                    until,
-                    commitment: Some(CommitmentConfig::confirmed()),
-                    ..GetConfirmedSignaturesForAddress2Config::default()
-                },
-            )
-            .map_err(why)?;
+        let asked = std::time::Instant::now();
+        let sigs = self.rpc.get_signatures_for_address_with_config(
+            &pda,
+            GetConfirmedSignaturesForAddress2Config {
+                until,
+                commitment: Some(CommitmentConfig::confirmed()),
+                ..GetConfirmedSignaturesForAddress2Config::default()
+            },
+        );
+        note_slow_rpc("getSignaturesForAddress", patient_id, asked, &sigs);
+        let sigs = sigs.map_err(why)?;
 
         // Every slot this answer names, dated by the answer that named it. The listing carries a
         // block time beside each signature, and these are exactly the slots a receipt has to put a
@@ -414,10 +414,10 @@ impl WardChain {
         let mut signatures: std::collections::BTreeMap<u64, String> = Default::default();
         let (shifts, cursor, trouble) = Seen::walk(page, budget, |sig, slot| {
             let parsed = Signature::from_str(sig).map_err(|e| format!("{sig} is not a signature: {e}"))?;
-            let tx = self
-                .rpc
-                .get_transaction(&parsed, UiTransactionEncoding::Base64)
-                .map_err(why)?;
+            let asked = std::time::Instant::now();
+            let tx = self.rpc.get_transaction(&parsed, UiTransactionEncoding::Base64);
+            note_slow_rpc("getTransaction", patient_id, asked, &tx);
+            let tx = tx.map_err(why)?;
             // The same fact from the other side: a listing that came back without a time for this
             // slot may still be answered by the transaction itself.
             learn_slot_times(store, &[(tx.slot, tx.block_time)]);
@@ -2071,6 +2071,29 @@ pub fn tick_response(ran: Option<Ticked>, took: std::time::Duration) -> (u16, se
 ///
 /// Every minute on a ward that is usually quiet, so a line per pass is a line nobody reads.
 pub const SLOW_PASS: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// One chain call slow enough to explain a slow pass.
+///
+/// Three times on 4 Oct a production pass took 75–122 s, and each time one patient sat at about
+/// 15.0 s inside the repair. The pass line could not say which call it was or whether it was ever
+/// answered. Named here, with the error scrubbed: a dedicated RPC's url is a key.
+pub const SLOW_RPC: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// The log line for one chain call that took [`SLOW_RPC`] or longer, and `None` under it.
+pub fn slow_rpc_line(method: &str, patient_id: u64, took: std::time::Duration, failed: Option<&str>) -> Option<String> {
+    (took >= SLOW_RPC).then(|| {
+        let how = failed.map_or_else(|| "answered".to_string(), |e| format!("failed: {}", crate::rpc_scrub::scrub(e)));
+        format!("slow rpc · {method} for patient {patient_id} · {:.1}s · {how}", took.as_secs_f64())
+    })
+}
+
+/// Say [`slow_rpc_line`] in the log, when there is anything to say.
+fn note_slow_rpc<T>(method: &str, patient_id: u64, asked: std::time::Instant, answer: &Result<T, RpcError>) {
+    let failed = answer.as_ref().err().map(|e| e.to_string());
+    if let Some(line) = slow_rpc_line(method, patient_id, asked.elapsed(), failed.as_deref()) {
+        eprintln!("ward       {line}");
+    }
+}
 
 /// How a pass's time was spread across the patients it walked.
 ///
