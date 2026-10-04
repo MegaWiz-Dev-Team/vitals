@@ -681,6 +681,19 @@ impl Store {
 mod tests {
     use super::*;
 
+    /// On 4 Oct 00079 showed every stalled store call at 15.0 s with the token fast and the call
+    /// slow, across reads and writes of every kind. Each `ureq::get` built a new agent, so every
+    /// call looked its host up again. The store's agent now keeps an answer for a few minutes.
+    #[test]
+    fn a_host_is_looked_up_once_and_kept() {
+        use ureq::Resolver;
+        let first = KeptDns.resolve("127.0.0.1:443").unwrap();
+        let again = KeptDns.resolve("127.0.0.1:443").unwrap();
+        assert_eq!(first, again);
+        let kept = kept_dns().lock().unwrap_or_else(|e| e.into_inner());
+        assert!(kept.get("127.0.0.1:443").is_some_and(|(at, a)| at.elapsed() < DNS_KEEP && a == &first));
+    }
+
     fn tmp(name: &str) -> PathBuf {
         // Per-process: a fixed path let a second `cargo test` run against this checkout
         // delete this one's directory mid-write. See `tests/durability.rs`.
