@@ -25,6 +25,53 @@ pub struct Store {
 /// Both halves earn their place. The percentage keeps a long token from being held to its last
 /// second; the five minutes keep a short one from being held at all, because a token that expires
 /// in the middle of a request is a request that fails for no reason the caller can act on.
+/// How long a looked-up address is kept. Firestore's addresses do not move in minutes.
+const DNS_KEEP: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// Each host's addresses, and when they were looked up.
+type Kept = std::sync::Mutex<std::collections::BTreeMap<String, (std::time::Instant, Vec<std::net::SocketAddr>)>>;
+
+/// The addresses each host resolved to, and when.
+fn kept_dns() -> &'static Kept {
+    static KEPT: std::sync::OnceLock<Kept> = std::sync::OnceLock::new();
+    KEPT.get_or_init(Default::default)
+}
+
+/// **A host is looked up once every few minutes, not once a call.**
+///
+/// `ureq::get` builds a new agent each time, so every Firestore call resolved its host again. On
+/// 4 Oct, passes stalled in bursts of a few minutes on store calls of exactly 15.0 s, all of which
+/// answered in the end, with the token fast. A lookup that stalls costs one call per five minutes
+/// here, and it says so in the log.
+struct KeptDns;
+
+impl ureq::Resolver for KeptDns {
+    fn resolve(&self, netloc: &str) -> io::Result<Vec<std::net::SocketAddr>> {
+        if let Some((at, addrs)) = kept_dns().lock().unwrap_or_else(|e| e.into_inner()).get(netloc) {
+            if at.elapsed() < DNS_KEEP {
+                return Ok(addrs.clone());
+            }
+        }
+        let asked = std::time::Instant::now();
+        let addrs: Vec<std::net::SocketAddr> = std::net::ToSocketAddrs::to_socket_addrs(netloc)?.collect();
+        let took = asked.elapsed();
+        if took >= std::time::Duration::from_secs(1) {
+            eprintln!("store      slow dns · {netloc} · {:.1}s", took.as_secs_f64());
+        }
+        if !addrs.is_empty() {
+            kept_dns().lock().unwrap_or_else(|e| e.into_inner()).insert(netloc.to_string(), (std::time::Instant::now(), addrs.clone()));
+        }
+        Ok(addrs)
+    }
+}
+
+/// The store's one HTTP agent. It looks hosts up through [`KeptDns`] and, as before, keeps no
+/// connection between calls: a write is never sent down a socket the server may have closed.
+fn http() -> &'static ureq::Agent {
+    static AGENT: std::sync::OnceLock<ureq::Agent> = std::sync::OnceLock::new();
+    AGENT.get_or_init(|| ureq::AgentBuilder::new().resolver(KeptDns).max_idle_connections(0).build())
+}
+
 /// One store call slow enough to explain a slow pass.
 ///
 /// On 4 Oct, passes stalled for ~15.0 s on one patient at a time, in steps that share nothing but
@@ -338,7 +385,7 @@ impl Store {
             }
         }
         self.tokens.get(|| {
-            let r = ureq::get(
+            let r = http().get(
                 "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
             )
             .set("Metadata-Flavor", "Google")
@@ -400,7 +447,7 @@ impl Store {
     fn fs_put(&self, url: &str, body: serde_json::Value) -> Result<(), String> {
         // PATCH creates or replaces. POST would refuse the second write to the same id.
         self.with_token(url, |tok| {
-            ureq::patch(url)
+            http().patch(url)
                 .set("Authorization", &format!("Bearer {tok}"))
                 .send_json(body.clone())
                 .map(|_| ())
@@ -410,7 +457,7 @@ impl Store {
 
     fn fs_get(&self, url: &str) -> Option<serde_json::Value> {
         self.with_token(url, |tok| {
-            ureq::get(url).set("Authorization", &format!("Bearer {tok}")).call().map_err(Box::new)
+            http().get(url).set("Authorization", &format!("Bearer {tok}")).call().map_err(Box::new)
         })
             .ok()?
             .into_json()
@@ -454,7 +501,7 @@ impl Store {
         match &self.backend {
             Backend::Firestore { .. } => {
                 if let (Some(url), Ok(tok)) = (self.backend.doc_path(kind, key), self.token()) {
-                    let _ = ureq::delete(&url).set("Authorization", &format!("Bearer {tok}")).call();
+                    let _ = http().delete(&url).set("Authorization", &format!("Bearer {tok}")).call();
                 }
             }
             Backend::Disk { .. } => {
@@ -482,7 +529,7 @@ impl Store {
                 // A page that fails ends the list — and says so. It used to end it silently, and on
                 // 29 Sep 2026 a list of large blobs came back short with no trace of why.
                 let r = match self.with_token(&url, |tok| {
-                    ureq::get(&url).set("Authorization", &format!("Bearer {tok}")).call().map_err(Box::new)
+                    http().get(&url).set("Authorization", &format!("Bearer {tok}")).call().map_err(Box::new)
                 }) {
                     Ok(r) => r,
                     Err(e) => {
@@ -535,7 +582,7 @@ impl Store {
                 // been wrong; what made it invisible was this function returning an empty list
                 // for it, which is why the signature changed at the same time as the token.
                 let url = format!("{base}/{kind}?pageSize=300&mask.fieldPaths=__name__{page}");
-                let r = ureq::get(&url)
+                let r = http().get(&url)
                     .set("Authorization", &format!("Bearer {tok}"))
                     .call()
                     .map_err(|e| format!("listing {kind}: {e}"))?;
@@ -625,7 +672,7 @@ impl Store {
         let Backend::Firestore { base } = &self.backend else { return 0 };
         let url = format!("{base}/{kind}?pageSize=300");
         let Ok(r) = self.with_token(&url, |tok| {
-            ureq::get(&url).set("Authorization", &format!("Bearer {tok}")).call().map_err(Box::new)
+            http().get(&url).set("Authorization", &format!("Bearer {tok}")).call().map_err(Box::new)
         }) else {
             return 0;
         };
