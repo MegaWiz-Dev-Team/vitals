@@ -69,6 +69,7 @@ fn on_board(id: u64, state: &str, p: &Person, case: &str, age: u16) -> BoardPati
     BoardPatient {
         patient_id: id, state: state.into(), bed: Some(1), name: Some(p.name.clone()), age: Some(age),
         country: Some(p.country.clone()), case: Some(case.into()), endemic: false, portrait: None, portraits: BTreeMap::new(),
+        closes_in_hours: None, handed_over: None,
     }
 }
 
@@ -545,6 +546,39 @@ fn no_country_takes_more_than_its_share_of_the_beds() {
     let p = plan(&Inputs { cases: &cat, pool: &pool, manifest: &man, ward: &ward, ledger: &ledger, weights: &w, beds: 10, want: 6, seed: 9 });
     assert_eq!(p.packs[0].pack.persona.country, top, "{:?}", p.packs.iter().map(|x| x.pack.persona.country.clone()).collect::<Vec<_>>());
     assert_eq!(p.packs.iter().filter(|pl| pl.pack.persona.country == top).count(), 1, "and once in six, near the share of the largest need");
+}
+
+/// A patient a stranger has handed over and whose case no longer finishes her inside the ward's
+/// horizon is resting: she can hold her bed for days, waiting for the next stranger. On production
+/// on 4 Oct, Aichatou Soumana (Niger, the largest need in the pool) had held bed 1 since 23 Sep. The
+/// one-bed country cap counted her, so Niger was redrawn on every tick and no Niger patient arrived
+/// for eleven days, while Japan, with the fewest people per doctor on the board, sent five. The cap
+/// is about who arrives, so a resting patient does not count toward it. A patient on a clock, or
+/// one somebody is treating now, still does.
+#[test]
+fn a_resting_patient_does_not_keep_her_country_out() {
+    let pool = read_pool(POOL).unwrap();
+    let cat = cases();
+    let (man, ledger) = (full_manifest(&pool), Ledger::default());
+    let w = weights(PHYSICIANS, &pool).unwrap();
+    let top = w.ranked().into_iter().map(|(c, _)| c).next().unwrap();
+    let mut resting = on_board(1, "on_ward", person(&pool, &format!("{top}-0")), "world-copd-woman", 66);
+    resting.handed_over = Some("2026-09-23T17:39:43Z".into());
+    resting.closes_in_hours = None;
+    let mut ward = empty_ward();
+    ward.patients.push(resting.clone());
+    let p = plan(&Inputs { cases: &cat, pool: &pool, manifest: &man, ward: &ward, ledger: &ledger, weights: &w, beds: 3, want: 6, seed: 9 });
+    assert!(p.packs.iter().any(|pl| pl.pack.persona.country == top),
+            "{top} has only a resting patient, so it is drawn: {:?}", p.packs.iter().map(|x| x.pack.persona.country.clone()).collect::<Vec<_>>());
+
+    // The same patient on a clock (admitted, nobody yet) still keeps her country out.
+    let mut on_clock = resting.clone();
+    on_clock.handed_over = None;
+    on_clock.closes_in_hours = Some(6.5);
+    let mut ward = empty_ward();
+    ward.patients.push(on_clock);
+    let p = plan(&Inputs { cases: &cat, pool: &pool, manifest: &man, ward: &ward, ledger: &ledger, weights: &w, beds: 3, want: 6, seed: 9 });
+    assert!(p.packs.iter().all(|pl| pl.pack.persona.country != top), "{top} is on a clock in a bed");
 }
 
 /// The pool grows where the need is: among the twenty of the first spread, nine people for the

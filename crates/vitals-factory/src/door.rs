@@ -142,6 +142,15 @@ pub struct BoardPatient {
     /// Her whole set. Absent on builds before the set shipped, which reads as empty.
     #[serde(default)]
     pub portraits: BTreeMap<String, String>,
+    /// Hours left on the ward's clock before she dies of being left, as the last pass worked it
+    /// out. Null for a patient admitted since that pass, for one whose chart could not be rebuilt,
+    /// and for one whose case no longer finishes her inside the ward's horizon.
+    #[serde(default)]
+    pub closes_in_hours: Option<f64>,
+    /// When the latest anchored shift on her was handed over, as the board dates it; null for a
+    /// patient nobody has handed over yet.
+    #[serde(default)]
+    pub handed_over: Option<String>,
 }
 
 impl BoardPatient {
