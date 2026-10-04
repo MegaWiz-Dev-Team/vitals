@@ -109,3 +109,23 @@ fn a_store_that_cannot_be_listed_says_so_rather_than_saying_empty() {
         ),
     }
 }
+
+/// The ward's slow passes on 4 Oct sat ~15.0 s on single patients in steps that share nothing but
+/// the store, and the chain calls were ruled out by their own timing (00078 logged none). A store
+/// call this slow is now named: which document path, how long the token took, how long the call
+/// took, and how it ended. The path carries no secret: the token travels in a header.
+#[test]
+fn a_slow_store_call_is_named_by_its_path_and_split_into_token_and_call() {
+    use std::time::Duration;
+    use vitals_web::store::{slow_store_line, SLOW_STORE};
+    let url = "https://firestore.googleapis.com/v1/projects/p/databases/(default)/documents/ward_closes_in/p1790136001";
+    assert_eq!(slow_store_line(url, Duration::from_millis(1), SLOW_STORE - Duration::from_millis(2), "ok"), None);
+    assert_eq!(
+        slow_store_line(url, Duration::from_millis(12), Duration::from_millis(15_030), "ok").unwrap(),
+        "slow firestore · ward_closes_in/p1790136001 · token 0.0s · call 15.0s · ok"
+    );
+    assert_eq!(
+        slow_store_line("https://firestore.googleapis.com/v1/projects/p/databases/(default)/documents/tapes?pageSize=300", Duration::from_millis(15_001), Duration::ZERO, "token: timed out").unwrap(),
+        "slow firestore · tapes?pageSize=300 · token 15.0s · call 0.0s · token: timed out"
+    );
+}
