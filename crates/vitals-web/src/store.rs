@@ -768,6 +768,20 @@ impl Store {
 mod tests {
     use super::*;
 
+    /// 00081 gave each connect three seconds. With several addresses, ureq splits that deadline
+    /// between them, and when it runs out mid-loop it returns the deadline's own io timeout ("timed
+    /// out reading response") through `From<io::Error>`, as kind Io, not as ConnectionFailed. That
+    /// was never retried, and seven `ward_case` listings stopped short on 4–5 Oct. This store's agent
+    /// sets no read or overall timeout, so a timeout can only come from that deadline, before
+    /// anything was sent. Any other io failure is still not retried.
+    #[test]
+    fn a_connect_that_runs_out_of_time_on_any_address_counts_as_failed_to_connect() {
+        let deadline = ureq::Error::from(io::Error::new(io::ErrorKind::TimedOut, "timed out reading response"));
+        assert!(failed_to_connect(&Box::new(deadline)), "the connect deadline, as ureq reports it");
+        let reset = ureq::Error::from(io::Error::new(io::ErrorKind::ConnectionReset, "reset"));
+        assert!(!failed_to_connect(&Box::new(reset)), "a reset may come after the request went out");
+    }
+
     /// On 4 Oct 00079 showed every stalled store call at 15.0 s with the token fast and the call
     /// slow, across reads and writes of every kind. Each `ureq::get` built a new agent, so every
     /// call looked its host up again. The store's agent now keeps an answer for a few minutes.
