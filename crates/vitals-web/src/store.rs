@@ -102,9 +102,22 @@ pub fn retry_connect<T, E>(tries: usize, failed_to_connect: impl Fn(&E) -> bool,
 }
 
 /// Did this call fail before a connection opened?
+///
+/// Two shapes. ConnectionFailed: no address answered in time. And Io with a TimedOut source: when
+/// the connect deadline runs out between addresses, ureq returns the deadline's own io timeout ("timed
+/// out reading response") as kind Io. This agent sets no read or overall timeout, so a timeout can
+/// only be that deadline, met before anything was sent. Seven listings stopped short on 4–5 Oct for
+/// want of the second shape.
 #[allow(clippy::borrowed_box)] // the store's errors are boxed (see `with_token`); this reads one where it is
 fn failed_to_connect(e: &Box<ureq::Error>) -> bool {
-    matches!(&**e, ureq::Error::Transport(t) if t.kind() == ureq::ErrorKind::ConnectionFailed)
+    let ureq::Error::Transport(t) = &**e else { return false };
+    match t.kind() {
+        ureq::ErrorKind::ConnectionFailed => true,
+        ureq::ErrorKind::Io => std::error::Error::source(t)
+            .and_then(|s| s.downcast_ref::<io::Error>())
+            .is_some_and(|io| io.kind() == io::ErrorKind::TimedOut),
+        _ => false,
+    }
 }
 
 /// One store call slow enough to explain a slow pass.
