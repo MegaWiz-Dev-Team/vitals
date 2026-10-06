@@ -1349,6 +1349,12 @@ pub const PERSONA_STORE: &str = "ward_pack";
 /// Empty until the factory has run, and empty is a working ward: every entry on the board is
 /// published with a null name and a null country rather than withheld, because a patient whose
 /// pack has not arrived is still a patient somebody can treat.
+/// One patient's pack: one read. Issue #13: the pack of one patient was found by listing all of them
+/// (~547 then), once per bedside, receipt and patient message.
+pub fn pack_of(store: &crate::store::Store, patient_id: u64) -> Option<crate::ward::Pack> {
+    store.get(PERSONA_STORE, &format!("p{patient_id}"))
+}
+
 pub fn packs(store: &crate::store::Store) -> std::collections::BTreeMap<u64, crate::ward::Pack> {
     store
         .list::<crate::ward::Pack>(PERSONA_STORE)
@@ -2245,9 +2251,9 @@ pub fn repair_tapes(
     root: &std::path::Path,
     patients: &[crate::ward::PatientOnChain],
     held: &Held,
+    packs_now: &std::collections::BTreeMap<u64, crate::ward::Pack>,
 ) -> Repaired {
     let mut out = Repaired::default();
-    let packs_now = packs(store);
     // **Made once for the whole pass, and the two legs then mean different things — deliberately.**
     // `until` is an absolute instant, so sharing one budget makes the deadline *pass-wide*: the pass
     // is bounded at ten seconds however many patients need listing. `entries` is counted from zero
@@ -2263,7 +2269,7 @@ pub fn repair_tapes(
     for p in patients {
         let began = std::time::Instant::now();
         let (notes, listed, seen, read) =
-            repair_one(chain, store, root, p, held, &packs_now, &budget);
+            repair_one(chain, store, root, p, held, packs_now, &budget);
         out.notes.extend(notes);
         out.listed += usize::from(listed);
         out.cached.seen.insert(p.patient_id, seen);
@@ -2779,7 +2785,7 @@ pub fn tick(
     // Before anything else: a leaf on chain whose tape this ward has lost. She cannot be opened,
     // rebuilt or closed until it is back, so the repair runs ahead of the reaping that needs it.
     out.checked = patients.len();
-    let repaired = repair_tapes(chain, store, root, &patients, held);
+    let repaired = repair_tapes(chain, store, root, &patients, held, &packs_now);
     out.pace = pace(&repaired.each_ms);
     out.listed = repaired.listed;
     out.notes.extend(repaired.notes);

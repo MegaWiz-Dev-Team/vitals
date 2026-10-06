@@ -2159,8 +2159,7 @@ fn open_shift(
         ));
     }
 
-    let pack = ward_chain::packs(store)
-        .remove(&patient_id)
+    let pack = ward_chain::pack_of(store, patient_id)
         .ok_or_else(|| format!(
             "we do not know who patient {patient_id} is yet — this patient reached a bed before \
              the details did, and nobody can be treated by a chart with no name on it. Another bed \
@@ -2460,7 +2459,7 @@ fn ward_chart(store: &store::Store, patient_id: u64) -> serde_json::Value {
         store,
         &[her.admitted_slot, her.closed_slot].into_iter().filter(|s| *s > 0).collect(),
     );
-    let pack = ward_chain::packs(store).remove(&patient_id);
+    let pack = ward_chain::pack_of(store, patient_id);
     let case = pack.as_ref().map(|p| p.case.clone()).unwrap_or_default();
     let held = store
         .get::<serde_json::Value>(ward_case::CASE_STORE, &ward_case::key_for(&case))
@@ -2571,7 +2570,7 @@ fn ward_receipt(store: &store::Store, address: &str) -> serde_json::Value {
         Err(e) => return unread(&e),
     };
     let (patient_id, shifts, this) = found;
-    let Some(pack) = ward_chain::packs(store).remove(&patient_id) else {
+    let Some(pack) = ward_chain::pack_of(store, patient_id) else {
         return bad("the ward has no pack for that patient, so it cannot say which case this shift was");
     };
     let admitted = chain.patient(patient_id).ok().flatten().map(|p| p.admitted_slot).unwrap_or(0);
@@ -5452,7 +5451,7 @@ fn main() {
 
                 // ── the ward: her words, out of the case the ward is holding ──────
                 if let Some(w) = shift {
-                    let held = ward_chain::packs(&store).remove(&w.patient_id);
+                    let held = ward_chain::pack_of(&store, w.patient_id);
                     let case = held.as_ref().and_then(|pack| {
                         store
                             .get::<serde_json::Value>(ward_case::CASE_STORE, &ward_case::key_for(&pack.case))

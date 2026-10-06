@@ -1258,7 +1258,7 @@ struct StoredTapeAddress {
 /// idempotent and addressed by content: for a case the door already kept it writes the same blob
 /// again, and it returns the same id [`played_id`] would, so nothing a leaf commits to can move.
 pub fn played_address(store: &crate::store::Store, patient_id: u64, sce_json: &str) -> String {
-    let Some(case) = crate::ward_chain::packs(store).get(&patient_id).map(|k| k.case.clone()) else {
+    let Some(case) = crate::ward_chain::pack_of(store, patient_id).map(|k| k.case) else {
         return String::new();
     };
     if sce_of(store, &case).as_deref() != Some(sce_json) {
