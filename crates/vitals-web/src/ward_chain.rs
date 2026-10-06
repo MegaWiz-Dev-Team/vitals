@@ -2031,6 +2031,32 @@ pub fn spans_line(took: std::time::Duration, spans: &[Span]) -> String {
 /// empty round trip every pass, ~50 s each under devnet's 429s. A cache holding *more* than the
 /// chain says exists is listed rather than trusted, because a duplicate could otherwise hide a real
 /// leaf behind a count that happens to match.
+/// May this patient skip the repair this pass?
+///
+/// A closed patient's history cannot grow, because no take is possible on her. Once the repair has
+/// read her whole with every tape present, she is settled: kept in memory with the shift count she
+/// was settled at, and passed over while the chain still names that count. On 5 Oct the pass walked
+/// 362 dead patients every minute, at two store reads each, and repair grew to 13–38 s. A restart
+/// starts empty and walks everyone once, which is also when a lost tape would be found.
+pub fn still_settled(closed_slot: u64, shifts_now: u32, settled_with: Option<u32>) -> bool {
+    closed_slot != 0 && settled_with == Some(shifts_now)
+}
+
+/// The settled patients of this process: id, then the shift count and the history she was settled
+/// with. Memory only. A deploy or a cold start empties it.
+fn settled() -> &'static std::sync::Mutex<std::collections::BTreeMap<u64, (u32, Seen)>> {
+    static SETTLED: std::sync::OnceLock<std::sync::Mutex<std::collections::BTreeMap<u64, (u32, Seen)>>> =
+        std::sync::OnceLock::new();
+    SETTLED.get_or_init(Default::default)
+}
+
+/// Settle a closed patient whose history was read whole with every tape present.
+fn settle(p: &crate::ward::PatientOnChain, seen: &Seen) {
+    if p.closed_slot != 0 {
+        settled().lock().unwrap_or_else(|e| e.into_inner()).insert(p.patient_id, (p.shifts, seen.clone()));
+    }
+}
+
 pub fn needs_listing(chain_shifts: u32, cached_shifts: usize) -> bool {
     chain_shifts as usize != cached_shifts
 }
@@ -2357,6 +2383,14 @@ fn repair_one(
     budget: &Budget,
 ) -> (Vec<String>, bool, Seen, bool) {
     let mut notes = Vec::new();
+    {
+        let kept = settled().lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((count, seen)) = kept.get(&p.patient_id) {
+            if still_settled(p.closed_slot, p.shifts, Some(*count)) {
+                return (notes, false, seen.clone(), true);
+            }
+        }
+    }
     let key = format!("p{}", p.patient_id);
     let mut seen: Seen = store.get(SHIFT_CACHE, &key).unwrap_or_default();
     // Ask before paying. `p.shifts` came free with the patient, and the tape check is local; the
@@ -2364,6 +2398,7 @@ fn repair_one(
     let known = seen.shifts();
     let listing = needs_listing(p.shifts, known.len());
     if !listing && missing_tapes(store, &known).is_empty() {
+        settle(p, &seen);
         return (notes, false, seen, true);
     }
     // Three outcomes, and the two that are not a clean read are different from each other.
@@ -2402,6 +2437,9 @@ fn repair_one(
     let shifts = seen.shifts();
     let missing = missing_tapes(store, &shifts);
     if missing.is_empty() {
+        if whole {
+            settle(p, &seen);
+        }
         return (notes, true, seen, whole);
     }
     // Her case, for the closing-shift recovery. Without a pack there is no scenario to replay
