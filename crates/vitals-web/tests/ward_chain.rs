@@ -2446,3 +2446,25 @@ fn the_held_runs_are_read_only_when_a_missing_tape_asks_and_once() {
     let ready = Held::ready(vec![("sce".to_string(), Vec::new())]);
     assert_eq!(ready.get().len(), 1, "a caller that already holds the runs passes them as they are");
 }
+
+/// Issue #13, found by the read counters (00085): `ward_pack` was 1,094 of 1,408 reads a pass,
+/// because the whole collection (~547 packs) was listed two or three times a pass and once per
+/// bedside, receipt and patient message, just to find one patient's pack. One patient's pack is one
+/// read.
+#[test]
+fn one_patients_pack_is_one_read() {
+    let dir = std::env::temp_dir().join(format!("vitals-pack-of-{}", std::process::id()));
+    let st = vitals_web::store::Store::open(dir.clone()).unwrap();
+    for id in [11u64, 22, 33] {
+        let pack: vitals_web::ward::Pack = serde_json::from_value(serde_json::json!({
+            "case": format!("case-{id}"), "persona": {"name": "N", "country": "NER", "sex": "f", "age": 30}
+        })).unwrap_or_else(|e| panic!("a minimal pack parses: {e}"));
+        st.put(vitals_web::ward_chain::PERSONA_STORE, &format!("p{id}"), &pack).unwrap();
+    }
+    let _ = vitals_web::store::take_reads();
+    let got = vitals_web::ward_chain::pack_of(&st, 22).expect("her pack");
+    assert_eq!(got.case, "case-22");
+    let reads = vitals_web::store::take_reads();
+    assert_eq!(reads, vec![(vitals_web::ward_chain::PERSONA_STORE.to_string(), 1)], "one get, not a list of all of them");
+    let _ = std::fs::remove_dir_all(&dir);
+}
