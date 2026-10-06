@@ -8639,14 +8639,18 @@ fn one_pass(store: &store::Store, root: &std::path::Path) -> Option<Result<ward_
     // What this server still holds, for the repair: every stored run's scenario and tape. A leaf
     // the chain names whose tape is lost is recoverable only from here, and only while these are
     // still on disk.
-    let held: Vec<(String, Vec<Step>)> = store
-        .list::<Saved>(SESSIONS)
-        .into_iter()
-        .filter_map(|(_, sv)| {
-            let p = scenario_path(&sv.ep);
-            std::fs::read_to_string(p).ok().map(|sce| (sce, sv.tape))
-        })
-        .collect();
+    // Listed only if the repair finds a tape missing (issue #13: this read every stored session
+    // every minute, for a repair that almost never needs them).
+    let held = ward_chain::Held::lazy(|| {
+        store
+            .list::<Saved>(SESSIONS)
+            .into_iter()
+            .filter_map(|(_, sv)| {
+                let p = scenario_path(&sv.ep);
+                std::fs::read_to_string(p).ok().map(|sce| (sce, sv.tape))
+            })
+            .collect()
+    });
     let began = Instant::now();
     let rpc_before = chain.transport();
     let t = ward_chain::tick(&chain, store, root, now_secs(), &held);

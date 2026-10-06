@@ -2212,12 +2212,39 @@ pub fn rpc_line(
 /// patient from the chain, so the session holding the missing tape is exactly the one that fails
 /// to restore, and the loop that noticed used to delete it. Called again each tick, for whatever
 /// has gone missing since.
+/// The stored runs the repair can put a lost tape back from, read only when a tape is missing.
+///
+/// Issue #13: each pass listed every stored session up front, about a thousand Firestore reads a
+/// minute, for a repair that now almost never finds a tape missing. A pass asks for them the first
+/// time it needs them, and keeps them for the rest of the pass.
+pub struct Held<'a> {
+    runs: std::cell::OnceCell<Vec<(String, Vec<vitals_replay::Step>)>>,
+    load: Box<dyn Fn() -> Vec<(String, Vec<vitals_replay::Step>)> + 'a>,
+}
+
+impl<'a> Held<'a> {
+    /// Runs to be listed the first time a missing tape asks for them.
+    pub fn lazy(load: impl Fn() -> Vec<(String, Vec<vitals_replay::Step>)> + 'a) -> Held<'a> {
+        Held { runs: std::cell::OnceCell::new(), load: Box::new(load) }
+    }
+    /// Runs the caller already holds.
+    pub fn ready(runs: Vec<(String, Vec<vitals_replay::Step>)>) -> Held<'static> {
+        let cell = std::cell::OnceCell::new();
+        let _ = cell.set(runs);
+        Held { runs: cell, load: Box::new(Vec::new) }
+    }
+    /// The runs, listed now if nobody has asked yet this pass.
+    pub fn get(&self) -> &[(String, Vec<vitals_replay::Step>)] {
+        self.runs.get_or_init(|| (self.load)())
+    }
+}
+
 pub fn repair_tapes(
     chain: &WardChain,
     store: &crate::store::Store,
     root: &std::path::Path,
     patients: &[crate::ward::PatientOnChain],
-    held: &[(String, Vec<vitals_replay::Step>)],
+    held: &Held,
 ) -> Repaired {
     let mut out = Repaired::default();
     let packs_now = packs(store);
@@ -2378,7 +2405,7 @@ fn repair_one(
     store: &crate::store::Store,
     root: &std::path::Path,
     p: &crate::ward::PatientOnChain,
-    held: &[(String, Vec<vitals_replay::Step>)],
+    held: &Held,
     packs_now: &std::collections::BTreeMap<u64, crate::ward::Pack>,
     budget: &Budget,
 ) -> (Vec<String>, bool, Seen, bool) {
@@ -2453,7 +2480,7 @@ fn repair_one(
 
     let (mut back, mut gone) = (Vec::new(), Vec::new());
     for hash in missing {
-        let found = recover_tape(store, p.patient_id, &hash, held).or_else(|| {
+        let found = recover_tape(store, p.patient_id, &hash, held.get()).or_else(|| {
             // The ward's own closing shift: no steps, and the chain's numbers prove it.
             let sce = sce.as_deref()?;
             let this = shifts.iter().find(|s| hex32(&s.run_hash) == hash)?;
@@ -2710,7 +2737,7 @@ pub fn tick(
     store: &crate::store::Store,
     root: &std::path::Path,
     now_unix: u64,
-    held: &[(String, Vec<vitals_replay::Step>)],
+    held: &Held,
 ) -> Ticked {
     use crate::ward::{arrival_due, arrival_minutes, to_admit, BEDS, OPEN};
     let mut out = Ticked::default();
