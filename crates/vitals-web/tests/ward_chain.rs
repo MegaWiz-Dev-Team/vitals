@@ -2428,3 +2428,21 @@ fn only_a_closed_patient_whose_count_has_not_moved_is_skipped() {
     assert!(!still_settled(502207360, 2, Some(1)), "a count that moved is read again");
     assert!(!still_settled(502207360, 1, None), "never settled: read her");
 }
+
+/// Issue #13: Firestore reads ran to ~3.6M a day. Each pass listed every stored session (the
+/// `held` runs) up front, though the repair needs them only to put back a tape that is missing,
+/// which is now rare. The runs are read the first time a missing tape asks for them, and once per
+/// pass at most.
+#[test]
+fn the_held_runs_are_read_only_when_a_missing_tape_asks_and_once() {
+    use std::cell::Cell;
+    use vitals_web::ward_chain::Held;
+    let reads = Cell::new(0);
+    let held = Held::lazy(|| { reads.set(reads.get() + 1); vec![("sce".to_string(), Vec::new())] });
+    assert_eq!(reads.get(), 0, "a pass with nothing missing never lists the sessions");
+    assert_eq!(held.get().len(), 1);
+    assert_eq!(held.get().len(), 1);
+    assert_eq!(reads.get(), 1, "listed once, then kept for the rest of the pass");
+    let ready = Held::ready(vec![("sce".to_string(), Vec::new())]);
+    assert_eq!(ready.get().len(), 1, "a caller that already holds the runs passes them as they are");
+}
