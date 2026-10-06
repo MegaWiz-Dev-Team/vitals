@@ -2414,3 +2414,17 @@ fn a_slow_chain_call_is_named_and_its_error_never_carries_the_key() {
     assert!(failed.starts_with("slow rpc · getTransaction for patient 7 · 15.0s · failed: HTTP status client error (429"), "{failed}");
     assert!(!failed.contains("0123456789abcdef0123"), "the key is scrubbed: {failed}");
 }
+
+/// On 5 Oct the pass walked all 385 patients every minute, 362 of them dead. Two store reads each
+/// put repair at 13–38 s, and passes reached 123 and 148 s; it grows by ~24 patients a day. A dead
+/// patient's history cannot grow (no take is possible), so once it has been read whole, with every
+/// tape present, the next pass skips her. Skipping is safe only while the chain's count of her shifts
+/// is still the count that was settled. An open patient is never settled.
+#[test]
+fn only_a_closed_patient_whose_count_has_not_moved_is_skipped() {
+    use vitals_web::ward_chain::still_settled;
+    assert!(!still_settled(0, 2, Some(2)), "an open patient is walked every pass");
+    assert!(still_settled(502207360, 1, Some(1)), "closed, and the chain still names the shift that was settled");
+    assert!(!still_settled(502207360, 2, Some(1)), "a count that moved is read again");
+    assert!(!still_settled(502207360, 1, None), "never settled: read her");
+}
