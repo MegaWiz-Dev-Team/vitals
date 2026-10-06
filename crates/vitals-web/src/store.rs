@@ -798,6 +798,27 @@ mod tests {
     /// On 4 Oct 00079 showed every stalled store call at 15.0 s with the token fast and the call
     /// slow, across reads and writes of every kind. Each `ureq::get` built a new agent, so every
     /// call looked its host up again. The store's agent now keeps an answer for a few minutes.
+    /// Issue #13: the bill showed ~105k reads an hour, and nothing in the logs said which kind they
+    /// were. Every read is now counted by kind (documents returned, at least one per query, which is
+    /// how Firestore bills), and each pass logs the reads since the last one.
+    #[test]
+    fn reads_are_counted_by_kind_and_taken_once() {
+        let dir = tmp("reads");
+        let st = Store::open(dir.clone()).unwrap();
+        let _ = take_reads();
+        for k in ["a", "b", "c"] {
+            st.put("count_me", k, &1u32).unwrap();
+        }
+        let _: Vec<(String, u32)> = st.list("count_me");
+        let _: Option<u32> = st.get("count_me", "a");
+        let _: Option<u32> = st.get("count_me_too", "nobody");
+        let got = take_reads();
+        assert!(got.contains(&("count_me".to_string(), 4)), "three listed and one got: {got:?}");
+        assert!(got.contains(&("count_me_too".to_string(), 1)), "a miss is still a read: {got:?}");
+        assert!(take_reads().iter().all(|(k, _)| !k.starts_with("count_me")), "taken once");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_host_is_looked_up_once_and_kept() {
         use ureq::Resolver;
