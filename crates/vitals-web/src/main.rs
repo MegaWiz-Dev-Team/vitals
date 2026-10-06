@@ -8658,6 +8658,12 @@ fn one_pass(store: &store::Store, root: &std::path::Path) -> Option<Result<ward_
     for note in &t.notes {
         println!("ward       {note}");
     }
+    // Issue #13: what the store was asked for since the last pass, by kind. The ticker and every
+    // request share the counters, so this is the minute's reads, which is what the bill counts.
+    let read = store::take_reads();
+    let total: u64 = read.iter().map(|(_, n)| n).sum();
+    let top: Vec<String> = read.iter().take(8).map(|(k, n)| format!("{k} {n}")).collect();
+    println!("store      reads since the last pass · {total} · {}", top.join(" · "));
     // **Repair first, then sweep, and never the other way.** `tick` repairs at its top; the sweep
     // runs only after it has returned. The repair recovers a lost tape *from* the stored runs and
     // the sweep deletes stored runs older than a day — so sweeping first can delete the only copy

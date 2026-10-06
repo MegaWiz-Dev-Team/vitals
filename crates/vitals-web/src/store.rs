@@ -120,6 +120,28 @@ fn failed_to_connect(e: &Box<ureq::Error>) -> bool {
     }
 }
 
+/// Reads by kind since they were last taken (issue #13).
+fn reads() -> &'static std::sync::Mutex<std::collections::BTreeMap<String, u64>> {
+    static READS: std::sync::OnceLock<std::sync::Mutex<std::collections::BTreeMap<String, u64>>> = std::sync::OnceLock::new();
+    READS.get_or_init(Default::default)
+}
+
+/// Count `n` document reads of `kind`. Firestore bills one read per document a get or a query returns,
+/// and at least one per query, so this is what the bill counts.
+fn count_read(kind: &str, n: u64) {
+    *reads().lock().unwrap_or_else(|e| e.into_inner()).entry(kind.to_string()).or_default() += n;
+}
+
+/// The reads counted since the last take, largest first, and the counters back to zero.
+///
+/// Issue #13: ~105k reads an hour after two fixes, and no line said which kind. Each ward pass takes
+/// these and logs them, so a kind that grows shows up in the log before it shows up on the bill.
+pub fn take_reads() -> Vec<(String, u64)> {
+    let mut v: Vec<(String, u64)> = std::mem::take(&mut *reads().lock().unwrap_or_else(|e| e.into_inner())).into_iter().collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    v
+}
+
 /// One store call slow enough to explain a slow pass.
 ///
 /// On 4 Oct, passes stalled for ~15.0 s on one patient at a time, in steps that share nothing but
@@ -537,6 +559,7 @@ impl Store {
     }
 
     pub fn get<T: DeserializeOwned>(&self, kind: &str, key: &str) -> Option<T> {
+        count_read(kind, 1);
         match &self.backend {
             Backend::Firestore { .. } => {
                 let url = self.backend.doc_path(kind, key)?;
@@ -597,6 +620,7 @@ impl Store {
                         break;
                     }
                 };
+                count_read(kind, v["documents"].as_array().map_or(0, |d| d.len()).max(1) as u64);
                 for d in v["documents"].as_array().unwrap_or(&Vec::new()) {
                     let Some(name) = d["name"].as_str().and_then(|n| n.rsplit('/').next()) else {
                         continue;
@@ -642,6 +666,7 @@ impl Store {
                 let v: serde_json::Value = r
                     .into_json()
                     .map_err(|e| format!("listing {kind}: the answer was not JSON: {e}"))?;
+                count_read(kind, v["documents"].as_array().map_or(0, |d| d.len()).max(1) as u64);
                 for d in v["documents"].as_array().unwrap_or(&Vec::new()) {
                     if let Some(name) = d["name"].as_str().and_then(|n| n.rsplit('/').next()) {
                         out.push(name.to_string());
@@ -684,6 +709,7 @@ impl Store {
                 out.push((key.to_string(), v));
             }
         }
+        count_read(kind, out.len().max(1) as u64);
         out
     }
 
