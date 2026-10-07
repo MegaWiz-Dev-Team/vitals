@@ -8,14 +8,14 @@
 
 use borsh::BorshDeserialize;
 use solana_rpc_client::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
-    commitment_config::CommitmentConfig,
     instruction::{AccountMeta, Instruction as SolInstruction},
     pubkey::Pubkey,
     signature::{read_keypair_file, Keypair, Signer},
-    system_program,
     transaction::Transaction,
 };
+use solana_sdk_ids::system_program;
 use std::str::FromStr;
 use vitals_progress::merkle;
 use vitals_progress::record::AttemptRecord;
@@ -25,6 +25,11 @@ use vitals_program::{
     SEED_ACCOUNT,
 };
 use vitals_replay::{hex, record_for, replay, sce_hash, Replay, Step};
+
+// One copy of the program-key boundary, kept with the server that depends on it most.
+#[path = "../../vitals-web/src/program_pda.rs"]
+#[allow(dead_code)]
+mod program_pda;
 
 fn repo() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -129,7 +134,7 @@ fn main() {
         };
         let mode: u8 = u8::from(rubric.is_some());
         let chash = vitals_progress::record::commitment_hash(&sce, &player.pubkey().to_bytes(), &nonce, mode);
-        let commit_acct = vitals_program::commitment_pda(&program_id, &player.pubkey().to_bytes()).0;
+        let commit_acct = program_pda::commitment_pda(&program_id, &player.pubkey().to_bytes()).0;
         send(&rpc, &player, &program_id, Instruction::Commit { hash: chash },
              vec![acct, commit_acct], true);
         let cm: vitals_program::Commitment = fetch(&rpc, &commit_acct).expect("commitment");
@@ -244,7 +249,7 @@ fn account_pda(program_id: &Pubkey, id: &Pubkey) -> (Pubkey, u8) {
 /// copy did not, and the driver started reading an account that no longer existed — a duplicated
 /// derivation is a second definition of where things live, and the two drift silently.
 fn tree_pda(program_id: &Pubkey, operator: &Pubkey, tree_id: u64) -> (Pubkey, u8) {
-    vitals_program::tree_pda(program_id, operator, tree_id)
+    program_pda::tree_pda(program_id, operator, tree_id)
 }
 fn claim_pda(program_id: &Pubkey, player: &Pubkey, tree_id: u64) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[SEED_CLAIM, player.as_ref(), &tree_id.to_le_bytes()], program_id)
@@ -336,7 +341,7 @@ mod tests {
         );
         assert_eq!(
             tree_pda(&pid, &me, 7).0,
-            vitals_program::tree_pda(&pid, &me, 7).0
+            program_pda::tree_pda(&pid, &me, 7).0
         );
         assert_eq!(
             claim_pda(&pid, &me, 7).0,

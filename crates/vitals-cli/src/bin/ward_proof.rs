@@ -17,17 +17,21 @@
 
 use borsh::BorshDeserialize;
 use solana_rpc_client::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
-    commitment_config::CommitmentConfig,
     instruction::{AccountMeta, Instruction as SolInstruction},
     pubkey::Pubkey,
     signature::{read_keypair_file, Keypair, Signer},
-    system_program,
     transaction::Transaction,
 };
+use solana_sdk_ids::system_program;
 use std::str::FromStr;
+// One copy of the program-key boundary, kept with the server that depends on it most.
+#[path = "../../../vitals-web/src/program_pda.rs"]
+mod program_pda;
+use program_pda::{commitment_pda, patient_pda, tree_pda};
 use vitals_program::{
-    patient_pda, tree_pda, commitment_pda, Instruction, PatientAccount, RecordWire, VitalsError,
+    Instruction, PatientAccount, RecordWire, VitalsError,
     SEED_ACCOUNT, PATIENT_OPEN,
 };
 use vitals_progress::record::{AttemptRecord, Outcome};

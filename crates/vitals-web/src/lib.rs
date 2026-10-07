@@ -18,6 +18,7 @@ pub mod meter;
 pub mod news2;
 pub mod patient;
 pub mod payout;
+pub mod program_pda;
 pub mod reading;
 pub mod rebuild;
 pub mod review;

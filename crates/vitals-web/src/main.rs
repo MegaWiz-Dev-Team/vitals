@@ -7956,7 +7956,8 @@ fn main() {
                     "open": acct.is_some(),
                     // Whether *this* machine may act for that person. A machine that has been
                     // named but not yet linked is a machine that can watch and not play.
-                    "linked": acct.as_ref().map(|a| a.allows(&dev)).unwrap_or(person == dev),
+                    // `allows` takes the program's (solana-program 2) key type; the bytes are the key.
+                    "linked": acct.as_ref().map(|a| a.allows(&dev.to_bytes().into())).unwrap_or(person == dev),
                     "devices": acct.as_ref().map(|a| a.authorities.len()).unwrap_or(0),
                     // How many runs this person has ever declared, as the chain counted them —
                     // the number the commit-reveal design exists to make undeniable: five

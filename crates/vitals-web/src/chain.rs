@@ -10,22 +10,23 @@
 //! claim buffer and one progress account, and each person's level was the whole server's level.
 
 use solana_rpc_client::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
-    commitment_config::CommitmentConfig,
     instruction::{AccountMeta, Instruction as SolInstruction},
     pubkey::Pubkey,
     message::Message,
     signature::{read_keypair_file, Keypair, Signature, Signer},
-    system_program,
     transaction::Transaction,
 };
+use solana_sdk_ids::system_program;
 use std::str::FromStr;
 use vitals_progress::merkle;
 use vitals_progress::record::AttemptRecord;
 use vitals_progress::{Difficulty, StarBars};
 use std::collections::BTreeMap;
+use vitals_web::program_pda::commitment_pda;
 use vitals_program::{
-    commitment_pda, Account, ClaimAccount, Commitment, Instruction, Progress, RecordWire,
+    Account, ClaimAccount, Commitment, Instruction, Progress, RecordWire,
     TreeAccount, CLAIM_LEN, SEED_ACCOUNT, SEED_CLAIM, SEED_PROGRESS,
 };
 
@@ -103,7 +104,7 @@ impl Chain {
     /// worse, one anybody can simply read off another server and reuse. Deriving from the relay
     /// makes another operator's tree unaddressable from here rather than merely unlikely to be hit.
     fn tree_pda(&self, tree_id: u64) -> Pubkey {
-        vitals_program::tree_pda(&self.program_id, &self.relay.pubkey(), tree_id).0
+        vitals_web::program_pda::tree_pda(&self.program_id, &self.relay.pubkey(), tree_id).0
     }
     /// The person, keyed by the first device they ever played on.
     pub fn account_pda(&self, id: &Pubkey) -> Pubkey {

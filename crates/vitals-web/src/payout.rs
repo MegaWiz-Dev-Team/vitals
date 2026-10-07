@@ -209,15 +209,15 @@ pub fn decide(ask: &Ask) -> Verdict {
 // ── the chain half ──────────────────────────────────────────────────────────
 
 use solana_rpc_client::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
-    commitment_config::CommitmentConfig,
     instruction::{AccountMeta, Instruction},
     message::Message,
     pubkey::Pubkey,
     signature::{read_keypair_file, Keypair, Signer},
-    system_instruction,
     transaction::Transaction,
 };
+use solana_system_interface::instruction as system_instruction;
 use std::str::FromStr;
 
 /// SPL Memo v2 — verified on devnet as an executable account under BPFLoader2.

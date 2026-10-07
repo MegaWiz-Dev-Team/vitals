@@ -28,7 +28,8 @@
 //!     thing a reader could mistake for a total when it is only a part.
 
 use solana_rpc_client::rpc_client::RpcClient;
-use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 

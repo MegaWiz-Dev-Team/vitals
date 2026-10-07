@@ -7,8 +7,11 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-solana-rpc-client = "2"
-solana-sdk = "2"
+solana-rpc-client = "3"
+solana-sdk = "3"
+# solana-sdk 3 no longer re-exports these; they are the same crates sdk 2 re-exported.
+solana-commitment-config = "3"
+solana-sdk-ids = "3"
 borsh = { version = "1", features = ["derive"] }
 vitals-program = { path = "../vitals-program" }
 vitals-progress = { path = "../vitals-progress" }

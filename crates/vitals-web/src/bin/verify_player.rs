@@ -36,10 +36,12 @@
 //! `VITALS_TREE_ID`, `VITALS_CHAIN_API`.
 use borsh::BorshDeserialize;
 use solana_rpc_client::rpc_client::RpcClient;
-use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
+use vitals_web::program_pda::{commitment_pda, tree_pda};
 use vitals_program::{
-    commitment_pda, tree_pda, ClaimAccount, Commitment, Progress, TreeAccount, CLAIM_LEN,
+    ClaimAccount, Commitment, Progress, TreeAccount, CLAIM_LEN,
     SEED_CLAIM, SEED_PROGRESS,
 };
 use vitals_progress::{adjudicate, summarize, Attempt, Difficulty, Dreyfus, Verdict};
