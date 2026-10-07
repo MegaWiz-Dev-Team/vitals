@@ -46,6 +46,8 @@ jobs:
           use_vertex_ai: "true"
           gcp_project_id: vitals-academy
           gcp_location: asia-southeast1
+          # Pinned, so the action's default can never be a Gemini 2.5 model (they retire on Vertex 20 Oct 2026).
+          gemini_model: gemini-3.5-flash
           gcp_workload_identity_provider: projects/995399340966/locations/global/workloadIdentityPools/github/providers/github-oidc
           gcp_service_account: gemini-reviewer@vitals-academy.iam.gserviceaccount.com
           prompt: |
