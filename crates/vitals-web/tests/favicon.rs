@@ -179,3 +179,23 @@ fn a_home_screen_bookmark_gets_a_square_png() {
                 "{page} offers the home-screen icon");
     }
 }
+
+/// The pages without a link of their own. Donate, privacy and terms are shared with the Eternal
+/// entry, so the globe is not written into them; a browser asks `/favicon.ico` for a page that
+/// names no icon, and the ward host answers that with the globe. On 6 ต.ค. it answered 404 and
+/// those tabs were blank. Stats is the ward's own page, so it links the mark like the others.
+#[test]
+fn a_page_with_no_icon_link_still_gets_the_globe_on_the_ward_host() {
+    let s = Server::start();
+    let (code, heads, body) = s.get("/favicon.ico");
+    assert_eq!(code, 200, "the ward host answers the browser's own guess");
+    assert_eq!(header(&heads, "content-type"), Some("image/svg+xml"));
+    let on_disk = std::fs::read(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static/world/favicon.svg")).expect("the mark");
+    assert_eq!(body, on_disk, "the same mark, not a second drawing");
+
+    assert!(statics("world/stats.html").contains(LINK), "the stats page links the mark");
+    for name in ["donate.html", "privacy.html", "terms.html"] {
+        assert!(!statics(name).contains("/world/favicon.svg"),
+                "{name} is served on the Eternal entry too, and the ward's mark has no business there");
+    }
+}

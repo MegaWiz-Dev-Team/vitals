@@ -3565,7 +3565,9 @@ fn read_response(
                     .with_header(forever()),
             )
         }
-        "/world/favicon.svg" => Some(
+        // A browser asks this for any page that names no icon: donate, privacy and terms, which
+        // the Eternal entry shares and so carry no globe of their own. Only the ward host answers.
+        "/world/favicon.svg" | "/favicon.ico" if path == "/world/favicon.svg" || ward_mode() => Some(
             Response::from_data(FAVICON_WORLD)
                 .with_header(Header::from_bytes(&b"Content-Type"[..], &b"image/svg+xml"[..]).unwrap())
                 .with_header(forever()),
