@@ -24,12 +24,14 @@ if [ -z "$TOKEN" ]; then
 fi
 PROJECT="${VITALS_GCP_PROJECT:-vitals-academy}"
 LOCATION="${VERTEX_LOCATION:-global}"
+# gemini-2.5-flash retires 20 Oct 2026; 3.5-flash is its GA successor on Vertex (checked 7 Oct).
+MODEL="${REVIEW_MODEL:-gemini-3.5-flash}"
 
 INV=$(cat docs/INVARIANTS.md 2>/dev/null)
 
 # Token and payloads go in through the environment, never as arguments where ps and shell history
 # would capture them.
-REVIEW_TOKEN="$TOKEN" REVIEW_PROJECT="$PROJECT" REVIEW_LOCATION="$LOCATION" \
+REVIEW_TOKEN="$TOKEN" REVIEW_PROJECT="$PROJECT" REVIEW_LOCATION="$LOCATION" REVIEW_MODEL="$MODEL" \
 REVIEW_DIFF="$DIFF" REVIEW_INV="$INV" python3 - <<'PY'
 import os, json, urllib.request, urllib.error
 
@@ -64,7 +66,7 @@ DIFF:
 proj, loc = os.environ["REVIEW_PROJECT"], os.environ["REVIEW_LOCATION"]
 host = "aiplatform.googleapis.com" if loc == "global" else f"{loc}-aiplatform.googleapis.com"
 url = (f"https://{host}/v1/projects/{proj}/locations/{loc}"
-       f"/publishers/google/models/gemini-2.5-flash:generateContent")
+       f"/publishers/google/models/{os.environ['REVIEW_MODEL']}:generateContent")
 req = urllib.request.Request(
     url,
     data=json.dumps({"contents": [{"role": "user", "parts": [{"text": prompt}]}]}).encode(),

@@ -39,9 +39,10 @@ pub const WEBP_QUALITY: u8 = 86;
 pub const VARIANT_PX: u32 = 256;
 pub const VARIANT_QUALITY: u8 = 80;
 
-/// List price of one image edit (gemini-2.5-flash-image, image out) and of one judge call
-/// (gemini-2.5-flash, a short text answer with two small images in) — for the estimate in the
-/// tick line and the ledger. Estimated from list price, never measured.
+/// List price of one image edit and of one judge call (a short text answer with two small images
+/// in) — for the estimate in the tick line and the ledger. Estimated from list price, never
+/// measured. Read for gemini-2.5-flash-image and gemini-2.5-flash; re-read them for the 3.1 models
+/// before EDITS_PER_DAY goes above 0.
 pub const EDIT_USD: f64 = 0.039;
 pub const JUDGE_USD: f64 = 0.0005;
 

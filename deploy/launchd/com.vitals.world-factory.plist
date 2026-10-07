@@ -47,7 +47,7 @@
     <key>VITALS_VERTEX_PROJECT</key>
     <string>vitals-academy</string>
     <key>VITALS_JUDGE_MODEL</key>
-    <string>gemini-2.5-flash</string>
+    <string>gemini-3.1-flash-lite</string>
     <key>EDITS_PER_DAY</key>
     <string>40</string>
     <key>PATH</key>

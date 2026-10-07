@@ -13,8 +13,8 @@
 //! | `VITALS_GCP_PROJECT`     | *(required)*                             | the ward's project, where its `vitals-door-token` secret lives (`vitals-academy-dev` for staging, `vitals-academy` for production) |
 //! | `VITALS_VERTEX_PROJECT`  | `vitals-academy`                         | the image editor's project               |
 //! | `VITALS_PORTRAIT_BUCKET` | `vitals-world-portraits`                 | where faces are published                |
-//! | `VITALS_IMAGE_MODEL`     | `gemini-2.5-flash-image`                 | the state editor                         |
-//! | `VITALS_JUDGE_MODEL`     | `gemini-2.5-flash`                       | the model that judges each face (11/11 on the 16 Sep calibration; gemini-3.1-flash-lite was 10/11 and is the fallback when 2.5 retires) |
+//! | `VITALS_IMAGE_MODEL`     | `gemini-3.1-flash-image`                 | the state editor (moved off 2.5 with the judge, which retires on Vertex 20 Oct 2026; 3.1 is not yet run here, so try it before EDITS_PER_DAY goes above 0) |
+//! | `VITALS_JUDGE_MODEL`     | `gemini-3.1-flash-lite`                  | the model that judges each face (10/11 on the 16 Sep calibration; gemini-2.5-flash was 11/11 and retires 20 Oct 2026) |
 //! | `EDITS_PER_DAY`          | 40                                       | image edits allowed per UTC day, across ticks (≈ 0.039 USD each at list price); bases are local and free |
 //! | `FACTORY_SEED`           | the clock                                | the draw; set it to repeat a run         |
 //!
@@ -186,8 +186,8 @@ fn config(dry_run: bool) -> Result<Config, String> {
         })?,
         vertex_project: env_or("VITALS_VERTEX_PROJECT", "vitals-academy"),
         bucket: env_or("VITALS_PORTRAIT_BUCKET", "vitals-world-portraits"),
-        model: env_or("VITALS_IMAGE_MODEL", "gemini-2.5-flash-image"),
-        judge_model: env_or("VITALS_JUDGE_MODEL", "gemini-2.5-flash"),
+        model: env_or("VITALS_IMAGE_MODEL", "gemini-3.1-flash-image"),
+        judge_model: env_or("VITALS_JUDGE_MODEL", "gemini-3.1-flash-lite"),
         edits_per_day: env_num("EDITS_PER_DAY", 40)? as usize,
         dry_run,
         seed,
