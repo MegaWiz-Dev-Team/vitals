@@ -133,6 +133,41 @@ fn reads() -> &'static std::sync::Mutex<Reads> {
     READS.get_or_init(Default::default)
 }
 
+/// Kinds kept in memory as well as in the store (issue #13). Each is written only through this
+/// process — the ward runs one instance — so the mirror can be kept in step by `put` and `del`;
+/// slot times never change once written. A kind added here must have no other writer.
+fn mirrored(kind: &str) -> bool {
+    matches!(kind, "ward_pack" | "ward_slot_time" | "ward_case")
+}
+
+/// How long a whole listing is trusted before the kind is listed again. A write the mirror never
+/// saw — a second instance during a deploy's handover — cannot outlive it.
+pub const MIRROR_FOR: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+pub fn mirror_is_whole(age: std::time::Duration) -> bool {
+    age < MIRROR_FOR
+}
+
+/// One kind's documents as stored JSON, and when the whole kind was last listed.
+#[derive(Default)]
+struct Mirror {
+    docs: std::collections::BTreeMap<String, String>,
+    listed: Option<std::time::Instant>,
+}
+
+impl Mirror {
+    fn whole(&self) -> bool {
+        self.listed.is_some_and(|t| mirror_is_whole(t.elapsed()))
+    }
+}
+
+/// By database, then kind — the same key as the read counters, for the same reason.
+fn mirrors() -> &'static std::sync::Mutex<std::collections::BTreeMap<(String, String), Mirror>> {
+    static M: std::sync::OnceLock<std::sync::Mutex<std::collections::BTreeMap<(String, String), Mirror>>> =
+        std::sync::OnceLock::new();
+    M.get_or_init(Default::default)
+}
+
 
 /// One store call slow enough to explain a slow pass.
 ///
@@ -411,6 +446,11 @@ impl Store {
         }
     }
 
+    fn mirror<R>(&self, kind: &str, f: impl FnOnce(&mut Mirror) -> R) -> R {
+        let mut all = mirrors().lock().unwrap_or_else(|e| e.into_inner());
+        f(all.entry((self.bill(), kind.to_string())).or_default())
+    }
+
     /// Count `n` document reads of `kind`. Firestore bills one read per document a get or a query
     /// returns, and at least one per query, so this is what the bill counts.
     fn count_read(&self, kind: &str, n: u64) {
@@ -565,6 +605,16 @@ impl Store {
     }
 
     pub fn put<T: Serialize>(&self, kind: &str, key: &str, v: &T) -> io::Result<()> {
+        let written = self.put_raw(kind, key, v);
+        if written.is_ok() && mirrored(kind) {
+            if let Ok(json) = serde_json::to_string(v) {
+                self.mirror(kind, |m| m.docs.insert(key.to_string(), json));
+            }
+        }
+        written
+    }
+
+    fn put_raw<T: Serialize>(&self, kind: &str, key: &str, v: &T) -> io::Result<()> {
         let bad = || io::Error::new(io::ErrorKind::InvalidInput, "unsafe key");
         match &self.backend {
             Backend::Firestore { .. } => {
@@ -584,21 +634,43 @@ impl Store {
     }
 
     pub fn get<T: DeserializeOwned>(&self, kind: &str, key: &str) -> Option<T> {
+        if !mirrored(kind) {
+            return serde_json::from_str(&self.get_raw(kind, key)?).ok();
+        }
+        let kept = self.mirror(kind, |m| match m.docs.get(key) {
+            Some(json) => Some(Some(json.clone())),
+            // Listed whole within the hour: not there means not written.
+            None if m.whole() => Some(None),
+            None => None,
+        });
+        let json = match kept {
+            Some(answer) => answer?,
+            None => {
+                let json = self.get_raw(kind, key)?;
+                self.mirror(kind, |m| m.docs.insert(key.to_string(), json.clone()));
+                json
+            }
+        };
+        serde_json::from_str(&json).ok()
+    }
+
+    /// One document as its stored JSON, from the backend, counted.
+    fn get_raw(&self, kind: &str, key: &str) -> Option<String> {
         self.count_read(kind, 1);
         match &self.backend {
             Backend::Firestore { .. } => {
                 let url = self.backend.doc_path(kind, key)?;
                 let doc = self.fs_get(&url)?;
-                serde_json::from_str(&Store::unwrap(&doc)?).ok()
+                Store::unwrap(&doc)
             }
-            Backend::Disk { .. } => {
-                let bytes = std::fs::read(self.path(kind, key)?).ok()?;
-                serde_json::from_slice(&bytes).ok()
-            }
+            Backend::Disk { .. } => std::fs::read_to_string(self.path(kind, key)?).ok(),
         }
     }
 
     pub fn del(&self, kind: &str, key: &str) {
+        if mirrored(kind) {
+            self.mirror(kind, |m| m.docs.remove(key));
+        }
         match &self.backend {
             Backend::Firestore { .. } => {
                 if let (Some(url), Ok(tok)) = (self.backend.doc_path(kind, key), self.token()) {
@@ -618,6 +690,28 @@ impl Store {
     /// server from serving the rest.
     /// Every record under `kind` that still parses, from either backend.
     pub fn list<T: DeserializeOwned>(&self, kind: &str) -> Vec<(String, T)> {
+        let raw = if mirrored(kind) {
+            match self.mirror(kind, |m| m.whole().then(|| m.docs.clone())) {
+                Some(docs) => docs.into_iter().collect(),
+                None => {
+                    let raw = self.list_raw(kind);
+                    self.mirror(kind, |m| {
+                        m.docs = raw.iter().cloned().collect();
+                        m.listed = Some(std::time::Instant::now());
+                    });
+                    raw
+                }
+            }
+        } else {
+            self.list_raw(kind)
+        };
+        raw.into_iter()
+            .filter_map(|(k, json)| serde_json::from_str(&json).ok().map(|v| (k, v)))
+            .collect()
+    }
+
+    /// Every document under `kind` as its stored JSON, from the backend, counted.
+    fn list_raw(&self, kind: &str) -> Vec<(String, String)> {
         if let Backend::Firestore { base } = &self.backend {
             let mut out = Vec::new();
             let mut page = String::new();
@@ -650,8 +744,8 @@ impl Store {
                     let Some(name) = d["name"].as_str().and_then(|n| n.rsplit('/').next()) else {
                         continue;
                     };
-                    if let Some(parsed) = Store::unwrap(d).and_then(|j| serde_json::from_str(&j).ok()) {
-                        out.push((name.to_string(), parsed));
+                    if let Some(json) = Store::unwrap(d) {
+                        out.push((name.to_string(), json));
                     }
                 }
                 match v["nextPageToken"].as_str().filter(|t| !t.is_empty()) {
@@ -719,7 +813,7 @@ impl Store {
             .collect())
     }
 
-    fn list_disk<T: DeserializeOwned>(&self, kind: &str) -> Vec<(String, T)> {
+    fn list_disk(&self, kind: &str) -> Vec<(String, String)> {
         let Ok(rd) = std::fs::read_dir(self.dir(kind)) else {
             return Vec::new();
         };
@@ -730,8 +824,8 @@ impl Store {
                 continue;
             }
             let Some(key) = p.file_stem().and_then(|s| s.to_str()) else { continue };
-            if let Some(v) = std::fs::read(&p).ok().and_then(|b| serde_json::from_slice(&b).ok()) {
-                out.push((key.to_string(), v));
+            if let Ok(json) = std::fs::read_to_string(&p) {
+                out.push((key.to_string(), json));
             }
         }
         self.count_read(kind, out.len().max(1) as u64);
@@ -951,5 +1045,83 @@ mod tests {
         std::fs::write(s.dir("sess").join("broken.json"), b"{not json").unwrap();
         let got: Vec<(String, u8)> = s.list("sess");
         assert_eq!(got, vec![("good".to_string(), 7)]);
+    }
+
+    /// Issue #13: after 00086 a pass still read ~861 documents, 547 of them listing every patient's
+    /// pack, 111 slot times and 98 cases — kinds written only through this process (the ward runs
+    /// one instance), and slot times never change. Those kinds are mirrored in memory: listed once,
+    /// then answered from the mirror, which every `put` and `del` keeps in step.
+    #[test]
+    fn a_mirrored_kind_is_read_once_and_kept_in_step_with_writes() {
+        let dir = tmp("mirror");
+        let st = Store::open(dir.clone()).unwrap();
+        for k in ["a", "b", "c"] {
+            st.put("ward_case", k, &1u32).unwrap();
+            st.put("not_mirrored", k, &1u32).unwrap();
+        }
+        let _ = st.take_reads();
+        // Written before this process mirrored the kind: a mirror starts from the store.
+        let fresh = tmp("mirror-fresh");
+        std::fs::create_dir_all(fresh.join("ward_case")).unwrap();
+        for k in ["a", "b", "c"] {
+            std::fs::write(fresh.join("ward_case").join(format!("{k}.json")), b"1").unwrap();
+        }
+        let st = Store::open(fresh.clone()).unwrap();
+        let _ = st.take_reads();
+        let mut first: Vec<(String, u32)> = st.list("ward_case");
+        first.sort();
+        assert_eq!(first.len(), 3);
+        assert_eq!(st.take_reads(), vec![("ward_case".to_string(), 3)], "the first list reads the store");
+
+        let again: Vec<(String, u32)> = st.list("ward_case");
+        assert_eq!(again, first, "the same records");
+        assert_eq!(st.get::<u32>("ward_case", "b"), Some(1));
+        assert_eq!(st.get::<u32>("ward_case", "nobody"), None, "a listed kind knows what it does not hold");
+        assert!(st.take_reads().is_empty(), "and none of that read the store");
+
+        // Writes, through this store or another on the same database, are seen at once.
+        st.put("ward_case", "b", &2u32).unwrap();
+        let other = Store::open(fresh.clone()).unwrap();
+        other.put("ward_case", "d", &4u32).unwrap();
+        other.del("ward_case", "a");
+        assert_eq!(st.get::<u32>("ward_case", "b"), Some(2));
+        assert_eq!(st.get::<u32>("ward_case", "d"), Some(4));
+        assert_eq!(st.get::<u32>("ward_case", "a"), None);
+        let keys: Vec<String> = st.list::<u32>("ward_case").into_iter().map(|(k, _)| k).collect();
+        assert_eq!(keys, vec!["b", "c", "d"]);
+        assert!(st.take_reads().is_empty());
+        let _ = std::fs::remove_dir_all(&fresh);
+        let st = Store::open(dir.clone()).unwrap();
+
+        // A kind not mirrored reads every time, as before.
+        let _: Vec<(String, u32)> = st.list("not_mirrored");
+        let _: Vec<(String, u32)> = st.list("not_mirrored");
+        assert_eq!(st.take_reads(), vec![("not_mirrored".to_string(), 6)]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// One document asked for by key, before its kind was ever listed, is read once and then kept.
+    #[test]
+    fn a_mirrored_document_got_by_key_is_read_once() {
+        let dir = tmp("mirror-get");
+        let st = Store::open(dir.clone()).unwrap();
+        // Written before this process started, so not yet in the mirror.
+        std::fs::create_dir_all(dir.join("ward_slot_time")).unwrap();
+        std::fs::write(dir.join("ward_slot_time").join("500.json"), b"1791000000").unwrap();
+        let _ = st.take_reads();
+        assert_eq!(st.get::<i64>("ward_slot_time", "500"), Some(1_791_000_000));
+        assert_eq!(st.get::<i64>("ward_slot_time", "500"), Some(1_791_000_000));
+        assert_eq!(st.get::<i64>("ward_slot_time", "501"), None);
+        assert_eq!(st.get::<i64>("ward_slot_time", "501"), None);
+        assert_eq!(st.take_reads(), vec![("ward_slot_time".to_string(), 3)],
+                   "the hit once; a miss on a kind never listed whole is asked again, since it may be written");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The mirror is re-listed after an hour, so a write it never saw cannot outlive the hour.
+    #[test]
+    fn a_whole_listing_is_trusted_for_an_hour() {
+        assert!(mirror_is_whole(std::time::Duration::from_secs(59 * 60)));
+        assert!(!mirror_is_whole(std::time::Duration::from_secs(60 * 60)));
     }
 }

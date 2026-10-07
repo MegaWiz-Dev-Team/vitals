@@ -2527,6 +2527,9 @@ fn one_patients_pack_is_one_read() {
     let got = vitals_web::ward_chain::pack_of(&st, 22).expect("her pack");
     assert_eq!(got.case, "case-22");
     let reads = st.take_reads();
-    assert_eq!(reads, vec![(vitals_web::ward_chain::PERSONA_STORE.to_string(), 1)], "one get, not a list of all of them");
+    // At most one get, never a list of all of them. Zero since the mirror (00087): the packs were
+    // written through this process, so it already holds them.
+    assert!(reads.iter().all(|(k, n)| k == vitals_web::ward_chain::PERSONA_STORE && *n <= 1),
+            "one get at most, not a list of all of them: {reads:?}");
     let _ = std::fs::remove_dir_all(&dir);
 }
