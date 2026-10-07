@@ -8659,7 +8659,7 @@ fn one_pass(store: &store::Store, root: &std::path::Path) -> Option<Result<ward_
     }
     // Issue #13: what the store was asked for since the last pass, by kind. The ticker and every
     // request share the counters, so this is the minute's reads, which is what the bill counts.
-    let read = store::take_reads();
+    let read = store.take_reads();
     let total: u64 = read.iter().map(|(_, n)| n).sum();
     let top: Vec<String> = read.iter().take(8).map(|(k, n)| format!("{k} {n}")).collect();
     println!("store      reads since the last pass · {total} · {}", top.join(" · "));

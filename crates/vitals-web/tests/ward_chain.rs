@@ -2523,10 +2523,10 @@ fn one_patients_pack_is_one_read() {
         })).unwrap_or_else(|e| panic!("a minimal pack parses: {e}"));
         st.put(vitals_web::ward_chain::PERSONA_STORE, &format!("p{id}"), &pack).unwrap();
     }
-    let _ = vitals_web::store::take_reads();
+    let _ = st.take_reads();
     let got = vitals_web::ward_chain::pack_of(&st, 22).expect("her pack");
     assert_eq!(got.case, "case-22");
-    let reads = vitals_web::store::take_reads();
+    let reads = st.take_reads();
     assert_eq!(reads, vec![(vitals_web::ward_chain::PERSONA_STORE.to_string(), 1)], "one get, not a list of all of them");
     let _ = std::fs::remove_dir_all(&dir);
 }

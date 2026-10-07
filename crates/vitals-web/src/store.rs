@@ -120,27 +120,19 @@ fn failed_to_connect(e: &Box<ureq::Error>) -> bool {
     }
 }
 
-/// Reads by kind since they were last taken (issue #13).
-fn reads() -> &'static std::sync::Mutex<std::collections::BTreeMap<String, u64>> {
-    static READS: std::sync::OnceLock<std::sync::Mutex<std::collections::BTreeMap<String, u64>>> = std::sync::OnceLock::new();
+/// Reads by backend, then by kind, since they were last taken (issue #13).
+///
+/// Keyed by the backend rather than held per `Store`, because the server opens a store per thread
+/// and the bill is the database's: every store on one Firestore database counts into one row. And
+/// not one row for the whole process, because two stores on two databases are two bills — and in
+/// the tests, two temp dirs counted as one made a count-asserting test fail whenever another test
+/// read at the same moment (7 ต.ค.).
+type Reads = std::collections::BTreeMap<String, std::collections::BTreeMap<String, u64>>;
+fn reads() -> &'static std::sync::Mutex<Reads> {
+    static READS: std::sync::OnceLock<std::sync::Mutex<Reads>> = std::sync::OnceLock::new();
     READS.get_or_init(Default::default)
 }
 
-/// Count `n` document reads of `kind`. Firestore bills one read per document a get or a query returns,
-/// and at least one per query, so this is what the bill counts.
-fn count_read(kind: &str, n: u64) {
-    *reads().lock().unwrap_or_else(|e| e.into_inner()).entry(kind.to_string()).or_default() += n;
-}
-
-/// The reads counted since the last take, largest first, and the counters back to zero.
-///
-/// Issue #13: ~105k reads an hour after two fixes, and no line said which kind. Each ward pass takes
-/// these and logs them, so a kind that grows shows up in the log before it shows up on the bill.
-pub fn take_reads() -> Vec<(String, u64)> {
-    let mut v: Vec<(String, u64)> = std::mem::take(&mut *reads().lock().unwrap_or_else(|e| e.into_inner())).into_iter().collect();
-    v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-    v
-}
 
 /// One store call slow enough to explain a slow pass.
 ///
@@ -411,6 +403,39 @@ impl Store {
         Ok(Store { backend, tokens: Tokens::default() })
     }
 
+    /// Which database this store reads: every store on it shares one set of read counters.
+    fn bill(&self) -> String {
+        match &self.backend {
+            Backend::Disk { root } => root.display().to_string(),
+            Backend::Firestore { base } => base.clone(),
+        }
+    }
+
+    /// Count `n` document reads of `kind`. Firestore bills one read per document a get or a query
+    /// returns, and at least one per query, so this is what the bill counts.
+    fn count_read(&self, kind: &str, n: u64) {
+        *reads()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entry(self.bill())
+            .or_default()
+            .entry(kind.to_string())
+            .or_default() += n;
+    }
+
+    /// The reads this store's database was asked for since the last take, largest first, and its
+    /// counters back to zero.
+    ///
+    /// Issue #13: ~105k reads an hour after two fixes, and no line said which kind. Each ward pass
+    /// takes these and logs them, so a kind that grows shows up in the log before it shows up on
+    /// the bill.
+    pub fn take_reads(&self) -> Vec<(String, u64)> {
+        let mine = reads().lock().unwrap_or_else(|e| e.into_inner()).remove(&self.bill()).unwrap_or_default();
+        let mut v: Vec<(String, u64)> = mine.into_iter().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        v
+    }
+
     /// A record as Firestore wants it: one JSON string in one field.
     ///
     /// The typed representation would need a mapping per struct and would break every time one of
@@ -559,7 +584,7 @@ impl Store {
     }
 
     pub fn get<T: DeserializeOwned>(&self, kind: &str, key: &str) -> Option<T> {
-        count_read(kind, 1);
+        self.count_read(kind, 1);
         match &self.backend {
             Backend::Firestore { .. } => {
                 let url = self.backend.doc_path(kind, key)?;
@@ -620,7 +645,7 @@ impl Store {
                         break;
                     }
                 };
-                count_read(kind, v["documents"].as_array().map_or(0, |d| d.len()).max(1) as u64);
+                self.count_read(kind, v["documents"].as_array().map_or(0, |d| d.len()).max(1) as u64);
                 for d in v["documents"].as_array().unwrap_or(&Vec::new()) {
                     let Some(name) = d["name"].as_str().and_then(|n| n.rsplit('/').next()) else {
                         continue;
@@ -666,7 +691,7 @@ impl Store {
                 let v: serde_json::Value = r
                     .into_json()
                     .map_err(|e| format!("listing {kind}: the answer was not JSON: {e}"))?;
-                count_read(kind, v["documents"].as_array().map_or(0, |d| d.len()).max(1) as u64);
+                self.count_read(kind, v["documents"].as_array().map_or(0, |d| d.len()).max(1) as u64);
                 for d in v["documents"].as_array().unwrap_or(&Vec::new()) {
                     if let Some(name) = d["name"].as_str().and_then(|n| n.rsplit('/').next()) {
                         out.push(name.to_string());
@@ -709,7 +734,7 @@ impl Store {
                 out.push((key.to_string(), v));
             }
         }
-        count_read(kind, out.len().max(1) as u64);
+        self.count_read(kind, out.len().max(1) as u64);
         out
     }
 
@@ -831,17 +856,28 @@ mod tests {
     fn reads_are_counted_by_kind_and_taken_once() {
         let dir = tmp("reads");
         let st = Store::open(dir.clone()).unwrap();
-        let _ = take_reads();
+        let _ = st.take_reads();
         for k in ["a", "b", "c"] {
             st.put("count_me", k, &1u32).unwrap();
         }
         let _: Vec<(String, u32)> = st.list("count_me");
         let _: Option<u32> = st.get("count_me", "a");
         let _: Option<u32> = st.get("count_me_too", "nobody");
-        let got = take_reads();
+        let got = st.take_reads();
         assert!(got.contains(&("count_me".to_string(), 4)), "three listed and one got: {got:?}");
         assert!(got.contains(&("count_me_too".to_string(), 1)), "a miss is still a read: {got:?}");
-        assert!(take_reads().iter().all(|(k, _)| !k.starts_with("count_me")), "taken once");
+        assert!(st.take_reads().iter().all(|(k, _)| !k.starts_with("count_me")), "taken once");
+
+        // Another database's reads are another bill: a store on a second root is not counted here,
+        // and a second store on this root is (the server opens one per thread).
+        let other_dir = tmp("reads-other");
+        let other = Store::open(other_dir.clone()).unwrap();
+        let _: Option<u32> = other.get("count_me", "a");
+        let same = Store::open(dir.clone()).unwrap();
+        let _: Option<u32> = same.get("count_me", "a");
+        assert_eq!(st.take_reads(), vec![("count_me".to_string(), 1)], "this root's reads, from either store on it");
+        assert_eq!(other.take_reads(), vec![("count_me".to_string(), 1)], "and the other root's are its own");
+        let _ = std::fs::remove_dir_all(&other_dir);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
