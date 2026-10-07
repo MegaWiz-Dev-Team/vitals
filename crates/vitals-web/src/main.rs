@@ -22,7 +22,7 @@ use tiny_http::{Header, Method, Response, Server};
 use vitals_progress::record::AttemptRecord;
 use vitals_progress::Difficulty;
 use vitals_replay::{hex, leaf, record_for, replay, resume, sce_hash, Step};
-use vitals_sce::{render_beat, Sce, SceState};
+use vitals_sce::{render_beat, reveal_gate, Sce, SceState};
 
 const PAGE: &str = include_str!("../static/index.html");
 /// The front door. The product page lives at `/` and the game one click behind it at `/play`,
@@ -2857,7 +2857,7 @@ fn main() {
                 // at boot and every case in the season borrowed it, so asking OSCE-A's
                 // seventy-one-year-old man anything got an answer from a nineteen-year-old woman
                 // about her shrimp allergy — in her name, on her allergy, at her age.
-                let (hist, status, spo2, ep) = {
+                let (hist, status, spo2, ep, asks) = {
                     let mut map = sessions.lock().unwrap();
                     let Some(s) = map.get_mut(&id).filter(|s| s.answers_to(caller.as_deref())) else {
                         let _ = send_hardened(req, no_such_session());
@@ -2865,7 +2865,18 @@ fn main() {
                     };
                     // The question goes on the tape. The answer never will.
                     s.tape.push(Step::asked(&q));
-                    (s.said.clone(), format!("{:?}", s.state.status), s.state.vitals.spo2, s.ep.clone())
+                    // Every question this run has asked, the one just pushed included — what the
+                    // reveal gate counts as earned. Read off the tape, which already records them,
+                    // so there is no second list of questions to disagree with it.
+                    let asks: Vec<String> = s
+                        .tape
+                        .iter()
+                        .filter_map(|st| match st {
+                            Step::Ask(t) => Some(t.clone()),
+                            _ => None,
+                        })
+                        .collect();
+                    (s.said.clone(), format!("{:?}", s.state.status), s.state.vitals.spo2, s.ep.clone(), asks)
                 };
                 // A case with no persona is mute, and stays mute. Answering it out of another
                 // case's file is the failure this whole path exists to prevent: a wrong answer in
@@ -2877,12 +2888,30 @@ fn main() {
                     })));
                     continue;
                 };
-                // No hint on this path yet — the reveal-gate wiring passes one when it lands.
+                // The reveal gate. A reply that states a held-back fact the learner has not asked
+                // for is regenerated with the gate's hint, up to `REGEN_CAP`, and then replaced by
+                // the case's own fallback line — so a leak never reaches the learner. An honest
+                // reply is one call, exactly as before. Built per request from the persona being
+                // played: a handful of lines, and it can never belong to another case.
                 let want = lang::language(param(&url, "lang").as_deref());
-                match pt.say(persona, &q, &hist, &status, spo2, None, want) {
-                    Ok(reply) => {
+                let nodes = reveal_gate::nodes(persona);
+                let gate = reveal_gate::Gate::new(&nodes);
+                let earned = reveal_gate::earned(&nodes, &asks);
+                let gated = reveal_gate::guard(&gate, &earned, reveal_gate::fallback(persona), |hint| {
+                    pt.say(persona, &q, &hist, &status, spo2, hint, want)
+                });
+                match gated {
+                    Ok((reply, outcome)) => {
+                        // One line per reply, counts only. Never the reply, never which fact
+                        // leaked: this log is read by more people than the rubric is.
+                        eprintln!(
+                            "reveal-gate ep={ep} action={} regenerations={}",
+                            outcome.action(),
+                            outcome.regenerations,
+                        );
                         // Counted only when she actually answered — a failed call is not billed
-                        // to the month or to the visitor.
+                        // to the month or to the visitor. Once per answer: a regeneration is the
+                        // gate's cost, not the learner's.
                         meter.spend(&store);
                         let mut map = sessions.lock().unwrap();
                         if let Some(s) = map.get_mut(&id) {

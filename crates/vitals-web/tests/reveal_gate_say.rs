@@ -304,8 +304,14 @@ fn an_unearned_reveal_never_reaches_the_learner() {
     // the next turn's history would hand the model its own leak back.
     m.then(&[ORDINARY]);
     let _ = s.say(&id, "what happened");
-    let last = m.seen.lock().unwrap().last().cloned().unwrap_or_default().to_string();
-    assert!(!last.contains(&leak), "the leaked reply was kept in her history");
+    // The brief itself lists every scripted line, so only the conversation after it is read.
+    let last = m.seen.lock().unwrap().last().cloned().unwrap_or_default();
+    let history: Vec<String> = last["messages"]
+        .as_array()
+        .map(|a| a.iter().skip(1).map(|x| x["content"].to_string()).collect())
+        .unwrap_or_default();
+    assert!(history.len() >= 2, "the second turn carried no history");
+    assert!(!history.iter().any(|c| c.contains(&leak)), "the leaked reply was kept in her history");
 }
 
 #[test]

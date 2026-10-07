@@ -267,7 +267,8 @@ pub fn brief(persona: &Value, status: &str, spo2: f64, lang: &Language) -> Strin
             s.push_str(&format!("- {id} ({reveal}): \"{line}\"\n"));
         }
     }
-    let fallback = persona["fallback"].as_str().unwrap_or("I can't really talk any more.");
+    // The same line the reveal gate sends after its cap, read by the same function.
+    let fallback = vitals_sce::reveal_gate::fallback(persona);
     s.push_str(
         "\nUse those as the truth. Paraphrase them naturally; do not invent a different \
          allergy, a different timeline, or symptoms not listed. Anything marked \
