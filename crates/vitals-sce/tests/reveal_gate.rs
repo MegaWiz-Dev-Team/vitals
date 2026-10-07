@@ -148,7 +148,10 @@ fn every_question_on_the_tape_counts_not_only_the_last() {
 const LEAK: &str = "Oh, I've reacted before — a doctor gave me adrenaline once.";
 const CLEAN: &str = "It hurts. I'm frightened.";
 
-fn run(replies: &[Result<&str, ()>]) -> (Result<(String, Outcome), ()>, Vec<Option<String>>) {
+/// What `guard` returned, and the hint each model call was given.
+type Run = (Result<(String, Outcome), ()>, Vec<Option<String>>);
+
+fn run(replies: &[Result<&str, ()>]) -> Run {
     let g = Gate::new(&nodes());
     let mut hints = Vec::new();
     let mut i = 0;
