@@ -7760,6 +7760,7 @@ dependencies = [
 name = "vitals-web"
 version = "0.9.4"
 dependencies = [
+ "base64 0.22.1",
  "borsh 1.8.0",
  "flate2",
  "serde",

@@ -11,6 +11,8 @@ tiny_http = "0.12"
 # gzip on the wire. Already in the tree through another crate, and the ward serves 620 KB of text
 # to a first visitor on a service that scales to zero.
 flate2 = "1"
+# The kept board is gzip in a Firestore string, and a string must be text. Already in the tree.
+base64 = "0.22"
 ureq = { version = "2", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

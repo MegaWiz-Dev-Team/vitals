@@ -588,6 +588,10 @@ pub fn keep_board(store: &crate::store::Store, board: &serde_json::Value, revisi
     if board.get("readable").and_then(serde_json::Value::as_bool) != Some(true) {
         return false;
     }
+    let Some(board_gz) = pack_board(board) else {
+        eprintln!("ward       the board could not be compressed to keep it");
+        return false;
+    };
     let row = serde_json::json!({
         "version": BOARD_VERSION,
         "at_unix": std::time::SystemTime::now()
@@ -595,7 +599,7 @@ pub fn keep_board(store: &crate::store::Store, board: &serde_json::Value, revisi
             .map(|d| d.as_secs())
             .unwrap_or(0),
         "revision": revision,
-        "board": board,
+        "board_gz": board_gz,
     });
     match store.put(BOARD_STORE, "last", &row) {
         Ok(()) => true,
@@ -610,6 +614,24 @@ pub fn keep_board(store: &crate::store::Store, board: &serde_json::Value, revisi
             false
         }
     }
+}
+
+/// The board as gzip, base64 so it can be a Firestore string.
+///
+/// A Firestore string holds at most 1,048,487 bytes, and the board as plain JSON was 534,364 bytes
+/// for 422 patients on 7 ต.ค., growing by a patient an hour. It gzips about 8×.
+fn pack_board(board: &serde_json::Value) -> Option<String> {
+    use base64::Engine;
+    use std::io::Write;
+    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    gz.write_all(&serde_json::to_vec(board).ok()?).ok()?;
+    Some(base64::engine::general_purpose::STANDARD.encode(gz.finish().ok()?))
+}
+
+fn unpack_board(gz: &str) -> Option<serde_json::Value> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(gz).ok()?;
+    serde_json::from_reader(flate2::read::GzDecoder::new(&bytes[..])).ok()
 }
 
 /// The last board this ward read, and how long ago it read it.
@@ -634,7 +656,11 @@ pub fn last_board(store: &crate::store::Store) -> Option<Kept> {
     if row.get("version").and_then(serde_json::Value::as_u64) != Some(BOARD_VERSION as u64) {
         return None;
     }
-    let board = row.get("board")?.clone();
+    // Kept compressed since 00087; a row kept by an older build carries the board as it was.
+    let board = match row.get("board_gz").and_then(serde_json::Value::as_str) {
+        Some(gz) => unpack_board(gz)?,
+        None => row.get("board")?.clone(),
+    };
     if board.get("readable").and_then(serde_json::Value::as_bool) != Some(true) {
         return None;
     }

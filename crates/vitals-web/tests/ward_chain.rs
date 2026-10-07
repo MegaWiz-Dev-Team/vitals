@@ -1440,6 +1440,68 @@ fn the_last_board_outlives_the_instance_that_read_it() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// **A ward that outgrows one store row is still kept.**
+///
+/// The kept board is one Firestore string, and a string holds at most 1,048,487 bytes. On 7 ต.ค.
+/// the board was 534,364 bytes for 422 patients and growing by one an hour, so it would have
+/// stopped fitting around 24 ต.ค. — after which every process that started would answer with an
+/// older and older board. The board is JSON about many patients shaped alike, and it gzips about
+/// 8× (67,576 bytes that day), so it is kept compressed and read back exactly as it was.
+///
+/// And a row kept the old way, by a build from before this one, is still read: a deploy must not
+/// cost the first visitor a chain read.
+#[test]
+fn a_board_bigger_than_one_store_row_is_kept_compressed_and_read_back_whole() {
+    use vitals_web::store::Store;
+    use vitals_web::ward_chain::{keep_board, last_board, BOARD_STORE, BOARD_VERSION};
+    const FIRESTORE_STRING_MAX: usize = 1_048_487;
+
+    let dir = std::env::temp_dir().join(format!("vitals-board-big-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store = Store::open(dir.clone()).expect("a store");
+
+    let countries = ["NE", "TH", "ID", "KE", "PE", "FI", "UG", "MW", "TZ", "ZW"];
+    let patients: Vec<serde_json::Value> = (0..8_000u64)
+        .map(|i| serde_json::json!({
+            "patient_id": 1_790_000_000u64 + i * 3_661,
+            "state": if i % 19 == 0 { "on_ward" } else { "died" },
+            "case": format!("ddx-case-{}-en", i % 41),
+            "country": countries[(i % 10) as usize],
+            "shifts": i % 4,
+            "admitted_slot": 500_000_000u64 + i * 9_001,
+            "closed_slot": 500_100_000u64 + i * 9_013,
+            "history": (0..(i % 4)).map(|s| serde_json::json!({
+                "leaf": format!("{:064x}", (i * 7_919 + s) * 104_729),
+                "slot": 500_050_000u64 + i * 9_007 + s,
+            })).collect::<Vec<_>>(),
+        }))
+        .collect();
+    let big = serde_json::json!({ "readable": true, "as_of_slot": 503_000_000u64, "patients": patients });
+    assert!(serde_json::to_string(&big).unwrap().len() > FIRESTORE_STRING_MAX,
+            "the board under test must not fit as plain JSON, or it proves nothing");
+
+    assert!(keep_board(&store, &big, "vitals-world-00087-big"), "a board that outgrew one row is still kept");
+    let row = store.get::<serde_json::Value>(BOARD_STORE, "last").expect("the stored record");
+    let row_len = serde_json::to_string(&row).unwrap().len();
+    assert!(row_len < FIRESTORE_STRING_MAX, "the kept row fits one Firestore string: {row_len} bytes");
+    assert_eq!(last_board(&store).expect("and comes back").board, big,
+               "exactly as it was read, every patient and every leaf");
+
+    // A row kept by a build from before compression.
+    let old = serde_json::json!({
+        "version": BOARD_VERSION,
+        "at_unix": 1_791_300_000u64,
+        "revision": "vitals-world-00086-nv2",
+        "board": { "readable": true, "as_of_slot": 502_999_999u64, "patients": [] },
+    });
+    store.put(BOARD_STORE, "last", &old).expect("write the old row");
+    let kept = last_board(&store).expect("an old row is still served");
+    assert_eq!(kept.board["as_of_slot"], 502_999_999u64);
+    assert_eq!(kept.revision, "vitals-world-00086-nv2");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// **A receipt says what was done, not what the id for it is.**
 ///
 /// The demo capture's receipt reads "0:39 ordered `tx_oxygen`", "0:17 asked
