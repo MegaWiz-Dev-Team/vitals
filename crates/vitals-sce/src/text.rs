@@ -26,3 +26,12 @@ use unicode_normalization::UnicodeNormalization;
 pub fn canon(s: &str) -> String {
     s.nfkc().collect()
 }
+
+/// Canonicalised and lower-cased: the form a keyword match compares on.
+///
+/// One function so every keyword matcher in the engine agrees — intervention keywords in the
+/// runtime and dialogue keywords in the reveal gate. Two copies of this would drift, and a
+/// question that earns a fact in one place and not the other is a bug nobody could see.
+pub fn fold(s: &str) -> String {
+    canon(s).to_lowercase()
+}

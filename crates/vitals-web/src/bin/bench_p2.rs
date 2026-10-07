@@ -15,9 +15,7 @@
 //!      `cargo run -p vitals-web --bin bench_p2 --release`
 
 use std::collections::HashSet;
-use vitals_sce::reveal_gate::{retry_hint, Gate, Node, Reveal};
-
-const REGEN_CAP: usize = 2;
+use vitals_sce::reveal_gate::{guard, nodes, Gate, REGEN_CAP};
 
 fn main() {
     let probes: Vec<String> = std::fs::read_to_string("bench/p2_probes.txt")
@@ -39,13 +37,13 @@ fn main() {
         eprintln!("no model configured — set VITALS_VERTEX_URL + a token, or HEIMDALL_API_KEY");
         std::process::exit(2);
     };
-    let gate = Gate::new(&nodes(&story));
+    let story_json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&story).unwrap_or_default()).unwrap_or_default();
+    let gate = Gate::new(&nodes(&story_json));
     let earned: HashSet<String> = HashSet::new(); // the probes ask nothing directly
     // The safe reply the gate substitutes after the regenerate cap — by construction it leaks
     // nothing, which is the whole point of having one. This is what the learner actually sees.
-    let story_json: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&story).unwrap_or_default()).unwrap_or_default();
-    let fallback = story_json["fallback"].as_str().unwrap_or("I can't really talk any more.").to_string();
+    let fallback = vitals_sce::reveal_gate::fallback(&story_json).to_string();
 
     // Arm A: prompt only. Count how many probes leak an unearned reveal.
     // Arm B: same probe, but regenerate on a leak up to the cap. Count residual leaks and the
@@ -72,25 +70,20 @@ fn main() {
         // the learner sees is never a leaking one — so residual is 0 by design, and what the
         // benchmark really measures is how often the gate must fall back (a canned line instead
         // of natural dialogue) and how many extra calls that costs.
-        let mut reply_b = reply_a.clone();
+        // The served path's own loop (`reveal_gate::guard`), with Arm A's reply as its first
+        // attempt so both arms answer the same draw. Regenerations carry the gate's hint through
+        // the same parameter the served path uses.
         b_calls += 1;
-        let mut tries = 0;
-        loop {
-            let v = gate.check(&reply_b, &earned);
-            if v.is_empty() || tries >= REGEN_CAP {
-                break;
+        let (reply_b, outcome) = guard(&gate, &earned, &fallback, |hint| match hint {
+            None => Ok::<_, ()>(reply_a.clone()),
+            Some(h) => {
+                b_calls += 1;
+                Ok(ask(&patient, &story_json, probe, Some(h)))
             }
-            // Constrained regeneration: the gate's hint for what leaked, carried into her brief
-            // through the same parameter the served path uses — the bench now exercises the real
-            // design, not a proxy of it.
-            let hint = retry_hint(&v);
-            reply_b = ask(&patient, &story_json, probe, hint.as_deref());
-            b_calls += 1;
-            tries += 1;
-        }
-        let fell_back = !gate.check(&reply_b, &earned).is_empty();
+        })
+        .unwrap_or_else(|_| (fallback.clone(), Default::default()));
+        let (tries, fell_back) = (outcome.regenerations, outcome.fell_back);
         if fell_back {
-            reply_b = fallback.clone(); // the learner sees this, not the leak
             b_fallbacks += 1;
         }
         if !gate.check(&reply_b, &earned).is_empty() {
@@ -145,27 +138,5 @@ fn ask(
     hint: Option<&str>,
 ) -> String {
     p.say(persona, q, &[], "stable", 98.0, hint, vitals_web::lang::default_language())
-        .unwrap_or_default()
-}
-
-/// The story's dialogue nodes, as the gate needs them.
-fn nodes(story: &std::path::Path) -> Vec<Node> {
-    let v: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(story).unwrap_or_default()).unwrap_or_default();
-    v["dialogue"]
-        .as_array()
-        .map(|a| {
-            a.iter()
-                .map(|n| Node {
-                    id: n["id"].as_str().unwrap_or("").to_string(),
-                    reveal: match n["reveal"].as_str().unwrap_or("on_ask") {
-                        "volunteered" => Reveal::Volunteered,
-                        "on_direct_ask" => Reveal::OnDirectAsk,
-                        _ => Reveal::OnAsk,
-                    },
-                    text: n["patient"].as_str().unwrap_or("").to_string(),
-                })
-                .collect()
-        })
         .unwrap_or_default()
 }
