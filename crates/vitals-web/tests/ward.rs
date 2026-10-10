@@ -166,8 +166,11 @@ fn a_patient_whose_engine_moved_her_to_icu_is_not_openable() {
     assert_eq!(by_id(3)["openable"], true);
 
     assert_eq!(v["census"]["on_ward"], 3, "the chain still carries all three as open");
-    assert_eq!(v["census"]["transferred"], 2,
-               "and the ward publishes how many of those are at a terminal, beside the chain's own count");
+    assert_eq!(v["census"]["transferred_icu"], 1, "one open account the engine has moved to ICU");
+    assert_eq!(v["census"]["self_discharged"], 1,
+               "and one the engine has discharged on its own — the two are not folded together");
+    assert!(v["derivations"]["transferred_icu"].as_str().unwrap_or_default().contains("not from the chain"),
+            "the new line names where it comes from, like every other census field");
 }
 
 #[test]

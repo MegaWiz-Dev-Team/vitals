@@ -1070,14 +1070,19 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
     });
     let mut all_json = six(&all);
     all_json["unrebuildable"] = serde_json::json!(stuck_now);
-    // How many open beds the engine has already transferred (ICU) or self-discharged. Published
-    // beside the census, not folded in — the chain still carries them as `on_ward`, so a reader
-    // who re-counts the open accounts and this number lands exactly where the chain is.
-    let transferred_now = patients
-        .iter()
-        .filter(|p| p.state == OPEN && r.transferred.get(&p.patient_id).is_some())
-        .count() as u64;
-    all_json["transferred"] = serde_json::json!(transferred_now);
+    // How many open beds the engine has already moved to a non-death terminal. Split by terminal
+    // because the two are not the same thing: ICU is a transfer and discharge is an ending the
+    // ward does not auto-anchor. Published beside the census, not folded in — the chain still
+    // carries them as `on_ward`, so a reader who re-counts the open accounts and these numbers
+    // lands exactly where the chain is. Named "transferred_icu" and "self_discharged" rather than
+    // "saved" (developer-93, 10 Oct 2026): only the stranger-attended endings are saves, and the
+    // walk the next day showed only 4 of 10 reached ICU with somebody in the room.
+    let is_terminal = |p: &PatientOnChain, name: &str|
+        p.state == OPEN && r.transferred.get(&p.patient_id).is_some_and(|t| t == name);
+    let transferred_icu = patients.iter().filter(|p| is_terminal(p, "WinIcu")).count() as u64;
+    let self_discharged = patients.iter().filter(|p| is_terminal(p, "WinDischarge")).count() as u64;
+    all_json["transferred_icu"] = serde_json::json!(transferred_icu);
+    all_json["self_discharged"] = serde_json::json!(self_discharged);
     let mut w = six(&week);
     w["since_slot"] = match since {
         Some(s) => serde_json::json!(s),
@@ -1282,6 +1287,18 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                               Not a chain fact and not an ending: they are open on chain, nobody \
                               here can rebuild the chart, and nothing was written to the chain to \
                               say otherwise. They hold no bed, so the ticker refills it",
+            "transferred_icu": "open patients the engine has already moved to ICU. From the pass \
+                                 that rebuilt them, not from the chain — the ward does not \
+                                 auto-anchor a non-death ending, so the account stays open and the \
+                                 ward program is untouched. The board stops offering a shift on \
+                                 them because the engine is terminal and a next shift has no sim \
+                                 seconds to spend. Only the ones a stranger was there for are \
+                                 saves: this number counts both, and the public tapes say which",
+            "self_discharged": "open patients the engine has moved to discharge on its own. Same \
+                                 derivation as `transferred_icu`; not a chain fact. A discharge \
+                                 nobody was there to give is not a chain-anchored one, and the \
+                                 ward leaves the account open until the next stranger — but the \
+                                 engine has nothing left to do, so no shift lands anywhere",
             "shifts": "anchored leaves, one per shift",
             "patients": "one entry per patient account on chain — id, state, shifts and slots \
                          read from the account. The case, the name and the country are not on \
