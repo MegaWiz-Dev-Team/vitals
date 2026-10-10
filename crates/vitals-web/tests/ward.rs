@@ -54,7 +54,15 @@ fn read<'a>(
         // the patients still mid-stay on season cases have. The test about a compiled case fills
         // this in itself.
         cases: &[],
+        transferred: nothing_transferred(),
     }
+}
+
+/// No patient's engine has transferred her — a `&'static` empty map.
+fn nothing_transferred() -> &'static std::collections::BTreeMap<u64, String> {
+    static NONE: std::sync::OnceLock<std::collections::BTreeMap<u64, String>> =
+        std::sync::OnceLock::new();
+    NONE.get_or_init(Default::default)
 }
 
 /// The chain's dating of a handful of slots, as `slot_times` hands it to the payload.
@@ -99,6 +107,68 @@ fn shift_by(patient_id: u64, signer: u8, slot: u64) -> ShiftOnChain {
 const OPEN: u8 = 0;
 const DISCHARGED: u8 = 1;
 const DIED: u8 = 2;
+
+/// **A patient whose engine has moved her to ICU is not openable, and the census says so.**
+///
+/// Found by developer-93 on 10 Oct 2026: patient 1790212620 had four shifts in a row of 0 steps
+/// and 0 sim seconds, all committing to the same run_hash, because the ward kept her openable
+/// after her engine had moved her to ICU on shift 0. "ICU is a transfer, the next stranger
+/// continues the stay" was the ticker's intent — but the engine is terminal at WinIcu, so the
+/// next stranger has no sim seconds to spend and nothing a stranger does lands anywhere.
+///
+/// Server-side close: the chain still carries her as `PATIENT_OPEN` (the ticker only closes on
+/// deaths), the ward program is untouched, and no leaf is anchored. The board stops offering her,
+/// and the census publishes `transferred` beside the chain-derived counts so a reader can see
+/// where the open accounts went. WinDischarge is treated the same way — a discharge nobody was
+/// there to give is not a leaf we would want to anchor, but it is a bed with no next shift either.
+#[test]
+fn a_patient_whose_engine_moved_her_to_icu_is_not_openable() {
+    use std::collections::BTreeMap;
+    use vitals_web::ward::{ward_payload, Pack, Persona, WardRead};
+
+    let patients = vec![patient(1, OPEN, 1, 10, 0), patient(2, OPEN, 1, 20, 0), patient(3, OPEN, 0, 30, 0)];
+    let mut packs: BTreeMap<u64, Pack> = BTreeMap::new();
+    for (id, name) in [(1u64, "Takondwa"), (2, "Aichatou"), (3, "Oksana")] {
+        packs.insert(id, Pack {
+            difficulty: None,
+            case: "ddx-psvt-1-en".into(),
+            persona: Persona { name: name.into(), country: "NER".into(), age: 40, sex: "f".into() },
+            portrait: Default::default(),
+            endemic: false,
+        });
+    }
+    // The engine says patient 1 is now in ICU and patient 2 self-discharged. The chain-derived
+    // census stays as it was (three open accounts), and the next `transferred` line names the two.
+    let mut transferred: BTreeMap<u64, String> = BTreeMap::new();
+    transferred.insert(1, "WinIcu".into());
+    transferred.insert(2, "WinDischarge".into());
+
+    let v = ward_payload(&WardRead {
+        closes_in: &NO_CLOCKS,
+        patients: &patients, shifts: &[], packs: &packs,
+        since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
+        unrebuildable: nothing_lost(), unread: nothing_unread(), times: nothing_dated(),
+        seconds_per_slot: None, cases: &[], transferred: &transferred,
+    });
+
+    let by_id = |id: u64| v["patients"].as_array().unwrap().iter()
+        .find(|r| r["patient_id"] == id).cloned().unwrap_or(serde_json::Value::Null);
+    assert_eq!(by_id(1)["state"], "transferred_icu");
+    assert_eq!(by_id(1)["openable"], false);
+    assert!(by_id(1)["why_not"].as_str().unwrap_or_default().contains("ICU"),
+            "the row says why in words a card can read: {}", by_id(1));
+    assert_eq!(by_id(2)["state"], "self_discharged");
+    assert_eq!(by_id(2)["openable"], false);
+    assert!(by_id(2)["why_not"].as_str().unwrap_or_default().contains("discharge"),
+            "the row says why: {}", by_id(2));
+    assert_eq!(by_id(3)["state"], "on_ward",
+               "the patient the engine has not transferred stays as she was");
+    assert_eq!(by_id(3)["openable"], true);
+
+    assert_eq!(v["census"]["on_ward"], 3, "the chain still carries all three as open");
+    assert_eq!(v["census"]["transferred"], 2,
+               "and the ward publishes how many of those are at a terminal, beside the chain's own count");
+}
 
 #[test]
 fn the_census_is_read_off_the_chain_and_on_the_ward_is_subtraction() {
@@ -741,6 +811,7 @@ fn the_globe_reads_every_field_it_renders() {
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 4_000, now_unix: now, source: "devnet:ABC",
         unrebuildable: nothing_lost(), unread: nothing_unread(), times: &times, seconds_per_slot: None,
+        transferred: nothing_transferred(),
     });
 
     assert!(v["census"]["on_ward"].is_u64(),
@@ -791,6 +862,7 @@ fn the_globe_reads_every_field_it_renders() {
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: lease_ends + 1, now_unix: now, source: "devnet:ABC",
         unrebuildable: nothing_lost(), unread: nothing_unread(), times: &times, seconds_per_slot: None,
+        transferred: nothing_transferred(),
     });
     let ploy = expired["patients"].as_array().unwrap().iter()
         .find(|p| p["patient_id"] == 7).cloned().unwrap();
@@ -1013,6 +1085,7 @@ fn every_time_the_ward_publishes_is_a_slot_or_a_z() {
                 (10, 1_759_996_000), (5, 1_759_995_000), (900, 1_759_997_000),
                 (lease_ends - vitals_program::LEASE_SLOTS, 1_759_999_000),
             ]),
+            transferred: nothing_transferred(),
         }),
         ward_unavailable("devnet:ABC", "rpc timed out"),
     ];
@@ -1132,6 +1205,7 @@ fn a_patient_the_ward_cannot_describe_holds_no_bed() {
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
         unrebuildable: nothing_lost(), unread: nothing_unread(), times: nothing_dated(), seconds_per_slot: None,
+        transferred: nothing_transferred(),
     });
 
     assert_eq!(v["census"]["on_ward"], 3,
@@ -1188,6 +1262,7 @@ fn the_payload_publishes_how_many_are_in_beds_beside_how_many_are_on_the_chain()
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
         unrebuildable: nothing_lost(), unread: nothing_unread(), times: nothing_dated(), seconds_per_slot: None,
+        transferred: nothing_transferred(),
     });
 
     assert_eq!(v["census"]["on_ward"], 3, "the census is what the chain says, unchanged");
@@ -1612,6 +1687,7 @@ fn a_time_on_the_board_is_the_slots_own_block_time() {
         patients: &patients, shifts: &shifts, packs: &packs, cases: &[],
         unrebuildable: nothing_lost(), unread: nothing_unread(), since: None, as_of_slot: as_of,
         now_unix: now, source: "devnet:ABC", times: &times, seconds_per_slot: None,
+        transferred: nothing_transferred(),
     });
     let row = |id: u64| {
         v["patients"].as_array().unwrap().iter().find(|p| p["patient_id"] == id).unwrap().clone()
@@ -1957,6 +2033,7 @@ fn a_bed_whose_case_the_ward_cannot_draw_is_not_offered() {
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
         unrebuildable: nothing_lost(), unread: nothing_unread(), times: nothing_dated(), seconds_per_slot: None,
+        transferred: &BTreeMap::new(),
     });
 
     let by_id = |id: u64| v["patients"].as_array().unwrap().iter()
@@ -2134,6 +2211,7 @@ fn an_unrefreshed_history_is_said_on_the_row_and_the_bed_stays_offered() {
         now_unix: 1_760_000_000, source: "devnet:ABC", times: &BTreeMap::new(),
         seconds_per_slot: None, unrebuildable: &BTreeMap::new(), cases: &[],
         unread: &unread,
+        transferred: &BTreeMap::new(),
     });
 
     let rows = v["patients"].as_array().expect("rows");
@@ -2160,7 +2238,7 @@ fn an_unrefreshed_history_is_said_on_the_row_and_the_bed_stays_offered() {
         patients: &patients, shifts: &[], packs: &BTreeMap::new(), since: None, as_of_slot: 1_000,
         now_unix: 1_760_000_000, source: "devnet:ABC", times: &BTreeMap::new(),
         seconds_per_slot: None, unrebuildable: &BTreeMap::new(), cases: &[],
-        unread: &BTreeMap::new(),
+        unread: &BTreeMap::new(), transferred: &BTreeMap::new(),
     });
     assert_eq!(quiet["unread"].as_array().map(Vec::len), Some(0),
                "an empty list on a good read, not an absent field — the shape of the payload does \
@@ -2180,6 +2258,7 @@ fn the_board_publishes_the_catalogues_status_beside_its_counts() {
         patients: &[], shifts: &[], packs: &BTreeMap::new(), since: None, as_of_slot: 1_000,
         now_unix: 1_760_000_000, source: "devnet:ABC", times: &BTreeMap::new(),
         seconds_per_slot: None, unrebuildable: &BTreeMap::new(), cases: &[], unread: &BTreeMap::new(),
+        transferred: &BTreeMap::new(),
     });
     // The payload composes it from the door this host is serving behind, which under test is the
     // default — so the assertion is that the board shows *the same* sentence, not a fixed one.
@@ -2223,7 +2302,7 @@ fn the_catalogue_counts_what_a_patient_can_be_placed_on() {
         patients: &[], shifts: &[], packs: &BTreeMap::new(), since: None, as_of_slot: 1_000,
         now_unix: 1_760_000_000, source: "devnet:ABC", times: &BTreeMap::new(),
         seconds_per_slot: None, unrebuildable: &BTreeMap::new(), cases: &cases,
-        unread: &BTreeMap::new(),
+        unread: &BTreeMap::new(), transferred: &BTreeMap::new(),
     });
     let cat = &v["policy"]["catalogue"];
     assert_eq!(cat["held"], 2, "the cases a patient can be placed on, not every pack in the store");

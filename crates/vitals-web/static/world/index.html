@@ -63,6 +63,9 @@ h1 .second{display:block;color:var(--proven);font-size:.72em;font-weight:600;mar
    left edge, which read as a pull-quote about the company on a page whose subject is a ward. */
 .mission{margin:.45rem 0 0;max-width:44em;font-size:.92rem;line-height:1.5;color:var(--ink-2)}
 .mission b{color:var(--ink);font-weight:600}
+/* The one sentence a stranger sees before any card. Louder than `.mission` and quieter than `h1`:
+   the stakes are small and the help should feel small, which is also why there is only one line. */
+.lede{margin:.55rem 0 0;max-width:44em;font-size:1rem;line-height:1.55;color:var(--ink-2)}
 .mission[hidden]{display:none}
 .sub{color:var(--ink-2);max-width:40em;margin:.6rem 0 0;font-size:.95rem}
 
@@ -214,11 +217,17 @@ canvas#globe.dragging{cursor:grabbing}
 .tag{display:inline-block;padding:0 .35rem;border-radius:.3rem;background:var(--surface-2);color:var(--ink-2);white-space:nowrap}
 .prow .note{color:var(--ink-3,#7b8a86);font-size:.86rem;line-height:1.45;margin-top:.15rem}
 .tag.endemic{color:var(--proven);background:var(--proven-soft)}
-a.take{font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.06em;text-decoration:none;color:var(--proven);border:1px solid var(--proven);border-radius:.4rem;padding:.25rem .55rem;white-space:nowrap}
-a.take:hover{background:var(--proven-soft)}
+/* **The way into a bed is the loudest thing on the card.**
+   Earlier an outline, bay-coloured, .7rem monospace — the least prominent element on the row, in a
+   list of six counters. developer-93 found on 10 ต.ค. that strangers do not take shifts, not that
+   they refuse: a 10-post FB share brought +461 arrivals and +0 takes. A solid primary at .9rem,
+   with weight, says "this is the thing to press"; the counters are a readout and are quiet beside
+   it. */
+a.take{font-family:"IBM Plex Mono",monospace;font-size:.9rem;font-weight:600;letter-spacing:.06em;text-decoration:none;color:var(--ground,#fff);background:var(--proven);border:1px solid var(--proven);border-radius:.4rem;padding:.45rem .95rem;white-space:nowrap;transition:transform .08s ease}
+a.take:hover{filter:brightness(1.07);transform:translateY(-1px)}
 /* Hover and focus were one rule that turned the outline off so the hover would look clean — which
    left the way into every bed invisible to a keyboard (UX review H1). */
-a.take:focus-visible{background:var(--proven-soft);outline:2px solid var(--proven);outline-offset:2px}
+a.take:focus-visible{filter:brightness(1.07);outline:2px solid var(--proven);outline-offset:2px}
 /* Nothing to take here — but there is something to read: her chart, her shifts and what happened
    to her. It was `aria-disabled` with `pointer-events:none`, which made the whole row unclickable
    for exactly the patients whose page is the most worth opening. The word on it says which of the
@@ -291,6 +300,10 @@ footer{margin-top:2.4rem;padding-top:1rem;border-top:1px solid var(--rule-soft);
 
   <h1 id="h1">Spin the world. Find a patient. Treat them.
       <span class="second" id="h1b">A ring is a country with a patient in a bed; filled, being treated now.</span></h1>
+  <!-- One sentence that says what pressing treat commits a stranger to. developer-93's UX read
+       on 10 ต.ค. 2026 — "nothing says what pressing treat commits you to" — and the +461 arrivals,
+       +0 takes behind it. No sign-up, no wallet, no mystery: a shift, then a hand-over. -->
+  <p class="lede" id="lede">One shift, no signup, no wallet. Treat the patient; hand over when you leave; the next person continues the chart.</p>
   <p class="mission" id="mission" hidden></p>
   <!-- What this ward is doing, in numbers, where a reader looks second. `in beds` and `on shift
        now` are the ward's own; the other three are the chain's and are left out when the census

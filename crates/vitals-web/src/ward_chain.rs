@@ -838,6 +838,7 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
         cases: &crate::ward_case::all(store),
         unrebuildable: &lost,
         unread: &h.unread,
+        transferred: &terminals(store, &patients),
         since: Some(as_of.saturating_sub(WEEK_SLOTS)),
         // Each open patient's remaining time, as the ticker last computed it. Read rather than
         // recomputed: the pass that rebuilt her wrote it, and replaying sixteen charts to build a
@@ -2655,6 +2656,28 @@ fn reap(
             // it is the ticker's own clock, because it is computed from the rebuild the ticker just
             // did rather than from a proxy for how long she has been lying there.
             Ok(Standing::Open(st)) => {
+                // The engine's current non-death terminal, if she is at one — so the board can stop
+                // offering a bed whose engine has nothing left to do. Written beside the clock,
+                // because the same rebuild answered both questions; cleared otherwise, so an old
+                // terminal from a before-fix engine run is not read as current.
+                let name = st.outcome().map(|o| match o {
+                    vitals_sce::runtime::Outcome::WinIcu => "WinIcu",
+                    vitals_sce::runtime::Outcome::WinDischarge => "WinDischarge",
+                    vitals_sce::runtime::Outcome::DeathArrest => "DeathArrest",
+                    vitals_sce::runtime::Outcome::DeathBiphasic => "DeathBiphasic",
+                });
+                match name.filter(|s| *s == "WinIcu" || *s == "WinDischarge") {
+                    Some(terminal) => {
+                        let _ = store.put(
+                            WARD_TERMINAL,
+                            &format!("p{}", p.patient_id),
+                            &TerminalKept { terminal: terminal.to_string(), revision: this_revision() },
+                        );
+                    }
+                    None => {
+                        store.del(WARD_TERMINAL, &format!("p{}", p.patient_id));
+                    }
+                }
                 // The same rebuild, asked one question further — and free, because the state it was
                 // decided on came back with the answer. Only an ending the ward would actually
                 // close on is a countdown: an outcome is terminal, so a patient who reaches a
@@ -4484,6 +4507,45 @@ pub fn cap_on_arrival(
     }
 }
 
+
+/// **The engine's current non-death terminal for each open patient, by the pass that rebuilt her.**
+///
+/// Written beside [`CLOSES_IN_STORE`] when the rebuild returns `Standing::Open` with
+/// `st.outcome()` set to a non-death ending — `WinIcu` or `WinDischarge`. The board reads it so a
+/// bed whose engine has nothing left to do stops offering a shift. On 10 Oct 2026 developer-93
+/// found four 0-sim-second shifts anchored on patient 1790212620, all committing to the same
+/// run_hash, because the ward kept her openable after her engine had moved her to ICU.
+///
+/// Keyed by patient id, value is the engine's own enum name as a string. Stamped with the
+/// revision that wrote it, so a deploy's clocks never claim another's.
+pub const WARD_TERMINAL: &str = "ward_terminal";
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct TerminalKept {
+    pub terminal: String,
+    pub revision: String,
+}
+
+/// Each open patient's engine terminal as the ticker last left it, by patient id.
+///
+/// Missing entries are the normal case: a patient the ticker has not rebuilt yet, one whose
+/// engine is not at a terminal, and one left by a different revision all belong out of this map
+/// and all three mean the same thing to the board — offer the bed as before.
+pub fn terminals(
+    store: &crate::store::Store,
+    patients: &[crate::ward::PatientOnChain],
+) -> std::collections::BTreeMap<u64, String> {
+    patients
+        .iter()
+        .filter(|p| p.closed_slot == 0)
+        .filter_map(|p| {
+            store
+                .get::<TerminalKept>(WARD_TERMINAL, &format!("p{}", p.patient_id))
+                .filter(|t| t.revision == this_revision())
+                .map(|t| (p.patient_id, t.terminal))
+        })
+        .collect()
+}
 
 /// The store the ticker leaves each patient's remaining time in, for the board to publish.
 ///

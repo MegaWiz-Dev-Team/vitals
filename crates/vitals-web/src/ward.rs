@@ -992,6 +992,17 @@ pub struct WardRead<'a> {
     /// presses anything. Never a reason for the board to be unreadable: one rate-limited listing
     /// blacked out staging for an hour on 20 ก.ย., and this is the field that replaced the blackout.
     pub unread: &'a std::collections::BTreeMap<u64, String>,
+    /// **The engine's non-death terminal, by patient id — what a replay says has already happened.**
+    ///
+    /// Written by the pass's rebuild beside [`CLOSES_IN_STORE`], read by the board. A patient here
+    /// has reached `WinIcu` or `WinDischarge`: a shift the next stranger would take has nowhere
+    /// left to go — the engine is terminal, every step is a no-op, and the leaf would commit to the
+    /// same tape she handed over on. Found by developer-93 on 10 Oct 2026: patient 1790212620 had
+    /// four such shifts in a row, all anchored to run_hash 8d1578aa, no sim seconds advanced.
+    ///
+    /// Keyed by the engine's own `Outcome` name (`WinIcu`, `WinDischarge`), so a renderer that
+    /// wants to word it one way for each may. Empty is the normal case.
+    pub transferred: &'a std::collections::BTreeMap<u64, String>,
 }
 
 /// The queue, as people rather than a number.
@@ -1059,6 +1070,14 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
     });
     let mut all_json = six(&all);
     all_json["unrebuildable"] = serde_json::json!(stuck_now);
+    // How many open beds the engine has already transferred (ICU) or self-discharged. Published
+    // beside the census, not folded in — the chain still carries them as `on_ward`, so a reader
+    // who re-counts the open accounts and this number lands exactly where the chain is.
+    let transferred_now = patients
+        .iter()
+        .filter(|p| p.state == OPEN && r.transferred.get(&p.patient_id).is_some())
+        .count() as u64;
+    all_json["transferred"] = serde_json::json!(transferred_now);
     let mut w = six(&week);
     w["since_slot"] = match since {
         Some(s) => serde_json::json!(s),
@@ -1107,15 +1126,27 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
             let caseless = p.state == OPEN
                 && !r.cases.is_empty()
                 && pack.is_some_and(|k| !r.cases.iter().any(|c| c.case_id == k.case));
+            // The engine says she has reached ICU or discharge on her own — no more sim seconds
+            // for any stranger to spend. The board stops offering a shift that would spin the same
+            // run_hash four times (10 Oct 2026). The chain still says she is open: the ticker does
+            // not auto-close non-deaths, so her account state and lease are untouched.
+            let transferred = (p.state == OPEN).then(|| r.transferred.get(&p.patient_id)).flatten();
             serde_json::json!({
                 "patient_id": p.patient_id,
                 // Whether a stranger can be offered this bed at all. The page asks it before it
                 // draws a link, so the answer lives here rather than being worked out twice.
-                "openable": !(stuck.is_some() || adrift || caseless),
+                "openable": !(stuck.is_some() || adrift || caseless || transferred.is_some()),
                 // No pronoun: this code has a patient id, not a persona, and the ward admits men
                 // and women. `plain_words.rs` holds every sentence in this file to that.
-                "why_not": caseless.then_some(
-                    "the ward no longer holds this case, so nothing here can open this bed"),
+                "why_not": if caseless {
+                    Some("the ward no longer holds this case, so nothing here can open this bed")
+                } else if transferred.is_some_and(|t| t == "WinIcu") {
+                    Some("the engine has moved this patient to ICU — a next shift has no sim seconds to spend")
+                } else if transferred.is_some_and(|t| t == "WinDischarge") {
+                    Some("the engine has reached discharge — a next shift has no sim seconds to spend")
+                } else {
+                    None
+                },
                 // The chart may be a shift behind; the bed is not shut for it. The account that
                 // says there is a bed was read fine — it is the history that was not.
                 "history": r.unread.contains_key(&p.patient_id)
@@ -1129,6 +1160,8 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                 "state": if stuck.is_some() { "unrebuildable" }
                          else if caseless { "caseless" }
                          else if adrift { "off_ward" }
+                         else if transferred.is_some_and(|t| t == "WinIcu") { "transferred_icu" }
+                         else if transferred.is_some_and(|t| t == "WinDischarge") { "self_discharged" }
                          else if on_shift { "on_shift" }
                          else { state_word(p.state) },
                 "note": match (stuck, adrift) {
