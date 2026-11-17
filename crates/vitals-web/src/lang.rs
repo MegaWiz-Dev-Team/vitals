@@ -1435,19 +1435,43 @@ const ORDERS: &[(&str, &str)] = &[
     ("ให้กลับบ้าน", "discharge home"),
 ];
 
+/// The alias table itself — (phrase, canonical English order) — for tests that hold recognition
+/// to it.
+pub fn order_aliases() -> &'static [(&'static str, &'static str)] {
+    ORDERS
+}
+
+/// Every translated ask label and the English ask it stands for — (label, ask). Typing a label
+/// back is an order too ([`canonical_order`]), so recognition is held to these as well.
+pub fn ask_aliases() -> Vec<(&'static str, &'static str)> {
+    ASKS.iter().flat_map(|l| l.tr.iter().map(move |(_, t)| (*t, l.key))).collect()
+}
+
 /// The canonical English order a non-English phrase names, if this layer knows one.
 ///
 /// Containment rather than equality, matching what the scenario matcher itself does — a learner
 /// types "ให้ออกซิเจน 10 ลิตร", not a dictionary headword. The **longest** key that appears wins,
 /// so a more specific phrase is never eaten by a prefix of itself.
 pub fn canonical_order(text: &str) -> Option<&'static str> {
+    canonical_order_key(text).map(|(_, v)| v)
+}
+
+/// [`canonical_order`], with the phrase it translated: (that phrase, the English order). A caller
+/// that must know whether the learner negated the phrase — "อย่าเพิ่งให้กลับบ้าน" holds ให้กลับบ้าน —
+/// asks `vitals_sce::recognise::alias_stands` with it.
+pub fn canonical_order_key(text: &str) -> Option<(&'static str, &'static str)> {
+    canonical_order_by(text, vitals_sce::recognise::contains)
+}
+
+/// The reading itself, with the containment rule passed in: the scenario matcher's own
+/// (`recognise::contains` — a key inside a Thai compound that means something else is not that
+/// key), or, in a test, the plain substring rule it replaced.
+fn canonical_order_by(text: &str, has: impl Fn(&str, &str) -> bool) -> Option<(&'static str, &'static str)> {
     let t = vitals_sce::text::canon(text).to_lowercase();
-    let mut best: Option<(usize, &'static str)> = None;
+    let mut best: Option<(&'static str, &'static str)> = None;
     let mut consider = |k: &'static str, v: &'static str| {
-        if t.contains(&vitals_sce::text::canon(k).to_lowercase())
-            && best.is_none_or(|(n, _)| k.len() > n)
-        {
-            best = Some((k.len(), v));
+        if has(&t, &vitals_sce::text::canon(k).to_lowercase()) && best.is_none_or(|(n, _)| k.len() > n.len()) {
+            best = Some((k, v));
         }
     };
     for (k, v) in ORDERS {
@@ -1460,7 +1484,7 @@ pub fn canonical_order(text: &str) -> Option<&'static str> {
             consider(label, line.key);
         }
     }
-    best.map(|(_, v)| v)
+    best
 }
 
 /// Does this reply look like it came back in the language that was asked for?
@@ -1825,6 +1849,24 @@ mod tests {
         assert_eq!(canonical_order("adrenaline im"), None);
         assert_eq!(canonical_order(""), None);
         assert_eq!(canonical_order("ยาหอม"), None);
+    }
+
+    /// The alias layer reads with the scenario matcher's containment now (`recognise::contains`),
+    /// not plain substring. On every phrase this table and the ask labels hold, that is no change:
+    /// no key is an abbreviation and none sits inside a compound that means something else.
+    #[test]
+    fn every_alias_and_label_is_read_as_plain_containment_read_it() {
+        let plain = |t: &str, k: &str| t.contains(k);
+        let phrases = ORDERS
+            .iter()
+            .flat_map(|(k, v)| [*k, *v])
+            .chain(ASKS.iter().flat_map(|l| l.tr.iter().map(|(_, t)| *t).chain([l.key])));
+        let mut n = 0;
+        for p in phrases {
+            assert_eq!(canonical_order_key(p), canonical_order_by(p, plain), "{p}");
+            n += 1;
+        }
+        assert!(n > 100, "{n}");
     }
 
     /// Every alias points at a phrase the English chips already fire, so nothing here invents an

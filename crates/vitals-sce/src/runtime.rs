@@ -572,10 +572,20 @@ impl SceState {
     /// Recognition, separated from application. The caller runs this once while the learner is
     /// playing, writes the answer onto the tape, and replay never has to ask again — which is what
     /// lets recognition get better without changing what an anchored run did.
+    ///
+    /// It got better here: [`crate::recognise`] reads an abbreviation only as a whole word, a
+    /// keyword inside a compound that means something else as no keyword, and a negated order as
+    /// no order — so "give adrenaline IM" is not the IV push and "ห้ามลุก" does not stand her up.
+    /// [`SceState::apply`] keeps the substring rule, because a `Step::Do` replays through it.
     pub fn resolve(&self, text: &str) -> Option<String> {
-        let sce_rc = Arc::clone(&self.sce);
-        let t = crate::text::canon(text).to_lowercase();
-        self.match_intervention(&sce_rc, &t).map(|i| sce_rc.interventions[i].id.clone())
+        crate::recognise::first(&self.sce, text)
+    }
+
+    /// May a language layer's reading of `text` stand? It translated `key`, a phrase in `text`,
+    /// into words [`SceState::resolve`] read as intervention `id` — not if the learner negated
+    /// that phrase. See [`crate::recognise::alias_stands`].
+    pub fn alias_stands(&self, id: &str, text: &str, key: &str) -> bool {
+        crate::recognise::alias_stands(&self.sce, id, text, key)
     }
 
     /// Apply an intervention the caller has already identified.
@@ -867,6 +877,9 @@ impl SceState {
         }
     }
 
+    /// The substring rule: any text containing a keyword names the order. What [`SceState::apply`]
+    /// reads text with, and so what every `Step::Do` already on a tape replays through — which is
+    /// why it stays exactly as it was when live recognition ([`SceState::resolve`]) moved on.
     fn match_intervention(&self, sce: &Sce, text: &str) -> Option<usize> {
         // Both sides canonicalised: the learner may type through an IME, and a case authored in
         // Japanese may carry full-width keywords for the same reason. Comparing raw would make

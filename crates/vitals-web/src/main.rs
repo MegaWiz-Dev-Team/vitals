@@ -13,6 +13,7 @@ mod chain;
 use vitals_web::{
     archive, authors, fuel, lang, meter, news2, patient, payout, reading, review, store, usage,
 };
+use vitals_web::order::{resolve_order, shock_order, DEFIB_JOULES};
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -1185,25 +1186,6 @@ const CASE_IMG: &[(&str, &[u8], &str)] = &[
     ("cxr-normal-3.png", include_bytes!("../static/img/cases/cxr-normal-3.png"), "image/png"),
     ("cxr-normal-4.png", include_bytes!("../static/img/cases/cxr-normal-4.png"), "image/png"),
 ];
-
-/// Which intervention an order names — the scenario first, then the language layer.
-///
-/// Two readers, in a fixed order, and the order is the whole safety argument:
-///
-///   1. **The scenario's own matcher.** Its answer is final. Every keyword a case author wrote,
-///      in whatever language they wrote it in, decides what happens on their own case.
-///   2. **Only if that declined**, [`lang::canonical_order`] offers the English order a
-///      non-English phrase names — and the same matcher rules on *that*. So a translation can
-///      add recognition and can never redirect, shadow or override an order a case already
-///      understood, and a station with no such intervention still does nothing, exactly as today.
-///
-/// The empty string means nobody understood it, which is a real answer and goes on the tape as
-/// one: replay must stay faithful to a run in which nothing happened.
-fn resolve_order(st: &SceState, act: &str) -> String {
-    st.resolve(act)
-        .or_else(|| lang::canonical_order(act).and_then(|en| st.resolve(en)))
-        .unwrap_or_default()
-}
 
 /// ── the patient stills a station is shot in ──────────────────────────────────
 ///
@@ -2488,11 +2470,12 @@ fn main() {
                                     // replay re-runs, so the run on screen and the run a verifier
                                     // recomputes are the same run even when the words that started
                                     // it were in another language.
-                                    let emitted = if id.is_empty() {
-                                        s.state.apply(&act)
-                                    } else {
-                                        s.state.apply_id(&id)
-                                    };
+                                    //
+                                    // The empty id too. Handing an unrecognised order to `apply`
+                                    // read the words again by substring — the trap recognition
+                                    // closes — so "ห้ามลุก" stood her up on screen while the tape
+                                    // said nothing was ordered and replay agreed with the tape.
+                                    let emitted = s.state.apply_id(&id);
                                     s.beats.extend(emitted.iter().map(render_beat));
                                     s.tape.push(Step::acted(&act, &id));
                                     // The picture the order asked for, if this station has one. It
@@ -4112,82 +4095,6 @@ fn kit_phrase(dev: &str, set: Option<f64>) -> Option<String> {
     })
 }
 
-// ── the defibrillator ───────────────────────────────────────────────────────
-//
-// The one order on the tray that is not an order. Everything else in `kit_phrase` is a sentence
-// the *scenario* rules on: the case says what oxygen does to this patient, and a case that never
-// mentions oxygen is entitled to ignore it. Shockability is not like that. Whether a rhythm can
-// be shocked is physiology — `Rhythm::shockable` — and routing it through each case's own
-// `interventions` list is how the shelf ended up where it was: `ep2` branched on the *name of a
-// state*, and `ep3`, `ep4` and `ep5` declared no `defibrillate` at all, so pressing the button on
-// a five-year-old in cardiac arrest charted nothing, scored nothing and appeared in no debrief.
-//
-// So the button and the typed order both end at `SceState::defibrillate`, and both write the
-// same `Step::Shock` on the tape. What is deliberately *not* changed is who answers first: the
-// scenario's matcher still rules on the text, and only when it declines does the engine's own route open.
-// A station that defines its own shock intervention keeps it, unchanged, and every rubric in the
-// repo scores exactly as it did.
-
-/// What the defibrillator delivers when nobody said. The page's own default preset.
-const DEFIB_JOULES: f64 = 200.0;
-
-/// Words that mean "deliver a shock", and the ones that mean the *other* kind of shock.
-///
-/// Shaped like a scenario `Matcher` because that is the shape this repo already argues about:
-/// `any_kw` plus `not_kw`. The exclusions are the whole reason it is not a bare substring test —
-/// "cardiogenic shock", "septic shock", "she is in shock" and "shock index" are all things a
-/// candidate types on a station where nobody wants 200 joules delivered, and on `ep5`, whose
-/// patient is exsanguinating, they are things a candidate types *often*.
-///
-/// The keywords are `ep2`'s own, taken off the intervention this replaced, so a learner who
-/// reached the old one reaches this.
-const SHOCK_KW: [&str; 5] = ["defib", "shock", "cardiovert", "joule", "200j"];
-const NOT_SHOCK_KW: [&str; 11] = [
-    "cardiogenic", "septic", "hypovol", "haemorrhagic", "hemorrhagic", "distributive",
-    "neurogenic", "spinal shock", "obstructive shock", "shock index", "in shock",
-];
-
-/// Does this text name a defibrillator?
-fn names_a_shock(text: &str) -> bool {
-    let t = vitals_sce::text::canon(text).to_lowercase();
-    SHOCK_KW.iter().any(|k| t.contains(k)) && !NOT_SHOCK_KW.iter().any(|k| t.contains(k))
-}
-
-/// The energy an order asks for, in joules, if it names one a defibrillator could deliver.
-///
-/// Read off the text the learner actually typed rather than off the language layer's canonical
-/// English, so "ช็อกไฟฟ้า 360" keeps its 360 — `lang::canonical_order` answers *whether* a phrase
-/// is a shock, and would flatten every one of them to the same headword.
-fn joules_in(text: &str) -> Option<f64> {
-    let t = vitals_sce::text::canon(text);
-    let mut best = None;
-    let mut n = String::new();
-    for c in t.chars().chain(std::iter::once(' ')) {
-        if c.is_ascii_digit() {
-            n.push(c);
-            continue;
-        }
-        if !n.is_empty() {
-            // A defibrillator's dial: nothing outside this is an energy, so a year, a bed
-            // number or a saturation cannot be read as one.
-            if let Ok(v) = n.parse::<f64>() {
-                if (1.0..=1000.0).contains(&v) && best.is_none() {
-                    best = Some(v);
-                }
-            }
-            n.clear();
-        }
-    }
-    best
-}
-
-/// The shock an order asks for, if it is one — through the language layer, like every order.
-fn shock_order(act: &str) -> Option<f64> {
-    let named = names_a_shock(act)
-        || lang::canonical_order(act).is_some_and(names_a_shock);
-    named.then(|| joules_in(act).unwrap_or(DEFIB_JOULES))
-}
-
 /// Everything `/api/authors` reads from the chain, in one pass.
 ///
 /// Two calls, both once: `Chain::proven` (one `get_program_accounts`) and `Payer::ledger` (one
@@ -5305,7 +5212,7 @@ mod tests {
     fn play(s: &mut Session, orders: &[&str], tick: f64) {
         for act in orders {
             let id = resolve_order(&s.state, act);
-            let emitted = if id.is_empty() { s.state.apply(act) } else { s.state.apply_id(&id) };
+            let emitted = s.state.apply_id(&id);
             s.beats.extend(emitted.iter().map(render_beat));
             s.tape.push(Step::acted(act, &id));
             let emitted = s.state.tick(tick);
