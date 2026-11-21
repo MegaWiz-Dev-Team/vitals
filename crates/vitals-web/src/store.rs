@@ -136,8 +136,11 @@ fn reads() -> &'static std::sync::Mutex<Reads> {
 /// Kinds kept in memory as well as in the store (issue #13). Each is written only through this
 /// process — the ward runs one instance — so the mirror can be kept in step by `put` and `del`;
 /// slot times never change once written. A kind added here must have no other writer.
+///
+/// `ward_terminal` joined on 21 Nov 2026: its only writer is the reap in this process, and the
+/// ticker's bed count had begun asking it once per open patient on every pass.
 fn mirrored(kind: &str) -> bool {
-    matches!(kind, "ward_pack" | "ward_slot_time" | "ward_case")
+    matches!(kind, "ward_pack" | "ward_slot_time" | "ward_case" | "ward_terminal")
 }
 
 /// How long a whole listing is trusted before the kind is listed again. A write the mirror never

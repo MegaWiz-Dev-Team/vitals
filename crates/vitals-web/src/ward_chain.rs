@@ -4584,15 +4584,26 @@ pub fn terminals(
     store: &crate::store::Store,
     patients: &[crate::ward::PatientOnChain],
 ) -> std::collections::BTreeMap<u64, String> {
+    let kept = kept_terminals(store);
     patients
         .iter()
         .filter(|p| p.closed_slot == 0)
-        .filter_map(|p| {
-            store
-                .get::<TerminalKept>(WARD_TERMINAL, &format!("p{}", p.patient_id))
-                .filter(|t| t.revision == this_revision())
-                .map(|t| (p.patient_id, t.terminal))
-        })
+        .filter_map(|p| kept.get(&p.patient_id).map(|t| (p.patient_id, t.terminal.clone())))
+        .collect()
+}
+
+/// Every ending kept under this revision, by patient id, from one listing.
+///
+/// The store mirrors [`WARD_TERMINAL`] (its only writer is the reap in this process), so this is
+/// one listing an hour and memory in between. It was one get per open patient on every pass, and
+/// on 21 Nov 2026 (00091) that took the ticker's `beds` span from ~60 ms to 0.4–0.8 s.
+fn kept_terminals(store: &crate::store::Store) -> std::collections::BTreeMap<u64, TerminalKept> {
+    let revision = this_revision();
+    store
+        .list::<TerminalKept>(WARD_TERMINAL)
+        .into_iter()
+        .filter(|(_, t)| t.revision == revision)
+        .filter_map(|(key, t)| Some((key.strip_prefix('p')?.parse::<u64>().ok()?, t)))
         .collect()
 }
 
@@ -4605,14 +4616,11 @@ pub fn terminals_on_shift(
     store: &crate::store::Store,
     patients: &[crate::ward::PatientOnChain],
 ) -> std::collections::BTreeSet<u64> {
+    let kept = kept_terminals(store);
     patients
         .iter()
         .filter(|p| p.closed_slot == 0)
-        .filter(|p| {
-            store
-                .get::<TerminalKept>(WARD_TERMINAL, &format!("p{}", p.patient_id))
-                .is_some_and(|t| t.revision == this_revision() && t.on_shift)
-        })
+        .filter(|p| kept.get(&p.patient_id).is_some_and(|t| t.on_shift))
         .map(|p| p.patient_id)
         .collect()
 }

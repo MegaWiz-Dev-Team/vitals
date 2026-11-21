@@ -2628,3 +2628,48 @@ fn one_patients_pack_is_one_read() {
             "one get at most, not a list of all of them: {reads:?}");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// 21 Nov 2026 (00091): the ticker's `beds` span went from ~60 ms to 0.4–0.8 s, because asking
+/// which open patients' engines had ended was one store get per open patient, every pass. The
+/// endings are written only by this process's reap, so the kind is mirrored: one listing an hour,
+/// then memory, kept in step by the reap's own writes.
+#[test]
+fn the_ended_engines_are_one_listing_not_a_read_per_patient_every_pass() {
+    use vitals_web::ward::PatientOnChain;
+    use vitals_web::ward_chain::{terminals, terminals_on_shift, this_revision, TerminalKept, WARD_TERMINAL};
+    let dir = std::env::temp_dir().join(format!("vitals-terminals-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join(WARD_TERMINAL)).unwrap();
+    // Kept by an earlier process: an ICU reached inside a shift, a discharge reached alone, one
+    // from an older revision, and one for a patient the chain has since closed.
+    let rev = this_revision();
+    for (id, terminal, revision, on_shift) in [
+        (1u64, "WinIcu", rev.as_str(), true),
+        (2, "WinDischarge", rev.as_str(), false),
+        (3, "WinIcu", "an-older-revision", true),
+        (4, "WinDischarge", rev.as_str(), true),
+    ] {
+        let kept = TerminalKept { terminal: terminal.to_string(), revision: revision.to_string(), on_shift };
+        std::fs::write(dir.join(WARD_TERMINAL).join(format!("p{id}.json")), serde_json::to_vec(&kept).unwrap()).unwrap();
+    }
+    let st = vitals_web::store::Store::open(dir.clone()).unwrap();
+    let on_chain = |id: u64, closed_slot: u64| PatientOnChain {
+        patient_id: id, state: OPEN, shifts: 1, admitted_slot: 50, closed_slot,
+        lease_holder: [0; 32], lease_until_slot: 0,
+    };
+    let patients = [on_chain(1, 0), on_chain(2, 0), on_chain(3, 0), on_chain(4, 900), on_chain(5, 0)];
+    let _ = st.take_reads();
+    for _pass in 0..3 {
+        assert_eq!(terminals(&st, &patients).into_iter().collect::<Vec<_>>(),
+                   vec![(1, "WinIcu".to_string()), (2, "WinDischarge".to_string())]);
+        assert_eq!(terminals_on_shift(&st, &patients).into_iter().collect::<Vec<_>>(), vec![1]);
+    }
+    assert_eq!(st.take_reads(), vec![(WARD_TERMINAL.to_string(), 4)],
+               "one listing of the four records, then memory — not a get per open patient per pass");
+    // The reap's own writes keep it in step without another read.
+    st.put(WARD_TERMINAL, "p5", &TerminalKept { terminal: "WinIcu".into(), revision: rev.clone(), on_shift: false }).unwrap();
+    st.del(WARD_TERMINAL, "p2");
+    assert_eq!(terminals(&st, &patients).into_keys().collect::<Vec<_>>(), vec![1, 5]);
+    assert!(st.take_reads().is_empty(), "a write through this process is seen without reading the store");
+    let _ = std::fs::remove_dir_all(&dir);
+}
