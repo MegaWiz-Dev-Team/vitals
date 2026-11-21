@@ -2200,6 +2200,34 @@ function leavingUnrecorded(ward, taken, didWork, handedOver, handing){
   return !!ward && !!taken && !!didWork && !handedOver && !handing;
 }
 
+/* **On a phone, leaving with work in hand hands it over.**
+   The reminder below only reaches people who come back, and on a phone most of them do not. The
+   two shifts taken in October 2026 were both on an iPhone, inside the X and Facebook apps. Both
+   went hidden mid-shift, and the ward freed each bed eighty seconds after the beats stopped. One
+   had four orders in it. Neither left a tape anywhere.
+   The key is still in the page at the moment it goes hidden, and the Facebook one kept beating
+   for thirty seconds after that. So the page signs the hand-over itself, as it already does when
+   the lease runs out. That is the stranger's own key on the stranger's own work, never the ward
+   signing for them.
+   Touch only. A desktop tab in the background keeps beating and keeps its bed, and somebody who
+   looks something up in another tab should come back to a shift that is still open. */
+function handOverOnLeaving(touch, ward, taken, didWork, handedOver, handing){
+  return !!touch && leavingUnrecorded(ward, taken, didWork, handedOver, handing);
+}
+
+/* What the strip says once a shift has been handed over. If the page did it because they left,
+   it says so, because they never pressed anything. */
+function handedOverWords(left){
+  return left ? 'handed over when you left the page.' : 'handed over.';
+}
+
+/* Whether a closing tab may tell the ward to free the bed. Not while a hand-over is in flight or
+   done: the hand-over's anchor needs the lease, and a `/left` that lands first frees it and turns
+   the anchor into a refusal. */
+function mayFreeOnLeaving(handing, handedOver){
+  return !handing && !handedOver;
+}
+
 /* What they are told, on return rather than on the way out — a phone that switches apps shows no
    dialog, and the first stranger to finish a shift here was on Android. Naming her is the point:
    the thing being lost is a person's treatment, not a form. */
@@ -4474,6 +4502,16 @@ addEventListener('visibilitychange', () => {
   wardSay('<b class="gone">' + esc(unrecordedWords((WARDSHIFT && WARDSHIFT.name) || '')) + '</b>');
 });
 
+/* The other half: going hidden on a phone with work in hand. See `handOverOnLeaving`. */
+const TOUCHFIRST=()=>{ try{ return matchMedia('(hover: none) and (pointer: coarse)').matches; }catch(e){ return false; } };
+let LEFTPAGE=false;
+addEventListener('visibilitychange', () => {
+  if(document.visibilityState !== 'hidden') return;
+  if(!handOverOnLeaving(TOUCHFIRST(), WARD, !takeFirst(WARD, id, null), DIDWORK, HANDEDOVER, HANDING)) return;
+  LEFTPAGE=true;
+  handOver();
+});
+
 addEventListener('beforeunload', (e) => {
   if(!leavingUnrecorded(WARD, !takeFirst(WARD, id, null), DIDWORK, HANDEDOVER, HANDING)) return;
   /* The browser shows its own words here and ours are not permitted, which is the whole reason
@@ -4983,6 +5021,7 @@ function stopBeating(){
 }
 addEventListener('pagehide',()=>{
   if(!id||!WARD)return;
+  if(!mayFreeOnLeaving(HANDING, HANDEDOVER))return;
   navigator.sendBeacon('/api/ward/left?id='+encodeURIComponent(id));
 });
 /* Has the server just told this page that its shift is gone?
@@ -5021,7 +5060,7 @@ async function handOver(){
        was lost, and telling somebody to open the patient again is better than a dead button.
        This is the one path that unlatches: nothing reached the chain, so there is something left
        to press. A refusal from the chain does not come back here — it is an answer, not a throw. */
-    handingOver(false);
+    handingOver(false); LEFTPAGE=false;
     wardSay('that did not go through: '+esc(e&&e.message?e.message:e)+
             ' — <a href="/ward/'+WARD+'">open '+pro().o+' again</a>');
   }
@@ -5060,7 +5099,7 @@ async function handOverInner(){
      who did the same things would share — a good fallback, a worse name. */
   const name=a.head||over_.run_hash;
   const receipt=name?' <a href="/shift/'+encodeURIComponent(name)+'">the receipt for this shift</a> ·':'';
-  wardSay('<b>handed over.</b> '+pro().p+' chain is '+a.shifts+' shift'+(a.shifts===1?'':'s')+
+  wardSay('<b>'+handedOverWords(LEFTPAGE)+'</b> '+pro().p+' chain is '+a.shifts+' shift'+(a.shifts===1?'':'s')+
           ' long and '+esc(stateSentence(a.state||'', pro()))+'.'+receipt+
           ' <a href="/">back to the globe</a>');
 }

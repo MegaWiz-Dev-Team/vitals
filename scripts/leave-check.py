@@ -23,6 +23,15 @@ you do." What it cannot prove: that a real app switch fires the event. Headless 
 page "visible" through a tab switch and through the page lifecycle, so the two browser routes
 never hide it; the route that draws the reminder is a dispatched, bubbling visibilitychange —
 the listener and the drawing, never the phone. That is thirty seconds with a phone in a hand.
+
+    LEAVE_CHECK_TOUCH=1 scripts/leave-check.py <staging bedside url>
+
+The phone half (21 Nov 2026). With touch emulated the page matches `(hover: none) and
+(pointer: coarse)`, so going hidden with an order given makes the page hand the shift over by
+itself (bay.js `handOverOnLeaving`). This mode dispatches the hidden event, waits for the hand-over
+to reach the chain, comes back, and reports `handed_over_on_leaving`, the anchor calls and the
+strip. The strip should start "handed over when you left the page." It proves the listener and the
+hand-over on the staging chain. It does not prove that a real phone gives the page those seconds.
 """
 import json, os, shutil, subprocess, sys, time, urllib.request
 
@@ -87,6 +96,9 @@ try:
     cdp("Emulation.setFocusEmulationEnabled", enabled=True)
     w, h = [int(x) for x in os.environ.get("LEAVE_CHECK_WIN", "412,915").split(",")]
     cdp("Emulation.setDeviceMetricsOverride", width=w, height=h, deviceScaleFactor=1, mobile=(w < 600))
+    TOUCH = os.environ.get("LEAVE_CHECK_TOUCH") == "1"
+    if TOUCH:
+        cdp("Emulation.setTouchEmulationEnabled", enabled=True, maxTouchPoints=5)
     # load until the bedside has drawn: a cold instance or a long pass can hold the first paint
     for attempt in range(2):
         cdp("Page.navigate", url=URL)
@@ -139,6 +151,25 @@ try:
         time.sleep(4)
     report["order_given"] = js("typeof DIDWORK!=='undefined' ? DIDWORK : null")
     report["strip_before_leaving"] = strip()
+    report["touch_first"] = js("matchMedia('(hover: none) and (pointer: coarse)').matches")
+    if TOUCH:
+        # Hidden only, then wait for /api/handover → /api/ward/anchor → submit, then come back.
+        js("""(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,get:()=>'hidden'});
+               document.dispatchEvent(new Event('visibilitychange',{bubbles:true})); return true})()""")
+        for _ in range(20):
+            time.sleep(1.5)
+            if js("typeof HANDEDOVER!=='undefined' && HANDEDOVER"):
+                break
+        js("""(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,get:()=>'visible'});
+               document.dispatchEvent(new Event('visibilitychange',{bubbles:true})); return true})()""")
+        time.sleep(1)
+        report["handed_over_on_leaving"] = js("typeof HANDEDOVER!=='undefined' ? HANDEDOVER : null")
+        report["strip_on_return"] = strip()
+        report["anchor_calls_while_leaving"] = js("performance.getEntriesByType('resource').filter(e=>/\\/api\\/ward\\/anchor/.test(e.name)).length")
+        report["route"] = "synthetic hidden on a touch-first page: proves the listener and the hand-over, not the phone"
+        print(json.dumps(report, ensure_ascii=False))
+        ws.close()
+        sys.exit(0)
     # the app switch, three routes from the strongest down; the first that draws the reminder is
     # the one reported, and the report says which
     def said_it(s): return (s or "").lower().startswith("you still have")

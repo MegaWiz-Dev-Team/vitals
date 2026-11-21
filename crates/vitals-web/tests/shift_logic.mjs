@@ -1004,9 +1004,52 @@ const vis = script.slice(script.indexOf("addEventListener('visibilitychange'"));
 assert.match(vis.slice(0, 400), /visibilityState !== 'visible'\) return/,
              'the reminder is for the return, not for the leaving: a hidden page draws nothing');
 
-// And it is a reminder, never an anchor. The key is the page's and a tape nobody signs cannot be
-// made to count by the server wishing it.
+// The return listener only reminds. It never anchors.
 assert.ok(!/visibilitychange[\s\S]{0,600}\/api\/ward\/anchor/.test(script),
-          'leaving must not anchor anything on the stranger\'s behalf');
+          'the reminder on the way back is words only');
+
+// ── a phone that leaves with work in hand hands it over ─────────────────────
+//
+// The rule above was "a reminder, never an anchor". It held until the October 2026 takes: two
+// iPhones inside the X and Facebook apps, both hidden mid-shift, both freed by the ward eighty
+// seconds later, one with four orders in it. Neither came back to be reminded. The key is still in
+// the page when it goes hidden, so on a touch-first device the page now hands over itself, with
+// the stranger's own key, as it already does when the lease runs out. The founder approved this on
+// 21 Nov 2026. The ward still never signs for them.
+const { handOverOnLeaving, handedOverWords, mayFreeOnLeaving } = new Function(
+  [grab('leavingUnrecorded'), grab('handOverOnLeaving'), grab('handedOverWords'), grab('mayFreeOnLeaving'),
+   'return { handOverOnLeaving, handedOverWords, mayFreeOnLeaving };'].join('\n'))();
+
+assert.equal(handOverOnLeaving(true, '1790068323', true, true, false, false), true,
+             'a phone, holding her, with work done and not kept: hand it over now');
+assert.equal(handOverOnLeaving(false, '1790068323', true, true, false, false), false,
+             'a desktop tab in the background keeps beating and keeps its bed; it gets the reminder');
+assert.equal(handOverOnLeaving(true, '1790068323', true, false, false, false), false,
+             'nothing done, nothing to record: an empty shift is not anchored for anybody');
+assert.equal(handOverOnLeaving(true, '1790068323', true, true, true, false), false, 'already kept');
+assert.equal(handOverOnLeaving(true, '1790068323', true, true, false, true), false,
+             'a hand-over already in flight is not started twice — the chain takes one leaf per head');
+assert.equal(handOverOnLeaving(true, '1790068323', false, true, false, false), false, 'never took the shift');
+assert.equal(handOverOnLeaving(true, null, true, true, false, false), false, 'the season is not a ward');
+
+// They never pressed anything, so the strip says why it happened.
+assert.equal(handedOverWords(true), 'handed over when you left the page.');
+assert.equal(handedOverWords(false), 'handed over.');
+
+// A closing tab must not free the bed under a hand-over. `/left` frees the lease on chain, and the
+// anchor that is still on its way needs that lease.
+assert.equal(mayFreeOnLeaving(false, false), true, 'a shift nobody is handing over: free the bed fast');
+assert.equal(mayFreeOnLeaving(true, false), false, 'a hand-over in flight keeps its lease');
+assert.equal(mayFreeOnLeaving(false, true), false, 'handed over: the head is already back on chain');
+
+// Wired where it has to be: a listener for the hidden state that calls the hand-over, and a pagehide
+// that asks before freeing.
+assert.match(script, /visibilityState !== 'hidden'\) return;[\s\S]{0,200}handOverOnLeaving\(TOUCHFIRST\(\)/,
+             'the hidden-state listener asks handOverOnLeaving with the touch test');
+assert.match(script, /handOverOnLeaving\(TOUCHFIRST\(\)[^\n]*\) return;\s*LEFTPAGE=true;\s*handOver\(\);/,
+             'and hands over through the same path the button uses');
+assert.match(script, /addEventListener\('pagehide',\(\)=>\{\s*if\(!id\|\|!WARD\)return;\s*if\(!mayFreeOnLeaving\(HANDING, HANDEDOVER\)\)return;/,
+             'pagehide frees the bed only when no hand-over is in flight or done');
+assert.match(script, /'<b>'\+handedOverWords\(LEFTPAGE\)\+'<\/b>/, 'the strip names how it was handed over');
 
 console.log('shift_logic: ok (and nobody walks away from work that will not exist)');
