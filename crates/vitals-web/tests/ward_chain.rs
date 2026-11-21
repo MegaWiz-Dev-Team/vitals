@@ -1221,6 +1221,66 @@ fn a_death_decided_on_an_old_chart_is_not_written_over_a_shift_that_landed_since
     assert!(chart_still_current(0, 0), "a patient nobody has treated is judged on what she has");
 }
 
+/// **A save is told apart from an ending reached alone.**
+///
+/// The ward does not close ICU or a discharge nobody gave, so both stay open on chain. The board
+/// counts a save only when the engine had already ended inside an anchored shift, with somebody
+/// in the room. The ticker answers that from the state at the last anchor, before the idle span
+/// is applied.
+#[test]
+fn an_ending_reached_inside_a_shift_is_told_apart_from_one_reached_alone() {
+    use vitals_web::ward_chain::{standing_unattended, Standing};
+
+    let sce = std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../demo/stations/osce-a.sce.json"),
+    )
+    .expect("osce-a is in the repository");
+    // The scripted run `finish.rs` pins as reaching WinDischarge on its own, as one shift's tape.
+    let mut treated = Vec::new();
+    for order in ["adrenaline 0.5 mg IM", "oxygen 15 L non-rebreather",
+                  "lay her flat and lift her legs", "IV fluids 500 ml"] {
+        treated.push(Step::Do(order.into()));
+        treated.push(Step::Tick(10.0));
+    }
+    treated.extend(std::iter::repeat_n(Step::Tick(2.0), 360));
+    let barely = vec![Step::Tick(5.0), Step::Do("oxygen 15 L non-rebreather".into()), Step::Tick(5.0)];
+    let mut tapes: BTreeMap<String, Vec<Step>> = BTreeMap::new();
+    tapes.insert(hex_of("treated"), treated);
+    tapes.insert(hex_of("barely"), barely);
+    let chart = |h: &str| tapes.get(h).cloned();
+
+    let admitted = 1_000_000u64;
+    let at = admitted + 10;
+    let an_hour = (3600.0 / SLOT_SECONDS) as u64;
+
+    // Checked, not assumed: this tape ends the case inside the shift.
+    let (end_of_shift, _) = resumed(&sce, &[anchored("treated", at)], &chart, admitted, at, &dated, false)
+        .expect("the chart rebuilds");
+    assert!(end_of_shift.outcome().is_some(), "the scripted tape reaches an ending inside the shift");
+
+    match standing_unattended(&sce, &[anchored("treated", at)], &chart, admitted, at + an_hour, &dated)
+        .expect("the chain reads")
+    {
+        Standing::Open(_, on_shift) => assert!(on_shift, "the ending was reached with somebody in the room"),
+        Standing::Closed(_) => panic!("a discharge is not an ending the ward closes"),
+    }
+
+    // A shift that did not end the case: whatever the engine reaches later, it reaches alone.
+    match standing_unattended(&sce, &[anchored("barely", at)], &chart, admitted, at + an_hour, &dated)
+        .expect("the chain reads")
+    {
+        Standing::Open(_, on_shift) => assert!(!on_shift, "nothing had ended when the shift was handed over"),
+        Standing::Closed(_) => {}
+    }
+
+    // Nobody has ever been in the room: never a save.
+    if let Standing::Open(_, on_shift) =
+        standing_unattended(&sce, &[], &chart, admitted, at, &dated).expect("the chain reads")
+    {
+        assert!(!on_shift, "no shift, no save");
+    }
+}
+
 /// **A receipt address this ward never played is refused without reading the chain.**
 ///
 /// `/shift/<64 hex>` answered in 29 to 102 seconds on staging (measured 17 ก.ย., three times, on a

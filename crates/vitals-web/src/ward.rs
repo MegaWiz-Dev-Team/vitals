@@ -725,6 +725,24 @@ pub fn census(patients: &[PatientOnChain], shifts: &[ShiftOnChain], since: Optio
     }
 }
 
+/// **How many patients a stranger's shift saved.**
+///
+/// Every discharge on chain is one: the program closes a patient as discharged only on an anchor
+/// signed by whoever held the lease, and the ward's own closings are deaths. To those, the open
+/// patients whose engine reached ICU or discharge inside an anchored shift. The chain does not
+/// close those (the program treats ICU as a transfer), so the account stays open.
+pub fn saved(
+    census: &Census,
+    patients: &[PatientOnChain],
+    ended_on_shift: &std::collections::BTreeSet<u64>,
+) -> u64 {
+    let open_saves = patients
+        .iter()
+        .filter(|p| p.state == OPEN && ended_on_shift.contains(&p.patient_id))
+        .count() as u64;
+    census.went_home + open_saves
+}
+
 /// How many beds are taken.
 ///
 /// **A bed is a patient the ward can describe.** She is in one when she is open on the chain *and*
@@ -740,16 +758,17 @@ pub fn beds_taken(
     packs: &std::collections::BTreeMap<u64, Pack>,
     unrebuildable: &std::collections::BTreeMap<u64, String>,
     cases: &[crate::ward_case::CaseSummary],
+    terminal: &std::collections::BTreeMap<u64, String>,
 ) -> usize {
     patients
         .iter()
-        .filter(|p| can_open(p, packs, unrebuildable, cases))
+        .filter(|p| can_open(p, packs, unrebuildable, cases, terminal))
         .count()
 }
 
 /// Can this ward actually put somebody at this bedside?
 ///
-/// Three ways the answer is no, and all three mean the same thing to a bed: nobody can open her, so
+/// Four ways the answer is no, and all four mean the same thing to a bed: nobody can open her, so
 /// a bed kept for her is a bed the ward has taken out of service without saying so. The row says
 /// why, and the ticker fills the bed.
 ///
@@ -757,7 +776,10 @@ pub fn beds_taken(
 ///   * her chart cannot be rebuilt — the chain names a shift whose tape this ward does not have;
 ///   * her pack names a case the catalogue no longer holds. Two patients sat in beds like this for
 ///     two days on staging, admitted on the season's stations before the case door existed, with
-///     "take a shift" beside each of them and nothing behind it.
+///     "take a shift" beside each of them and nothing behind it;
+///   * her engine has already reached an ending — ICU or discharge — that the chain does not close.
+///     A next shift has no sim seconds to spend. Ten such patients from 23–25 Sep 2026 held beds 1
+///     to 10 into November, so the board showed 21 beds and 11 of them could be treated.
 ///
 /// **An empty catalogue judges nobody.** A ward that has not loaded its cases yet has not lost
 /// anybody's case, and the alternative is a fresh instance shutting every bed before its first read
@@ -767,9 +789,11 @@ pub fn can_open(
     packs: &std::collections::BTreeMap<u64, Pack>,
     unrebuildable: &std::collections::BTreeMap<u64, String>,
     cases: &[crate::ward_case::CaseSummary],
+    terminal: &std::collections::BTreeMap<u64, String>,
 ) -> bool {
     p.state == OPEN
         && !unrebuildable.contains_key(&p.patient_id)
+        && !terminal.contains_key(&p.patient_id)
         && case_is_held(packs.get(&p.patient_id), cases)
 }
 
@@ -1003,6 +1027,10 @@ pub struct WardRead<'a> {
     /// Keyed by the engine's own `Outcome` name (`WinIcu`, `WinDischarge`), so a renderer that
     /// wants to word it one way for each may. Empty is the normal case.
     pub transferred: &'a std::collections::BTreeMap<u64, String>,
+    /// **The patients in `transferred` whose ending was reached inside an anchored shift**, not
+    /// alone in the idle span after it. These are the stranger-attended endings. With the
+    /// discharges on chain they make up `census.saved`.
+    pub ended_on_shift: &'a std::collections::BTreeSet<u64>,
 }
 
 /// The queue, as people rather than a number.
@@ -1083,6 +1111,7 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
     let self_discharged = patients.iter().filter(|p| is_terminal(p, "WinDischarge")).count() as u64;
     all_json["transferred_icu"] = serde_json::json!(transferred_icu);
     all_json["self_discharged"] = serde_json::json!(self_discharged);
+    all_json["saved"] = serde_json::json!(saved(&all, patients, r.ended_on_shift));
     let mut w = six(&week);
     w["since_slot"] = match since {
         Some(s) => serde_json::json!(s),
@@ -1097,7 +1126,7 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
     // what a bed is.
     // Only the patients the ward can describe are in beds — see `beds_taken`.
     let mut open: Vec<&PatientOnChain> =
-        patients.iter().filter(|p| can_open(p, packs, lost, r.cases)).collect();
+        patients.iter().filter(|p| can_open(p, packs, lost, r.cases, r.transferred)).collect();
     open.sort_by_key(|p| (p.admitted_slot, p.patient_id));
     let bed_of = |id: u64| open.iter().position(|p| p.patient_id == id).map(|i| i + 1);
 
@@ -1260,7 +1289,7 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
         // Beside the census and never inside it: the census is what the chain says, and this is
         // what the ward can actually hand to a stranger. A rail that published only the first
         // would be telling somebody six when three of those six cannot be treated by anybody.
-        "in_beds": beds_taken(patients, packs, lost, r.cases),
+        "in_beds": beds_taken(patients, packs, lost, r.cases, r.transferred),
         // The floor the ward tries to hold open, not a ceiling on the census: `census.on_ward` is
         // how many are here and nothing stops it going past this.
         "beds_kept_free": BEDS,
@@ -1294,6 +1323,13 @@ pub fn ward_payload(r: &WardRead) -> serde_json::Value {
                                  them because the engine is terminal and a next shift has no sim \
                                  seconds to spend. Only the ones a stranger was there for are \
                                  saves: this number counts both, and the public tapes say which",
+            "saved": "patients a stranger's shift brought to an ending the engine counts as a \
+                      win: every discharge on chain (the ward never anchors one itself), plus the \
+                      open patients whose engine reached ICU or discharge inside an anchored shift \
+                      rather than alone after it. From the chain and the pass's rebuild. Two \
+                      patients a stranger brought to ICU on 25 Sep 2026 are not in it: the ward \
+                      closed both as died a minute later on a stale chart, and the chain keeps \
+                      that record. Their receipts show the save",
             "self_discharged": "open patients the engine has moved to discharge on its own. Same \
                                  derivation as `transferred_icu`; not a chain fact. A discharge \
                                  nobody was there to give is not a chain-anchored one, and the \

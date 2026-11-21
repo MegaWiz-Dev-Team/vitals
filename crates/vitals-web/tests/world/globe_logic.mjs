@@ -226,6 +226,15 @@ const figs = censusFigures({ shifts: 25, went_home: 1, died: 7 }, [
 ], 3);
 assert.deepEqual(figs, [['in beds', 3], ['on shift now', 1], ['shifts', 25], ['went home', 1], ['died', 7]],
                  'the five numbers, in the order a reader meets them');
+// Saved (21 Nov 2026): the discharges on chain plus the ICU endings a stranger's shift reached.
+// Said beside "went home", because went home alone counted 3 of the 9 a stranger saved.
+assert.deepEqual(censusFigures({ shifts: 25, went_home: 1, saved: 3, died: 7 }, [], 0).map(([k, v]) => k + ' ' + v),
+                 ['in beds 0', 'on shift now 0', 'shifts 25', 'went home 1', 'saved 3', 'died 7'],
+                 'saved sits after went home and before died');
+assert.equal(STATE_LABEL.transferred_icu, 'moved to ICU', 'an ICU ending has its own word');
+assert.equal(stateOf({ state: 'transferred_icu' }), 'transferred_icu', 'and is no longer read as on the ward');
+assert.equal(stateOf({ state: 'self_discharged' }), 'self_discharged');
+assert.equal(inBeds([P(1, 'NER', { state: 'transferred_icu', bed: null })]).length, 0, 'and holds no bed');
 // A census that does not carry a number is not a zero: the figure is left out rather than invented.
 assert.deepEqual(censusFigures({}, [], 0).map(([k]) => k), ['in beds', 'on shift now'],
                  'what the ward itself counts is always there; the chain\'s numbers are not faked');

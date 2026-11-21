@@ -839,6 +839,7 @@ pub fn read_ward(chain: &WardChain, store: &crate::store::Store) -> serde_json::
         unrebuildable: &lost,
         unread: &h.unread,
         transferred: &terminals(store, &patients),
+        ended_on_shift: &terminals_on_shift(store, &patients),
         since: Some(as_of.saturating_sub(WEEK_SLOTS)),
         // Each open patient's remaining time, as the ticker last computed it. Read rather than
         // recomputed: the pass that rebuilt her wrote it, and replaying sixteen charts to build a
@@ -2655,7 +2656,7 @@ fn reap(
             // publish it. This is the ordering the founder asked for — "เรียงเตียงตามใกล้ตาย" — and
             // it is the ticker's own clock, because it is computed from the rebuild the ticker just
             // did rather than from a proxy for how long she has been lying there.
-            Ok(Standing::Open(st)) => {
+            Ok(Standing::Open(st, ended_on_shift)) => {
                 // The engine's current non-death terminal, if she is at one — so the board can stop
                 // offering a bed whose engine has nothing left to do. Written beside the clock,
                 // because the same rebuild answered both questions; cleared otherwise, so an old
@@ -2671,7 +2672,11 @@ fn reap(
                         let _ = store.put(
                             WARD_TERMINAL,
                             &format!("p{}", p.patient_id),
-                            &TerminalKept { terminal: terminal.to_string(), revision: this_revision() },
+                            &TerminalKept {
+                                terminal: terminal.to_string(),
+                                revision: this_revision(),
+                                on_shift: ended_on_shift,
+                            },
                         );
                     }
                     None => {
@@ -2865,8 +2870,10 @@ pub fn tick(
     // catalogue is passed for the same reason it is passed to the board: a patient whose case this
     // ward no longer holds cannot be opened by anybody, so her bed goes back into service and this
     // tick admits into it.
+    // A patient whose engine has already ended holds no bed either: nobody can spend a sim second
+    // on her, and the ten such patients from September held beds 1 to 10 into November.
     out.open = crate::ward::beds_taken(
-        &patients, &packs_now, &lost, &crate::ward_case::all(store));
+        &patients, &packs_now, &lost, &crate::ward_case::all(store), &terminals(store, &patients));
     span(&mut out, "beds");
     let depth = match queue_depth(store) {
         Ok(n) => {
@@ -3296,7 +3303,11 @@ pub enum Standing {
     Closed(Box<Unattended>),
     /// Still open, as of `now_slot`, with the whole uncapped gap already applied — the state the
     /// ticker judged, so anything asked of it is asked of the same patient the ward just looked at.
-    Open(Box<vitals_sce::runtime::SceState>),
+    ///
+    /// The flag is whether the engine had already reached an ending at the last anchored shift.
+    /// That is the difference between a stranger's save, made inside a shift somebody signed, and
+    /// an ending the engine reached alone in the idle span after it.
+    Open(Box<vitals_sce::runtime::SceState>, bool),
 }
 
 impl Standing {
@@ -3304,13 +3315,13 @@ impl Standing {
     pub fn closed(self) -> Option<Unattended> {
         match self {
             Standing::Closed(u) => Some(*u),
-            Standing::Open(_) => None,
+            Standing::Open(..) => None,
         }
     }
 
     /// Still open — the ward is not closing this bed on this pass.
     pub fn is_open(&self) -> bool {
-        matches!(self, Standing::Open(_))
+        matches!(self, Standing::Open(..))
     }
 }
 
@@ -3339,6 +3350,9 @@ pub fn standing_unattended(
     // uncapped gap itself. This is the ticker's half of the founder's ruling and must never be
     // capped, which is why the flag below is false and why the trailing span here is zero.
     let (mut st, _) = resumed(sce_json, shifts, tape_of, admitted_slot, since, dated, false)?;
+    // Asked before the idle span is applied: an ending already in place here was reached inside
+    // the last anchored shift, with somebody in the room.
+    let ended_on_shift = !shifts.is_empty() && st.outcome().is_some();
     // The slots stay on the record — they are the chain's own name for the span, and what a
     // stranger re-derives it from. What the engine is handed is what those two blocks say the span
     // lasted in seconds.
@@ -3350,13 +3364,15 @@ pub fn standing_unattended(
 
     // The span itself, as a shift with no steps in it — which is what happened.
     let replay = vitals_replay::shift(&mut st, &[], idle_real);
-    let Some(outcome) = replay.outcome.clone() else { return Ok(Standing::Open(Box::new(st))) };
+    let Some(outcome) = replay.outcome.clone() else {
+        return Ok(Standing::Open(Box::new(st), ended_on_shift));
+    };
     if !the_ward_closes_on(&outcome) {
         // An ending the ward does not close on its own. A discharge nobody was there to give is
         // not a discharge, and ICU is a transfer: the next stranger continues the stay. Still open,
         // and the state says so — a caller asking how long is left will find no closing ending
         // ahead, which is the truth rather than a countdown to nothing.
-        return Ok(Standing::Open(Box::new(st)));
+        return Ok(Standing::Open(Box::new(st), ended_on_shift));
     }
     Ok(Standing::Closed(Box::new(Unattended {
         outcome, since_slot: since, idle_slots, replay, state: st,
@@ -4553,6 +4569,10 @@ pub const WARD_TERMINAL: &str = "ward_terminal";
 pub struct TerminalKept {
     pub terminal: String,
     pub revision: String,
+    /// Reached inside an anchored shift rather than alone afterwards. Absent on records written
+    /// before 21 Nov 2026, which read as `false` until the next pass rewrites them.
+    #[serde(default)]
+    pub on_shift: bool,
 }
 
 /// Each open patient's engine terminal as the ticker last left it, by patient id.
@@ -4573,6 +4593,27 @@ pub fn terminals(
                 .filter(|t| t.revision == this_revision())
                 .map(|t| (p.patient_id, t.terminal))
         })
+        .collect()
+}
+
+/// The open patients whose engine ending was reached inside a stranger's anchored shift.
+///
+/// Read from the same records as [`terminals`], under the same revision rule. These are saves:
+/// somebody was in the room when the engine moved the patient to ICU or discharge. An ending the
+/// engine reached alone in the idle span is a terminal and is not in this set.
+pub fn terminals_on_shift(
+    store: &crate::store::Store,
+    patients: &[crate::ward::PatientOnChain],
+) -> std::collections::BTreeSet<u64> {
+    patients
+        .iter()
+        .filter(|p| p.closed_slot == 0)
+        .filter(|p| {
+            store
+                .get::<TerminalKept>(WARD_TERMINAL, &format!("p{}", p.patient_id))
+                .is_some_and(|t| t.revision == this_revision() && t.on_shift)
+        })
+        .map(|p| p.patient_id)
         .collect()
 }
 

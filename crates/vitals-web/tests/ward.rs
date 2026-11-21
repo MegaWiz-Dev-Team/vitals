@@ -54,7 +54,7 @@ fn read<'a>(
         // the patients still mid-stay on season cases have. The test about a compiled case fills
         // this in itself.
         cases: &[],
-        transferred: nothing_transferred(),
+        transferred: nothing_transferred(), ended_on_shift: nothing_ended(),
     }
 }
 
@@ -62,6 +62,12 @@ fn read<'a>(
 fn nothing_transferred() -> &'static std::collections::BTreeMap<u64, String> {
     static NONE: std::sync::OnceLock<std::collections::BTreeMap<u64, String>> =
         std::sync::OnceLock::new();
+    NONE.get_or_init(Default::default)
+}
+
+/// No patient's ending was reached inside a shift — a `&'static` empty set.
+fn nothing_ended() -> &'static std::collections::BTreeSet<u64> {
+    static NONE: std::sync::OnceLock<std::collections::BTreeSet<u64>> = std::sync::OnceLock::new();
     NONE.get_or_init(Default::default)
 }
 
@@ -126,9 +132,10 @@ fn a_patient_whose_engine_moved_her_to_icu_is_not_openable() {
     use std::collections::BTreeMap;
     use vitals_web::ward::{ward_payload, Pack, Persona, WardRead};
 
-    let patients = vec![patient(1, OPEN, 1, 10, 0), patient(2, OPEN, 1, 20, 0), patient(3, OPEN, 0, 30, 0)];
+    let patients = vec![patient(1, OPEN, 1, 10, 0), patient(2, OPEN, 1, 20, 0), patient(3, OPEN, 0, 30, 0),
+                        patient(4, DISCHARGED, 1, 5, 9)];
     let mut packs: BTreeMap<u64, Pack> = BTreeMap::new();
-    for (id, name) in [(1u64, "Takondwa"), (2, "Aichatou"), (3, "Oksana")] {
+    for (id, name) in [(1u64, "Takondwa"), (2, "Aichatou"), (3, "Oksana"), (4, "Claudine")] {
         packs.insert(id, Pack {
             difficulty: None,
             case: "ddx-psvt-1-en".into(),
@@ -142,13 +149,16 @@ fn a_patient_whose_engine_moved_her_to_icu_is_not_openable() {
     let mut transferred: BTreeMap<u64, String> = BTreeMap::new();
     transferred.insert(1, "WinIcu".into());
     transferred.insert(2, "WinDischarge".into());
+    // Patient 1 reached ICU inside a stranger's shift. Patient 2's engine reached discharge alone,
+    // in the idle span after the last shift.
+    let ended_on_shift: std::collections::BTreeSet<u64> = [1u64].into_iter().collect();
 
     let v = ward_payload(&WardRead {
         closes_in: &NO_CLOCKS,
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
         unrebuildable: nothing_lost(), unread: nothing_unread(), times: nothing_dated(),
-        seconds_per_slot: None, cases: &[], transferred: &transferred,
+        seconds_per_slot: None, cases: &[], transferred: &transferred, ended_on_shift: &ended_on_shift,
     });
 
     let by_id = |id: u64| v["patients"].as_array().unwrap().iter()
@@ -171,6 +181,20 @@ fn a_patient_whose_engine_moved_her_to_icu_is_not_openable() {
                "and one the engine has discharged on its own — the two are not folded together");
     assert!(v["derivations"]["transferred_icu"].as_str().unwrap_or_default().contains("not from the chain"),
             "the new line names where it comes from, like every other census field");
+
+    // **An ended engine holds no bed** (21 Nov 2026). Ten such patients from September held beds
+    // 1 to 10 into November: the board said 21 in beds and 11 of them could be treated.
+    assert_eq!(by_id(1)["bed"], serde_json::Value::Null, "ICU holds no bed on this ward");
+    assert_eq!(by_id(2)["bed"], serde_json::Value::Null, "nor does an ending the engine reached alone");
+    assert_eq!(by_id(3)["bed"], 1, "the one patient anybody can treat is in bed 1");
+    assert_eq!(v["in_beds"], 1, "in beds counts the patients a stranger can actually take");
+
+    // **Saved**: the discharge on chain, and the ICU a stranger's shift reached. Not the ending the
+    // engine reached with nobody there.
+    assert_eq!(v["census"]["went_home"], 1);
+    assert_eq!(v["census"]["saved"], 2, "patient 4 went home and patient 1 reached ICU on a shift");
+    assert!(v["derivations"]["saved"].as_str().unwrap_or_default().contains("inside an anchored shift"),
+            "the derivation says which endings count: {}", v["derivations"]["saved"]);
 }
 
 #[test]
@@ -814,7 +838,7 @@ fn the_globe_reads_every_field_it_renders() {
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 4_000, now_unix: now, source: "devnet:ABC",
         unrebuildable: nothing_lost(), unread: nothing_unread(), times: &times, seconds_per_slot: None,
-        transferred: nothing_transferred(),
+        transferred: nothing_transferred(), ended_on_shift: nothing_ended(),
     });
 
     assert!(v["census"]["on_ward"].is_u64(),
@@ -865,7 +889,7 @@ fn the_globe_reads_every_field_it_renders() {
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: lease_ends + 1, now_unix: now, source: "devnet:ABC",
         unrebuildable: nothing_lost(), unread: nothing_unread(), times: &times, seconds_per_slot: None,
-        transferred: nothing_transferred(),
+        transferred: nothing_transferred(), ended_on_shift: nothing_ended(),
     });
     let ploy = expired["patients"].as_array().unwrap().iter()
         .find(|p| p["patient_id"] == 7).cloned().unwrap();
@@ -1088,7 +1112,7 @@ fn every_time_the_ward_publishes_is_a_slot_or_a_z() {
                 (10, 1_759_996_000), (5, 1_759_995_000), (900, 1_759_997_000),
                 (lease_ends - vitals_program::LEASE_SLOTS, 1_759_999_000),
             ]),
-            transferred: nothing_transferred(),
+            transferred: nothing_transferred(), ended_on_shift: nothing_ended(),
         }),
         ward_unavailable("devnet:ABC", "rpc timed out"),
     ];
@@ -1196,7 +1220,7 @@ fn a_patient_the_ward_cannot_describe_holds_no_bed() {
         endemic: false,
     });
 
-    assert_eq!(beds_taken(&patients, &packs, nothing_lost(), &[]), 1,
+    assert_eq!(beds_taken(&patients, &packs, nothing_lost(), &[], nothing_transferred()), 1,
                "one bed is taken — the two the ward cannot describe are on the chain and not in a \
                 bed, or they wedge the ward shut against a queue that is full");
 
@@ -1208,7 +1232,7 @@ fn a_patient_the_ward_cannot_describe_holds_no_bed() {
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
         unrebuildable: nothing_lost(), unread: nothing_unread(), times: nothing_dated(), seconds_per_slot: None,
-        transferred: nothing_transferred(),
+        transferred: nothing_transferred(), ended_on_shift: nothing_ended(),
     });
 
     assert_eq!(v["census"]["on_ward"], 3,
@@ -1265,7 +1289,7 @@ fn the_payload_publishes_how_many_are_in_beds_beside_how_many_are_on_the_chain()
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
         unrebuildable: nothing_lost(), unread: nothing_unread(), times: nothing_dated(), seconds_per_slot: None,
-        transferred: nothing_transferred(),
+        transferred: nothing_transferred(), ended_on_shift: nothing_ended(),
     });
 
     assert_eq!(v["census"]["on_ward"], 3, "the census is what the chain says, unchanged");
@@ -1366,7 +1390,7 @@ fn a_patient_who_cannot_be_rebuilt_is_named_and_gives_up_the_bed() {
                 board is where the ward says what it can and cannot do with her");
 
     // The count the ticker refills against agrees with the board.
-    assert_eq!(beds_taken(&patients, &packs, &lost, &[]), 1);
+    assert_eq!(beds_taken(&patients, &packs, &lost, &[], nothing_transferred()), 1);
 }
 
 /// **At the bedside the frame is never empty.**
@@ -1690,7 +1714,7 @@ fn a_time_on_the_board_is_the_slots_own_block_time() {
         patients: &patients, shifts: &shifts, packs: &packs, cases: &[],
         unrebuildable: nothing_lost(), unread: nothing_unread(), since: None, as_of_slot: as_of,
         now_unix: now, source: "devnet:ABC", times: &times, seconds_per_slot: None,
-        transferred: nothing_transferred(),
+        transferred: nothing_transferred(), ended_on_shift: nothing_ended(),
     });
     let row = |id: u64| {
         v["patients"].as_array().unwrap().iter().find(|p| p["patient_id"] == id).unwrap().clone()
@@ -2036,7 +2060,7 @@ fn a_bed_whose_case_the_ward_cannot_draw_is_not_offered() {
         patients: &patients, shifts: &[], packs: &packs,
         since: None, as_of_slot: 100, now_unix: 1_760_000_000, source: "devnet:ABC",
         unrebuildable: nothing_lost(), unread: nothing_unread(), times: nothing_dated(), seconds_per_slot: None,
-        transferred: &BTreeMap::new(),
+        transferred: &BTreeMap::new(), ended_on_shift: nothing_ended(),
     });
 
     let by_id = |id: u64| v["patients"].as_array().unwrap().iter()
@@ -2102,7 +2126,7 @@ fn a_bed_the_ward_cannot_open_is_given_back_to_the_ward() {
     packs.insert(2u64, held("ddx-boerhaave-4-en"));
     let catalogue = [summary("ddx-boerhaave-4-en")];
 
-    assert_eq!(beds_taken(&patients, &packs, nothing_lost(), &catalogue), 1,
+    assert_eq!(beds_taken(&patients, &packs, nothing_lost(), &catalogue, nothing_transferred()), 1,
                "one bed is taken: hers is not, because nobody can open it");
 
     let beds = beds_of(&patients, &packs, nothing_lost(), &catalogue);
@@ -2112,7 +2136,7 @@ fn a_bed_the_ward_cannot_open_is_given_back_to_the_ward() {
                 warm out of politeness");
 
     // The guard that matters on a fresh instance: an empty catalogue judges nobody.
-    assert_eq!(beds_taken(&patients, &packs, nothing_lost(), &[]), 2,
+    assert_eq!(beds_taken(&patients, &packs, nothing_lost(), &[], nothing_transferred()), 2,
                "a ward that has not loaded its catalogue has not lost anybody's case");
 }
 
@@ -2214,7 +2238,7 @@ fn an_unrefreshed_history_is_said_on_the_row_and_the_bed_stays_offered() {
         now_unix: 1_760_000_000, source: "devnet:ABC", times: &BTreeMap::new(),
         seconds_per_slot: None, unrebuildable: &BTreeMap::new(), cases: &[],
         unread: &unread,
-        transferred: &BTreeMap::new(),
+        transferred: &BTreeMap::new(), ended_on_shift: nothing_ended(),
     });
 
     let rows = v["patients"].as_array().expect("rows");
@@ -2241,7 +2265,7 @@ fn an_unrefreshed_history_is_said_on_the_row_and_the_bed_stays_offered() {
         patients: &patients, shifts: &[], packs: &BTreeMap::new(), since: None, as_of_slot: 1_000,
         now_unix: 1_760_000_000, source: "devnet:ABC", times: &BTreeMap::new(),
         seconds_per_slot: None, unrebuildable: &BTreeMap::new(), cases: &[],
-        unread: &BTreeMap::new(), transferred: &BTreeMap::new(),
+        unread: &BTreeMap::new(), transferred: &BTreeMap::new(), ended_on_shift: nothing_ended(),
     });
     assert_eq!(quiet["unread"].as_array().map(Vec::len), Some(0),
                "an empty list on a good read, not an absent field — the shape of the payload does \
@@ -2261,7 +2285,7 @@ fn the_board_publishes_the_catalogues_status_beside_its_counts() {
         patients: &[], shifts: &[], packs: &BTreeMap::new(), since: None, as_of_slot: 1_000,
         now_unix: 1_760_000_000, source: "devnet:ABC", times: &BTreeMap::new(),
         seconds_per_slot: None, unrebuildable: &BTreeMap::new(), cases: &[], unread: &BTreeMap::new(),
-        transferred: &BTreeMap::new(),
+        transferred: &BTreeMap::new(), ended_on_shift: nothing_ended(),
     });
     // The payload composes it from the door this host is serving behind, which under test is the
     // default — so the assertion is that the board shows *the same* sentence, not a fixed one.
@@ -2305,7 +2329,7 @@ fn the_catalogue_counts_what_a_patient_can_be_placed_on() {
         patients: &[], shifts: &[], packs: &BTreeMap::new(), since: None, as_of_slot: 1_000,
         now_unix: 1_760_000_000, source: "devnet:ABC", times: &BTreeMap::new(),
         seconds_per_slot: None, unrebuildable: &BTreeMap::new(), cases: &cases,
-        unread: &BTreeMap::new(), transferred: &BTreeMap::new(),
+        unread: &BTreeMap::new(), transferred: &BTreeMap::new(), ended_on_shift: nothing_ended(),
     });
     let cat = &v["policy"]["catalogue"];
     assert_eq!(cat["held"], 2, "the cases a patient can be placed on, not every pack in the store");

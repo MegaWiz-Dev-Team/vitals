@@ -823,7 +823,11 @@ const STATE_LABEL = { on_ward: "on the ward", on_shift: "on shift", went_home: "
   /* The ward has her pack, her chart and every receipt, and cannot draw her case — so she is on
      this page with the rest, under "not on the map", and offered to nobody. Not `off_ward`, whose
      label is true of an account this ward never knew and false of a patient it admitted itself. */
-  caseless: "no case to open" };
+  caseless: "no case to open",
+  /* The engine has ended the case without a death, and the chain does not close it: ICU is a
+     transfer to the program. No bed and no next shift. Before 21 Nov 2026 these read "on the
+     ward", which was the chain's word and not what had happened. */
+  transferred_icu: "moved to ICU", self_discharged: "discharged with nobody on shift" };
 function stateOf(p) {
   const s = String(p.state || "").toLowerCase().replace(/[\s-]+/g, "_");
   if (s === "open" || s === "0") return "on_ward";
@@ -1024,7 +1028,7 @@ function censusFigures(census, patients, beds) {
   const n = k => (typeof c[k] === "number") ? c[k] : (c.all && typeof c.all[k] === "number" ? c.all[k] : null);
   const treating = (patients || []).filter(p => stateOf(p) === "on_shift").length;
   return [["in beds", typeof beds === "number" ? beds : 0], ["on shift now", treating],
-          ["shifts", n("shifts")], ["went home", n("went_home")], ["died", n("died")]]
+          ["shifts", n("shifts")], ["went home", n("went_home")], ["saved", n("saved")], ["died", n("died")]]
     .filter(([, v]) => v !== null);
 }
 
