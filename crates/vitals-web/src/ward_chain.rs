@@ -2712,14 +2712,26 @@ fn reap(
 
         // The head she died on, read now rather than remembered: the program refuses an anchor
         // that does not extend the head it was told, and that refusal is the mechanic.
-        let head = match chain.patient(p.patient_id) {
-            Ok(Some(a)) => a.head,
+        let (head, on_chain) = match chain.patient(p.patient_id) {
+            Ok(Some(a)) => (a.head, a.shifts),
             Ok(None) => continue,
             Err(e) => {
                 out.notes.push(format!("patient {}'s account could not be read: {e}", p.patient_id));
                 continue;
             }
         };
+        // The death was decided on the cached chart and the head was read just now. If a shift
+        // landed in between, the head extends a chart nobody judged — see `chart_still_current`.
+        let judged = seen.shifts().len();
+        if !chart_still_current(judged, on_chain) {
+            out.notes.push(format!(
+                "patient {} was judged on {judged} shift(s) and the chain now holds {on_chain} — \
+                 somebody anchored since the chart was read, so the patient is judged again on \
+                 the next pass rather than closed on the old chart",
+                p.patient_id
+            ));
+            continue;
+        }
         let difficulty = match crate::ward::difficulty_of(&pack.case) {
             Some("resident") => vitals_progress::Difficulty::Resident,
             Some("intern") => vitals_progress::Difficulty::Intern,
@@ -3349,6 +3361,23 @@ pub fn standing_unattended(
     Ok(Standing::Closed(Box::new(Unattended {
         outcome, since_slot: since, idle_slots, replay, state: st,
     })))
+}
+
+/// **Is the chart the ticker judged still the chart on the chain?**
+///
+/// The ticker decides a death on the pass's cached chart and then reads her head fresh, because
+/// the program refuses an anchor that does not extend the current head. Those are two reads at
+/// two moments. On 25 Sep 2026 a stranger anchored a shift that reached WinIcu on patients
+/// 1790285640 and 1790292960. Each was within minutes of her unattended deadline, counted from
+/// admission. The next pass judged both from charts cached before those shifts, read the heads
+/// the strangers had just written, and closed both as DeathArrest on top of their saves, 113 and
+/// 188 slots later. The program accepted, because the head matched.
+///
+/// So a closing goes ahead only when the chain's shift count, read with the head, is the count
+/// the death was decided on. Otherwise she is judged again on the next pass, on a chart that
+/// includes the new shift.
+pub fn chart_still_current(judged_shifts: usize, chain_shifts: u32) -> bool {
+    judged_shifts == chain_shifts as usize
 }
 
 /// **Is this an ending the ward closes a stay on by itself?**

@@ -1186,6 +1186,41 @@ fn a_patient_nobody_came_back_to_is_closed_by_the_ward_and_not_by_the_next_stran
             "her chart cannot be rebuilt, so the ward says so rather than closing her on a guess");
 }
 
+/// **A death decided on an old chart is not written on top of a new shift.**
+///
+/// 25 Sep 2026: a stranger's shift reached WinIcu on two patients who were close to their
+/// unattended deadline. The next pass judged each from a chart cached before that shift, which
+/// said she had died alone. It then read the head the stranger had just anchored and closed her
+/// as DeathArrest on top of the save. The program accepted, because the head matched.
+#[test]
+fn a_death_decided_on_an_old_chart_is_not_written_over_a_shift_that_landed_since() {
+    use vitals_web::ward_chain::{chart_still_current, standing_unattended};
+
+    let sce = ep1();
+    let chart = |_: &str| Some(Vec::<Step>::new());
+    let admitted = 1_000_000u64;
+    let nine_hours = (9.0 * 3600.0 / vitals_replay::SLOT_SECONDS) as u64;
+    let now = admitted + nine_hours;
+
+    // The pass's cache: no shift on her, nine hours alone. Judged on that, she is dead.
+    let cached: Vec<ShiftOnChain> = Vec::new();
+    assert!(standing_unattended(&sce, &cached, &chart, admitted, now, &dated)
+                .expect("the chain reads")
+                .closed()
+                .is_some(),
+            "on the cached chart the ward would close her");
+
+    // The chain, read with the head a moment later: a stranger anchored a shift just now. What
+    // that shift did is not this test's business. The death was decided without it, so it cannot
+    // be written on top of it.
+    let landed = [anchored("the stranger's shift", now)];
+    assert!(!chart_still_current(cached.len(), landed.len() as u32),
+            "a closing decided on 0 shifts must not land on a chain that holds 1");
+    assert!(chart_still_current(landed.len(), landed.len() as u32),
+            "the next pass reads the new shift, and its judgment stands");
+    assert!(chart_still_current(0, 0), "a patient nobody has treated is judged on what she has");
+}
+
 /// **A receipt address this ward never played is refused without reading the chain.**
 ///
 /// `/shift/<64 hex>` answered in 29 to 102 seconds on staging (measured 17 ก.ย., three times, on a
