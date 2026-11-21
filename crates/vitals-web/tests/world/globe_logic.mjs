@@ -919,15 +919,16 @@ assert.deepEqual([...mixed].sort(byClosest).map(p => p.patient_id), [12, 11, 10,
 // assuming, and with no cap published it says only the half that is true.
 globalThis.ARRIVALCAP = null;
 const uncapped = clock(bed(1, 3.25));
-// `bed()` gives no sex, so the sentence is "them" — the card no longer assumes every patient on
-// this ward is a woman, which is what it did until production said "her" about a seven-year-old boy.
-assert.match(uncapped, /the ward will close them in about 3\.3 h/);
+// The sentence names no pronoun since 3ec42d0 (10 Oct 2026, the founder's wording): it says what
+// the clock means, "dies in about X h without a doctor". Before that it said "the ward will close
+// them", and before that "her" about a seven-year-old boy.
+assert.match(uncapped, /dies in about 3\.3 h without a doctor/);
 assert.ok(!/five minutes in/.test(uncapped),
           `with no cap on the board the page may not promise one: ${uncapped}`);
 
 globalThis.ARRIVALCAP = { from_slot: 503728769, sim_minutes: 5 };
 const said = clock(bed(1, 3.25));
-assert.match(said, /the ward will close them in about 3\.3 h/,
+assert.match(said, /dies in about 3\.3 h without a doctor/,
              `the ward's own clock is the first sentence: ${said}`);
 assert.match(said, /five minutes in/,
              `and what an arrival actually meets is the second: ${said}`);
@@ -991,20 +992,22 @@ assert.ok(realRow && typeof realRow.sex === 'string',
 // Her own row, with only the clock varied: everything else is what the ward actually sends.
 const asServed = (over) => ({ ...realRow, closes_in_hours: 2, ...over });
 
+// Since 3ec42d0 the first sentence carries no pronoun ("dies in about 2.0 h without a doctor"), so
+// the second sentence is where the card has to know who is in the bed.
 const boy = clock(asServed({ sex: "m" }));
-assert.match(boy, /close him in about/, `a boy is him: ${boy}`);
+assert.match(boy, /dies in about 2\.0 h without a doctor/, `the clock's own sentence: ${boy}`);
 assert.match(boy, /you will find him five minutes in — treating him/);
 assert.ok(!/\bher\b|\bshe\b/.test(boy), `and never her: ${boy}`);
 
 const girl = clock(asServed({ sex: "f" }));
-assert.match(girl, /close her in about/);
+assert.match(girl, /you will find her five minutes in — treating her/);
 assert.ok(!/\bhim\b|\bhe\b/.test(girl), `and never him: ${girl}`);
 
 // A patient the ward cannot sex gets "them", not a guess. Assigning one would be inventing a fact
 // about a person from nothing, which is worse than the neutral word.
 for (const unknown of [undefined, "", "?", "x"]) {
   const t = clock(asServed({ sex: unknown }));
-  assert.match(t, /close them in about/, `unknown sex is them, not a guess: ${t}`);
+  assert.match(t, /you will find them five minutes in/, `unknown sex is them, not a guess: ${t}`);
   assert.ok(!/\bher\b|\bhim\b/.test(t));
 }
 
